@@ -119,8 +119,8 @@ export function ThreadDetailsSidebar({ record }: ThreadDetailsSidebarProps) {
     return null
   }
 
-  // Extract fields, excluding title (already in page header) and objective (shown separately)
-  const { title, objective, status, ...otherFields } = record
+  // Extract fields, excluding objective (shown separately) and status for separate display
+  const { objective, status, ...otherFields } = record
   
   // Fields to hide from the detail view
   const hiddenFields = ['worker_id', 'dispatcher_processed_at']

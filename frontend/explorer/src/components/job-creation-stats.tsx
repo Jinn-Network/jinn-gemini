@@ -46,9 +46,9 @@ export function JobCreationStats({ collectionName, className = '' }: JobCreation
         // Process the data to create statistics
         const jobCounts: Record<string, { job_name: string; count: number; created_by_job_id: string }> = {}
         
-        data?.forEach((item: any) => {
+        data?.forEach((item) => {
           const jobId = item.created_by_job_id
-          const jobName = item.job_board?.job_name || 'Unknown Job'
+          const jobName = (item.job_board && item.job_board.length > 0) ? item.job_board[0].job_name : 'Unknown Job'
           
           if (jobCounts[jobId]) {
             jobCounts[jobId].count++

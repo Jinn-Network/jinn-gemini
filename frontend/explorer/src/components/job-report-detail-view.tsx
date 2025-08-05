@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+// useState removed as it was not being used
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -19,7 +19,7 @@ function humanizeFieldName(fieldName: string): string {
     .join(' ')
 }
 
-function ObjectViewer({ data, title }: { data: any; title: string }) {
+function ObjectViewer({ data }: { data: unknown }) {
   if (data === null || data === undefined) {
     return <span className="text-gray-400 italic">null</span>
   }
@@ -37,7 +37,7 @@ function ObjectViewer({ data, title }: { data: any; title: string }) {
   return <span>{String(data)}</span>
 }
 
-function ResponseTextCard({ responseText }: { responseText: any }) {
+function ResponseTextCard({ responseText }: { responseText: unknown }) {
   if (!responseText || !Array.isArray(responseText)) {
     return (
       <Card>
@@ -58,9 +58,9 @@ function ResponseTextCard({ responseText }: { responseText: any }) {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {responseText.map((item: any, index: number) => {
+          {(responseText as unknown[]).map((item: unknown, index: number) => {
                         // Extract thought content from response structure
-            const extractThought = (item: any) => {
+            const extractThought = (item: unknown) => {
               try {
                 // If item is a string that looks like JSON, try to parse it
                 if (typeof item === 'string' && item.trim().startsWith('[')) {
@@ -78,32 +78,35 @@ function ResponseTextCard({ responseText }: { responseText: any }) {
                 if (Array.isArray(item) && item.length > 0) {
                   // Process all items in the array and find the best content
                   for (const responseItem of item) {
+                    const respObj = responseItem as Record<string, unknown>
                     // Check for Gemini API response structure with thought content
-                    if (responseItem?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                      const fullText = responseItem.candidates[0].content.parts[0].text
+                    const candidates = respObj.candidates as { content?: { parts?: { text?: string; functionCall?: { name: string; args?: Record<string, unknown> } }[] } }[] | undefined
+                    if (candidates?.[0]?.content?.parts?.[0]?.text) {
+                      const fullText = candidates[0].content.parts[0].text
                       return fullText.trim()
                     }
 
                     // Check for parts array directly
-                    if (responseItem?.parts?.[0]?.text) {
-                      const fullText = responseItem.parts[0].text
+                    const parts = respObj.parts as { text?: string }[] | undefined
+                    if (parts?.[0]?.text) {
+                      const fullText = parts[0].text
                       return fullText.trim()
                     }
 
                     // Check for function call responses - show what function was called
-                    if (responseItem?.candidates?.[0]?.content?.parts?.[0]?.functionCall?.name) {
-                      const funcName = responseItem.candidates[0].content.parts[0].functionCall.name
-                      const args = responseItem.candidates[0].content.parts[0].functionCall.args
+                    if (candidates?.[0]?.content?.parts?.[0]?.functionCall?.name) {
+                      const funcName = candidates[0].content.parts[0].functionCall.name
+                      const args = candidates[0].content.parts[0].functionCall.args
                       return `Function Call: ${funcName}(${Object.keys(args || {}).join(', ')})`
                     }
 
                     // Check for thought signature and function calls (step responses)
-                    if (responseItem?.candidates?.[0]?.content?.parts) {
-                      const parts = responseItem.candidates[0].content.parts
+                    if (candidates?.[0]?.content?.parts) {
+                      const parts = candidates[0].content.parts
                       // Look for function calls in parts
-                      const functionCalls = parts.filter(part => part.functionCall)
+                      const functionCalls = parts.filter((part: { functionCall?: unknown }) => part.functionCall)
                       if (functionCalls.length > 0) {
-                        const callNames = functionCalls.map(part => part.functionCall.name)
+                        const callNames = functionCalls.map((part: { functionCall?: { name: string } }) => part.functionCall?.name).filter(Boolean)
                         return `Function Calls: ${callNames.join(', ')}`
                       }
                     }
@@ -112,8 +115,8 @@ function ResponseTextCard({ responseText }: { responseText: any }) {
                     if (responseItem && typeof responseItem === 'object') {
                       const textFields = ['text', 'content', 'thought', 'message']
                       for (const field of textFields) {
-                        if (responseItem[field] && typeof responseItem[field] === 'string') {
-                          return responseItem[field].trim()
+                        if (respObj[field] && typeof respObj[field] === 'string') {
+                          return (respObj[field] as string).trim()
                         }
                       }
                     }
@@ -123,22 +126,24 @@ function ResponseTextCard({ responseText }: { responseText: any }) {
                 // Handle single object
                 if (item && typeof item === 'object') {
                   // Check for Gemini API response structure
-                  if (item?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    const fullText = item.candidates[0].content.parts[0].text
+                  const itemObj = item as Record<string, unknown>
+                  const candidates = itemObj.candidates as { content?: { parts?: { text?: string }[] } }[] | undefined
+                  if (candidates?.[0]?.content?.parts?.[0]?.text) {
+                    const fullText = candidates[0].content.parts[0].text
                     return fullText.trim()
                   }
 
                   // Check other fields
                   const textFields = ['text', 'content', 'thought', 'message']
                   for (const field of textFields) {
-                    if (item[field] && typeof item[field] === 'string') {
-                      return item[field].trim()
+                    if (itemObj[field] && typeof itemObj[field] === 'string') {
+                      return (itemObj[field] as string).trim()
                     }
                   }
                 }
 
                 return `Response ${index + 1}`
-              } catch (error) {
+              } catch {
                 // If parsing fails, return a truncated version of the original string
                 if (typeof item === 'string') {
                   return item.substring(0, 100) + (item.length > 100 ? '...' : '')
@@ -165,7 +170,7 @@ function ResponseTextCard({ responseText }: { responseText: any }) {
                       <DialogHeader>
                         <DialogTitle>Response {index + 1} Details</DialogTitle>
                       </DialogHeader>
-                      <ObjectViewer data={item} title={`Response ${index + 1}`} />
+                      <ObjectViewer data={item} />
                     </DialogContent>
                   </Dialog>
                 </div>
@@ -255,7 +260,7 @@ export function JobReportDetailView({ record }: JobReportDetailViewProps) {
             <CardContent>
               {Array.isArray(request_text) ? (
                 <div className="space-y-4">
-                  {request_text.map((req: any, index: number) => (
+                  {(request_text as unknown[]).map((req: unknown, index: number) => (
                     <div key={index} className="border rounded p-3">
                       <h4 className="font-medium mb-2 text-sm text-gray-600">
                         Request {index + 1}
@@ -317,7 +322,7 @@ export function JobReportDetailView({ record }: JobReportDetailViewProps) {
                           <DialogHeader>
                             <DialogTitle>{humanizeFieldName(key)}</DialogTitle>
                           </DialogHeader>
-                          <ObjectViewer data={value} title={key} />
+                          <ObjectViewer data={value} />
                         </DialogContent>
                       </Dialog>
                     ) : (

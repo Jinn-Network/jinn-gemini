@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { DbRecord } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { RecordList } from '@/components/record-list'
 import { Pagination } from '@/components/pagination'
 import { RecordListSkeleton } from '@/components/loading-skeleton'
-import { IdLink } from '@/components/id-link'
+// IdLink removed as it was not being used
 import { toast } from 'sonner'
 
 interface RealtimeJobBoardProps {
@@ -38,7 +38,7 @@ export function RealtimeJobBoard({
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   
   const supabase = createClient()
-  const subscriptionRef = useRef<any>(null)
+  const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   
   // Fetch job statistics
@@ -128,15 +128,35 @@ export function RealtimeJobBoard({
             toast.success('Real-time updates enabled')
           } else if (status === 'CHANNEL_ERROR') {
             toast.error('Real-time connection failed, falling back to polling')
-            setupPolling()
+            // Start polling directly to avoid circular dependency
+            if (enablePolling) {
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current)
+              }
+              pollingIntervalRef.current = setInterval(() => {
+                console.log('Polling for job board updates...')
+                fetchRecords(currentPage, false)
+                fetchStats()
+              }, pollingInterval)
+            }
           }
         })
     } catch (error) {
       console.error('Error setting up real-time subscription:', error)
       toast.error('Failed to set up real-time updates, using polling instead')
-      setupPolling()
+      // Start polling directly to avoid circular dependency
+      if (enablePolling) {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+        }
+        pollingIntervalRef.current = setInterval(() => {
+          console.log('Polling for job board updates...')
+          fetchRecords(currentPage, false)
+          fetchStats()
+        }, pollingInterval)
+      }
     }
-  }, [supabase, currentPage, fetchRecords, fetchStats])
+  }, [supabase, currentPage, fetchRecords, fetchStats, enablePolling, pollingInterval])
 
   // Set up polling as fallback
   const setupPolling = useCallback(() => {
@@ -179,6 +199,7 @@ export function RealtimeJobBoard({
       }
       clearTimeout(fallbackTimer)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only run on mount
 
   // Update subscription when page changes
@@ -192,20 +213,7 @@ export function RealtimeJobBoard({
     setCurrentPage(page)
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'COMPLETED':
-        return 'text-green-600 bg-green-50 border-green-200'
-      case 'FAILED':
-        return 'text-red-600 bg-red-50 border-red-200'
-      case 'IN_PROGRESS':
-        return 'text-blue-600 bg-blue-50 border-blue-200'
-      case 'PENDING':
-        return 'text-yellow-600 bg-yellow-50 border-yellow-200'
-      default:
-        return 'text-gray-600 bg-gray-50 border-gray-200'
-    }
-  }
+  // getStatusColor function removed as it was not being used
 
   if (loading) {
     return (

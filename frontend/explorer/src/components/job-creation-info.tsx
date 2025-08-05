@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { IdLink } from '@/components/id-link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+// Card components removed as they were not being used
 
 interface JobCreationInfoProps {
   jobId: string | null | undefined

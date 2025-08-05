@@ -45,7 +45,7 @@ export function useRealtimeCollection({
   const [error, setError] = useState<string | null>(null)
   
   const supabase = createClient()
-  const subscriptionRef = useRef<any>(null)
+  const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   
   // Fetch records with pagination
@@ -107,14 +107,30 @@ export function useRealtimeCollection({
           setIsRealTimeConnected(status === 'SUBSCRIBED')
           
           if (status === 'CHANNEL_ERROR' && enablePolling) {
-            setupPolling()
+            // Start polling directly to avoid circular dependency
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+            }
+            pollingIntervalRef.current = setInterval(() => {
+              console.log(`Polling for ${collectionName} updates...`)
+              fetchRecords(currentPage, false)
+            }, pollingInterval)
           }
         })
     } catch (setupError) {
       console.error(`Error setting up real-time subscription for ${collectionName}:`, setupError)
-      if (enablePolling) setupPolling()
+      if (enablePolling) {
+        // Start polling directly to avoid circular dependency
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+        }
+        pollingIntervalRef.current = setInterval(() => {
+          console.log(`Polling for ${collectionName} updates...`)
+          fetchRecords(currentPage, false)
+        }, pollingInterval)
+      }
     }
-  }, [supabase, collectionName, currentPage, fetchRecords, enableRealtime, enablePolling])
+  }, [supabase, collectionName, currentPage, fetchRecords, enableRealtime, enablePolling, pollingInterval])
 
   // Set up polling
   const setupPolling = useCallback(() => {
@@ -154,6 +170,7 @@ export function useRealtimeCollection({
         clearInterval(pollingIntervalRef.current)
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only run on mount
 
   // Update when page changes

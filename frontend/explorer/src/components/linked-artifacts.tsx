@@ -17,16 +17,10 @@ interface Artifact {
   created_at: string
   status?: string
   thread_id?: string
-  [key: string]: any // Allow other fields from the database
+  [key: string]: unknown // Allow other fields from the database
 }
 
-// Function to convert field names to human-readable labels
-function humanizeFieldName(fieldName: string): string {
-  return fieldName
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ')
-}
+// Function to convert field names to human-readable labels - removed as unused
 
 // Component to handle different types of values (comprehensive version from artifact-detail-view)
 function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string }) {
