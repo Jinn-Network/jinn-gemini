@@ -182,6 +182,217 @@ describe('Database Tools Integration Tests', () => {
     });
   });
 
+  describe('get_context_snapshot Tool', () => {
+    let testThreadId: string | null = null;
+    let testArtifactId: string | null = null;
+    let testJobName: string | null = null;
+
+    beforeEach(async () => {
+      // Create test data to populate the context snapshot
+      const { data: thread } = await supabase.from('threads').insert({ 
+        title: 'Context Test Thread', 
+        objective: 'Test objective for context',
+        summary: { key: 'test summary data' }
+      }).select().single();
+      testThreadId = thread.id;
+
+      const { data: artifact } = await supabase.from('artifacts').insert({ 
+        thread_id: testThreadId!, 
+        content: 'This is a test artifact with some meaningful content that provides context about what this artifact contains and represents in the system.',
+        topic: 'test-topic',
+        source: 'test-job'
+      }).select().single();
+      testArtifactId = artifact.id;
+
+      // Create a test job entry
+      testJobName = 'test-context-job';
+      const { data: job, error: jobError } = await supabase.from('job_board').insert({
+        job_name: testJobName,
+        status: 'COMPLETED',
+        output: 'Test job completed successfully',
+        input_prompt: 'Test prompt' // Required field
+      }).select().single();
+      
+      if (jobError || !job) {
+        console.error('Job creation failed:', jobError);
+        return; // Skip if job creation fails
+      }
+      
+      // Create a job report with token data
+      await supabase.from('job_reports').insert({
+        job_id: job.id,
+        worker_id: 'test-worker',
+        status: 'COMPLETED',
+        duration_ms: 5000,
+        total_tokens: 1500
+      });
+
+      // Create test messages
+      await supabase.from('messages').insert([
+        {
+          from_agent: 'test-sender',
+          to_agent: testJobName,
+          content: 'Test message for specific job',
+          status: 'PENDING'
+        },
+        {
+          from_agent: 'other-sender', 
+          to_agent: 'other-job',
+          content: 'Message for different job',
+          status: 'READ'
+        }
+      ]);
+    });
+
+    afterEach(async () => {
+      // Clean up test data
+      await supabase.from('messages').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
+      await supabase.from('job_reports').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
+      await supabase.from('job_board').delete().eq('job_name', testJobName!);
+      if (testArtifactId) await supabase.from('artifacts').delete().match({ id: testArtifactId });
+      if (testThreadId) await supabase.from('threads').delete().match({ id: testThreadId });
+      testThreadId = null;
+      testArtifactId = null;
+      testJobName = null;
+    });
+
+    it('should return context snapshot with default time window (6 hours)', async () => {
+      const result = await getContextSnapshot({});
+      expect(result.content[0].text).toContain('## System Context Snapshot');
+      expect(result.content[0].text).toContain('🎯 **PRIMARY MISSION**');
+      expect(result.content[0].text).toContain('### Time Window');
+      expect(result.content[0].text).toContain('- **Requested**: 6 hours back');
+      expect(result.content[0].text).toContain('### System Health Overview');
+    });
+
+    it('should respect custom time window (max 12 hours)', async () => {
+      const result = await getContextSnapshot({ hours_back: 8 });
+      expect(result.content[0].text).toContain('- **Requested**: 8 hours back');
+      expect(result.content[0].text).toContain('- **Actual**: 8 hours back');
+    });
+
+    it('should cap time window at 12 hours maximum', async () => {
+      const result = await getContextSnapshot({ hours_back: 24 });
+      expect(result.content[0].text).toContain('- **Requested**: 24 hours back');
+      expect(result.content[0].text).toContain('- **Actual**: 12 hours back');
+    });
+
+    it('should include job-specific messages when job_name is provided', async () => {
+      const result = await getContextSnapshot({ job_name: testJobName! });
+      expect(result.content[0].text).toContain(`## System Context Snapshot (Job: ${testJobName})`);
+      expect(result.content[0].text).toContain(`### Messages for ${testJobName}`);
+      expect(result.content[0].text).toContain('Test message for specific job');
+      expect(result.content[0].text).not.toContain('Message for different job');
+    });
+
+    it('should exclude messages when no job_name is provided', async () => {
+      const result = await getContextSnapshot({});
+      // Should not contain the detailed messages section for a specific job
+      expect(result.content[0].text).not.toContain('### Messages for');
+      expect(result.content[0].text).not.toContain('Test message for specific job');
+      // Should show message count in overview
+      expect(result.content[0].text).toContain('- **Messages**: 0');
+    });
+
+    it('should include enhanced fields in job activity', async () => {
+      const result = await getContextSnapshot({});
+      expect(result.content[0].text).toContain('### Recent Job Activity');
+      expect(result.content[0].text).toContain(testJobName!);
+      expect(result.content[0].text).toContain('1500 tokens');
+      expect(result.content[0].text).toContain('5000ms');
+      expect(result.content[0].text).toContain('Test job completed successfully');
+    });
+
+    it('should include enhanced fields in artifacts and threads', async () => {
+      const result = await getContextSnapshot({});
+      expect(result.content[0].text).toContain('### Recent Artifacts');
+      expect(result.content[0].text).toContain('test-topic');
+      expect(result.content[0].text).toContain(`Thread: ${testThreadId}`);
+      expect(result.content[0].text).toContain('Content: This is a test artifact with some meaningful content');
+      
+      expect(result.content[0].text).toContain('### Active Threads');
+      expect(result.content[0].text).toContain('Context Test Thread');
+      expect(result.content[0].text).toContain('Objective: Test objective for context');
+      expect(result.content[0].text).toContain('Summary: {"key":"test summary data"}');
+    });
+
+    it('should handle empty results gracefully', async () => {
+      // Clean up all test data first to ensure empty results
+      await supabase.from('messages').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
+      await supabase.from('job_reports').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
+      await supabase.from('job_board').delete().eq('job_name', testJobName!);
+      if (testArtifactId) await supabase.from('artifacts').delete().match({ id: testArtifactId });
+      if (testThreadId) await supabase.from('threads').delete().match({ id: testThreadId });
+      
+      // Use a very short time window to get no results
+      const result = await getContextSnapshot({ hours_back: 0.0001 });
+      expect(result.content[0].text).toContain('## System Context Snapshot');
+      expect(result.content[0].text).toContain('- **Recent Jobs**: 0 in time window');
+      expect(result.content[0].text).toContain('- **Recent Artifacts**: 0 created');
+    });
+
+    it('should emphasize mission from system_state', async () => {
+      // First, let's set a mission in system_state
+      await supabase.from('system_state').upsert({ 
+        key: 'mission', 
+        value: 'Test mission: Optimize system performance and reliability' 
+      });
+
+      const result = await getContextSnapshot({});
+      expect(result.content[0].text).toContain('🎯 **PRIMARY MISSION**');
+      expect(result.content[0].text).toContain('Test mission: Optimize system performance and reliability');
+
+      // Clean up
+      await supabase.from('system_state').delete().eq('key', 'mission');
+    });
+
+    it('should show default mission message when not defined', async () => {
+      // Ensure no mission is set
+      await supabase.from('system_state').delete().eq('key', 'mission');
+      
+      const result = await getContextSnapshot({});
+      expect(result.content[0].text).toContain('🎯 **PRIMARY MISSION**');
+      expect(result.content[0].text).toContain('Mission not defined in system_state.');
+    });
+
+    it('should handle data size management gracefully', async () => {
+      // Test that the function completes without errors even with the internal size limit
+      const result = await getContextSnapshot({ hours_back: 12 });
+      expect(result.content[0].text).toContain('## System Context Snapshot');
+      expect(result.content[0].text).toContain('### Raw Data Summary');
+      // Should not contain error messages
+      expect(result.content[0].text).not.toContain('Error getting context snapshot');
+    });
+
+    it('should truncate long artifact content to approximately 200 words', async () => {
+      // Create an artifact with very long content
+      const longContent = 'This is a very long artifact content that exceeds 200 words. '.repeat(50); // ~350 words
+      const { data: longArtifact } = await supabase.from('artifacts').insert({
+        thread_id: testThreadId!,
+        content: longContent,
+        topic: 'long-content-test',
+        source: 'test-truncation'
+      }).select().single();
+
+      const result = await getContextSnapshot({});
+      
+      // Should contain the artifact but with truncated content
+      expect(result.content[0].text).toContain('long-content-test');
+      expect(result.content[0].text).toContain('Content:');
+      expect(result.content[0].text).toContain('...');
+      
+      // Content should be significantly shorter than the original
+      const contentMatch = result.content[0].text.match(/Content: ([^\n]+)/);
+      if (contentMatch) {
+        const displayedContent = contentMatch[1];
+        expect(displayedContent.length).toBeLessThan(longContent.length / 2);
+      }
+
+      // Clean up the long artifact
+      await supabase.from('artifacts').delete().match({ id: longArtifact.id });
+    });
+  });
+
   describe('Memory Tools', () => {
     let testMemoryId1: string | null = null;
     let testMemoryId2: string | null = null;

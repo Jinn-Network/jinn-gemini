@@ -20,7 +20,7 @@ The design of this system is guided by a few core principles:
 -   **Event-Driven & Database-Centric**: The database is the single source of truth. All state changes and actions are modeled as database events. Complex workflows and agent coordination are orchestrated through PostgreSQL triggers and functions, minimizing the need for complex application-level logic. If a task can be automated in the database, it should be.
 -   **Lean Workers, Smart Agents**: The `worker` is a simple, stateless executor. Its only job is to poll for work, execute it, and report back. The core intelligence resides in the `Agent` class, which handles LLM interaction, and the `metacog-mcp` tools, which provide the agent with its capabilities.
 -   **Tools Over Prompts for Dynamic Context**: Prompts should guide the agent's reasoning process and define its high-level goals. They should not be cluttered with dynamic information (like file lists, database schemas, or tool definitions). Instead, prompts should instruct the agent to *use tools* to discover that information from its environment. This makes prompts more stable, reusable, and focused on reasoning.
--   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot` and `create_job`, an agent can analyze operational data and autonomously create new, scheduled jobs for itself or other agents, enabling a powerful loop of self-improvement.
+-   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot` and `create_job`, an agent can analyze operational data and autonomously create new, scheduled jobs for itself or other agents, enabling a powerful loop of self-improvement. The context snapshot tool provides time-based system visibility with automatic data size management to stay within token limits.
 
 ---
 
@@ -35,7 +35,7 @@ The system consists of several key components that work together in a continuous
     -   Executing the LLM prompt with integrated telemetry collection.
     -   Parsing detailed telemetry data (token usage, tool calls, performance metrics) directly from Gemini CLI output files.
     -   Capturing both critical errors and warning-level issues for comprehensive job reporting.
-4.  **Tools (`packages/metacog-mcp`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `list_tools`, `read_records`, and the powerful `create_job` and `get_context_snapshot`.
+4.  **Tools (`packages/metacog-mcp`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `list_tools`, `read_records`, and the powerful `create_job` and `get_context_snapshot`. The context snapshot tool is optimized for Gemini's 1M token context window with intelligent data size management and time-based filtering.
 5.  **Frontend Explorer (`frontend/explorer`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
 
 ---
@@ -174,6 +174,28 @@ For easier development, you can run the MCP server or the worker directly on you
 2.  **Define Schema**: Use Zod to define the input parameter schema for your tool.
 3.  **Implement Logic**: Write the tool's function, which will typically interact with the database via the `supabase` client.
 4.  **Register Tool**: In `packages/metacog-mcp/src/server.ts`, import your new tool and add it to the `serverTools` array. The tool will be automatically registered and discoverable by the `list_tools` tool.
+
+### Key Tool: get_context_snapshot
+The `get_context_snapshot` tool is a powerful system analysis tool designed for agents to understand the current state of the system. Key features:
+
+- **Time-Based Windows**: Uses configurable time windows (default 6 hours, max 12 hours) instead of job-based lookback for more predictable data sizes
+- **Automatic Size Management**: Monitors data size and automatically reduces the time window by half if it exceeds the 0.6MB internal limit, ensuring compatibility with Gemini's 1M token context window
+- **Job-Specific Message Filtering**: When `job_name` parameter is provided, includes detailed messages directed to that specific job; otherwise excludes messages to minimize token usage
+- **Enhanced Field Selection**: Includes critical fields like `job_report_id`, `output`, `thread_id`, `objective`, and `summary` for comprehensive system visibility
+- **Mission Emphasis**: Prominently displays the system mission from `system_state` to keep agents aligned with primary objectives
+- **Structured Output**: Returns AI-friendly markdown format with clear sections for system health, recent activity, and raw data summaries
+
+**Usage Examples**:
+```javascript
+// Basic system overview (6-hour window, no messages)
+get_context_snapshot({})
+
+// Extended analysis with specific time window
+get_context_snapshot({ hours_back: 10 })
+
+// Job-specific view with detailed messages
+get_context_snapshot({ job_name: "data_analysis_job", hours_back: 8 })
+```
 
 ### Debugging
 You can run the worker in debug mode by passing the `--debug` or `-d` flag. This will pass the `--debug` flag to the Gemini CLI, providing verbose output on its operations.
