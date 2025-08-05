@@ -6,7 +6,7 @@ interface SystemStateViewProps {
 }
 
 // Helper function to format values for display
-function formatValue(value: any): React.ReactNode {
+function formatValue(value: unknown): React.ReactNode {
   if (value === null || value === undefined) {
     return <span className="text-gray-400 italic">null</span>
   }
@@ -84,7 +84,7 @@ function getKeyName(record: DbRecord): string {
 }
 
 // Helper function to get the value from a system_state record
-function getValue(record: DbRecord): any {
+function getValue(record: DbRecord): unknown {
   // Common field names that might contain the value
   const valueFields = ['value', 'setting_value', 'config_value', 'data', 'content']
   
@@ -96,7 +96,7 @@ function getValue(record: DbRecord): any {
   
   // If no standard value field found, return the entire record except system fields
   const excludeFields = ['id', 'created_at', 'updated_at', 'key', 'name', 'setting_name', 'config_key', 'parameter']
-  const filteredRecord: any = {}
+  const filteredRecord: Record<string, unknown> = {}
   
   Object.keys(record).forEach(key => {
     if (!excludeFields.includes(key)) {

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase'
-import { RecordPageProps, collectionNames } from '@/lib/types'
+import { RecordPageProps, collectionNames, DbRecord } from '@/lib/types'
 import { DetailView } from '@/components/detail-view'
 import { ArtifactDetailView } from '@/components/artifact-detail-view'
 import { ThreadCitations } from '@/components/thread-citations'
@@ -8,7 +8,8 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
 // Helper function to get human-readable title from record
-function getRecordTitle(record: any, collectionName: string): string {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function getRecordTitle(record: DbRecord, _collectionName: string): string {
   // Priority order for title fields
   const titleFields = ['name', 'title', 'job_name', 'prompt', 'content', 'topic', 'subject']
   
@@ -24,8 +25,10 @@ function getRecordTitle(record: any, collectionName: string): string {
 }
 
 export default async function RecordPage({ params }: RecordPageProps) {
+  const resolvedParams = await params
+  
   // Validate that the collection name is valid
-  if (!collectionNames.includes(params.collection)) {
+  if (!collectionNames.includes(resolvedParams.collection)) {
     notFound()
   }
 
@@ -34,9 +37,9 @@ export default async function RecordPage({ params }: RecordPageProps) {
   try {
     // Fetch data from Supabase
     const { data: record, error } = await supabase
-      .from(params.collection)
+      .from(resolvedParams.collection)
       .select('*')
-      .eq('id', params.id)
+      .eq('id', resolvedParams.id)
       .single()
 
     if (error) {
@@ -48,37 +51,37 @@ export default async function RecordPage({ params }: RecordPageProps) {
       throw error
     }
 
-    const recordTitle = getRecordTitle(record, params.collection)
-    const collectionLabel = getCollectionLabel(params.collection)
+    const recordTitle = getRecordTitle(record, resolvedParams.collection)
+    const collectionLabel = getCollectionLabel(resolvedParams.collection)
 
     return (
       <div>
         <div className="mb-6">
           <Link 
-            href={`/${params.collection}`}
+            href={`/${resolvedParams.collection}`}
             className="text-blue-600 hover:text-blue-800 text-sm"
           >
             ← Back to {collectionLabel}
           </Link>
         </div>
         
-        <h1 className="text-2xl font-bold mb-4" title={`Record ID: ${params.id} in ${params.collection}`}>
+        <h1 className="text-2xl font-bold mb-4" title={`Record ID: ${resolvedParams.id} in ${resolvedParams.collection}`}>
           {recordTitle}
         </h1>
         <p className="text-gray-600 text-sm mb-6">
           {collectionLabel}
         </p>
         
-        {params.collection === 'artifacts' ? (
+        {resolvedParams.collection === 'artifacts' ? (
           <ArtifactDetailView record={record} />
         ) : (
-          <DetailView record={record} collectionName={params.collection} />
+          <DetailView record={record} collectionName={resolvedParams.collection} />
         )}
         
         {/* Show citations for threads */}
-        {params.collection === 'threads' && (
+        {resolvedParams.collection === 'threads' && (
           <div className="mt-8">
-            <ThreadCitations threadId={params.id} />
+            <ThreadCitations threadId={resolvedParams.id} />
           </div>
         )}
       </div>
@@ -88,10 +91,10 @@ export default async function RecordPage({ params }: RecordPageProps) {
       <div className="p-4">
         <div className="mb-6">
           <Link 
-            href={`/${params.collection}`}
+            href={`/${resolvedParams.collection}`}
             className="text-blue-600 hover:text-blue-800 text-sm"
           >
-            ← Back to {getCollectionLabel(params.collection)}
+            ← Back to {getCollectionLabel(resolvedParams.collection)}
           </Link>
         </div>
         
@@ -99,7 +102,7 @@ export default async function RecordPage({ params }: RecordPageProps) {
           Error loading record
         </h1>
         <p className="text-gray-600">
-          Unable to fetch record {params.id} from the {params.collection} table. 
+          Unable to fetch record {resolvedParams.id} from the {resolvedParams.collection} table. 
           Please check your database connection and try again.
         </p>
         <details className="mt-4">

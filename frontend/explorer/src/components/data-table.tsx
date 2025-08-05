@@ -69,7 +69,7 @@ export function DataTable({ records, collectionName }: DataTableProps) {
 }
 
 // Helper function to format cell values for display
-function formatCellValue(value: any, fieldName?: string): React.ReactNode {
+function formatCellValue(value: unknown, fieldName?: string): React.ReactNode {
   if (value === null || value === undefined) {
     return <span className="text-gray-400 italic text-xs">null</span>
   }

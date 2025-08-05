@@ -17,7 +17,7 @@ function humanizeFieldName(fieldName: string): string {
 }
 
 // Component to handle different types of values (simplified version of the one in detail-view)
-function ValueDisplay({ value, fieldName }: { value: any; fieldName: string }) {
+function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string }) {
   if (value === null || value === undefined) {
     return <span className="text-gray-400 italic">null</span>
   }
@@ -55,7 +55,7 @@ function ValueDisplay({ value, fieldName }: { value: any; fieldName: string }) {
             <ValueDisplay value={parsed} fieldName={fieldName} />
           </div>
         )
-      } catch (e) {
+      } catch {
         // If parsing fails, continue with string handling below
       }
     }
@@ -175,12 +175,12 @@ function ValueDisplay({ value, fieldName }: { value: any; fieldName: string }) {
                     {key}
                   </td>
                   <td className="px-3 py-2 text-xs">
-                    {typeof value[key] === 'object' ? (
+                    {typeof value === 'object' && value !== null && key in value && typeof (value as Record<string, unknown>)[key] === 'object' ? (
                       <pre className="whitespace-pre-wrap text-gray-600">
-                        {JSON.stringify(value[key], null, 2)}
+                        {JSON.stringify((value as Record<string, unknown>)[key], null, 2)}
                       </pre>
                     ) : (
-                      String(value[key])
+                      String(typeof value === 'object' && value !== null && key in value ? (value as Record<string, unknown>)[key] : '')
                     )}
                   </td>
                 </tr>

@@ -35,7 +35,7 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
     return `${artifact.id.substring(0, 8)}...`
   }
 
-  const getSubtitle = () => {
+  // const getSubtitle = () => {
     const info = []
     // Remove status from subtitle since we're removing RAW labels
     if (artifact.created_at) {
@@ -47,7 +47,7 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
       info.push(`Thread`)
     }
     return info.join(' • ')
-  }
+  // }
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
 import { DbRecord, CollectionName } from '@/lib/types'
 import { RecordList } from '@/components/record-list'
@@ -43,106 +43,66 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalRecords, setTotalRecords] = useState(0)
+  const [systemStateRecords, setSystemStateRecords] = useState<DbRecord[]>([])
+  const [systemStateLoading, setSystemStateLoading] = useState(true)
   const pageSize = 100
 
   const supabase = createClient()
 
-  // Handle system_state with special view
-  if (collectionName === 'system_state') {
-    const [systemStateRecords, setSystemStateRecords] = useState<DbRecord[]>([])
-    const [systemStateLoading, setSystemStateLoading] = useState(true)
+  const fetchSystemState = useCallback(async () => {
+    setSystemStateLoading(true)
+    try {
+      const sortConfig = getSortingConfig(collectionName)
+      
+      // Try the preferred sort first, with fallback handling
+      let result = await supabase
+        .from(collectionName)
+        .select('*')
+        .order(sortConfig.column, { ascending: sortConfig.ascending })
+        .limit(100)
 
-    const fetchSystemState = async () => {
-      setSystemStateLoading(true)
-      try {
-        const sortConfig = getSortingConfig(collectionName)
-        
-        // Try the preferred sort first, with fallback handling
-        let result = await supabase
+      // If sorting fails, try fallbacks
+      if (result.error && result.error.message?.includes('column') && result.error.message?.includes('does not exist')) {
+        console.warn(`Sort column ${sortConfig.column} not found for ${collectionName}, trying updated_at`)
+        result = await supabase
           .from(collectionName)
           .select('*')
-          .order(sortConfig.column, { ascending: sortConfig.ascending })
+          .order('updated_at', { ascending: false })
           .limit(100)
-
-        // If sorting fails, try fallbacks
+        
         if (result.error && result.error.message?.includes('column') && result.error.message?.includes('does not exist')) {
-          console.warn(`Sort column ${sortConfig.column} not found for ${collectionName}, trying updated_at`)
+          console.warn(`updated_at not found for ${collectionName}, trying created_at`)
           result = await supabase
             .from(collectionName)
             .select('*')
-            .order('updated_at', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(100)
-          
-          if (result.error && result.error.message?.includes('column') && result.error.message?.includes('does not exist')) {
-            console.warn(`updated_at not found for ${collectionName}, trying created_at`)
-            result = await supabase
-              .from(collectionName)
-              .select('*')
-              .order('created_at', { ascending: false })
-              .limit(100)
-          }
         }
-
-        if (result.error) {
-          console.error('Error fetching system state:', result.error)
-          toast.error('Failed to load system state')
-          return
-        }
-
-        setSystemStateRecords(result.data || [])
-      } catch (error) {
-        console.error('Error fetching system state:', error)
-        toast.error('Failed to load system state')
-      } finally {
-        setSystemStateLoading(false)
       }
+
+      if (result.error) {
+        console.error('Error fetching system state:', result.error)
+        toast.error('Failed to load system state')
+        return
+      }
+
+      setSystemStateRecords(result.data || [])
+    } catch (error) {
+      console.error('Error fetching system state:', error)
+      toast.error('Failed to load system state')
+    } finally {
+      setSystemStateLoading(false)
     }
+  }, [collectionName, supabase])
 
-    useEffect(() => {
-      fetchSystemState()
-    }, [])
-
-    if (systemStateLoading) {
-      return (
-        <div>
-          <h1 className="text-2xl font-bold mb-4">
-            {getCollectionLabel(collectionName)}
-          </h1>
-          <div className="space-y-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-white border border-gray-200 rounded-lg p-6">
-                <div className="animate-pulse">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                  </div>
-                  <div className="h-20 bg-gray-200 rounded"></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )
-    }
-
-    return (
-      <div>
-        <h1 className="text-2xl font-bold mb-4">
-          {getCollectionLabel(collectionName)}
-        </h1>
-        <SystemStateView records={systemStateRecords} />
-      </div>
-    )
-  }
-
-  const fetchRecords = async (page: number) => {
+  const fetchRecords = useCallback(async (page: number) => {
     setLoading(true)
     
     const sortConfig = getSortingConfig(collectionName)
     
-    // Function to try different sorting strategies
-    const tryFetchWithSort = async (sortColumn: string, ascending: boolean = false): Promise<any> => {
-      let supabaseQuery = supabase
+    // Function to try different sorting strategies  
+    const tryFetchWithSort = async (sortColumn: string, ascending: boolean = false) => {
+      const supabaseQuery = supabase
         .from(collectionName)
         .select('*', { count: 'exact' })
         .order(sortColumn, { ascending })
@@ -187,14 +147,56 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [collectionName, pageSize, supabase])
 
   useEffect(() => {
-    fetchRecords(currentPage)
-  }, [currentPage, collectionName])
+    if (collectionName === 'system_state') {
+      fetchSystemState()
+    } else {
+      fetchRecords(currentPage)
+    }
+  }, [currentPage, collectionName, fetchSystemState, fetchRecords])
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page)
+  }
+
+  // Handle system_state with special view
+  if (collectionName === 'system_state') {
+
+
+
+    if (systemStateLoading) {
+      return (
+        <div>
+          <h1 className="text-2xl font-bold mb-4">
+            {getCollectionLabel(collectionName)}
+          </h1>
+          <div className="space-y-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white border border-gray-200 rounded-lg p-6">
+                <div className="animate-pulse">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="h-6 bg-gray-200 rounded w-1/3"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                  </div>
+                  <div className="h-20 bg-gray-200 rounded"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div>
+        <h1 className="text-2xl font-bold mb-4">
+          {getCollectionLabel(collectionName)}
+        </h1>
+        <SystemStateView records={systemStateRecords} />
+      </div>
+    )
   }
 
   if (loading) {

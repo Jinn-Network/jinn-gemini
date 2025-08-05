@@ -101,7 +101,7 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
 
 // Component to handle different types of values
 interface ValueDisplayProps {
-  value: any
+  value: unknown
   fieldName: string
   promptData?: { id: string, content: string } | null
   isLoadingPrompt?: boolean
@@ -168,7 +168,7 @@ function ValueDisplay({ value, fieldName, promptData, isLoadingPrompt }: ValueDi
             <ValueDisplay value={parsed} fieldName={fieldName} />
           </div>
         )
-      } catch (e) {
+      } catch {
         // If parsing fails, continue with string handling below
       }
     }
@@ -343,12 +343,12 @@ function ValueDisplay({ value, fieldName, promptData, isLoadingPrompt }: ValueDi
                       {key}
                     </td>
                     <td className="px-3 py-2 text-xs">
-                      {typeof value[key] === 'object' ? (
+                      {typeof value === 'object' && value !== null && key in value && typeof (value as Record<string, unknown>)[key] === 'object' ? (
                         <pre className="whitespace-pre-wrap text-gray-600">
-                          {JSON.stringify(value[key], null, 2)}
+                          {JSON.stringify((value as Record<string, unknown>)[key], null, 2)}
                         </pre>
                       ) : (
-                        String(value[key])
+                        String(typeof value === 'object' && value !== null && key in value ? (value as Record<string, unknown>)[key] : '')
                       )}
                     </td>
                   </tr>

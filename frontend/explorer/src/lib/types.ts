@@ -2,6 +2,7 @@
 export type DbRecord = {
   id: string | number;
   created_at?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 };
 
@@ -23,15 +24,15 @@ export type CollectionName = typeof collectionNames[number];
 
 // Props for the main collection page (index view)
 export interface CollectionPageProps {
-  params: {
+  params: Promise<{
     collection: CollectionName;
-  };
+  }>;
 }
 
 // Props for the record detail page (show view)
 export interface RecordPageProps {
-  params: {
+  params: Promise<{
     collection: CollectionName;
     id: string;
-  };
+  }>;
 }
