@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "rootDir": "./",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "allowJs": true,
+    "checkJs": false,
+    "noImplicitAny": false
+  },
+  "include": [
+    "*.ts",
+    "*.js",
+    "worker/**/*.ts",
+    "worker/**/*.js",
+    "gemini-agent/**/*.ts",
+    "gemini-agent/**/*.js",
+    "packages/**/*.ts",
+    "packages/**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "packages/*/node_modules",
+    "packages/*/dist"
+  ]
+}

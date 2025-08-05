@@ -1,0 +1,77 @@
+import dotenv from 'dotenv';
+import path from 'path';
+// Load environment variables from .env file
+dotenv.config({ path: path.resolve(process.cwd(), 'packages/metacog-mcp/.env') });
+
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { 
+  getSchema, 
+  getSchemaSchema,
+  createRecord, 
+  createRecordSchema,
+  readRecords, 
+  readRecordsSchema,
+  updateRecords, 
+  updateRecordsSchema,
+  deleteRecords, 
+  deleteRecordsSchema,
+  createJob,
+  createJobSchema,
+  getContextSnapshot,
+  getContextSnapshotSchema,
+  listTools,
+  listToolsSchema,
+  manageArtifact,
+  manageArtifactSchema,
+  manageThread,
+  manageThreadSchema,
+  getDetails,
+  getDetailsSchema,
+  createMemory,
+  createMemorySchema,
+  searchMemories,
+  searchMemoriesSchema
+} from './tools/index.js';
+
+// This is the single source of truth for all tools registered on this server.
+export const serverTools: { name: string; schema: any; handler: (params: any) => any }[] = [
+  { name: 'get_schema', schema: getSchemaSchema, handler: getSchema },
+  { name: 'create_record', schema: createRecordSchema, handler: createRecord },
+  { name: 'read_records', schema: readRecordsSchema, handler: readRecords },
+  { name: 'update_records', schema: updateRecordsSchema, handler: updateRecords },
+  { name: 'delete_records', schema: deleteRecordsSchema, handler: deleteRecords },
+  { name: 'create_job', schema: createJobSchema, handler: createJob },
+  { name: 'get_context_snapshot', schema: getContextSnapshotSchema, handler: getContextSnapshot },
+  { name: 'manage_artifact', schema: manageArtifactSchema, handler: manageArtifact },
+  { name: 'manage_thread', schema: manageThreadSchema, handler: manageThread },
+  { name: 'get_details', schema: getDetailsSchema, handler: getDetails },
+  { name: 'create_memory', schema: createMemorySchema, handler: createMemory },
+  { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories },
+];
+
+async function main() {
+  try {
+    const server = new McpServer({
+      name: 'metacog-mcp',
+      version: '0.1.0',
+    });
+
+    // Register all tools by iterating over our single source of truth.
+    for (const tool of serverTools) {
+      server.registerTool(tool.name, tool.schema, tool.handler);
+    }
+
+    // Register the list_tools tool itself, passing the serverTools list to the handler.
+    server.registerTool('list_tools', listToolsSchema, (params) => listTools(params, serverTools));
+
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error('MCP Server for Metacog tools is running.');
+  } catch (e) {
+    console.error('Error starting MCP server:', e);
+    process.exit(1);
+  }
+}
+
+main();

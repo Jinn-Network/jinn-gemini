@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "metacog": {
+      "command": "node",
+      "args": [
+        "packages/metacog-mcp/dist/server.js"
+      ],
+      "trust": true
+    }
+  }
+}

@@ -1,0 +1,230 @@
+# Gemini CLI Jinn
+
+A sophisticated worker system that integrates with Gemini CLI to process jobs through a Model Context Protocol (MCP) server, providing comprehensive telemetry and job management capabilities.
+
+## Overview
+
+This project consists of several key components:
+
+- **Worker System**: A Node.js worker that polls for jobs and executes them
+- **MCP Server**: A Model Context Protocol server that provides tools for database operations
+- **Telemetry Collection**: OpenTelemetry integration for monitoring and observability
+- **Job Management**: Database-driven job queue with comprehensive reporting
+
+## Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Job Board     │    │     Worker      │    │   MCP Server    │
+│   (Database)    │◄──►│   (Node.js)     │◄──►│   (Metacog)     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Job Reports    │    │  OpenTelemetry  │    │   Supabase      │
+│  (Database)     │    │   Collector     │    │   Database      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+## Features
+
+- **Job Processing**: Automated job execution with status tracking
+- **Database Integration**: Full CRUD operations through MCP tools
+- **Telemetry**: Comprehensive monitoring and observability
+
+- **Security**: Sensitive file protection and pre-commit hooks
+- **Development Tools**: Hot reloading and development scripts
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js (v18 or higher)
+- npm or yarn
+
+- A Supabase project
+- Gemini CLI installed and authenticated
+
+### Setup
+
+1. **Clone and setup**:
+   ```bash
+   git clone <repository-url>
+   cd gemini_cli_jinn
+   ./scripts/setup.sh
+   ```
+
+2. **Configure environment**:
+   ```bash
+   cp env.template .env
+   # Edit .env with your Supabase credentials
+   ```
+
+3. **Authenticate with Gemini**:
+   ```bash
+   gemini auth login
+   ```
+
+4. **Start development**:
+   ```bash
+   npm run dev
+   ```
+
+For detailed setup instructions, see [SETUP.md](SETUP.md).
+
+## Project Structure
+
+```
+gemini_cli_jinn/
+├── docs/                    # Documentation
+├── gemini-agent/           # Gemini CLI agent configuration
+├── migrations/             # Database migration scripts
+├── packages/
+│   └── metacog-mcp/       # MCP server package
+├── scripts/               # Setup and utility scripts
+├── worker/                # Main worker implementation
+
+└── package.json          # Project dependencies
+```
+
+## Development
+
+### Running Locally
+
+```bash
+# Start the worker
+npm run dev
+
+# Start the MCP server
+cd packages/metacog-mcp
+npm run start
+```
+
+
+
+### Testing
+
+```bash
+# Run tests
+npm test
+
+# Run integration tests
+cd packages/metacog-mcp
+npm run test:integration
+```
+
+## Configuration
+
+### Environment Variables
+
+Required environment variables (see `env.template`):
+
+- `SUPABASE_URL`: Your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key
+
+Optional variables:
+
+- `NODE_ENV`: Environment (development/production)
+- `OTEL_LOG_LEVEL`: OpenTelemetry log level
+- `DEBUG`: Debug mode for development
+
+### Gemini Configuration
+
+The system uses Gemini CLI for job execution. Configuration is stored in `.gemini/settings.json` and includes:
+
+- MCP server configuration
+- Tool permissions
+- Authentication settings
+
+## Security
+
+This project includes several security measures:
+
+- **Sensitive File Protection**: `.env` and `.gemini/settings.json` are git-ignored
+- **Pre-commit Hooks**: Automatic checks for sensitive data before commits
+- **Template Files**: Example configurations without real credentials
+- **Comprehensive .gitignore**: Prevents accidental commits of sensitive files
+
+## Database Schema
+
+The system uses two main tables:
+
+- `job_board`: Stores job definitions and status
+- `job_reports`: Stores execution results and telemetry
+
+See [docs/DATABASE_MAP.md](docs/DATABASE_MAP.md) for detailed schema information.
+
+## API Reference
+
+### MCP Tools
+
+The Metacog MCP server provides the following tools:
+
+- `get_schema`: Retrieve database schema information
+- `get_context_snapshot`: Get current context snapshot
+- `read_records`: Read records from database tables
+- `create_record`: Create new records
+- `update_records`: Update existing records
+- `delete_records`: Delete records
+- `list_tools`: List available tools
+
+### Job Types
+
+Supported job types include:
+
+- Database operations
+- File processing
+- API integrations
+- Custom workflows
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests and ensure security checks pass
+5. Submit a pull request
+
+### Development Guidelines
+
+- Never commit sensitive files
+- Use template files for configuration examples
+- Update documentation for new features
+- Follow the existing code style
+- Add tests for new functionality
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Environment variables not loading**:
+   - Check `.env` file exists and has correct format
+   - Verify variable names match code expectations
+
+2. **Database connection errors**:
+   - Verify Supabase credentials
+   - Check IP allowlist in Supabase dashboard
+
+3. **Gemini authentication issues**:
+   - Re-authenticate: `gemini auth login`
+   - Check `.gemini` directory permissions
+
+### Getting Help
+
+- Check the logs in the `logs/` directory
+- Review the documentation in the `docs/` folder
+- Check Supabase dashboard for database issues
+- Verify all environment variables are set correctly
+
+## License
+
+[Add your license information here]
+
+## Support
+
+For support and questions:
+
+- Check the documentation in the `docs/` folder
+- Review the setup guide in [SETUP.md](SETUP.md)
+- Open an issue for bugs or feature requests 
