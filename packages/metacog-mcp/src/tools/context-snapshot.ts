@@ -1,5 +1,6 @@
 import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
+import { calculateDataSize, bytesToMB, DEFAULT_SIZE_LIMIT_MB, truncateContent } from './shared/data-size-limiter.js';
 
 export const getContextSnapshotParams = z.object({
   hours_back: z.number().positive().optional().default(6).describe('Number of hours to look back from now (max 12 hours).'),
@@ -85,18 +86,6 @@ async function fetchData(startTime: string, jobName?: string, limits = { jobs: 5
     };
 }
 
-function calculateDataSize(data: any): number {
-    return Buffer.byteLength(JSON.stringify(data), 'utf8');
-}
-
-function truncateContent(content: string, maxWords: number = 200): string {
-    if (!content) return '';
-    
-    const words = content.trim().split(/\s+/);
-    if (words.length <= maxWords) return content;
-    
-    return words.slice(0, maxWords).join(' ') + '...';
-}
 
 function formatSnapshot(data: any, timeWindow: { startTime: string, endTime: string }, originalHours: number, actualHours: number, jobName?: string) {
     const missionRecord = data.system_state.find((s: any) => s.key === 'mission');
@@ -198,7 +187,7 @@ ${data.system_state.map((state: any) => `- **${state.key}**: ${typeof state.valu
 export async function getContextSnapshot(params: any) {
   try {
     const { hours_back, job_name } = getContextSnapshotParams.parse(params);
-    const max_size_mb = 0.6; // Internal default: ~600KB for safe 1M token context window
+    const max_size_mb = DEFAULT_SIZE_LIMIT_MB; // Internal default: ~600KB for safe 1M token context window
 
     let currentHours = hours_back;
     let attempts = 0;
@@ -213,7 +202,7 @@ export async function getContextSnapshot(params: any) {
       
       // Calculate data size
       const dataSizeBytes = calculateDataSize(data);
-      const dataSizeMB = dataSizeBytes / (1024 * 1024);
+      const dataSizeMB = bytesToMB(dataSizeBytes);
       
       console.log(`Context snapshot attempt ${attempts}: ${currentHours}h window, ${dataSizeMB.toFixed(2)}MB data${job_name ? ` (job: ${job_name})` : ''}`);
       

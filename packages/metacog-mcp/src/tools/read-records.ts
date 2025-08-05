@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { supabase } from './shared/supabase.js';
 import { tableNameSchema } from './shared/types.js';
+import { exceedsSizeLimit, getDataSizeMB, DEFAULT_SIZE_LIMIT_MB } from './shared/data-size-limiter.js';
 
 export const readRecordsParams = z.object({
   table_name: tableNameSchema,
@@ -19,6 +20,34 @@ export async function readRecords({ table_name, filter }: z.infer<typeof readRec
       p_filter: filter || {},
     });
     if (error) throw error;
+
+    // Check if data exceeds size limit
+    if (exceedsSizeLimit(data)) {
+      const dataSizeMB = getDataSizeMB(data);
+      console.log(`Read records data size ${dataSizeMB.toFixed(2)}MB exceeds limit ${DEFAULT_SIZE_LIMIT_MB}MB, reducing record count`);
+      
+      // Limit number of records to fit within size limit
+      let finalData = data;
+      let reduction = 2;
+      
+      while (exceedsSizeLimit(finalData) && finalData.length > 1) {
+        const maxRecords = Math.max(1, Math.floor(data.length / reduction));
+        finalData = data.slice(0, maxRecords);
+        reduction *= 2;
+        console.log(`Trying with ${maxRecords} records (${getDataSizeMB(finalData).toFixed(2)}MB)`);
+      }
+
+      return { 
+        content: [{ 
+          type: 'text' as const, 
+          text: JSON.stringify({
+            warning: `Data limited due to size constraint (${DEFAULT_SIZE_LIMIT_MB}MB). Original: ${data.length} records, Returned: ${finalData.length} records`,
+            data: finalData
+          }, null, 2) 
+        }] 
+      };
+    }
+
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   } catch (e: any) {
     return {

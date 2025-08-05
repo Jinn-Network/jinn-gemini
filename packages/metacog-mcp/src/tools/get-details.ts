@@ -1,6 +1,7 @@
 import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
 import { tableNames } from './shared/types.js';
+import { exceedsSizeLimit, getDataSizeMB, DEFAULT_SIZE_LIMIT_MB } from './shared/data-size-limiter.js';
 
 export const getDetailsParams = z.object({
     table_name: z.enum(tableNames).describe('The name of the table to query.'),
@@ -51,6 +52,33 @@ export async function getDetails(params: GetDetailsParams) {
             for (const record of records) {
                 record.artifact_ids = artifactMap.get(record.id) || [];
             }
+        }
+
+        // Check if data exceeds size limit
+        if (exceedsSizeLimit(records)) {
+            const dataSizeMB = getDataSizeMB(records);
+            console.log(`Get details data size ${dataSizeMB.toFixed(2)}MB exceeds limit ${DEFAULT_SIZE_LIMIT_MB}MB, reducing record count`);
+            
+            // Limit number of records to fit within size limit
+            let finalRecords = records;
+            let reduction = 2;
+            
+            while (exceedsSizeLimit(finalRecords) && finalRecords.length > 1) {
+                const maxRecords = Math.max(1, Math.floor(records.length / reduction));
+                finalRecords = records.slice(0, maxRecords);
+                reduction *= 2;
+                console.log(`Trying with ${maxRecords} records (${getDataSizeMB(finalRecords).toFixed(2)}MB)`);
+            }
+
+            return { 
+                content: [{ 
+                    type: 'text' as const, 
+                    text: JSON.stringify({
+                        warning: `Data limited due to size constraint (${DEFAULT_SIZE_LIMIT_MB}MB). Original: ${records.length} records, Returned: ${finalRecords.length} records`,
+                        records: finalRecords
+                    }, null, 2) 
+                }] 
+            };
         }
 
         return { content: [{ type: 'text' as const, text: JSON.stringify(records, null, 2) }] };
