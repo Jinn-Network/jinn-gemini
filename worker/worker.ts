@@ -9,6 +9,19 @@ const debugMode = process.argv.includes('--debug') || process.argv.includes('-d'
 // Simple unique ID generator for the worker
 const workerId = `worker-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
+// Rate limiting configuration
+const RATE_LIMIT = {
+    requestsPerMinute: 50, // Conservative rate to stay under Gemini CLI limits
+    cooldownAfterQuotaError: 5 * 60 * 1000, // 5 minutes cooldown after quota errors
+    minTimeBetweenJobs: 2000, // 2 seconds minimum between jobs
+};
+
+// Global rate limiting state
+let lastJobTime = 0;
+let quotaErrorTime = 0;
+let jobCount = 0;
+let jobCountResetTime = Date.now();
+
 // Represents the structure of the job_board table row
 interface JobBoard {
   id: string;
@@ -110,10 +123,60 @@ function categorizeWorkerError(error: any): string {
   return 'SYSTEM_ERROR';
 }
 
+function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reason: string } {
+    const now = Date.now();
+    
+    // Check if we're in quota error cooldown
+    if (quotaErrorTime > 0 && (now - quotaErrorTime) < RATE_LIMIT.cooldownAfterQuotaError) {
+        const remainingCooldown = RATE_LIMIT.cooldownAfterQuotaError - (now - quotaErrorTime);
+        return {
+            shouldWait: true,
+            waitTime: remainingCooldown,
+            reason: `Quota error cooldown active, ${Math.round(remainingCooldown / 1000)}s remaining`
+        };
+    }
+    
+    // Reset job count every minute
+    if (now - jobCountResetTime > 60000) {
+        jobCount = 0;
+        jobCountResetTime = now;
+    }
+    
+    // Check requests per minute limit
+    if (jobCount >= RATE_LIMIT.requestsPerMinute) {
+        const remainingTime = 60000 - (now - jobCountResetTime);
+        return {
+            shouldWait: true,
+            waitTime: remainingTime,
+            reason: `Rate limit exceeded (${jobCount}/${RATE_LIMIT.requestsPerMinute} per minute), ${Math.round(remainingTime / 1000)}s remaining`
+        };
+    }
+    
+    // Check minimum time between jobs
+    const timeSinceLastJob = now - lastJobTime;
+    if (lastJobTime > 0 && timeSinceLastJob < RATE_LIMIT.minTimeBetweenJobs) {
+        const waitTime = RATE_LIMIT.minTimeBetweenJobs - timeSinceLastJob;
+        return {
+            shouldWait: true,
+            waitTime,
+            reason: `Minimum time between jobs not met, ${Math.round(waitTime / 1000)}s remaining`
+        };
+    }
+    
+    return { shouldWait: false, waitTime: 0, reason: '' };
+}
+
 async function processPendingJobs() {
     console.log(`Worker ${workerId} starting up, checking for pending jobs...`);
     if (debugMode) {
         console.log(`[DEBUG] Worker running in debug mode - Gemini CLI will use --debug flag`);
+    }
+    
+    // Check rate limiting before proceeding
+    const rateLimitCheck = shouldWaitForRateLimit();
+    if (rateLimitCheck.shouldWait) {
+        console.log(`[RATE_LIMIT] ${rateLimitCheck.reason}, waiting...`);
+        await new Promise(resolve => setTimeout(resolve, rateLimitCheck.waitTime));
     }
     
     const readResult = await readRecords({ table_name: 'job_board', filter: { status: 'PENDING' } });
@@ -166,7 +229,15 @@ async function processPendingJobs() {
 
         console.log(`Executing job ${job.id} with model ${model}`);
         
-        const agent = new Agent(model, enabledTools);
+        const agent = new Agent(model, enabledTools, { 
+            jobId: job.id, 
+            jobName: job.job_name 
+        });
+        
+        // Update rate limiting counters before job execution
+        lastJobTime = Date.now();
+        jobCount++;
+        
         result = await agent.run(finalPrompt);
         console.log(`Job ${job.id} execution finished.`);
         console.log(`Agent output for job ${job.id}:\n`, result.output);
@@ -187,6 +258,16 @@ async function processPendingJobs() {
 
     } catch (err) {
         console.error(`Job ${job.id} failed:`, err);
+        
+        // Check if this is a quota error and set cooldown
+        const errorMessage = String(err.error || err.message || err);
+        if (errorMessage.includes('429') || 
+            errorMessage.includes('quota') || 
+            errorMessage.includes('resource_exhausted') ||
+            errorMessage.includes('too many requests')) {
+            console.log(`[RATE_LIMIT] Quota error detected, activating cooldown period`);
+            quotaErrorTime = Date.now();
+        }
         
         // Handle the special error format from Agent.run() which includes telemetry
         if (err && typeof err === 'object' && 'error' in err && 'telemetry' in err) {
@@ -229,13 +310,25 @@ async function processPendingJobs() {
 
 async function main() {
     console.log("Starting worker...");
-    try {
-        // Run once, but this could be set to run on an interval
-        await processPendingJobs();
-        console.log("Worker finished processing jobs.");
-    } catch (error) {
-        console.error("Worker encountered an error:", error);
-        process.exit(1);
+    console.log(`[RATE_LIMIT] Configuration: ${RATE_LIMIT.requestsPerMinute} requests/minute, ${RATE_LIMIT.minTimeBetweenJobs}ms between jobs`);
+    
+    // Continuous processing loop
+    while (true) {
+        try {
+            await processPendingJobs();
+            
+            // Wait a bit before checking for more jobs
+            const nextCheckDelay = 5000; // 5 seconds between checks when no jobs
+            console.log(`No jobs found, waiting ${nextCheckDelay}ms before next check...`);
+            await new Promise(resolve => setTimeout(resolve, nextCheckDelay));
+            
+        } catch (error) {
+            console.error("Worker encountered an error:", error);
+            
+            // Don't exit on errors, just wait and try again
+            console.log("Waiting 30 seconds before retrying...");
+            await new Promise(resolve => setTimeout(resolve, 30000));
+        }
     }
 }
 

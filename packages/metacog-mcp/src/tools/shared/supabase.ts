@@ -27,4 +27,27 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Supabase URL and key must be provided in .env file.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey); 
+export const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Job context management for tracking which job is currently executing
+interface JobContext {
+  jobId: string | null;
+  jobName: string | null;
+}
+
+let currentJobContext: JobContext = {
+  jobId: null,
+  jobName: null
+};
+
+export function setJobContext(jobId: string, jobName: string) {
+  currentJobContext = { jobId, jobName };
+}
+
+export function clearJobContext() {
+  currentJobContext = { jobId: null, jobName: null };
+}
+
+export function getCurrentJobContext(): JobContext {
+  return { ...currentJobContext };
+} 

@@ -3,9 +3,14 @@ import { z } from 'zod';
 import { OpenAI } from 'openai';
 import { Memory, LinkedMemory } from './shared/types.js';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is required for memory operations');
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 export const searchMemoriesParams = z.object({
     query: z.string().describe('The natural language text to search for.'),
@@ -26,7 +31,7 @@ export async function searchMemories(params: SearchMemoriesParams) {
     const { query, limit, similarity_threshold, filter, include_links } = searchMemoriesParams.parse(params);
 
     try {
-        const embeddingResponse = await openai.embeddings.create({
+        const embeddingResponse = await getOpenAIClient().embeddings.create({
             model: 'text-embedding-3-small',
             input: query,
         });

@@ -172,6 +172,13 @@ describe('Database Tools Integration Tests', () => {
         const resultData = JSON.parse(result.content[0].text);
         expect(resultData).toHaveLength(0);
     });
+
+    it('should handle empty ids array gracefully', async () => {
+        const result = await getDetails({ table_name: 'threads', ids: [] });
+        const resultData = JSON.parse(result.content[0].text);
+        expect(resultData).toHaveLength(0);
+        expect(Array.isArray(resultData)).toBe(true);
+    });
   });
   
   describe('list_tools Tool', () => {

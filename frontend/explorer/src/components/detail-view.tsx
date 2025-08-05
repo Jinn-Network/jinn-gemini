@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { useState, useEffect } from 'react'
 import { MarkdownField } from '@/components/markdown-field'
 import { IdLink } from '@/components/id-link'
+import { JobCreationInfo } from '@/components/job-creation-info'
 
 interface DetailViewProps {
   record: DbRecord
@@ -61,13 +62,16 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
     return null
   }
 
-  // Fields to hide from the detail view
-  const hiddenFields = ['worker_id']
+  // Fields to hide from the detail view (including created_by_job_id since we show it separately)
+  const hiddenFields = ['worker_id', 'created_by_job_id']
   
   // Filter out hidden fields
   const visibleFields = Object.entries(record).filter(([key]) => 
     !hiddenFields.includes(key)
   )
+  
+  // Check if this record has job creation tracking
+  const hasJobCreationInfo = 'created_by_job_id' in record && record.created_by_job_id
 
   return (
     <Card>
@@ -76,6 +80,20 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
+          {/* Job Creation Info Section */}
+          {hasJobCreationInfo && (
+            <div className="border-b border-gray-100 pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="font-medium text-gray-900">
+                  Job Creation:
+                </div>
+                <div className="md:col-span-3">
+                  <JobCreationInfo jobId={record.created_by_job_id as string} />
+                </div>
+              </div>
+            </div>
+          )}
+          
           {visibleFields.map(([key, value]) => (
             <div key={key} className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

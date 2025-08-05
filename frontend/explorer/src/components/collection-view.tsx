@@ -5,9 +5,12 @@ import { createClient } from '@/lib/supabase'
 import { DbRecord, CollectionName } from '@/lib/types'
 import { RecordList } from '@/components/record-list'
 import { SystemStateView } from '@/components/system-state-view'
+import { RealtimeJobBoard } from '@/components/realtime-job-board'
+import { AutoRefreshToggle } from '@/components/auto-refresh-toggle'
 import { Pagination } from '@/components/pagination'
 import { RecordListSkeleton } from '@/components/loading-skeleton'
 import { getCollectionLabel } from '@/lib/utils'
+import { useRealtimeCollection } from '@/hooks/use-realtime-collection'
 import { toast } from 'sonner'
 
 interface CollectionViewProps {
@@ -45,9 +48,30 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   const [totalRecords, setTotalRecords] = useState(0)
   const [systemStateRecords, setSystemStateRecords] = useState<DbRecord[]>([])
   const [systemStateLoading, setSystemStateLoading] = useState(true)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false)
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const pageSize = 100
 
   const supabase = createClient()
+  
+  // Use the realtime collection hook for non-job_board collections when auto-refresh is enabled
+  const sortConfig = getSortingConfig(collectionName)
+  const {
+    records: realtimeRecords,
+    loading: realtimeLoading,
+    totalRecords: realtimeTotalRecords,
+    currentPage: realtimeCurrentPage,
+    lastUpdate: realtimeLastUpdate,
+    setCurrentPage: setRealtimeCurrentPage,
+    refresh: realtimeRefresh
+  } = useRealtimeCollection({
+    collectionName,
+    pageSize,
+    enablePolling: autoRefreshEnabled && collectionName !== 'job_board' && collectionName !== 'system_state',
+    pollingInterval: 10000, // 10 seconds
+    sortColumn: sortConfig.column,
+    sortAscending: sortConfig.ascending
+  })
 
   const fetchSystemState = useCallback(async () => {
     setSystemStateLoading(true)
@@ -161,6 +185,11 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     setCurrentPage(page)
   }
 
+  // Handle job_board with real-time updates
+  if (collectionName === 'job_board') {
+    return <RealtimeJobBoard />
+  }
+
   // Handle system_state with special view
   if (collectionName === 'system_state') {
 
@@ -199,7 +228,14 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     )
   }
 
-  if (loading) {
+  // Use realtime data if auto-refresh is enabled
+  const displayRecords = autoRefreshEnabled ? realtimeRecords : records
+  const displayLoading = autoRefreshEnabled ? realtimeLoading : loading
+  const displayTotalRecords = autoRefreshEnabled ? realtimeTotalRecords : totalRecords
+  const displayCurrentPage = autoRefreshEnabled ? realtimeCurrentPage : currentPage
+  const displayLastUpdate = autoRefreshEnabled ? realtimeLastUpdate : lastUpdate
+
+  if (displayLoading) {
     return (
       <div>
         <div className="mb-6">
@@ -216,19 +252,41 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
         {getCollectionLabel(collectionName)}
       </h1>
       
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <p className="text-gray-600">
-          Showing {records.length} of {totalRecords} records (Page {currentPage})
+          Showing {displayRecords.length} of {displayTotalRecords} records (Page {displayCurrentPage})
         </p>
+        
+        <div className="flex items-center gap-4">
+          <AutoRefreshToggle
+            enabled={autoRefreshEnabled}
+            onToggle={setAutoRefreshEnabled}
+            interval={10000}
+            lastUpdate={displayLastUpdate}
+          />
+          <button
+            onClick={() => {
+              if (autoRefreshEnabled) {
+                realtimeRefresh()
+              } else {
+                fetchRecords(currentPage)
+              }
+              setLastUpdate(new Date())
+            }}
+            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
       
-      <RecordList records={records} collectionName={collectionName} />
+      <RecordList records={displayRecords} collectionName={collectionName} />
       
       <Pagination
-        currentPage={currentPage}
-        totalRecords={totalRecords}
+        currentPage={displayCurrentPage}
+        totalRecords={displayTotalRecords}
         pageSize={pageSize}
-        onPageChange={handlePageChange}
+        onPageChange={autoRefreshEnabled ? setRealtimeCurrentPage : handlePageChange}
       />
     </div>
   )

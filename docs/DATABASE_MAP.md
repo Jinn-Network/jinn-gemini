@@ -126,6 +126,7 @@ This document provides a comprehensive map of the database structure for the Int
 - `created_at` (TIMESTAMPTZ) - Creation timestamp
 - `updated_at` (TIMESTAMPTZ) - Last modification timestamp
 - `dispatcher_processed_at` (TIMESTAMPTZ) - Trigger processing timestamp
+- `created_by_job_id` (UUID, FK) - References job_board table (job that created this thread)
 
 **Triggers**:
 - `on_threads_update` - Auto-updates `updated_at`
@@ -146,6 +147,7 @@ This document provides a comprehensive map of the database structure for the Int
 - `topic` (TEXT) - Artifact topic/category
 - `dispatcher_processed_at` (TIMESTAMPTZ) - Trigger processing timestamp
 - `source` (TEXT) - Source of the artifact
+- `created_by_job_id` (UUID, FK) - References job_board table (job that created this artifact)
 - `updated_at` (TIMESTAMPTZ) - Last modification timestamp
 
 **Triggers**:
@@ -320,7 +322,9 @@ This document provides a comprehensive map of the database structure for the Int
 - `job_board.job_report_id` → `job_reports.id`
 - `job_reports.job_id` → `job_board.id`
 - `artifacts.thread_id` → `threads.id`
+- `artifacts.created_by_job_id` → `job_board.id`
 - `threads.parent_thread_id` → `threads.id` (self-reference)
+- `threads.created_by_job_id` → `job_board.id`
 
 ### **Referential Integrity**
 - All foreign key relationships are enforced

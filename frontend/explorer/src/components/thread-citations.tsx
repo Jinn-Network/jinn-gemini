@@ -35,19 +35,7 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
     return `${artifact.id.substring(0, 8)}...`
   }
 
-  // const getSubtitle = () => {
-    const info = []
-    // Remove status from subtitle since we're removing RAW labels
-    if (artifact.created_at) {
-      const date = new Date(artifact.created_at)
-      info.push(`Created: ${date.toLocaleDateString()}`)
-    }
-    // Add thread link
-    if (artifact.thread_id) {
-      info.push(`Thread`)
-    }
-    return info.join(' • ')
-  // }
+
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
@@ -63,20 +51,9 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
             {/* Removed RAW status label */}
           </div>
           <div className="text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              {artifact.created_at && (
-                <span>Created: {new Date(artifact.created_at).toLocaleDateString()}</span>
-              )}
-              {artifact.created_at && artifact.thread_id && <span>•</span>}
-              {artifact.thread_id && (
-                <Link 
-                  href={`/threads/${artifact.thread_id}`}
-                  className="text-blue-600 hover:text-blue-800 hover:underline"
-                >
-                  Thread
-                </Link>
-              )}
-            </div>
+            {artifact.created_at && (
+              <span>Created: {new Date(artifact.created_at).toLocaleDateString()}</span>
+            )}
           </div>
         </div>
         <div className="text-xs text-gray-400 uppercase tracking-wide">

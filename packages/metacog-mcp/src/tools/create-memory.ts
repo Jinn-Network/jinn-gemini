@@ -3,9 +3,14 @@ import { z } from 'zod';
 import { OpenAI } from 'openai';
 import { linkTypeSchema } from './shared/types.js';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is required for memory operations');
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 export const createMemoryParams = z.object({
     content: z.string().describe('The textual content of the memory to be stored and embedded.'),
@@ -29,7 +34,7 @@ export async function createMemory(params: CreateMemoryParams) {
     }
 
     try {
-        const embeddingResponse = await openai.embeddings.create({
+        const embeddingResponse = await getOpenAIClient().embeddings.create({
             model: 'text-embedding-3-small',
             input: content,
         });

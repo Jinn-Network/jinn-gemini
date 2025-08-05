@@ -4,7 +4,7 @@ import { tableNames } from './shared/types.js';
 
 export const getDetailsParams = z.object({
     table_name: z.enum(tableNames).describe('The name of the table to query.'),
-    ids: z.array(z.string()).min(1).describe('An array containing one or more UUIDs to retrieve.'),
+    ids: z.array(z.string()).describe('An array containing one or more UUIDs to retrieve. If empty, returns an empty result.'),
 });
 
 export type GetDetailsParams = z.infer<typeof getDetailsParams>;
@@ -16,6 +16,11 @@ export const getDetailsSchema = {
 
 export async function getDetails(params: GetDetailsParams) {
     const { table_name, ids } = getDetailsParams.parse(params);
+
+    // Handle empty array case
+    if (ids.length === 0) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify([], null, 2) }] };
+    }
 
     try {
         const { data: records, error } = await supabase

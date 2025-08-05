@@ -47,7 +47,7 @@ export const serverTools: { name: string; schema: any; handler: (params: any) =>
   { name: 'manage_thread', schema: manageThreadSchema, handler: manageThread },
   { name: 'get_details', schema: getDetailsSchema, handler: getDetails },
   { name: 'create_memory', schema: createMemorySchema, handler: createMemory },
-  { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories },
+  { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories }
 ];
 
 async function main() {

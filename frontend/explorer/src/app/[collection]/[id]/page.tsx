@@ -2,7 +2,9 @@ import { createClient } from '@/lib/supabase'
 import { RecordPageProps, collectionNames, DbRecord } from '@/lib/types'
 import { DetailView } from '@/components/detail-view'
 import { ArtifactDetailView } from '@/components/artifact-detail-view'
-import { ThreadCitations } from '@/components/thread-citations'
+import { JobReportDetailView } from '@/components/job-report-detail-view'
+import { LinkedArtifacts } from '@/components/linked-artifacts'
+import { ThreadDetailsSidebar } from '@/components/thread-details-sidebar'
 import { getCollectionLabel } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -68,21 +70,34 @@ export default async function RecordPage({ params }: RecordPageProps) {
         <h1 className="text-2xl font-bold mb-4" title={`Record ID: ${resolvedParams.id} in ${resolvedParams.collection}`}>
           {recordTitle}
         </h1>
-        <p className="text-gray-600 text-sm mb-6">
-          {collectionLabel}
-        </p>
         
-        {resolvedParams.collection === 'artifacts' ? (
-          <ArtifactDetailView record={record} />
-        ) : (
-          <DetailView record={record} collectionName={resolvedParams.collection} />
-        )}
-        
-        {/* Show citations for threads */}
-        {resolvedParams.collection === 'threads' && (
-          <div className="mt-8">
-            <ThreadCitations threadId={resolvedParams.id} />
+        {/* Special layout for threads */}
+        {resolvedParams.collection === 'threads' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Main content area - Linked Artifacts */}
+            <div className="lg:col-span-3">
+              <LinkedArtifacts threadId={resolvedParams.id} />
+            </div>
+            
+            {/* Right sidebar - Thread Details */}
+            <div className="lg:col-span-1">
+              <ThreadDetailsSidebar record={record} />
+            </div>
           </div>
+        ) : (
+          <>
+            <p className="text-gray-600 text-sm mb-6">
+              {collectionLabel}
+            </p>
+            
+            {resolvedParams.collection === 'artifacts' ? (
+              <ArtifactDetailView record={record} />
+            ) : resolvedParams.collection === 'job_reports' ? (
+              <JobReportDetailView record={record} />
+            ) : (
+              <DetailView record={record} collectionName={resolvedParams.collection} />
+            )}
+          </>
         )}
       </div>
     )

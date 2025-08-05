@@ -1,4 +1,4 @@
-import { supabase } from './shared/supabase.js';
+import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { z } from 'zod';
 
 export const manageThreadParams = z.object({
@@ -50,7 +50,16 @@ export async function manageThread(params: ManageThreadParams) {
                 throw new Error("`title` and `objective` are required to create a new thread.");
             }
 
-            const newThread: any = { title, objective, parent_thread_id, status, summary };
+            const jobContext = getCurrentJobContext();
+            
+            const newThread: any = { 
+                title, 
+                objective, 
+                parent_thread_id, 
+                status, 
+                summary,
+                created_by_job_id: jobContext.jobId || null,
+            };
 
             const { data, error } = await supabase
                 .from('threads')

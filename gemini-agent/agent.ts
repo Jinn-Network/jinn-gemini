@@ -47,10 +47,12 @@ export class Agent {
     private model: string;
     private enabledTools: string[];
     private settingsPath: string;
+    private jobContext?: { jobId: string; jobName: string };
 
-    constructor(model: string, enabledTools: string[]) {
+    constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobName: string }) {
         this.model = model;
         this.enabledTools = enabledTools || [];
+        this.jobContext = jobContext;
         // Define the path for the final, job-specific settings file
         // Use .gemini directory relative to current working directory where Gemini CLI will look for it
         this.settingsPath = join(process.cwd(), '.gemini', 'settings.json');
@@ -59,6 +61,12 @@ export class Agent {
     public async run(prompt: string): Promise<AgentResult> {
         const startTime = Date.now();
         try {
+            // Set job context for tools to access
+            if (this.jobContext) {
+                const { setJobContext } = await import('../packages/metacog-mcp/src/tools/shared/supabase.js');
+                setJobContext(this.jobContext.jobId, this.jobContext.jobName);
+            }
+            
             this.generateJobSpecificSettings();
             // Small delay to allow OpenTelemetry resource attributes to settle
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -84,6 +92,11 @@ export class Agent {
             };
             throw { error, telemetry };
         } finally {
+            // Clear job context
+            if (this.jobContext) {
+                const { clearJobContext } = await import('../packages/metacog-mcp/src/tools/shared/supabase.js');
+                clearJobContext();
+            }
             this.cleanupJobSpecificSettings();
         }
     }

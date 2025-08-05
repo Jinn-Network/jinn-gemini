@@ -13,6 +13,7 @@ const fieldToCollectionMap: Record<string, string> = {
   'job_definition_id': 'job_definitions',
   'job_report_id': 'job_reports', 
   'job_id': 'job_board',
+  'created_by_job_id': 'job_board',
   'parent_thread_id': 'threads',
   'thread_id': 'threads',
 }

@@ -1,4 +1,4 @@
-import { supabase } from './shared/supabase.js';
+import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { z } from 'zod';
 
 export const manageArtifactParams = z.object({
@@ -58,12 +58,15 @@ export async function manageArtifact(params: ManageArtifactParams) {
                 throw new Error("Operation must be 'REPLACE' when creating a new artifact.");
             }
 
+            const jobContext = getCurrentJobContext();
+            
             const newArtifact: any = {
                 thread_id,
                 content,
                 source,
                 topic,
                 status: status ?? 'RAW',
+                created_by_job_id: jobContext.jobId || null,
             };
 
             const { data, error: createError } = await supabase

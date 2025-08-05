@@ -1,4 +1,4 @@
-import { supabase } from './shared/supabase.js';
+import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { z } from 'zod';
 
 export const createThreadParams = z.object({
@@ -18,10 +18,13 @@ export async function createThread(params: CreateThreadParams) {
     const { title, objective, parent_thread_id } = createThreadParams.parse(params);
 
     try {
+        const jobContext = getCurrentJobContext();
+        
         const newThread: any = {
             title,
             objective,
             parent_thread_id,
+            created_by_job_id: jobContext.jobId || null,
         };
 
         const { data, error } = await supabase
