@@ -8,6 +8,7 @@ This project consists of several key components:
 
 - **Worker System**: A Node.js worker that polls for jobs and executes them
 - **MCP Server**: A Model Context Protocol server that provides tools for database operations
+- **Frontend Explorer**: A Next.js web interface for exploring data and job reports
 - **Telemetry Collection**: OpenTelemetry integration for monitoring and observability
 - **Job Management**: Database-driven job queue with comprehensive reporting
 
@@ -25,14 +26,22 @@ This project consists of several key components:
 │  Job Reports    │    │  OpenTelemetry  │    │   Supabase      │
 │  (Database)     │    │   Collector     │    │   Database      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
+         │
+         │
+         ▼
+┌─────────────────┐
+│  Frontend       │
+│  Explorer       │
+│  (Next.js)      │
+└─────────────────┘
 ```
 
 ## Features
 
 - **Job Processing**: Automated job execution with status tracking
 - **Database Integration**: Full CRUD operations through MCP tools
+- **Frontend Interface**: Web-based data explorer and job monitoring
 - **Telemetry**: Comprehensive monitoring and observability
-
 - **Security**: Sensitive file protection and pre-commit hooks
 - **Development Tools**: Hot reloading and development scripts
 
@@ -41,8 +50,7 @@ This project consists of several key components:
 ### Prerequisites
 
 - Node.js (v18 or higher)
-- npm or yarn
-
+- Yarn
 - A Supabase project
 - Gemini CLI installed and authenticated
 
@@ -66,9 +74,14 @@ This project consists of several key components:
    gemini auth login
    ```
 
-4. **Start development**:
+4. **Build all packages**:
    ```bash
-   npm run dev
+   yarn build:all
+   ```
+
+5. **Start development**:
+   ```bash
+   yarn dev:all
    ```
 
 For detailed setup instructions, see [SETUP.md](SETUP.md).
@@ -78,41 +91,88 @@ For detailed setup instructions, see [SETUP.md](SETUP.md).
 ```
 gemini_cli_jinn/
 ├── docs/                    # Documentation
+├── frontend/               # Frontend explorer application
+│   └── explorer/          # Next.js data explorer
 ├── gemini-agent/           # Gemini CLI agent configuration
 ├── migrations/             # Database migration scripts
 ├── packages/
 │   └── metacog-mcp/       # MCP server package
 ├── scripts/               # Setup and utility scripts
 ├── worker/                # Main worker implementation
-
 └── package.json          # Project dependencies
 ```
 
 ## Development
 
-### Running Locally
+### Available Scripts
 
+#### Build Commands
 ```bash
-# Start the worker
-npm run dev
+# Build root worker only
+yarn build
 
-# Start the MCP server
-cd packages/metacog-mcp
-npm run start
+# Build all packages (worker + MCP + frontend)
+yarn build:all
+
+# Clean build artifacts
+yarn clean
 ```
 
+#### Development Commands
+```bash
+# Start worker only
+yarn dev
 
+# Start frontend only
+yarn frontend:dev
 
-### Testing
+# Start both worker and frontend (recommended for development)
+yarn dev:all
+```
+
+#### Production Commands
+```bash
+# Start worker only
+yarn start
+
+# Start frontend only
+yarn frontend:start
+
+# Start both worker and frontend
+yarn start:all
+```
+
+#### Frontend Commands
+```bash
+# Build frontend for production
+yarn frontend:build
+
+# Start frontend development server
+yarn frontend:dev
+
+# Start frontend production server
+yarn frontend:start
+```
+
+### Running Services Locally
 
 ```bash
-# Run tests
-npm test
+# Start both worker and frontend (recommended)
+yarn dev:all
 
-# Run integration tests
-cd packages/metacog-mcp
-npm run test:integration
+# Or start services individually:
+yarn dev                    # Worker only
+yarn frontend:dev          # Frontend only
+
+# Start the MCP server (if needed separately)
+yarn workspace @jinn/metacog-mcp start
 ```
+
+### Accessing the Application
+
+- **Frontend Explorer**: http://localhost:3000
+- **Worker**: Running in background, processing jobs from database
+- **MCP Server**: Available to worker for tool access
 
 ## Configuration
 

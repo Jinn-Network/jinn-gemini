@@ -49,7 +49,7 @@ export const listToolsParams = z.object({
 });
 
 export const listToolsSchema = {
-  description: 'Lists all available tools with their descriptions, parameters, and optional usage examples.',
+  description:'Lists all tools available in the system for job configuration. These tools may not be enabled for the current job but can be configured for future jobs. Returns descriptions, parameters, and optional usage examples.',
   inputSchema: listToolsParams.shape,
 };
 

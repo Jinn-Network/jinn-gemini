@@ -14,4 +14,28 @@ export const tableNames = [
   'system_state',
 ] as const;
 
-export const tableNameSchema = z.enum(tableNames); 
+export const tableNameSchema = z.enum(tableNames);
+
+// Memory-related types
+export const linkTypeSchema = z.enum(['CAUSE', 'EFFECT', 'ELABORATION', 'CONTRADICTION', 'SUPPORT']);
+
+export interface Memory {
+  id: string;
+  content: string;
+  embedding: string;
+  created_at: string;
+  last_accessed_at?: string;
+  metadata?: Record<string, any>;
+  linked_memory_id?: string;
+  link_type?: z.infer<typeof linkTypeSchema>;
+  linked_memory?: Memory; // For populated linked memories
+}
+
+export type LinkType = z.infer<typeof linkTypeSchema>;
+
+// Type for linked memories query result (partial memory data)
+export interface LinkedMemory {
+  id: string;
+  content: string;
+  metadata?: Record<string, any>;
+} 

@@ -6,7 +6,7 @@ export const manageArtifactParams = z.object({
     thread_id: z.string().optional().describe('The ID of the thread for the new artifact. Required for creation.'),
     operation: z.enum(['REPLACE', 'APPEND', 'PREPEND']).describe('The content operation to perform.'),
     content: z.string().describe('The content to be used in the specified operation.'),
-    source: z.string().optional().describe('The source of the artifact. On update, omission leaves it unchanged.'),
+    source: z.string().optional().describe('The source job_name of the artifact. On update, omission leaves it unchanged.'),
     topic: z.string().optional().describe('The topic for classification. On update, omission leaves it unchanged.'),
     status: z.string().optional().describe('The processing status. Defaults to RAW on creation. On update, omission leaves it unchanged.'),
 });

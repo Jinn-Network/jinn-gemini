@@ -39,7 +39,7 @@ fi
 
 # Step 1: Install dependencies
 print_status "Installing dependencies..."
-npm install
+yarn install
 
 # Step 2: Create environment file if it doesn't exist
 if [ ! -f ".env" ]; then
@@ -71,14 +71,11 @@ fi
 
 # Step 4: Build the project
 print_status "Building the project..."
-npm run build
+yarn build
 
 # Step 5: Build the MCP package
 print_status "Building MCP package..."
-cd packages/metacog-mcp
-npm install
-npm run build
-cd ../..
+yarn workspace @jinn/metacog-mcp build
 
 # Step 6: Set up git hooks
 print_status "Setting up git hooks..."
@@ -145,6 +142,6 @@ echo "Next steps:"
 echo "1. Edit .env file with your Supabase credentials"
 echo "2. Authenticate with Gemini CLI: gemini auth login"
 echo "3. Set up your Supabase database and run migrations"
-echo "4. Start development: npm run dev"
+echo "4. Start development: yarn dev"
 echo ""
 echo "For detailed instructions, see SETUP.md" 

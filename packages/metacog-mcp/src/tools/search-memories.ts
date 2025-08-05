@@ -1,6 +1,7 @@
 import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
 import { OpenAI } from 'openai';
+import { Memory, LinkedMemory } from './shared/types.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -41,7 +42,7 @@ export async function searchMemories(params: SearchMemoriesParams) {
         if (error) throw error;
 
         if (include_links && memories.length > 0) {
-            const linkedIds = memories.map(m => m.linked_memory_id).filter(id => id);
+            const linkedIds = memories.map((m: Memory) => m.linked_memory_id).filter((id: string | undefined): id is string => id !== undefined);
             if (linkedIds.length > 0) {
                 const { data: linkedMemories, error: linkError } = await supabase
                     .from('memories')
@@ -50,18 +51,19 @@ export async function searchMemories(params: SearchMemoriesParams) {
                 
                 if (linkError) throw linkError;
 
-                const linkedMap = new Map(linkedMemories.map(m => [m.id, m]));
+                const linkedMap = new Map(linkedMemories.map((m: LinkedMemory) => [m.id, m as Memory]));
                 for (const memory of memories) {
                     if (memory.linked_memory_id) {
-                        (memory as any).linked_memory = linkedMap.get(memory.linked_memory_id);
+                        memory.linked_memory = linkedMap.get(memory.linked_memory_id);
                     }
                 }
             }
         }
 
         return { content: [{ type: 'text' as const, text: JSON.stringify(memories, null, 2) }] };
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error('Full error in searchMemories:', e);
-        return { content: [{ type: 'text' as const, text: `Error searching memories: ${e.message}\nFull error: ${JSON.stringify(e, null, 2)}` }] };
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return { content: [{ type: 'text' as const, text: `Error searching memories: ${errorMessage}\nFull error: ${JSON.stringify(e, null, 2)}` }] };
     }
 }

@@ -1,6 +1,7 @@
 import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
 import { OpenAI } from 'openai';
+import { linkTypeSchema } from './shared/types.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -10,7 +11,7 @@ export const createMemoryParams = z.object({
     content: z.string().describe('The textual content of the memory to be stored and embedded.'),
     metadata: z.record(z.any()).optional().describe('A JSON object for classifying the memory (e.g., source_job_id, memory_type).'),
     linked_memory_id: z.string().uuid().optional().describe('The ID of a single, existing memory that this new one is related to.'),
-    link_type: z.enum(['CAUSE', 'EFFECT', 'ELABORATION', 'CONTRADICTION', 'SUPPORT']).optional().describe('Describes the relationship between this new memory and the linked one.'),
+    link_type: linkTypeSchema.optional().describe('Describes the relationship between this new memory and the linked one.'),
 });
 
 export type CreateMemoryParams = z.infer<typeof createMemoryParams>;
@@ -61,7 +62,8 @@ export async function createMemory(params: CreateMemoryParams) {
                 }, null, 2)
             }]
         };
-    } catch (e: any) {
-        return { content: [{ type: 'text' as const, text: `Error creating memory: ${e.message}` }] };
+    } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return { content: [{ type: 'text' as const, text: `Error creating memory: ${errorMessage}` }] };
     }
 }

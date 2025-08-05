@@ -18,10 +18,13 @@ interface JobBoard {
   input_context: string | null; // This is expected to be a JSON string or null
   enabled_tools: string[];
   model_settings: Record<string, any>;
+  job_definition_id: string;
+  job_name: string;
 }
 
-function buildPromptWithContext(promptContent: string, inputContext: string | null): string {
-  let finalPrompt = promptContent;
+function buildPromptWithContext(job: JobBoard, promptContent: string, inputContext: string | null): string {
+  // Add the job's identity to the top of the prompt
+  let finalPrompt = `You are executing as job "${job.job_name}" (Definition ID: ${job.job_definition_id}).\n\n---\n\n${promptContent}`;
   
   if (inputContext) {
     try {
@@ -157,7 +160,7 @@ async function processPendingJobs() {
         });
         console.log(`Job ${job.id} claimed by worker ${workerId} and status updated to IN_PROGRESS.`);
 
-        const finalPrompt = buildPromptWithContext(job.input_prompt, job.input_context);
+        const finalPrompt = buildPromptWithContext(job, job.input_prompt, job.input_context);
         const model = job.model_settings.model || 'gemini-2.5-flash';
         const enabledTools = job.enabled_tools;
 

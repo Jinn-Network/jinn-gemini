@@ -1,6 +1,7 @@
 {
   "name": "gemini-cli-jinn",
   "version": "1.0.0",
+  "private": true,
   "description": "Gemini CLI Jinn worker system",
   "type": "module",
   "main": "dist/worker.js",
@@ -8,7 +9,14 @@
     "build": "tsc",
     "start": "node dist/worker.js",
     "dev": "tsx worker/worker.ts",
-    "test": "echo \"No tests specified\""
+    "test": "echo \"No tests specified\"",
+    "build:all": "yarn workspaces run build",
+    "frontend:dev": "yarn workspace explorer dev",
+    "frontend:start": "yarn workspace explorer start",
+    "frontend:build": "yarn workspace explorer build",
+    "dev:all": "concurrently \"yarn dev\" \"yarn frontend:dev\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
+    "start:all": "concurrently \"yarn start\" \"yarn frontend:start\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
+    "clean": "rm -rf dist && yarn workspace explorer clean"
   },
   "dependencies": {
     "@jinn/metacog-mcp": "file:packages/metacog-mcp",
@@ -17,8 +25,13 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "concurrently": "^8.2.2",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "workspaces": [
+    "packages/*",
+    "frontend/explorer"
+  ]
 }

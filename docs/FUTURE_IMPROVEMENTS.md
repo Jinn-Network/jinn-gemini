@@ -324,34 +324,89 @@ The enhanced `getContextSnapshot` tool in `packages/metacog-mcp/src/tools/contex
 *   **Comprehensive Coverage:** All major system entities captured in a single snapshot
 *   **Operational Context:** Clear understanding of current mission and system state
 
-## 4. Create Intelligence Network Tools
+## 4. Create Intelligence Network Tools (COMPLETED)
+
+**Status:** ✅ **COMPLETED** - A comprehensive suite of intelligence network tools has been implemented and is operational.
 
 **Goal:** Develop tools that enable agents to form intelligent networks for collaborative problem-solving and knowledge sharing.
 
-**Background:**
-Individual agents have limited perspectives and capabilities. Creating networks of agents can enable more complex problem-solving through collaboration and knowledge sharing.
+**Implementation Summary:**
+A complete set of intelligence network tools has been implemented, providing agents with sophisticated capabilities for collaborative work, knowledge management, and contextual awareness.
 
-**Proposed Implementation:**
+**Current Implementation:**
 
-1.  **Agent Network Infrastructure:**
-    *   Design a network topology system for connecting agents
-    *   Implement agent discovery and registration mechanisms
-    *   Create routing protocols for inter-agent communication
+### 4.1 Memory and Knowledge Management System
 
-2.  **Collaborative Tools:**
-    *   Develop tools for agents to share knowledge and insights
-    *   Implement consensus-building mechanisms for coordinated decision-making
-    *   Create task delegation and coordination protocols
+**Vector-Based Memory Storage:**
+- **`createMemory`**: Creates structured memories with vector embeddings for semantic search
+  - Supports metadata classification (source_job_id, memory_type, etc.)
+  - Enables memory linking with relationship types (CAUSE, EFFECT, ELABORATION, CONTRADICTION, SUPPORT)
+  - Builds knowledge graphs through linked memories
+  - Uses OpenAI text-embedding-3-small for high-quality embeddings
 
-3.  **Network Intelligence:**
-    *   Implement collective learning mechanisms across the agent network
-    *   Add network-wide optimization algorithms
-    *   Create monitoring and analytics for network performance
+- **`searchMemories`**: Performs semantic search across the knowledge base
+  - Natural language query processing with vector similarity search
+  - Configurable similarity thresholds and result limits
+  - Metadata filtering capabilities
+  - Optional linked memory retrieval for knowledge graph exploration
+  - Supports complex knowledge graph traversal
 
-**Benefits:**
-*   **Enhanced Problem Solving:** Networks can tackle complex problems beyond individual agent capabilities
-*   **Knowledge Sharing:** Collective intelligence improves overall system performance
-*   **Scalability:** Network approach allows for horizontal scaling of intelligence
+### 4.2 Collaborative Work Management
+
+**Thread and Artifact Management:**
+- **`manageThread`**: Unified tool for creating and updating research threads
+  - Supports hierarchical thread organization with parent-child relationships
+  - Flexible status management (OPEN, COMPLETED, etc.)
+  - Summary and objective tracking
+  - Full CRUD operations in a single interface
+
+- **`manageArtifact`**: Comprehensive artifact creation and manipulation
+  - Content operations: REPLACE, APPEND, PREPEND
+  - Source attribution and topic classification
+  - Status tracking (RAW, PROCESSED, etc.)
+  - Atomic updates with rollback capabilities
+  - Thread association and organization
+
+### 4.3 System Context and Intelligence
+
+**Context Awareness:**
+- **`getContextSnapshot`**: Provides comprehensive system state awareness
+  - Temporal lookback based on metacognitive job completion patterns
+  - Complete system state retrieval including mission, configuration, and recent activity
+  - Job schedules, recent jobs, artifacts, messages, and threads within lookback window
+  - Mission context extraction and highlighting
+  - Configurable lookback periods for different analysis needs
+
+**Network Communication Infrastructure:**
+- **`messages` table**: Inter-agent communication system
+  - Structured messaging between agents with metadata support
+  - Message status tracking and delivery confirmation
+  - Support for various communication patterns
+
+### 4.4 Universal Data Access Layer
+
+**Generic CRUD Operations:**
+- **`createRecord`**, **`readRecords`**, **`updateRecords`**, **`deleteRecords`**: Universal data access
+- **`getDetails`**: Specialized record retrieval with relationship mapping
+- **`getSchema`**: Dynamic schema discovery and validation
+- **`listTools`**: Dynamic tool discovery and capability enumeration
+
+**Benefits Achieved:**
+*   **✅ Enhanced Problem Solving:** Agents can collaborate through shared threads, artifacts, and knowledge
+*   **✅ Knowledge Sharing:** Vector-based memory system enables semantic knowledge discovery and sharing
+*   **✅ Scalability:** Universal tools support horizontal scaling of agent networks
+*   **✅ Context Awareness:** Comprehensive system state understanding for intelligent decision-making
+*   **✅ Collaborative Work:** Thread and artifact management enable coordinated problem-solving
+*   **✅ Knowledge Persistence:** Long-term memory storage with semantic search capabilities
+*   **✅ Network Intelligence:** Collective learning through shared knowledge graphs and context snapshots
+
+**Current Capabilities:**
+- **Semantic Knowledge Management:** Vector embeddings enable natural language knowledge discovery
+- **Collaborative Workspaces:** Thread-based organization with artifact management
+- **System Intelligence:** Context-aware decision making with temporal awareness
+- **Network Communication:** Structured messaging between agents
+- **Universal Data Access:** Generic tools for any table or data structure
+- **Knowledge Graph Building:** Linked memories create interconnected knowledge networks
 
 ## 5. Enable Passing Messages Between Agents
 
@@ -408,3 +463,274 @@ The `list-tools` tool has been successfully refactored to eliminate the need for
 *   **✅ Single Source of Truth:** The `serverTools` array in `server.ts` is now the single, definitive source for all tool information.
 *   **✅ Reduced Maintenance:** Adding a new tool now only requires adding it to the `serverTools` array in one place. The manual, error-prone step of updating a separate discovery list has been eliminated.
 *   **✅ Guaranteed Consistency:** The list of discoverable tools is now guaranteed to be perfectly in sync with the list of executable tools, improving system reliability.
+
+## 7. Database Schema Cleanup and Improvements
+
+**Goal:** Clean up unused database columns, improve data integrity, and enhance the system's operational capabilities.
+
+### 7.1 Remove Unused `dispatcher_processed_at` Columns
+
+**Status:** ✅ **COMPLETED** - The unused columns have been successfully removed from both tables.
+
+**Goal:** Remove the `dispatcher_processed_at` column from both `artifacts` and `threads` tables if it's not being used anywhere in the codebase.
+
+**Background:**
+The `dispatcher_processed_at` column existed on both tables but was confirmed to be unused:
+- No references found in TypeScript code
+- No references found in SQL migrations or triggers
+- Only documented in `DATABASE_MAP.md` as "Trigger processing timestamp"
+- All values were NULL in both tables (38 artifacts, 19 threads)
+
+**Implementation Completed:**
+1. **Verified Unused Status:** Confirmed the columns were truly unused by:
+   - Checking all database triggers and functions (no references found)
+   - Reviewing TypeScript codebase (no references found)
+   - Analyzing current data (all values were NULL)
+
+2. **Safe Removal Process:**
+   ```sql
+   -- Remove from artifacts table
+   ALTER TABLE artifacts DROP COLUMN dispatcher_processed_at;
+   
+   -- Remove from threads table  
+   ALTER TABLE threads DROP COLUMN dispatcher_processed_at;
+   ```
+
+**Benefits Achieved:**
+*   **✅ Cleaner Schema:** Removed unused columns that were confusing developers
+*   **✅ Reduced Storage:** Eliminated unnecessary data storage
+*   **✅ Simplified Maintenance:** Fewer columns to maintain and document
+*   **✅ Improved Clarity:** Database schema now accurately reflects actual usage
+
+### 7.2 Include Job Definition in Agent Context
+
+**Status:** ✅ **COMPLETED** - Job definition context has been successfully integrated into agent prompts.
+
+**Goal:** Include job definition information in the agent's prompt context so that jobs know their identity and can properly source artifacts and communicate on the network.
+
+**Implementation Summary:**
+The job definition context has been successfully implemented in the worker system, providing agents with explicit knowledge of their identity and capabilities.
+
+**Current Implementation:**
+
+1. **Enhanced Job Context Integration:**
+   ```typescript
+   // Implemented in worker/worker.ts
+   function buildPromptWithContext(job: JobBoard, promptContent: string, inputContext: string | null): string {
+     // Add the job's identity to the top of the prompt
+     let finalPrompt = `You are executing as job "${job.job_name}" (Definition ID: ${job.job_definition_id}).\n\n---\n\n${promptContent}`;
+     
+     if (inputContext) {
+       // Parse and include additional context data
+       // ... context processing logic
+     }
+     
+     return finalPrompt;
+   }
+   ```
+
+2. **Job Identity Awareness:**
+   - Agents now receive their job name and definition ID at the start of every prompt
+   - Clear identification format: `"You are executing as job "job_name" (Definition ID: job_definition_id)"`
+   - Context is automatically injected before the main prompt content
+
+3. **Enhanced Context Processing:**
+   - Additional context data is parsed and formatted for agent consumption
+   - Support for both JSON and plain text context formats
+   - Structured context presentation in the prompt
+
+**Benefits Achieved:**
+*   **✅ Better Attribution:** Agents now have explicit knowledge of their job identity
+*   **✅ Improved Communication:** Jobs can identify themselves in their responses and tool usage
+*   **✅ Enhanced Context:** Agents have full awareness of their role and job definition
+*   **✅ Clear Identity:** Standardized format for job identification across all executions
+*   **✅ Context Integration:** Seamless integration of job context with additional input context
+
+**Current Capabilities:**
+- **Job Identity Injection:** Every agent execution includes job name and definition ID
+- **Context Awareness:** Agents know which job definition they're executing
+- **Enhanced Prompting:** Structured context presentation for better agent understanding
+- **Identity Persistence:** Job identity maintained throughout the entire execution session
+
+### 7.3 Enum Artifact Status and Auto-Update
+
+**Status:** 📋 **PLANNED** - Design phase needed.
+
+**Goal:** Convert artifact status to a proper enum and implement automatic status updates when artifacts are read.
+
+**Background:**
+Currently, artifact status uses free-form text with known values like 'RAW' and 'PROCESSED'. This should be formalized as an enum for data integrity and consistency.
+
+**Implementation Plan:**
+
+1. **Create Artifact Status Enum:**
+   ```sql
+   CREATE TYPE artifact_status AS ENUM (
+     'RAW',           -- Initial state
+     'PROCESSED',     -- Has been processed by a job
+     'ARCHIVED',      -- No longer active
+     'ERROR'          -- Failed processing
+   );
+   ```
+
+2. **Update Artifacts Table:**
+   ```sql
+   ALTER TABLE artifacts 
+   ALTER COLUMN status TYPE artifact_status 
+   USING status::artifact_status;
+   ```
+
+3. **Auto-Update on Read:**
+   - Implement trigger or application logic to update status when artifacts are read
+   - Consider adding `last_read_at` timestamp
+   - Potentially implement status progression logic (RAW → PROCESSED → ARCHIVED)
+
+**Benefits:**
+*   **Data Integrity:** Prevents invalid status values
+*   **Consistent State:** Standardized status management
+*   **Usage Tracking:** Automatic tracking of artifact consumption
+
+### 7.4 Link Job Reports in getDetails
+
+**Status:** 📋 **PLANNED** - Implementation needed.
+
+**Goal:** When `getDetails` retrieves a job from the job board, it should also return the ID of the corresponding job report.
+
+**Background:**
+Currently, `getDetails` only returns the job record itself. Adding the job report ID would provide immediate access to detailed execution information for debugging and analysis.
+
+**Implementation Plan:**
+
+1. **Enhanced Job Details Response:**
+   ```typescript
+   interface JobDetails {
+     // ... existing job fields
+     job_report_id?: string;  // Link to detailed execution report
+   }
+   ```
+
+2. **Update getDetails Tool:**
+   - Modify the tool to include `job_report_id` when fetching from `job_board`
+   - Ensure the field is populated in the response
+   - Maintain backward compatibility
+
+**Benefits:**
+*   **Immediate Debugging:** Direct access to execution reports from job details
+*   **Better Tooling:** Enhanced debugging capabilities for agents
+*   **Improved Workflow:** Streamlined access to execution analytics
+
+
+### 7.5 Improve Metacog Job Naming
+
+**Status:** 📋 **PLANNED** - Design phase needed.
+
+**Goal:** Improve the naming convention for metacognitive jobs to be more descriptive and consistent.
+
+**Background:**
+Current metacog jobs use names like `Metacog.GenesysMetacog` which are functional but not very descriptive. Better naming would improve:
+- Code readability and maintenance
+- Debugging and logging clarity
+- System documentation
+
+**Implementation Plan:**
+
+1. **New Naming Convention:**
+   ```typescript
+   // Current: Metacog.GenesysMetacog
+   // Proposed: metacog.system_analysis
+   // or: metacog.performance_review
+   // or: metacog.workflow_optimization
+   ```
+
+2. **Update Existing Jobs:**
+   - Rename existing metacog job definitions
+   - Update all references in code and documentation
+   - Ensure backward compatibility during transition
+
+3. **Naming Guidelines:**
+   - Use lowercase with underscores
+   - Include action/function in the name
+   - Maintain consistency across all metacog jobs
+
+**Benefits:**
+*   **Better Readability:** More descriptive and intuitive names
+*   **Improved Debugging:** Clearer identification in logs and reports
+*   **Enhanced Documentation:** Self-documenting job names
+
+### 7.7 Add on_new_job_definition Trigger
+
+**Status:** 📋 **PLANNED** - Design phase needed.
+
+**Goal:** Implement a trigger that fires when new job definitions are created, enabling automatic setup of related resources and validation.
+
+**Background:**
+Currently, job definitions are created without automatic validation or setup. A trigger would enable:
+- Automatic validation of job definition parameters
+- Setup of default schedules or configurations
+- Integration with other system components
+
+**Implementation Plan:**
+
+1. **Trigger Function:**
+   ```sql
+   CREATE OR REPLACE FUNCTION on_new_job_definition()
+   RETURNS TRIGGER AS $$
+   BEGIN
+     -- Validate job definition parameters
+     -- Set up default configurations
+     -- Create related resources if needed
+     RETURN NEW;
+   END;
+   $$ LANGUAGE plpgsql;
+   ```
+
+2. **Trigger Registration:**
+   ```sql
+   CREATE TRIGGER trg_new_job_definition
+   AFTER INSERT ON job_definitions
+   FOR EACH ROW
+   EXECUTE FUNCTION on_new_job_definition();
+   ```
+
+3. **Validation and Setup Logic:**
+   - Validate prompt_ref exists in prompt_library
+   - Check enabled_tools are available
+   - Set up default model_settings if not provided
+   - Create audit trail entries
+
+**Benefits:**
+*   **Data Integrity:** Automatic validation of new job definitions
+*   **Consistency:** Standardized setup process
+*   **Reduced Errors:** Catch configuration issues early
+
+## 8. Use gemini.md (COMPLETED)
+
+**Goal:** Implement a standardized documentation format using `gemini.md` files to provide comprehensive context and instructions for agents.
+
+**Implementation Summary:**
+This has been implemented, but with a key modification to ensure the context is only used for agent-driven sessions and not for manual CLI use.
+- A file named `AGENT_CONTEXT.md` was created in the project root. This file contains the core operational framework for the agent (OODA loop, output requirements, etc.).
+- The filename `AGENT_CONTEXT.md` is intentionally not `GEMINI.md` to prevent the Gemini CLI from automatically loading it.
+- The `agent.ts` script has been modified to manually read `AGENT_CONTEXT.md` and pipe its contents into the `stdin` of the spawned `gemini` process.
+- This approach provides full control over when the agent's core context is applied, achieving the goal of standardized instructions without interfering with other uses of the CLI.
+
+**Original Proposal:**
+
+1.  **Create gemini.md Template:**
+    *   Define a standard markdown structure for agent documentation
+    *   Include sections for: agent purpose, capabilities, constraints, examples, and operational guidelines
+    *   Establish naming conventions and file organization
+
+2.  **Agent Documentation System:**
+    *   Create `gemini.md` files for each agent type/role
+    *   Implement a system to load and parse these files as context
+    *   Ensure agents can reference their own documentation during execution
+
+3.  **Integration with Context System:**
+    *   Modify the context snapshot tool to include relevant `gemini.md` content
+    *   Enable dynamic loading of documentation based on agent type or job requirements
+
+**Benefits:**
+*   **Standardized Communication:** Consistent format for agent instructions and capabilities
+*   **Improved Performance:** Better context leads to more accurate and efficient agent behavior
+*   **Maintainability:** Centralized documentation that's easy to update and version control

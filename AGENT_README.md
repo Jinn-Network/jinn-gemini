@@ -7,7 +7,7 @@ This project implements a sophisticated, autonomous AI agent system built on an 
 The core technologies are:
 - **Node.js & TypeScript**: For the worker and agent logic.
 - **Supabase (PostgreSQL)**: As the central database for state management, job queuing, and event triggers.
-
+- **Next.js**: For the frontend explorer interface.
 - **Gemini CLI**: As the underlying engine for interacting with Google's Gemini models.
 - **Model Context Protocol (MCP)**: For providing the agent with a secure and structured way to use tools.
 
@@ -29,14 +29,14 @@ The design of this system is guided by a few core principles:
 The system consists of several key components that work together in a continuous loop.
 
 1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables (`job_board`, `job_definitions`, `job_schedules`, `job_reports`, etc.) and a sophisticated trigger system to manage the entire workflow. See `DATABASE_MAP.md` for a detailed schema.
-2.  **Worker (`worker/worker.ts`)**: A containerized Node.js application that continuously polls the `job_board` for `PENDING` jobs. It is responsible for claiming a job, invoking the agent, and reporting the outcome.
+2.  **Worker (`worker/worker.ts`)**: A Node.js application that continuously polls the `job_board` for `PENDING` jobs. It is responsible for claiming a job, invoking the agent, and reporting the outcome.
 3.  **Agent (`gemini-agent/agent.ts`)**: The "brain" of the operation. It wraps the Gemini CLI and is responsible for:
     -   Dynamically generating job-specific settings to enable the correct set of tools.
     -   Executing the LLM prompt with integrated telemetry collection.
     -   Parsing detailed telemetry data (token usage, tool calls, performance metrics) directly from Gemini CLI output files.
     -   Capturing both critical errors and warning-level issues for comprehensive job reporting.
-4.  **Tools (`packages/metacog-mcp`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `create_record`, `read_records`, and the powerful `create_job` and `get_context_snapshot`.
-
+4.  **Tools (`packages/metacog-mcp`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `list_tools`, `read_records`, and the powerful `create_job` and `get_context_snapshot`.
+5.  **Frontend Explorer (`frontend/explorer`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
 
 ---
 
@@ -63,14 +63,14 @@ The entire system operates on a continuous, event-driven cycle:
 ## Getting Started
 
 ### Prerequisites
-- Node.js and npm
+- Node.js and Yarn
 - A Supabase project
 - Gemini CLI installed and authenticated on your host machine.
 
 ### 1. Setup
 1.  **Install Dependencies**:
     ```bash
-    npm install
+    yarn install
     ```
 2.  **Configure Environment**:
     Create a `.env` file in the root directory with your Supabase credentials:
@@ -81,31 +81,92 @@ The entire system operates on a continuous, event-driven cycle:
 3.  **Gemini CLI Authentication**:
     Ensure you have authenticated the Gemini CLI on your host machine first.
 
-### 2. Running the System
-To start the worker with integrated telemetry collection, run:
+### 2. Building the System
+Build all packages (worker, MCP server, and frontend):
 ```bash
-npm run dev
+yarn build:all
 ```
-The worker will start, connect to the database, and begin polling for jobs. All telemetry data (token usage, tool calls, performance metrics, and errors) is automatically captured and stored in the `job_reports` table.
 
-### 3. Viewing Logs
-The worker logs will be displayed in the console where you run the command.
+### 3. Running the System
+
+#### Development Mode (Recommended)
+Start both the worker and frontend in development mode:
+```bash
+yarn dev:all
+```
+
+This will start:
+- **Worker**: Processing jobs with hot reload
+- **Frontend**: Available at http://localhost:3000
+
+#### Individual Services
+```bash
+# Worker only
+yarn dev
+
+# Frontend only
+yarn frontend:dev
+
+# Both services
+yarn dev:all
+```
+
+#### Production Mode
+```bash
+# Build everything first
+yarn build:all
+
+# Start both services in production mode
+yarn start:all
+```
+
+### 4. Viewing Logs and Monitoring
+- **Worker logs**: Displayed in the console where you run the command
+- **Frontend**: Access at http://localhost:3000 to explore data and job reports
+- **Database**: Check Supabase dashboard for job status and reports
 
 ---
 
 ## Development Guide
+
+### Available Scripts
+
+#### Build Commands
+```bash
+yarn build          # Build root worker only
+yarn build:all      # Build all packages (worker + MCP + frontend)
+yarn clean          # Clean build artifacts
+```
+
+#### Development Commands
+```bash
+yarn dev            # Start worker only
+yarn frontend:dev   # Start frontend only
+yarn dev:all        # Start both worker and frontend (recommended)
+```
+
+#### Production Commands
+```bash
+yarn start          # Start worker only
+yarn frontend:start # Start frontend only
+yarn start:all      # Start both worker and frontend
+```
 
 ### Running Services Locally
 For easier development, you can run the MCP server or the worker directly on your host machine.
 
 -   **Run the MCP Server**:
     ```bash
-    npm run start -w @metacog/mcp
+    yarn workspace @jinn/metacog-mcp start
     ```
 -   **Run the Worker**:
     ```bash
-    npm run build
+    yarn build
     node dist/worker/worker.js
+    ```
+-   **Run the Frontend**:
+    ```bash
+    yarn frontend:dev
     ```
 
 ### Adding a New Tool

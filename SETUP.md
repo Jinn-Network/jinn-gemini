@@ -5,7 +5,7 @@ This guide will help you set up and initialize this repository while ensuring se
 ## Prerequisites
 
 - Node.js (v18 or higher)
-- npm or yarn
+- Yarn
 
 - A Supabase project
 - Gemini CLI installed and authenticated
@@ -20,7 +20,7 @@ git clone <repository-url>
 cd gemini_cli_jinn
 
 # Install dependencies
-npm install
+yarn install
 ```
 
 ### 2. Environment Configuration
@@ -79,12 +79,10 @@ npm install
 
 ```bash
 # Build the main project
-npm run build
+yarn build
 
 # Build the MCP package
-cd packages/metacog-mcp
-npm run build
-cd ../..
+yarn workspace @jinn/metacog-mcp build
 ```
 
 ### 5. Database Setup
@@ -101,7 +99,7 @@ cd ../..
 3. **Verify database connection**:
    ```bash
    # Test the connection (you may need to create a test script)
-   npm run test:db
+yarn test:db
    ```
 
 ## Development Setup
@@ -110,13 +108,12 @@ cd ../..
 
 1. **Start the worker**:
    ```bash
-   npm run dev
+   yarn dev
    ```
 
 2. **Start the MCP server**:
    ```bash
-   cd packages/metacog-mcp
-   npm run start
+   yarn workspace @jinn/metacog-mcp start
    ```
 
 

@@ -31,6 +31,12 @@
     "node_modules",
     "dist",
     "packages/*/node_modules",
-    "packages/*/dist"
+    "packages/*/dist",
+    "**/*.test.ts",
+    "**/*.test.js",
+    "**/*.spec.ts",
+    "**/*.spec.js",
+    "**/vitest.config.ts",
+    "**/vitest.config.js"
   ]
 }
