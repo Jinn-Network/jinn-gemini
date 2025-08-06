@@ -88,8 +88,12 @@ async function fetchData(startTime: string, jobName?: string, limits = { jobs: 5
 
 
 function formatSnapshot(data: any, timeWindow: { startTime: string, endTime: string }, originalHours: number, actualHours: number, jobName?: string) {
+    // Look for mission and strategy separately
     const missionRecord = data.system_state.find((s: any) => s.key === 'mission');
+    const strategyRecord = data.system_state.find((s: any) => s.key === 'strategy');
+    
     const mission = missionRecord ? missionRecord.value : 'Mission not defined in system_state.';
+    const strategy = strategyRecord ? strategyRecord.value : null;
 
     // Create AI-friendly structured output
     const windowReduced = actualHours < originalHours;
@@ -97,7 +101,17 @@ function formatSnapshot(data: any, timeWindow: { startTime: string, endTime: str
     let output = `## System Context Snapshot${jobName ? ` (Job: ${jobName})` : ''}
 
 🎯 **PRIMARY MISSION**
-${typeof mission === 'string' ? mission : JSON.stringify(mission, null, 2)}
+${typeof mission === 'string' ? mission : JSON.stringify(mission, null, 2)}`;
+
+    // Add strategy section if available
+    if (strategy) {
+        output += `
+
+�� **STRATEGY**
+${typeof strategy === 'string' ? strategy : JSON.stringify(strategy, null, 2)}`;
+    }
+
+    output += `
 
 ### Time Window
 - **Requested**: ${originalHours} hours back
@@ -122,7 +136,7 @@ ${data.jobs_in_window.slice(0, 10).map((job: any) => {
   if (job.job_report_id) jobLine += ` (Report: ${job.job_report_id})`;
   jobLine += ` (${new Date(job.created_at).toLocaleString()})`;
   if (job.output && job.output.length > 100) {
-    jobLine += `\n  Output: ${job.output.substring(0, 200)}...`;
+    jobLine += `\n  Output: ${job.output.substring(0, 500)}...`;
   } else if (job.output) {
     jobLine += `\n  Output: ${job.output}`;
   }
