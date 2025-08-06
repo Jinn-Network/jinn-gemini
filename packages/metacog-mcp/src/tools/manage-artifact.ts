@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 export const manageArtifactParams = z.object({
     artifact_id: z.string().optional().describe('The ID of the artifact to update. If omitted, a new artifact is created.'),
+    thread_id: z.string().optional().describe('The ID of the thread to associate the artifact with. Only used during creation if the job has no thread context.'),
     operation: z.enum(['REPLACE', 'APPEND', 'PREPEND']).describe('The content operation to perform.'),
     content: z.string().describe('The content to be used in the specified operation.'),
     topic: z.string().optional().describe('The topic for classification. On update, omission leaves it unchanged.'),
@@ -17,12 +18,12 @@ export const manageArtifactSchema = {
 };
 
 export async function manageArtifact(params: ManageArtifactParams) {
-    const { artifact_id, operation, content, topic, status } = manageArtifactParams.parse(params);
-    const { jobId, jobName, threadId } = getCurrentJobContext();
+    const { artifact_id, thread_id: param_thread_id, operation, content, topic, status } = manageArtifactParams.parse(params);
+    const { jobId, jobName, threadId: contextThreadId } = getCurrentJobContext();
 
     try {
         if (artifact_id) {
-            // Update Mode
+            // Update Mode - context logic remains the same
             const rpc_params = {
                 p_artifact_id: artifact_id,
                 p_operation: operation,
@@ -44,16 +45,18 @@ export async function manageArtifact(params: ManageArtifactParams) {
             return { content: [{ type: 'text' as const, text: JSON.stringify(data[0], null, 2) }] };
 
         } else {
-            // Create Mode
-            if (!threadId) {
-                throw new Error("Cannot create an artifact because the current job is not associated with a thread. Use the `manage_thread` tool to create a thread first.");
+            // Create Mode - new flexible thread logic
+            const finalThreadId = contextThreadId || param_thread_id;
+
+            if (!finalThreadId) {
+                throw new Error("Cannot create an artifact. The job has no thread context, and no 'thread_id' parameter was provided. Use `manage_thread` to create a thread first, then pass its ID here.");
             }
             if (operation !== 'REPLACE') {
                 throw new Error("Operation must be 'REPLACE' when creating a new artifact.");
             }
 
             const newArtifact = {
-                thread_id: threadId,
+                thread_id: finalThreadId,
                 content,
                 topic,
                 status: status ?? 'RAW',

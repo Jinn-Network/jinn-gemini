@@ -3,8 +3,9 @@ import { readRecords } from '../packages/metacog-mcp/src/tools/read-records.js';
 import { updateRecords } from '../packages/metacog-mcp/src/tools/update-records.js';
 import { createRecord } from '../packages/metacog-mcp/src/tools/create-record.js';
 
-// Check for debug flag from command line
+// Check for command line flags
 const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
+const singleJobMode = process.argv.includes('--single-job');
 
 // Simple unique ID generator for the worker
 const workerId = `worker-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -195,7 +196,7 @@ function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reas
     return { shouldWait: false, waitTime: 0, reason: '' };
 }
 
-async function processPendingJobs() {
+async function processPendingJobs(): Promise<boolean> {
     console.log(`Worker ${workerId} starting up, checking for pending jobs...`);
     if (debugMode) {
         console.log(`[DEBUG] Worker running in debug mode - Gemini CLI will use --debug flag`);
@@ -212,7 +213,7 @@ async function processPendingJobs() {
 
     if (!readResult.content || !readResult.content[0] || readResult.content[0].type !== 'text') {
         console.error('Failed to read jobs from database or unexpected format.', readResult);
-        return;
+        return false;
     }
 
     console.log('Raw read result:', readResult.content[0].text);
@@ -220,14 +221,14 @@ async function processPendingJobs() {
     // Check if the result is an error message
     if (readResult.content[0].text.startsWith('Error')) {
         console.error('Database read error:', readResult.content[0].text);
-        return;
+        return false;
     }
 
     const jobs: JobBoard[] = JSON.parse(readResult.content[0].text);
 
     if (!jobs || jobs.length === 0) {
         console.log("No pending jobs found.");
-        return;
+        return false;
     }
 
     console.log(`Found ${jobs.length} pending jobs.`);
@@ -337,29 +338,42 @@ async function processPendingJobs() {
         } catch (reportError) {
             console.error(`Failed to collect job report for ${job.id}:`, reportError);
         }
+        return true; // A job was processed
     }
 }
 
 async function main() {
     console.log("Starting worker...");
+    if (singleJobMode) {
+        console.log("[LIFECYCLE] Running in --single-job mode. Worker will terminate after one job.");
+    }
     console.log(`[RATE_LIMIT] Configuration: ${RATE_LIMIT.requestsPerMinute} requests/minute, ${RATE_LIMIT.minTimeBetweenJobs}ms between jobs`);
 
-    // Continuous processing loop
-    while (true) {
-        try {
-            await processPendingJobs();
+    // In single-job mode, just run once. Otherwise, loop forever.
+    if (singleJobMode) {
+        await processPendingJobs();
+        console.log("[LIFECYCLE] Single job processed. Exiting.");
+        process.exit(0);
+    } else {
+        // Continuous processing loop
+        while (true) {
+            try {
+                const jobProcessed = await processPendingJobs();
 
-            // Wait a bit before checking for more jobs
-            const nextCheckDelay = 5000; // 5 seconds between checks when no jobs
-            console.log(`No jobs found, waiting ${nextCheckDelay}ms before next check...`);
-            await new Promise(resolve => setTimeout(resolve, nextCheckDelay));
+                // If no job was found, wait before checking again.
+                if (!jobProcessed) {
+                    const nextCheckDelay = 5000; // 5 seconds
+                    console.log(`No jobs found, waiting ${nextCheckDelay}ms before next check...`);
+                    await new Promise(resolve => setTimeout(resolve, nextCheckDelay));
+                }
+                // If a job was processed, the loop will continue immediately to check for the next one.
 
-        } catch (error) {
-            console.error("Worker encountered an error:", error);
-
-            // Don't exit on errors, just wait and try again
-            console.log("Waiting 30 seconds before retrying...");
-            await new Promise(resolve => setTimeout(resolve, 30000));
+            } catch (error) {
+                console.error("Worker encountered a critical error in the main loop:", error);
+                // Don't exit on errors, just wait and try again
+                console.log("Waiting 30 seconds before retrying...");
+                await new Promise(resolve => setTimeout(resolve, 30000));
+            }
         }
     }
 }

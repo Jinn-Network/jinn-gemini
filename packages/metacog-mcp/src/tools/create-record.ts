@@ -17,6 +17,7 @@ export async function createRecord({ table_name, data }: z.infer<typeof createRe
     const { jobId, jobName, threadId } = getCurrentJobContext();
     
     // Automatically inject the universal context into the data payload
+    // The database function will now skip any columns that don't exist in the target table
     const enrichedData = {
       ...data,
       source_job_id: jobId,

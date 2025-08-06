@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/worker.js",
-    "dev": "tsx worker/worker.ts",
+    "dev": "tsx worker/worker.ts -- --single-job",
+    "dev:continuous": "tsx worker/worker.ts",
     "test": "echo \"No tests specified\"",
     "build:all": "yarn workspaces run build",
     "frontend:dev": "yarn workspace explorer dev",

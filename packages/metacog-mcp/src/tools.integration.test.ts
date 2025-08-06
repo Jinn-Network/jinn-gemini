@@ -464,6 +464,18 @@ describe('Database Tools Integration Tests', () => {
         const result = await readRecords({ table_name: 'nonexistent_table' as any });
         expect(result.content[0].text).toContain('Error reading records');
       });
+      it('should read records with hours_back filter', async () => {
+        const result = await readRecords({ 
+          table_name: 'prompt_library', 
+          hours_back: 1
+        });
+        const resultData = JSON.parse(result.content[0].text);
+        
+        // Find our specific test record in the results
+        const testRecord = resultData.find((r: any) => r.id === testRecordId);
+        expect(testRecord).toBeDefined();
+        expect(testRecord.id).toBe(testRecordId);
+      });
     });
 
     describe('update_records Tool', () => {
