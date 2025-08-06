@@ -3,7 +3,6 @@
 import { DbRecord } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { IdLink } from '@/components/id-link'
-import { JobCreationInfo } from '@/components/job-creation-info'
 
 interface ArtifactDetailViewProps {
   record: DbRecord
@@ -201,11 +200,11 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
     return null
   }
 
-  // Extract content, job tracking, and other fields
-  const { content, created_by_job_id, ...otherFields } = record
+  // Extract content and other fields
+  const { content, ...otherFields } = record
   
-  // Fields to hide from the detail view (now including created_by_job_id since we show it separately)
-  const hiddenFields = ['worker_id', 'created_by_job_id']
+  // Fields to hide from the detail view
+  const hiddenFields = ['worker_id']
   
   // Filter out hidden fields from other fields
   const visibleOtherFields = Object.entries(otherFields).filter(([key]) => 
@@ -227,18 +226,7 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
       </div>
 
       {/* Details Sidebar */}
-      <div className="lg:col-span-1 space-y-6">
-        {/* Job Creation Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Job Creation</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <JobCreationInfo jobId={created_by_job_id as string} />
-          </CardContent>
-        </Card>
-
-        {/* Other Details */}
+      <div className="lg:col-span-1">
         <Card>
           <CardHeader>
             <CardTitle>Details</CardTitle>

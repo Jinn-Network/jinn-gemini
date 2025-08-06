@@ -7,7 +7,6 @@ import { createClient } from '@/lib/supabase'
 import { useState, useEffect } from 'react'
 import { MarkdownField } from '@/components/markdown-field'
 import { IdLink } from '@/components/id-link'
-import { JobCreationInfo } from '@/components/job-creation-info'
 
 interface DetailViewProps {
   record: DbRecord

@@ -266,7 +266,6 @@ async function processPendingJobs() {
             jobName: job.job_name,
             threadId: threadId
         });
-
         // Update rate limiting counters before job execution
         lastJobTime = Date.now();
         jobCount++;

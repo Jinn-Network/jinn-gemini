@@ -5,9 +5,30 @@
       "args": [
         "packages/metacog-mcp/dist/server.js"
       ],
-      "cwd": ".",
       "trust": true,
-      "timeout": 30000
+      "includeTools": [
+        "get_schema",
+        "get_context_snapshot",
+        "read_records",
+        "list_tools",
+        "manage_thread",
+        "manage_artifact",
+        "get_details",
+        "search_memories",
+        "list_directory"
+      ],
+      "excludeTools": [
+        "read_file",
+        "write_file",
+        "search_file_content",
+        "glob",
+        "replace",
+        "read_many_files",
+        "run_shell_command",
+        "save_memory",
+        "web_fetch",
+        "google_web_search"
+      ]
     }
   }
 }

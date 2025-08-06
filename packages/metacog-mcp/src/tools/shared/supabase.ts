@@ -52,4 +52,4 @@ export function clearJobContext() {
 
 export function getCurrentJobContext(): JobContext {
   return { ...currentJobContext };
-} 
+}
