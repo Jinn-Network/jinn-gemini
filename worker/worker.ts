@@ -17,6 +17,24 @@ const RATE_LIMIT = {
     minTimeBetweenJobs: 2000, // 2 seconds minimum between jobs
 };
 
+// Retry configuration
+const RETRY_CONFIG = {
+    maxRetries: 3, // Maximum number of retries per job
+    retryDelayMs: 5000, // 5 seconds between retries
+    exponentialBackoff: true, // Use exponential backoff
+    retryableErrors: [
+        '500', // Internal server error
+        'INTERNAL', // Gemini API internal error
+        'An internal error has occurred', // Gemini API error message
+        'got status: INTERNAL', // Gemini CLI error format
+        'timeout', // Timeout errors
+        'network', // Network errors
+        'ENOTFOUND', // DNS resolution errors
+        'ECONNRESET', // Connection reset errors
+        'ECONNREFUSED' // Connection refused errors
+    ]
+};
+
 // Global rate limiting state
 let lastJobTime = 0;
 let quotaErrorTime = 0;
@@ -64,11 +82,12 @@ async function resolveThreadId(job: JobBoard): Promise<string | null> {
     }
 
     try {
+        // First try to parse as JSON (for backward compatibility)
         const contextData = JSON.parse(job.input_context);
 
         // The context is often the triggering record itself (e.g., an artifact).
         if (contextData && contextData.thread_id) {
-            console.log(`[CONTEXT] Resolved threadId '${contextData.thread_id}' from job ${job.id}'s input_context.`);
+            console.log(`[CONTEXT] Resolved threadId '${contextData.thread_id}' from job ${job.id}'s input_context (JSON format).`);
             return contextData.thread_id;
         }
 
@@ -79,12 +98,49 @@ async function resolveThreadId(job: JobBoard): Promise<string | null> {
         }
 
     } catch (error) {
-        console.warn(`[CONTEXT] Could not parse input_context for job ${job.id} to find a threadId. Context was not valid JSON.`, job.input_context);
-        return null;
+        // If JSON parsing fails, try parsing as comma-separated key:value format
+        // Format: "artifact_id:fe671811-036e-4623-a8e2-279ad13d3a3c,thread_id:a5fb543e-4f4a-4de2-80d4-6c4480d65e2a"
+        try {
+            const pairs = job.input_context.split(',');
+            const contextData: Record<string, string> = {};
+            
+            for (const pair of pairs) {
+                const [key, value] = pair.split(':');
+                if (key && value) {
+                    contextData[key.trim()] = value.trim();
+                }
+            }
+
+            if (contextData.thread_id) {
+                console.log(`[CONTEXT] Resolved threadId '${contextData.thread_id}' from job ${job.id}'s input_context (key:value format).`);
+                return contextData.thread_id;
+            }
+
+        } catch (parseError) {
+            console.warn(`[CONTEXT] Could not parse input_context for job ${job.id} as JSON or key:value format.`, job.input_context);
+            return null;
+        }
     }
 
     console.log(`[CONTEXT] No threadId found in input_context for job ${job.id}.`);
     return null;
+}
+
+function isRetryableError(error: any): boolean {
+    if (!error) return false;
+    
+    const message = String(error.error || error.message || error).toLowerCase();
+    
+    return RETRY_CONFIG.retryableErrors.some(retryableError => 
+        message.includes(retryableError.toLowerCase())
+    );
+}
+
+function calculateRetryDelay(retryCount: number): number {
+    if (RETRY_CONFIG.exponentialBackoff) {
+        return RETRY_CONFIG.retryDelayMs * Math.pow(2, retryCount);
+    }
+    return RETRY_CONFIG.retryDelayMs;
 }
 
 async function collectAndStoreJobReport(context: {
@@ -243,6 +299,7 @@ async function processPendingJobs(): Promise<boolean> {
     const startTime = Date.now();
     let result = null;
     let error = null;
+    let retryCount = 0;
 
     try {
         // Claim the job by setting status to IN_PROGRESS and adding worker_id
@@ -311,13 +368,37 @@ async function processPendingJobs(): Promise<boolean> {
             error = err;
         }
 
+        // Check if error is retryable
+        const isRetryable = isRetryableError(error);
+        if (isRetryable && retryCount < RETRY_CONFIG.maxRetries) {
+            retryCount++;
+            const retryDelay = calculateRetryDelay(retryCount);
+            console.log(`[RETRY] Job ${job.id} failed with retryable error. Retry ${retryCount}/${RETRY_CONFIG.maxRetries} in ${retryDelay}ms...`);
+            
+            // Reset job status to PENDING so it can be retried
+            await updateRecords({
+                table_name: 'job_board',
+                filter: { id: job.id },
+                updates: {
+                    status: 'PENDING',
+                    worker_id: null
+                }
+            });
+            
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            
+            // Don't mark as failed, let it be retried
+            return true;
+        }
+
         const errorMsg = error instanceof Error ? error.message : String(error);
         const finalUpdate = await updateRecords({
             table_name: 'job_board',
             filter: { id: job.id },
             updates: {
                 status: 'FAILED',
-                output: JSON.stringify({ error: errorMsg })
+                output: JSON.stringify({ error: errorMsg, retryCount })
             }
         });
         if (finalUpdate.content[0].text.startsWith('Error')) {
@@ -343,11 +424,12 @@ async function processPendingJobs(): Promise<boolean> {
 }
 
 async function main() {
-    console.log("Starting worker...");
+    console.log("Starting worker with retry mechanism...");
     if (singleJobMode) {
         console.log("[LIFECYCLE] Running in --single-job mode. Worker will terminate after one job.");
     }
     console.log(`[RATE_LIMIT] Configuration: ${RATE_LIMIT.requestsPerMinute} requests/minute, ${RATE_LIMIT.minTimeBetweenJobs}ms between jobs`);
+    console.log(`[RETRY] Configuration: ${RETRY_CONFIG.maxRetries} max retries, ${RETRY_CONFIG.retryDelayMs}ms base delay, exponential backoff: ${RETRY_CONFIG.exponentialBackoff}`);
 
     // In single-job mode, just run once. Otherwise, loop forever.
     if (singleJobMode) {
