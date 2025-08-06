@@ -38,7 +38,7 @@ interface JobBoard {
 function buildPromptWithContext(job: JobBoard, promptContent: string, inputContext: string | null): string {
   // Add the job's identity to the top of the prompt
   let finalPrompt = `You are executing as job "${job.job_name}" (Definition ID: ${job.job_definition_id}).\n\n---\n\n${promptContent}`;
-  
+
   if (inputContext) {
     try {
       const contextData = JSON.parse(inputContext);
@@ -53,8 +53,37 @@ function buildPromptWithContext(job: JobBoard, promptContent: string, inputConte
       finalPrompt += `\n\nAdditional Context:\n${inputContext}`;
     }
   }
-  
+
   return finalPrompt;
+}
+
+async function resolveThreadId(job: JobBoard): Promise<string | null> {
+    if (!job.input_context) {
+        return null;
+    }
+
+    try {
+        const contextData = JSON.parse(job.input_context);
+
+        // The context is often the triggering record itself (e.g., an artifact).
+        if (contextData && contextData.thread_id) {
+            console.log(`[CONTEXT] Resolved threadId '${contextData.thread_id}' from job ${job.id}'s input_context.`);
+            return contextData.thread_id;
+        }
+
+        // If the triggering record was a thread itself, its ID is the thread_id.
+        if (contextData && contextData.objective && contextData.id) {
+             console.log(`[CONTEXT] Resolved threadId '${contextData.id}' from job ${job.id}'s input_context (triggering record was a thread).`);
+            return contextData.id;
+        }
+
+    } catch (error) {
+        console.warn(`[CONTEXT] Could not parse input_context for job ${job.id} to find a threadId. Context was not valid JSON.`, job.input_context);
+        return null;
+    }
+
+    console.log(`[CONTEXT] No threadId found in input_context for job ${job.id}.`);
+    return null;
 }
 
 async function collectAndStoreJobReport(context: {
@@ -70,31 +99,31 @@ async function collectAndStoreJobReport(context: {
       worker_id: context.workerId,
       status: context.error ? 'FAILED' : 'COMPLETED',
       duration_ms: Date.now() - context.startTime,
-      
+
       // Telemetry data from agent result
       request_text: context.result?.telemetry?.requestText || null,
       response_text: context.result?.telemetry?.responseText || null,
       final_output: context.result?.output || null,
       total_tokens: context.result?.telemetry?.totalTokens || 0,
       tools_called: context.result?.telemetry?.toolCalls || [],
-      
+
       // Error information - include stderr warnings as error messages
-      error_message: context.error?.message || context.result?.telemetry?.errorMessage || 
-        (context.result?.telemetry?.raw?.stderrWarnings ? 
-          `Job completed with warnings. Check raw_telemetry.stderrWarnings for details: ${context.result.telemetry.raw.stderrWarnings.substring(0, 100)}${context.result.telemetry.raw.stderrWarnings.length > 100 ? '...' : ''}` 
+      error_message: context.error?.message || context.result?.telemetry?.errorMessage ||
+        (context.result?.telemetry?.raw?.stderrWarnings ?
+          `Job completed with warnings. Check raw_telemetry.stderrWarnings for details: ${context.result.telemetry.raw.stderrWarnings.substring(0, 100)}${context.result.telemetry.raw.stderrWarnings.length > 100 ? '...' : ''}`
           : null),
-      error_type: context.error ? categorizeWorkerError(context.error) : 
-        (context.result?.telemetry?.errorType || 
+      error_type: context.error ? categorizeWorkerError(context.error) :
+        (context.result?.telemetry?.errorType ||
           (context.result?.telemetry?.raw?.stderrWarnings ? 'WARNING' : null)),
-      
+
       // Raw telemetry
       raw_telemetry: context.result?.telemetry?.raw || {}
     };
 
     console.log(`Storing job report for ${context.job.id}...`);
-    const reportResult = await createRecord({ 
-      table_name: 'job_reports', 
-      data: report 
+    const reportResult = await createRecord({
+      table_name: 'job_reports',
+      data: report
     });
 
     if (reportResult.content?.[0]?.text?.startsWith('Error')) {
@@ -110,22 +139,22 @@ async function collectAndStoreJobReport(context: {
 
 function categorizeWorkerError(error: any): string {
   if (!error) return 'UNKNOWN';
-  
+
   const message = error.message || String(error);
-  
+
   if (message.includes('Gemini process exited with code')) return 'PROCESS_ERROR';
   if (message.includes('timeout')) return 'TIMEOUT';
   if (message.includes('ENOTFOUND') || message.includes('network')) return 'NETWORK_ERROR';
   if (message.includes('API') || message.includes('401') || message.includes('403')) return 'API_ERROR';
   if (message.includes('tool') || message.includes('function')) return 'TOOL_ERROR';
   if (message.includes('database') || message.includes('SQL')) return 'DATABASE_ERROR';
-  
+
   return 'SYSTEM_ERROR';
 }
 
 function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reason: string } {
     const now = Date.now();
-    
+
     // Check if we're in quota error cooldown
     if (quotaErrorTime > 0 && (now - quotaErrorTime) < RATE_LIMIT.cooldownAfterQuotaError) {
         const remainingCooldown = RATE_LIMIT.cooldownAfterQuotaError - (now - quotaErrorTime);
@@ -135,13 +164,13 @@ function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reas
             reason: `Quota error cooldown active, ${Math.round(remainingCooldown / 1000)}s remaining`
         };
     }
-    
+
     // Reset job count every minute
     if (now - jobCountResetTime > 60000) {
         jobCount = 0;
         jobCountResetTime = now;
     }
-    
+
     // Check requests per minute limit
     if (jobCount >= RATE_LIMIT.requestsPerMinute) {
         const remainingTime = 60000 - (now - jobCountResetTime);
@@ -151,7 +180,7 @@ function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reas
             reason: `Rate limit exceeded (${jobCount}/${RATE_LIMIT.requestsPerMinute} per minute), ${Math.round(remainingTime / 1000)}s remaining`
         };
     }
-    
+
     // Check minimum time between jobs
     const timeSinceLastJob = now - lastJobTime;
     if (lastJobTime > 0 && timeSinceLastJob < RATE_LIMIT.minTimeBetweenJobs) {
@@ -162,7 +191,7 @@ function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reas
             reason: `Minimum time between jobs not met, ${Math.round(waitTime / 1000)}s remaining`
         };
     }
-    
+
     return { shouldWait: false, waitTime: 0, reason: '' };
 }
 
@@ -171,23 +200,23 @@ async function processPendingJobs() {
     if (debugMode) {
         console.log(`[DEBUG] Worker running in debug mode - Gemini CLI will use --debug flag`);
     }
-    
+
     // Check rate limiting before proceeding
     const rateLimitCheck = shouldWaitForRateLimit();
     if (rateLimitCheck.shouldWait) {
         console.log(`[RATE_LIMIT] ${rateLimitCheck.reason}, waiting...`);
         await new Promise(resolve => setTimeout(resolve, rateLimitCheck.waitTime));
     }
-    
+
     const readResult = await readRecords({ table_name: 'job_board', filter: { status: 'PENDING' } });
-    
+
     if (!readResult.content || !readResult.content[0] || readResult.content[0].type !== 'text') {
         console.error('Failed to read jobs from database or unexpected format.', readResult);
         return;
     }
 
     console.log('Raw read result:', readResult.content[0].text);
-    
+
     // Check if the result is an error message
     if (readResult.content[0].text.startsWith('Error')) {
         console.error('Database read error:', readResult.content[0].text);
@@ -205,21 +234,24 @@ async function processPendingJobs() {
 
     // Process one job at a time for now
     const job = jobs[0];
-    
+
+    // Resolve the threadId from the job's context before execution
+    const threadId = await resolveThreadId(job);
+
     console.log(`Attempting to claim job ${job.id}...`);
     const startTime = Date.now();
     let result = null;
     let error = null;
-    
+
     try {
         // Claim the job by setting status to IN_PROGRESS and adding worker_id
-        await updateRecords({ 
-            table_name: 'job_board', 
+        await updateRecords({
+            table_name: 'job_board',
             filter: { id: job.id, status: 'PENDING' }, // Ensure we only update if it's still pending
-            updates: { 
-                status: 'IN_PROGRESS', 
-                worker_id: workerId 
-            } 
+            updates: {
+                status: 'IN_PROGRESS',
+                worker_id: workerId
+            }
         });
         console.log(`Job ${job.id} claimed by worker ${workerId} and status updated to IN_PROGRESS.`);
 
@@ -228,27 +260,28 @@ async function processPendingJobs() {
         const enabledTools = job.enabled_tools;
 
         console.log(`Executing job ${job.id} with model ${model}`);
-        
-        const agent = new Agent(model, enabledTools, { 
-            jobId: job.id, 
-            jobName: job.job_name 
+
+        const agent = new Agent(model, enabledTools, {
+            jobId: job.id,
+            jobName: job.job_name,
+            threadId: threadId
         });
-        
+
         // Update rate limiting counters before job execution
         lastJobTime = Date.now();
         jobCount++;
-        
+
         result = await agent.run(finalPrompt);
         console.log(`Job ${job.id} execution finished.`);
         console.log(`Agent output for job ${job.id}:\n`, result.output);
 
-        const updateResult = await updateRecords({ 
-            table_name: 'job_board', 
-            filter: { id: job.id }, 
+        const updateResult = await updateRecords({
+            table_name: 'job_board',
+            filter: { id: job.id },
             updates: {
-                status: 'COMPLETED', 
+                status: 'COMPLETED',
                 output: result.output
-            } 
+            }
         });
 
         if (updateResult.content[0].text.startsWith('Error')) {
@@ -258,17 +291,17 @@ async function processPendingJobs() {
 
     } catch (err) {
         console.error(`Job ${job.id} failed:`, err);
-        
+
         // Check if this is a quota error and set cooldown
         const errorMessage = String(err.error || err.message || err);
-        if (errorMessage.includes('429') || 
-            errorMessage.includes('quota') || 
+        if (errorMessage.includes('429') ||
+            errorMessage.includes('quota') ||
             errorMessage.includes('resource_exhausted') ||
             errorMessage.includes('too many requests')) {
             console.log(`[RATE_LIMIT] Quota error detected, activating cooldown period`);
             quotaErrorTime = Date.now();
         }
-        
+
         // Handle the special error format from Agent.run() which includes telemetry
         if (err && typeof err === 'object' && 'error' in err && 'telemetry' in err) {
             error = err.error;
@@ -277,15 +310,15 @@ async function processPendingJobs() {
         } else {
             error = err;
         }
-        
+
         const errorMsg = error instanceof Error ? error.message : String(error);
-        const finalUpdate = await updateRecords({ 
-            table_name: 'job_board', 
-            filter: { id: job.id }, 
-            updates: { 
-                status: 'FAILED', 
-                output: JSON.stringify({ error: errorMsg }) 
-            } 
+        const finalUpdate = await updateRecords({
+            table_name: 'job_board',
+            filter: { id: job.id },
+            updates: {
+                status: 'FAILED',
+                output: JSON.stringify({ error: errorMsg })
+            }
         });
         if (finalUpdate.content[0].text.startsWith('Error')) {
             console.error(`CRITICAL: Failed to even update the job to FAILED status. Job ID: ${job.id}. Error: ${finalUpdate.content[0].text}`);
@@ -311,20 +344,20 @@ async function processPendingJobs() {
 async function main() {
     console.log("Starting worker...");
     console.log(`[RATE_LIMIT] Configuration: ${RATE_LIMIT.requestsPerMinute} requests/minute, ${RATE_LIMIT.minTimeBetweenJobs}ms between jobs`);
-    
+
     // Continuous processing loop
     while (true) {
         try {
             await processPendingJobs();
-            
+
             // Wait a bit before checking for more jobs
             const nextCheckDelay = 5000; // 5 seconds between checks when no jobs
             console.log(`No jobs found, waiting ${nextCheckDelay}ms before next check...`);
             await new Promise(resolve => setTimeout(resolve, nextCheckDelay));
-            
+
         } catch (error) {
             console.error("Worker encountered an error:", error);
-            
+
             // Don't exit on errors, just wait and try again
             console.log("Waiting 30 seconds before retrying...");
             await new Promise(resolve => setTimeout(resolve, 30000));

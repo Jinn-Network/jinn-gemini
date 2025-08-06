@@ -408,34 +408,11 @@ A complete set of intelligence network tools has been implemented, providing age
 - **Universal Data Access:** Generic tools for any table or data structure
 - **Knowledge Graph Building:** Linked memories create interconnected knowledge networks
 
-## 5. Enable Passing Messages Between Agents
+## 5. Unify Artifacts and Messages into Posts System
 
-**Goal:** Implement a robust messaging system that allows agents to communicate directly with each other for coordination and collaboration.
+**Status:** 📋 **PLANNED** - See detailed specification in `docs/planning/2025_08_06_refactor_spec_posts.md`
 
-**Background:**
-Current agent communication is primarily through the job board system. Direct agent-to-agent messaging would enable more dynamic and responsive collaboration.
-
-**Proposed Implementation:**
-
-1.  **Messaging Infrastructure:**
-    *   Design a message broker system for agent communication
-    *   Implement message routing and delivery mechanisms
-    *   Create message persistence and reliability features
-
-2.  **Message Types and Protocols:**
-    *   Define standard message formats for different types of communication
-    *   Implement request-response patterns for synchronous communication
-    *   Add support for asynchronous messaging and event-driven communication
-
-3.  **Security and Control:**
-    *   Implement message authentication and authorization
-    *   Add rate limiting and spam prevention
-    *   Create monitoring and logging for message traffic
-
-**Benefits:**
-*   **Real-time Collaboration:** Agents can coordinate and respond to each other in real-time
-*   **Flexible Communication:** Support for various communication patterns and use cases
-*   **Improved Efficiency:** Direct messaging reduces latency compared to job board communication
+**Goal:** Merge `artifacts` and `messages` tables into a unified `posts` table with enhanced agent communication and inbox context awareness.
 
 ## 6. Dynamic Tool Discovery in `list-tools` (COMPLETED)
 
@@ -552,75 +529,8 @@ The job definition context has been successfully implemented in the worker syste
 - **Enhanced Prompting:** Structured context presentation for better agent understanding
 - **Identity Persistence:** Job identity maintained throughout the entire execution session
 
-### 7.3 Enum Artifact Status and Auto-Update
 
-**Status:** 📋 **PLANNED** - Design phase needed.
-
-**Goal:** Convert artifact status to a proper enum and implement automatic status updates when artifacts are read.
-
-**Background:**
-Currently, artifact status uses free-form text with known values like 'RAW' and 'PROCESSED'. This should be formalized as an enum for data integrity and consistency.
-
-**Implementation Plan:**
-
-1. **Create Artifact Status Enum:**
-   ```sql
-   CREATE TYPE artifact_status AS ENUM (
-     'RAW',           -- Initial state
-     'PROCESSED',     -- Has been processed by a job
-     'ARCHIVED',      -- No longer active
-     'ERROR'          -- Failed processing
-   );
-   ```
-
-2. **Update Artifacts Table:**
-   ```sql
-   ALTER TABLE artifacts 
-   ALTER COLUMN status TYPE artifact_status 
-   USING status::artifact_status;
-   ```
-
-3. **Auto-Update on Read:**
-   - Implement trigger or application logic to update status when artifacts are read
-   - Consider adding `last_read_at` timestamp
-   - Potentially implement status progression logic (RAW → PROCESSED → ARCHIVED)
-
-**Benefits:**
-*   **Data Integrity:** Prevents invalid status values
-*   **Consistent State:** Standardized status management
-*   **Usage Tracking:** Automatic tracking of artifact consumption
-
-### 7.4 Link Job Reports in getDetails
-
-**Status:** 📋 **PLANNED** - Implementation needed.
-
-**Goal:** When `getDetails` retrieves a job from the job board, it should also return the ID of the corresponding job report.
-
-**Background:**
-Currently, `getDetails` only returns the job record itself. Adding the job report ID would provide immediate access to detailed execution information for debugging and analysis.
-
-**Implementation Plan:**
-
-1. **Enhanced Job Details Response:**
-   ```typescript
-   interface JobDetails {
-     // ... existing job fields
-     job_report_id?: string;  // Link to detailed execution report
-   }
-   ```
-
-2. **Update getDetails Tool:**
-   - Modify the tool to include `job_report_id` when fetching from `job_board`
-   - Ensure the field is populated in the response
-   - Maintain backward compatibility
-
-**Benefits:**
-*   **Immediate Debugging:** Direct access to execution reports from job details
-*   **Better Tooling:** Enhanced debugging capabilities for agents
-*   **Improved Workflow:** Streamlined access to execution analytics
-
-
-### 7.5 Improve Metacog Job Naming
+### 7.3 Improve Metacog Job Naming
 
 **Status:** 📋 **PLANNED** - Design phase needed.
 
@@ -657,7 +567,7 @@ Current metacog jobs use names like `Metacog.GenesysMetacog` which are functiona
 *   **Improved Debugging:** Clearer identification in logs and reports
 *   **Enhanced Documentation:** Self-documenting job names
 
-### 7.7 Add on_new_job_definition Trigger
+### 7.4 Add on_new_job_definition and on_job_definition_update Trigger
 
 **Status:** 📋 **PLANNED** - Design phase needed.
 

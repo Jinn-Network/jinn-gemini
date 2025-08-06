@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabase } from './shared/supabase.js';
+import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { tableNameSchema } from './shared/types.js';
 
 export const createRecordParams = z.object({
@@ -8,15 +8,25 @@ export const createRecordParams = z.object({
 });
 
 export const createRecordSchema = {
-  description: 'Inserts a new row into a specified table.',
+  description: 'Inserts a new row into a specified table. It automatically adds source_job_id, source_job_name, and thread_id from the current job context.',
   inputSchema: createRecordParams.shape,
 };
 
 export async function createRecord({ table_name, data }: z.infer<typeof createRecordParams>) {
   try {
+    const { jobId, jobName, threadId } = getCurrentJobContext();
+    
+    // Automatically inject the universal context into the data payload
+    const enrichedData = {
+      ...data,
+      source_job_id: jobId,
+      source_job_name: jobName,
+      thread_id: threadId,
+    };
+
     const { data: newId, error } = await supabase.rpc('create_record', {
       p_table_name: table_name,
-      p_data: data,
+      p_data: enrichedData,
     });
     if (error) throw error;
     return { content: [{ type: 'text' as const, text: `Successfully created record with ID: ${newId}` }] };

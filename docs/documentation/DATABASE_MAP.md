@@ -64,6 +64,9 @@ This document provides a comprehensive map of the database structure for the Int
 - `updated_at` (TIMESTAMPTZ) - Last modification timestamp
 - `approved_agents` (JSONB) - List of agents allowed to execute
 - `prompt_ref` (TEXT, NOT NULL) - Reference to prompt in format "name@version"
+- `source_job_id` (UUID, FK, nullable) - The job that created this definition
+- `source_job_name` (TEXT, nullable) - The name of the job that created this definition
+- `thread_id` (UUID, FK, nullable) - The thread associated with the creation of this definition
 
 **Triggers**:
 - `job_definitions_updated_at_trigger` - Auto-updates `updated_at`
@@ -87,6 +90,9 @@ This document provides a comprehensive map of the database structure for the Int
 - `dispatch_quota` (INT) - Maximum concurrent jobs (default: 5)
 - `processed_at` (TIMESTAMPTZ) - For one-off schedules
 - `job_name` (TEXT, NOT NULL) - Cached job name for performance
+- `source_job_id` (UUID, FK, nullable) - The job that created this schedule
+- `source_job_name` (TEXT, nullable) - The name of the job that created this schedule
+- `thread_id` (UUID, FK, nullable) - The thread associated with the creation of this schedule
 
 **Triggers**:
 - `job_schedules_updated_at_trigger` - Auto-updates `updated_at`
@@ -107,6 +113,9 @@ This document provides a comprehensive map of the database structure for the Int
 - `is_active` (BOOLEAN, DEFAULT true) - Whether prompt is active
 - `created_at` (TIMESTAMPTZ) - Creation timestamp
 - `updated_at` (TIMESTAMPTZ) - Last modification timestamp
+- `source_job_id` (UUID, FK, nullable) - The job that created this prompt
+- `source_job_name` (TEXT, nullable) - The name of the job that created this prompt
+- `thread_id` (UUID, FK, nullable) - The thread associated with the creation of this prompt
 
 **Triggers**:
 - `handle_updated_at` - Auto-updates `updated_at` on modifications
@@ -126,7 +135,8 @@ This document provides a comprehensive map of the database structure for the Int
 - `created_at` (TIMESTAMPTZ) - Creation timestamp
 - `updated_at` (TIMESTAMPTZ) - Last modification timestamp
 - `dispatcher_processed_at` (TIMESTAMPTZ) - Trigger processing timestamp
-- `created_by_job_id` (UUID, FK) - References job_board table (job that created this thread)
+- `source_job_id` (UUID, FK, nullable) - The job that created or last updated this thread
+- `source_job_name` (TEXT, nullable) - The name of the job that created or last updated this thread
 
 **Triggers**:
 - `on_threads_update` - Auto-updates `updated_at`
@@ -146,9 +156,9 @@ This document provides a comprehensive map of the database structure for the Int
 - `status` (TEXT, DEFAULT 'RAW') - Processing status
 - `topic` (TEXT) - Artifact topic/category
 - `dispatcher_processed_at` (TIMESTAMPTZ) - Trigger processing timestamp
-- `source` (TEXT) - Source of the artifact
-- `created_by_job_id` (UUID, FK) - References job_board table (job that created this artifact)
 - `updated_at` (TIMESTAMPTZ) - Last modification timestamp
+- `source_job_id` (UUID, FK, nullable) - The job that created or last updated this artifact
+- `source_job_name` (TEXT, nullable) - The name of the job that created or last updated this artifact
 
 **Triggers**:
 - `artifacts_touch_updated_at` - Auto-updates `updated_at`
@@ -167,6 +177,9 @@ This document provides a comprehensive map of the database structure for the Int
 - `created_at` (TIMESTAMPTZ) - Creation timestamp
 - `last_accessed_at` (TIMESTAMPTZ) - Last access timestamp
 - `metadata` (JSONB) - Additional metadata for classification
+- `source_job_id` (UUID, FK, nullable) - The job that created this memory
+- `source_job_name` (TEXT, nullable) - The name of the job that created this memory
+- `thread_id` (UUID, FK, nullable) - The thread associated with the creation of this memory
 
 **Triggers**:
 - `memory_delete_trigger` - Logs deletions to history table
@@ -179,11 +192,12 @@ This document provides a comprehensive map of the database structure for the Int
 **Columns**:
 - `id` (UUID, PK) - Message ID
 - `created_at` (TIMESTAMPTZ) - Creation timestamp
-- `from_agent` (TEXT, NOT NULL) - Sending agent identifier
 - `to_agent` (TEXT, NOT NULL) - Receiving agent identifier
 - `content` (TEXT, NOT NULL) - Message content
 - `metadata` (JSONB) - Additional message metadata
 - `status` (TEXT, DEFAULT 'pending') - Message status
+- `source_job_id` (UUID, FK, nullable) - The job that created this message
+- `source_job_name` (TEXT, nullable) - The name of the job that created this message
 
 **Triggers**: None
 
@@ -322,9 +336,18 @@ This document provides a comprehensive map of the database structure for the Int
 - `job_board.job_report_id` → `job_reports.id`
 - `job_reports.job_id` → `job_board.id`
 - `artifacts.thread_id` → `threads.id`
-- `artifacts.created_by_job_id` → `job_board.id`
 - `threads.parent_thread_id` → `threads.id` (self-reference)
-- `threads.created_by_job_id` → `job_board.id`
+- `artifacts.source_job_id` → `job_board.id`
+- `threads.source_job_id` → `job_board.id`
+- `messages.source_job_id` → `job_board.id`
+- `memories.source_job_id` → `job_board.id`
+- `job_definitions.source_job_id` → `job_board.id`
+- `job_schedules.source_job_id` → `job_board.id`
+- `prompt_library.source_job_id` → `job_board.id`
+- `memories.thread_id` → `threads.id`
+- `job_definitions.thread_id` → `threads.id`
+- `job_schedules.thread_id` → `threads.id`
+- `prompt_library.thread_id` → `threads.id`
 
 ### **Referential Integrity**
 - All foreign key relationships are enforced
@@ -406,5 +429,5 @@ The CRUD functions restrict access to these tables:
 
 ---
 
-*Last Updated: 2025-01-31*
+*Last Updated: 2025-08-07*
 *Database Version: PostgreSQL 15.8 with pgvector extension*

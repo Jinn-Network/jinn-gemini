@@ -41,7 +41,7 @@ async function fetchData(startTime: string, jobName?: string, limits = { jobs: 5
         .limit(limits.jobs);
         
     const artifactsRes = await supabase.from('artifacts')
-        .select('id, topic, status, source, thread_id, content, created_at, updated_at')
+        .select('id, topic, status, source_job_name, thread_id, content, created_at, updated_at')
         .gte('created_at', startTime)
         .order('created_at', { ascending: false })
         .limit(limits.artifacts);

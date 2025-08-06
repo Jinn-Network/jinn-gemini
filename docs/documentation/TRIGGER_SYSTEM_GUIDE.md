@@ -32,7 +32,7 @@ The marketplace intelligence system uses an event-driven architecture where data
 ### Correct Format ✅
 ```json
 {"topic": "strategic_hypothesis_generation"}
-{"source": "analyst"}  
+{"source_job_name": "analyst"}  
 {"status": "PROCESSED"}
 {"old_status": "PENDING", "new_status": "COMPLETED"}
 ```
@@ -47,8 +47,8 @@ The marketplace intelligence system uses an event-driven architecture where data
 
 ### Metacognitive Analysis Chain
 
-1. **Analyst** (manual start) → creates artifact with `source: "analyst"`
-2. **Synthesizer** → triggered by `{"source": "analyst"}` → creates artifact with `topic: "strategic_hypothesis_generation"`
+1. **Analyst** (manual start) → creates artifact with `source_job_name: "analyst"`
+2. **Synthesizer** → triggered by `{"source_job_name": "analyst"}` → creates artifact with `topic: "strategic_hypothesis_generation"`
 3. **Proposer** → triggered by `{"topic": "strategic_hypothesis_generation"}` → creates artifact with `topic: "strategic_action_proposal"`
 4. **Decider** → triggered by `{"topic": "strategic_action_proposal"}` → creates decision artifact
 
@@ -88,7 +88,7 @@ INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
 VALUES (
     'uuid-of-job-definition', 
     'on_new_artifact',
-    '{"source": "market_analyzer"}'
+    '{"source_job_name": "market_analyzer"}'
 );
 ```
 
@@ -98,7 +98,7 @@ INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
 VALUES (
     'uuid-of-job-definition',
     'on_new_artifact', 
-    '{"topic": "analysis_complete", "source": "researcher"}'
+    '{"topic": "analysis_complete", "source_job_name": "researcher"}'
 );
 ```
 
@@ -144,7 +144,8 @@ VALUES (
 - `content` (text)
 - `status` (text)
 - `topic` (text)
-- `source` (text)
+- `source_job_id` (uuid)
+- `source_job_name` (text)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
 
@@ -219,5 +220,5 @@ The system was updated to use direct field matching instead of the `match_condit
 
 **Key Changes Made**:
 - `universal_job_dispatcher` now uses `trigger_filter` directly instead of `trigger_filter->match_conditions`
-- Field names updated: `artifact_topic` → `topic`
+- Field names updated: `artifact_topic` → `topic`, `source` → `source_job_name`
 - Filter structure simplified: removed nested JSON wrappers

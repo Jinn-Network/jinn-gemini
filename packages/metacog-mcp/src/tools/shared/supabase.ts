@@ -33,19 +33,21 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 interface JobContext {
   jobId: string | null;
   jobName: string | null;
+  threadId: string | null;
 }
 
 let currentJobContext: JobContext = {
   jobId: null,
-  jobName: null
+  jobName: null,
+  threadId: null,
 };
 
-export function setJobContext(jobId: string, jobName: string) {
-  currentJobContext = { jobId, jobName };
+export function setJobContext(jobId: string | null, jobName: string | null, threadId: string | null) {
+  currentJobContext = { jobId, jobName, threadId };
 }
 
 export function clearJobContext() {
-  currentJobContext = { jobId: null, jobName: null };
+  currentJobContext = { jobId: null, jobName: null, threadId: null };
 }
 
 export function getCurrentJobContext(): JobContext {

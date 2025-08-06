@@ -47,9 +47,9 @@ export class Agent {
     private model: string;
     private enabledTools: string[];
     private settingsPath: string;
-    private jobContext?: { jobId: string; jobName: string };
+    private jobContext?: { jobId: string; jobName: string; threadId: string | null };
 
-    constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobName: string }) {
+    constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobName: string; threadId: string | null }) {
         this.model = model;
         this.enabledTools = enabledTools || [];
         this.jobContext = jobContext;
@@ -64,15 +64,15 @@ export class Agent {
             // Set job context for tools to access
             if (this.jobContext) {
                 const { setJobContext } = await import('../packages/metacog-mcp/src/tools/shared/supabase.js');
-                setJobContext(this.jobContext.jobId, this.jobContext.jobName);
+                setJobContext(this.jobContext.jobId, this.jobContext.jobName, this.jobContext.threadId);
             }
-            
+
             this.generateJobSpecificSettings();
             // Small delay to allow OpenTelemetry resource attributes to settle
             await new Promise(resolve => setTimeout(resolve, 100));
             const result = await this.runGeminiWithTelemetry(prompt);
             const telemetry = await this.parseTelemetryFromFile(result.telemetryFile, result.output, startTime);
-            
+
             // Check for stderr warnings even on successful runs
             if (result.stderr && result.stderr.trim()) {
                 console.log(`[TELEMETRY] Warning-level errors detected in stderr: ${result.stderr.substring(0, 200)}...`);
@@ -80,7 +80,7 @@ export class Agent {
                 telemetry.raw = telemetry.raw || {};
                 telemetry.raw.stderrWarnings = result.stderr;
             }
-            
+
             return { output: this.extractFinalOutput(result.output), telemetry };
         } catch (error) {
             const telemetry: JobTelemetry = {
@@ -119,11 +119,11 @@ export class Agent {
             args.push('--telemetry-target', 'local');
             args.push('--telemetry-otlp-endpoint', ''); // Empty endpoint to prevent connection attempts
             args.push('--telemetry-log-prompts');
-            
+
             // Write telemetry to a temporary file for local parsing
             const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
             args.push('--telemetry-outfile', telemetryFile);
-            
+
             console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
 
             console.log(`Spawning Gemini CLI with model: ${this.model} and prompt: "${prompt.substring(0, 100)}..."`);
@@ -178,25 +178,25 @@ ${stderr}`));
             if (!templateSettings.mcpServers) {
                 throw new Error('No MCP servers configured in settings.template.json');
             }
-            
+
             const serverName = templateSettings.mcpServers.metacog ? 'metacog' : Object.keys(templateSettings.mcpServers)[0];
-            
+
             if (!serverName) {
                 throw new Error('No MCP servers found in template configuration');
             }
-            
+
             const mcpServer = templateSettings.mcpServers[serverName];
             if (!mcpServer) {
                 throw new Error(`MCP server '${serverName}' not found in template configuration`);
             }
-            
+
             // Inject the job-specific tools (includes both MCP tools and native web tools)
             mcpServer.includeTools = this.enabledTools;
-            
+
             // Exclude all native tools except the ones in enabledTools
             const allNativeTools = [
                 'list_directory',
-                'read_file', 
+                'read_file',
                 'write_file',
                 'search_file_content',
                 'glob',
@@ -207,20 +207,20 @@ ${stderr}`));
                 'web_fetch',
                 'google_web_search'
             ];
-            
+
             // Only exclude native tools that are NOT in the enabledTools array
             const nativeToolsToExclude = allNativeTools.filter(tool => !this.enabledTools.includes(tool));
             templateSettings.excludeTools = nativeToolsToExclude;
-            
+
             // Ensure the directory exists before writing the file
             const settingsDir = dirname(this.settingsPath);
             mkdirSync(settingsDir, { recursive: true });
-            
+
             writeFileSync(this.settingsPath, JSON.stringify(templateSettings, null, 2));
-            
+
             console.log(`Generated job-specific settings for server '${serverName}' with tools: ${this.enabledTools.join(', ')}`);
             console.log(`Excluded native tools: ${nativeToolsToExclude.join(', ')}`);
-            
+
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             console.error('Failed to generate job-specific settings:', errorMsg);
@@ -255,17 +255,17 @@ ${stderr}`));
         try {
             // Parse structured telemetry using key-value extraction
             const telemetryData = this.parseStructuredTelemetry(output);
-            
+
             // Extract token count - look for metrics with Value: pattern
             telemetry.totalTokens = telemetryData.totalTokens || 0;
-            
+
             // Extract tool calls from structured log entries
             telemetry.toolCalls = telemetryData.toolCalls || [];
-            
+
             // Extract request/response text if available
             telemetry.requestText = telemetryData.requestText;
             telemetry.responseText = telemetryData.responseText;
-            
+
             // Store structured metadata
             telemetry.raw = {
                 sessionId: telemetryData.sessionId,
@@ -292,17 +292,17 @@ ${stderr}`));
                 console.log(`[TELEMETRY] File content length: ${telemetryContent.length} characters`);
                 console.log(`[TELEMETRY] First 1000 chars: ${telemetryContent.substring(0, 1000)}`);
                 console.log(`[TELEMETRY] Last 500 chars: ${telemetryContent.substring(Math.max(0, telemetryContent.length - 500))}`);
-                
+
                 const result = this.parseTelemetryFromContent(telemetryContent, startTime);
-                
+
                 // Keep telemetry file for inspection (will be overwritten by next job)
                 console.log(`[TELEMETRY] Telemetry file preserved for inspection: ${telemetryFile}`);
-                
+
                 return result;
             }
         } catch (error) {
             console.warn(`[TELEMETRY] Failed to read telemetry file ${telemetryFile}:`, error.message);
-            
+
             // Check if file exists
             try {
                 const fs = await import('fs');
@@ -316,7 +316,7 @@ ${stderr}`));
                 console.warn(`[TELEMETRY] Failed to check file stats:`, fsError.message);
             }
         }
-        
+
         // Fallback to parsing from output
         console.log(`[TELEMETRY] Falling back to output parsing`);
         return this.parseTelemetryFromOutput(output, startTime);
@@ -332,21 +332,21 @@ ${stderr}`));
 
         try {
             console.log(`[TELEMETRY] Parsing telemetry content (${content.length} chars)...`);
-            
+
             // Parse newline-delimited JSON objects
             const telemetryEvents = [];
             let currentObject = '';
             let braceCount = 0;
-            
+
             for (let i = 0; i < content.length; i++) {
                 const char = content[i];
                 currentObject += char;
-                
+
                 if (char === '{') {
                     braceCount++;
                 } else if (char === '}') {
                     braceCount--;
-                    
+
                     // When braceCount reaches 0, we have a complete JSON object
                     if (braceCount === 0) {
                         try {
@@ -359,21 +359,21 @@ ${stderr}`));
                     }
                 }
             }
-            
+
             console.log(`[TELEMETRY] Successfully parsed ${telemetryEvents.length} telemetry events`);
-            
+
             // Process each telemetry event
             for (const event of telemetryEvents) {
                 if (!event || !event.attributes) continue;
-                
+
                 const attrs = event.attributes;
                 const eventName = attrs['event.name'];
-                
+
                 // Extract session ID (from any event)
                 if (attrs['session.id'] && !telemetry.raw.sessionId) {
                     telemetry.raw.sessionId = attrs['session.id'];
                 }
-                
+
                 // Process different event types
                 switch (eventName) {
                     case 'gemini_cli.user_prompt':
@@ -385,7 +385,7 @@ ${stderr}`));
                             telemetry.raw.promptLength = attrs['prompt_length'];
                         }
                         break;
-                        
+
                     case 'gemini_cli.api_request':
                         if (attrs['request_text']) {
                             if (!telemetry.requestText) telemetry.requestText = [];
@@ -395,7 +395,7 @@ ${stderr}`));
                             telemetry.raw.model = attrs['model'];
                         }
                         break;
-                        
+
                     case 'gemini_cli.api_response':
                         // Extract token counts - this is the key data we need!
                         if (attrs['total_token_count'] && typeof attrs['total_token_count'] === 'number') {
@@ -416,7 +416,7 @@ ${stderr}`));
                             telemetry.responseText.push(attrs['response_text']);
                         }
                         break;
-                        
+
                     case 'gemini_cli.tool_call':
                     case 'gemini_cli.function_call':
                         // Extract function/tool call information
@@ -430,13 +430,13 @@ ${stderr}`));
                         break;
                 }
             }
-            
+
             // Store summary in raw telemetry
             telemetry.raw.eventCount = telemetryEvents.length;
             telemetry.raw.events = telemetryEvents.map(e => e.attributes?.['event.name']).filter(Boolean);
-            
+
             console.log(`[TELEMETRY] Final parsing results - tokens: ${telemetry.totalTokens}, tools: ${telemetry.toolCalls.length}, session: ${telemetry.raw.sessionId}`);
-            
+
         } catch (error) {
             console.error(`[TELEMETRY] Error parsing telemetry content:`, error);
             telemetry.errorMessage = `Telemetry file parsing failed: ${error.message}`;
@@ -454,10 +454,10 @@ ${stderr}`));
 
         // Split into lines for structured parsing
         const lines = output.split('\n');
-        
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
-            
+
             // Extract key-value pairs using simple string parsing
             if (line.includes('-> session.id: Str(')) {
                 result.sessionId = this.extractValue(line, 'Str');
@@ -503,10 +503,10 @@ ${stderr}`));
     }
 
     private extractValue(line: string, type: 'Str' | 'Int'): string | null {
-        const pattern = type === 'Str' 
-            ? /Str\(([^)]+)\)/ 
+        const pattern = type === 'Str'
+            ? /Str\(([^)]+)\)/
             : /Int\(([^)]+)\)/;
-        
+
         const match = line.match(pattern);
         return match ? match[1] : null;
     }
@@ -541,7 +541,7 @@ ${stderr}`));
         // Extract the final user-facing output, excluding telemetry data
         const lines = output.split('\n');
         const finalOutput = [];
-        
+
         for (const line of lines) {
             // Skip telemetry lines
             if (line.includes('-> ') || line.includes('Trace ID:') || line.includes('otel-collector')) {
@@ -553,21 +553,21 @@ ${stderr}`));
             }
             finalOutput.push(line);
         }
-        
+
         return finalOutput.join('\n').trim();
     }
 
     private categorizeError(error: any): string {
         if (!error) return 'UNKNOWN';
-        
+
         const message = error.message || String(error);
-        
+
         if (message.includes('exited with code')) return 'PROCESS_ERROR';
         if (message.includes('timeout')) return 'TIMEOUT';
         if (message.includes('ENOTFOUND') || message.includes('network')) return 'NETWORK_ERROR';
         if (message.includes('API') || message.includes('401') || message.includes('403')) return 'API_ERROR';
         if (message.includes('tool') || message.includes('function')) return 'TOOL_ERROR';
-        
+
         return 'SYSTEM_ERROR';
     }
 }

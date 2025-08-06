@@ -1,4 +1,4 @@
-import { supabase } from './shared/supabase.js';
+import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { z } from 'zod';
 import { OpenAI } from 'openai';
 import { linkTypeSchema } from './shared/types.js';
@@ -14,7 +14,7 @@ function getOpenAIClient() {
 
 export const createMemoryParams = z.object({
     content: z.string().describe('The textual content of the memory to be stored and embedded.'),
-    metadata: z.record(z.any()).optional().describe('A JSON object for classifying the memory (e.g., source_job_id, memory_type).'),
+    custom_metadata: z.record(z.any()).optional().describe('Optional. Any additional, custom, searchable metadata to attach to the memory.'),
     linked_memory_id: z.string().uuid().optional().describe('The ID of a single, existing memory that this new one is related to.'),
     link_type: linkTypeSchema.optional().describe('Describes the relationship between this new memory and the linked one.'),
 });
@@ -22,32 +22,46 @@ export const createMemoryParams = z.object({
 export type CreateMemoryParams = z.infer<typeof createMemoryParams>;
 
 export const createMemorySchema = {
-    description: 'Creates a new, structured memory, generating a vector embedding for its content. Can link memories to build a knowledge graph.',
+    description: 'Creates a new, structured memory, generating a vector embedding. It automatically tags the memory with the current job and thread context.',
     inputSchema: createMemoryParams.shape,
 };
 
 export async function createMemory(params: CreateMemoryParams) {
-    const { content, metadata, linked_memory_id, link_type } = createMemoryParams.parse(params);
+    const { content, custom_metadata, linked_memory_id, link_type } = createMemoryParams.parse(params);
 
     if (linked_memory_id && !link_type) {
         throw new Error("`link_type` is required when `linked_memory_id` is provided.");
     }
 
     try {
+        const { jobId, jobName, threadId } = getCurrentJobContext();
+
         const embeddingResponse = await getOpenAIClient().embeddings.create({
             model: 'text-embedding-3-small',
             input: content,
         });
         const embedding = embeddingResponse.data[0].embedding;
 
+        // Construct the metadata object, merging automatic context with custom metadata
+        const final_metadata = {
+            ...custom_metadata,
+            source_job_id: jobId ?? null,
+            source_job_name: jobName ?? null,
+            thread_id: threadId ?? null,
+        };
+
         const { data, error } = await supabase
             .from('memories')
             .insert({
                 content,
                 embedding: `[${embedding.join(',')}]`,
-                metadata,
+                metadata: final_metadata,
                 linked_memory_id,
                 link_type,
+                // Also insert the context into the top-level columns for direct querying
+                source_job_id: jobId ?? null,
+                source_job_name: jobName ?? null,
+                thread_id: threadId ?? null,
             })
             .select('id')
             .single();

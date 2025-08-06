@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabase } from './shared/supabase.js';
+import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { tableNameSchema } from './shared/types.js';
 
 export const updateRecordsParams = z.object({
@@ -9,16 +9,27 @@ export const updateRecordsParams = z.object({
 });
 
 export const updateRecordsSchema = {
-  description: 'Modifies existing rows in a table that match a filter.',
+  description: 'Modifies existing rows in a table that match a filter. It automatically updates source_job_id and source_job_name.',
   inputSchema: updateRecordsParams.shape,
 };
 
 export async function updateRecords({ table_name, filter, updates }: z.infer<typeof updateRecordsParams>) {
   try {
+    const { jobId, jobName } = getCurrentJobContext();
+
+    // Automatically inject the universal context into the updates payload
+    // We don't update thread_id here, as an update shouldn't change the thread a record belongs to.
+    const enrichedUpdates = {
+      ...updates,
+      source_job_id: jobId,
+      source_job_name: jobName,
+      updated_at: new Date().toISOString(), // Also force an update to the updated_at timestamp
+    };
+
     const { data: updatedCount, error } = await supabase.rpc('update_records', {
       p_table_name: table_name,
       p_filter: filter,
-      p_updates: updates,
+      p_updates: enrichedUpdates,
     });
     if (error) throw error;
     return { content: [{ type: 'text' as const, text: `Successfully updated ${updatedCount} record(s).` }] };

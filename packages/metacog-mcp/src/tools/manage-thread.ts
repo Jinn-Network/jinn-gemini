@@ -3,8 +3,8 @@ import { z } from 'zod';
 
 export const manageThreadParams = z.object({
     thread_id: z.string().optional().describe('The ID of the thread to update. If omitted, a new thread is created.'),
-    title: z.string().optional().describe('A descriptive title for the new thread. Required for creation.'),
-    objective: z.string().optional().describe('The specific goal of the new thread. Required for creation.'),
+    title: z.string().optional().describe('A descriptive title for the thread. Required for creation.'),
+    objective: z.string().optional().describe('The specific goal of the thread. Required for creation.'),
     parent_thread_id: z.string().optional().describe('The ID of a parent thread to create a sub-task.'),
     status: z.string().optional().describe("The new status (e.g., 'OPEN', 'COMPLETED'). On update, omission leaves it unchanged."),
     summary: z.record(z.any()).optional().describe("A summary of the thread's results. On update, omission leaves it unchanged."),
@@ -13,12 +13,13 @@ export const manageThreadParams = z.object({
 export type ManageThreadParams = z.infer<typeof manageThreadParams>;
 
 export const manageThreadSchema = {
-    description: 'A unified tool to create or update threads. Returns the full state of the thread upon completion.',
+    description: 'A unified tool to create or update threads. Automatically stamps the thread with the creating or updating job context. Returns the full state of the thread upon completion.',
     inputSchema: manageThreadParams.shape,
 };
 
 export async function manageThread(params: ManageThreadParams) {
     const { thread_id, title, objective, parent_thread_id, status, summary } = manageThreadParams.parse(params);
+    const { jobId, jobName } = getCurrentJobContext();
 
     try {
         if (thread_id) {
@@ -33,6 +34,11 @@ export async function manageThread(params: ManageThreadParams) {
             if (Object.keys(updates).length === 0) {
                 throw new Error("Nothing to update. Please provide at least one field to modify.");
             }
+
+            // Inject the context of the job performing the update
+            updates.source_job_id = jobId ?? null;
+            updates.source_job_name = jobName ?? null;
+            updates.updated_at = new Date().toISOString();
 
             const { data, error } = await supabase
                 .from('threads')
@@ -49,16 +55,15 @@ export async function manageThread(params: ManageThreadParams) {
             if (!title || !objective) {
                 throw new Error("`title` and `objective` are required to create a new thread.");
             }
-
-            const jobContext = getCurrentJobContext();
             
             const newThread: any = { 
                 title, 
                 objective, 
                 parent_thread_id, 
-                status, 
+                status: status || 'OPEN', 
                 summary,
-                created_by_job_id: jobContext.jobId || null,
+                source_job_id: jobId ?? null,
+                source_job_name: jobName ?? null,
             };
 
             const { data, error } = await supabase
