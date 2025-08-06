@@ -8,7 +8,7 @@ export const createRecordParams = z.object({
 });
 
 export const createRecordSchema = {
-  description: 'Inserts a new row into a specified table. It automatically adds source_job_id, source_job_name, and thread_id from the current job context.',
+  description: 'Inserts a new row into a specified table. It automatically adds source_job_id, source_job_name, and thread_id from the current job context. Note: system_state table is read-only and cannot be modified.',
   inputSchema: createRecordParams.shape,
 };
 

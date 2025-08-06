@@ -210,8 +210,11 @@ export class Agent {
                 'google_web_search'
             ];
 
-            // Only exclude native tools that are NOT in the enabledTools array
-            const nativeToolsToExclude = allNativeTools.filter(tool => !this.enabledTools.includes(tool));
+            // When enabledTools is empty, exclude ALL native tools
+            // Otherwise, only exclude native tools that are NOT in the enabledTools array
+            const nativeToolsToExclude = this.enabledTools.length === 0 
+                ? allNativeTools  // Exclude all native tools when no tools enabled
+                : allNativeTools.filter(tool => !this.enabledTools.includes(tool));
             templateSettings.excludeTools = nativeToolsToExclude;
 
             // Ensure the directory exists before writing the file

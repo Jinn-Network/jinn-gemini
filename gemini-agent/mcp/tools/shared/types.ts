@@ -11,7 +11,7 @@ export const tableNames = [
   'messages',
   'prompt_library',
   'threads',
-  'system_state',
+  'system_state', // Read-only - cannot be modified by agents
 ] as const;
 
 export const tableNameSchema = z.enum(tableNames);

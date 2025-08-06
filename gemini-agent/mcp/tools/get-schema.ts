@@ -7,7 +7,7 @@ export const getSchemaParams = z.object({
 });
 
 export const getSchemaSchema = {
-  description: 'Describes the database structure. If table_name is provided, it returns the detailed schema for that table. If table_name is omitted, it returns a list of all table names in the public schema.',
+  description: 'Describes the database structure. If table_name is provided, it returns the detailed schema for that table. If table_name is omitted, it returns a list of all table names in the public schema. Note: system_state table is read-only and cannot be modified.',
   inputSchema: getSchemaParams.shape,
 };
 

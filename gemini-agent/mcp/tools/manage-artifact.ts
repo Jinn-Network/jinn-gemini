@@ -2,8 +2,8 @@ import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { z } from 'zod';
 
 export const manageArtifactParams = z.object({
-    artifact_id: z.string().optional().describe('The ID of the artifact to update. If omitted, a new artifact is created.'),
-    thread_id: z.string().optional().describe('The ID of the thread to associate the artifact with. Only used during creation if the job has no thread context.'),
+    artifact_id: z.string().uuid().optional().describe('The ID of the artifact to update. If omitted, a new artifact is created.'),
+    thread_id: z.string().uuid().optional().describe('The ID of the thread to associate the artifact with. Only used during creation if the job has no thread context.'),
     operation: z.enum(['CREATE', 'REPLACE', 'APPEND', 'PREPEND']).describe('The content operation to perform. Use CREATE for new artifacts, others for updates.'),
     content: z.string().describe('The content to be used in the specified operation.'),
     topic: z.string().optional().describe('The topic for classification. On update, omission leaves it unchanged.'),
@@ -20,6 +20,8 @@ export const manageArtifactSchema = {
 export async function manageArtifact(params: ManageArtifactParams) {
     const { artifact_id, thread_id: param_thread_id, operation, content, topic, status } = manageArtifactParams.parse(params);
     const { jobId, jobName, threadId: contextThreadId } = getCurrentJobContext();
+
+
 
     try {
         if (artifact_id) {

@@ -80,7 +80,7 @@ describe('Database Tools Integration Tests', () => {
         // Unset the threadId for this specific test
         setJobContext(mockJobContext.jobId, mockJobContext.jobName, null);
         const result = await manageArtifact({ operation: 'REPLACE', content: 'This should fail.' });
-        expect(result.content[0].text).toContain("Cannot create an artifact because the current job is not associated with a thread.");
+        expect(result.content[0].text).toContain("Cannot create an artifact. The job has no thread context, and no 'thread_id' parameter was provided.");
     });
 
     it('should UPDATE an artifact with REPLACE operation and inject context', async () => {

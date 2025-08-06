@@ -4,11 +4,13 @@ import { tableNameSchema } from './shared/types.js';
 
 export const deleteRecordsParams = z.object({
   table_name: tableNameSchema,
-  filter: z.record(z.any()).describe('A JSON object to identify the row(s) to delete. Cannot be empty.'),
+  filter: z.record(z.any()).refine(obj => Object.keys(obj).length > 0, {
+    message: "Filter cannot be empty - must specify at least one condition to prevent accidental deletion of all records"
+  }).describe('A JSON object to identify the row(s) to delete. Cannot be empty.'),
 });
 
 export const deleteRecordsSchema = {
-  description: 'Deletes rows from a table that match a filter.',
+  description: 'Deletes rows from a table that match a filter. Note: system_state table is read-only and cannot be modified.',
   inputSchema: deleteRecordsParams.shape,
 };
 

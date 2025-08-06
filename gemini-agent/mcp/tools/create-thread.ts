@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const createThreadParams = z.object({
     title: z.string().describe('A descriptive title for the thread.'),
     objective: z.string().describe('The specific goal of the thread.'),
-    parent_thread_id: z.string().optional().describe('The ID of a parent thread to create a sub-task.'),
+    parent_thread_id: z.string().uuid().optional().describe('The ID of a parent thread to create a sub-task.'),
 });
 
 export type CreateThreadParams = z.infer<typeof createThreadParams>;

@@ -4,12 +4,16 @@ import { tableNameSchema } from './shared/types.js';
 
 export const updateRecordsParams = z.object({
   table_name: tableNameSchema,
-  filter: z.record(z.any()).describe('A JSON object to identify the row(s) to update. Cannot be empty.'),
-  updates: z.record(z.any()).describe('A JSON object of columns and their new values.'),
+  filter: z.record(z.any()).refine(obj => Object.keys(obj).length > 0, {
+    message: "Filter cannot be empty - must specify at least one condition to prevent accidental update of all records"
+  }).describe('A JSON object to identify the row(s) to update. Cannot be empty.'),
+  updates: z.record(z.any()).refine(obj => Object.keys(obj).length > 0, {
+    message: "Updates cannot be empty - must specify at least one field to update"
+  }).describe('A JSON object of columns and their new values.'),
 });
 
 export const updateRecordsSchema = {
-  description: 'Modifies existing rows in a table that match a filter. It automatically updates source_job_id and source_job_name.',
+  description: 'Modifies existing rows in a table that match a filter. It automatically updates source_job_id and source_job_name. Note: system_state table is read-only and cannot be modified.',
   inputSchema: updateRecordsParams.shape,
 };
 

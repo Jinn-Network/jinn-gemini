@@ -10,7 +10,7 @@ export const readRecordsParams = z.object({
 });
 
 export const readRecordsSchema = {
-  description: 'Retrieves one or more rows from a table based on filters. Supports either basic key-value filtering OR time-based filtering on the `created_at` column.',
+  description: 'Retrieves one or more rows from a table based on filters. Supports either basic key-value filtering OR time-based filtering on the `created_at` column. Note: system_state table is read-only and can only be read, not modified.',
   inputSchema: readRecordsParams.shape,
 };
 

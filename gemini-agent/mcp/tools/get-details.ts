@@ -5,7 +5,7 @@ import { exceedsSizeLimit, getDataSizeMB, DEFAULT_SIZE_LIMIT_MB } from './shared
 
 export const getDetailsParams = z.object({
     table_name: z.enum(tableNames).describe('The name of the table to query.'),
-    ids: z.array(z.string()).describe('An array containing one or more UUIDs to retrieve. If empty, returns an empty result.'),
+    ids: z.array(z.string().uuid()).describe('An array containing one or more UUIDs to retrieve. If empty, returns an empty result.'),
 });
 
 export type GetDetailsParams = z.infer<typeof getDetailsParams>;
@@ -22,6 +22,8 @@ export async function getDetails(params: GetDetailsParams) {
     if (ids.length === 0) {
         return { content: [{ type: 'text' as const, text: JSON.stringify([], null, 2) }] };
     }
+
+
 
     try {
         const { data: records, error } = await supabase

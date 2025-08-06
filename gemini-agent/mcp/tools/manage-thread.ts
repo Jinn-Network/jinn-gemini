@@ -2,10 +2,10 @@ import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { z } from 'zod';
 
 export const manageThreadParams = z.object({
-    thread_id: z.string().optional().describe('The ID of the thread to update. If omitted, a new thread is created.'),
+    thread_id: z.string().uuid().optional().describe('The ID of the thread to update. If omitted, a new thread is created.'),
     title: z.string().optional().describe('A descriptive title for the thread. Required for creation.'),
     objective: z.string().optional().describe('The specific goal of the thread. Required for creation.'),
-    parent_thread_id: z.string().optional().describe('The ID of a parent thread to create a sub-task.'),
+    parent_thread_id: z.string().uuid().optional().describe('The ID of a parent thread to create a sub-task.'),
     status: z.string().optional().describe("The new status (e.g., 'OPEN', 'COMPLETED'). On update, omission leaves it unchanged."),
     summary: z.record(z.any()).optional().describe("A summary of the thread's results. On update, omission leaves it unchanged."),
 });
@@ -20,6 +20,8 @@ export const manageThreadSchema = {
 export async function manageThread(params: ManageThreadParams) {
     const { thread_id, title, objective, parent_thread_id, status, summary } = manageThreadParams.parse(params);
     const { jobId, jobName } = getCurrentJobContext();
+
+
 
     try {
         if (thread_id) {

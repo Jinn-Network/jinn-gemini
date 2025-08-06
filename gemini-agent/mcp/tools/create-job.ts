@@ -37,7 +37,7 @@ export const createJobSchema = {
     inputSchema: createJobParams.shape,
 };
 
-export async function createJob(params: any) {
+export async function createJob(params: CreateJobParams) {
     try {
         const validatedParams = createJobParams.parse(params);
         const {
