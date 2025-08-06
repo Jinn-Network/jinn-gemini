@@ -47,15 +47,17 @@ export class Agent {
     private model: string;
     private enabledTools: string[];
     private settingsPath: string;
+    private agentRoot: string;
     private jobContext?: { jobId: string; jobName: string; threadId: string | null };
 
     constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobName: string; threadId: string | null }) {
         this.model = model;
         this.enabledTools = enabledTools || [];
         this.jobContext = jobContext;
+        this.agentRoot = join(process.cwd(), 'gemini-agent');
         // Define the path for the final, job-specific settings file
-        // Use .gemini directory relative to current working directory where Gemini CLI will look for it
-        this.settingsPath = join(process.cwd(), '.gemini', 'settings.json');
+        // Use .gemini directory relative to the agent's working directory
+        this.settingsPath = join(this.agentRoot, '.gemini', 'settings.json');
     }
 
     public async run(prompt: string): Promise<AgentResult> {
@@ -130,6 +132,7 @@ export class Agent {
             // The Gemini CLI will automatically find and load GEMINI.md and .gemini/settings.json
             // from the working directory.
             const geminiProcess = spawn('gemini', args, {
+                cwd: this.agentRoot,
                 env: {
                     ...process.env
                 }
@@ -152,8 +155,7 @@ export class Agent {
 
             geminiProcess.on('close', (code) => {
                 if (code !== 0) {
-                    reject(new Error(`Gemini process exited with code ${code}
-${stderr}`));
+                    reject(new Error(`Gemini process exited with code ${code}\n${stderr}`));
                 } else {
                     // Include stderr even on successful runs for warning-level errors
                     resolve({ output: stdout, telemetryFile, stderr });
@@ -172,7 +174,7 @@ ${stderr}`));
         }
         try {
             // Look for template in the gemini-agent directory
-            const templatePath = join(process.cwd(), 'gemini-agent', 'settings.template.json');
+            const templatePath = join(this.agentRoot, 'settings.template.json');
             const templateSettings: GeminiSettings = JSON.parse(readFileSync(templatePath, 'utf8'));
 
             if (!templateSettings.mcpServers) {
