@@ -10,19 +10,23 @@
     "start": "node dist/worker.js",
     "dev": "tsx worker/worker.ts -- --single-job",
     "dev:continuous": "tsx worker/worker.ts",
-    "test": "echo \"No tests specified\"",
-    "build:all": "yarn workspaces run build",
-    "frontend:dev": "yarn workspace explorer dev",
-    "frontend:start": "yarn workspace explorer start",
-    "frontend:build": "yarn workspace explorer build",
+    "test": "vitest run",
+    "test:integration": "vitest run gemini-agent/mcp/tools.integration.test.ts",
+    "frontend:dev": "cd frontend/explorer && yarn run dev",
+    "frontend:start": "cd frontend/explorer && yarn run start",
+    "frontend:build": "cd frontend/explorer && yarn run build",
     "dev:all": "concurrently \"yarn dev\" \"yarn frontend:dev\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
     "start:all": "concurrently \"yarn start\" \"yarn frontend:start\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
-    "clean": "rm -rf dist && yarn workspace explorer clean"
+    "clean": "rm -rf dist && cd frontend/explorer && yarn run clean",
+    "mcp:start": "node dist/gemini-agent/mcp/server.js"
   },
   "dependencies": {
-    "@jinn/metacog-mcp": "file:packages/metacog-mcp",
+    "@modelcontextprotocol/sdk": "^1.11.0",
     "@supabase/ssr": "^0.6.1",
-    "@supabase/supabase-js": "^2.53.0"
+    "@supabase/supabase-js": "^2.53.0",
+    "dotenv": "^17.2.1",
+    "openai": "^5.11.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -31,9 +35,5 @@
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
-  "workspaces": [
-    "packages/*",
-    "frontend/explorer"
-  ]
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

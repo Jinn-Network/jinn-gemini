@@ -60,7 +60,7 @@ async function fetchData(startTime: string, jobName?: string, limits = { jobs: 5
 
     // Add message query only if job_name is provided
     const messagesRes = jobName ? await supabase.from('messages')
-        .select('id, from_agent, to_agent, created_at, status, content')
+        .select('id, to_agent, created_at, status, content, source_job_name')
         .gte('created_at', startTime)
         .eq('to_agent', jobName)
         .order('status', { ascending: true }) // Prioritize unread (pending) messages
@@ -168,14 +168,14 @@ ${data.threads_in_window.slice(0, 10).map((thread: any) => {
     if (jobName && data.messages_in_window.length > 0) {
         output += `\n\n### Messages for ${jobName}
 ${data.messages_in_window.map((message: any) => {
-  let msgLine = `- **From ${message.from_agent}** [${message.status}] (${new Date(message.created_at).toLocaleString()})`;
+  let msgLine = `- **From ${message.source_job_name || "Unknown"}** [${message.status}] (${new Date(message.created_at).toLocaleString()})`;
   if (message.content) msgLine += `\n  ${message.content}`;
   return msgLine;
 }).join('\n')}`;
     } else if (!jobName && data.messages_in_window.length > 0) {
         output += `\n\n### Recent Messages
 ${data.messages_in_window.slice(0, 5).map((message: any) => 
-  `- **${message.from_agent}** → **${message.to_agent}** [${message.status}] (${new Date(message.created_at).toLocaleString()})`
+  `- **${message.source_job_name || "Unknown"}** → **${message.to_agent}** [${message.status}] (${new Date(message.created_at).toLocaleString()})`
 ).join('\n')}`;
     }
 

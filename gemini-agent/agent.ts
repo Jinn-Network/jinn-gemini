@@ -65,7 +65,7 @@ export class Agent {
         try {
             // Set job context for tools to access
             if (this.jobContext) {
-                const { setJobContext } = await import('../packages/metacog-mcp/src/tools/shared/supabase.js');
+                const { setJobContext } = await import('./mcp/tools/shared/supabase.js');
                 setJobContext(this.jobContext.jobId, this.jobContext.jobName, this.jobContext.threadId);
             }
 
@@ -96,7 +96,7 @@ export class Agent {
         } finally {
             // Clear job context
             if (this.jobContext) {
-                const { clearJobContext } = await import('../packages/metacog-mcp/src/tools/shared/supabase.js');
+                const { clearJobContext } = await import('./mcp/tools/shared/supabase.js');
                 clearJobContext();
             }
             this.cleanupJobSpecificSettings();

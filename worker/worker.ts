@@ -1,7 +1,7 @@
 import { Agent } from '../gemini-agent/agent.js';
-import { readRecords } from '../packages/metacog-mcp/src/tools/read-records.js';
-import { updateRecords } from '../packages/metacog-mcp/src/tools/update-records.js';
-import { createRecord } from '../packages/metacog-mcp/src/tools/create-record.js';
+import { readRecords } from '../gemini-agent/mcp/tools/read-records.js';
+import { updateRecords } from '../gemini-agent/mcp/tools/update-records.js';
+import { createRecord } from '../gemini-agent/mcp/tools/create-record.js';
 
 // Check for command line flags
 const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
@@ -301,7 +301,10 @@ async function processPendingJobs(): Promise<boolean> {
     let error = null;
     let retryCount = 0;
 
-    try {
+    // Retry loop for the job execution
+    while (retryCount <= RETRY_CONFIG.maxRetries) {
+        error = null; // Reset error state for each attempt
+        try {
         // Claim the job by setting status to IN_PROGRESS and adding worker_id
         await updateRecords({
             table_name: 'job_board',
@@ -388,10 +391,11 @@ async function processPendingJobs(): Promise<boolean> {
             // Wait before retry
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             
-            // Don't mark as failed, let it be retried
-            return true;
+            // Continue to next iteration of retry loop
+            continue;
         }
 
+        // If we reach here, either error is not retryable or max retries exceeded
         const errorMsg = error instanceof Error ? error.message : String(error);
         const finalUpdate = await updateRecords({
             table_name: 'job_board',
@@ -404,23 +408,30 @@ async function processPendingJobs(): Promise<boolean> {
         if (finalUpdate.content[0].text.startsWith('Error')) {
             console.error(`CRITICAL: Failed to even update the job to FAILED status. Job ID: ${job.id}. Error: ${finalUpdate.content[0].text}`);
         }
-    } finally {
-        console.log(`Collecting and storing job report for ${job.id}...`);
-        try {
-            // Always collect and store job report regardless of success/failure
-            await collectAndStoreJobReport({
-                job,
-                workerId,
-                startTime,
-                result,
-                error
-            });
-            console.log(`Job report collection completed for ${job.id}`);
-        } catch (reportError) {
-            console.error(`Failed to collect job report for ${job.id}:`, reportError);
+        break; // Exit retry loop on failure
         }
-        return true; // A job was processed
+
+        // Success case - exit retry loop
+        if (!error) {
+            break;
+        }
     }
+
+    // Always collect and store job report regardless of success/failure
+    console.log(`Collecting and storing job report for ${job.id}...`);
+    try {
+        await collectAndStoreJobReport({
+            job,
+            workerId,
+            startTime,
+            result,
+            error
+        });
+        console.log(`Job report collection completed for ${job.id}`);
+    } catch (reportError) {
+        console.error(`Failed to collect job report for ${job.id}:`, reportError);
+    }
+    return true; // A job was processed
 }
 
 async function main() {

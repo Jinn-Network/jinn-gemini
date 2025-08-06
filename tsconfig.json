@@ -23,9 +23,7 @@
     "worker/**/*.ts",
     "worker/**/*.js",
     "gemini-agent/**/*.ts",
-    "gemini-agent/**/*.js",
-    "packages/**/*.ts",
-    "packages/**/*.js"
+    "gemini-agent/**/*.js"
   ],
   "exclude": [
     "node_modules",

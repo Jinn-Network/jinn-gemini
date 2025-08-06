@@ -3,7 +3,7 @@
     "metacog": {
       "command": "node",
       "args": [
-        "../packages/metacog-mcp/dist/server.js"
+        "../dist/gemini-agent/mcp/server.js"
       ],
       "trust": true
     }

@@ -267,13 +267,13 @@ describe('Database Tools Integration Tests', () => {
 
       await supabase.from('messages').insert([
         {
-          from_agent: 'test-sender',
+          source_job_name: 'test-sender',
           to_agent: testJobName,
           content: 'Test message for specific job',
           status: 'PENDING'
         },
         {
-          from_agent: 'other-sender', 
+          source_job_name: 'other-sender', 
           to_agent: 'other-job',
           content: 'Message for different job',
           status: 'READ'
