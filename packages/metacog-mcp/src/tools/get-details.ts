@@ -57,7 +57,6 @@ export async function getDetails(params: GetDetailsParams) {
         // Check if data exceeds size limit
         if (exceedsSizeLimit(records)) {
             const dataSizeMB = getDataSizeMB(records);
-            console.log(`Get details data size ${dataSizeMB.toFixed(2)}MB exceeds limit ${DEFAULT_SIZE_LIMIT_MB}MB, reducing record count`);
             
             // Limit number of records to fit within size limit
             let finalRecords = records;
@@ -67,7 +66,6 @@ export async function getDetails(params: GetDetailsParams) {
                 const maxRecords = Math.max(1, Math.floor(records.length / reduction));
                 finalRecords = records.slice(0, maxRecords);
                 reduction *= 2;
-                console.log(`Trying with ${maxRecords} records (${getDataSizeMB(finalRecords).toFixed(2)}MB)`);
             }
 
             return { 

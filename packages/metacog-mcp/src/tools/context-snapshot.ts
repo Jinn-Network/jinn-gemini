@@ -204,8 +204,6 @@ export async function getContextSnapshot(params: any) {
       const dataSizeBytes = calculateDataSize(data);
       const dataSizeMB = bytesToMB(dataSizeBytes);
       
-      console.log(`Context snapshot attempt ${attempts}: ${currentHours}h window, ${dataSizeMB.toFixed(2)}MB data${job_name ? ` (job: ${job_name})` : ''}`);
-      
       if (dataSizeMB <= max_size_mb) {
         // Size is acceptable, format and return
         const formattedOutput = formatSnapshot(data, { startTime, endTime }, hours_back, currentHours, job_name);
@@ -220,7 +218,6 @@ export async function getContextSnapshot(params: any) {
       
       // Data too large, reduce window by half and try again
       currentHours = Math.max(0.5, currentHours / 2); // Minimum 30 minutes
-      console.log(`Data size ${dataSizeMB.toFixed(2)}MB exceeds limit ${max_size_mb}MB, reducing window to ${currentHours}h`);
     }
     
     // If we get here, even the smallest window was too large

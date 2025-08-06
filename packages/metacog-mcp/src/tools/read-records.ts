@@ -24,7 +24,6 @@ export async function readRecords({ table_name, filter }: z.infer<typeof readRec
     // Check if data exceeds size limit
     if (exceedsSizeLimit(data)) {
       const dataSizeMB = getDataSizeMB(data);
-      console.log(`Read records data size ${dataSizeMB.toFixed(2)}MB exceeds limit ${DEFAULT_SIZE_LIMIT_MB}MB, reducing record count`);
       
       // Limit number of records to fit within size limit
       let finalData = data;
@@ -34,7 +33,6 @@ export async function readRecords({ table_name, filter }: z.infer<typeof readRec
         const maxRecords = Math.max(1, Math.floor(data.length / reduction));
         finalData = data.slice(0, maxRecords);
         reduction *= 2;
-        console.log(`Trying with ${maxRecords} records (${getDataSizeMB(finalData).toFixed(2)}MB)`);
       }
 
       return { 

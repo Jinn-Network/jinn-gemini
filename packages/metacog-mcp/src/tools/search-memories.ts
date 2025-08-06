@@ -69,7 +69,6 @@ export async function searchMemories(params: SearchMemoriesParams) {
         // Check if data exceeds size limit
         if (exceedsSizeLimit(memories)) {
             const dataSizeMB = getDataSizeMB(memories);
-            console.log(`Search memories data size ${dataSizeMB.toFixed(2)}MB exceeds limit ${DEFAULT_SIZE_LIMIT_MB}MB, reducing memory count`);
             
             // Limit number of memories to fit within size limit
             let finalMemories = memories;
@@ -79,7 +78,6 @@ export async function searchMemories(params: SearchMemoriesParams) {
                 const maxMemories = Math.max(1, Math.floor(memories.length / reduction));
                 finalMemories = memories.slice(0, maxMemories);
                 reduction *= 2;
-                console.log(`Trying with ${maxMemories} memories (${getDataSizeMB(finalMemories).toFixed(2)}MB)`);
             }
 
             return { 
