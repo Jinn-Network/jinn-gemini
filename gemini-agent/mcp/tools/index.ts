@@ -7,6 +7,9 @@ export { manageThread, manageThreadParams, manageThreadSchema, type ManageThread
 export { getDetails, getDetailsParams, getDetailsSchema, type GetDetailsParams } from './get-details.js';
 export { createMemory, createMemoryParams, createMemorySchema, type CreateMemoryParams } from './create-memory.js';
 export { searchMemories, searchMemoriesParams, searchMemoriesSchema, type SearchMemoriesParams } from './search-memories.js';
+export { traceThread, traceThreadSchema } from './trace-thread.js';
+export { reconstructJob, reconstructJobSchema } from './reconstruct-job.js';
+export { searchEvents, searchEventsSchema } from './search-events.js';
 
 // Export shared types
 export { tableNames, tableNameSchema } from './shared/types.js';

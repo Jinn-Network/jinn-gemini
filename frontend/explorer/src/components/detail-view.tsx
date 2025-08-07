@@ -61,8 +61,8 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
     return null
   }
 
-  // Fields to hide from the detail view (including created_by_job_id since we show it separately)
-  const hiddenFields = ['worker_id', 'created_by_job_id']
+  // Fields to hide from the detail view (including source_job_id since we show it separately)
+  const hiddenFields = ['worker_id', 'source_job_id']
   
   // Filter out hidden fields
   const visibleFields = Object.entries(record).filter(([key]) => 
@@ -70,7 +70,7 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
   )
   
   // Check if this record has job creation tracking
-  const hasJobCreationInfo = 'created_by_job_id' in record && record.created_by_job_id
+  const hasJobCreationInfo = 'source_job_id' in record && record.source_job_id
 
   return (
     <Card>
@@ -87,7 +87,7 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
                   Job Creation:
                 </div>
                 <div className="md:col-span-3">
-                  <JobCreationInfo jobId={record.created_by_job_id as string} />
+                  <span className="text-sm text-gray-600">Job ID: {record.source_job_id}</span>
                 </div>
               </div>
             </div>

@@ -36,3 +36,38 @@ export interface RecordPageProps {
     id: string;
   }>;
 }
+
+// Timeline event types for the thread timeline feature
+export interface TimelineEvent {
+  id: string;
+  event_type: 'ARTIFACT_CREATED' | 'JOB_CREATED' | 'THREAD_CREATED';
+  created_at: string;
+  event_details: {
+    id: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any;
+  };
+}
+
+// Job impact report types
+export interface CreatedRecord {
+  record_type: string;
+  id: string;
+  description: string;
+}
+
+export interface JobImpactReport {
+  job_report: DbRecord | null;
+  source_schedule: DbRecord | null;
+  created_records: CreatedRecord[];
+}
+
+// Event search types
+export interface EventSearchFilters {
+  event_type?: 'ARTIFACT_CREATED' | 'JOB_CREATED' | 'THREAD_CREATED';
+  status?: string;
+  job_name?: string;
+  topic?: string;
+  thread_id?: string;
+  time_range_hours?: number;
+}

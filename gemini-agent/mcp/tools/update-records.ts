@@ -24,12 +24,20 @@ export async function updateRecords({ table_name, filter, updates }: z.infer<typ
     // Automatically inject context and updated_at into the updates payload
     // The database function will now skip any columns that don't exist in the target table
     // We don't update thread_id here, as an update shouldn't change the thread a record belongs to.
-    const enrichedUpdates = {
+    const enrichedUpdates: {[key: string]: any} = {
       ...updates,
       source_job_id: jobId,
       source_job_name: jobName,
       updated_at: new Date().toISOString(),
     };
+
+    // Convert arrays to Postgres array literals
+    for (const key in enrichedUpdates) {
+      if (Array.isArray(enrichedUpdates[key])) {
+        enrichedUpdates[key] = `{${enrichedUpdates[key].map(item => `"${item}"`).join(',')}}`;
+      }
+    }
+
 
     const { data: updatedCount, error } = await supabase.rpc('update_records', {
       p_table_name: table_name,

@@ -26,7 +26,13 @@ import {
   createMemory,
   createMemorySchema,
   searchMemories,
-  searchMemoriesSchema
+  searchMemoriesSchema,
+  traceThread,
+  traceThreadSchema,
+  reconstructJob,
+  reconstructJobSchema,
+  searchEvents,
+  searchEventsSchema
 } from './tools/index.js';
 
 // This is the single source of truth for all tools registered on this server.
@@ -42,7 +48,10 @@ export const serverTools: { name: string; schema: any; handler: (params: any) =>
   { name: 'manage_thread', schema: manageThreadSchema, handler: manageThread },
   { name: 'get_details', schema: getDetailsSchema, handler: getDetails },
   { name: 'create_memory', schema: createMemorySchema, handler: createMemory },
-  { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories }
+  { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories },
+  { name: 'trace_thread', schema: traceThreadSchema, handler: traceThread },
+  { name: 'reconstruct_job', schema: reconstructJobSchema, handler: reconstructJob },
+  { name: 'search_events', schema: searchEventsSchema, handler: searchEvents }
 ];
 
 async function main() {

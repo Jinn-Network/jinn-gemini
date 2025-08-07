@@ -161,6 +161,21 @@ export function ThreadDetailsSidebar({ record }: ThreadDetailsSidebarProps) {
             </div>
           )}
 
+          {/* Timeline Link */}
+          <div className="border-b border-gray-100 pb-3">
+            <div className="font-medium text-gray-900 text-sm mb-1">
+              Timeline:
+            </div>
+            <div>
+              <a 
+                href={`/threads/${record.id}/timeline`}
+                className="text-blue-600 hover:text-blue-800 text-sm underline"
+              >
+                View Event Timeline →
+              </a>
+            </div>
+          </div>
+
           {/* Other fields */}
           {visibleOtherFields.map(([key, value]) => (
             <div key={key} className="border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">

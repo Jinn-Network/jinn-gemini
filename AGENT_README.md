@@ -76,7 +76,8 @@ The entire system operates on a continuous, event-driven cycle:
     Create a `.env` file in the root directory with your Supabase credentials:
     ```env
     SUPABASE_URL=https://your-project-ref.supabase.co
-    SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+    SUP
+    ABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
     ```
 3.  **Gemini CLI Authentication**:
     Ensure you have authenticated the Gemini CLI on your host machine first.

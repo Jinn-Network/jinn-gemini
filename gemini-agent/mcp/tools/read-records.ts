@@ -6,7 +6,6 @@ import { exceedsSizeLimit, getDataSizeMB, DEFAULT_SIZE_LIMIT_MB } from './shared
 export const readRecordsParams = z.object({
   table_name: tableNameSchema,
   filter: z.record(z.any()).optional().describe('A JSON object for WHERE clauses (e.g., `{"status": "COMPLETED"}`). An empty filter retrieves all records.'),
-  hours_back: z.number().int().positive().optional().describe('Filter records from the last N hours based on the `created_at` column. Cannot be used with `filter`.'),
 });
 
 export const readRecordsSchema = {
@@ -14,27 +13,13 @@ export const readRecordsSchema = {
   inputSchema: readRecordsParams.shape,
 };
 
-export async function readRecords({ table_name, filter, hours_back }: z.infer<typeof readRecordsParams>) {
+export async function readRecords({ table_name, filter }: z.infer<typeof readRecordsParams>) {
   try {
-    if (filter && hours_back) {
-      throw new Error("You cannot use both 'filter' and 'hours_back' at the same time. Please use one or the other.");
-    }
-
     let finalFilter = filter || {};
 
-    // If hours_back is specified, we'll use a separate database function parameter for time filtering
-    // This avoids the complex nested object structure that caused issues
-    let timeFilter = null;
-    if (hours_back) {
-      timeFilter = new Date(Date.now() - hours_back * 60 * 60 * 1000).toISOString();
-      // Use empty filter for basic equality checks
-      finalFilter = {};
-    }
-
-    const { data, error } = await supabase.rpc('read_records_with_time', {
+    const { data, error } = await supabase.rpc('read_records', {
       p_table_name: table_name,
       p_filter: finalFilter,
-      p_time_filter: timeFilter,
     });
     if (error) throw error;
 

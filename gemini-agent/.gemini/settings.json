@@ -7,8 +7,10 @@
       ],
       "trust": true,
       "includeTools": [
-        "read_records",
-        "create_memory"
+        "get_context_snapshot",
+        "create_memory",
+        "search_memories",
+        "read_records"
       ]
     }
   },

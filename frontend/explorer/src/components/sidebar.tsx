@@ -22,6 +22,17 @@ export function Sidebar() {
   return (
     <aside className="w-64 min-w-64 flex-shrink-0 p-4 border-r bg-slate-50 min-h-screen">
       <h2 className="text-lg font-bold mb-4">Explorer</h2>
+      
+      {/* Search Link */}
+      <div className="mb-4">
+        <Link 
+          href="/search"
+          className="block w-full px-3 py-2 text-sm font-medium text-slate-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors"
+        >
+          🔍 Search Events
+        </Link>
+      </div>
+      
       <nav>
         <div className="space-y-4">
           {navigationCategories.map((category) => {
