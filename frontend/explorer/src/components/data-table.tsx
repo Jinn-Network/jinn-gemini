@@ -30,40 +30,42 @@ export function DataTable({ records, collectionName }: DataTableProps) {
   const headers = Object.keys(records[0])
 
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {headers.map((header) => (
-              <TableHead key={header} className="font-medium">
-                {header}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {records.map((record, index) => (
-            <TableRow key={record.id || index}>
+    <div className="rounded-md border overflow-hidden">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
               {headers.map((header) => (
-                <TableCell key={header} className="max-w-xs">
-                  {header === 'id' ? (
-                    <Link 
-                      href={`/${collectionName}/${record.id}`}
-                      className="text-blue-600 hover:text-blue-800 underline"
-                    >
-                      {record.id}
-                    </Link>
-                  ) : (
-                    <span className="block truncate" title={String(record[header])}>
-                      {formatCellValue(record[header], header)}
-                    </span>
-                  )}
-                </TableCell>
+                <TableHead key={header} className="font-medium whitespace-nowrap">
+                  {header}
+                </TableHead>
               ))}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {records.map((record, index) => (
+              <TableRow key={record.id || index}>
+                {headers.map((header) => (
+                  <TableCell key={header} className="max-w-xs min-w-0">
+                    {header === 'id' ? (
+                      <Link 
+                        href={`/${collectionName}/${record.id}`}
+                        className="text-blue-600 hover:text-blue-800 underline block truncate"
+                      >
+                        {record.id}
+                      </Link>
+                    ) : (
+                      <span className="block truncate" title={String(record[header])}>
+                        {formatCellValue(record[header], header)}
+                      </span>
+                    )}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }

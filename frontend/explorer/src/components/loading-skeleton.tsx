@@ -60,7 +60,7 @@ export function RecordListSkeleton() {
   return (
     <div className="space-y-3">
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="bg-white border border-gray-200 rounded-lg p-4">
+        <div key={i} className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">

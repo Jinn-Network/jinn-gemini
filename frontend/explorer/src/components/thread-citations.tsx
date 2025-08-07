@@ -38,7 +38,7 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
 
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+    <div className="bg-card border border-border rounded-lg p-4 hover:bg-accent transition-colors">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">

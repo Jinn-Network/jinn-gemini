@@ -82,13 +82,13 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
 
       <div className="border rounded-lg overflow-hidden">
         {showRaw ? (
-          <div className="bg-gray-50 p-4">
+          <div className="bg-muted p-4">
             <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono break-words">
               {content}
             </pre>
           </div>
         ) : (
-          <div className="bg-white p-4 prose prose-sm max-w-none">
+          <div className="bg-card p-4 prose prose-sm max-w-none">
             <ReactMarkdown
               components={{
                 // Customize markdown rendering

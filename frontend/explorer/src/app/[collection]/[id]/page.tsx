@@ -73,14 +73,14 @@ export default async function RecordPage({ params }: RecordPageProps) {
         
         {/* Special layout for threads */}
         {resolvedParams.collection === 'threads' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 lg:gap-6">
             {/* Main content area - Linked Artifacts */}
-            <div className="lg:col-span-3">
+            <div className="xl:col-span-3 order-2 xl:order-1">
               <LinkedArtifacts threadId={resolvedParams.id} />
             </div>
             
             {/* Right sidebar - Thread Details */}
-            <div className="lg:col-span-1">
+            <div className="xl:col-span-1 order-1 xl:order-2">
               <ThreadDetailsSidebar record={record} />
             </div>
           </div>

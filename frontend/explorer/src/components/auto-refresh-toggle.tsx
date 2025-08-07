@@ -45,7 +45,7 @@ export function AutoRefreshToggle({
         >
           <span className="sr-only">Toggle auto refresh</span>
           <span
-            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+            className={`inline-block h-3 w-3 transform rounded-full bg-background transition-transform ${
               enabled ? 'translate-x-5' : 'translate-x-1'
             }`}
           />

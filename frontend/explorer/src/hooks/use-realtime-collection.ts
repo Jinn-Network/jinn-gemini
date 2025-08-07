@@ -13,6 +13,7 @@ interface UseRealtimeCollectionOptions {
   enableRealtime?: boolean
   sortColumn?: string
   sortAscending?: boolean
+  selectColumns?: string
 }
 
 interface UseRealtimeCollectionReturn {
@@ -34,7 +35,8 @@ export function useRealtimeCollection({
   pollingInterval = 10000, // 10 seconds default
   enableRealtime = false,
   sortColumn = 'created_at',
-  sortAscending = false
+  sortAscending = false,
+  selectColumns = '*'
 }: UseRealtimeCollectionOptions): UseRealtimeCollectionReturn {
   const [records, setRecords] = useState<DbRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -56,13 +58,13 @@ export function useRealtimeCollection({
     try {
       const { data, error: fetchError, count } = await supabase
         .from(collectionName)
-        .select('*', { count: 'exact' })
+        .select(selectColumns, { count: 'exact' })
         .order(sortColumn, { ascending: sortAscending })
         .range((page - 1) * pageSize, page * pageSize - 1)
 
       if (fetchError) throw fetchError
 
-      setRecords(data || [])
+      setRecords((data || []) as unknown as DbRecord[])
       setTotalRecords(count || 0)
       setLastUpdate(new Date())
     } catch (fetchError) {
@@ -72,7 +74,7 @@ export function useRealtimeCollection({
     } finally {
       if (showLoading) setLoading(false)
     }
-  }, [supabase, collectionName, sortColumn, sortAscending, pageSize])
+  }, [supabase, collectionName, sortColumn, sortAscending, pageSize, selectColumns])
 
   // Set up real-time subscription
   const setupRealtimeSubscription = useCallback(() => {

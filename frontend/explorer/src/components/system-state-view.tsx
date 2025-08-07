@@ -125,7 +125,7 @@ export function SystemStateView({ records }: SystemStateViewProps) {
         const value = getValue(record)
         
         return (
-          <div key={record.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+          <div key={record.id} className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 break-words">
                 {keyName}

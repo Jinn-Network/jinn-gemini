@@ -41,13 +41,13 @@ export default function SearchResultsList({ results, loading }: SearchResultsLis
   const getEventTypeColor = (eventType: string) => {
     switch (eventType) {
       case 'ARTIFACT_CREATED':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-blue-950 text-blue-300 border-blue-800';
       case 'JOB_CREATED':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-green-950 text-green-300 border-green-800';
       case 'THREAD_CREATED':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
+        return 'bg-purple-950 text-purple-300 border-purple-800';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-muted text-muted-foreground border-border';
     }
   };
 

@@ -95,11 +95,11 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
           
           {visibleFields.map(([key, value]) => (
             <div key={key} className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="font-medium text-gray-900" title={`Field: ${key}`}>
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-2 lg:gap-4">
+                <div className="font-medium text-gray-900 text-sm lg:text-base" title={`Field: ${key}`}>
                   {humanizeFieldName(key)}:
                 </div>
-                <div className="md:col-span-3">
+                <div className="lg:col-span-3">
                   <ValueDisplay 
                     value={value} 
                     fieldName={key}
@@ -291,7 +291,7 @@ function ValueDisplay({ value, fieldName, promptData, isLoadingPrompt }: ValueDi
           <div className="text-xs text-gray-500">
             {value.length} characters, ~{wordCount} words
           </div>
-          <div className="max-h-32 overflow-auto bg-gray-50 p-3 rounded border text-sm">
+          <div className="max-h-32 overflow-auto bg-muted p-3 rounded border text-sm">
             {value}
           </div>
         </div>
@@ -310,7 +310,7 @@ function ValueDisplay({ value, fieldName, promptData, isLoadingPrompt }: ValueDi
     return (
       <div className="space-y-2">
         <div className="text-xs text-gray-500">Array ({value.length} items)</div>
-        <div className="bg-gray-50 rounded border overflow-hidden">
+        <div className="bg-muted rounded border overflow-hidden">
           <div className="max-h-64 overflow-auto p-3">
             <ul className="space-y-1">
               {value.map((item, index) => (
@@ -344,7 +344,7 @@ function ValueDisplay({ value, fieldName, promptData, isLoadingPrompt }: ValueDi
     return (
       <div className="space-y-2">
         <div className="text-xs text-gray-500">Object ({keys.length} properties)</div>
-        <div className="bg-gray-50 border rounded overflow-hidden">
+        <div className="bg-muted border rounded overflow-hidden">
           <div className="max-h-64 overflow-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-100">
@@ -355,7 +355,7 @@ function ValueDisplay({ value, fieldName, promptData, isLoadingPrompt }: ValueDi
               </thead>
               <tbody>
                 {keys.map((key, index) => (
-                  <tr key={key} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}>
+                  <tr key={key} className={index % 2 === 0 ? 'bg-card' : 'bg-muted'}>
                     <td className="px-3 py-2 font-mono text-xs text-gray-600 border-r border-gray-200">
                       {key}
                     </td>

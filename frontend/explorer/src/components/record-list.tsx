@@ -59,7 +59,7 @@ function getStatusDisplay(record: DbRecord): { status: string; className: string
         className = 'text-yellow-600 bg-yellow-50 border-yellow-200'
         break
       default:
-        className = 'text-gray-600 bg-gray-50 border-gray-200'
+        className = 'text-muted-foreground bg-muted border-border'
     }
     
     return { status, className }
@@ -168,7 +168,7 @@ export function RecordList({ records, collectionName }: RecordListProps) {
         const secondaryInfo = getSecondaryInfo(record, collectionName)
         
         return (
-          <div key={record.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+          <div key={record.id} className="bg-card border border-border rounded-lg p-4 hover:bg-accent transition-colors">
             <div className="flex items-start justify-between gap-4">
               {/* Main content */}
               <div className="flex-1 min-w-0">

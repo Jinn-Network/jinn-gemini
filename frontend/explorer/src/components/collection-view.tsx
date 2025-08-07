@@ -39,6 +39,25 @@ function getSortingConfig(collectionName: CollectionName): { column: string; asc
   return sortingConfigs[collectionName] || defaultSort
 }
 
+// Helper function to determine which columns to select for list view (to avoid large text fields)
+function getSelectColumns(collectionName: CollectionName): string {
+  // For collections with large text fields, only select the essential columns for list view
+  const selectConfigs: Record<CollectionName, string> = {
+    job_board: '*', // Keep all columns for job_board (no large text fields)
+    job_definitions: '*', // Keep all columns
+    job_schedules: '*', // Keep all columns  
+    job_reports: 'id,job_id,worker_id,created_at,status,duration_ms,total_tokens,error_message,error_type', // Exclude large text fields
+    threads: '*', // Keep all columns
+    artifacts: 'id,thread_id,created_at,updated_at,status,topic,source_job_id,source_job_name', // Exclude content
+    messages: '*', // Keep all columns
+    memories: 'id,created_at,last_accessed_at,metadata,linked_memory_id,link_type,source_job_id,source_job_name,thread_id', // Exclude content and embedding
+    prompt_library: '*', // Keep all columns
+    system_state: '*', // Keep all columns
+  }
+  
+  return selectConfigs[collectionName] || '*'
+}
+
 
 
 export function CollectionView({ collectionName }: CollectionViewProps) {
@@ -56,6 +75,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   
   // Use the realtime collection hook for non-job_board collections when auto-refresh is enabled
   const sortConfig = getSortingConfig(collectionName)
+  const selectColumns = getSelectColumns(collectionName)
   const {
     records: realtimeRecords,
     loading: realtimeLoading,
@@ -70,18 +90,20 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     enablePolling: autoRefreshEnabled && collectionName !== 'job_board' && collectionName !== 'system_state',
     pollingInterval: 10000, // 10 seconds
     sortColumn: sortConfig.column,
-    sortAscending: sortConfig.ascending
+    sortAscending: sortConfig.ascending,
+    selectColumns: selectColumns
   })
 
   const fetchSystemState = useCallback(async () => {
     setSystemStateLoading(true)
     try {
       const sortConfig = getSortingConfig(collectionName)
+      const selectColumns = getSelectColumns(collectionName)
       
       // Try the preferred sort first, with fallback handling
       let result = await supabase
         .from(collectionName)
-        .select('*')
+        .select(selectColumns)
         .order(sortConfig.column, { ascending: sortConfig.ascending })
         .limit(100)
 
@@ -90,7 +112,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
         console.warn(`Sort column ${sortConfig.column} not found for ${collectionName}, trying updated_at`)
         result = await supabase
           .from(collectionName)
-          .select('*')
+          .select(selectColumns)
           .order('updated_at', { ascending: false })
           .limit(100)
         
@@ -98,7 +120,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
           console.warn(`updated_at not found for ${collectionName}, trying created_at`)
           result = await supabase
             .from(collectionName)
-            .select('*')
+            .select(selectColumns)
             .order('created_at', { ascending: false })
             .limit(100)
         }
@@ -110,7 +132,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
         return
       }
 
-      setSystemStateRecords(result.data || [])
+      setSystemStateRecords((result.data || []) as unknown as DbRecord[])
     } catch (error) {
       console.error('Error fetching system state:', error)
       toast.error('Failed to load system state')
@@ -123,12 +145,13 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     setLoading(true)
     
     const sortConfig = getSortingConfig(collectionName)
+    const selectColumns = getSelectColumns(collectionName)
     
     // Function to try different sorting strategies  
     const tryFetchWithSort = async (sortColumn: string, ascending: boolean = false) => {
       const supabaseQuery = supabase
         .from(collectionName)
-        .select('*', { count: 'exact' })
+        .select(selectColumns, { count: 'exact' })
         .order(sortColumn, { ascending })
         .range((page - 1) * pageSize, page * pageSize - 1)
 
@@ -163,7 +186,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
         return
       }
 
-      setRecords(data || [])
+      setRecords((data || []) as unknown as DbRecord[])
       setTotalRecords(count || 0)
     } catch (error) {
       console.error('Unexpected error:', error)
@@ -203,7 +226,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
           </h1>
           <div className="space-y-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-white border border-gray-200 rounded-lg p-6">
+              <div key={i} className="bg-card border border-border rounded-lg p-6">
                 <div className="animate-pulse">
                   <div className="flex items-start justify-between mb-4">
                     <div className="h-6 bg-gray-200 rounded w-1/3"></div>
