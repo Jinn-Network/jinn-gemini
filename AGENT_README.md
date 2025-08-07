@@ -24,19 +24,46 @@ The design of this system is guided by a few core principles:
 
 ---
 
+## Project Structure
+
+The repository has been flattened for simplicity and easier development. Here's the current structure:
+
+```
+jinn-gemini/
+├── worker/                    # Worker application
+│   └── worker.ts             # Main worker logic
+├── gemini-agent/             # Agent and MCP server
+│   ├── agent.ts              # Main agent logic
+│   ├── mcp/                  # Model Context Protocol server
+│   │   ├── server.ts         # MCP server implementation
+│   │   └── tools/            # Tool implementations
+│   │       ├── shared/       # Shared utilities
+│   │       ├── index.ts      # Tool exports
+│   │       └── *.ts          # Individual tool files
+│   └── settings.template.json # Gemini CLI settings template
+├── frontend/                 # Frontend application
+│   └── explorer/             # Next.js explorer interface
+├── docs/                     # Documentation
+│   └── documentation/        # System documentation
+├── migrations/               # Database migrations
+├── supabase/                 # Supabase configuration
+├── scripts/                  # Utility scripts
+└── package.json              # Root package configuration
+```
+
 ## System Architecture
 
 The system consists of several key components that work together in a continuous loop.
 
-1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables (`job_board`, `job_definitions`, `job_schedules`, `job_reports`, etc.) and a sophisticated trigger system to manage the entire workflow. See `DATABASE_MAP.md` for a detailed schema.
+1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables (`job_board`, `job_definitions`, `job_schedules`, `job_reports`, etc.) and a sophisticated trigger system to manage the entire workflow. See `docs/documentation/DATABASE_MAP.md` for a detailed schema.
 2.  **Worker (`worker/worker.ts`)**: A Node.js application that continuously polls the `job_board` for `PENDING` jobs. It is responsible for claiming a job, invoking the agent, and reporting the outcome.
 3.  **Agent (`gemini-agent/agent.ts`)**: The "brain" of the operation. It wraps the Gemini CLI and is responsible for:
     -   Dynamically generating job-specific settings to enable the correct set of tools.
     -   Executing the LLM prompt with integrated telemetry collection.
     -   Parsing detailed telemetry data (token usage, tool calls, performance metrics) directly from Gemini CLI output files.
     -   Capturing both critical errors and warning-level issues for comprehensive job reporting.
-4.  **Tools (`packages/metacog-mcp`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `list_tools`, `read_records`, and the powerful `create_job` and `get_context_snapshot`. The context snapshot tool is optimized for Gemini's 1M token context window with intelligent data size management and time-based filtering.
-5.  **Frontend Explorer (`frontend/explorer`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
+4.  **Tools (`gemini-agent/mcp/`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `list_tools`, `read_records`, and the powerful `create_job` and `get_context_snapshot`. The context snapshot tool is optimized for Gemini's 1M token context window with intelligent data size management and time-based filtering.
+5.  **Frontend Explorer (`frontend/explorer/`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
 
 ---
 
@@ -53,7 +80,7 @@ The entire system operates on a continuous, event-driven cycle:
 2.  **Dispatch**: A database trigger (`universal_job_dispatcher`) finds a matching `job_schedule` based on the event and its filters. It then creates a new entry in the `job_board` table.
 3.  **Claim**: A `worker` instance polls the `job_board`, finds the `PENDING` job, and atomically claims it by setting its status to `IN_PROGRESS` and assigning its own `worker_id`.
 4.  **Execution**: The worker invokes the `Agent`, passing it the prompt, context, and the list of `enabled_tools` for that specific job.
-5.  **Tool Setup**: The agent dynamically creates a `.gemini/settings.json` file that configures the Gemini CLI to use the `metacog-mcp` server and exposes *only* the tools enabled for that job.
+5.  **Tool Setup**: The agent dynamically creates a `.gemini/settings.json` file that configures the Gemini CLI to use the `gemini-agent/mcp` server and exposes *only* the tools enabled for that job.
 6.  **LLM Interaction**: The agent spawns the Gemini CLI process. The LLM uses the provided tools as needed by making calls to the MCP server, which executes the corresponding database functions.
 7.  **Reporting**: After execution, the worker collects the final output and detailed telemetry (token counts, tool calls, duration, errors, warnings) from the Agent's integrated telemetry parser and creates a comprehensive record in the `job_reports` table with full visibility into job performance and issues.
 8.  **Completion**: The worker updates the job's status in the `job_board` to `COMPLETED` or `FAILED`, making the result available to the rest of the system and potentially triggering the next job in a chain.
@@ -83,9 +110,10 @@ The entire system operates on a continuous, event-driven cycle:
     Ensure you have authenticated the Gemini CLI on your host machine first.
 
 ### 2. Building the System
-Build all packages (worker, MCP server, and frontend):
+Build all components (worker, MCP server, and frontend):
 ```bash
-yarn build:all
+yarn build
+yarn frontend:build
 ```
 
 ### 3. Running the System
@@ -115,7 +143,8 @@ yarn dev:all
 #### Production Mode
 ```bash
 # Build everything first
-yarn build:all
+yarn build
+yarn frontend:build
 
 # Start both services in production mode
 yarn start:all
@@ -134,8 +163,8 @@ yarn start:all
 
 #### Build Commands
 ```bash
-yarn build          # Build root worker only
-yarn build:all      # Build all packages (worker + MCP + frontend)
+yarn build          # Build worker and MCP server
+yarn frontend:build # Build frontend only
 yarn clean          # Clean build artifacts
 ```
 
@@ -158,12 +187,12 @@ For easier development, you can run the MCP server or the worker directly on you
 
 -   **Run the MCP Server**:
     ```bash
-    yarn workspace @jinn/metacog-mcp start
+    yarn mcp:start
     ```
 -   **Run the Worker**:
     ```bash
     yarn build
-    node dist/worker/worker.js
+    node dist/worker.js
     ```
 -   **Run the Frontend**:
     ```bash
@@ -171,10 +200,10 @@ For easier development, you can run the MCP server or the worker directly on you
     ```
 
 ### Adding a New Tool
-1.  **Create Tool File**: Add a new file in `packages/metacog-mcp/src/tools/`.
+1.  **Create Tool File**: Add a new file in `gemini-agent/mcp/tools/`.
 2.  **Define Schema**: Use Zod to define the input parameter schema for your tool.
 3.  **Implement Logic**: Write the tool's function, which will typically interact with the database via the `supabase` client.
-4.  **Register Tool**: In `packages/metacog-mcp/src/server.ts`, import your new tool and add it to the `serverTools` array. The tool will be automatically registered and discoverable by the `list_tools` tool.
+4.  **Register Tool**: In `gemini-agent/mcp/server.ts`, import your new tool and add it to the `serverTools` array. The tool will be automatically registered and discoverable by the `list_tools` tool.
 
 ### Key Tool: get_context_snapshot
 The `get_context_snapshot` tool is a powerful system analysis tool designed for agents to understand the current state of the system. Key features:
@@ -201,7 +230,7 @@ get_context_snapshot({ job_name: "data_analysis_job", hours_back: 8 })
 ### Debugging
 You can run the worker in debug mode by passing the `--debug` or `-d` flag. This will pass the `--debug` flag to the Gemini CLI, providing verbose output on its operations.
 ```bash
-node dist/worker/worker.js --debug
+node dist/worker.js --debug
 ```
 This is extremely useful for inspecting prompts, tool calls, and model responses in detail.
 

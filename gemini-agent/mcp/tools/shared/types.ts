@@ -40,26 +40,20 @@ export interface LinkedMemory {
   metadata?: Record<string, any>;
 }
 
-// Trace thread types
+// Tool parameter schemas
 export const traceThreadParams = z.object({
-  thread_id: z.string().uuid().describe('The ID of the thread to trace.'),
+  thread_id: z.string().uuid().describe('The ID of the thread to trace')
+});
+
+export const reconstructJobParams = z.object({
+  job_id: z.string().uuid().describe('The ID of the job to reconstruct')
+});
+
+export const searchEventsParams = z.object({
+  query: z.string().describe('Search query for events'),
+  limit: z.number().optional().describe('Maximum number of results to return')
 });
 
 export type TraceThreadParams = z.infer<typeof traceThreadParams>;
-
-// Reconstruct job types
-export const reconstructJobParams = z.object({
-  job_id: z.string().uuid().describe('The ID of the job to reconstruct.'),
-});
 export type ReconstructJobParams = z.infer<typeof reconstructJobParams>;
-
-// Search events types
-export const searchEventsParams = z.object({
-  event_type: z.enum(['ARTIFACT_CREATED', 'JOB_CREATED', 'THREAD_CREATED']).optional().describe('Filter by specific event type.'),
-  status: z.string().optional().describe('Filter by status (e.g., COMPLETED, PENDING).'),
-  job_name: z.string().optional().describe('Filter by job name pattern.'),
-  topic: z.string().optional().describe('Filter by artifact topic pattern.'),
-  thread_id: z.string().uuid().optional().describe('Filter by specific thread ID.'),
-  time_range_hours: z.number().int().min(1).max(168).optional().describe('Limit results to events within the last X hours (max 168 = 1 week).'),
-});
 export type SearchEventsParams = z.infer<typeof searchEventsParams>; 

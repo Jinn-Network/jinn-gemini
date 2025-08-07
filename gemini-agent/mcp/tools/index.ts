@@ -12,7 +12,7 @@ export { reconstructJob, reconstructJobSchema } from './reconstruct-job.js';
 export { searchEvents, searchEventsSchema } from './search-events.js';
 
 // Export shared types
-export { tableNames, tableNameSchema } from './shared/types.js';
+export { tableNames, tableNameSchema, traceThreadParams, reconstructJobParams, searchEventsParams, type TraceThreadParams, type ReconstructJobParams, type SearchEventsParams } from './shared/types.js';
 
 // Export server tools
 export { getSchema, getSchemaParams, getSchemaSchema } from './get-schema.js';

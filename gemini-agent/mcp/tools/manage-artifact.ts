@@ -51,7 +51,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
             const finalThreadId = contextThreadId || param_thread_id;
 
             if (!finalThreadId) {
-                throw new Error("Cannot create an artifact. The job has no thread context, and no 'thread_id' parameter was provided. Use the `manage_thread` tool to create a new thread, and then pass the returned `thread_id` to this tool.");
+                throw new Error("Cannot create an artifact. The job has no thread context, and no 'thread_id' parameter was provided. Use `manage_thread` to create a thread first, then pass its ID here.");
             }
             if (operation !== 'CREATE' && operation !== 'REPLACE') {
                 throw new Error("Operation must be 'CREATE' or 'REPLACE' when creating a new artifact. Use 'CREATE' for clarity.");
