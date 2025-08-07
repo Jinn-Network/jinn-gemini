@@ -6,15 +6,16 @@ import { exceedsSizeLimit, getDataSizeMB, DEFAULT_SIZE_LIMIT_MB } from './shared
 export const readRecordsParams = z.object({
   table_name: tableNameSchema,
   filter: z.record(z.any()).optional().describe('A JSON object for WHERE clauses (e.g., `{"status": "COMPLETED"}`). An empty filter retrieves all records.'),
+  limit: z.number().int().positive().max(1000).optional().describe('Maximum number of records to return (default: 100, max: 1000). Use with caution for large datasets.'),
   hours_back: z.number().int().positive().optional().describe('Filter records from the last N hours based on the `created_at` column. Cannot be used with `filter`.'),
 });
 
 export const readRecordsSchema = {
-  description: 'Retrieves one or more rows from a table based on filters. Supports either basic key-value filtering OR time-based filtering on the `created_at` column. Note: system_state table is read-only and can only be read, not modified.',
+  description: 'Retrieves one or more rows from a table based on filters. DEFAULT LIMIT: 100 records (to prevent timeouts on large tables). For large datasets, use specific filters or increase limit cautiously. Supports basic key-value filtering OR time-based filtering on the `created_at` column. Note: system_state table is read-only and can only be read, not modified.',
   inputSchema: readRecordsParams.shape,
 };
 
-export async function readRecords({ table_name, filter, hours_back }: z.infer<typeof readRecordsParams>) {
+export async function readRecords({ table_name, filter, limit = 100, hours_back }: z.infer<typeof readRecordsParams>) {
   try {
     if (filter && hours_back) {
       throw new Error("You cannot use both 'filter' and 'hours_back' at the same time. Please use one or the other.");
@@ -34,6 +35,7 @@ export async function readRecords({ table_name, filter, hours_back }: z.infer<ty
     const { data, error } = await supabase.rpc('read_records_with_time', {
       p_table_name: table_name,
       p_filter: finalFilter,
+      p_limit: limit,
       p_time_filter: timeFilter,
     });
     if (error) throw error;
@@ -56,7 +58,7 @@ export async function readRecords({ table_name, filter, hours_back }: z.infer<ty
         content: [{ 
           type: 'text' as const, 
           text: JSON.stringify({
-            warning: `Data limited due to size constraint (${DEFAULT_SIZE_LIMIT_MB}MB). Original: ${data.length} records, Returned: ${finalData.length} records`,
+            warning: `Data limited due to size constraint (${DEFAULT_SIZE_LIMIT_MB}MB). Original: ${data.length} records, Returned: ${finalData.length} records. Consider using more specific filters or get_context_snapshot for large datasets.`,
             data: finalData
           }, null, 2) 
         }] 

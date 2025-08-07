@@ -54,7 +54,12 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
       }
       fetchPrompt()
     }
-  }, [collectionName, record.prompt_ref])
+    
+    // For unified jobs table, the prompt_content is directly available
+    if (collectionName === 'jobs' && record.prompt_content) {
+      setPromptData({ id: String(record.id), content: record.prompt_content })
+    }
+  }, [collectionName, record.prompt_ref, record.prompt_content, record.id])
   
   // If no record, return null
   if (!record) {

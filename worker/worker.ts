@@ -91,6 +91,12 @@ async function resolveThreadId(job: JobBoard): Promise<string | null> {
             return contextData.thread_id;
         }
 
+        // Check for nested trigger_event structure (for triggered jobs)
+        if (contextData && contextData.trigger_event && contextData.trigger_event.thread_id) {
+            console.log(`[CONTEXT] Resolved threadId '${contextData.trigger_event.thread_id}' from job ${job.id}'s input_context (trigger_event format).`);
+            return contextData.trigger_event.thread_id;
+        }
+
         // If the triggering record was a thread itself, its ID is the thread_id.
         if (contextData && contextData.objective && contextData.id) {
              console.log(`[CONTEXT] Resolved threadId '${contextData.id}' from job ${job.id}'s input_context (triggering record was a thread).`);

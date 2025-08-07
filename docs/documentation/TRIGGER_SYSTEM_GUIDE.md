@@ -2,16 +2,17 @@
 
 ## Overview
 
-The marketplace intelligence system uses an event-driven architecture where database changes automatically trigger job creation through the `universal_job_dispatcher` function.
+The marketplace intelligence system uses an event-driven architecture where database changes automatically trigger job creation through the `universal_job_dispatcher` function. The system has been unified to use the new `jobs` table for all job definitions.
 
 ## How It Works
 
 ### Core Components
 
 1. **Database Triggers**: Listen for INSERT/UPDATE events on `artifacts`, `threads`, `job_board`, and `system_state` tables
-2. **universal_job_dispatcher**: Matches events to job schedules and creates appropriate jobs
-3. **job_schedules**: Define which events trigger which jobs and under what conditions
-4. **jsonb_matches_conditions**: Handles direct field matching for trigger filters
+2. **universal_job_dispatcher**: Matches events to both the unified `jobs` table and legacy `job_schedules` for backward compatibility
+3. **jobs**: Unified table containing job definitions with embedded schedule configuration
+4. **job_schedules**: Legacy table maintained for backward compatibility
+5. **jsonb_matches_conditions**: Handles direct field matching for trigger filters
 
 ### Trigger Types
 
@@ -62,7 +63,40 @@ When `system_state.cumulative_job_processing_seconds` is updated, jobs can be tr
 
 ## Examples
 
-### Basic Artifact Topic Filter
+### Basic Artifact Topic Filter (Unified Jobs Table)
+```sql
+-- Using the new unified jobs table
+INSERT INTO jobs (job_id, version, name, description, prompt_content, enabled_tools, schedule_config, is_active)
+VALUES (
+    gen_random_uuid(),
+    1,
+    'market_research_processor',
+    'Processes completed market research',
+    'You are a market research processor...',
+    ARRAY['read_records', 'create_record'],
+    '{"trigger": "on_new_artifact", "filters": {"topic": "market_research_complete"}}',
+    true
+);
+```
+
+### Status Change Filter (Unified Jobs Table)
+```sql
+INSERT INTO jobs (job_id, version, name, description, prompt_content, enabled_tools, schedule_config, is_active)
+VALUES (
+    gen_random_uuid(),
+    1,
+    'artifact_processor',
+    'Processes artifacts when they become ready',
+    'You are an artifact processor...',
+    ARRAY['read_records', 'update_records'],
+    '{"trigger": "on_artifact_status_change", "filters": {"old_status": "RAW", "new_status": "PROCESSED"}}',
+    true
+);
+```
+
+### Legacy Examples (Deprecated - Use Jobs Table Instead)
+
+#### Basic Artifact Topic Filter (Legacy)
 ```sql
 INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
 VALUES (
@@ -72,33 +106,13 @@ VALUES (
 );
 ```
 
-### Status Change Filter
+#### Status Change Filter (Legacy)
 ```sql
 INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)  
 VALUES (
     'uuid-of-job-definition',
     'on_artifact_status_change',
     '{"old_status": "RAW", "new_status": "PROCESSED"}'
-);
-```
-
-### Source-based Filter
-```sql
-INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
-VALUES (
-    'uuid-of-job-definition', 
-    'on_new_artifact',
-    '{"source_job_name": "market_analyzer"}'
-);
-```
-
-### Multiple Conditions
-```sql
-INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
-VALUES (
-    'uuid-of-job-definition',
-    'on_new_artifact', 
-    '{"topic": "analysis_complete", "source_job_name": "researcher"}'
 );
 ```
 
@@ -171,6 +185,20 @@ VALUES (
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
 
+### Jobs Table (Unified)
+- `id` (uuid)
+- `job_id` (uuid)
+- `version` (int)
+- `name` (text)
+- `description` (text)
+- `prompt_content` (text)
+- `enabled_tools` (text[])
+- `model_settings` (jsonb)
+- `schedule_config` (jsonb)
+- `is_active` (boolean)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
 ## Testing Your Triggers
 
 1. **Create the job definition and schedule**
@@ -216,9 +244,24 @@ ORDER BY created_at DESC;
 
 ## Migration Notes
 
-The system was updated to use direct field matching instead of the `match_conditions` wrapper. Old schedules using the wrapper format have been automatically migrated.
+### Job Unification (2025-01-07)
+The system has been unified to use the new `jobs` table instead of the fragmented `job_definitions` + `job_schedules` + `prompt_library` architecture.
+
+**Key Changes Made**:
+- New unified `jobs` table with embedded `schedule_config`
+- Legacy tables maintained for backward compatibility
+- `universal_job_dispatcher` queries both new and legacy systems
+- Schedule configuration now embedded in `jobs.schedule_config` JSONB field
+
+### Direct Field Matching (Previous Migration)
+The system was updated to use direct field matching instead of the `match_conditions` wrapper.
 
 **Key Changes Made**:
 - `universal_job_dispatcher` now uses `trigger_filter` directly instead of `trigger_filter->match_conditions`
 - Field names updated: `artifact_topic` → `topic`, `source` → `source_job_name`
 - Filter structure simplified: removed nested JSON wrappers
+
+### Recommended Migration Path
+1. **New Jobs**: Use the unified `jobs` table with embedded schedule configuration
+2. **Existing Jobs**: Legacy tables continue to work but are deprecated
+3. **Mixed Environment**: Both systems operate in parallel during transition

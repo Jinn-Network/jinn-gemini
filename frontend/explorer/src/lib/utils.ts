@@ -10,9 +10,10 @@ export function cn(...inputs: ClassValue[]) {
 export function getCollectionLabel(collectionName: CollectionName): string {
   const labelMap: Record<CollectionName, string> = {
     job_board: 'Job Board',
-    job_definitions: 'Job Definitions', 
-    job_schedules: 'Job Schedules',
-    prompt_library: 'Prompt Library',
+    jobs: 'Jobs',
+    job_definitions: 'Job Definitions (Legacy)', 
+    job_schedules: 'Job Schedules (Legacy)',
+    prompt_library: 'Prompt Library (Legacy)',
     threads: 'Threads',
     artifacts: 'Artifacts',
     memories: 'Memories',
@@ -42,10 +43,7 @@ export const navigationCategories: NavigationCategory[] = [
     icon: '💼',
     items: [
       { collection: 'job_board', label: 'Board' },
-      { collection: 'job_reports', label: 'Reports' },
-      { collection: 'job_schedules', label: 'Schedules' },
-      { collection: 'job_definitions', label: 'Definitions' },
-      { collection: 'prompt_library', label: 'Prompt Library' },
+      { collection: 'jobs', label: 'Jobs' },
     ]
   },
   {

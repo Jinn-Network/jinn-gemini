@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const tableNames = [
   'artifacts',
   'job_board',
-  'job_definitions',
+  'jobs',
   'job_schedules',
   'job_reports',
   'memories',
@@ -55,5 +55,61 @@ export const searchEventsParams = z.object({
 });
 
 export type TraceThreadParams = z.infer<typeof traceThreadParams>;
+
 export type ReconstructJobParams = z.infer<typeof reconstructJobParams>;
-export type SearchEventsParams = z.infer<typeof searchEventsParams>; 
+
+// Search events types
+export const searchEventsParams = z.object({
+  event_type: z.enum(['ARTIFACT_CREATED', 'JOB_CREATED', 'THREAD_CREATED']).optional().describe('Filter by specific event type.'),
+  status: z.string().optional().describe('Filter by status (e.g., COMPLETED, PENDING).'),
+  job_name: z.string().optional().describe('Filter by job name pattern.'),
+  topic: z.string().optional().describe('Filter by artifact topic pattern.'),
+  thread_id: z.string().uuid().optional().describe('Filter by specific thread ID.'),
+  time_range_hours: z.number().int().min(1).max(168).optional().describe('Limit results to events within the last X hours (max 168 = 1 week).'),
+});
+export type SearchEventsParams = z.infer<typeof searchEventsParams>;
+
+// Job-related types for the unified jobs table
+export interface ScheduleFilters {
+  [key: string]: string | number | boolean | string[];
+}
+
+export interface ScheduleConfig {
+  trigger: 'on_new_artifact' | 'on_job_status_change' | 'on_new_thread' | 'cron' | 'manual';
+  filters: ScheduleFilters;
+  cron_pattern?: string;
+}
+
+export interface Job {
+  id: string; // UUID of this specific version
+  job_id: string; // Shared UUID across all versions
+  version: number;
+  name: string;
+  description?: string;
+  prompt_content: string;
+  enabled_tools: string[];
+  schedule_config: ScheduleConfig;
+  is_active: boolean;
+  created_at: string; // ISO 8601 Date
+  updated_at: string; // ISO 8601 Date
+}
+
+// Zod schemas for job creation
+export const ScheduleConfigSchema = z.object({
+  trigger: z.enum(['on_new_artifact', 'on_job_status_change', 'on_new_thread', 'cron', 'manual']),
+  filters: z.record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])),
+  cron_pattern: z.string().optional(),
+});
+
+export const CreateJobInputSchema = z.object({
+  name: z.string().describe('The name of the job'),
+  description: z.string().optional().describe('Optional description of the job purpose'),
+  prompt_content: z.string().describe('The full prompt content for this job'),
+  enabled_tools: z.array(z.string()).describe('Array of tool names this job can use'),
+  schedule_config: ScheduleConfigSchema.describe('Schedule and trigger configuration'),
+  // To create a new version of an existing job, provide this ID.
+  // If omitted, a new job (and job_id) will be created.
+  existing_job_id: z.string().uuid().optional().describe('UUID of existing job to create new version for'),
+});
+
+export type CreateJobInput = z.infer<typeof CreateJobInputSchema>; 

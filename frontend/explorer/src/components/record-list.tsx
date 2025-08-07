@@ -89,6 +89,11 @@ function getSecondaryInfo(record: DbRecord, collectionName: CollectionName): Rea
         )
       }
       break
+    case 'jobs':
+      if (record.version) info.push(`v${record.version}`)
+      if (record.is_active !== undefined) info.push(`${record.is_active ? 'Active' : 'Inactive'}`)
+      if (record.schedule_config?.trigger) info.push(`Trigger: ${record.schedule_config.trigger}`)
+      break
     case 'job_definitions':
       if (record.trigger) info.push(`Trigger: ${record.trigger}`)
       if (record.enabled !== undefined) info.push(`${record.enabled ? 'Enabled' : 'Disabled'}`)

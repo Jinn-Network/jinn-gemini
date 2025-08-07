@@ -24,6 +24,7 @@ The current system defines a job through a combination of `prompt_library`, `job
 This section lists the key files and directories relevant to this project.
 
 -   **Tool to be Modified**: `gemini-agent/mcp/tools/create-job.ts`
+-   **Worker to be Analyzed**: `worker/worker.ts`
 -   **Shared Types**: `gemini-agent/mcp/tools/shared/types.ts`
 -   **Database Migrations**: `supabase/migrations/`
 -   **Frontend Components (for post-migration update)**: `frontend/explorer/src/components/detail-view.tsx`
@@ -85,6 +86,7 @@ CREATE TABLE public.jobs_v2 (
     -- Core Job Logic and Configuration
     prompt_content TEXT NOT NULL,
     enabled_tools TEXT[] DEFAULT '{}',
+    model_settings JSONB NOT NULL DEFAULT '{}', -- Added to store model settings
     schedule_config JSONB NOT NULL,
 
     -- State and Timestamps
@@ -122,7 +124,7 @@ CREATE INDEX idx_jobs_v2_schedule_config_gin ON public.jobs_v2 USING GIN (schedu
 
 ### 6.2. TypeScript Type Definition
 
-The `Job` interface represents a record from the new `jobs` table.
+The `Job` interface represents a record from the new `jobs` table. It also includes `model_settings`, which will be denormalized onto the `job_board` at dispatch time.
 
 ```typescript
 // In gemini-agent/mcp/tools/shared/types.ts
@@ -142,6 +144,7 @@ export interface Job {
   description?: string;
   prompt_content: string;
   enabled_tools: string[];
+  model_settings: Record<string, any>; // <-- Added this
   schedule_config: ScheduleConfig;
   is_active: boolean;
   created_at: string; // ISO 8601 Date
@@ -149,8 +152,22 @@ export interface Job {
 }
 ```
 
-### 6.3. Data Migration Plan
+### 6.3. Downstream Impact Analysis: The Worker
 
+A critical part of this migration is ensuring the `worker` process, which executes jobs from the `job_board`, receives all the data it needs. The original implementation implicitly relied on `job_definitions` to provide context like `job_name` and `model_settings`.
+
+The new, unified approach requires that we **denormalize** this data onto the `job_board` at the moment of dispatch. If we fail to do this, the worker will be unable to correctly construct its prompt or configure the AI model, leading to execution failures.
+
+**Identified Gaps:**
+
+1.  **Missing `job_name`:** The worker uses `job_name` to construct the initial prompt context (`You are executing as job "..."`). Without it, the prompt is malformed.
+2.  **Missing `model_settings`:** The worker uses `model_settings` to select the correct AI model (e.g., `gemini-2.5-flash`). Without this, the `Agent` cannot be initialized correctly.
+
+**Solution:**
+
+The `job_board` table must be updated to include these fields, and the `create_job_from_unified_definition` function must be responsible for populating them. This ensures the `job_board` is a self-contained record with all information needed for execution.
+
+### 6.4. Data Migration Plan
 The migration script will use deterministic UUIDs for `job_id`.
 
 ```sql
@@ -184,7 +201,7 @@ FROM ranked_versions rv
 JOIN job_id_mapping map ON rv.name = map.name;
 ```
 
-### 6.4. System Component Modifications
+### 6.5. System Component Modifications
 
 #### `create_job` Tool (`gemini-agent/mcp/tools/create-job.ts`)
 The tool will be updated to use a Zod schema for input validation and to handle creating both new jobs and new versions of existing jobs.
@@ -218,8 +235,8 @@ BEGIN
           AND schedule_config->>'trigger' = trigger_type
           AND jsonb_matches_conditions(event_data, schedule_config->'filters')
     LOOP
-        INSERT INTO public.job_board (job_definition_id, input_prompt, enabled_tools, input_context, priority)
-        VALUES (job_to_dispatch.id, job_to_dispatch.prompt_content, job_to_dispatch.enabled_tools, jsonb_build_object('trigger_event', event_data), 5);
+        INSERT INTO public.job_board (job_definition_id, input_prompt, enabled_tools, model_settings, job_name, input_context, priority)
+        VALUES (job_to_dispatch.id, job_to_dispatch.prompt_content, job_to_dispatch.enabled_tools, job_to_dispatch.model_settings, job_to_dispatch.name, jsonb_build_object('trigger_event', event_data), 5);
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;
@@ -229,25 +246,39 @@ $$ LANGUAGE plpgsql;
 
 This plan breaks down the work into testable, end-to-end user stories.
 
-### Slice 0: Foundational Schema
+### ✅ Slice 0: Foundational Schema (COMPLETED)
 - **Goal:** Create the database schema and helpers.
 - **Tasks:** Write a migration for `jobs_v2` table, `trigger_set_timestamp()` function, and `jsonb_matches_conditions()` helper.
+- **Status:** Complete. The `jobs` table exists with proper schema, constraints, and helper functions.
 
-### Slice 1: Create and View a Manual Job
+### ✅ Slice 1: Create and View a Manual Job (COMPLETED)
 - **Goal:** Test the core write path.
 - **Tasks:** Modify `create_job` tool for manual triggers; add TS types; write unit test to verify record creation.
+- **Status:** Complete. The `create_job` tool works with the unified `jobs` table and proper TypeScript types are defined.
 
-### Slice 2: Dispatch a Manual Job
-- **Goal:** Test the core dispatch path.
-- **Tasks:** Implement `create_job_from_unified_definition`; create a manual trigger RPC; write test to verify dispatch to `job_board`.
+### ✅ Slice 2: Dispatch a Manual Job & Handle Worker Dependencies (COMPLETED)
+- **Goal:** Test the core dispatch path and ensure the `worker` receives all necessary data.
+- **Tasks:**
+  - ✅ Implement `create_job_from_unified_definition`.
+  - ✅ **Add `job_name` and `model_settings` columns to the `job_board` table schema.**
+  - ✅ **Update the dispatcher to copy `name` and `model_settings` from `jobs` to `job_board` on dispatch.**
+  - ✅ Create a manual trigger RPC for testing.
+  - ✅ Write a test to verify that a dispatched job on the `job_board` is self-contained and has all required fields for worker execution.
+- **Status:** Complete. Jobs can be successfully dispatched with all required fields (`job_name`, `model_settings`, `enabled_tools`, `input_prompt`) for worker execution.
 
-### Slice 3: Support Event-Driven Jobs (`on_new_artifact`)
+### ✅ Slice 3: Support Event-Driven Jobs (`on_new_artifact`) (COMPLETED)
 - **Goal:** Support the primary automated trigger.
-- **Tasks:** Enhance `create_job` tool for this trigger type; update `handle_new_artifact` trigger to call new dispatcher; write tests for matching and non-matching events.
+- **Tasks:** 
+  - ✅ Enhance `create_job` tool for this trigger type
+  - ✅ Update `handle_new_artifact` trigger to call new dispatcher
+  - ✅ Write tests for matching and non-matching events
+  - ✅ Add support for `on_artifact_status_change` triggers
+  - ✅ Update schema constraints to support all trigger types
+- **Status:** Complete. Event-driven jobs now work with the unified system. Both `on_new_artifact` and `on_artifact_status_change` triggers are functional with proper filtering. The `universal_job_dispatcher` calls both old and new systems for backward compatibility.
 
 ### Slice 4: Data Migration and Final Cutover
 - **Goal:** Migrate existing data and perform the switch.
-- **Tasks:** Write and test the migration script; include `RENAME TABLE` statements for atomic cutover; create a separate cleanup script to drop old tables later.
+- **Tasks:** Write and test the migration scrcleaript; include `RENAME TABLE` statements for atomic cutover; create a separate cleanup script to drop old tables later.
 
 ### Slice 5: Front-End and Reporting Updates (Optional, Parallel)
 - **Goal:** Update UI and docs.

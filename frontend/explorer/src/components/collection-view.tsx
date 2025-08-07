@@ -25,6 +25,7 @@ function getSortingConfig(collectionName: CollectionName): { column: string; asc
   // Collection-specific sorting configurations
   const sortingConfigs: Record<CollectionName, { column: string; ascending: boolean }> = {
     job_board: { column: 'created_at', ascending: false },
+    jobs: { column: 'created_at', ascending: false },
     job_definitions: { column: 'created_at', ascending: false },
     job_schedules: { column: 'created_at', ascending: false },
     job_reports: { column: 'created_at', ascending: false },
@@ -44,6 +45,7 @@ function getSelectColumns(collectionName: CollectionName): string {
   // For collections with large text fields, only select the essential columns for list view
   const selectConfigs: Record<CollectionName, string> = {
     job_board: '*', // Keep all columns for job_board (no large text fields)
+    jobs: 'id,job_id,version,name,description,enabled_tools,schedule_config,is_active,created_at,updated_at,model_settings', // Exclude prompt_content
     job_definitions: '*', // Keep all columns
     job_schedules: '*', // Keep all columns  
     job_reports: 'id,job_id,worker_id,created_at,status,duration_ms,total_tokens,error_message,error_type', // Exclude large text fields

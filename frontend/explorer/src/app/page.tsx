@@ -20,16 +20,8 @@ export default function Home() {
               <span className="text-slate-500">Central job queue</span>
             </div>
             <div className="flex flex-col space-y-1">
-              <span className="font-medium">job_definitions</span>
-              <span className="text-slate-500">Reusable job templates</span>
-            </div>
-            <div className="flex flex-col space-y-1">
-              <span className="font-medium">job_schedules</span>
-              <span className="text-slate-500">Job triggering rules</span>
-            </div>
-            <div className="flex flex-col space-y-1">
-              <span className="font-medium">prompt_library</span>
-              <span className="text-slate-500">Versioned prompts</span>
+              <span className="font-medium">jobs</span>
+              <span className="text-slate-500">Unified job definitions</span>
             </div>
             <div className="flex flex-col space-y-1">
               <span className="font-medium">threads</span>
@@ -50,10 +42,6 @@ export default function Home() {
             <div className="flex flex-col space-y-1">
               <span className="font-medium">system_state</span>
               <span className="text-slate-500">Global key-value state</span>
-            </div>
-            <div className="flex flex-col space-y-1">
-              <span className="font-medium">job_reports</span>
-              <span className="text-slate-500">Execution reports and telemetry</span>
             </div>
           </div>
         </div>

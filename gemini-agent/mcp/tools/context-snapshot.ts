@@ -32,7 +32,7 @@ function getTimeWindow(hoursBack: number): { startTime: string, endTime: string,
 async function fetchData(startTime: string, jobName?: string, limits = { jobs: 50, artifacts: 20, threads: 15 }) {
     // Fetch data sequentially to avoid TypeScript promise type issues
     const systemStateRes = await supabase.from('system_state').select('key, value, updated_at');
-    const jobSchedulesRes = await supabase.from('job_schedules').select('id, dispatch_trigger, trigger_filter, job_name, job_definitions!inner(name, is_active)');
+    const unifiedJobsRes = await supabase.from('jobs').select('id, name, description, schedule_config, is_active, created_at, updated_at');
     
     const jobsRes = await supabase.from('job_board')
         .select('id, status, job_name, created_at, updated_at, job_report_id, output')
@@ -68,7 +68,7 @@ async function fetchData(startTime: string, jobName?: string, limits = { jobs: 5
         .limit(10) : null;
 
     if (systemStateRes.error) throw new Error(`Error fetching system_state: ${systemStateRes.error.message}`);
-    if (jobSchedulesRes.error) throw new Error(`Error fetching job_schedules: ${jobSchedulesRes.error.message}`);
+    if (unifiedJobsRes.error) throw new Error(`Error fetching unified jobs: ${unifiedJobsRes.error.message}`);
     if (jobsRes.error) throw new Error(`Error fetching job_board: ${jobsRes.error.message}`);
     if (artifactsRes.error) throw new Error(`Error fetching artifacts: ${artifactsRes.error.message}`);
     if (threadsRes.error) throw new Error(`Error fetching threads: ${threadsRes.error.message}`);
@@ -77,7 +77,7 @@ async function fetchData(startTime: string, jobName?: string, limits = { jobs: 5
 
     return {
         system_state: systemStateRes.data,
-        job_schedules: jobSchedulesRes.data,
+        unified_jobs: unifiedJobsRes.data,
         jobs_in_window: jobsRes.data,
         artifacts_in_window: artifactsRes.data,
         messages_in_window: messagesRes ? messagesRes.data : [],
@@ -119,7 +119,7 @@ ${typeof strategy === 'string' ? strategy : JSON.stringify(strategy, null, 2)}`;
 - **Period**: ${new Date(timeWindow.startTime).toLocaleString()} to ${new Date(timeWindow.endTime).toLocaleString()}
 
 ### System Health Overview
-- **Job Schedules Active**: ${data.job_schedules.filter((s: any) => s.job_definitions?.is_active).length}/${data.job_schedules.length}
+- **Job Definitions Active**: ${data.unified_jobs.filter((j: any) => j.is_active).length}/${data.unified_jobs.length}
 - **Recent Jobs**: ${data.jobs_in_window.length} in time window
 - **Recent Artifacts**: ${data.artifacts_in_window.length} created
 - **Active Threads**: ${data.threads_in_window.length}
@@ -179,9 +179,9 @@ ${data.messages_in_window.slice(0, 5).map((message: any) =>
 ).join('\n')}`;
     }
 
-    output += `\n\n### Active Job Schedules
-${data.job_schedules.filter((s: any) => s.job_definitions?.is_active).map((schedule: any) => 
-  `- **${schedule.job_name}**: ${schedule.dispatch_trigger} ${schedule.trigger_filter ? `with filter ${JSON.stringify(schedule.trigger_filter)}` : ''}`
+    output += `\n\n### Active Job Definitions  
+${data.unified_jobs.filter((j: any) => j.is_active).map((job: any) => 
+  `- **${job.name}**: ${job.schedule_config.trigger} ${job.schedule_config.filters ? `with filter ${JSON.stringify(job.schedule_config.filters)}` : ''}`
 ).join('\n')}
 
 ### System State
@@ -192,7 +192,7 @@ ${data.system_state.map((state: any) => `- **${state.key}**: ${typeof state.valu
 - Artifacts: ${data.artifacts_in_window.length} records  
 - Messages: ${data.messages_in_window.length} records
 - Threads: ${data.threads_in_window.length} records
-- Schedules: ${data.job_schedules.length} active schedules
+- Job Definitions: ${data.unified_jobs.length} total (${data.unified_jobs.filter((j: any) => j.is_active).length} active)
 - System State: ${data.system_state.length} key-value pairs`;
 
     return output;

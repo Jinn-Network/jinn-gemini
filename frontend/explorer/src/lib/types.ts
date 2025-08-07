@@ -9,15 +9,17 @@ export type DbRecord = {
 // List of all explorable table names
 export const collectionNames = [
   'job_board',
-  'job_definitions',
-  'job_schedules',
-  'prompt_library',
+  'jobs',
+  'job_reports',
   'threads',
   'artifacts',
   'memories',
   'messages',
   'system_state',
-  'job_reports',
+  // Legacy tables - kept for direct URL access but removed from navigation
+  'job_definitions',
+  'job_schedules', 
+  'prompt_library',
 ] as const;
 
 export type CollectionName = typeof collectionNames[number];
