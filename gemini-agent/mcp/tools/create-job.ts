@@ -12,7 +12,12 @@ export const createJobSchema = {
 
 export async function createJob(params: CreateJobParams) {
     try {
-        const validatedParams = createJobParams.parse(params);
+        // Use safeParse to avoid throwing exceptions on validation errors
+        const parseResult = createJobParams.safeParse(params);
+        if (!parseResult.success) {
+            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+        }
+        const validatedParams = parseResult.data;
         const {
             name,
             description,

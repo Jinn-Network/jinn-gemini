@@ -18,12 +18,14 @@ export const manageArtifactSchema = {
 };
 
 export async function manageArtifact(params: ManageArtifactParams) {
-    const { artifact_id, thread_id: param_thread_id, operation, content, topic, status } = manageArtifactParams.parse(params);
-    const { jobId, jobName, threadId: contextThreadId } = getCurrentJobContext();
-
-
-
     try {
+        // Use safeParse to avoid throwing exceptions on validation errors
+        const parseResult = manageArtifactParams.safeParse(params);
+        if (!parseResult.success) {
+            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+        }
+        const { artifact_id, thread_id: param_thread_id, operation, content, topic, status } = parseResult.data;
+        const { jobId, jobName, threadId: contextThreadId } = getCurrentJobContext();
         if (artifact_id) {
             // Update Mode - context logic remains the same
             const rpc_params = {

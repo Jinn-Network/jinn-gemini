@@ -29,9 +29,13 @@ export const searchMemoriesSchema = {
 };
 
 export async function searchMemories(params: SearchMemoriesParams) {
-    const { query, limit, similarity_threshold, filter, include_links } = searchMemoriesParams.parse(params);
-
     try {
+        // Use safeParse to avoid throwing exceptions on validation errors
+        const parseResult = searchMemoriesParams.safeParse(params);
+        if (!parseResult.success) {
+            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+        }
+        const { query, limit, similarity_threshold, filter, include_links } = parseResult.data;
         const embeddingResponse = await getOpenAIClient().embeddings.create({
             model: 'text-embedding-3-small',
             input: query,

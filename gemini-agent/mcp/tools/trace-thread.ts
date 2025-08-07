@@ -7,8 +7,13 @@ export const traceThreadSchema = {
 };
 
 export async function traceThread(params: TraceThreadParams) {
-  const { thread_id } = traceThreadParams.parse(params);
   try {
+    // Use safeParse to avoid throwing exceptions on validation errors
+    const parseResult = traceThreadParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { thread_id } = parseResult.data;
     const { data, error } = await supabase.rpc('get_thread_timeline', { p_thread_id: thread_id });
     if (error) throw error;
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };

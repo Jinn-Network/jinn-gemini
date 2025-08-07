@@ -15,9 +15,13 @@ export const createThreadSchema = {
 };
 
 export async function createThread(params: CreateThreadParams) {
-    const { title, objective, parent_thread_id } = createThreadParams.parse(params);
-
     try {
+        // Use safeParse to avoid throwing exceptions on validation errors
+        const parseResult = createThreadParams.safeParse(params);
+        if (!parseResult.success) {
+            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+        }
+        const { title, objective, parent_thread_id } = parseResult.data;
         const newThread: any = {
             title,
             objective,

@@ -7,8 +7,13 @@ export const reconstructJobSchema = {
 };
 
 export async function reconstructJob(params: ReconstructJobParams) {
-  const { job_id } = reconstructJobParams.parse(params);
   try {
+    // Use safeParse to avoid throwing exceptions on validation errors
+    const parseResult = reconstructJobParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { job_id } = parseResult.data;
     const { data, error } = await supabase.rpc('get_job_impact', { p_job_id: job_id });
     if (error) throw error;
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };

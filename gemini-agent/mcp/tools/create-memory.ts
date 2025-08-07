@@ -27,13 +27,17 @@ export const createMemorySchema = {
 };
 
 export async function createMemory(params: CreateMemoryParams) {
-    const { content, custom_metadata, linked_memory_id, link_type } = createMemoryParams.parse(params);
-
-    if (linked_memory_id && !link_type) {
-        throw new Error("`link_type` is required when `linked_memory_id` is provided.");
-    }
-
     try {
+        // Use safeParse to avoid throwing exceptions on validation errors
+        const parseResult = createMemoryParams.safeParse(params);
+        if (!parseResult.success) {
+            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+        }
+        const { content, custom_metadata, linked_memory_id, link_type } = parseResult.data;
+
+        if (linked_memory_id && !link_type) {
+            return { content: [{ type: 'text' as const, text: `Error creating memory: link_type is required when linked_memory_id is provided.` }] };
+        }
         const { jobId, jobName, threadId } = getCurrentJobContext();
 
         const embeddingResponse = await getOpenAIClient().embeddings.create({

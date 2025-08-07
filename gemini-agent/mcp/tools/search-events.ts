@@ -7,9 +7,13 @@ export const searchEventsSchema = {
 };
 
 export async function searchEvents(params: SearchEventsParams) {
-  const parsedParams = searchEventsParams.parse(params);
-  
   try {
+    // Use safeParse to avoid throwing exceptions on validation errors
+    const parseResult = searchEventsParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const parsedParams = parseResult.data;
     const { data, error } = await supabase.rpc('search_system_events', { 
       p_filters: JSON.stringify(parsedParams) 
     });

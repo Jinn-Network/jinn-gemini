@@ -18,12 +18,14 @@ export const manageThreadSchema = {
 };
 
 export async function manageThread(params: ManageThreadParams) {
-    const { thread_id, title, objective, parent_thread_id, status, summary } = manageThreadParams.parse(params);
-    const { jobId, jobName } = getCurrentJobContext();
-
-
-
     try {
+        // Use safeParse to avoid throwing exceptions on validation errors
+        const parseResult = manageThreadParams.safeParse(params);
+        if (!parseResult.success) {
+            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+        }
+        const { thread_id, title, objective, parent_thread_id, status, summary } = parseResult.data;
+        const { jobId, jobName } = getCurrentJobContext();
         if (thread_id) {
             // Update Mode
             const updates: any = {};

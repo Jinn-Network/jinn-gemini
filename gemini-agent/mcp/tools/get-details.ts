@@ -16,16 +16,18 @@ export const getDetailsSchema = {
 };
 
 export async function getDetails(params: GetDetailsParams) {
-    const { table_name, ids } = getDetailsParams.parse(params);
-
-    // Handle empty array case
-    if (ids.length === 0) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify([], null, 2) }] };
-    }
-
-
-
     try {
+        // Use safeParse to avoid throwing exceptions on validation errors
+        const parseResult = getDetailsParams.safeParse(params);
+        if (!parseResult.success) {
+            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+        }
+        const { table_name, ids } = parseResult.data;
+
+        // Handle empty array case
+        if (ids.length === 0) {
+            return { content: [{ type: 'text' as const, text: JSON.stringify([], null, 2) }] };
+        }
         const { data: records, error } = await supabase
             .from(table_name)
             .select('*')
