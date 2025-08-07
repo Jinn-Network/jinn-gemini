@@ -5,11 +5,9 @@ export const tableNames = [
   'artifacts',
   'job_board',
   'jobs',
-  'job_schedules',
   'job_reports',
   'memories',
   'messages',
-  'prompt_library',
   'threads',
   'system_state', // Read-only - cannot be modified by agents
 ] as const;
@@ -47,11 +45,6 @@ export const traceThreadParams = z.object({
 
 export const reconstructJobParams = z.object({
   job_id: z.string().uuid().describe('The ID of the job to reconstruct')
-});
-
-export const searchEventsParams = z.object({
-  query: z.string().describe('Search query for events'),
-  limit: z.number().optional().describe('Maximum number of results to return')
 });
 
 export type TraceThreadParams = z.infer<typeof traceThreadParams>;
