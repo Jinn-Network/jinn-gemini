@@ -2,7 +2,6 @@ import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
 import { OpenAI } from 'openai';
 import { Memory, LinkedMemory } from './shared/types.js';
-import { exceedsSizeLimit, getDataSizeMB, DEFAULT_SIZE_LIMIT_MB } from './shared/data-size-limiter.js';
 
 function getOpenAIClient() {
   if (!process.env.OPENAI_API_KEY) {
@@ -68,31 +67,6 @@ export async function searchMemories(params: SearchMemoriesParams) {
                     }
                 }
             }
-        }
-
-        // Check if data exceeds size limit
-        if (exceedsSizeLimit(memories)) {
-            const dataSizeMB = getDataSizeMB(memories);
-            
-            // Limit number of memories to fit within size limit
-            let finalMemories = memories;
-            let reduction = 2;
-            
-            while (exceedsSizeLimit(finalMemories) && finalMemories.length > 1) {
-                const maxMemories = Math.max(1, Math.floor(memories.length / reduction));
-                finalMemories = memories.slice(0, maxMemories);
-                reduction *= 2;
-            }
-
-            return { 
-                content: [{ 
-                    type: 'text' as const, 
-                    text: JSON.stringify({
-                        warning: `Results limited due to size constraint (${DEFAULT_SIZE_LIMIT_MB}MB). Original: ${memories.length} memories, Returned: ${finalMemories.length} memories`,
-                        memories: finalMemories
-                    }, null, 2) 
-                }] 
-            };
         }
 
         return { content: [{ type: 'text' as const, text: JSON.stringify(memories, null, 2) }] };

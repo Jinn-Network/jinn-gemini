@@ -1,12 +1,11 @@
 import { z } from 'zod';
 import { supabase } from './shared/supabase.js';
 import { tableNameSchema } from './shared/types.js';
-import { exceedsSizeLimit, getDataSizeMB, DEFAULT_SIZE_LIMIT_MB } from './shared/data-size-limiter.js';
 
 export const readRecordsParams = z.object({
   table_name: tableNameSchema,
   filter: z.record(z.any()).optional().describe('A JSON object for WHERE clauses (e.g., `{"status": "COMPLETED"}`). An empty filter retrieves all records.'),
-  limit: z.number().int().positive().max(1000).optional().describe('Maximum number of records to return (default: 100, max: 1000). Use with caution for large datasets.'),
+  limit: z.number().int().positive().optional().describe('Maximum number of records to return (default: 100). Use with caution for large datasets.'),
   hours_back: z.number().int().positive().optional().describe('Filter records from the last N hours based on the `created_at` column. Cannot be used with `filter`.'),
 });
 
@@ -39,31 +38,6 @@ export async function readRecords({ table_name, filter, limit = 100, hours_back 
       p_time_filter: timeFilter,
     });
     if (error) throw error;
-
-    // Check if data exceeds size limit
-    if (exceedsSizeLimit(data)) {
-      const dataSizeMB = getDataSizeMB(data);
-      
-      // Limit number of records to fit within size limit
-      let finalData = data;
-      let reduction = 2;
-      
-      while (exceedsSizeLimit(finalData) && finalData.length > 1) {
-        const maxRecords = Math.max(1, Math.floor(data.length / reduction));
-        finalData = data.slice(0, maxRecords);
-        reduction *= 2;
-      }
-
-      return { 
-        content: [{ 
-          type: 'text' as const, 
-          text: JSON.stringify({
-            warning: `Data limited due to size constraint (${DEFAULT_SIZE_LIMIT_MB}MB). Original: ${data.length} records, Returned: ${finalData.length} records. Consider using more specific filters or get_context_snapshot for large datasets.`,
-            data: finalData
-          }, null, 2) 
-        }] 
-      };
-    }
 
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   } catch (e: any) {
