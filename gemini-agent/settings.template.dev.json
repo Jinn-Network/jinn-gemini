@@ -1,0 +1,9 @@
+{
+    "mcpServers": {
+      "metacog": {
+        "command": "tsx",
+        "args": ["../gemini-agent/mcp/server.ts"],
+        "trust": true
+      }
+    }
+  }

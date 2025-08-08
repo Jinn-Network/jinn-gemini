@@ -84,8 +84,6 @@ export async function enforceDataSizeLimit<T>(
         const data = await dataFetcher(reductionFactor);
         const dataSizeMB = getDataSizeMB(data);
         
-        console.log(`${logPrefix} attempt ${attempts}: ${dataSizeMB.toFixed(2)}MB data (factor: ${reductionFactor})`);
-        
         if (dataSizeMB <= maxSizeMB) {
             return data;
         }
@@ -97,7 +95,6 @@ export async function enforceDataSizeLimit<T>(
             onSizeExceeded(dataSizeMB, maxSizeMB, attempts);
         }
         
-        console.log(`Data size ${dataSizeMB.toFixed(2)}MB exceeds limit ${maxSizeMB}MB, reducing factor to ${reductionFactor}`);
     }
     
     throw new Error(`Unable to fetch data within size limit of ${maxSizeMB}MB even with minimum reduction factor`);

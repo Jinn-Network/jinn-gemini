@@ -160,7 +160,10 @@ export class Agent {
   private generateJobSpecificSettings(): void {
     if (this.enabledTools.length === 0) return;
     try {
-      const templatePath = join(this.agentRoot, 'settings.template.json');
+      const templateFileName = process.env.USE_TSX_MCP === '1'
+        ? 'settings.template.dev.json'
+        : 'settings.template.json';
+      const templatePath = join(this.agentRoot, templateFileName);
       const templateSettings: GeminiSettings = JSON.parse(readFileSync(templatePath, 'utf8'));
 
       if (!templateSettings.mcpServers) {
