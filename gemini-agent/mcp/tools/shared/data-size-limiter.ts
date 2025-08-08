@@ -3,7 +3,7 @@
  * Optimized for Gemini's 1M token context window with ~600KB safe limit.
  */
 
-export const DEFAULT_SIZE_LIMIT_MB = 0.6; // ~600KB for safe 1M token context window
+export const DEFAULT_SIZE_LIMIT_MB = 0.3; // ~300KB for safer 1M token context window and reduced quota pressure
 
 /**
  * Calculate the size of data in bytes when serialized as JSON
