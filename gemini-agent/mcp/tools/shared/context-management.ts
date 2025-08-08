@@ -85,13 +85,13 @@ export function buildSinglePageFromItems(
   allItems: any[],
   opts: BuildSinglePageOptions = {}
 ): BuildSinglePageResult {
-  const pageTokenBudget = opts.pageTokenBudget ?? 50_000;
-  const truncateChars = opts.truncateChars ?? 300;
+  const pageTokenBudget = opts.pageTokenBudget ?? 15_000;
+  const truncateChars = opts.truncateChars ?? 200;
   const startOffset = opts.startOffset ?? 0;
   const policy = opts.truncationPolicy;
   const enforceHardBudget = opts.enforceHardPageBudget ?? true;
   const enforceFieldClamp = opts.enforceHardFieldClamp ?? true;
-  const perFieldMaxChars = enforceFieldClamp ? (opts.perFieldMaxChars ?? 10_000) : undefined;
+  const perFieldMaxChars = enforceFieldClamp ? (opts.perFieldMaxChars ?? 4_000) : undefined;
 
   const applyPolicyThenClamp = (item: any): any => {
     // Apply field-aware policy first, else generic per-item truncation
@@ -173,17 +173,17 @@ export function composeSinglePageResponse(
   allItems: any[],
   opts: ComposeSinglePageOptions = {}
 ): ComposeSinglePageResult {
-  const budget = opts.pageTokenBudget ?? 50_000;
-  const warnAt = opts.warnThresholdTokens ?? 500_000;
+  const budget = opts.pageTokenBudget ?? 15_000;
+  const warnAt = opts.warnThresholdTokens ?? 100_000;
 
   const page = buildSinglePageFromItems(allItems, opts);
 
   // Compute full tokens using the same truncation policy as the page
   const truncateOne = (item: any) => {
     const hasPolicy = Boolean(opts.truncationPolicy);
-    const perItemMax = opts.truncateChars ?? 300;
+    const perItemMax = opts.truncateChars ?? 200;
     const clampEnabled = opts.enforceHardFieldClamp ?? true;
-    const clampMax = clampEnabled ? (opts.perFieldMaxChars ?? 10_000) : undefined;
+    const clampMax = clampEnabled ? (opts.perFieldMaxChars ?? 4_000) : undefined;
 
     let v = hasPolicy
       ? deepTruncateByField(item, opts.truncationPolicy as TruncationPolicy)
