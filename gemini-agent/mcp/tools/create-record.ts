@@ -12,8 +12,13 @@ export const createRecordSchema = {
   inputSchema: createRecordParams.shape,
 };
 
-export async function createRecord({ table_name, data }: z.infer<typeof createRecordParams>) {
+export async function createRecord(params: z.infer<typeof createRecordParams>) {
   try {
+    const parseResult = createRecordParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { table_name, data } = parseResult.data;
     const { jobId, jobName, threadId } = getCurrentJobContext();
     
     // Automatically inject the universal context into the data payload

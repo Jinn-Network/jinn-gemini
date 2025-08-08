@@ -10,6 +10,8 @@
     "start": "node dist/worker.js",
     "dev": "USE_TSX_MCP=1 tsx worker/worker.ts -- --single-job",
     "dev:continuous": "USE_TSX_MCP=1 tsx worker/worker.ts",
+    "dev:job": "USE_TSX_MCP=1 tsx worker/worker.ts -- --job-id",
+    "start:job": "node dist/worker/worker.js -- --job-id",
     "test": "vitest run",
     "test:integration": "vitest run gemini-agent/mcp/tools.integration.test.ts",
     "frontend:dev": "cd frontend/explorer && yarn run dev",

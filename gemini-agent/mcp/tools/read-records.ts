@@ -16,8 +16,13 @@ export const readRecordsSchema = {
   inputSchema: readRecordsParams.shape,
 };
 
-export async function readRecords({ table_name, filter, limit = 100, hours_back, cursor }: z.infer<typeof readRecordsParams>) {
+export async function readRecords(params: z.infer<typeof readRecordsParams>) {
   try {
+    const parseResult = readRecordsParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { table_name, filter, limit = 100, hours_back, cursor } = parseResult.data;
     if (filter && hours_back) {
       throw new Error("You cannot use both 'filter' and 'hours_back' at the same time. Please use one or the other.");
     }

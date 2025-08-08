@@ -11,8 +11,13 @@ export const getSchemaSchema = {
   inputSchema: getSchemaParams.shape,
 };
 
-export async function getSchema({ table_name }: z.infer<typeof getSchemaParams>) {
+export async function getSchema(params: z.infer<typeof getSchemaParams>) {
   try {
+    const parseResult = getSchemaParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { table_name } = parseResult.data;
     if (table_name) {
       // This is a simplified RPC call to a Supabase function
       // that would query pg_catalog for the detailed schema.

@@ -5,7 +5,18 @@ import { createRecord } from '../gemini-agent/mcp/tools/create-record.js';
 
 // Check for command line flags
 const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
-const singleJobMode = process.argv.includes('--single-job');
+
+// Support forcing a specific job ID regardless of status
+const jobIdFlagIndex = process.argv.findIndex(arg => arg === '--job-id' || arg === '-j');
+const targetJobId = jobIdFlagIndex !== -1 ? process.argv[jobIdFlagIndex + 1] : null;
+if (jobIdFlagIndex !== -1) {
+    if (!targetJobId || targetJobId.startsWith('-')) {
+        console.error('Invalid usage: --job-id|-j requires a job ID value. Example: --job-id 123e4567-e89b-12d3-a456-426614174000');
+        process.exit(1);
+    }
+}
+
+const singleJobMode = process.argv.includes('--single-job') || Boolean(targetJobId);
 
 // Simple unique ID generator for the worker
 const workerId = `worker-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -259,7 +270,7 @@ function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reas
 }
 
 async function processPendingJobs(): Promise<boolean> {
-    console.log(`Worker ${workerId} starting up, checking for pending jobs...`);
+    console.log(`Worker ${workerId} starting up, checking for ${targetJobId ? `targeted job ${targetJobId}` : 'pending jobs'}...`);
     if (debugMode) {
         console.log(`[DEBUG] Worker running in debug mode - Gemini CLI will use --debug flag`);
     }
@@ -271,7 +282,10 @@ async function processPendingJobs(): Promise<boolean> {
         await new Promise(resolve => setTimeout(resolve, rateLimitCheck.waitTime));
     }
 
-    const readResult = await readRecords({ table_name: 'job_board', filter: { status: 'PENDING' } });
+    const readResult = await readRecords({
+        table_name: 'job_board',
+        filter: targetJobId ? { id: targetJobId } : { status: 'PENDING' }
+    });
 
     if (!readResult.content || !readResult.content[0] || readResult.content[0].type !== 'text') {
         console.error('Failed to read jobs from database or unexpected format.', readResult);
@@ -297,11 +311,11 @@ async function processPendingJobs(): Promise<boolean> {
     }
 
     if (!jobs || jobs.length === 0) {
-        console.log("No pending jobs found.");
+        console.log(targetJobId ? `No job found with id ${targetJobId}.` : "No pending jobs found.");
         return false;
     }
 
-    console.log(`Found ${jobs.length} pending jobs.`);
+    console.log(targetJobId ? `Found targeted job ${jobs[0].id} (status=${jobs[0].status || 'UNKNOWN'})` : `Found ${jobs.length} pending jobs.`);
 
     // Process one job at a time for now
     const job = jobs[0];
@@ -309,7 +323,7 @@ async function processPendingJobs(): Promise<boolean> {
     // Resolve the threadId from the job's context before execution
     const threadId = await resolveThreadId(job);
 
-    console.log(`Attempting to claim job ${job.id}...`);
+    console.log(`Attempting to claim job ${job.id}${targetJobId ? ' (forced by --job-id)' : ''}...`);
     const startTime = Date.now();
     let result = null;
     let error = null;
@@ -319,10 +333,15 @@ async function processPendingJobs(): Promise<boolean> {
     while (retryCount <= RETRY_CONFIG.maxRetries) {
         error = null; // Reset error state for each attempt
         try {
+        // Safety: avoid stealing a job actively owned by another worker when forcing by id
+        if (targetJobId && job.status === 'IN_PROGRESS' && job.worker_id && job.worker_id !== workerId) {
+            throw new Error(`Refusing to force-run job ${job.id} because it is already IN_PROGRESS by worker ${job.worker_id}`);
+        }
+
         // Claim the job by setting status to IN_PROGRESS and adding worker_id
         await updateRecords({
             table_name: 'job_board',
-            filter: { id: job.id, status: 'PENDING' }, // Ensure we only update if it's still pending
+            filter: targetJobId ? { id: job.id } : { id: job.id, status: 'PENDING' }, // When targeted, bypass status predicate
             updates: {
                 status: 'IN_PROGRESS',
                 worker_id: workerId

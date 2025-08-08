@@ -188,7 +188,11 @@ ${data.system_state.map((state: any) => `- **${state.key}**: ${typeof state.valu
 
 export async function getContextSnapshot(params: any) {
   try {
-    const { hours_back, job_name, cursor } = getContextSnapshotParams.parse(params);
+    const parseResult = getContextSnapshotParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { hours_back, job_name, cursor } = parseResult.data;
 
     const { startTime, endTime, cappedHours } = getTimeWindow(hours_back);
     const data = await fetchData(startTime, job_name);

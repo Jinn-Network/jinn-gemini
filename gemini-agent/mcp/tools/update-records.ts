@@ -17,8 +17,13 @@ export const updateRecordsSchema = {
   inputSchema: updateRecordsParams.shape,
 };
 
-export async function updateRecords({ table_name, filter, updates }: z.infer<typeof updateRecordsParams>) {
+export async function updateRecords(params: z.infer<typeof updateRecordsParams>) {
   try {
+    const parseResult = updateRecordsParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { table_name, filter, updates } = parseResult.data;
     const { jobId, jobName } = getCurrentJobContext();
 
     // Automatically inject context and updated_at into the updates payload

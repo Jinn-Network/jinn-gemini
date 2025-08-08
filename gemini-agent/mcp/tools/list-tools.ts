@@ -55,8 +55,11 @@ export const listToolsSchema = {
 
 export async function listTools(params: any, serverTools: any[]) {
   try {
-    const validatedParams = listToolsParams.parse(params);
-    const { include_examples = false, include_parameters = false, tool_name } = validatedParams;
+    const parseResult = listToolsParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { include_examples = false, include_parameters = false, tool_name } = parseResult.data;
 
     const dynamicTools: ToolInfo[] = serverTools.map(tool => ({
       name: tool.name,

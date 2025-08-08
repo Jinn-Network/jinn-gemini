@@ -14,8 +14,14 @@ export const deleteRecordsSchema = {
   inputSchema: deleteRecordsParams.shape,
 };
 
-export async function deleteRecords({ table_name, filter }: z.infer<typeof deleteRecordsParams>) {
+export async function deleteRecords(params: z.infer<typeof deleteRecordsParams>) {
   try {
+    const parseResult = deleteRecordsParams.safeParse(params);
+    if (!parseResult.success) {
+      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+    }
+    const { table_name, filter } = parseResult.data;
+
     const { data: deletedCount, error } = await supabase.rpc('delete_records', {
       p_table_name: table_name,
       p_filter: filter,
