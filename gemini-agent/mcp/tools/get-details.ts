@@ -1,10 +1,12 @@
 import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
 import { tableNames } from './shared/types.js';
+import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
 export const getDetailsParams = z.object({
     table_name: z.enum(tableNames).describe('The name of the table to query.'),
     ids: z.array(z.string().uuid()).describe('An array containing one or more UUIDs to retrieve. If empty, returns an empty result.'),
+    cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
 });
 
 export type GetDetailsParams = z.infer<typeof getDetailsParams>;
@@ -21,11 +23,17 @@ export async function getDetails(params: GetDetailsParams) {
         if (!parseResult.success) {
             return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
         }
-        const { table_name, ids } = parseResult.data;
+        const { table_name, ids, cursor } = parseResult.data as { table_name: typeof tableNames[number]; ids: string[]; cursor?: string };
+        const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
         // Handle empty array case
         if (ids.length === 0) {
-            return { content: [{ type: 'text' as const, text: JSON.stringify([], null, 2) }] };
+            const composed = composeSinglePageResponse([], {
+                startOffset: keyset.offset,
+                truncateChars: 0,
+                requestedMeta: { cursor }
+            });
+            return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
         }
         const { data: records, error } = await supabase
             .from(table_name)
@@ -57,7 +65,13 @@ export async function getDetails(params: GetDetailsParams) {
             }
         }
 
-        return { content: [{ type: 'text' as const, text: JSON.stringify(records, null, 2) }] };
+        const composed = composeSinglePageResponse(records, {
+            startOffset: keyset.offset,
+            truncateChars: 0,
+            requestedMeta: { cursor }
+        });
+
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
 
     } catch (e: any) {
         return { content: [{ type: 'text' as const, text: `Error getting details: ${e.message}` }] };

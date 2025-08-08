@@ -1,16 +1,9 @@
 import { supabase, getCurrentJobContext } from './shared/supabase.js';
 import { z } from 'zod';
-import { OpenAI } from 'openai';
 import { linkTypeSchema } from './shared/types.js';
+import { getOpenAIClient } from './shared/openai.js';
 
-function getOpenAIClient() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY environment variable is required for memory operations');
-  }
-  return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-}
+// Using shared OpenAI client from ./shared/openai.js
 
 export const createMemoryParams = z.object({
     content: z.string().describe('The textual content of the memory to be stored and embedded.'),

@@ -59,6 +59,7 @@ export const searchEventsParams = z.object({
   topic: z.string().optional().describe('Filter by artifact topic pattern.'),
   thread_id: z.string().uuid().optional().describe('Filter by specific thread ID.'),
   time_range_hours: z.number().int().min(1).optional().describe('Limit results to events within the last X hours.'),
+  cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
 });
 export type SearchEventsParams = z.infer<typeof searchEventsParams>;
 

@@ -1,16 +1,10 @@
 import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
-import { OpenAI } from 'openai';
 import { Memory, LinkedMemory } from './shared/types.js';
+import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
+import { getOpenAIClient } from './shared/openai.js';
 
-function getOpenAIClient() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY environment variable is required for memory operations');
-  }
-  return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-}
+// Using shared OpenAI client from ./shared/openai.js
 
 export const searchMemoriesParams = z.object({
     query: z.string().describe('The natural language text to search for.'),
@@ -18,6 +12,7 @@ export const searchMemoriesParams = z.object({
     similarity_threshold: z.number().min(0).max(1).optional().default(0.5).describe('The minimum similarity score (0 to 1) for a match.'),
     filter: z.record(z.any()).optional().describe('A key-value object to filter memories by their metadata.'),
     include_links: z.boolean().optional().default(false).describe('If true, the results will include details about linked memories.'),
+    cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
 });
 
 export type SearchMemoriesParams = z.infer<typeof searchMemoriesParams>;
@@ -34,7 +29,8 @@ export async function searchMemories(params: SearchMemoriesParams) {
         if (!parseResult.success) {
             return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
         }
-        const { query, limit, similarity_threshold, filter, include_links } = parseResult.data;
+        const { query, limit, similarity_threshold, filter, include_links, cursor } = parseResult.data;
+        const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
         const embeddingResponse = await getOpenAIClient().embeddings.create({
             model: 'text-embedding-3-small',
             input: query,
@@ -69,7 +65,14 @@ export async function searchMemories(params: SearchMemoriesParams) {
             }
         }
 
-        return { content: [{ type: 'text' as const, text: JSON.stringify(memories, null, 2) }] };
+        // Build a single page with no truncation; data first
+        const composed = composeSinglePageResponse(memories, {
+            startOffset: keyset.offset,
+            truncateChars: 0,
+            requestedMeta: { cursor }
+        });
+
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
     } catch (e: unknown) {
         console.error('Full error in searchMemories:', e);
         const errorMessage = e instanceof Error ? e.message : String(e);

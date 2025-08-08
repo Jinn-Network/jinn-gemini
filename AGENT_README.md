@@ -20,7 +20,7 @@ The design of this system is guided by a few core principles:
 -   **Event-Driven & Database-Centric**: The database is the single source of truth. All state changes and actions are modeled as database events. Complex workflows and agent coordination are orchestrated through PostgreSQL triggers and functions, minimizing the need for complex application-level logic. If a task can be automated in the database, it should be.
 -   **Lean Workers, Smart Agents**: The `worker` is a simple, stateless executor. Its only job is to poll for work, execute it, and report back. The core intelligence resides in the `Agent` class, which handles LLM interaction, and the `metacog-mcp` tools, which provide the agent with its capabilities.
 -   **Tools Over Prompts for Dynamic Context**: Prompts should guide the agent's reasoning process and define its high-level goals. They should not be cluttered with dynamic information (like file lists, database schemas, or tool definitions). Instead, prompts should instruct the agent to *use tools* to discover that information from its environment. This makes prompts more stable, reusable, and focused on reasoning.
--   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot` and `create_job`, an agent can analyze operational data and autonomously create new, scheduled jobs for itself or other agents, enabling a powerful loop of self-improvement. The context snapshot tool provides time-based system visibility with automatic data size management to stay within token limits.
+-   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot` and `create_job`, an agent can analyze operational data and autonomously create new, scheduled jobs for itself or other agents, enabling a powerful loop of self-improvement. Tools use a shared context manager to return token‑budgeted, single‑page responses with cursor pagination. The context snapshot tool uses this for predictable, context‑safe outputs.
 
 ---
 
@@ -62,7 +62,7 @@ The system consists of several key components that work together in a continuous
     -   Executing the LLM prompt with integrated telemetry collection.
     -   Parsing detailed telemetry data (token usage, tool calls, performance metrics) directly from Gemini CLI output files.
     -   Capturing both critical errors and warning-level issues for comprehensive job reporting.
-4.  **Tools (`gemini-agent/mcp/`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `list_tools`, `read_records`, and the powerful `create_job` and `get_context_snapshot`. The context snapshot tool is optimized for Gemini's 1M token context window with intelligent data size management and time-based filtering.
+4.  **Tools (`gemini-agent/mcp/`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `list_tools`, `read_records`, and the powerful `create_job` and `get_context_snapshot`. Tools use a shared context manager for token‑budgeted, single‑page outputs (default 50k tokens/page), field‑aware truncation where appropriate, and stateless cursor pagination. get_context_snapshot uses these defaults.
 5.  **Frontend Explorer (`frontend/explorer/`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
 
 ---
@@ -103,8 +103,7 @@ The entire system operates on a continuous, event-driven cycle:
     Create a `.env` file in the root directory with your Supabase credentials:
     ```env
     SUPABASE_URL=https://your-project-ref.supabase.co
-    SUP
-    ABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+    SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
     ```
 3.  **Gemini CLI Authentication**:
     Ensure you have authenticated the Gemini CLI on your host machine first.
@@ -205,25 +204,70 @@ For easier development, you can run the MCP server or the worker directly on you
 3.  **Implement Logic**: Write the tool's function, which will typically interact with the database via the `supabase` client.
 4.  **Register Tool**: In `gemini-agent/mcp/server.ts`, import your new tool and add it to the `serverTools` array. The tool will be automatically registered and discoverable by the `list_tools` tool.
 
+### Shared Context Manager for tool outputs
+All read/search tools now use a shared module to ensure consistent, token‑budgeted, single‑page responses with pagination and transparent metadata.
+
+- Module: `gemini-agent/mcp/tools/shared/context-management.ts`
+- Defaults:
+  - Per‑page token budget: 50,000 tokens
+  - Warning threshold: 500,000 tokens for full (truncated) results
+- Response shape: `{ data: [...], meta: { requested?, tokens, has_more, next_cursor?, warnings? } }`
+- Pagination: Cursor-based (opaque), stateless. Tools accept an optional `cursor` input; pass `meta.next_cursor` to fetch the next page.
+- Truncation:
+  - Field‑aware truncation only where appropriate (e.g., `content`, `output`, sometimes `summary`/`description`).
+  - Tools like `search_memories` and `get_details` do not truncate by default.
+
+Exposed helpers:
+- `composeSinglePageResponse(items, options)` builds one page under the token budget; computes full token estimate; emits warnings if needed.
+  - Options: `{ startOffset?, truncateChars?, truncationPolicy?, requestedMeta? }`
+- `decodeCursor(cursor)` / `encodeCursor(keyset)`
+- `deepTruncateByField(obj, policy)` and `deepTruncateStrings(obj, maxChars)`
+
+#### Using the context manager in a new tool
+```ts
+import { supabase } from './shared/supabase.js';
+import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
+
+export async function myTool(params: { cursor?: string }) {
+  // 1) Decode cursor -> offset (phase 1 uses simple offset pagination)
+  const keyset = decodeCursor<{ offset: number }>(params.cursor) ?? { offset: 0 };
+
+  // 2) Fetch full result set for now (phase 1); per-page truncation happens in memory
+  const { data, error } = await supabase.rpc('some_backend_function', { /* filters */ });
+  if (error) throw error;
+
+  // 3) Build a single page under the shared 50k token budget
+  const composed = composeSinglePageResponse(data, {
+    startOffset: keyset.offset,
+    // Provide truncationPolicy only if the tool should trim heavy string fields
+    // e.g., { content: 1000, output: 1000 }
+    requestedMeta: { cursor: params.cursor }
+  });
+
+  // 4) Return data first, then meta
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }]
+  };
+}
+```
+
 ### Key Tool: get_context_snapshot
-The `get_context_snapshot` tool is a powerful system analysis tool designed for agents to understand the current state of the system. Key features:
+The `get_context_snapshot` tool provides a time‑windowed system overview and now uses the shared context manager:
 
-- **Time-Based Windows**: Uses configurable time windows (default 6 hours, max 12 hours) instead of job-based lookback for more predictable data sizes
-- **Automatic Size Management**: Monitors data size and automatically reduces the time window by half if it exceeds the 0.6MB internal limit, ensuring compatibility with Gemini's 1M token context window
-- **Job-Specific Message Filtering**: When `job_name` parameter is provided, includes detailed messages directed to that specific job; otherwise excludes messages to minimize token usage
-- **Enhanced Field Selection**: Includes critical fields like `job_report_id`, `output`, `thread_id`, `objective`, and `summary` for comprehensive system visibility
-- **Mission Emphasis**: Prominently displays the system mission from `system_state` to keep agents aligned with primary objectives
-- **Structured Output**: Returns AI-friendly markdown format with clear sections for system health, recent activity, and raw data summaries
+- Time window: `hours_back` (default 6). No internal max cap.
+- Pagination: Returns a single page (50k‑token budget). Use `meta.next_cursor` to continue.
+- Truncation: Field‑aware on heavy fields only (e.g., `output`, `content`).
+- Metadata: Includes page token count, full (truncated) token estimate, `has_more`, and `next_cursor`.
 
-**Usage Examples**:
+Usage Examples:
 ```javascript
-// Basic system overview (6-hour window, no messages)
+// Basic snapshot (6‑hour window)
 get_context_snapshot({})
 
 // Extended analysis with specific time window
 get_context_snapshot({ hours_back: 10 })
 
-// Job-specific view with detailed messages
+// Job‑specific view with detailed messages
 get_context_snapshot({ job_name: "data_analysis_job", hours_back: 8 })
 ```
 

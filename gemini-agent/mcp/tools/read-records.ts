@@ -1,12 +1,14 @@
 import { z } from 'zod';
 import { supabase } from './shared/supabase.js';
 import { tableNameSchema } from './shared/types.js';
+import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
 export const readRecordsParams = z.object({
   table_name: tableNameSchema,
   filter: z.record(z.any()).optional().describe('A JSON object for WHERE clauses (e.g., `{"status": "COMPLETED"}`). An empty filter retrieves all records.'),
   limit: z.number().int().positive().optional().describe('Maximum number of records to return (default: 100). Use with caution for large datasets.'),
   hours_back: z.number().int().positive().optional().describe('Filter records from the last N hours based on the `created_at` column. Cannot be used with `filter`.'),
+  cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
 });
 
 export const readRecordsSchema = {
@@ -14,7 +16,7 @@ export const readRecordsSchema = {
   inputSchema: readRecordsParams.shape,
 };
 
-export async function readRecords({ table_name, filter, limit = 100, hours_back }: z.infer<typeof readRecordsParams>) {
+export async function readRecords({ table_name, filter, limit = 100, hours_back, cursor }: z.infer<typeof readRecordsParams>) {
   try {
     if (filter && hours_back) {
       throw new Error("You cannot use both 'filter' and 'hours_back' at the same time. Please use one or the other.");
@@ -39,7 +41,15 @@ export async function readRecords({ table_name, filter, limit = 100, hours_back 
     });
     if (error) throw error;
 
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
+    const composed = composeSinglePageResponse(data, {
+      startOffset: keyset.offset,
+      truncationPolicy: { output: 500, content: 200 },
+      requestedMeta: { cursor, table_name, limit, hours_back },
+    });
+
+    // meta first, then data
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
   } catch (e: any) {
     return {
       content: [

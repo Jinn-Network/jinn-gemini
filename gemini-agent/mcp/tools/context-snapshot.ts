@@ -1,16 +1,19 @@
 import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
+import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
 export const getContextSnapshotParams = z.object({
   hours_back: z.number().positive().optional().default(6).describe('Number of hours to look back from now.'),
   job_name: z.string().optional().describe('Optional job name to filter messages for. Shows only messages directed to this job, including content.'),
+  cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
 });
 
 export const getContextSnapshotSchema = {
   description: 'Fetches a snapshot of the system state based on a time window. Optimized for Gemini 1M token context window. Messages only included when filtering by job name.',
   inputSchema: {
     hours_back: z.number().positive().optional().default(6).describe('Number of hours to look back from now.'),
-    job_name: z.string().optional().describe('Optional job name to filter messages for. Shows only messages directed to this job, including content.')
+    job_name: z.string().optional().describe('Optional job name to filter messages for. Shows only messages directed to this job, including content.'),
+    cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
   },
 };
 
@@ -185,13 +188,29 @@ ${data.system_state.map((state: any) => `- **${state.key}**: ${typeof state.valu
 
 export async function getContextSnapshot(params: any) {
   try {
-    const { hours_back, job_name } = getContextSnapshotParams.parse(params);
+    const { hours_back, job_name, cursor } = getContextSnapshotParams.parse(params);
 
     const { startTime, endTime, cappedHours } = getTimeWindow(hours_back);
     const data = await fetchData(startTime, job_name);
 
-    const formattedOutput = formatSnapshot(data, { startTime, endTime }, hours_back, cappedHours, job_name);
-    return { content: [{ type: 'text' as const, text: formattedOutput }] };
+    // Build a single page from a flattened list of "items" for pagination purposes
+    const items = [
+      ...data.jobs_in_window.map((r: any) => ({ _type: 'job', ...r })),
+      ...data.artifacts_in_window.map((r: any) => ({ _type: 'artifact', ...r })),
+      ...data.threads_in_window.map((r: any) => ({ _type: 'thread', ...r })),
+      ...data.messages_in_window.map((r: any) => ({ _type: 'message', ...r })),
+      ...data.unified_jobs.map((r: any) => ({ _type: 'definition', ...r })),
+      ...data.system_state.map((r: any) => ({ _type: 'system_state', ...r })),
+    ];
+
+    const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
+    const composed = composeSinglePageResponse(items, {
+      startOffset: keyset.offset,
+      truncationPolicy: { output: 500, content: 200 },
+      requestedMeta: { cursor, hours_back, job_name },
+    });
+
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
   } catch (e: any) {
     return { content: [{ type: 'text' as const, text: `Error getting context snapshot: ${e.message}` }] };
   }
