@@ -286,7 +286,15 @@ async function processPendingJobs(): Promise<boolean> {
         return false;
     }
 
-    const jobs: JobBoard[] = JSON.parse(readResult.content[0].text);
+    // Tools now return data-first JSON: { data: [...], meta: {...} }
+    let jobs: JobBoard[] = [];
+    try {
+        const parsed = JSON.parse(readResult.content[0].text);
+        jobs = Array.isArray(parsed) ? (parsed as JobBoard[]) : (parsed?.data ?? []);
+    } catch (parseErr) {
+        console.error('Failed to parse read_records result as JSON:', parseErr);
+        return false;
+    }
 
     if (!jobs || jobs.length === 0) {
         console.log("No pending jobs found.");

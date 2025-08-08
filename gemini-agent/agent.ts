@@ -80,7 +80,9 @@ export class Agent {
         telemetry.raw.stderrWarnings = result.stderr;
       }
 
-      return { output: this.extractFinalOutput(result.output), telemetry };
+      // Extract final output; if tool responses are JSON blobs from our tools, keep them as-is
+      const output = this.extractFinalOutput(result.output);
+      return { output, telemetry };
     } catch (error) {
       const telemetry: JobTelemetry = {
         totalTokens: 0,
