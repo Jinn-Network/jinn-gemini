@@ -16,7 +16,13 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
   try {
     const parseResult = createRecordParams.safeParse(params);
     if (!parseResult.success) {
-      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+        }]
+      };
     }
     const { table_name, data } = parseResult.data;
     const { jobId, jobName, threadId } = getCurrentJobContext();
@@ -38,8 +44,9 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
     return { content: [{ type: 'text' as const, text: `Successfully created record with ID: ${newId}` }] };
   } catch (e: any) {
     return {
+      isError: true,
       content: [
-        { type: 'text' as const, text: `Error creating record: ${e.message}` },
+        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error creating record: ${e.message}` }, null, 2) },
       ],
     };
   }

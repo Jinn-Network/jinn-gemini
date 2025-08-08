@@ -21,7 +21,13 @@ export async function getDetails(params: GetDetailsParams) {
         // Use safeParse to avoid throwing exceptions on validation errors
         const parseResult = getDetailsParams.safeParse(params);
         if (!parseResult.success) {
-            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+            return {
+                isError: true,
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+                }]
+            };
         }
         const { table_name, ids, cursor } = parseResult.data as { table_name: typeof tableNames[number]; ids: string[]; cursor?: string };
         const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
@@ -74,6 +80,9 @@ export async function getDetails(params: GetDetailsParams) {
         return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
 
     } catch (e: any) {
-        return { content: [{ type: 'text' as const, text: `Error getting details: ${e.message}` }] };
+        return {
+            isError: true,
+            content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error getting details: ${e.message}` }, null, 2) }] 
+        };
     }
 }

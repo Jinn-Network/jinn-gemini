@@ -20,11 +20,23 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
   try {
     const parseResult = readRecordsParams.safeParse(params);
     if (!parseResult.success) {
-      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+        }]
+      };
     }
     const { table_name, filter, limit = 100, hours_back, cursor } = parseResult.data;
     if (filter && hours_back) {
-      throw new Error("You cannot use both 'filter' and 'hours_back' at the same time. Please use one or the other.");
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: "You cannot use both 'filter' and 'hours_back' at the same time. Please use one or the other." }, null, 2)
+        }]
+      };
     }
 
     let finalFilter = filter || {};
@@ -57,8 +69,9 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
   } catch (e: any) {
     return {
+      isError: true,
       content: [
-        { type: 'text' as const, text: `Error reading records: ${e.message}` },
+        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error reading records: ${e.message}` }, null, 2) },
       ],
     };
   }

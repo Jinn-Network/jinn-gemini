@@ -27,7 +27,13 @@ export async function searchMemories(params: SearchMemoriesParams) {
         // Use safeParse to avoid throwing exceptions on validation errors
         const parseResult = searchMemoriesParams.safeParse(params);
         if (!parseResult.success) {
-            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+            return {
+                isError: true,
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+                }]
+            };
         }
         const { query, limit, similarity_threshold, filter, include_links, cursor } = parseResult.data;
         const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
@@ -76,6 +82,9 @@ export async function searchMemories(params: SearchMemoriesParams) {
     } catch (e: unknown) {
         console.error('Full error in searchMemories:', e);
         const errorMessage = e instanceof Error ? e.message : String(e);
-        return { content: [{ type: 'text' as const, text: `Error searching memories: ${errorMessage}\nFull error: ${JSON.stringify(e, null, 2)}` }] };
+        return {
+            isError: true,
+            content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'RUNTIME_ERROR', message: `Error searching memories: ${errorMessage}`, details: e }, null, 2) }]
+        };
     }
 }

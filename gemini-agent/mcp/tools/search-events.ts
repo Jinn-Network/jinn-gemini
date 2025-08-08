@@ -10,7 +10,13 @@ export async function searchEvents(params: SearchEventsParams) {
     // Use safeParse to avoid throwing exceptions on validation errors
     const parseResult = searchEventsParams.safeParse(params);
     if (!parseResult.success) {
-      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+        }]
+      };
     }
     const parsedParams = parseResult.data;
     const keyset = decodeCursor<{ offset: number }>(parsedParams.cursor) ?? { offset: 0 };
@@ -36,6 +42,9 @@ export async function searchEvents(params: SearchEventsParams) {
     // meta first, then data
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
   } catch (e: any) {
-    return { content: [{ type: 'text' as const, text: `Error searching events: ${e.message}` }] };
+    return {
+      isError: true,
+      content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error searching events: ${e.message}` }, null, 2) }] 
+    };
   }
 }

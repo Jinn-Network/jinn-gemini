@@ -73,11 +73,28 @@ export class Agent {
       const result = await this.runGeminiWithTelemetry(prompt);
       const telemetry = await this.parseTelemetryFromFile(result.telemetryFile, result.output, startTime);
 
+      // Attach last API request for diagnostics
+      try {
+        const lastReq = telemetry.requestText && telemetry.requestText.length > 0
+          ? telemetry.requestText[telemetry.requestText.length - 1]
+          : undefined;
+        telemetry.raw = telemetry.raw || {};
+        if (lastReq) telemetry.raw.lastApiRequest = lastReq;
+      } catch {}
+
       // Capture stderr warnings without failing the job
       if (result.stderr && result.stderr.trim()) {
         console.log(`[TELEMETRY] Warning-level errors detected in stderr: ${result.stderr.substring(0, 200)}...`);
         telemetry.raw = telemetry.raw || {};
         telemetry.raw.stderrWarnings = result.stderr;
+      }
+
+      // If Gemini exited with non-zero, throw with enriched telemetry
+      if (result.exitCode !== 0) {
+        const err = new Error(`Gemini process exited with code ${result.exitCode}`);
+        // Preserve stderr in error message context
+        (err as any).stderr = result.stderr;
+        throw { error: err, telemetry };
       }
 
       // Extract final output; if tool responses are JSON blobs from our tools, keep them as-is
@@ -102,8 +119,8 @@ export class Agent {
     }
   }
 
-  private runGeminiWithTelemetry(prompt: string): Promise<{ output: string; telemetryFile: string; stderr?: string }> {
-    return new Promise((resolve, reject) => {
+  private runGeminiWithTelemetry(prompt: string): Promise<{ output: string; telemetryFile: string; stderr: string; exitCode: number }> {
+    return new Promise((resolve) => {
       const args = ['--prompt', prompt, '--yolo'];
       if (this.model) {
         args.unshift('--model', this.model);
@@ -148,14 +165,16 @@ export class Agent {
       });
 
       geminiProcess.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(`Gemini process exited with code ${code}\n${stderr}`));
-        } else {
-          resolve({ output: stdout, telemetryFile, stderr });
-        }
+        const exitCode = typeof code === 'number' ? code : 1;
+        resolve({ output: stdout, telemetryFile, stderr, exitCode });
       });
 
-      geminiProcess.on('error', (err) => reject(err));
+      geminiProcess.on('error', (err) => {
+        // Surface as a synthetic non-zero exit with captured streams
+        const exitCode = 1;
+        const synthetic = `Gemini spawn error: ${err?.message || String(err)}`;
+        resolve({ output: stdout, telemetryFile, stderr: `${stderr}\n${synthetic}`.trim(), exitCode });
+      });
     });
   }
 

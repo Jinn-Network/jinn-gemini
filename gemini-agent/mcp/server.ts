@@ -61,20 +61,13 @@ async function main() {
       version: '0.1.0',
     });
 
-    // Register all tools using a permissive input schema so that validation
-    // and errors are handled inside handlers and returned as content.
+    // Register all tools with their full schemas so clients can construct/validate arguments properly.
     for (const tool of serverTools) {
-      const relaxedSchema = {
-        description: tool.schema.description,
-        inputSchema: {},
-      } as any;
-      server.registerTool(tool.name, relaxedSchema, tool.handler);
+      server.registerTool(tool.name, tool.schema as any, tool.handler);
     }
 
-    // Register the list_tools tool itself with a permissive schema as well,
-    // passing the serverTools list to the handler for discovery purposes.
-    const relaxedListToolsSchema = { description: listToolsSchema.description, inputSchema: {} } as any;
-    server.registerTool('list_tools', relaxedListToolsSchema, (params) => listTools(params, serverTools));
+    // Register the list_tools tool with its actual schema as well, passing serverTools for discovery.
+    server.registerTool('list_tools', listToolsSchema as any, (params) => listTools(params, serverTools));
 
     const transport = new StdioServerTransport();
     await server.connect(transport);

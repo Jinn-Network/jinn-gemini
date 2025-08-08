@@ -57,7 +57,13 @@ export async function listTools(params: any, serverTools: any[]) {
   try {
     const parseResult = listToolsParams.safeParse(params);
     if (!parseResult.success) {
-      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+        }]
+      };
     }
     const { include_examples = false, include_parameters = false, tool_name } = parseResult.data;
 
@@ -74,9 +80,10 @@ export async function listTools(params: any, serverTools: any[]) {
       if (allTools.length === 0) {
         const availableToolNames = [...CORE_CLI_TOOLS, ...dynamicTools].map(t => t.name).join(', ');
         return {
+          isError: true,
           content: [{
             type: 'text' as const,
-            text: `Tool '${tool_name}' not found. Available tools: ${availableToolNames}`
+            text: JSON.stringify({ ok: false, code: 'NOT_FOUND', message: `Tool '${tool_name}' not found.`, details: { available_tools: availableToolNames } }, null, 2)
           }]
         };
       }
@@ -101,8 +108,9 @@ export async function listTools(params: any, serverTools: any[]) {
     };
   } catch (e: any) {
     return {
+      isError: true,
       content: [
-        { type: 'text' as const, text: `Error listing tools: ${e.message}` },
+        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'RUNTIME_ERROR', message: `Error listing tools: ${e.message}` }, null, 2) },
       ],
     };
   }

@@ -24,12 +24,21 @@ export async function createMemory(params: CreateMemoryParams) {
         // Use safeParse to avoid throwing exceptions on validation errors
         const parseResult = createMemoryParams.safeParse(params);
         if (!parseResult.success) {
-            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+            return {
+                isError: true,
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+                }]
+            };
         }
         const { content, custom_metadata, linked_memory_id, link_type } = parseResult.data;
 
         if (linked_memory_id && !link_type) {
-            return { content: [{ type: 'text' as const, text: `Error creating memory: link_type is required when linked_memory_id is provided.` }] };
+            return {
+                isError: true,
+                content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: 'link_type is required when linked_memory_id is provided.' }, null, 2) }]
+            };
         }
         const { jobId, jobName, threadId } = getCurrentJobContext();
 
@@ -80,6 +89,6 @@ export async function createMemory(params: CreateMemoryParams) {
         };
     } catch (e: unknown) {
         const errorMessage = e instanceof Error ? e.message : String(e);
-        return { content: [{ type: 'text' as const, text: `Error creating memory: ${errorMessage}` }] };
+        return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error creating memory: ${errorMessage}` }, null, 2) }] };
     }
 }

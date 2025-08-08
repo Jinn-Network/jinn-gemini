@@ -22,7 +22,13 @@ export async function manageArtifact(params: ManageArtifactParams) {
         // Use safeParse to avoid throwing exceptions on validation errors
         const parseResult = manageArtifactParams.safeParse(params);
         if (!parseResult.success) {
-            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+            return {
+                isError: true,
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+                }]
+            };
         }
         const { artifact_id, thread_id: param_thread_id, operation, content, topic, status } = parseResult.data;
         const { jobId, jobName, threadId: contextThreadId } = getCurrentJobContext();
@@ -80,6 +86,6 @@ export async function manageArtifact(params: ManageArtifactParams) {
             return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
         }
     } catch (e: any) {
-        return { content: [{ type: 'text' as const, text: `Error managing artifact: ${e.message}` }] };
+        return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error managing artifact: ${e.message}` }, null, 2) }] };
     }
 }

@@ -21,7 +21,13 @@ export async function updateRecords(params: z.infer<typeof updateRecordsParams>)
   try {
     const parseResult = updateRecordsParams.safeParse(params);
     if (!parseResult.success) {
-      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+        }]
+      };
     }
     const { table_name, filter, updates } = parseResult.data;
     const { jobId, jobName } = getCurrentJobContext();
@@ -45,8 +51,9 @@ export async function updateRecords(params: z.infer<typeof updateRecordsParams>)
     return { content: [{ type: 'text' as const, text: `Successfully updated ${updatedCount} record(s).` }] };
   } catch (e: any) {
     return {
+      isError: true,
       content: [
-        { type: 'text' as const, text: `Error updating records: ${e.message}` },
+        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error updating records: ${e.message}` }, null, 2) },
       ],
     };
   }

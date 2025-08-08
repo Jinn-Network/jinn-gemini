@@ -19,7 +19,13 @@ export async function createThread(params: CreateThreadParams) {
         // Use safeParse to avoid throwing exceptions on validation errors
         const parseResult = createThreadParams.safeParse(params);
         if (!parseResult.success) {
-            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+            return {
+                isError: true,
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+                }]
+            };
         }
         const { title, objective, parent_thread_id } = parseResult.data;
         const newThread: any = {
@@ -41,6 +47,6 @@ export async function createThread(params: CreateThreadParams) {
         return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 
     } catch (e: any) {
-        return { content: [{ type: 'text' as const, text: `Error creating thread: ${e.message}` }] };
+        return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error creating thread: ${e.message}` }, null, 2) }] };
     }
 }

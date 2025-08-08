@@ -15,7 +15,13 @@ export async function createJob(params: CreateJobParams) {
         // Use safeParse to avoid throwing exceptions on validation errors
         const parseResult = createJobParams.safeParse(params);
         if (!parseResult.success) {
-            return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+            return {
+                isError: true,
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+                }]
+            };
         }
         const validatedParams = parseResult.data;
         const {
@@ -108,8 +114,9 @@ export async function createJob(params: CreateJobParams) {
         };
     } catch (e: any) {
         return {
+            isError: true,
             content: [
-                { type: 'text' as const, text: `Error creating job: ${e.message}` },
+                { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error creating job: ${e.message}` }, null, 2) },
             ],
         };
     }

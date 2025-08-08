@@ -190,7 +190,13 @@ export async function getContextSnapshot(params: any) {
   try {
     const parseResult = getContextSnapshotParams.safeParse(params);
     if (!parseResult.success) {
-      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+        }]
+      };
     }
     const { hours_back, job_name, cursor } = parseResult.data;
 
@@ -216,6 +222,12 @@ export async function getContextSnapshot(params: any) {
 
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
   } catch (e: any) {
-    return { content: [{ type: 'text' as const, text: `Error getting context snapshot: ${e.message}` }] };
+    return {
+      isError: true,
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ ok: false, code: 'RUNTIME_ERROR', message: `Error getting context snapshot: ${e.message}` }, null, 2)
+      }]
+    };
   }
 }

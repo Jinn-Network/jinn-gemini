@@ -18,7 +18,13 @@ export async function deleteRecords(params: z.infer<typeof deleteRecordsParams>)
   try {
     const parseResult = deleteRecordsParams.safeParse(params);
     if (!parseResult.success) {
-      return { content: [{ type: 'text' as const, text: `Invalid parameters: ${parseResult.error.message}` }] };
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+        }]
+      };
     }
     const { table_name, filter } = parseResult.data;
 
@@ -30,8 +36,9 @@ export async function deleteRecords(params: z.infer<typeof deleteRecordsParams>)
     return { content: [{ type: 'text' as const, text: `Successfully deleted ${deletedCount} record(s).` }] };
   } catch (e: any) {
     return {
+      isError: true,
       content: [
-        { type: 'text' as const, text: `Error deleting records: ${e.message}` },
+        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error deleting records: ${e.message}` }, null, 2) },
       ],
     };
   }
