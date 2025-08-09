@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase';
-import EventTimeline from '@/components/event-timeline';
+import EnhancedEventTimeline from '@/components/enhanced-event-timeline';
 import { TimelineEvent } from '@/lib/types';
 
 interface ThreadTimelinePageProps {
@@ -25,13 +25,13 @@ export default async function ThreadTimelinePage({ params }: ThreadTimelinePageP
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Timeline for Thread {id}</h1>
+      <h1 className="text-2xl font-bold mb-4">Enhanced Timeline for Thread {id}</h1>
       <div className="mb-4">
         <a href={`/threads/${id}`} className="text-blue-500 hover:underline">
           ← Back to Thread Details
         </a>
       </div>
-      <EventTimeline events={events} />
+      <EnhancedEventTimeline events={events} />
     </div>
   );
 }

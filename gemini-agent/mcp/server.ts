@@ -32,7 +32,11 @@ import {
   reconstructJob,
   reconstructJobSchema,
   searchEvents,
-  searchEventsSchema
+  searchEventsSchema,
+  getJobGraph,
+  getJobGraphSchema,
+  traceLineage,
+  traceLineageSchema
 } from './tools/index.js';
 
 // This is the single source of truth for all tools registered on this server.
@@ -51,7 +55,9 @@ export const serverTools: { name: string; schema: any; handler: (params: any) =>
   { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories },
   { name: 'trace_thread', schema: traceThreadSchema, handler: traceThread },
   { name: 'reconstruct_job', schema: reconstructJobSchema, handler: reconstructJob },
-  { name: 'search_events', schema: searchEventsSchema, handler: searchEvents }
+  { name: 'search_events', schema: searchEventsSchema, handler: searchEvents },
+  { name: 'get_job_graph', schema: getJobGraphSchema, handler: getJobGraph },
+  { name: 'trace_lineage', schema: traceLineageSchema, handler: traceLineage }
 ];
 
 async function main() {

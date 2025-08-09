@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase'
 import { useState, useEffect } from 'react'
 import { MarkdownField } from '@/components/markdown-field'
 import { IdLink } from '@/components/id-link'
+import { JobReportDetailView } from '@/components/job-report-detail-view'
+import { ArtifactDetailView } from '@/components/artifact-detail-view'
 
 interface DetailViewProps {
   record: DbRecord
@@ -60,6 +62,15 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
       setPromptData({ id: String(record.id), content: record.prompt_content })
     }
   }, [collectionName, record.prompt_ref, record.prompt_content, record.id])
+
+  // Use specialized views for specific collection types
+  if (collectionName === 'job_reports') {
+    return <JobReportDetailView record={record} />
+  }
+
+  if (collectionName === 'artifacts') {
+    return <ArtifactDetailView record={record} />
+  }
   
   // If no record, return null
   if (!record) {

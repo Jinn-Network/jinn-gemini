@@ -31,13 +31,15 @@ const RATE_LIMIT = {
 // Retry configuration
 const RETRY_CONFIG = {
     maxRetries: 3, // Maximum number of retries per job
-    retryDelayMs: 5000, // 5 seconds between retries
+    retryDelayMs: 5000, // 5 seconds base delay between retries
+    maxBackoffMs: 120000, // 2 minutes maximum backoff
     exponentialBackoff: true, // Use exponential backoff
     retryableErrors: [
         '500', // Internal server error
         'INTERNAL', // Gemini API internal error
         'An internal error has occurred', // Gemini API error message
         'got status: INTERNAL', // Gemini CLI error format
+        'Error when talking to Gemini API', // Gemini CLI API error
         'timeout', // Timeout errors
         'network', // Network errors
         'ENOTFOUND', // DNS resolution errors
@@ -46,9 +48,13 @@ const RETRY_CONFIG = {
     ]
 };
 
+// 500/Internal error cooldown configuration
+const INTERNAL_ERROR_COOLDOWN_MS = 90000; // 90 seconds cooldown after 500/INTERNAL errors
+
 // Global rate limiting state
 let lastJobTime = 0;
 let quotaErrorTime = 0;
+let internalErrorCooldownTime = 0;
 let jobCount = 0;
 let jobCountResetTime = Date.now();
 
@@ -143,21 +149,48 @@ async function resolveThreadId(job: JobBoard): Promise<string | null> {
     return null;
 }
 
-function isRetryableError(error: any): boolean {
-    if (!error) return false;
-    
-    const message = String(error.error || error.message || error).toLowerCase();
-    
-    return RETRY_CONFIG.retryableErrors.some(retryableError => 
-        message.includes(retryableError.toLowerCase())
+function isInternalServerError(messageLower: string): boolean {
+    return (
+        messageLower.includes(' 500') ||
+        messageLower.includes('status: internal') ||
+        messageLower.includes('an internal error has occurred') ||
+        messageLower.includes('got status: internal')
     );
 }
 
-function calculateRetryDelay(retryCount: number): number {
-    if (RETRY_CONFIG.exponentialBackoff) {
-        return RETRY_CONFIG.retryDelayMs * Math.pow(2, retryCount);
+function isRetryableError(error: any): boolean {
+    if (!error) return false;
+    
+    // Handle nested error structures from Agent.run()
+    let message = '';
+    if (error.error && error.error.message) {
+        message = String(error.error.message);
+    } else if (error.message) {
+        message = String(error.message);
+    } else if (error.error) {
+        message = String(error.error);
+    } else {
+        message = String(error);
     }
-    return RETRY_CONFIG.retryDelayMs;
+    
+    message = message.toLowerCase();
+    console.log(`[RETRY] Checking if error is retryable: "${message.substring(0, 200)}..."`);
+    
+    const isRetryable = RETRY_CONFIG.retryableErrors.some(retryableError => 
+        message.includes(retryableError.toLowerCase())
+    );
+    
+    console.log(`[RETRY] Error is ${isRetryable ? 'RETRYABLE' : 'NOT RETRYABLE'}`);
+    return isRetryable;
+}
+
+function calculateRetryDelayWithJitter(retryCount: number): number {
+    const base = RETRY_CONFIG.retryDelayMs;
+    const noJitter = Math.min(base * Math.pow(2, retryCount), RETRY_CONFIG.maxBackoffMs);
+    const jitteredDelay = Math.floor(Math.random() * (noJitter + 1)); // full jitter: [0, noJitter]
+    
+    console.log(`[RETRY] Backoff calculation: base=${base}ms, max=${noJitter}ms, chosen (jitter)=${jitteredDelay}ms`);
+    return jitteredDelay;
 }
 
 async function collectAndStoreJobReport(context: {
@@ -230,12 +263,20 @@ function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reas
     const now = Date.now();
 
     // Check if we're in quota error cooldown
-    if (quotaErrorTime > 0 && (now - quotaErrorTime) < RATE_LIMIT.cooldownAfterQuotaError) {
-        const remainingCooldown = RATE_LIMIT.cooldownAfterQuotaError - (now - quotaErrorTime);
+    const quotaCooldownRemaining = quotaErrorTime > 0 ? RATE_LIMIT.cooldownAfterQuotaError - (now - quotaErrorTime) : 0;
+    const internalCooldownRemaining = internalErrorCooldownTime > 0 ? INTERNAL_ERROR_COOLDOWN_MS - (now - internalErrorCooldownTime) : 0;
+
+    // Use the longer of the two cooldowns
+    if (quotaCooldownRemaining > 0 || internalCooldownRemaining > 0) {
+        const maxCooldown = Math.max(quotaCooldownRemaining, internalCooldownRemaining);
+        const reason = quotaCooldownRemaining > internalCooldownRemaining 
+            ? `Quota error cooldown active, ${Math.round(maxCooldown / 1000)}s remaining`
+            : `500/INTERNAL cooldown active, ${Math.round(maxCooldown / 1000)}s remaining`;
+        
         return {
             shouldWait: true,
-            waitTime: remainingCooldown,
-            reason: `Quota error cooldown active, ${Math.round(remainingCooldown / 1000)}s remaining`
+            waitTime: maxCooldown,
+            reason
         };
     }
 
@@ -360,10 +401,19 @@ async function processPendingJobs(): Promise<boolean> {
             jobName: job.job_name,
             threadId: threadId
         });
+
+        // Check rate limits before each attempt (including retries)
+        const gate = shouldWaitForRateLimit();
+        if (gate.shouldWait) {
+            console.log(`[RATE_LIMIT] ${gate.reason}, waiting...`);
+            await new Promise(resolve => setTimeout(resolve, gate.waitTime));
+        }
+
         // Update rate limiting counters before job execution
         lastJobTime = Date.now();
         jobCount++;
 
+        console.log(`[ATTEMPT] Job ${job.id} attempt ${retryCount + 1} starting`);
         result = await agent.run(finalPrompt);
         console.log(`Job ${job.id} execution finished.`);
         console.log(`Agent output for job ${job.id}:\n`, result.output);
@@ -385,14 +435,19 @@ async function processPendingJobs(): Promise<boolean> {
     } catch (err) {
         console.error(`Job ${job.id} failed:`, err);
 
-        // Check if this is a quota error and set cooldown
+        // Check if this is a quota error or 500/INTERNAL error and set cooldown
         const errorMessage = String(err.error || err.message || err);
+        const errorMessageLower = errorMessage.toLowerCase();
+        
         if (errorMessage.includes('429') ||
             errorMessage.includes('quota') ||
             errorMessage.includes('resource_exhausted') ||
             errorMessage.includes('too many requests')) {
-            console.log(`[RATE_LIMIT] Quota error detected, activating cooldown period`);
+            console.log(`[RATE_LIMIT] Quota error detected, activating cooldown period (${RATE_LIMIT.cooldownAfterQuotaError}ms)`);
             quotaErrorTime = Date.now();
+        } else if (isInternalServerError(errorMessageLower)) {
+            console.log(`[RATE_LIMIT] 500/INTERNAL detected, activating short cooldown (${INTERNAL_ERROR_COOLDOWN_MS}ms)`);
+            internalErrorCooldownTime = Date.now();
         }
 
         // Handle the special error format from Agent.run() which includes telemetry
@@ -408,7 +463,7 @@ async function processPendingJobs(): Promise<boolean> {
         const isRetryable = isRetryableError(error);
         if (isRetryable && retryCount < RETRY_CONFIG.maxRetries) {
             retryCount++;
-            const retryDelay = calculateRetryDelay(retryCount);
+            const retryDelay = calculateRetryDelayWithJitter(retryCount);
             console.log(`[RETRY] Job ${job.id} failed with retryable error. Retry ${retryCount}/${RETRY_CONFIG.maxRetries} in ${retryDelay}ms...`);
             
             // Reset job status to PENDING so it can be retried
@@ -430,6 +485,9 @@ async function processPendingJobs(): Promise<boolean> {
 
         // If we reach here, either error is not retryable or max retries exceeded
         const errorMsg = error instanceof Error ? error.message : String(error);
+        const reason = !isRetryable ? 'error not retryable' : 'max retries exceeded';
+        console.log(`[RETRY] Not retrying: ${reason} (retryable=${isRetryable}, retries=${retryCount})`);
+        
         const finalUpdate = await updateRecords({
             table_name: 'job_board',
             filter: { id: job.id },

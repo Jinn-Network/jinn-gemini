@@ -1,198 +1,122 @@
 'use client'
 
-import { DbRecord } from '@/lib/types'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { MarkdownField } from '@/components/markdown-field'
 import { IdLink } from '@/components/id-link'
+import { createClient } from '@/lib/supabase'
+import { DbRecord } from '@/lib/types'
 
 interface ArtifactDetailViewProps {
   record: DbRecord
 }
 
-// Function to convert field names to human-readable labels
+interface TriggeredJob {
+  id: string
+  job_name: string
+  status: string
+  created_at: string
+  job_report_id?: string
+}
+
 function humanizeFieldName(fieldName: string): string {
   return fieldName
     .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 }
 
-// Component to handle different types of values (simplified version of the one in detail-view)
-function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string }) {
-  if (value === null || value === undefined) {
+function ObjectViewer({ data }: { data: unknown }) {
+  if (data === null || data === undefined) {
     return <span className="text-gray-400 italic">null</span>
   }
 
-  if (typeof value === 'boolean') {
+  if (typeof data === 'object') {
     return (
-      <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
-        value 
-          ? 'text-green-600 bg-green-50 border border-green-200' 
-          : 'text-red-600 bg-red-50 border border-red-200'
-      }`}>
-        {value ? '✓ true' : '✗ false'}
-      </span>
+      <div className="space-y-2">
+        <pre className="text-sm bg-gray-50 p-3 rounded overflow-auto max-h-96">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      </div>
     )
   }
 
-  if (typeof value === 'number') {
-    return (
-      <span className="font-mono text-sm">
-        {value.toLocaleString()}
-      </span>
-    )
-  }
+  return <span>{String(data)}</span>
+}
 
-  if (typeof value === 'string') {
-    // Check if it's a stringified JSON object first
-    if (value.trim().startsWith('{') && value.trim().endsWith('}') || 
-        value.trim().startsWith('[') && value.trim().endsWith(']')) {
+function TriggeredJobsList({ artifactId }: { artifactId: string }) {
+  const [triggeredJobs, setTriggeredJobs] = useState<TriggeredJob[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchTriggeredJobs = async () => {
       try {
-        const parsed = JSON.parse(value)
-        // If parsing succeeds, recursively display the parsed object/array
-        return (
-          <div className="space-y-2">
-            <div className="text-xs text-gray-500">Parsed JSON ({typeof parsed === 'object' && Array.isArray(parsed) ? 'Array' : 'Object'})</div>
-            <ValueDisplay value={parsed} fieldName={fieldName} />
-          </div>
-        )
-      } catch {
-        // If parsing fails, continue with string handling below
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from('job_board')
+          .select('id, job_name, status, created_at, job_report_id')
+          .eq('source_artifact_id', artifactId)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        setTriggeredJobs(data || [])
+      } catch (err) {
+        console.error('Error fetching triggered jobs:', err)
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
       }
     }
 
-    // Check if it's a UUID - show as link if it's a foreign key field
-    if (value.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-      // Check if this is a foreign key field that should be linked
-      if (fieldName.endsWith('_id') || fieldName === 'thread_id') {
-        return <IdLink id={value} fieldName={fieldName} showFullId={true} />
-      }
-      
-      return (
-        <div className="font-mono text-sm break-all text-gray-700">{value}</div>
-      )
-    }
+    fetchTriggeredJobs()
+  }, [artifactId])
 
-    // Check if it's a date string (ISO format)
-    if (value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
-      const date = new Date(value)
-      const isValid = !isNaN(date.getTime())
-      
-      if (isValid) {
-        return (
-          <div 
-            className="text-sm cursor-help" 
-            title={`Technical format: ${value}`}
-          >
-            {date.toLocaleString('en-US', {
-              weekday: 'short',
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              timeZoneName: 'short'
-            })}
-          </div>
-        )
-      }
-      return <span className="text-red-600 text-sm">Invalid Date: {value}</span>
-    }
-
-    // For long strings, show in a scrollable area with word count
-    if (value.length > 200) {
-      const wordCount = value.split(/\s+/).length
-      return (
-        <div className="space-y-2">
-          <div className="text-xs text-gray-500">
-            {value.length} characters, ~{wordCount} words
-          </div>
-          <div className="max-h-32 overflow-auto bg-gray-50 p-3 rounded border text-sm">
-            {value}
-          </div>
-        </div>
-      )
-    }
-
-    return <span className="break-words text-sm">{value}</span>
+  if (loading) {
+    return <div className="text-sm text-gray-500">Loading triggered jobs...</div>
   }
 
-  // Handle arrays
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return <span className="text-gray-400 italic text-sm">Empty array</span>
-    }
+  if (error) {
+    return <div className="text-sm text-red-500">Error loading triggered jobs: {error}</div>
+  }
 
-    return (
-      <div className="space-y-2">
-        <div className="text-xs text-gray-500">Array ({value.length} items)</div>
-        <div className="bg-gray-50 rounded border overflow-hidden">
-          <div className="max-h-64 overflow-auto p-3">
-            <ul className="space-y-1">
-              {value.map((item, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm">
-                  <span className="text-gray-400 font-mono text-xs mt-0.5">{index + 1}.</span>
-                  <span className="flex-1">
-                    {typeof item === 'object' ? (
-                      <pre className="text-xs text-gray-600 whitespace-pre-wrap">
-                        {JSON.stringify(item, null, 2)}
-                      </pre>
-                    ) : (
-                      String(item)
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
+  if (triggeredJobs.length === 0) {
+    return <div className="text-sm text-gray-500">No jobs were triggered by this artifact.</div>
+  }
+
+  return (
+    <div className="space-y-3">
+      {triggeredJobs.map((job) => (
+        <div key={job.id} className="border rounded-lg p-3 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <IdLink collection="job_board" id={job.id} />
+              <span className="font-medium">{job.job_name}</span>
+              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                job.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                job.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                job.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                'bg-yellow-100 text-yellow-800'
+              }`}>
+                {job.status}
+              </span>
+            </div>
+            <div className="text-xs text-gray-500">
+              {new Date(job.created_at).toLocaleString()}
+            </div>
           </div>
+          {job.job_report_id && (
+            <div className="mt-2 text-sm">
+              Report: <IdLink id={job.job_report_id} fieldName="job_report_id" />
+            </div>
+          )}
         </div>
-      </div>
-    )
-  }
-
-  // Handle objects
-  if (typeof value === 'object') {
-    const keys = Object.keys(value)
-    if (keys.length === 0) {
-      return <span className="text-gray-400 italic text-sm">Empty object</span>
-    }
-
-    return (
-      <div className="space-y-2">
-        <div className="text-xs text-gray-500">Object ({keys.length} properties)</div>
-        <div className="bg-gray-50 border rounded overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="text-left px-3 py-2 font-medium text-gray-700 text-xs">Property</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-700 text-xs">Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((key, index) => (
-                <tr key={key} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-600 border-r border-gray-200">
-                    {key}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {typeof value === 'object' && value !== null && key in value && typeof (value as Record<string, unknown>)[key] === 'object' ? (
-                      <pre className="whitespace-pre-wrap text-gray-600">
-                        {JSON.stringify((value as Record<string, unknown>)[key], null, 2)}
-                      </pre>
-                    ) : (
-                      String(typeof value === 'object' && value !== null && key in value ? (value as Record<string, unknown>)[key] : '')
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    )
-  }
-
-  return <span className="font-mono text-sm">{String(value)}</span>
+      ))}
+    </div>
+  )
 }
 
 export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
@@ -200,32 +124,66 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
     return null
   }
 
-  // Extract content and other fields
-  const { content, ...otherFields } = record
-  
+  // Extract the main content fields
+  const { 
+    content, 
+    topic,
+    status,
+    source_job_name,
+    thread_id,
+    created_at,
+    updated_at,
+    id,
+    ...otherFields 
+  } = record
+
   // Fields to hide from the detail view
-  const hiddenFields = ['worker_id']
+  const hiddenFields = ['id', 'content'] // Content is shown separately
   
-  // Filter out hidden fields from other fields
-  const visibleOtherFields = Object.entries(otherFields).filter(([key]) => 
-    !hiddenFields.includes(key)
+  // Prepare details for the right sidebar
+  const detailFields = {
+    topic,
+    status,
+    source_job_name,
+    thread_id,
+    created_at,
+    updated_at,
+    ...otherFields
+  }
+
+  // Filter out hidden fields and null/undefined values
+  const visibleDetailFields = Object.entries(detailFields).filter(([key, value]) => 
+    !hiddenFields.includes(key) && value !== null && value !== undefined
   )
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Main Content Card */}
-      <div className="lg:col-span-2">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      {/* Main Content Area - spans 3 columns */}
+      <div className="lg:col-span-3 space-y-6">
+        {/* Content Card - Top Priority */}
+        {content && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Content</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MarkdownField content={typeof content === 'string' ? content : JSON.stringify(content, null, 2)} />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Triggered Jobs Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Content</CardTitle>
+            <CardTitle>Jobs Triggered by This Artifact</CardTitle>
           </CardHeader>
           <CardContent>
-            <ValueDisplay value={content} fieldName="content" />
+            <TriggeredJobsList artifactId={String(id)} />
           </CardContent>
         </Card>
       </div>
 
-      {/* Details Sidebar */}
+      {/* Details Sidebar - Right aligned */}
       <div className="lg:col-span-1">
         <Card>
           <CardHeader>
@@ -233,13 +191,47 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {visibleOtherFields.map(([key, value]) => (
+              {visibleDetailFields.map(([key, value]) => (
                 <div key={key} className="border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
                   <div className="font-medium text-gray-900 text-sm mb-1" title={`Field: ${key}`}>
                     {humanizeFieldName(key)}:
                   </div>
-                  <div>
-                    <ValueDisplay value={value} fieldName={key} />
+                  <div className="text-sm">
+                    {/* Special handling for thread_id */}
+                    {key === 'thread_id' && value ? (
+                      <IdLink id={value} fieldName="thread_id" />
+                    ) : /* Special handling for different data types */
+                    typeof value === 'boolean' ? (
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
+                        value 
+                          ? 'text-green-600 bg-green-50 border border-green-200' 
+                          : 'text-red-600 bg-red-50 border border-red-200'
+                      }`}>
+                        {value ? '✓ true' : '✗ false'}
+                      </span>
+                    ) : typeof value === 'number' ? (
+                      <span className="font-mono">
+                        {value.toLocaleString()}
+                      </span>
+                    ) : typeof value === 'object' && value !== null ? (
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="text-xs">
+                            View {Array.isArray(value) ? 'Array' : 'Object'}
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle>{humanizeFieldName(key)}</DialogTitle>
+                          </DialogHeader>
+                          <ObjectViewer data={value} />
+                        </DialogContent>
+                      </Dialog>
+                    ) : (
+                      <span className="break-words">
+                        {String(value)}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}

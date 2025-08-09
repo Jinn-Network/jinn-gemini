@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { supabase, setJobContext, clearJobContext } from './tools/shared/supabase.js';
-import { createJob, getContextSnapshot, listTools, manageArtifact, manageThread, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords } from './tools/index.js';
+import { createJob, getContextSnapshot, listTools, manageArtifact, manageThread, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, traceLineage, getJobGraph } from './tools/index.js';
 import { serverTools } from './server.js';
 
 describe('Database Tools Integration Tests', () => {
@@ -679,6 +679,202 @@ describe('Database Tools Integration Tests', () => {
       // Instead verify the job was created successfully
       expect(resultData.id).toBeDefined();
       expect(resultData.name).toBe(jobName);
+    });
+  });
+
+  describe('trace_lineage Tool', () => {
+    let testThreadId: string | null = null;
+    let testArtifactId: string | null = null;
+
+    beforeEach(async () => {
+      // Create a test thread and artifact for lineage tracing
+      const threadResult = await manageThread({
+        title: 'Test Lineage Thread',
+        objective: 'Test lineage tracing functionality'
+      });
+      
+      expect(threadResult.content).toBeDefined();
+      const threadData = JSON.parse(threadResult.content![0].text);
+      testThreadId = threadData.id;
+      mockJobContext.threadId = testThreadId;
+      setJobContext(mockJobContext.jobId, mockJobContext.jobName, testThreadId);
+
+      // Create a test artifact
+      const artifactResult = await manageArtifact({
+        operation: 'CREATE',
+        content: JSON.stringify({ test: 'lineage trace data', timestamp: new Date().toISOString() })
+      });
+      
+      expect(artifactResult.content).toBeDefined();
+      const artifactData = JSON.parse(artifactResult.content![0].text);
+      testArtifactId = artifactData.id;
+    });
+
+    it('should trace lineage with direct artifact_id parameter', async () => {
+      const result = await traceLineage({
+        artifact_id: testArtifactId!,
+        max_depth: 5
+      });
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const lineageData = JSON.parse(result.content![0].text);
+      expect(lineageData.success).toBe(true);
+      expect(lineageData.starting_point.artifact_id).toBe(testArtifactId);
+      expect(lineageData.lineage).toBeDefined();
+      expect(lineageData.summary).toBeDefined();
+    });
+
+    it('should trace lineage with random_string JSON envelope', async () => {
+      const jsonParams = JSON.stringify({
+        artifact_id: testArtifactId!,
+        max_depth: 5
+      });
+
+      const result = await traceLineage({
+        random_string: jsonParams
+      });
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const lineageData = JSON.parse(result.content![0].text);
+      expect(lineageData.success).toBe(true);
+      expect(lineageData.starting_point.artifact_id).toBe(testArtifactId);
+      expect(lineageData.lineage).toBeDefined();
+      expect(lineageData.summary).toBeDefined();
+    });
+
+    it('should handle invalid random_string JSON gracefully', async () => {
+      const result = await traceLineage({
+        random_string: 'invalid json'
+      });
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const lineageData = JSON.parse(result.content![0].text);
+      expect(lineageData.success).toBe(false);
+      expect(lineageData.error).toContain('Failed to parse random_string as JSON');
+    });
+
+    it('should return empty lineage for non-existent entity', async () => {
+      const fakeUuid = '00000000-0000-4000-8000-000000000000';
+      
+      const result = await traceLineage({
+        artifact_id: fakeUuid,
+        max_depth: 5
+      });
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const lineageData = JSON.parse(result.content![0].text);
+      expect(lineageData.success).toBe(true);
+      expect(lineageData.lineage).toEqual([]);
+      expect(lineageData.message).toContain('No lineage data found');
+    });
+  });
+
+  describe('get_job_graph Tool', () => {
+    it('should get job graph with direct parameters (no topic filter)', async () => {
+      const result = await getJobGraph({});
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const graphData = JSON.parse(result.content![0].text);
+      expect(graphData.success).toBe(true);
+      expect(graphData.topics).toBeDefined();
+      expect(Array.isArray(graphData.topics)).toBe(true);
+      if (graphData.topics.length > 0) {
+        expect(graphData.summary).toBeDefined();
+        expect(graphData.total_topics).toBeGreaterThan(0);
+      }
+    });
+
+    it('should get job graph with random_string JSON envelope (no topic filter)', async () => {
+      const jsonParams = JSON.stringify({});
+
+      const result = await getJobGraph({
+        random_string: jsonParams
+      });
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const graphData = JSON.parse(result.content![0].text);
+      expect(graphData.success).toBe(true);
+      expect(graphData.topics).toBeDefined();
+    });
+
+    it('should filter job graph by specific topic', async () => {
+      const result = await getJobGraph({
+        topic: 'mission_context'
+      });
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const graphData = JSON.parse(result.content![0].text);
+      expect(graphData.success).toBe(true);
+      
+      if (graphData.topic) {
+        // Topic found
+        expect(graphData.topic).toBe('mission_context');
+        expect(graphData.publishers).toBeDefined();
+        expect(graphData.subscribers).toBeDefined();
+        expect(graphData.publisher_count).toBeDefined();
+        expect(graphData.subscriber_count).toBeDefined();
+      } else {
+        // Topic not found
+        expect(graphData.message).toContain('No jobs found for topic: mission_context');
+      }
+    });
+
+    it('should filter job graph by topic via random_string', async () => {
+      const jsonParams = JSON.stringify({
+        topic: 'system.processing_time.update'
+      });
+
+      const result = await getJobGraph({
+        random_string: jsonParams
+      });
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const graphData = JSON.parse(result.content![0].text);
+      expect(graphData.success).toBe(true);
+      
+      if (graphData.topic) {
+        expect(graphData.topic).toBe('system.processing_time.update');
+      } else {
+        expect(graphData.message).toContain('No jobs found for topic');
+      }
+    });
+
+    it('should handle invalid random_string JSON gracefully', async () => {
+      const result = await getJobGraph({
+        random_string: 'invalid json'
+      });
+
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveLength(1);
+      expect(result.content![0].type).toBe('text');
+      
+      const graphData = JSON.parse(result.content![0].text);
+      expect(graphData.success).toBe(false);
+      expect(graphData.error).toContain('Failed to parse random_string as JSON');
     });
   });
 });

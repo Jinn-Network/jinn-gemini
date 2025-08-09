@@ -1,267 +1,153 @@
 # Trigger System Guide
 
-## Overview
+## Overview: The Universal Artifact Event Bus
 
-The marketplace intelligence system uses an event-driven architecture where database changes automatically trigger job creation through the `universal_job_dispatcher` function. The system has been unified to use the new `jobs` table for all job definitions.
+The Jinn system operates on a **universal event bus** architecture. This is a significant simplification from past designs. The core principle is:
+
+**Every event that can trigger a job is first persisted as an artifact.**
+
+This means the `artifacts` table is the single, central event bus for the entire system. Whether an event originates from a cron schedule, a change in a job's status, or is declaratively emitted by another job, it is first recorded as a new row in the `artifacts` table.
+
+This design provides two major benefits:
+1.  **Simplicity**: The `universal_job_dispatcher` is now radically simpler. It only needs to listen for `INSERT` operations on the `artifacts` table. It no longer needs to know about different event sources or table types.
+2.  **Universal Traceability**: Because every job is triggered by a persisted artifact, every action in the system has a clear, explicit cause. Each job on the `job_board` is linked to its trigger via `source_artifact_id`, creating an unbroken, universally traceable causal chain.
 
 ## How It Works
 
-### Core Components
+1.  **Event Occurs**: An event source (e.g., `pg_cron`, a job status change) fires.
+2.  **Artifact is Created**: Instead of calling the dispatcher, the event source's *only* job is to `INSERT` a structured artifact into the `artifacts` table. This artifact's `topic` and `content` describe the event that occurred.
+3.  **Dispatcher Triggers**: The `universal_job_dispatcher` function, attached as a trigger to the `artifacts` table, fires in response to the new artifact.
+4.  **Jobs are Matched & Dispatched**: The dispatcher finds all `jobs` whose `schedule_config` subscribes to the new artifact's `topic`.
+5.  **Job is Created with Causal Link**: For each matching job, a new row is inserted into the `job_board`, with its `source_artifact_id` column pointing directly to the ID of the artifact that just triggered it.
 
-1. **Database Triggers**: Listen for INSERT/UPDATE events on `artifacts`, `threads`, `job_board`, and `system_state` tables
-2. **universal_job_dispatcher**: Matches events to both the unified `jobs` table and legacy `job_schedules` for backward compatibility
-3. **jobs**: Unified table containing job definitions with embedded schedule configuration
-4. **job_schedules**: Legacy table maintained for backward compatibility
-5. **jsonb_matches_conditions**: Handles direct field matching for trigger filters
+## System-Level Artifact Topics
 
-### Trigger Types
+To make this system work, internal system events are now published under standardized topics:
 
-| Trigger Type | Table | Operation | Purpose |
-|---|---|---|---|
-| `on_new_artifact` | artifacts | INSERT | New artifact created |
-| `on_artifact_status_change` | artifacts | UPDATE | Artifact status modified |
-| `on_new_research_thread` | threads | INSERT | New thread created |
-| `on_research_thread_update` | threads | UPDATE | Thread updated |
-| `on_processing_time_update` | system_state | UPDATE | Processing time thresholds reached |
-| `on_job_status_change` | job_board | UPDATE | Job status changed (handled by separate function) |
-| `one-off` | N/A | Manual | Single execution jobs (not event-driven) |
+| Event Source | Artifact Topic | Example `content` |
+| :--- | :--- | :--- |
+| Job Status Change | `system.job.status_changed` | `{"job_id": "...", "from_status": "...", "to_status": "..."}` |
+| Cron Schedule | `system.cron.tick` | `{"pattern": "...", "fired_at": "..."}` |
+| Thread Created | `system.thread.created` | `{"thread_id": "...", "title": "..."}` |
+| Thread Updated | `system.thread.updated` | `{"thread_id": "...", "status": "..."}` |
 
-## Filter Format
+Jobs that previously listened to triggers like `on_job_status_change` or `cron` must now be updated to subscribe to these new artifact topics.
 
-**IMPORTANT**: Filters use **direct field matching** - no wrappers needed.
+## `schedule_config` Format
 
-### Correct Format ✅
-```json
-{"topic": "strategic_hypothesis_generation"}
-{"source_job_name": "analyst"}  
-{"status": "PROCESSED"}
-{"old_status": "PENDING", "new_status": "COMPLETED"}
-```
-
-### Incorrect Format ❌ 
-```json
-{"match_conditions": {"topic": "strategic_hypothesis_generation"}}
-{"artifact_topic": "strategic_hypothesis_generation"}
-```
-
-## Current Job Chain Configuration
-
-### Metacognitive Analysis Chain
-
-1. **Analyst** (manual start) → creates artifact with `source_job_name: "analyst"`
-2. **Synthesizer** → triggered by `{"source_job_name": "analyst"}` → creates artifact with `topic: "strategic_hypothesis_generation"`
-3. **Proposer** → triggered by `{"topic": "strategic_hypothesis_generation"}` → creates artifact with `topic: "strategic_action_proposal"`
-4. **Decider** → triggered by `{"topic": "strategic_action_proposal"}` → creates decision artifact
-
-### Processing Time Triggers
-
-When `system_state.cumulative_job_processing_seconds` is updated, jobs can be triggered based on time thresholds:
+Job subscriptions are defined in the `schedule_config` column of the `jobs` table. The format is simple:
 
 ```json
-{"processing_seconds_threshold": 300}
+{
+  "trigger": "on_new_artifact",
+  "filters": {
+    "topic": "the_topic_to_subscribe_to"
+  }
+}
 ```
+
+The `trigger` is **always** `on_new_artifact`. The `filters` object specifies the conditions the artifact must meet, with `topic` being the most common filter.
 
 ## Examples
 
-### Basic Artifact Topic Filter (Unified Jobs Table)
-```sql
--- Using the new unified jobs table
-INSERT INTO jobs (job_id, version, name, description, prompt_content, enabled_tools, schedule_config, is_active)
-VALUES (
-    gen_random_uuid(),
-    1,
-    'market_research_processor',
-    'Processes completed market research',
-    'You are a market research processor...',
-    ARRAY['read_records', 'create_record'],
-    '{"trigger": "on_new_artifact", "filters": {"topic": "market_research_complete"}}',
-    true
-);
-```
+### Subscribing to a Job Completion
+This job will run whenever another job named `data_extractor` completes successfully.
 
-### Status Change Filter (Unified Jobs Table)
 ```sql
-INSERT INTO jobs (job_id, version, name, description, prompt_content, enabled_tools, schedule_config, is_active)
+INSERT INTO jobs (name, description, prompt_content, enabled_tools, schedule_config)
 VALUES (
-    gen_random_uuid(),
-    1,
-    'artifact_processor',
-    'Processes artifacts when they become ready',
-    'You are an artifact processor...',
+    'process_extracted_data',
+    'Processes data after extraction is complete.',
+    'You are a data processor...',
     ARRAY['read_records', 'update_records'],
-    '{"trigger": "on_artifact_status_change", "filters": {"old_status": "RAW", "new_status": "PROCESSED"}}',
-    true
+    '{
+      "trigger": "on_new_artifact", 
+      "filters": {
+        "topic": "system.job.status_changed",
+        "content": {
+          "job_name": "data_extractor",
+          "to_status": "COMPLETED"
+        }
+      }
+    }'::jsonb
 );
 ```
 
-### Legacy Examples (Deprecated - Use Jobs Table Instead)
-
-#### Basic Artifact Topic Filter (Legacy)
-```sql
-INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
-VALUES (
-    'uuid-of-job-definition',
-    'on_new_artifact',
-    '{"topic": "market_research_complete"}'
-);
-```
-
-#### Status Change Filter (Legacy)
-```sql
-INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)  
-VALUES (
-    'uuid-of-job-definition',
-    'on_artifact_status_change',
-    '{"old_status": "RAW", "new_status": "PROCESSED"}'
-);
-```
-
-### Processing Time Trigger
-The processing time trigger uses a special format with `threshold_seconds` and tracks `last_run_at_processing_seconds`:
+### Subscribing to a Cron Tick
+This job will run every hour.
 
 ```sql
-INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
+INSERT INTO jobs (name, description, prompt_content, enabled_tools, schedule_config)
 VALUES (
-    'uuid-of-job-definition',
-    'on_processing_time_update',
-    '{"threshold_seconds": 600}'
+    'hourly_system_check',
+    'Performs a system health check every hour.',
+    'You are a system monitor...',
+    ARRAY['get_context_snapshot'],
+    '{
+      "trigger": "on_new_artifact",
+      "filters": {
+        "topic": "system.cron.tick",
+        "content": {
+          "pattern": "0 * * * *"
+        }
+      }
+    }'::jsonb
 );
 ```
 
-This will trigger every time the cumulative processing seconds increases by 600 seconds from the last run.
+### Subscribing to a Declarative Artifact
+This is the most common pattern, where one job declaratively triggers another.
 
-### Job Status Change Trigger
+**Publisher Job (`analyst`):**
+The `analyst` job has `emit_artifacts_on` configured to create an artifact when it completes.
+
+```json
+// emit_artifacts_on configuration for the 'analyst' job
+{
+  "COMPLETED": [{
+    "topic": "analysis_complete",
+    "content": { "summary": "..." }
+  }]
+}
+```
+
+**Subscriber Job (`synthesizer`):**
+The `synthesizer` job subscribes to the `analysis_complete` topic.
+
 ```sql
-INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
+INSERT INTO jobs (name, description, prompt_content, enabled_tools, schedule_config)
 VALUES (
-    'uuid-of-job-definition',
-    'on_job_status_change',
-    '{"old_status": "IN_PROGRESS", "new_status": "COMPLETED"}'
+    'synthesizer',
+    'Synthesizes completed analysis.',
+    'You are a synthesizer...',
+    ARRAY['read_records', 'create_record'],
+    '{
+      "trigger": "on_new_artifact",
+      "filters": {
+        "topic": "analysis_complete"
+      }
+    }'::jsonb
 );
 ```
-
-### One-off Trigger (Manual execution)
-```sql
-INSERT INTO job_schedules (job_definition_id, dispatch_trigger, trigger_filter)
-VALUES (
-    'uuid-of-job-definition',
-    'one-off',
-    '{}'
-);
-```
-
-## Available Fields for Filtering
-
-### Artifacts Table
-- `id` (uuid)
-- `thread_id` (uuid) 
-- `content` (text)
-- `status` (text)
-- `topic` (text)
-- `source_job_id` (uuid)
-- `source_job_name` (text)
-- `created_at` (timestamp)
-- `updated_at` (timestamp)
-
-### Threads Table
-- `id` (uuid)
-- `title` (text)
-- `objective` (text) 
-- `status` (text)
-- `created_at` (timestamp)
-- `updated_at` (timestamp)
-
-### System State Table
-- `key` (text)
-- `value` (jsonb)
-- `updated_at` (timestamp)
-
-### Job Board Table
-- `id` (uuid)
-- `job_name` (text)
-- `status` (enum: PENDING, IN_PROGRESS, COMPLETED, FAILED)
-- `worker_id` (text)
-- `output` (jsonb)
-- `created_at` (timestamp)
-- `updated_at` (timestamp)
-
-### Jobs Table (Unified)
-- `id` (uuid)
-- `job_id` (uuid)
-- `version` (int)
-- `name` (text)
-- `description` (text)
-- `prompt_content` (text)
-- `enabled_tools` (text[])
-- `model_settings` (jsonb)
-- `schedule_config` (jsonb)
-- `is_active` (boolean)
-- `created_at` (timestamp)
-- `updated_at` (timestamp)
 
 ## Testing Your Triggers
 
-1. **Create the job definition and schedule**
-2. **Insert/update a record that should match your filter**
-3. **Check job_board for new PENDING jobs**
-4. **Verify the job has correct context from trigger_context_key**
+1.  **Create the subscriber job** with the correct `schedule_config`.
+2.  **Manually insert an artifact** that matches the filter conditions.
+    ```sql
+    -- Example for testing the 'synthesizer'
+    INSERT INTO artifacts (topic, content) 
+    VALUES ('analysis_complete', '{"some_data": "value"}');
+    ```
+3.  **Check the `job_board`** for a new `PENDING` job.
+4.  **Verify the `source_artifact_id`** on the new job record matches the ID of the artifact you inserted.
 
-### Test Query
 ```sql
--- Check if your trigger created a job
-SELECT id, job_name, status, created_at, input_context
+-- Check for the newly dispatched job
+SELECT id, job_name, status, source_artifact_id
 FROM job_board 
-WHERE created_at > NOW() - INTERVAL '5 minutes'
+WHERE created_at > NOW() - INTERVAL '1 minute'
 ORDER BY created_at DESC;
 ```
 
-## Troubleshooting
-
-### Job Not Triggering
-1. Check `job_definitions.is_active = true`
-2. Verify trigger_filter JSON syntax is valid
-3. Ensure field names match actual table columns
-4. Check dispatch_trigger matches the table/operation combination
-
-### Wrong Jobs Triggering  
-1. Verify filter conditions are specific enough
-2. Check for NULL values in filter fields
-3. Ensure no overlapping trigger_filter conditions
-
-### Context Not Passed
-1. Set `trigger_context_key` to the field you want passed as context
-2. Verify the field exists on the triggering record
-3. Check `input_context` field in created job_board records
-
-## Best Practices
-
-1. **Be specific**: Use multiple filter conditions to avoid false triggers
-2. **Test thoroughly**: Always test new triggers in a safe environment  
-3. **Monitor performance**: Too many triggers can impact database performance
-4. **Use meaningful names**: Job names should clearly indicate their trigger source
-5. **Document dependencies**: Complex chains should be well-documented
-6. **Handle failures**: Jobs should be designed to handle missing or invalid context gracefully
-
-## Migration Notes
-
-### Job Unification (2025-01-07)
-The system has been unified to use the new `jobs` table instead of the fragmented `job_definitions` + `job_schedules` + `prompt_library` architecture.
-
-**Key Changes Made**:
-- New unified `jobs` table with embedded `schedule_config`
-- Legacy tables maintained for backward compatibility
-- `universal_job_dispatcher` queries both new and legacy systems
-- Schedule configuration now embedded in `jobs.schedule_config` JSONB field
-
-### Direct Field Matching (Previous Migration)
-The system was updated to use direct field matching instead of the `match_conditions` wrapper.
-
-**Key Changes Made**:
-- `universal_job_dispatcher` now uses `trigger_filter` directly instead of `trigger_filter->match_conditions`
-- Field names updated: `artifact_topic` → `topic`, `source` → `source_job_name`
-- Filter structure simplified: removed nested JSON wrappers
-
-### Recommended Migration Path
-1. **New Jobs**: Use the unified `jobs` table with embedded schedule configuration
-2. **Existing Jobs**: Legacy tables continue to work but are deprecated
-3. **Mixed Environment**: Both systems operate in parallel during transition
+This new architecture provides a robust, transparent, and debuggable foundation for the entire agentic system.

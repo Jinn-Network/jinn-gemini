@@ -1,0 +1,300 @@
+'use client'
+
+import { useState, useEffect } from 'react';
+import { TimelineEvent } from '@/lib/types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { IdLink } from './id-link';
+import { createClient } from '@/lib/supabase';
+
+interface CausalLink {
+  event_id: string;
+  source_artifact_id?: string;
+  triggered_by?: {
+    id: string;
+    type: 'artifact' | 'job';
+    topic?: string;
+    job_name?: string;
+  };
+  triggers?: Array<{
+    id: string;
+    type: 'artifact' | 'job';
+    topic?: string;
+    job_name?: string;
+  }>;
+}
+
+// Removed unused interface - we use TimelineEvent directly
+
+function CausalLinkDisplay({ eventId, eventType }: { eventId: string; eventType: string }) {
+  const [causalData, setCausalData] = useState<CausalLink | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showCausal, setShowCausal] = useState(false);
+
+  useEffect(() => {
+    const fetchCausalLinks = async () => {
+      try {
+        const supabase = createClient();
+        let triggeredBy: {
+          id: string;
+          type: 'artifact' | 'job';
+          topic?: string;
+          job_name?: string;
+        } | undefined = undefined;
+        let triggers: Array<{
+          id: string;
+          type: 'artifact' | 'job';
+          topic?: string;
+          job_name?: string;
+        }> = [];
+
+        // For job events, find the source artifact
+        if (eventType === 'JOB_CREATED') {
+          const { data: jobData } = await supabase
+            .from('job_board')
+            .select('source_artifact_id')
+            .eq('id', eventId)
+            .single();
+
+          if (jobData?.source_artifact_id) {
+            const { data: artifactData } = await supabase
+              .from('artifacts')
+              .select('id, topic')
+              .eq('id', jobData.source_artifact_id)
+              .single();
+
+            if (artifactData) {
+              triggeredBy = {
+                id: artifactData.id,
+                type: 'artifact' as const,
+                topic: artifactData.topic,
+              };
+            }
+          }
+
+          // Find artifacts created by this job
+          const { data: artifactsCreated } = await supabase
+            .from('artifacts')
+            .select('id, topic')
+            .eq('source_job_id', eventId);
+
+          if (artifactsCreated) {
+            triggers = artifactsCreated.map(artifact => ({
+              id: artifact.id,
+              type: 'artifact' as const,
+              topic: artifact.topic,
+            }));
+          }
+        }
+
+        // For artifact events, find jobs that were triggered by this artifact
+        if (eventType === 'ARTIFACT_CREATED') {
+          const { data: triggeredJobs } = await supabase
+            .from('job_board')
+            .select('id, job_name')
+            .eq('source_artifact_id', eventId);
+
+          if (triggeredJobs) {
+            triggers = triggeredJobs.map(job => ({
+              id: job.id,
+              type: 'job' as const,
+              job_name: job.job_name,
+            }));
+          }
+
+          // Find the job that created this artifact
+          const { data: artifactData } = await supabase
+            .from('artifacts')
+            .select('source_job_id')
+            .eq('id', eventId)
+            .single();
+
+          if (artifactData?.source_job_id) {
+            const { data: jobData } = await supabase
+              .from('job_board')
+              .select('id, job_name')
+              .eq('id', artifactData.source_job_id)
+              .single();
+
+            if (jobData) {
+              triggeredBy = {
+                id: jobData.id,
+                type: 'job' as const,
+                job_name: jobData.job_name,
+              };
+            }
+          }
+        }
+
+        setCausalData({
+          event_id: eventId,
+          triggered_by: triggeredBy,
+          triggers: triggers,
+        });
+
+      } catch (error) {
+        console.error('Error fetching causal links:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (showCausal) {
+      fetchCausalLinks();
+    }
+  }, [eventId, eventType, showCausal]);
+
+  if (!showCausal) {
+    return (
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setShowCausal(true)}
+        className="mt-2"
+      >
+        Show Causal Links
+      </Button>
+    );
+  }
+
+  if (loading) {
+    return <div className="text-sm text-gray-500 mt-2">Loading causal links...</div>;
+  }
+
+  if (!causalData || (!causalData.triggered_by && causalData.triggers?.length === 0)) {
+    return (
+      <div className="mt-2">
+        <div className="text-sm text-gray-500">No causal links found.</div>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => setShowCausal(false)}
+          className="text-xs"
+        >
+          Hide
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-medium text-blue-900">Causal Chain</h4>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => setShowCausal(false)}
+          className="text-xs text-blue-700"
+        >
+          Hide
+        </Button>
+      </div>
+      
+      <div className="space-y-2 text-sm">
+        {causalData.triggered_by && (
+          <div className="flex items-center gap-2">
+            <span className="text-blue-700">↗ Triggered by:</span>
+            <IdLink 
+              collection={causalData.triggered_by.type === 'artifact' ? 'artifacts' : 'job_board'} 
+              id={causalData.triggered_by.id} 
+            />
+            <span className="text-gray-600">
+              ({causalData.triggered_by.topic || causalData.triggered_by.job_name})
+            </span>
+          </div>
+        )}
+        
+        {causalData.triggers && causalData.triggers.length > 0 && (
+          <div>
+            <div className="text-blue-700 mb-1">↘ Triggers:</div>
+            <div className="space-y-1 ml-4">
+              {causalData.triggers.map((trigger, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <IdLink 
+                    collection={trigger.type === 'artifact' ? 'artifacts' : 'job_board'} 
+                    id={trigger.id} 
+                  />
+                  <span className="text-gray-600">
+                    ({trigger.topic || trigger.job_name})
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Helper to render specific details for each event type
+const renderEventDetails = (event: TimelineEvent) => {
+  switch (event.event_type) {
+    case 'ARTIFACT_CREATED':
+      return (
+        <>
+          {event.event_details.topic && <p>Topic: {event.event_details.topic}</p>}
+          {event.event_details.status && <p>Status: {event.event_details.status}</p>}
+          <IdLink collection="artifacts" id={event.event_details.id} />
+          <CausalLinkDisplay eventId={event.event_details.id} eventType={event.event_type} />
+        </>
+      );
+    case 'JOB_CREATED':
+      return (
+        <>
+          {event.event_details.name && <p>Job Name: {event.event_details.name}</p>}
+          {event.event_details.status && <p>Status: {event.event_details.status}</p>}
+          <IdLink collection="job_board" id={event.event_details.id} />
+          <a href={`/jobs/${event.event_details.id}/impact`} className="text-xs text-blue-500 hover:underline ml-2">
+            View Impact
+          </a>
+          <CausalLinkDisplay eventId={event.event_details.id} eventType={event.event_type} />
+        </>
+      );
+    case 'THREAD_CREATED':
+      return (
+        <>
+          {event.event_details.objective && <p>Objective: {event.event_details.objective}</p>}
+          <IdLink collection="threads" id={event.event_details.id} />
+        </>
+      );
+    default:
+      return <p>{JSON.stringify(event.event_details)}</p>;
+  }
+};
+
+export default function EnhancedEventTimeline({ events }: { events: TimelineEvent[] }) {
+  if (!events || events.length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-500">
+        No events found for this thread.
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative border-l-4 border-blue-200">
+      {events.map((event, index) => (
+        <div key={index} className="mb-8 ml-6">
+          <div className="absolute w-4 h-4 bg-blue-400 rounded-full -left-2 mt-1.5 border-2 border-white"></div>
+          <Card className="shadow-md">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg text-blue-900">
+                  {event.event_type.replace('_', ' ')}
+                </CardTitle>
+                <time className="text-sm text-gray-500 font-mono">
+                  {new Date(event.created_at).toLocaleString()}
+                </time>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {renderEventDetails(event)}
+            </CardContent>
+          </Card>
+        </div>
+      ))}
+    </div>
+  );
+}

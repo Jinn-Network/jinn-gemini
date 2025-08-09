@@ -10,6 +10,8 @@ export { searchMemories, searchMemoriesParams, searchMemoriesSchema, type Search
 export { traceThread, traceThreadSchema } from './trace-thread.js';
 export { reconstructJob, reconstructJobSchema } from './reconstruct-job.js';
 export { searchEvents, searchEventsSchema } from './search-events.js';
+export { getJobGraph, getJobGraphParams, getJobGraphSchema, type GetJobGraphParams } from './get-job-graph.js';
+export { traceLineage, traceLineageParams, traceLineageSchema, type TraceLineageParams } from './trace-lineage.js';
 
 // Export shared types
 export { tableNames, tableNameSchema, traceThreadParams, reconstructJobParams, searchEventsParams, type TraceThreadParams, type ReconstructJobParams, type SearchEventsParams } from './shared/types.js';

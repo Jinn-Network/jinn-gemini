@@ -164,10 +164,17 @@ export class Agent {
         stderr += chunk;
       });
 
-      geminiProcess.on('close', (code) => {
-        const exitCode = typeof code === 'number' ? code : 1;
-        resolve({ output: stdout, telemetryFile, stderr, exitCode });
-      });
+            geminiProcess.on('close', (code) => {
+                // Check for API errors in stderr even if exit code is 0
+                if (stderr && stderr.includes('Error when talking to Gemini API')) {
+                    reject(new Error(`Gemini API error: ${stderr}`));
+                } else if (code !== 0) {
+                    reject(new Error(`Gemini process exited with code ${code}\n${stderr}`));
+                } else {
+                    // Include stderr even on successful runs for warning-level errors
+                    resolve({ output: stdout, telemetryFile, stderr });
+                }
+            });
 
       geminiProcess.on('error', (err) => {
         // Surface as a synthetic non-zero exit with captured streams

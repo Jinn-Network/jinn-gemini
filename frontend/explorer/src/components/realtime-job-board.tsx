@@ -9,6 +9,7 @@ import { Pagination } from '@/components/pagination'
 import { RecordListSkeleton } from '@/components/loading-skeleton'
 // IdLink removed as it was not being used
 import { toast } from 'sonner'
+import { JobFilter, JobFilters } from '@/components/job-filter'
 
 interface RealtimeJobBoardProps {
   pageSize?: number
@@ -36,10 +37,17 @@ export function RealtimeJobBoard({
   const [stats, setStats] = useState<JobBoardStats>({ total: 0, pending: 0, in_progress: 0, completed: 0, failed: 0 })
   const [isRealTimeConnected, setIsRealTimeConnected] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [filters, setFilters] = useState<JobFilters>({})
   
   const supabase = createClient()
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Handle filter changes
+  const handleFilterChange = useCallback((newFilters: JobFilters) => {
+    setFilters(newFilters)
+    setCurrentPage(1) // Reset to first page when filters change
+  }, [])
   
   // Fetch job statistics
   const fetchStats = useCallback(async () => {
@@ -67,16 +75,35 @@ export function RealtimeJobBoard({
     }
   }, [supabase])
 
-  // Fetch records with pagination
+  // Fetch records with pagination and filtering
   const fetchRecords = useCallback(async (page: number, showLoading = true) => {
     if (showLoading) setLoading(true)
     
     try {
-      const { data, error, count } = await supabase
+      let query = supabase
         .from('job_board')
-        .select('*', { count: 'exact' })
+        .select(`
+          *,
+          artifacts!source_artifact_id(topic)
+        `, { count: 'exact' })
         .order('created_at', { ascending: false })
         .range((page - 1) * pageSize, page * pageSize - 1)
+
+      // Apply filters
+      if (filters.status) {
+        query = query.eq('status', filters.status)
+      }
+      if (filters.job_name) {
+        query = query.ilike('job_name', `%${filters.job_name}%`)
+      }
+      if (filters.source_artifact_id) {
+        query = query.eq('source_artifact_id', filters.source_artifact_id)
+      }
+      if (filters.artifact_topic) {
+        query = query.eq('artifacts.topic', filters.artifact_topic)
+      }
+
+      const { data, error, count } = await query
 
       if (error) throw error
 
@@ -89,7 +116,7 @@ export function RealtimeJobBoard({
     } finally {
       if (showLoading) setLoading(false)
     }
-  }, [supabase, pageSize])
+  }, [supabase, pageSize, filters])
 
   // Set up real-time subscription
   const setupRealtimeSubscription = useCallback(() => {
@@ -173,6 +200,11 @@ export function RealtimeJobBoard({
     }, pollingInterval)
   }, [enablePolling, pollingInterval, currentPage, fetchRecords, fetchStats])
 
+  // Refresh data when filters change
+  useEffect(() => {
+    fetchRecords(currentPage)
+  }, [filters, fetchRecords, currentPage])
+  
   // Initial load and setup
   useEffect(() => {
     fetchRecords(currentPage)
@@ -227,13 +259,15 @@ export function RealtimeJobBoard({
     )
   }
 
+
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold mb-2">Job Board</h1>
         <div className="flex items-center gap-4 text-sm text-gray-600">
-          <span>Real-time job execution dashboard</span>
+          <span>Real-time job execution dashboard with universal event tracing</span>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${isRealTimeConnected ? 'bg-green-500' : 'bg-yellow-500'}`} />
             <span>{isRealTimeConnected ? 'Real-time' : 'Polling'}</span>
@@ -241,6 +275,9 @@ export function RealtimeJobBoard({
           <span>Last update: {lastUpdate.toLocaleTimeString()}</span>
         </div>
       </div>
+
+      {/* Filters */}
+      <JobFilter onFilterChange={handleFilterChange} initialFilters={filters} />
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

@@ -1,6 +1,10 @@
+'use client'
+
 import { JobImpactReport, CreatedRecord } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IdLink } from './id-link';
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase';
 
 function DetailItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -29,6 +33,205 @@ function CreatedRecords({ records }: { records: CreatedRecord[] }) {
   );
 }
 
+interface CausalChain {
+  source_artifact?: {
+    id: string;
+    topic: string;
+    content: string;
+    created_at: string;
+  } | null;
+  triggered_jobs?: Array<{
+    id: string;
+    job_name: string;
+    status: string;
+    created_at: string;
+  }>;
+  emitted_artifacts?: Array<{
+    id: string;
+    topic: string;
+    content: string;
+    created_at: string;
+  }>;
+}
+
+function CausalChainView({ jobId }: { jobId: string }) {
+  const [causalData, setCausalData] = useState<CausalChain | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchCausalChain = async () => {
+      try {
+        const supabase = createClient();
+        
+        // Get the job board entry to find source_artifact_id
+        const { data: jobData, error: jobError } = await supabase
+          .from('job_board')
+          .select('source_artifact_id')
+          .eq('id', jobId)
+          .single();
+
+        if (jobError) throw jobError;
+
+        let sourceArtifact = null;
+        if (jobData?.source_artifact_id) {
+          // Get source artifact details
+          const { data: artifactData, error: artifactError } = await supabase
+            .from('artifacts')
+            .select('id, topic, content, created_at')
+            .eq('id', jobData.source_artifact_id)
+            .single();
+
+          if (!artifactError && artifactData) {
+            sourceArtifact = artifactData;
+          }
+        }
+
+        // Get jobs triggered by artifacts created by this job
+        const { data: triggeredJobs } = await supabase
+          .from('job_board')
+          .select(`
+            id, job_name, status, created_at,
+            artifacts!inner(source_job_id)
+          `)
+          .eq('artifacts.source_job_id', jobId);
+
+        // Get artifacts emitted by this job
+        const { data: emittedArtifacts } = await supabase
+          .from('artifacts')
+          .select('id, topic, content, created_at')
+          .eq('source_job_id', jobId)
+          .order('created_at', { ascending: false });
+
+        setCausalData({
+          source_artifact: sourceArtifact,
+          triggered_jobs: triggeredJobs || [],
+          emitted_artifacts: emittedArtifacts || [],
+        });
+
+      } catch (err) {
+        console.error('Error fetching causal chain:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCausalChain();
+  }, [jobId]);
+
+  if (loading) {
+    return <div className="text-sm text-gray-500">Loading causal chain...</div>;
+  }
+
+  if (error) {
+    return <div className="text-sm text-red-500">Error loading causal chain: {error}</div>;
+  }
+
+  if (!causalData) {
+    return <div className="text-sm text-gray-500">No causal data available.</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Source Artifact */}
+      {causalData.source_artifact && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Triggering Event</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <DetailItem label="Source Artifact">
+                <IdLink collection="artifacts" id={causalData.source_artifact.id} />
+                <span className="ml-2 text-sm text-gray-600">({causalData.source_artifact.topic})</span>
+              </DetailItem>
+              <DetailItem label="Created At">
+                {new Date(causalData.source_artifact.created_at).toLocaleString()}
+              </DetailItem>
+              <DetailItem label="Content Preview">
+                <div className="text-sm bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+                  {typeof causalData.source_artifact.content === 'string' 
+                    ? causalData.source_artifact.content.substring(0, 200) + 
+                      (causalData.source_artifact.content.length > 200 ? '...' : '')
+                    : JSON.stringify(causalData.source_artifact.content).substring(0, 200) + '...'
+                  }
+                </div>
+              </DetailItem>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Emitted Artifacts */}
+      {causalData.emitted_artifacts && causalData.emitted_artifacts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Artifacts Created by This Job</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {causalData.emitted_artifacts.map((artifact) => (
+                <div key={artifact.id} className="border rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <IdLink collection="artifacts" id={artifact.id} />
+                      <span className="text-sm font-medium text-gray-700">{artifact.topic}</span>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {new Date(artifact.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600 bg-white p-2 rounded max-h-16 overflow-y-auto">
+                    {typeof artifact.content === 'string' 
+                      ? artifact.content.substring(0, 150) + (artifact.content.length > 150 ? '...' : '')
+                      : JSON.stringify(artifact.content).substring(0, 150) + '...'
+                    }
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Downstream Jobs */}
+      {causalData.triggered_jobs && causalData.triggered_jobs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Downstream Jobs Triggered</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {causalData.triggered_jobs.map((job) => (
+                <div key={job.id} className="border rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <IdLink collection="job_board" id={job.id} />
+                      <span className="font-medium">{job.job_name}</span>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        job.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                        job.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                        job.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {job.status}
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {new Date(job.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function JobImpactView({ report }: { report: JobImpactReport }) {
   const { job_report, source_schedule, created_records } = report;
 
@@ -54,7 +257,7 @@ export default function JobImpactView({ report }: { report: JobImpactReport }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Causality</CardTitle>
+          <CardTitle>Legacy Causality</CardTitle>
         </CardHeader>
         <CardContent>
           {source_schedule ? (
@@ -67,6 +270,11 @@ export default function JobImpactView({ report }: { report: JobImpactReport }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Enhanced Causal Chain View */}
+      {job_report?.job_id && (
+        <CausalChainView jobId={String(job_report.job_id)} />
+      )}
 
       <Card>
         <CardHeader>

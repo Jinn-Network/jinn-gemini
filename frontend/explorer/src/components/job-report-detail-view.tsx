@@ -206,6 +206,7 @@ export function JobReportDetailView({ record }: JobReportDetailViewProps) {
     error_type,
     raw_telemetry,
     created_at,
+    source_artifact_id,
     ...otherFields 
   } = record
 
@@ -215,6 +216,7 @@ export function JobReportDetailView({ record }: JobReportDetailViewProps) {
   // Prepare details for the right sidebar
   const detailFields = {
     job_id,
+    source_artifact_id,
     worker_id,
     status,
     duration_ms,
@@ -298,6 +300,9 @@ export function JobReportDetailView({ record }: JobReportDetailViewProps) {
                     {/* Special handling for job_id */}
                     {key === 'job_id' && value ? (
                       <IdLink id={value} fieldName="job_id" />
+                    ) : /* Special handling for source_artifact_id */
+                    key === 'source_artifact_id' && value ? (
+                      <IdLink id={value} fieldName="artifact_id" />
                     ) : /* Special handling for different data types */
                     typeof value === 'boolean' ? (
                       <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${

@@ -74,6 +74,13 @@ function getSecondaryInfo(record: DbRecord, collectionName: CollectionName): Rea
   
   switch (collectionName) {
     case 'job_board':
+      if (record.source_artifact_id) {
+        info.push(
+          <span key="source_artifact">
+            Triggered by: <IdLink id={record.source_artifact_id} fieldName="artifact_id" />
+          </span>
+        )
+      }
       if (record.job_definition_id) {
         info.push(
           <span key="job_def">

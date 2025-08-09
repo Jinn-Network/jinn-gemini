@@ -17,10 +17,11 @@ The core technologies are:
 
 The design of this system is guided by a few core principles:
 
+-   **Universal Event Bus & Causal Tracing**: The system is built on a simple, powerful idea: every action is triggered by a persisted artifact. The `artifacts` table serves as a universal event bus for the entire system. This ensures that every job has a clear, non-nullable `source_artifact_id`, creating an unbroken, universally traceable causal chain for every operation. This is the foundation of the system's observability and metacognitive capabilities.
 -   **Event-Driven & Database-Centric**: The database is the single source of truth. All state changes and actions are modeled as database events. Complex workflows and agent coordination are orchestrated through PostgreSQL triggers and functions, minimizing the need for complex application-level logic. If a task can be automated in the database, it should be.
 -   **Lean Workers, Smart Agents**: The `worker` is a simple, stateless executor. Its only job is to poll for work, execute it, and report back. The core intelligence resides in the `Agent` class, which handles LLM interaction, and the `metacog-mcp` tools, which provide the agent with its capabilities.
 -   **Tools Over Prompts for Dynamic Context**: Prompts should guide the agent's reasoning process and define its high-level goals. They should not be cluttered with dynamic information (like file lists, database schemas, or tool definitions). Instead, prompts should instruct the agent to *use tools* to discover that information from its environment. This makes prompts more stable, reusable, and focused on reasoning.
--   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot` and `create_job`, an agent can analyze operational data and autonomously create new, scheduled jobs for itself or other agents, enabling a powerful loop of self-improvement. Tools use a shared context manager to return token‑budgeted, single‑page responses with cursor pagination. The context snapshot tool uses this for predictable, context‑safe outputs.
+-   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot`, `get_job_graph`, and `trace_lineage`, an agent can analyze operational data, understand system-level causal relationships, and autonomously create new jobs to improve itself.
 
 ---
 
@@ -55,14 +56,14 @@ jinn-gemini/
 
 The system consists of several key components that work together in a continuous loop.
 
-1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables (`job_board`, `job_definitions`, `job_schedules`, `job_reports`, etc.) and a sophisticated trigger system to manage the entire workflow. See `docs/documentation/DATABASE_MAP.md` for a detailed schema.
+1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables and a sophisticated trigger system built around a universal event bus (`artifacts` table) to manage the entire workflow. Every dispatched job is explicitly linked to its triggering artifact via `source_artifact_id`, ensuring complete traceability. See `docs/documentation/DATABASE_MAP.md` for a detailed schema.
 2.  **Worker (`worker/worker.ts`)**: A Node.js application that continuously polls the `job_board` for `PENDING` jobs. It is responsible for claiming a job, invoking the agent, and reporting the outcome.
 3.  **Agent (`gemini-agent/agent.ts`)**: The "brain" of the operation. It wraps the Gemini CLI and is responsible for:
     -   Dynamically generating job-specific settings to enable the correct set of tools.
     -   Executing the LLM prompt with integrated telemetry collection.
     -   Parsing detailed telemetry data (token usage, tool calls, performance metrics) directly from Gemini CLI output files.
     -   Capturing both critical errors and warning-level issues for comprehensive job reporting.
-4.  **Tools (`gemini-agent/mcp/`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `list_tools`, `read_records`, and the powerful `create_job` and `get_context_snapshot`. Tools use a shared context manager for token‑budgeted, single‑page outputs (default 50k tokens/page), field‑aware truncation where appropriate, and stateless cursor pagination. get_context_snapshot uses these defaults.
+4.  **Tools (`gemini-agent/mcp/`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `read_records`, and powerful awareness tools like `get_job_graph`, `trace_lineage`, and `get_context_snapshot`.
 5.  **Frontend Explorer (`frontend/explorer/`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
 
 ---
@@ -76,14 +77,14 @@ The system consists of several key components that work together in a continuous
 
 The entire system operates on a continuous, event-driven cycle:
 
-1.  **Trigger**: An event occurs in the database (e.g., a new artifact is inserted, a thread's status changes).
-2.  **Dispatch**: A database trigger (`universal_job_dispatcher`) finds a matching `job_schedule` based on the event and its filters. It then creates a new entry in the `job_board` table.
+1.  **Event (Artifact Creation)**: An event occurs in the system, which is always represented by the creation of a new artifact. This could be a system-level event (like `system.cron.tick`), a job status change (`system.job.status_changed`), or a declarative emission from another completed job.
+2.  **Dispatch**: The `universal_job_dispatcher` trigger, which listens exclusively for new rows in the `artifacts` table, finds all `jobs` definitions that subscribe to the new artifact's `topic`. It then creates corresponding `PENDING` entries in the `job_board`, critically populating each with the `source_artifact_id` of the artifact that caused it.
 3.  **Claim**: A `worker` instance polls the `job_board`, finds the `PENDING` job, and atomically claims it by setting its status to `IN_PROGRESS` and assigning its own `worker_id`.
 4.  **Execution**: The worker invokes the `Agent`, passing it the prompt, context, and the list of `enabled_tools` for that specific job.
 5.  **Tool Setup**: The agent dynamically creates a `.gemini/settings.json` file that configures the Gemini CLI to use the `gemini-agent/mcp` server and exposes *only* the tools enabled for that job.
 6.  **LLM Interaction**: The agent spawns the Gemini CLI process. The LLM uses the provided tools as needed by making calls to the MCP server, which executes the corresponding database functions.
 7.  **Reporting**: After execution, the worker collects the final output and detailed telemetry (token counts, tool calls, duration, errors, warnings) from the Agent's integrated telemetry parser and creates a comprehensive record in the `job_reports` table with full visibility into job performance and issues.
-8.  **Completion**: The worker updates the job's status in the `job_board` to `COMPLETED` or `FAILED`, making the result available to the rest of the system and potentially triggering the next job in a chain.
+8.  **Completion**: The worker updates the job's status in the `job_board` to `COMPLETED` or `FAILED`, making the result available to the rest of the system and potentially triggering the next job in a chain by creating a new artifact.
 
 ---
 
@@ -251,8 +252,10 @@ export async function myTool(params: { cursor?: string }) {
 }
 ```
 
-### Key Tool: get_context_snapshot
-The `get_context_snapshot` tool provides a time‑windowed system overview and now uses the shared context manager:
+### Key Awareness Tools
+
+#### `get_context_snapshot`
+The `get_context_snapshot` tool is a powerful system analysis tool designed for agents to understand the current state of the system. Key features:
 
 - Time window: `hours_back` (default 6). No internal max cap.
 - Pagination: Returns a single page (50k‑token budget). Use `meta.next_cursor` to continue.
@@ -270,6 +273,14 @@ get_context_snapshot({ hours_back: 10 })
 // Job‑specific view with detailed messages
 get_context_snapshot({ job_name: "data_analysis_job", hours_back: 8 })
 ```
+
+#### `get_job_graph` & `trace_lineage`
+These tools provide deep insight into the system's causal architecture.
+
+- **`get_job_graph({topic?: string})`**: Allows the agent to inspect the system's static "blueprint." It shows which jobs publish artifacts on a given topic and which jobs subscribe to them, revealing the potential chain of events for any given topic.
+- **`trace_lineage({artifact_id?: string, job_id?: string})`**: Provides universal causal tracing. Starting from any job or artifact, it can walk the execution graph forwards (what did this cause?) or backwards (what caused this?), providing a complete history of any process.
+
+These tools are fundamental for advanced metacognition, allowing an agent to understand not just *what* is happening, but *why* it's happening and what the downstream consequences of its actions will be.
 
 ### Debugging
 You can run the worker in debug mode by passing the `--debug` or `-d` flag. This will pass the `--debug` flag to the Gemini CLI, providing verbose output on its operations.
