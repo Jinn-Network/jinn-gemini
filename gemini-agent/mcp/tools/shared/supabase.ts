@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+export { getCurrentJobContext, setJobContext, clearJobContext, type JobContext } from './context.js';
 
 // Robust .env discovery: try process.cwd() and ascend from this file's dir to repo root
 function loadEnvOnce() {
@@ -47,28 +48,3 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Job context management for tracking which job is currently executing
-interface JobContext {
-  jobId: string | null;
-  jobName: string | null;
-  threadId: string | null;
-}
-
-let currentJobContext: JobContext = {
-  jobId: null,
-  jobName: null,
-  threadId: null,
-};
-
-export function setJobContext(jobId: string | null, jobName: string | null, threadId: string | null) {
-  currentJobContext = { jobId, jobName, threadId };
-}
-
-export function clearJobContext() {
-  currentJobContext = { jobId: null, jobName: null, threadId: null };
-}
-
-export function getCurrentJobContext(): JobContext {
-  return { ...currentJobContext };
-}

@@ -69,7 +69,7 @@ The system consists of several key components that work together in a continuous
 ---
 
 ## Constants
-- Supbase project ID is: clnwgxgvmnrkwqdblqgf
+- Supbase project ID is: kmptsnmabdwgjyctowyz
 
 ---
 
@@ -204,6 +204,20 @@ For easier development, you can run the MCP server or the worker directly on you
 2.  **Define Schema**: Use Zod to define the input parameter schema for your tool.
 3.  **Implement Logic**: Write the tool's function, which will typically interact with the database via the `supabase` client.
 4.  **Register Tool**: In `gemini-agent/mcp/server.ts`, import your new tool and add it to the `serverTools` array. The tool will be automatically registered and discoverable by the `list_tools` tool.
+
+### Job Context Injection
+
+When the worker executes a job, it passes a job context to the MCP tool layer. This context is available to tools and is automatically injected into writes where appropriate.
+
+- Fields provided in job context:
+  - `job_id`: The runtime job run ID from `job_board.id`.
+  - `job_definition_id`: The definition/version ID from `jobs.id` that the run references.
+  - `job_name`: The human‑readable job name from the job definition.
+  - `thread_id`: The resolved thread/project scope for the job, when available.
+
+- Auto‑injection behavior in tools:
+  - `create_record` automatically adds `source_job_id`, `source_job_name`, `thread_id`, and `job_definition_id` to the payload it sends to the database function. The database validates and writes only columns that exist on the target table.
+  - This ensures durable lineage across core tables (`artifacts`, `job_reports`, `memories`, `messages`, and `threads`) linking records back to the exact job definition and run that produced them.
 
 ### Shared Context Manager for tool outputs
 All read/search tools now use a shared module to ensure consistent, token‑budgeted, single‑page responses with pagination and transparent metadata.

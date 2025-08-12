@@ -63,91 +63,18 @@ interface JobBoard {
   id: string;
   status: string;
   worker_id?: string;
-  input_prompt: string;
-  input_context: string | null; // This is expected to be a JSON string or null
+  input: string;
   enabled_tools: string[];
   model_settings: Record<string, any>;
   job_definition_id: string;
   job_name: string;
+  project_run_id?: string | null;
+  source_event_id?: string | null;
+  project_definition_id?: string | null;
+  inbox?: Array<{ from?: string | null; content?: string | null }>; // recent messages snapshot
 }
 
-function buildPromptWithContext(job: JobBoard, promptContent: string, inputContext: string | null): string {
-  // Add the job's identity to the top of the prompt
-  let finalPrompt = `You are executing as job "${job.job_name}" (Definition ID: ${job.job_definition_id}).\n\n---\n\n${promptContent}`;
-
-  if (inputContext) {
-    try {
-      const contextData = JSON.parse(inputContext);
-      if (contextData && Object.keys(contextData).length > 0) {
-        finalPrompt += '\n\nAdditional Context:\n';
-        for (const [key, value] of Object.entries(contextData)) {
-          finalPrompt += `- ${key}: ${JSON.stringify(value)}\n`;
-        }
-      }
-    } catch (error) {
-      // If it's not JSON, treat it as plain text context
-      finalPrompt += `\n\nAdditional Context:\n${inputContext}`;
-    }
-  }
-
-  return finalPrompt;
-}
-
-async function resolveThreadId(job: JobBoard): Promise<string | null> {
-    if (!job.input_context) {
-        return null;
-    }
-
-    try {
-        // First try to parse as JSON (for backward compatibility)
-        const contextData = JSON.parse(job.input_context);
-
-        // The context is often the triggering record itself (e.g., an artifact).
-        if (contextData && contextData.thread_id) {
-            console.log(`[CONTEXT] Resolved threadId '${contextData.thread_id}' from job ${job.id}'s input_context (JSON format).`);
-            return contextData.thread_id;
-        }
-
-        // Check for nested trigger_event structure (for triggered jobs)
-        if (contextData && contextData.trigger_event && contextData.trigger_event.thread_id) {
-            console.log(`[CONTEXT] Resolved threadId '${contextData.trigger_event.thread_id}' from job ${job.id}'s input_context (trigger_event format).`);
-            return contextData.trigger_event.thread_id;
-        }
-
-        // If the triggering record was a thread itself, its ID is the thread_id.
-        if (contextData && contextData.objective && contextData.id) {
-             console.log(`[CONTEXT] Resolved threadId '${contextData.id}' from job ${job.id}'s input_context (triggering record was a thread).`);
-            return contextData.id;
-        }
-
-    } catch (error) {
-        // If JSON parsing fails, try parsing as comma-separated key:value format
-        // Format: "artifact_id:fe671811-036e-4623-a8e2-279ad13d3a3c,thread_id:a5fb543e-4f4a-4de2-80d4-6c4480d65e2a"
-        try {
-            const pairs = job.input_context.split(',');
-            const contextData: Record<string, string> = {};
-            
-            for (const pair of pairs) {
-                const [key, value] = pair.split(':');
-                if (key && value) {
-                    contextData[key.trim()] = value.trim();
-                }
-            }
-
-            if (contextData.thread_id) {
-                console.log(`[CONTEXT] Resolved threadId '${contextData.thread_id}' from job ${job.id}'s input_context (key:value format).`);
-                return contextData.thread_id;
-            }
-
-        } catch (parseError) {
-            console.warn(`[CONTEXT] Could not parse input_context for job ${job.id} as JSON or key:value format.`, job.input_context);
-            return null;
-        }
-    }
-
-    console.log(`[CONTEXT] No threadId found in input_context for job ${job.id}.`);
-    return null;
-}
+// input is already fully constructed by dispatcher. No extra context resolution needed.
 
 function isInternalServerError(messageLower: string): boolean {
     return (
@@ -162,22 +89,15 @@ function isRetryableError(error: any): boolean {
     if (!error) return false;
     
     // Handle nested error structures from Agent.run()
-    let message = '';
-    if (error.error && error.error.message) {
-        message = String(error.error.message);
-    } else if (error.message) {
-        message = String(error.message);
-    } else if (error.error) {
-        message = String(error.error);
-    } else {
-        message = String(error);
-    }
-    
-    message = message.toLowerCase();
-    console.log(`[RETRY] Checking if error is retryable: "${message.substring(0, 200)}..."`);
-    
-    const isRetryable = RETRY_CONFIG.retryableErrors.some(retryableError => 
-        message.includes(retryableError.toLowerCase())
+    let combined = '';
+    const primaryMessage = error?.error?.message ?? error?.message ?? error?.error ?? error;
+    const stderr = error?.error?.stderr ?? '';
+    combined = `${String(primaryMessage || '')}\n${String(stderr || '')}`.toLowerCase();
+
+    console.log(`[RETRY] Checking if error is retryable: "${combined.substring(0, 200)}..."`);
+
+    const isRetryable = RETRY_CONFIG.retryableErrors.some(retryableError =>
+        combined.includes(retryableError.toLowerCase())
     );
     
     console.log(`[RETRY] Error is ${isRetryable ? 'RETRYABLE' : 'NOT RETRYABLE'}`);
@@ -362,7 +282,7 @@ async function processPendingJobs(): Promise<boolean> {
     const job = jobs[0];
 
     // Resolve the threadId from the job's context before execution
-    const threadId = await resolveThreadId(job);
+    const threadId = null;
 
     console.log(`Attempting to claim job ${job.id}${targetJobId ? ' (forced by --job-id)' : ''}...`);
     const startTime = Date.now();
@@ -390,7 +310,18 @@ async function processPendingJobs(): Promise<boolean> {
         });
         console.log(`Job ${job.id} claimed by worker ${workerId} and status updated to IN_PROGRESS.`);
 
-        const finalPrompt = buildPromptWithContext(job, job.input_prompt, job.input_context);
+        // Compose final prompt with inbox (if available)
+        const composeInboxSection = (inbox?: Array<{ from?: string | null; content?: string | null }>): string => {
+            if (!Array.isArray(inbox) || inbox.length === 0) return '';
+            const lines = inbox.slice(0, 10).map((m, idx) => {
+                const from = m?.from ?? 'unknown';
+                const content = (m?.content ?? '').toString();
+                return `- [${idx + 1}] from ${from}: ${content}`;
+            });
+            return `\n\n### Inbox (recent messages)\n${lines.join('\n')}`;
+        };
+
+        const finalPrompt = `${job.input || ''}${composeInboxSection(job.inbox)}`.trim();
         const model = job.model_settings.model || 'gemini-2.5-flash';
         const enabledTools = job.enabled_tools;
 
@@ -398,8 +329,11 @@ async function processPendingJobs(): Promise<boolean> {
 
         const agent = new Agent(model, enabledTools, {
             jobId: job.id,
+            jobDefinitionId: job.job_definition_id,
             jobName: job.job_name,
-            threadId: threadId
+            projectRunId: job.project_run_id ?? null,
+            sourceEventId: job.source_event_id ?? null,
+            projectDefinitionId: job.project_definition_id ?? null
         });
 
         // Check rate limits before each attempt (including retries)

@@ -21,20 +21,18 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
     const parseResult = readRecordsParams.safeParse(params);
     if (!parseResult.success) {
       return {
-        isError: true,
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+          text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined } })
         }]
       };
     }
     const { table_name, filter, limit = 100, hours_back, cursor } = parseResult.data;
     if (filter && hours_back) {
       return {
-        isError: true,
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: "You cannot use both 'filter' and 'hours_back' at the same time. Please use one or the other." }, null, 2)
+          text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: "You cannot use both 'filter' and 'hours_back' at the same time. Please use one or the other." } })
         }]
       };
     }
@@ -66,12 +64,11 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
     });
 
     // meta first, then data
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }) }] };
   } catch (e: any) {
     return {
-      isError: true,
       content: [
-        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error reading records: ${e.message}` }, null, 2) },
+        { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error reading records: ${e.message}` } }) },
       ],
     };
   }

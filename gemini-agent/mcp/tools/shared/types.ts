@@ -10,6 +10,7 @@ export const tableNames = [
   'messages',
   'threads',
   'system_state', // Read-only - cannot be modified by agents
+  'project_definitions',
 ] as const;
 
 export const tableNameSchema = z.enum(tableNames);

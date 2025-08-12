@@ -223,10 +223,9 @@ export async function getContextSnapshot(params: any) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
   } catch (e: any) {
     return {
-      isError: true,
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({ ok: false, code: 'RUNTIME_ERROR', message: `Error getting context snapshot: ${e.message}` }, null, 2)
+        text: JSON.stringify({ data: null, meta: { ok: false, code: 'RUNTIME_ERROR', message: `Error getting context snapshot: ${e.message}` } }, null, 2)
       }]
     };
   }

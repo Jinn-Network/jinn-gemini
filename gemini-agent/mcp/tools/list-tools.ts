@@ -103,14 +103,13 @@ export async function listTools(params: any, serverTools: any[]) {
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({ total_tools: toolsInfo.length, tools: toolsInfo }, null, 2)
+        text: JSON.stringify({ data: { total_tools: toolsInfo.length, tools: toolsInfo }, meta: { ok: true } }, null, 2)
       }]
     };
   } catch (e: any) {
     return {
-      isError: true,
       content: [
-        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'RUNTIME_ERROR', message: `Error listing tools: ${e.message}` }, null, 2) },
+        { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'RUNTIME_ERROR', message: `Error listing tools: ${e.message}` } }, null, 2) },
       ],
     };
   }

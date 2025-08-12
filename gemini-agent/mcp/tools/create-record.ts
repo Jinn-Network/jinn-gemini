@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { supabase, getCurrentJobContext } from './shared/supabase.js';
+import { supabase } from './shared/supabase.js';
+import { getCurrentJobContext } from './shared/context.js';
 import { tableNameSchema } from './shared/types.js';
 
 export const createRecordParams = z.object({
@@ -17,36 +18,38 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
     const parseResult = createRecordParams.safeParse(params);
     if (!parseResult.success) {
       return {
-        isError: true,
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+          text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined } })
         }]
       };
     }
     const { table_name, data } = parseResult.data;
-    const { jobId, jobName, threadId } = getCurrentJobContext();
+    const { jobId, jobDefinitionId, jobName, projectRunId, sourceEventId } = getCurrentJobContext();
     
-    // Automatically inject the universal context into the data payload
-    // The database function will now skip any columns that don't exist in the target table
-    const enrichedData = {
-      ...data,
-      source_job_id: jobId,
-      source_job_name: jobName,
-      thread_id: threadId,
-    };
+    // Only inject context into tables designed to carry lineage fields
+    const tablesWithLineage = new Set(['artifacts', 'job_reports', 'memories', 'messages', 'threads']);
+    const enrichedData = tablesWithLineage.has(table_name as string)
+      ? {
+          ...data,
+          source_job_id: jobId,
+          source_job_name: jobName,
+          project_run_id: projectRunId,
+          source_event_id: sourceEventId,
+          job_definition_id: jobDefinitionId,
+        }
+      : data;
 
     const { data: newId, error } = await supabase.rpc('create_record', {
       p_table_name: table_name,
       p_data: enrichedData,
     });
     if (error) throw error;
-    return { content: [{ type: 'text' as const, text: `Successfully created record with ID: ${newId}` }] };
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: newId }, meta: { ok: true } }) }] };
   } catch (e: any) {
     return {
-      isError: true,
       content: [
-        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error creating record: ${e.message}` }, null, 2) },
+        { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error creating record: ${e.message}` } }) },
       ],
     };
   }

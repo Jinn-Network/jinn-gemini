@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { supabase, getCurrentJobContext } from './shared/supabase.js';
+import { supabase } from './shared/supabase.js';
+import { getCurrentJobContext } from './shared/context.js';
 import { tableNameSchema } from './shared/types.js';
 
 export const updateRecordsParams = z.object({
@@ -22,10 +23,9 @@ export async function updateRecords(params: z.infer<typeof updateRecordsParams>)
     const parseResult = updateRecordsParams.safeParse(params);
     if (!parseResult.success) {
       return {
-        isError: true,
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+          text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined } })
         }]
       };
     }
@@ -48,12 +48,11 @@ export async function updateRecords(params: z.infer<typeof updateRecordsParams>)
       p_updates: enrichedUpdates,
     });
     if (error) throw error;
-    return { content: [{ type: 'text' as const, text: `Successfully updated ${updatedCount} record(s).` }] };
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { updated: updatedCount }, meta: { ok: true } }) }] };
   } catch (e: any) {
     return {
-      isError: true,
       content: [
-        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error updating records: ${e.message}` }, null, 2) },
+        { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error updating records: ${e.message}` } }) },
       ],
     };
   }

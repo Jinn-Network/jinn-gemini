@@ -1,0 +1,43 @@
+export interface JobContext {
+  jobId: string | null;
+  jobDefinitionId: string | null;
+  jobName: string | null;
+  threadId: string | null;
+  projectRunId: string | null;
+  sourceEventId: string | null;
+  projectDefinitionId: string | null;
+}
+
+// Canonical: read from environment only
+export function getCurrentJobContext(): JobContext {
+  return {
+    jobId: process.env.JINN_JOB_ID || null,
+    jobDefinitionId: process.env.JINN_JOB_DEFINITION_ID || null,
+    jobName: process.env.JINN_JOB_NAME || null,
+    threadId: process.env.JINN_THREAD_ID || null,
+    projectRunId: process.env.JINN_PROJECT_RUN_ID || null,
+    sourceEventId: process.env.JINN_SOURCE_EVENT_ID || null,
+    projectDefinitionId: process.env.JINN_PROJECT_DEFINITION_ID || null,
+  };
+}
+
+// Back-compat helpers for tests: set/clear via env (still canonical path)
+export function setJobContext(jobId: string | null, jobName: string | null, threadId?: string | null) {
+  if (jobId) process.env.JINN_JOB_ID = jobId; else delete process.env.JINN_JOB_ID;
+  if (jobName) process.env.JINN_JOB_NAME = jobName; else delete process.env.JINN_JOB_NAME;
+  if (threadId !== undefined) {
+    if (threadId) process.env.JINN_THREAD_ID = threadId; else delete process.env.JINN_THREAD_ID;
+  }
+}
+
+export function clearJobContext() {
+  delete process.env.JINN_JOB_ID;
+  delete process.env.JINN_JOB_DEFINITION_ID;
+  delete process.env.JINN_JOB_NAME;
+  delete process.env.JINN_THREAD_ID;
+  delete process.env.JINN_PROJECT_RUN_ID;
+  delete process.env.JINN_SOURCE_EVENT_ID;
+  delete process.env.JINN_PROJECT_DEFINITION_ID;
+}
+
+

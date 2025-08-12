@@ -1,4 +1,5 @@
-import { supabase, getCurrentJobContext } from './shared/supabase.js';
+import { supabase } from './shared/supabase.js';
+import { getCurrentJobContext } from './shared/context.js';
 import { z } from 'zod';
 
 export const manageThreadParams = z.object({

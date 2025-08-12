@@ -81,8 +81,7 @@ export async function getDetails(params: GetDetailsParams) {
 
     } catch (e: any) {
         return {
-            isError: true,
-            content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error getting details: ${e.message}` }, null, 2) }] 
+            content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error getting details: ${e.message}` } }, null, 2) }] 
         };
     }
 }

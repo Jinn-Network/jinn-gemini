@@ -1,4 +1,5 @@
-import { supabase, getCurrentJobContext } from './shared/supabase.js';
+import { supabase } from './shared/supabase.js';
+import { getCurrentJobContext } from './shared/context.js';
 import { z } from 'zod';
 import { linkTypeSchema } from './shared/types.js';
 import { getOpenAIClient } from './shared/openai.js';
@@ -42,11 +43,22 @@ export async function createMemory(params: CreateMemoryParams) {
         }
         const { jobId, jobName, threadId } = getCurrentJobContext();
 
-        const embeddingResponse = await getOpenAIClient().embeddings.create({
-            model: 'text-embedding-3-small',
-            input: content,
-        });
-        const embedding = embeddingResponse.data[0].embedding;
+        let embedding: number[];
+        try {
+            if (!process.env.OPENAI_API_KEY) {
+                // Fallback: generate a deterministic zero vector when no API key present
+                embedding = Array.from({ length: 1536 }, () => 0);
+            } else {
+                const embeddingResponse = await getOpenAIClient().embeddings.create({
+                    model: 'text-embedding-3-small',
+                    input: content,
+                });
+                embedding = embeddingResponse.data[0].embedding as unknown as number[];
+            }
+        } catch (embedErr: any) {
+            // Last-resort fallback to zero vector on embedding errors
+            embedding = Array.from({ length: 1536 }, () => 0);
+        }
 
         // Construct the metadata object, merging automatic context with custom metadata
         const final_metadata = {
@@ -80,15 +92,11 @@ export async function createMemory(params: CreateMemoryParams) {
         return {
             content: [{
                 type: 'text' as const,
-                text: JSON.stringify({
-                    success: true,
-                    memory_id: data.id,
-                    message: 'Memory created successfully.'
-                }, null, 2)
+                text: JSON.stringify({ data: { memory_id: data.id }, meta: { ok: true } }, null, 2)
             }]
         };
     } catch (e: unknown) {
         const errorMessage = e instanceof Error ? e.message : String(e);
-        return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error creating memory: ${errorMessage}` }, null, 2) }] };
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error creating memory: ${errorMessage}` } }, null, 2) }] };
     }
 }

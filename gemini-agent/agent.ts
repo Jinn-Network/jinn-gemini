@@ -48,9 +48,9 @@ export class Agent {
   private enabledTools: string[];
   private settingsPath: string;
   private agentRoot: string;
-  private jobContext?: { jobId: string; jobName: string; threadId: string | null };
+  private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
 
-  constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobName: string; threadId: string | null }) {
+  constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {
     this.model = model;
     this.enabledTools = enabledTools || [];
     this.jobContext = jobContext;
@@ -63,8 +63,7 @@ export class Agent {
     try {
       // Set job context for tools to access
       if (this.jobContext) {
-        const { setJobContext } = await import('./mcp/tools/shared/supabase.js');
-        setJobContext(this.jobContext.jobId, this.jobContext.jobName, this.jobContext.threadId);
+        // No in-process setter; canonical path is env-only
       }
 
       this.generateJobSpecificSettings();
@@ -112,8 +111,7 @@ export class Agent {
     } finally {
       // Clear job context
       if (this.jobContext) {
-        const { clearJobContext } = await import('./mcp/tools/shared/supabase.js');
-        clearJobContext();
+        // No in-process clear; canonical path is env-only
       }
       this.cleanupJobSpecificSettings();
     }
@@ -144,9 +142,23 @@ export class Agent {
       console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
       console.log(`Spawning Gemini CLI with model: ${this.model} and prompt: "${prompt.substring(0, 100)}..."`);
 
+      // Propagate job context to the MCP server via environment variables so the separate
+      // MCP process can read them on startup
+      const envWithJob: NodeJS.ProcessEnv = { ...process.env };
+      try {
+        if (this.jobContext) {
+          envWithJob.JINN_JOB_ID = this.jobContext.jobId || '';
+          envWithJob.JINN_JOB_DEFINITION_ID = this.jobContext.jobDefinitionId || '';
+          envWithJob.JINN_JOB_NAME = this.jobContext.jobName || '';
+          envWithJob.JINN_PROJECT_RUN_ID = this.jobContext.projectRunId || '';
+          envWithJob.JINN_SOURCE_EVENT_ID = this.jobContext.sourceEventId || '';
+          envWithJob.JINN_PROJECT_DEFINITION_ID = this.jobContext.projectDefinitionId || '';
+        }
+      } catch {}
+
       const geminiProcess = spawn('gemini', args, {
         cwd: this.agentRoot,
-        env: { ...process.env }
+        env: envWithJob
       });
 
       let stdout = '';
@@ -164,17 +176,16 @@ export class Agent {
         stderr += chunk;
       });
 
-            geminiProcess.on('close', (code) => {
-                // Check for API errors in stderr even if exit code is 0
-                if (stderr && stderr.includes('Error when talking to Gemini API')) {
-                    reject(new Error(`Gemini API error: ${stderr}`));
-                } else if (code !== 0) {
-                    reject(new Error(`Gemini process exited with code ${code}\n${stderr}`));
-                } else {
-                    // Include stderr even on successful runs for warning-level errors
-                    resolve({ output: stdout, telemetryFile, stderr });
-                }
-            });
+      geminiProcess.on('close', (code) => {
+        // Inspect stderr for API/tool errors even if process exits 0
+        const hasApiError = (stderr && (
+          stderr.includes('Error when talking to Gemini API') ||
+          stderr.toLowerCase().includes('could not parse tool response')
+        )) || false;
+        const rawExit = typeof code === 'number' ? code : 0;
+        const exitCode = hasApiError ? (rawExit || 1) : rawExit;
+        resolve({ output: stdout, telemetryFile, stderr, exitCode });
+      });
 
       geminiProcess.on('error', (err) => {
         // Surface as a synthetic non-zero exit with captured streams

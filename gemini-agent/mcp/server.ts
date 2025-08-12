@@ -36,7 +36,11 @@ import {
   getJobGraph,
   getJobGraphSchema,
   traceLineage,
-  traceLineageSchema
+  traceLineageSchema,
+  planProject,
+  planProjectSchema
+  ,sendMessage
+  ,sendMessageSchema
 } from './tools/index.js';
 
 // This is the single source of truth for all tools registered on this server.
@@ -57,7 +61,9 @@ export const serverTools: { name: string; schema: any; handler: (params: any) =>
   { name: 'reconstruct_job', schema: reconstructJobSchema, handler: reconstructJob },
   { name: 'search_events', schema: searchEventsSchema, handler: searchEvents },
   { name: 'get_job_graph', schema: getJobGraphSchema, handler: getJobGraph },
-  { name: 'trace_lineage', schema: traceLineageSchema, handler: traceLineage }
+  { name: 'trace_lineage', schema: traceLineageSchema, handler: traceLineage },
+  { name: 'plan_project', schema: planProjectSchema, handler: planProject },
+  { name: 'send_message', schema: sendMessageSchema, handler: sendMessage }
 ];
 
 async function main() {

@@ -19,10 +19,9 @@ export async function deleteRecords(params: z.infer<typeof deleteRecordsParams>)
     const parseResult = deleteRecordsParams.safeParse(params);
     if (!parseResult.success) {
       return {
-        isError: true,
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+          text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined } })
         }]
       };
     }
@@ -33,12 +32,11 @@ export async function deleteRecords(params: z.infer<typeof deleteRecordsParams>)
       p_filter: filter,
     });
     if (error) throw error;
-    return { content: [{ type: 'text' as const, text: `Successfully deleted ${deletedCount} record(s).` }] };
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { deleted: deletedCount }, meta: { ok: true } }) }] };
   } catch (e: any) {
     return {
-      isError: true,
       content: [
-        { type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error deleting records: ${e.message}` }, null, 2) },
+        { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error deleting records: ${e.message}` } }) },
       ],
     };
   }
