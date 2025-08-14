@@ -86,7 +86,21 @@ export async function createMemory(params: CreateMemoryParams) {
             .select('id')
             .single();
 
-        if (error) throw error;
+        if (error) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ 
+            data: null, 
+            meta: { 
+              ok: false, 
+              code: 'DB_ERROR', 
+              message: `Error creating memory: ${error.message}` 
+            } 
+          }, null, 2)
+        }]
+      };
+    }
 
         // Delay to allow for vector indexing
         await new Promise(resolve => setTimeout(resolve, 3000));

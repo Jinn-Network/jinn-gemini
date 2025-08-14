@@ -43,7 +43,19 @@ export async function manageThread(params: ManageThreadParams) {
             if (summary) updates.summary = summary;
 
             if (Object.keys(updates).length === 0) {
-                throw new Error("Nothing to update. Please provide at least one field to modify.");
+                return {
+            content: [{
+                type: 'text' as const,
+                text: JSON.stringify({ 
+                    data: null, 
+                    meta: { 
+                        ok: false, 
+                        code: 'VALIDATION_ERROR', 
+                        message: "Nothing to update. Please provide at least one field to modify." 
+                    } 
+                }, null, 2)
+            }]
+        };
             }
 
             // Inject the context of the job performing the update
@@ -58,13 +70,39 @@ export async function manageThread(params: ManageThreadParams) {
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'DB_ERROR', 
+                                message: `Error updating thread: ${error.message}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
+            }
             return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 
         } else {
             // Create Mode
             if (!title || !objective) {
-                throw new Error("`title` and `objective` are required to create a new thread.");
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'VALIDATION_ERROR', 
+                                message: "`title` and `objective` are required to create a new thread." 
+                            } 
+                        }, null, 2)
+                    }]
+                };
             }
             
             const newThread: any = { 
@@ -83,7 +121,21 @@ export async function manageThread(params: ManageThreadParams) {
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'DB_ERROR', 
+                                message: `Error creating thread: ${error.message}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
+            }
             return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
         }
     } catch (e: any) {

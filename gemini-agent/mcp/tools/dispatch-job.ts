@@ -64,9 +64,21 @@ export async function dispatchJob(params: DispatchJobParams) {
       .in('id', job_definition_ids)
       .eq('is_active', true);
 
-    if (fetchError) {
-      throw new Error(`Failed to fetch job definitions: ${fetchError.message}`);
-    }
+            if (fetchError) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Failed to fetch job definitions: ${fetchError.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
 
     if (!jobDefinitions || jobDefinitions.length === 0) {
       return {
@@ -111,8 +123,20 @@ export async function dispatchJob(params: DispatchJobParams) {
           .select('id')
           .single();
 
-        if (eventError) {
-          throw new Error(`Failed to create dispatch event: ${eventError.message}`);
+                if (eventError) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Failed to create dispatch event: ${eventError.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
         }
 
         // Insert into job_board to dispatch the job
@@ -131,8 +155,20 @@ export async function dispatchJob(params: DispatchJobParams) {
             inbox: []
           });
 
-        if (jobBoardError) {
-          throw new Error(`Failed to dispatch to job_board: ${jobBoardError.message}`);
+                if (jobBoardError) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Failed to dispatch to job_board: ${jobBoardError.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
         }
 
         dispatchResults.push({

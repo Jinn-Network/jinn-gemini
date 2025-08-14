@@ -1,8 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+import * as fs from 'fs';
 export { getCurrentJobContext, setJobContext, clearJobContext, type JobContext } from './context.js';
 
 // Robust .env discovery: try process.cwd() and ascend from this file's dir to repo root
@@ -12,18 +11,7 @@ function loadEnvOnce() {
   const cwdEnv = path.resolve(process.cwd(), '.env');
   candidates.push(cwdEnv);
 
-  try {
-    const thisFile = fileURLToPath(import.meta.url);
-    const thisDir = path.dirname(thisFile);
-    // ascend up to 6 levels looking for .env (covers repo root regardless of launch dir)
-    let dir = thisDir;
-    for (let i = 0; i < 6; i++) {
-      candidates.push(path.resolve(dir, '.env'));
-      dir = path.resolve(dir, '..');
-    }
-  } catch (_) {
-    // ignore
-  }
+  // Keep it simple and robust across module systems: rely on CWD only
 
   const tried: string[] = [];
   for (const p of candidates) {

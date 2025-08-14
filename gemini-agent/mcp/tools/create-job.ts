@@ -49,7 +49,19 @@ async function checkExistingJob(name: string) {
         .maybeSingle();
     
     if (error) {
-        throw new Error(`Failed to check for existing job: ${error.message}`);
+        return {
+            content: [{
+                type: 'text' as const,
+                text: JSON.stringify({ 
+                    data: null, 
+                    meta: { 
+                        ok: false, 
+                        code: 'DB_ERROR', 
+                        message: `Failed to check for existing job: ${error.message}` 
+                    } 
+                }, null, 2)
+            }]
+        };
     }
     
     return existingJob;
@@ -59,7 +71,15 @@ export const createJobParams = CreateJobInputSchema;
 export type CreateJobParams = CreateJobInput;
 
 export const createJobSchema = {
-    description: 'Creates a new job definition or a new version of an existing job.\n\nIMPORTANT: If a job with the same name already exists and is active, this tool will return an error. To update an existing job, pass existing_job_id to create a new version.\n\nScheduling: set schedule_on to an event type (e.g., "artifact.created", "job.completed") or to "manual". If omitted, it defaults to running after the current job completes (alias: "after_this_job"). When scheduling on "job.completed" without a filter.job_id, the tool auto-binds to the current job id when available; if not available, it falls back to manual. To associate the job to a project, pass project_definition_id.\n\nManual jobs are automatically dispatched once when created, then require manual re-enqueueing for future runs. Manual jobs inherit the project context from the current job execution and will fail if created outside of a job context.',
+    description: `Creates a new job definition or a new version of an existing job.
+
+IMPORTANT: If a job with the same name already exists and is active, this tool will return an error. To update an existing job, pass existing_job_id to create a new version.
+
+Scheduling: set schedule_on to an event type (e.g., "artifact.created", "job.completed") or to "manual". If omitted, it defaults to running after the current job completes (alias: "after_this_job"). When scheduling on "job.completed" without a filter.job_id, the tool auto-binds to the current job id when available; if not available, it falls back to manual. To associate the job to a project, pass project_definition_id.
+
+Manual jobs are automatically dispatched once when created, then require manual re-enqueueing for future runs. Manual jobs inherit the project context from the current job execution and will fail if created outside of a job context.
+
+Returns: Complete job information including id (database primary key), job_id (shared UUID across versions), description, prompt_content, enabled_tools, schedule_config, and other metadata. This eliminates the need for additional read_records calls to get job details.`,
     inputSchema: createJobParams.shape,
 };
 
@@ -103,9 +123,14 @@ export async function createJob(params: CreateJobParams) {
         // only one active job definition exists per job name
         // Check for existing active job with the same name (unless we're creating a new version)
         if (!existing_job_id) {
-            const existingActiveJob = await checkExistingJob(name);
+            const existingActiveJobResult = await checkExistingJob(name);
+            
+            // Check if checkExistingJob returned an error
+            if (existingActiveJobResult && 'content' in existingActiveJobResult) {
+                return existingActiveJobResult; // Return the error response
+            }
 
-            if (existingActiveJob) {
+            if (existingActiveJobResult && !('content' in existingActiveJobResult)) {
                 return {
                     content: [{
                         type: 'text' as const,
@@ -114,14 +139,14 @@ export async function createJob(params: CreateJobParams) {
                             meta: { 
                                 ok: false, 
                                 code: 'DUPLICATE_JOB_NAME', 
-                                message: `Job name "${name}" already exists and is active. Please check job "${name}" with job definition ID ${existingActiveJob.id} for review. If you want to update the job definition, increment the version by passing existing_job_id: "${existingActiveJob.job_id}".` 
+                                message: `Job name "${name}" already exists and is active. Please check job "${name}" with job definition ID ${existingActiveJobResult.id} for review. If you want to update the job definition, increment the version by passing existing_job_id: "${existingActiveJobResult.job_id}".` 
                             },
                             existing_job: {
-                                id: existingActiveJob.id,
-                                job_id: existingActiveJob.job_id,
-                                version: existingActiveJob.version,
-                                description: existingActiveJob.description,
-                                created_at: existingActiveJob.created_at
+                                id: existingActiveJobResult.id,
+                                job_id: existingActiveJobResult.job_id,
+                                version: existingActiveJobResult.version,
+                                description: existingActiveJobResult.description,
+                                created_at: existingActiveJobResult.created_at
                             }
                         }, null, 2)
                     }]
@@ -193,11 +218,35 @@ export async function createJob(params: CreateJobParams) {
                 .limit(1);
 
             if (versionError) {
-                throw new Error(`Failed to check existing versions: ${versionError.message}`);
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'DB_ERROR', 
+                                message: `Failed to check existing versions: ${versionError.message}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
             }
 
             if (!existingVersions || existingVersions.length === 0) {
-                throw new Error(`No existing job found with job_id: ${existing_job_id}`);
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'JOB_NOT_FOUND', 
+                                message: `No existing job found with job_id: ${existing_job_id}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
             }
 
             version = existingVersions[0].version + 1;
@@ -210,7 +259,19 @@ export async function createJob(params: CreateJobParams) {
                 .eq('job_id', job_id);
 
             if (deactivateError) {
-                throw new Error(`Failed to deactivate previous versions: ${deactivateError.message}`);
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'DB_ERROR', 
+                                message: `Failed to deactivate previous versions: ${deactivateError.message}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
             }
 
         } else {
@@ -238,7 +299,19 @@ export async function createJob(params: CreateJobParams) {
             .single();
 
         if (insertError) {
-            throw new Error(`Failed to create job: ${insertError.message}`);
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Failed to create job: ${insertError.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
         }
 
         // Auto-dispatch manual jobs by creating a job_board entry directly
@@ -249,7 +322,19 @@ export async function createJob(params: CreateJobParams) {
                 const { projectRunId: currentProjectRunId, projectDefinitionId: currentProjectDefinitionId } = getCurrentJobContext();
                 
                 if (!currentProjectRunId) {
-                    throw new Error(`Cannot create manual job: no project run context available. Manual jobs must be created within an existing job execution context.`);
+                    return {
+                        content: [{
+                            type: 'text' as const,
+                            text: JSON.stringify({ 
+                                data: null, 
+                                meta: { 
+                                    ok: false, 
+                                    code: 'NO_PROJECT_CONTEXT', 
+                                    message: `Cannot create manual job: no project run context available. Manual jobs must be created within an existing job execution context.` 
+                                } 
+                            }, null, 2)
+                        }]
+                    };
                 }
                 
                 // Create a system event to serve as the source for the job
@@ -272,7 +357,19 @@ export async function createJob(params: CreateJobParams) {
                     .single();
 
                 if (eventError) {
-                    throw new Error(`Failed to create manual dispatch event: ${eventError.message}`);
+                    return {
+                        content: [{
+                            type: 'text' as const,
+                            text: JSON.stringify({ 
+                                data: null, 
+                                meta: { 
+                                    ok: false, 
+                                    code: 'DB_ERROR', 
+                                    message: `Failed to create manual dispatch event: ${eventError.message}` 
+                                } 
+                            }, null, 2)
+                        }]
+                    };
                 }
                 
                 // Now directly insert into job_board to dispatch the job
@@ -292,22 +389,54 @@ export async function createJob(params: CreateJobParams) {
                     });
 
                 if (jobBoardError) {
-                    throw new Error(`Failed to dispatch manual job to job_board: ${jobBoardError.message}`);
+                    return {
+                        content: [{
+                            type: 'text' as const,
+                            text: JSON.stringify({ 
+                                data: null, 
+                                meta: { 
+                                    ok: false, 
+                                    code: 'DB_ERROR', 
+                                    message: `Failed to dispatch manual job to job_board: ${jobBoardError.message}` 
+                                } 
+                            }, null, 2)
+                        }]
+                    };
                 }
                 
             } catch (dispatchError: any) {
                 // For manual jobs, dispatch failure should fail the job creation
-                throw new Error(`Failed to create manual job: ${dispatchError.message}`);
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'DISPATCH_ERROR', 
+                                message: `Failed to create manual job: ${dispatchError.message}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
             }
         }
 
+        // Return comprehensive job information to eliminate need for additional read_records calls
+        // id: database primary key for this specific job version
+        // job_id: shared UUID across all versions of this job
         const result = {
             id: newJob.id,
             job_id: newJob.job_id,
             version: newJob.version,
             name: newJob.name,
+            description: newJob.description,
+            prompt_content: newJob.prompt_content,
+            enabled_tools: newJob.enabled_tools,
+            schedule_config: newJob.schedule_config,
             is_active: newJob.is_active,
             created_at: newJob.created_at,
+            project_definition_id: newJob.project_definition_id,
             auto_dispatched: schedule_config.trigger === 'manual'
         };
 

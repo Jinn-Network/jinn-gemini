@@ -13,7 +13,7 @@ export const tableNames = [
   'project_definitions',
 ] as const;
 
-export const tableNameSchema = z.enum(tableNames);
+export const tableNameSchema = z.string().describe('The name of the table to operate on');
 
 // Memory-related types
 export const linkTypeSchema = z.enum(['CAUSE', 'EFFECT', 'ELABORATION', 'CONTRADICTION', 'SUPPORT']);

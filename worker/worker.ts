@@ -426,6 +426,16 @@ async function processPendingJobs(): Promise<boolean> {
     while (retryCount <= RETRY_CONFIG.maxRetries) {
         error = null; // Reset error state for each attempt
         
+        const composeJobHeader = (job: JobBoard): string => {
+            const lines = [
+                '### Your Current Job Context',
+                `- **Job Name:** \`${job.job_name}\``,
+                `- **Job ID:** \`${job.id}\``,
+                `- **Project Definition ID:** \`${job.project_definition_id || 'N/A'}\``
+            ];
+            return lines.join('\n') + '\n\n';
+        };
+
         // Compose final prompt with inbox (if available) - moved outside try block for retry access
         const composeInboxSection = (inbox?: Array<{ from?: string | null; content?: string | null }>): string => {
             if (!Array.isArray(inbox) || inbox.length === 0) return '';
@@ -438,7 +448,21 @@ async function processPendingJobs(): Promise<boolean> {
         };
 
         // Store the original prompt for potential retries
-        const originalPrompt = `${job.input || ''}${composeInboxSection(job.inbox)}`.trim();
+        const jobHeader = composeJobHeader(job);
+        const inboxSection = composeInboxSection(job.inbox);
+        const rawPrompt = `${jobHeader}${job.input || ''}${inboxSection}`.trim();
+        
+        // Sanitize the prompt to prevent shell interpretation issues
+        const sanitizePrompt = (prompt: string): string => {
+          return prompt
+            .replace(/\r\n/g, '\n')           // Normalize line endings
+            .replace(/\r/g, '\n')             // Convert carriage returns to newlines
+            .replace(/\n+/g, '\n')            // Collapse multiple newlines to single
+            .replace(/[^\x20-\x7E\n]/g, '')  // Remove non-printable ASCII characters
+            .trim();
+        };
+        
+        const originalPrompt = sanitizePrompt(rawPrompt);
         let currentPrompt = originalPrompt;
         
         try {
@@ -517,7 +541,14 @@ async function processPendingJobs(): Promise<boolean> {
         console.error(`Job ${job.id} failed:`, err);
 
         // Check if this is a quota error or 500/INTERNAL error and set cooldown
-        const errorMessage = String(err.error || err.message || err);
+        // Handle the special error format from Agent.run() which includes telemetry
+        let errorMessage: string;
+        if (err && typeof err === 'object' && 'error' in err && 'telemetry' in err) {
+          // This is the Agent.run() error format: { error: Error, telemetry: JobTelemetry }
+          errorMessage = String(err.error?.message || err.error || 'Unknown error');
+        } else {
+          errorMessage = String(err.error || err.message || err);
+        }
         const errorMessageLower = errorMessage.toLowerCase();
         
         if (errorMessage.includes('429') ||

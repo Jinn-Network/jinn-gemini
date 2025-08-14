@@ -4,7 +4,7 @@ import { tableNames } from './shared/types.js';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
 export const getDetailsParams = z.object({
-    table_name: z.enum(tableNames).describe('The name of the table to query.'),
+    table_name: z.string().describe('The name of the table to query.'),
     ids: z.array(z.string().uuid()).describe('An array containing one or more UUIDs to retrieve. If empty, returns an empty result.'),
     cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
 });
@@ -46,7 +46,21 @@ export async function getDetails(params: GetDetailsParams) {
             .select('*')
             .in('id', ids);
 
-        if (error) throw error;
+        if (error) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching details: ${error.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
 
         if (table_name === 'threads' && records.length > 0) {
             const threadIds = records.map(r => r.id);
@@ -56,7 +70,21 @@ export async function getDetails(params: GetDetailsParams) {
                 .select('id, thread_id')
                 .in('thread_id', threadIds);
 
-            if (artifactError) throw artifactError;
+            if (artifactError) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching artifacts: ${artifactError.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
 
             const artifactMap = new Map<string, string[]>();
             for (const artifact of artifacts) {

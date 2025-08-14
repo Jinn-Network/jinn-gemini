@@ -66,9 +66,21 @@ export async function getProjectSummary(params: z.infer<typeof getProjectSummary
       .order('created_at', { ascending: false })
       .limit(history_count * 2); // Fetch more than needed to account for potential filtering
 
-    if (runsError) {
-      throw new Error(`Failed to fetch project runs: ${runsError.message}`);
-    }
+            if (runsError) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Failed to fetch project runs: ${runsError.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
 
     if (!projectRuns || projectRuns.length === 0) {
       return {
@@ -93,9 +105,21 @@ export async function getProjectSummary(params: z.infer<typeof getProjectSummary
       .eq('id', projectDefinitionId)
       .single();
 
-    if (defError) {
-      throw new Error(`Failed to fetch project definition: ${defError.message}`);
-    }
+            if (defError) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Failed to fetch project definition: ${defError.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
 
     // Step 4: For each project run, fetch associated artifacts and count messages
     const enrichedRuns = await Promise.all(

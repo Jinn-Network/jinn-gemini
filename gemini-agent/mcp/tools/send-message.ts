@@ -55,7 +55,21 @@ export async function sendMessage(params: z.infer<typeof sendMessageParams>) {
       p_table_name: 'messages',
       p_data: payload,
     });
-    if (error) throw error;
+    if (error) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ 
+            data: null, 
+            meta: { 
+              ok: false, 
+              code: 'DB_ERROR', 
+              message: `Error sending message: ${error.message}` 
+            } 
+          }, null, 2)
+        }]
+      };
+    }
 
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: newId }, meta: { ok: true } }) }] };
   } catch (e: any) {

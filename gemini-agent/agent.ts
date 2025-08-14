@@ -100,14 +100,22 @@ export class Agent {
       const output = this.extractFinalOutput(result.output);
       return { output, telemetry };
     } catch (error) {
+      // Normalize wrapped errors like { error, telemetry } to surface a readable message
+      const nestedError = (error as any)?.error ?? error;
+      const primaryMessage =
+        (nestedError && (nestedError as any).message) ||
+        ((error as any)?.message) ||
+        String(nestedError ?? error);
+
       const telemetry: JobTelemetry = {
         totalTokens: 0,
         toolCalls: [],
         duration: Date.now() - startTime,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorType: this.categorizeError(error)
+        errorMessage: String(primaryMessage),
+        errorType: this.categorizeError(nestedError)
       };
-      throw { error, telemetry };
+      // Preserve the original shape { error, telemetry } but ensure `error` is the actual Error, not the wrapper
+      throw { error: nestedError, telemetry };
     } finally {
       // Clear job context
       if (this.jobContext) {

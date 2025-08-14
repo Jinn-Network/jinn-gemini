@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { supabase, setJobContext, clearJobContext } from './tools/shared/supabase.js';
-import { createJob, getContextSnapshot, listTools, manageArtifact, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, sendMessage, getProjectSummary } from './tools/index.js';
+import { createJob, getContextSnapshot, listTools, manageArtifact, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, sendMessage, getProjectSummary, planProject } from './tools/index.js';
 import { serverTools } from './server.js';
+import { randomUUID } from 'crypto';
 
 describe('Database Tools Integration Tests', () => {
 
@@ -171,6 +172,132 @@ describe('Database Tools Integration Tests', () => {
     });
   });
 
+  describe('plan_project Tool', () => {
+    let testProjectDefId: string | null = null;
+    let testProjectRunId: string | null = null;
+    let testLeadJobDefId: string | null = null;
+    let testChildJobDefIds: string[] = [];
+    let testOwnerJobDefId: string | null = null;
+    let testJobBoardEntryId: string | null = null;
+    let testEventId: string | null = null;
+
+    beforeAll(async () => {
+      // Create an "owner" job to associate with the project
+      const { data: ownerJob, error } = await supabase
+        .from('jobs')
+        .insert({
+          job_id: randomUUID(),
+          version: 1,
+          name: `test-owner-job-${Date.now()}`,
+          prompt_content: 'owner',
+          enabled_tools: [],
+          schedule_config: { trigger: 'manual' },
+          is_active: true,
+        })
+        .select('id')
+        .single();
+      expect(error).toBeNull();
+      testOwnerJobDefId = ownerJob!.id;
+    });
+
+    afterAll(async () => {
+      if (testOwnerJobDefId) {
+        await supabase.from('jobs').delete().eq('id', testOwnerJobDefId);
+      }
+    });
+
+    afterEach(async () => {
+      // Cleanup in reverse order of creation
+      if (testJobBoardEntryId) await supabase.from('job_board').delete().eq('id', testJobBoardEntryId);
+      if (testEventId) await supabase.from('events').delete().eq('id', testEventId);
+      if (testChildJobDefIds.length > 0) await supabase.from('jobs').delete().in('id', testChildJobDefIds);
+      if (testLeadJobDefId) await supabase.from('jobs').delete().eq('id', testLeadJobDefId);
+      if (testProjectRunId) await supabase.from('project_runs').delete().eq('id', testProjectRunId);
+      if (testProjectDefId) await supabase.from('project_definitions').delete().eq('id', testProjectDefId);
+      
+      testProjectDefId = null;
+      testProjectRunId = null;
+      testLeadJobDefId = null;
+      testChildJobDefIds = [];
+      testJobBoardEntryId = null;
+      testEventId = null;
+    });
+
+    it('should create a project and bootstrap it with a lead and child job', async () => {
+      // Set the context of the job that is CALLING plan_project
+      setJobContext(randomUUID(), 'some-job-name', null, null, null, testOwnerJobDefId);
+
+      const projectName = `bootstrapped-project-${Date.now()}`;
+      const leadJobName = `lead-${projectName}`;
+      const childJobName = `child-${projectName}`;
+
+      const result = await planProject({
+        name: projectName,
+        objective: 'Test bootstrapping a project',
+        jobs: [
+          {
+            name: leadJobName,
+            prompt_content: 'This is the lead job.',
+            enabled_tools: ['get_schema'],
+          },
+          {
+            name: childJobName,
+            prompt_content: 'This is the child job.',
+            enabled_tools: ['read_records'],
+          },
+        ],
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok, `Tool failed with: ${parsed.meta.message}`).toBe(true);
+      
+      const { project_definition_id, project_run_id, lead_job_definition_id, child_job_definition_ids } = parsed.data;
+      testProjectDefId = project_definition_id;
+      testProjectRunId = project_run_id;
+      testLeadJobDefId = lead_job_definition_id;
+      expect(child_job_definition_ids).toHaveLength(1);
+      testChildJobDefIds = child_job_definition_ids;
+
+      // --- Verify Project ---
+      const { data: projectDef } = await supabase.from('project_definitions').select().eq('id', testProjectDefId).single();
+      expect(projectDef.name).toBe(projectName);
+      expect(projectDef.owner_job_definition_id).toBe(testOwnerJobDefId);
+
+      // --- Verify Project Run ---
+      const { data: projectRun } = await supabase.from('project_runs').select().eq('id', testProjectRunId).single();
+      expect(projectRun.project_definition_id).toBe(testProjectDefId);
+
+      // --- Verify Lead Job ---
+      const { data: leadJob } = await supabase.from('jobs').select().eq('id', testLeadJobDefId).single();
+      expect(leadJob.name).toBe(leadJobName);
+      expect(leadJob.project_definition_id).toBe(testProjectDefId);
+      expect(leadJob.schedule_config.trigger).toBe('manual');
+
+      // --- Verify Child Job ---
+      const { data: childJob } = await supabase.from('jobs').select().eq('id', testChildJobDefIds[0]).single();
+      expect(childJob.name).toBe(childJobName);
+      expect(childJob.project_definition_id).toBe(testProjectDefId);
+      expect(childJob.schedule_config).toEqual({
+        trigger: 'on_new_event',
+        filters: {
+          event_type: 'job.completed',
+          job_definition_id: testLeadJobDefId,
+        },
+      });
+
+      // --- Verify Lead Job was Dispatched ---
+      const { data: jobBoardEntry } = await supabase.from('job_board').select().eq('job_definition_id', testLeadJobDefId).single();
+      expect(jobBoardEntry).toBeDefined();
+      expect(jobBoardEntry.status).toBe('PENDING');
+      expect(jobBoardEntry.project_run_id).toBe(testProjectRunId);
+      testJobBoardEntryId = jobBoardEntry.id;
+
+      // Capture the event ID for cleanup
+      if (jobBoardEntry.source_event_id) {
+          testEventId = jobBoardEntry.source_event_id;
+      }
+    });
+  });
 
   describe('get_details Tool', () => {
     let jobIds: string[] = [];
@@ -326,7 +453,6 @@ describe('Database Tools Integration Tests', () => {
 
     it('should return context snapshot with default time window (6 hours)', async () => {
       const result = await getContextSnapshot({});
-      console.log('DEBUG: getContextSnapshot result:', result.content[0].text);
       const parsed = JSON.parse(result.content[0].text);
       expect(Array.isArray(parsed.data)).toBe(true);
     });
@@ -751,7 +877,7 @@ describe('Database Tools Integration Tests', () => {
         // Missing required 'name' parameter
         prompt_content: 'Test prompt',
         enabled_tools: []
-      });
+      } as any);
       
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.meta.ok).toBe(false);

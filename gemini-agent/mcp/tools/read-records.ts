@@ -3,6 +3,52 @@ import { supabase } from './shared/supabase.js';
 import { tableNameSchema } from './shared/types.js';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
+// Helper function to get schema information when errors occur
+async function getSchemaHelp(tableName: string, error: any): Promise<string> {
+  try {
+    // If it's a table-related error, provide helpful guidance
+    // Always try to provide schema help for database errors
+    if (error.message) {
+      // Try to get actual schema information
+      try {
+        const { data: schemaData, error: schemaError } = await supabase.rpc('get_table_schema', {
+          p_table_name: tableName,
+        });
+        
+        if (!schemaError && schemaData && Array.isArray(schemaData) && schemaData.length > 0) {
+          return `\n\nSCHEMA HELP for table '${tableName}':\n${JSON.stringify(schemaData, null, 2)}`;
+        }
+      } catch (schemaCallError) {
+        // Schema call failed, fall back to basic info
+      }
+      
+      // Fallback: get list of all tables
+      try {
+        const { data: allTablesData, error: allTablesError } = await supabase.rpc('get_all_tables');
+        
+        if (!allTablesError && allTablesData) {
+          return `\n\nSCHEMA HELP: Table '${tableName}' not found. Available tables:\n${JSON.stringify(allTablesData, null, 2)}`;
+        }
+      } catch (allTablesCallError) {
+        // All tables call failed, fall back to hardcoded list
+      }
+      
+      // Final fallback: hardcoded table list (based on actual database)
+      return `\n\nSCHEMA HELP: 
+- Table: '${tableName}'
+- Error: ${error.message}
+- Available tables: artifacts, job_board, jobs, job_reports, memories, messages, project_runs, project_definitions, system_state, events
+- Use 'get_schema' tool to see detailed table structure
+- Use 'get_schema' without table_name to see all available tables`;
+    }
+    
+    return '';
+  } catch (e: any) {
+    // If even the schema help fails, return a minimal message
+    return `\n\nSCHEMA HELP: Error occurred while trying to provide schema help.`;
+  }
+}
+
 export const readRecordsParams = z.object({
   table_name: tableNameSchema,
   filter: z.record(z.any()).optional().describe('A JSON object for WHERE clauses (e.g., `{"status": "COMPLETED"}`). An empty filter retrieves all records.'),
@@ -17,6 +63,7 @@ export const readRecordsSchema = {
 };
 
 export async function readRecords(params: z.infer<typeof readRecordsParams>) {
+  let table_name: string = '';
   try {
     const parseResult = readRecordsParams.safeParse(params);
     if (!parseResult.success) {
@@ -27,7 +74,8 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
         }]
       };
     }
-    const { table_name, filter, limit = 100, hours_back, cursor } = parseResult.data;
+    const { table_name: tn, filter, limit = 100, hours_back, cursor } = parseResult.data;
+    table_name = tn;
     if (filter && hours_back) {
       return {
         content: [{
@@ -54,7 +102,25 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
       p_limit: limit,
       p_time_filter: timeFilter,
     });
-    if (error) throw error;
+    if (error) {
+      // Get schema help for schema-related errors
+      const schemaHelp = await getSchemaHelp(table_name, error);
+      const errorMessage = `Error reading records: ${error.message}${schemaHelp}`;
+      
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ 
+            data: null, 
+            meta: { 
+              ok: false, 
+              code: 'DB_ERROR', 
+              message: errorMessage 
+            } 
+          }, null, 2)
+        }]
+      };
+    }
 
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
     const composed = composeSinglePageResponse(data, {
@@ -66,9 +132,13 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
     // meta first, then data
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }) }] };
   } catch (e: any) {
+    // Get schema help for schema-related errors
+    const schemaHelp = await getSchemaHelp(table_name, e);
+    const errorMessage = `Error reading records: ${e.message}${schemaHelp}`;
+    
     return {
       content: [
-        { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error reading records: ${e.message}` } }) },
+        { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: errorMessage } }) },
       ],
     };
   }
