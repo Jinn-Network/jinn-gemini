@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { supabase, setJobContext, clearJobContext } from './tools/shared/supabase.js';
-import { createJob, getContextSnapshot, listTools, manageArtifact, manageThread, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, traceLineage, getJobGraph, sendMessage } from './tools/index.js';
+import { createJob, getContextSnapshot, listTools, manageArtifact, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, sendMessage, getProjectSummary } from './tools/index.js';
 import { serverTools } from './server.js';
 
 describe('Database Tools Integration Tests', () => {
@@ -10,6 +10,9 @@ describe('Database Tools Integration Tests', () => {
     jobId: null as string | null, // Use null to avoid foreign key constraint issues in tests
     jobName: null as string | null, // Use null to avoid foreign key constraint issues in tests  
     threadId: null as string | null, // This will be set in specific tests
+    projectDefinitionId: null as string | null, // For artifact tests
+    projectRunId: null as string | null, // Required for artifact creation
+    jobDefinitionId: null as string | null, // For lineage tracking
   };
 
   beforeEach(() => {
@@ -20,6 +23,9 @@ describe('Database Tools Integration Tests', () => {
   afterEach(() => {
     clearJobContext();
     mockJobContext.threadId = null; // Reset threadId
+    mockJobContext.projectDefinitionId = null; // Reset project definition ID
+    mockJobContext.projectRunId = null; // Reset project run ID
+    mockJobContext.jobDefinitionId = null; // Reset job definition ID
   });
 
   describe('get_schema Tool', () => {
@@ -128,44 +134,6 @@ describe('Database Tools Integration Tests', () => {
     });
   });
 
-  describe.skip('manage_thread Tool', () => {
-    let testThreadId: string | null = null;
-
-    afterEach(async () => {
-      if (testThreadId) await supabase.from('threads').delete().match({ id: testThreadId });
-      testThreadId = null;
-    });
-
-    it('should CREATE a new thread and inject context', async () => {
-      const result = await manageThread({ title: 'Test Create Thread', objective: 'Test objective' });
-      const resultData = JSON.parse(result.content[0].text);
-      testThreadId = resultData.id;
-      expect(resultData.title).toBe('Test Create Thread');
-      // Verify context injection (null for tests)
-      expect(resultData.source_job_id).toBe(null);
-      expect(resultData.source_job_name).toBe(null);
-    });
-
-    it('should fail to CREATE a thread without title or objective', async () => {
-        const result = await manageThread({ title: 'Test' });
-        expect(result.content[0].text).toContain('`title` and `objective` are required');
-    });
-
-    it('should UPDATE an existing thread', async () => {
-      const { data: thread } = await supabase.from('threads').insert({ title: 'Original Title', objective: 'Original Objective' }).select().single();
-      testThreadId = thread.id;
-      const result = await manageThread({ thread_id: testThreadId!, status: 'COMPLETED' });
-      const resultData = JSON.parse(result.content[0].text);
-      expect(resultData.status).toBe('COMPLETED');
-    });
-
-    it('should fail to UPDATE a thread with no properties', async () => {
-        const { data: thread } = await supabase.from('threads').insert({ title: 'Original Title', objective: 'Original Objective' }).select().single();
-        testThreadId = thread.id;
-        const result = await manageThread({ thread_id: testThreadId! });
-        expect(result.content[0].text).toContain('Nothing to update');
-    });
-  });
 
   describe('get_details Tool', () => {
     let jobIds: string[] = [];
@@ -216,8 +184,9 @@ describe('Database Tools Integration Tests', () => {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.meta?.ok).toBe(true);
       const resultData = parsed.data;
-      // The actual number of tools has changed - let's check for the expected minimum
-      expect(resultData.tools.length).toBeGreaterThanOrEqual(14);
+      // After removing 6 tools and adding 1 (get_project_summary), we should have around 15 tools
+      expect(resultData.tools.length).toBeGreaterThanOrEqual(12);
+      expect(resultData.tools.length).toBeLessThanOrEqual(18);
     });
   });
 
@@ -267,13 +236,13 @@ describe('Database Tools Integration Tests', () => {
       await supabase.from('messages').insert([
         {
           source_job_name: 'test-sender',
-          to_agent: testJobName,
+          to_job_definition_id: job.id, // Changed to to_job_definition_id
           content: 'Test message for specific job',
           status: 'PENDING'
         },
         {
           source_job_name: 'other-sender', 
-          to_agent: 'other-job',
+          to_job_definition_id: 'other-job', // Changed to to_job_definition_id
           content: 'Message for different job',
           status: 'READ'
         }
@@ -655,24 +624,21 @@ describe('Database Tools Integration Tests', () => {
     });
 
     it('should create a complete job with prompt, definition, and schedule', async () => {
-      const jobName = `test_job_${Date.now()}`;
+      const jobName = `test_job_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
       const jobParams = {
         name: jobName,
         description: 'Test job for integration testing',
         prompt_content: 'This is a test prompt for automated testing purposes.',
         enabled_tools: ['get_schema', 'read_records'],
-        schedule_config: {
-          trigger: 'manual' as const,
-          filters: { test: true }
-        }
+        schedule_on: 'artifact.created'
       };
 
       const result = await createJob(jobParams);
-      // createJob returns "Job created successfully:\n{json}" format
-      const resultText = result.content[0].text;
-      const jsonStart = resultText.indexOf('\n') + 1;
-      const resultData = JSON.parse(resultText.substring(jsonStart));
+      // createJob returns JSON directly: { data: {...}, meta: { ok: true } }
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      const resultData = parsed.data;
       
       expect(resultData.id).toBeDefined();
       expect(resultData.job_id).toBeDefined();
@@ -692,7 +658,10 @@ describe('Database Tools Integration Tests', () => {
       expect(job.name).toBe(jobName);
       expect(job.description).toBe(jobParams.description);
       expect(job.enabled_tools).toEqual(jobParams.enabled_tools);
-      expect(job.schedule_config).toEqual(jobParams.schedule_config);
+      expect(job.schedule_config).toEqual({
+        trigger: 'on_new_event',
+        filters: { event_type: 'artifact.created' }
+      });
       expect(job.prompt_content).toBe(jobParams.prompt_content);
       expect(job.version).toBe(1);
       expect(job.is_active).toBe(true);
@@ -700,32 +669,32 @@ describe('Database Tools Integration Tests', () => {
 
     it('should fail when required parameters are missing', async () => {
       const result = await createJob({
-        name: 'incomplete_job',
-        prompt_content: 'Test prompt'
-        // Missing schedule_config
+        // Missing required 'name' parameter
+        prompt_content: 'Test prompt',
+        enabled_tools: []
       });
       
-      expect(result.content[0].text).toContain('Invalid parameters:');
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(false);
+      expect(parsed.meta.code).toBe('VALIDATION_ERROR');
+      expect(parsed.meta.message).toContain('Invalid parameters:');
     });
 
     it('should create job with context injection', async () => {
-      const jobName = `test_context_job_${Date.now()}`;
+      const jobName = `test_context_job_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
       const result = await createJob({
         name: jobName,
         description: 'Test job for context injection',
         prompt_content: 'Test prompt content',
         enabled_tools: [],
-        schedule_config: {
-          trigger: 'manual' as const,
-          filters: {}
-        }
+        schedule_on: 'artifact.created'
       });
       
-      // createJob returns "Job created successfully:\n{json}" format
-      const resultText = result.content[0].text;
-      const jsonStart = resultText.indexOf('\n') + 1;
-      const resultData = JSON.parse(resultText.substring(jsonStart));
+      // createJob returns JSON directly: { data: {...}, meta: { ok: true } }
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      const resultData = parsed.data;
       testJobId = resultData.id;
       
       // The new unified jobs table doesn't have source_job_id/source_job_name columns
@@ -735,199 +704,32 @@ describe('Database Tools Integration Tests', () => {
     });
   });
 
-  describe.skip('trace_lineage Tool', () => {
-    let testThreadId: string | null = null;
-    let testArtifactId: string | null = null;
 
-    beforeEach(async () => {
-      // Create a test thread and artifact for lineage tracing
-      const threadResult = await manageThread({
-        title: 'Test Lineage Thread',
-        objective: 'Test lineage tracing functionality'
-      });
+  describe('get_project_summary Tool', () => {
+    it('should fail when called without project context', async () => {
+      // Clear any existing context
+      clearJobContext();
       
-      expect(threadResult.content).toBeDefined();
-      const threadData = JSON.parse(threadResult.content![0].text);
-      testThreadId = threadData.id;
-      mockJobContext.threadId = testThreadId;
-      setJobContext(mockJobContext.jobId, mockJobContext.jobName, testThreadId);
-
-      // Create a test artifact
-      const artifactResult = await manageArtifact({
-        operation: 'CREATE',
-        content: JSON.stringify({ test: 'lineage trace data', timestamp: new Date().toISOString() })
-      });
-      
-      expect(artifactResult.content).toBeDefined();
-      const artifactData = JSON.parse(artifactResult.content![0].text);
-      testArtifactId = artifactData.id;
-    });
-
-    it('should trace lineage with direct artifact_id parameter', async () => {
-      const result = await traceLineage({
-        artifact_id: testArtifactId!,
-        max_depth: 5
-      });
-
+      const result = await getProjectSummary({ history_count: 3 });
       expect(result.content).toBeDefined();
       expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
       
-      const lineageData = JSON.parse(result.content![0].text);
-      expect(lineageData.success).toBe(true);
-      expect(lineageData.starting_point.artifact_id).toBe(testArtifactId);
-      expect(lineageData.lineage).toBeDefined();
-      expect(lineageData.summary).toBeDefined();
+      const resultData = JSON.parse(result.content[0].text);
+      expect(resultData.meta.ok).toBe(false);
+      expect(resultData.meta.code).toBe('NO_PROJECT_CONTEXT');
+      expect(resultData.meta.message).toContain('No project context available');
     });
 
-    it('should trace lineage with random_string JSON envelope', async () => {
-      const jsonParams = JSON.stringify({
-        artifact_id: testArtifactId!,
-        max_depth: 5
-      });
-
-      const result = await traceLineage({
-        random_string: jsonParams
-      });
-
+    it('should accept history_count parameter', async () => {
+      // This test would require setting up a proper project context
+      // For now, just test that the tool can be called with parameters
+      const result = await getProjectSummary({ history_count: 5 });
       expect(result.content).toBeDefined();
       expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
       
-      const lineageData = JSON.parse(result.content![0].text);
-      expect(lineageData.success).toBe(true);
-      expect(lineageData.starting_point.artifact_id).toBe(testArtifactId);
-      expect(lineageData.lineage).toBeDefined();
-      expect(lineageData.summary).toBeDefined();
-    });
-
-    it('should handle invalid random_string JSON gracefully', async () => {
-      const result = await traceLineage({
-        random_string: 'invalid json'
-      });
-
-      expect(result.content).toBeDefined();
-      expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
-      
-      const lineageData = JSON.parse(result.content![0].text);
-      expect(lineageData.success).toBe(false);
-      expect(lineageData.error).toContain('Failed to parse random_string as JSON');
-    });
-
-    it('should return empty lineage for non-existent entity', async () => {
-      const fakeUuid = '00000000-0000-4000-8000-000000000000';
-      
-      const result = await traceLineage({
-        artifact_id: fakeUuid,
-        max_depth: 5
-      });
-
-      expect(result.content).toBeDefined();
-      expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
-      
-      const lineageData = JSON.parse(result.content![0].text);
-      expect(lineageData.success).toBe(true);
-      expect(lineageData.lineage).toEqual([]);
-      expect(lineageData.message).toContain('No lineage data found');
-    });
-  });
-
-  describe.skip('get_job_graph Tool', () => {
-    it('should get job graph with direct parameters (no topic filter)', async () => {
-      const result = await getJobGraph({});
-
-      expect(result.content).toBeDefined();
-      expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
-      
-      const graphData = JSON.parse(result.content![0].text);
-      expect(graphData.success).toBe(true);
-      expect(graphData.topics).toBeDefined();
-      expect(Array.isArray(graphData.topics)).toBe(true);
-      if (graphData.topics.length > 0) {
-        expect(graphData.summary).toBeDefined();
-        expect(graphData.total_topics).toBeGreaterThan(0);
-      }
-    });
-
-    it('should get job graph with random_string JSON envelope (no topic filter)', async () => {
-      const jsonParams = JSON.stringify({});
-
-      const result = await getJobGraph({
-        random_string: jsonParams
-      });
-
-      expect(result.content).toBeDefined();
-      expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
-      
-      const graphData = JSON.parse(result.content![0].text);
-      expect(graphData.success).toBe(true);
-      expect(graphData.topics).toBeDefined();
-    });
-
-    it('should filter job graph by specific topic', async () => {
-      const result = await getJobGraph({
-        topic: 'mission_context'
-      });
-
-      expect(result.content).toBeDefined();
-      expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
-      
-      const graphData = JSON.parse(result.content![0].text);
-      expect(graphData.success).toBe(true);
-      
-      if (graphData.topic) {
-        // Topic found
-        expect(graphData.topic).toBe('mission_context');
-        expect(graphData.publishers).toBeDefined();
-        expect(graphData.subscribers).toBeDefined();
-        expect(graphData.publisher_count).toBeDefined();
-        expect(graphData.subscriber_count).toBeDefined();
-      } else {
-        // Topic not found
-        expect(graphData.message).toContain('No jobs found for topic: mission_context');
-      }
-    });
-
-    it('should filter job graph by topic via random_string', async () => {
-      const jsonParams = JSON.stringify({
-        topic: 'system.processing_time.update'
-      });
-
-      const result = await getJobGraph({
-        random_string: jsonParams
-      });
-
-      expect(result.content).toBeDefined();
-      expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
-      
-      const graphData = JSON.parse(result.content![0].text);
-      expect(graphData.success).toBe(true);
-      
-      if (graphData.topic) {
-        expect(graphData.topic).toBe('system.processing_time.update');
-      } else {
-        expect(graphData.message).toContain('No jobs found for topic');
-      }
-    });
-
-    it('should handle invalid random_string JSON gracefully', async () => {
-      const result = await getJobGraph({
-        random_string: 'invalid json'
-      });
-
-      expect(result.content).toBeDefined();
-      expect(result.content).toHaveLength(1);
-      expect(result.content![0].type).toBe('text');
-      
-      const graphData = JSON.parse(result.content![0].text);
-      expect(graphData.success).toBe(false);
-      expect(graphData.error).toContain('Failed to parse random_string as JSON');
+      // Should fail due to no project context, but at least the parameter was accepted
+      const resultData = JSON.parse(result.content[0].text);
+      expect(resultData.meta.ok).toBe(false);
     });
   });
 });

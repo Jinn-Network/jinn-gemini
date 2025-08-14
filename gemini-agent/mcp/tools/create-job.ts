@@ -37,11 +37,29 @@ function normalizeScheduleConfig(config: any): any {
     return config;
 }
 
+// Helper function to check if a job name already exists
+// This prevents duplicate active jobs with the same name, which would cause
+// the duplicate job dispatching issue in the universal_job_dispatcher
+async function checkExistingJob(name: string) {
+    const { data: existingJob, error } = await supabase
+        .from('jobs')
+        .select('id, job_id, version, is_active, description, created_at')
+        .eq('name', name)
+        .eq('is_active', true)
+        .maybeSingle();
+    
+    if (error) {
+        throw new Error(`Failed to check for existing job: ${error.message}`);
+    }
+    
+    return existingJob;
+}
+
 export const createJobParams = CreateJobInputSchema;
 export type CreateJobParams = CreateJobInput;
 
 export const createJobSchema = {
-    description: 'Creates a new job definition or a new version of an existing job.\n\nScheduling: set schedule_on to an event type (e.g., "artifact.created", "job.completed") or to "manual". If omitted, it defaults to running after the current job completes (alias: "after_this_job"). When scheduling on "job.completed" without a filter.job_id, the tool auto-binds to the current job id when available; if not available, it falls back to manual. To associate the job to a project, pass project_definition_id.\n\nManual jobs are automatically dispatched once when created, then require manual re-enqueueing for future runs. Manual jobs inherit the project context from the current job execution and will fail if created outside of a job context.',
+    description: 'Creates a new job definition or a new version of an existing job.\n\nIMPORTANT: If a job with the same name already exists and is active, this tool will return an error. To update an existing job, pass existing_job_id to create a new version.\n\nScheduling: set schedule_on to an event type (e.g., "artifact.created", "job.completed") or to "manual". If omitted, it defaults to running after the current job completes (alias: "after_this_job"). When scheduling on "job.completed" without a filter.job_id, the tool auto-binds to the current job id when available; if not available, it falls back to manual. To associate the job to a project, pass project_definition_id.\n\nManual jobs are automatically dispatched once when created, then require manual re-enqueueing for future runs. Manual jobs inherit the project context from the current job execution and will fail if created outside of a job context.',
     inputSchema: createJobParams.shape,
 };
 
@@ -79,6 +97,37 @@ export async function createJob(params: CreateJobParams) {
 
         // Resolve current job context for default/auto-binding behaviors
         const { jobId: currentJobId, jobDefinitionId: currentJobDefinitionId } = getCurrentJobContext();
+
+        // IMPORTANT: Prevent duplicate active jobs with the same name
+        // This check prevents the duplicate job dispatching issue by ensuring
+        // only one active job definition exists per job name
+        // Check for existing active job with the same name (unless we're creating a new version)
+        if (!existing_job_id) {
+            const existingActiveJob = await checkExistingJob(name);
+
+            if (existingActiveJob) {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'DUPLICATE_JOB_NAME', 
+                                message: `Job name "${name}" already exists and is active. Please check job "${name}" with job definition ID ${existingActiveJob.id} for review. If you want to update the job definition, increment the version by passing existing_job_id: "${existingActiveJob.job_id}".` 
+                            },
+                            existing_job: {
+                                id: existingActiveJob.id,
+                                job_id: existingActiveJob.job_id,
+                                version: existingActiveJob.version,
+                                description: existingActiveJob.description,
+                                created_at: existingActiveJob.created_at
+                            }
+                        }, null, 2)
+                    }]
+                };
+            }
+        }
 
         // Normalize simplified scheduling to internal schedule_config
         let schedule_config: any = undefined;

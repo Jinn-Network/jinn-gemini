@@ -21,28 +21,18 @@ import {
   listToolsSchema,
   manageArtifact,
   manageArtifactSchema,
-  manageThread,
-  manageThreadSchema,
   getDetails,
   getDetailsSchema,
   createMemory,
   createMemorySchema,
   searchMemories,
   searchMemoriesSchema,
-  traceThread,
-  traceThreadSchema,
-  reconstructJob,
-  reconstructJobSchema,
-  searchEvents,
-  searchEventsSchema,
-  getJobGraph,
-  getJobGraphSchema,
-  traceLineage,
-  traceLineageSchema,
   planProject,
-  planProjectSchema
-  ,sendMessage
-  ,sendMessageSchema
+  planProjectSchema,
+  getProjectSummary,
+  getProjectSummarySchema,
+  sendMessage,
+  sendMessageSchema
 } from './tools/index.js';
 
 // This is the single source of truth for all tools registered on this server.
@@ -56,16 +46,11 @@ export const serverTools: { name: string; schema: any; handler: (params: any) =>
   { name: 'dispatch_job', schema: dispatchJobSchema, handler: dispatchJob },
   { name: 'get_context_snapshot', schema: getContextSnapshotSchema, handler: getContextSnapshot },
   { name: 'manage_artifact', schema: manageArtifactSchema, handler: manageArtifact },
-  { name: 'manage_thread', schema: manageThreadSchema, handler: manageThread },
   { name: 'get_details', schema: getDetailsSchema, handler: getDetails },
   { name: 'create_memory', schema: createMemorySchema, handler: createMemory },
   { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories },
-  { name: 'trace_thread', schema: traceThreadSchema, handler: traceThread },
-  { name: 'reconstruct_job', schema: reconstructJobSchema, handler: reconstructJob },
-  { name: 'search_events', schema: searchEventsSchema, handler: searchEvents },
-  { name: 'get_job_graph', schema: getJobGraphSchema, handler: getJobGraph },
-  { name: 'trace_lineage', schema: traceLineageSchema, handler: traceLineage },
   { name: 'plan_project', schema: planProjectSchema, handler: planProject },
+  { name: 'get_project_summary', schema: getProjectSummarySchema, handler: getProjectSummary },
   { name: 'send_message', schema: sendMessageSchema, handler: sendMessage }
 ];
 
@@ -76,7 +61,7 @@ async function main() {
       version: '0.1.0',
     });
 
-    // Register all tools with their full schemas so clients can construct/validate arguments properly.
+    // Register all tools with their original schemas
     for (const tool of serverTools) {
       server.registerTool(tool.name, tool.schema as any, tool.handler);
     }

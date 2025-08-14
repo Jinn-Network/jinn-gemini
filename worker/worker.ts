@@ -44,7 +44,12 @@ const RETRY_CONFIG = {
         'network', // Network errors
         'ENOTFOUND', // DNS resolution errors
         'ECONNRESET', // Connection reset errors
-        'ECONNREFUSED' // Connection refused errors
+        'ECONNREFUSED', // Connection refused errors
+        'path validation failed', // Gemini CLI path validation errors
+        'resolves outside the allowed workspace directories', // Path validation error details
+        'Invalid arguments for tool', // Tool argument validation errors
+        'Invalid enum value', // Tool enum validation errors
+        'MCP error -32602' // MCP invalid arguments error
     ]
 };
 
@@ -270,6 +275,92 @@ function parseToolResponse(response: any): { success: boolean; data: any; error?
     }
 }
 
+// Helper function to create enhanced prompts with error context
+function createEnhancedPrompt(originalPrompt: string, error: any, retryCount: number): string {
+    const errorContext = extractErrorContext(error);
+    
+    if (!errorContext) {
+        return originalPrompt;
+    }
+
+    const enhancement = `\n\n### Error Context (Retry ${retryCount + 1})
+The previous attempt failed with the following error:
+${errorContext}
+
+Please correct your approach based on this error information.`;
+
+    return originalPrompt + enhancement;
+}
+
+// Helper function to extract meaningful error context
+function extractErrorContext(error: any): string | null {
+    if (!error) return null;
+    
+    const message = String(error.message || error);
+    const stderr = String(error.stderr || '');
+    
+    // Look for specific error patterns
+    if (message.includes('path validation failed') || stderr.includes('path validation failed')) {
+        return `Path validation failed: The agent attempted to access files outside the allowed workspace directory.
+        
+IMPORTANT: Use relative paths from the current working directory (gemini-agent/). 
+- Use './' for current directory
+- Use '../' to go up one level
+- Use './mcp/tools/' instead of absolute paths like '/Users/.../mcp/tools/'
+
+Example correct paths:
+- './mcp/tools/read-records.ts'
+- './src/app/page.tsx'
+- '../worker/worker.ts'`;
+    }
+    
+    if (message.includes('resolves outside the allowed workspace directories') || stderr.includes('resolves outside the allowed workspace directories')) {
+        return `Workspace boundary violation: The agent tried to access files outside the allowed directory.
+        
+The current working directory is 'gemini-agent/' and you can only access files within this project.
+Use relative paths and ensure all file operations stay within the project boundaries.`;
+    }
+    
+    if (message.includes('Invalid arguments for tool') || stderr.includes('Invalid arguments for tool')) {
+        return `Tool argument validation failed: The agent provided invalid arguments to a tool.
+        
+IMPORTANT: Check the tool's schema requirements and ensure all arguments match the expected format.
+- Verify enum values are from the allowed list
+- Check required fields are provided
+- Ensure data types match expectations
+
+Common issues:
+- Using table names not in the allowed list
+- Missing required parameters
+- Wrong data types for parameters`;
+    }
+    
+    if (message.includes('Invalid enum value') || stderr.includes('Invalid enum value')) {
+        return `Enum validation failed: The agent used a value not in the allowed options.
+        
+IMPORTANT: When using tools that require specific values, check the available options first.
+- Use 'get_schema' to see table names and field options
+- Use 'list_tools' to see available tools
+- Verify enum values match exactly (case-sensitive)
+
+Example: If a tool expects table_name from ['artifacts', 'job_board', 'jobs'], 
+use one of those exact values, not 'search_events' or similar.`;
+    }
+    
+    if (message.includes('MCP error -32602') || stderr.includes('MCP error -32602')) {
+        return `MCP protocol error: Invalid arguments were passed to a tool.
+        
+This usually means the agent provided arguments that don't match the tool's schema.
+- Check the tool's description for required parameters
+- Verify argument types and values
+- Use 'get_schema' to understand table structures before querying`;
+    }
+    
+    // Generic error context
+    return `Error: ${message}
+${stderr ? `\nAdditional details: ${stderr.substring(0, 500)}` : ''}`;
+}
+
 async function processPendingJobs(): Promise<boolean> {
     console.log(`Worker ${workerId} starting up, checking for ${targetJobId ? `targeted job ${targetJobId}` : 'pending jobs'}...`);
     if (debugMode) {
@@ -334,6 +425,22 @@ async function processPendingJobs(): Promise<boolean> {
     // Retry loop for the job execution
     while (retryCount <= RETRY_CONFIG.maxRetries) {
         error = null; // Reset error state for each attempt
+        
+        // Compose final prompt with inbox (if available) - moved outside try block for retry access
+        const composeInboxSection = (inbox?: Array<{ from?: string | null; content?: string | null }>): string => {
+            if (!Array.isArray(inbox) || inbox.length === 0) return '';
+            const lines = inbox.slice(0, 10).map((m, idx) => {
+                const from = m?.from ?? 'unknown';
+                const content = (m?.content ?? '').toString();
+                return `- [${idx + 1}] from ${from}: ${content}`;
+            });
+            return `\n\n### Inbox (recent messages)\n${lines.join('\n')}`;
+        };
+
+        // Store the original prompt for potential retries
+        const originalPrompt = `${job.input || ''}${composeInboxSection(job.inbox)}`.trim();
+        let currentPrompt = originalPrompt;
+        
         try {
         // Safety: avoid stealing a job actively owned by another worker when forcing by id
         if (targetJobId && job.status === 'IN_PROGRESS' && job.worker_id && job.worker_id !== workerId) {
@@ -356,18 +463,6 @@ async function processPendingJobs(): Promise<boolean> {
         }
         console.log(`Job ${job.id} claimed by worker ${workerId} and status updated to IN_PROGRESS.`);
 
-        // Compose final prompt with inbox (if available)
-        const composeInboxSection = (inbox?: Array<{ from?: string | null; content?: string | null }>): string => {
-            if (!Array.isArray(inbox) || inbox.length === 0) return '';
-            const lines = inbox.slice(0, 10).map((m, idx) => {
-                const from = m?.from ?? 'unknown';
-                const content = (m?.content ?? '').toString();
-                return `- [${idx + 1}] from ${from}: ${content}`;
-            });
-            return `\n\n### Inbox (recent messages)\n${lines.join('\n')}`;
-        };
-
-        const finalPrompt = `${job.input || ''}${composeInboxSection(job.inbox)}`.trim();
         const model = job.model_settings.model || 'gemini-2.5-flash';
         const enabledTools = job.enabled_tools;
 
@@ -384,8 +479,6 @@ async function processPendingJobs(): Promise<boolean> {
         
         console.log(`[JOB_CONTEXT] Passing context to agent: ${JSON.stringify(jobContext)}`);
 
-        const agent = new Agent(model, enabledTools, jobContext);
-
         // Check rate limits before each attempt (including retries)
         const gate = shouldWaitForRateLimit();
         if (gate.shouldWait) {
@@ -398,7 +491,10 @@ async function processPendingJobs(): Promise<boolean> {
         jobCount++;
 
         console.log(`[ATTEMPT] Job ${job.id} attempt ${retryCount + 1} starting`);
-        result = await agent.run(finalPrompt);
+        
+        // Create agent with current prompt (which may be enhanced on retries)
+        const agent = new Agent(model, enabledTools, jobContext);
+        result = await agent.run(currentPrompt);
         console.log(`Job ${job.id} execution finished.`);
         console.log(`Agent output for job ${job.id}:\n`, result.output);
 
@@ -451,6 +547,14 @@ async function processPendingJobs(): Promise<boolean> {
             const retryDelay = calculateRetryDelayWithJitter(retryCount);
             console.log(`[RETRY] Job ${job.id} failed with retryable error. Retry ${retryCount}/${RETRY_CONFIG.maxRetries} in ${retryDelay}ms...`);
             
+            // Create an enhanced prompt for the retry
+            const enhancedPrompt = createEnhancedPrompt(originalPrompt, error, retryCount - 1);
+            currentPrompt = enhancedPrompt; // Update the prompt for the next retry
+            console.log(`[RETRY] Enhanced prompt created for retry ${retryCount}:`);
+            console.log(`[RETRY] Original prompt length: ${originalPrompt.length} chars`);
+            console.log(`[RETRY] Enhanced prompt length: ${enhancedPrompt.length} chars`);
+            console.log(`[RETRY] Error context added: ${enhancedPrompt.substring(originalPrompt.length).substring(0, 200)}...`);
+
             // Reset job status to PENDING so it can be retried
             const resetResult = await updateRecords({
                 table_name: 'job_board',

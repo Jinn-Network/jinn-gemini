@@ -288,6 +288,28 @@ get_context_snapshot({ hours_back: 10 })
 get_context_snapshot({ job_name: "data_analysis_job", hours_back: 8 })
 ```
 
+#### `get_project_summary`
+The `get_project_summary` tool is designed for project leads to review the outcomes of their delegated work. Key features:
+
+- **Automatic Context**: Automatically infers the project context from the current job, requiring no parameters
+- **Output-Focused**: Returns artifacts and outputs from recent project runs, not implementation details
+- **Context Management**: Uses built-in pagination and token management to prevent context overflow
+- **Historical View**: Shows the last 3 project runs by default, with configurable history count
+
+Usage Examples:
+```javascript
+// Get summary of last 3 project runs (default)
+get_project_summary({})
+
+// Get summary of last 5 project runs
+get_project_summary({ history_count: 5 })
+
+// Get next page of results
+get_project_summary({ cursor: "next_cursor_from_previous_call" })
+```
+
+This tool is essential for the delegation workflow - it allows project leads to efficiently review what their delegated agents have produced without getting overwhelmed by implementation details.
+
 #### `get_job_graph` & `trace_lineage`
 These tools provide deep insight into the system's causal architecture.
 

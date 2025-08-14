@@ -215,8 +215,26 @@ export class Agent {
       const mcpServer = templateSettings.mcpServers[serverName];
       if (!mcpServer) throw new Error(`MCP server '${serverName}' not found in template configuration`);
 
-      // Include only job-specific tools
-      mcpServer.includeTools = this.enabledTools;
+      // UNIVERSAL TOOLS: Every agent automatically gets these core capabilities
+      // regardless of what's specified in their job definition. This ensures
+      // all agents can plan projects, create jobs, manage artifacts, etc.
+      // Define universal tools that every agent gets
+      const universalTools = [
+        'plan_project',
+        'create_job',
+        'manage_artifact',
+        'get_details',
+        'send_message',
+        'search_memories',
+        'get_project_summary'
+      ];
+
+      // Merge universal tools with job-specific tools, removing duplicates
+      const allTools = [...universalTools, ...this.enabledTools];
+      const uniqueTools = [...new Set(allTools)];
+
+      // Include the merged tool set (universal + job-specific)
+      mcpServer.includeTools = uniqueTools;
 
       // Exclude native tools not enabled
       const allNativeTools = [
@@ -243,7 +261,9 @@ export class Agent {
       mkdirSync(settingsDir, { recursive: true });
 
       writeFileSync(this.settingsPath, JSON.stringify(templateSettings, null, 2));
-      console.log(`Generated job-specific settings for server '${serverName}' with tools: ${this.enabledTools.join(', ')}`);
+      console.log(`Generated job-specific settings for server '${serverName}' with tools: ${uniqueTools.join(', ')}`);
+      console.log(`  - Universal tools: ${universalTools.join(', ')}`);
+      console.log(`  - Job-specific tools: ${this.enabledTools.join(', ') || 'none'}`);
       console.log(`Excluded native tools: ${nativeToolsToExclude.join(', ')}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);

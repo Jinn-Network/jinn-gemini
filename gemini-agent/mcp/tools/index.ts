@@ -4,20 +4,15 @@ export { dispatchJob, dispatchJobParams, dispatchJobSchema, type DispatchJobPara
 export { getContextSnapshot, getContextSnapshotParams, getContextSnapshotSchema } from './context-snapshot.js';
 export { listTools, listToolsParams, listToolsSchema } from './list-tools.js';
 export { manageArtifact, manageArtifactParams, manageArtifactSchema, type ManageArtifactParams } from './manage-artifact.js';
-export { manageThread, manageThreadParams, manageThreadSchema, type ManageThreadParams } from './manage-thread.js';
 export { getDetails, getDetailsParams, getDetailsSchema, type GetDetailsParams } from './get-details.js';
 export { createMemory, createMemoryParams, createMemorySchema, type CreateMemoryParams } from './create-memory.js';
 export { searchMemories, searchMemoriesParams, searchMemoriesSchema, type SearchMemoriesParams } from './search-memories.js';
-export { traceThread, traceThreadSchema } from './trace-thread.js';
-export { reconstructJob, reconstructJobSchema } from './reconstruct-job.js';
-export { searchEvents, searchEventsSchema } from './search-events.js';
-export { getJobGraph, getJobGraphParams, getJobGraphSchema, type GetJobGraphParams } from './get-job-graph.js';
-export { traceLineage, traceLineageParams, traceLineageSchema, type TraceLineageParams } from './trace-lineage.js';
 export { planProject, planProjectParams, planProjectSchema } from './plan-project.js';
+export { getProjectSummary, getProjectSummaryParams, getProjectSummarySchema } from './get-project-summary.js';
 export { sendMessage, sendMessageParams, sendMessageSchema } from './send-message.js';
 
 // Export shared types
-export { tableNames, tableNameSchema, traceThreadParams, reconstructJobParams, searchEventsParams, type TraceThreadParams, type ReconstructJobParams, type SearchEventsParams } from './shared/types.js';
+export { tableNames, tableNameSchema } from './shared/types.js';
 
 // Export server tools
 export { getSchema, getSchemaParams, getSchemaSchema } from './get-schema.js';
