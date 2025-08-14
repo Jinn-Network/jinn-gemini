@@ -313,3 +313,77 @@ For post-execution analysis, you can inspect the `job_reports` table in the data
 This integrated telemetry system provides complete visibility into system performance and enables data-driven optimization of job definitions and workflows.
 
 For post-execution analysis, you can inspect the `job_reports` table in the database. It contains comprehensive details about each job's execution, including the full request/response, tool calls, duration, and any errors that occurred.
+
+---
+
+## Database Reset State
+
+When performing a complete system reset, the database should be cleared to this minimal state:
+
+### **Tables with Data (Keep):**
+1. **`job_definitions`** - 2 rows:
+   - `chief_orchestrator` - The main strategic orchestrator job
+   - `human_supervisor` - Human oversight job
+
+2. **`project_definitions`** - 1 row:
+   - Main project definition for the Eolas system
+
+3. **`messages`** - 1 row:
+   - Initial message from human supervisor to chief orchestrator (status: PENDING)
+
+### **Tables to Empty (Clear All Rows):**
+- `job_board` - No pending jobs
+- `project_runs` - No active project runs  
+- `job_reports` - No job execution reports
+- `events` - No event history
+- `artifacts` - No artifacts
+- `memories` - No memories
+- `threads` - No threads
+
+### **Reset Commands:**
+```sql
+-- Clear all dynamic data while preserving core definitions
+TRUNCATE TABLE job_board, project_runs, job_reports, events, artifacts, memories, threads RESTART IDENTITY CASCADE;
+
+-- Ensure the initial message is in PENDING state
+UPDATE messages SET status = 'PENDING' WHERE status != 'PENDING';
+```
+
+### **Post-Reset Behavior:**
+1. **System quiescence event** will automatically trigger the Chief Orchestrator
+2. **Chief Orchestrator** will create new projects and job definitions as needed
+3. **All new jobs** will start fresh without any previous execution history
+
+### **Important Notes:**
+- **Message Status**: After reset, ensure all messages have `status = 'PENDING'` to prevent them from appearing in red in the frontend
+- **Clean State**: The reset removes all execution history, providing a clean foundation for testing new workflows
+
+### **⚠️ CRITICAL WARNING - NEVER DO THIS:**
+**NEVER use `TRUNCATE TABLE` with `CASCADE` on tables that contain the core system definitions!** 
+
+The `TRUNCATE ... CASCADE` command will delete ALL related data, including the core `jobs`, `project_definitions`, and `messages` tables that contain the system foundation. This completely destroys the system and defeats the purpose of a reset.
+
+**What NOT to do:**
+```sql
+-- ❌ NEVER DO THIS - It deletes everything including core definitions
+TRUNCATE TABLE jobs, project_definitions, messages CASCADE;
+```
+
+**What TO do instead:**
+```sql
+-- ✅ CORRECT - Only clear dynamic/runtime data
+DELETE FROM job_board;
+DELETE FROM project_runs; 
+DELETE FROM job_reports;
+DELETE FROM events;
+DELETE FROM artifacts;
+DELETE FROM memories;
+-- Keep jobs, project_definitions, and messages intact!
+```
+
+**If you accidentally delete everything:**
+1. Stop immediately
+2. Recreate the core system from scratch using the definitions in this README
+3. Never use `TRUNCATE ... CASCADE` on core system tables
+
+This reset state provides a clean foundation for testing new job definitions and workflows while preserving the core system configuration.

@@ -230,6 +230,46 @@ function shouldWaitForRateLimit(): { shouldWait: boolean; waitTime: number; reas
     return { shouldWait: false, waitTime: 0, reason: '' };
 }
 
+// Helper function to parse tool responses and check for failures
+function parseToolResponse(response: any): { success: boolean; data: any; error?: string } {
+    try {
+        if (!response?.content?.[0]?.text) {
+            return { success: false, data: null, error: 'No content in tool response' };
+        }
+
+        const text = response.content[0].text;
+        
+        // Check for legacy error format (starts with "Error")
+        if (text.startsWith('Error')) {
+            return { success: false, data: null, error: text };
+        }
+
+        // Parse JSON response
+        const parsed = JSON.parse(text);
+        
+        // Check for new standardized format: { data: ..., meta: { ok: boolean, ... } }
+        if (parsed.meta && typeof parsed.meta.ok === 'boolean') {
+            if (parsed.meta.ok === false) {
+                return { 
+                    success: false, 
+                    data: parsed.data, 
+                    error: parsed.meta.message || parsed.meta.code || 'Tool reported failure' 
+                };
+            }
+            return { success: true, data: parsed.data };
+        }
+
+        // Fallback: assume success if no meta.ok field (backward compatibility)
+        return { success: true, data: parsed };
+    } catch (parseError) {
+        return { 
+            success: false, 
+            data: null, 
+            error: `Failed to parse tool response: ${parseError instanceof Error ? parseError.message : String(parseError)}` 
+        };
+    }
+}
+
 async function processPendingJobs(): Promise<boolean> {
     console.log(`Worker ${workerId} starting up, checking for ${targetJobId ? `targeted job ${targetJobId}` : 'pending jobs'}...`);
     if (debugMode) {
@@ -255,17 +295,18 @@ async function processPendingJobs(): Promise<boolean> {
 
     console.log('Raw read result:', readResult.content[0].text);
 
-    // Check if the result is an error message
-    if (readResult.content[0].text.startsWith('Error')) {
-        console.error('Database read error:', readResult.content[0].text);
+    // Parse tool response and check for failures
+    const readParseResult = parseToolResponse(readResult);
+    if (!readParseResult.success) {
+        console.error('Database read failed:', readParseResult.error);
         return false;
     }
 
     // Tools now return data-first JSON: { data: [...], meta: {...} }
     let jobs: JobBoard[] = [];
     try {
-        const parsed = JSON.parse(readResult.content[0].text);
-        jobs = Array.isArray(parsed) ? (parsed as JobBoard[]) : (parsed?.data ?? []);
+        const data = readParseResult.data;
+        jobs = Array.isArray(data) ? (data as JobBoard[]) : (data?.data ?? []);
     } catch (parseErr) {
         console.error('Failed to parse read_records result as JSON:', parseErr);
         return false;
@@ -300,7 +341,7 @@ async function processPendingJobs(): Promise<boolean> {
         }
 
         // Claim the job by setting status to IN_PROGRESS and adding worker_id
-        await updateRecords({
+        const claimResult = await updateRecords({
             table_name: 'job_board',
             filter: targetJobId ? { id: job.id } : { id: job.id, status: 'PENDING' }, // When targeted, bypass status predicate
             updates: {
@@ -308,6 +349,11 @@ async function processPendingJobs(): Promise<boolean> {
                 worker_id: workerId
             }
         });
+
+        const claimParseResult = parseToolResponse(claimResult);
+        if (!claimParseResult.success) {
+            throw new Error(`Failed to claim job: ${claimParseResult.error}`);
+        }
         console.log(`Job ${job.id} claimed by worker ${workerId} and status updated to IN_PROGRESS.`);
 
         // Compose final prompt with inbox (if available)
@@ -327,14 +373,18 @@ async function processPendingJobs(): Promise<boolean> {
 
         console.log(`Executing job ${job.id} with model ${model}`);
 
-        const agent = new Agent(model, enabledTools, {
+        const jobContext = {
             jobId: job.id,
             jobDefinitionId: job.job_definition_id,
             jobName: job.job_name,
             projectRunId: job.project_run_id ?? null,
             sourceEventId: job.source_event_id ?? null,
             projectDefinitionId: job.project_definition_id ?? null
-        });
+        };
+        
+        console.log(`[JOB_CONTEXT] Passing context to agent: ${JSON.stringify(jobContext)}`);
+
+        const agent = new Agent(model, enabledTools, jobContext);
 
         // Check rate limits before each attempt (including retries)
         const gate = shouldWaitForRateLimit();
@@ -361,8 +411,9 @@ async function processPendingJobs(): Promise<boolean> {
             }
         });
 
-        if (updateResult.content[0].text.startsWith('Error')) {
-            throw new Error(`Failed to update job to COMPLETED: ${updateResult.content[0].text}`);
+        const updateParseResult = parseToolResponse(updateResult);
+        if (!updateParseResult.success) {
+            throw new Error(`Failed to update job to COMPLETED: ${updateParseResult.error}`);
         }
         console.log(`Job ${job.id} completed successfully.`);
 
@@ -401,7 +452,7 @@ async function processPendingJobs(): Promise<boolean> {
             console.log(`[RETRY] Job ${job.id} failed with retryable error. Retry ${retryCount}/${RETRY_CONFIG.maxRetries} in ${retryDelay}ms...`);
             
             // Reset job status to PENDING so it can be retried
-            await updateRecords({
+            const resetResult = await updateRecords({
                 table_name: 'job_board',
                 filter: { id: job.id },
                 updates: {
@@ -409,6 +460,11 @@ async function processPendingJobs(): Promise<boolean> {
                     worker_id: null
                 }
             });
+            
+            const resetParseResult = parseToolResponse(resetResult);
+            if (!resetParseResult.success) {
+                console.error(`Failed to reset job status to PENDING: ${resetParseResult.error}`);
+            }
             
             // Wait before retry
             await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -430,8 +486,10 @@ async function processPendingJobs(): Promise<boolean> {
                 output: JSON.stringify({ error: errorMsg, retryCount })
             }
         });
-        if (finalUpdate.content[0].text.startsWith('Error')) {
-            console.error(`CRITICAL: Failed to even update the job to FAILED status. Job ID: ${job.id}. Error: ${finalUpdate.content[0].text}`);
+        
+        const finalUpdateParseResult = parseToolResponse(finalUpdate);
+        if (!finalUpdateParseResult.success) {
+            console.error(`CRITICAL: Failed to even update the job to FAILED status. Job ID: ${job.id}. Error: ${finalUpdateParseResult.error}`);
         }
         break; // Exit retry loop on failure
         }

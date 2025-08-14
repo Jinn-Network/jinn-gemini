@@ -11,7 +11,7 @@ export const sendMessageParams = z.object({
 });
 
 export const sendMessageSchema = {
-  description: 'Sends a message to another job definition. Use this to escalate, request clarification, or hand off. To send a message to a human supervisor, set `to_job_definition_id` to "bce28608-b897-4808-affd-bc55f363d89c". Writes to the messages table via DB RPC with lineage injection.',
+  description: 'Sends a message to another job definition. Use this to escalate, request clarification, or hand off. To send a message to a human supervisor, set `to_job_definition_id` to "eb462084-3fc4-49da-b92d-a050fad82d63". Writes to the messages table via DB RPC with lineage injection.',
   inputSchema: sendMessageParams.shape,
 };
 
