@@ -16,7 +16,7 @@ export const createMemoryParams = z.object({
 export type CreateMemoryParams = z.infer<typeof createMemoryParams>;
 
 export const createMemorySchema = {
-    description: 'Creates a new, structured memory, generating a vector embedding. It automatically tags the memory with the current job and thread context.',
+    description: 'Creates a new, structured memory, generating a vector embedding. It automatically tags the memory with the current job and project context.',
     inputSchema: createMemoryParams.shape,
 };
 
@@ -41,7 +41,7 @@ export async function createMemory(params: CreateMemoryParams) {
                 content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: 'link_type is required when linked_memory_id is provided.' }, null, 2) }]
             };
         }
-        const { jobId, jobName, threadId } = getCurrentJobContext();
+        const { jobId, jobName, jobDefinitionId, projectRunId, projectDefinitionId } = getCurrentJobContext();
 
         let embedding: number[];
         try {
@@ -63,9 +63,10 @@ export async function createMemory(params: CreateMemoryParams) {
         // Construct the metadata object, merging automatic context with custom metadata
         const final_metadata = {
             ...custom_metadata,
-            source_job_id: jobId ?? null,
-            source_job_name: jobName ?? null,
-            thread_id: threadId ?? null,
+            job_id: jobId ?? null,
+            job_definition_id: jobDefinitionId ?? null,
+            project_run_id: projectRunId ?? null,
+            project_definition_id: projectDefinitionId ?? null,
         };
 
         const { data, error } = await supabase
@@ -77,9 +78,10 @@ export async function createMemory(params: CreateMemoryParams) {
                 linked_memory_id,
                 link_type,
                 // Also insert the context into the top-level columns for direct querying
-                source_job_id: jobId ?? null,
-                source_job_name: jobName ?? null,
-                thread_id: threadId ?? null,
+                job_id: jobId ?? null,
+                job_definition_id: jobDefinitionId ?? null,
+                project_run_id: projectRunId ?? null,
+                project_definition_id: projectDefinitionId ?? null,
             })
             .select('id')
             .single();

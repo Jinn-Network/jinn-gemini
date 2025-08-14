@@ -22,11 +22,17 @@ export function getCurrentJobContext(): JobContext {
 }
 
 // Back-compat helpers for tests: set/clear via env (still canonical path)
-export function setJobContext(jobId: string | null, jobName: string | null, threadId?: string | null) {
+export function setJobContext(jobId: string | null, jobName: string | null, threadId?: string | null, projectRunId?: string | null, projectDefinitionId?: string | null) {
   if (jobId) process.env.JINN_JOB_ID = jobId; else delete process.env.JINN_JOB_ID;
   if (jobName) process.env.JINN_JOB_NAME = jobName; else delete process.env.JINN_JOB_NAME;
   if (threadId !== undefined) {
     if (threadId) process.env.JINN_THREAD_ID = threadId; else delete process.env.JINN_THREAD_ID;
+  }
+  if (projectRunId !== undefined) {
+    if (projectRunId) process.env.JINN_PROJECT_RUN_ID = projectRunId; else delete process.env.JINN_PROJECT_RUN_ID;
+  }
+  if (projectDefinitionId !== undefined) {
+    if (projectDefinitionId) process.env.JINN_PROJECT_DEFINITION_ID = projectDefinitionId; else delete process.env.JINN_PROJECT_DEFINITION_ID;
   }
 }
 

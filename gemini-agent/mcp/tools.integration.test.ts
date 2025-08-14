@@ -52,85 +52,122 @@ describe('Database Tools Integration Tests', () => {
     });
   });
 
-  describe.skip('manage_artifact Tool', () => {
-    let testThreadId: string | null = null;
+  describe('manage_artifact Tool', () => {
+    let testProjectDefinitionId: string | null = null;
+    let testProjectRunId: string | null = null;
     let testArtifactId: string | null = null;
 
     beforeEach(async () => {
-      const { data, error } = await supabase.from('threads').insert({ title: 'Test Thread', objective: 'Test Objective' }).select().single();
-      expect(error).toBeNull();
-      testThreadId = data.id;
-      // Set the threadId in the mock context for artifact tests
-      mockJobContext.threadId = testThreadId;
-      setJobContext(mockJobContext.jobId, mockJobContext.jobName, mockJobContext.threadId);
+      // Create a project definition first
+      const { data: projectDef, error: projectDefError } = await supabase.from('project_definitions')
+        .insert({ name: `Test Project ${Date.now()}`, objective: 'Test Objective for artifact tests' })
+        .select().single();
+      expect(projectDefError).toBeNull();
+      testProjectDefinitionId = projectDef.id;
+      
+      // Create a project run
+      const { data: projectRun, error: projectRunError } = await supabase.from('project_runs')
+        .insert({ project_definition_id: testProjectDefinitionId, status: 'OPEN' })
+        .select().single();
+      expect(projectRunError).toBeNull();
+      testProjectRunId = projectRun.id;
+      
+      // Set the project context for artifact tests
+      mockJobContext.projectDefinitionId = testProjectDefinitionId;
+      mockJobContext.projectRunId = testProjectRunId;
+      setJobContext(mockJobContext.jobId, mockJobContext.jobName, mockJobContext.threadId, testProjectRunId, testProjectDefinitionId);
     });
 
     afterEach(async () => {
       if (testArtifactId) await supabase.from('artifacts').delete().match({ id: testArtifactId });
-      if (testThreadId) await supabase.from('threads').delete().match({ id: testThreadId });
+      if (testProjectRunId) await supabase.from('project_runs').delete().match({ id: testProjectRunId });
+      if (testProjectDefinitionId) await supabase.from('project_definitions').delete().match({ id: testProjectDefinitionId });
       testArtifactId = null;
-      testThreadId = null;
+      testProjectRunId = null;
+      testProjectDefinitionId = null;
     });
 
     it('should CREATE a new artifact and inject context', async () => {
-      const result = await manageArtifact({ operation: 'REPLACE', content: 'Initial content.' });
-      const resultData = JSON.parse(result.content[0].text);
-      testArtifactId = resultData.id;
+      const result = await manageArtifact({ operation: 'CREATE', content: 'Initial content.' });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta?.ok).toBe(true);
+      testArtifactId = parsed.data.id;
 
-      expect(resultData.thread_id).toBe(testThreadId);
-      expect(resultData.status).toBe('RAW');
-      // Verify context injection (null for tests)
-      expect(resultData.source_job_id).toBe(null);
-      expect(resultData.source_job_name).toBe(null);
+      expect(parsed.data.project_run_id).toBe(testProjectRunId);
+      expect(parsed.data.project_definition_id).toBe(testProjectDefinitionId);
+      expect(parsed.data.status).toBe('RAW');
+      expect(parsed.data.content).toBe('Initial content.');
     });
     
-    it('should fail to CREATE an artifact if context has no thread_id', async () => {
-        // Unset the threadId for this specific test
-        setJobContext(mockJobContext.jobId, mockJobContext.jobName, null);
-        const result = await manageArtifact({ operation: 'REPLACE', content: 'This should fail.' });
-        expect(result.content[0].text).toContain("Cannot create an artifact. The job has no thread context, and no 'thread_id' parameter was provided.");
+    it('should fail to CREATE an artifact if context has no project_run_id', async () => {
+        // Unset the project context for this specific test
+        mockJobContext.projectRunId = null;
+        setJobContext(mockJobContext.jobId, mockJobContext.jobName, mockJobContext.threadId, null, testProjectDefinitionId);
+        const result = await manageArtifact({ operation: 'CREATE', content: 'This should fail.' });
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.meta?.ok).toBe(false);
+        expect(parsed.meta?.message).toContain("project_run_id");
     });
 
     it('should UPDATE an artifact with REPLACE operation and inject context', async () => {
-        const { data: artifact } = await supabase.from('artifacts').insert({ thread_id: testThreadId!, content: 'Original' }).select().single();
+        const { data: artifact } = await supabase.from('artifacts').insert({ 
+          project_run_id: testProjectRunId!, 
+          project_definition_id: testProjectDefinitionId!,
+          content: 'Original' 
+        }).select().single();
         testArtifactId = artifact.id;
         const result = await manageArtifact({ artifact_id: testArtifactId!, operation: 'REPLACE', content: 'Replaced content.' });
-        const resultData = JSON.parse(result.content[0].text);
-        expect(resultData.content).toBe('Replaced content.');
-        // Verify context injection on update (null for tests)
-        expect(resultData.source_job_id).toBe(null);
-        expect(resultData.source_job_name).toBe(null);
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.meta?.ok).toBe(true);
+        expect(parsed.data.content).toBe('Replaced content.');
     });
 
     it('should UPDATE an artifact with APPEND operation', async () => {
-        const { data: artifact } = await supabase.from('artifacts').insert({ thread_id: testThreadId!, content: 'Original.' }).select().single();
+        const { data: artifact } = await supabase.from('artifacts').insert({ 
+          project_run_id: testProjectRunId!, 
+          project_definition_id: testProjectDefinitionId!,
+          content: 'Original.' 
+        }).select().single();
         testArtifactId = artifact.id;
         const result = await manageArtifact({ artifact_id: testArtifactId!, operation: 'APPEND', content: ' Appended.' });
-        const resultData = JSON.parse(result.content[0].text);
-        expect(resultData.content).toBe('Original. Appended.');
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.meta?.ok).toBe(true);
+        expect(parsed.data.content).toBe('Original. Appended.');
     });
 
     it('should UPDATE an artifact with PREPEND operation', async () => {
-        const { data: artifact } = await supabase.from('artifacts').insert({ thread_id: testThreadId!, content: 'Original.' }).select().single();
+        const { data: artifact } = await supabase.from('artifacts').insert({ 
+          project_run_id: testProjectRunId!, 
+          project_definition_id: testProjectDefinitionId!,
+          content: 'Original.' 
+        }).select().single();
         testArtifactId = artifact.id;
         const result = await manageArtifact({ artifact_id: testArtifactId!, operation: 'PREPEND', content: 'Prepended. ' });
-        const resultData = JSON.parse(result.content[0].text);
-        expect(resultData.content).toBe('Prepended. Original.');
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.meta?.ok).toBe(true);
+        expect(parsed.data.content).toBe('Prepended. Original.');
     });
     
     it('should UPDATE an artifact metadata', async () => {
-        const { data: artifact } = await supabase.from('artifacts').insert({ thread_id: testThreadId!, content: 'Content' }).select().single();
+        const { data: artifact } = await supabase.from('artifacts').insert({ 
+          project_run_id: testProjectRunId!, 
+          project_definition_id: testProjectDefinitionId!,
+          content: 'Content' 
+        }).select().single();
         testArtifactId = artifact.id;
         const result = await manageArtifact({ artifact_id: testArtifactId!, operation: 'REPLACE', content: 'Content', topic: 'new-topic', status: 'PROCESSED' });
-        const resultData = JSON.parse(result.content[0].text);
-        expect(resultData.topic).toBe('new-topic');
-        expect(resultData.status).toBe('PROCESSED');
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.meta?.ok).toBe(true);
+        expect(parsed.data.topic).toBe('new-topic');
+        expect(parsed.data.status).toBe('PROCESSED');
     });
 
     it('should fail to UPDATE a non-existent artifact', async () => {
         const nonExistentId = '00000000-0000-0000-0000-000000000000';
-         const result = await manageArtifact({ artifact_id: nonExistentId, operation: 'REPLACE', content: 'This should fail.' });
-        expect(result.content[0].text).toContain('Failed to update artifact');
+        const result = await manageArtifact({ artifact_id: nonExistentId, operation: 'REPLACE', content: 'This should fail.' });
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.meta?.ok).toBe(false);
+        expect(parsed.meta?.message).toContain('Artifact');
     });
   });
 
@@ -192,32 +229,55 @@ describe('Database Tools Integration Tests', () => {
 
   describe.skip('get_context_snapshot Tool', () => {
     // This test suite does not require context injection as it's a read-only tool
-    let testThreadId: string | null = null;
+    let testProjectDefinitionId: string | null = null;
+    let testProjectRunId: string | null = null;
     let testArtifactId: string | null = null;
     let testJobName: string | null = null;
 
     beforeEach(async () => {
-      const { data: thread } = await supabase.from('threads').insert({ 
-        title: 'Context Test Thread', 
-        objective: 'Test objective for context',
+      // Create a project definition first
+      const { data: projectDef, error: projectDefError } = await supabase.from('project_definitions').insert({ 
+        name: `Context Test Project ${Date.now()}`, 
+        objective: 'Test objective for context snapshot',
+        strategy: 'Test strategy with context data'
+      }).select().single();
+      expect(projectDefError).toBeNull();
+      testProjectDefinitionId = projectDef.id;
+      
+      // Create a project run
+      const { data: projectRun, error: projectRunError } = await supabase.from('project_runs').insert({ 
+        project_definition_id: testProjectDefinitionId!, 
+        status: 'OPEN',
         summary: { key: 'test summary data' }
       }).select().single();
-      testThreadId = thread.id;
+      expect(projectRunError).toBeNull();
+      testProjectRunId = projectRun.id;
 
       const { data: artifact } = await supabase.from('artifacts').insert({ 
-        thread_id: testThreadId!, 
+        project_run_id: testProjectRunId!, 
+        project_definition_id: testProjectDefinitionId!,
         content: 'This is a test artifact with some meaningful content that provides context about what this artifact contains and represents in the system.',
-        topic: 'test-topic',
-        source_job_name: 'test-job' // Using new column
+        topic: 'test-topic'
       }).select().single();
       testArtifactId = artifact.id;
 
       testJobName = 'test-context-job';
+      
+      // Create an event first (required for job_board)
+      const { data: event } = await supabase.from('events').insert({
+        event_type: 'test.context_setup',
+        payload: { test: 'context snapshot setup' },
+        project_run_id: testProjectRunId
+      }).select().single();
+      
       const { data: job, error: jobError } = await supabase.from('job_board').insert({
         job_name: testJobName,
         status: 'COMPLETED',
         output: 'Test job completed successfully',
-        input_prompt: 'Test prompt'
+        input: 'Test prompt',
+        source_event_id: event.id,
+        project_run_id: testProjectRunId!,
+        project_definition_id: testProjectDefinitionId!
       }).select().single();
       
       if (jobError || !job) {
@@ -230,21 +290,22 @@ describe('Database Tools Integration Tests', () => {
         worker_id: 'test-worker',
         status: 'COMPLETED',
         duration_ms: 5000,
-        total_tokens: 1500
+        total_tokens: 1500,
+        project_definition_id: testProjectDefinitionId
       });
 
       await supabase.from('messages').insert([
         {
-          source_job_name: 'test-sender',
-          to_job_definition_id: job.id, // Changed to to_job_definition_id
           content: 'Test message for specific job',
-          status: 'PENDING'
+          status: 'PENDING',
+          project_run_id: testProjectRunId!,
+          project_definition_id: testProjectDefinitionId!
         },
         {
-          source_job_name: 'other-sender', 
-          to_job_definition_id: 'other-job', // Changed to to_job_definition_id
-          content: 'Message for different job',
-          status: 'READ'
+          content: 'Message for different project',
+          status: 'READ',
+          project_run_id: testProjectRunId!,
+          project_definition_id: testProjectDefinitionId!
         }
       ]);
     });
@@ -253,41 +314,60 @@ describe('Database Tools Integration Tests', () => {
       await supabase.from('messages').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
       await supabase.from('job_reports').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
       await supabase.from('job_board').delete().eq('job_name', testJobName!);
+      await supabase.from('events').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
       if (testArtifactId) await supabase.from('artifacts').delete().match({ id: testArtifactId });
-      if (testThreadId) await supabase.from('threads').delete().match({ id: testThreadId });
-      testThreadId = null;
+      if (testProjectRunId) await supabase.from('project_runs').delete().match({ id: testProjectRunId });
+      if (testProjectDefinitionId) await supabase.from('project_definitions').delete().match({ id: testProjectDefinitionId });
+      testProjectDefinitionId = null;
+      testProjectRunId = null;
       testArtifactId = null;
       testJobName = null;
     });
 
     it('should return context snapshot with default time window (6 hours)', async () => {
       const result = await getContextSnapshot({});
+      console.log('DEBUG: getContextSnapshot result:', result.content[0].text);
       const parsed = JSON.parse(result.content[0].text);
       expect(Array.isArray(parsed.data)).toBe(true);
     });
   });
 
-  describe.skip('Memory Tools', () => {
+  describe('Memory Tools', () => {
     let testMemoryId1: string | null = null;
     let testMemoryId2: string | null = null;
-    let testThreadId: string | null = null;
+    let testProjectDefinitionId: string | null = null;
+    let testProjectRunId: string | null = null;
 
     beforeEach(async () => {
-        // Create a thread to get a threadId for the context
-        const { data, error } = await supabase.from('threads').insert({ title: 'Memory Test Thread', objective: 'Test Objective' }).select().single();
-        expect(error).toBeNull();
-        testThreadId = data.id;
-        mockJobContext.threadId = testThreadId;
-        setJobContext(mockJobContext.jobId, mockJobContext.jobName, mockJobContext.threadId);
+        // Create a project definition first
+        const { data: projectDef, error: projectDefError } = await supabase.from('project_definitions')
+          .insert({ name: `Memory Test Project ${Date.now()}`, objective: 'Test Objective for memory tests' })
+          .select().single();
+        expect(projectDefError).toBeNull();
+        testProjectDefinitionId = projectDef.id;
+        
+        // Create a project run
+        const { data: projectRun, error: projectRunError } = await supabase.from('project_runs')
+          .insert({ project_definition_id: testProjectDefinitionId, status: 'OPEN' })
+          .select().single();
+        expect(projectRunError).toBeNull();
+        testProjectRunId = projectRun.id;
+        
+        // Set the project context for memory tests
+        mockJobContext.projectDefinitionId = testProjectDefinitionId;
+        mockJobContext.projectRunId = testProjectRunId;
+        setJobContext(mockJobContext.jobId, mockJobContext.jobName, mockJobContext.threadId, testProjectRunId, testProjectDefinitionId);
     });
 
     afterEach(async () => {
       if (testMemoryId2) await supabase.from('memories').delete().eq('id', testMemoryId2);
       if (testMemoryId1) await supabase.from('memories').delete().eq('id', testMemoryId1);
-      if (testThreadId) await supabase.from('threads').delete().eq('id', testThreadId);
+      if (testProjectRunId) await supabase.from('project_runs').delete().eq('id', testProjectRunId);
+      if (testProjectDefinitionId) await supabase.from('project_definitions').delete().eq('id', testProjectDefinitionId);
       testMemoryId1 = null;
       testMemoryId2 = null;
-      testThreadId = null;
+      testProjectDefinitionId = null;
+      testProjectRunId = null;
     });
 
     it('should create a memory and inject context', async () => {
@@ -301,10 +381,9 @@ describe('Database Tools Integration Tests', () => {
       expect(error).toBeNull();
       expect(memory).toBeDefined();
       expect(memory.content).toBe(content);
-      // Verify context injection (null for tests)
-      expect(memory.source_job_id).toBe(null);
-      expect(memory.source_job_name).toBe(null);
-      expect(memory.thread_id).toBe(testThreadId);
+      // Verify project context injection
+      expect(memory.project_run_id).toBe(testProjectRunId);
+      expect(memory.project_definition_id).toBe(testProjectDefinitionId);
       expect(memory.metadata.type).toBe('fact');
     }, 10000);
 
