@@ -17,8 +17,9 @@ The core technologies are:
 
 The design of this system is guided by a few core principles:
 
--   **Universal Event Bus & Causal Tracing**: The system is built on a simple, powerful idea: every action is triggered by a persisted artifact. The `artifacts` table serves as a universal event bus for the entire system. This ensures that every job has a clear, non-nullable `source_artifact_id`, creating an unbroken, universally traceable causal chain for every operation. This is the foundation of the system's observability and metacognitive capabilities.
+-   **Universal Event Bus & Causal Tracing**: The system is built on a simple, powerful idea: every action is triggered by a persisted event. The `events` table serves as a universal event bus for the entire system. This ensures that every job has a clear, non-nullable `source_event_id`, creating an unbroken, universally traceable causal chain for every operation. This is the foundation of the system's observability and metacognitive capabilities.
 -   **Event-Driven & Database-Centric**: The database is the single source of truth. All state changes and actions are modeled as database events. Complex workflows and agent coordination are orchestrated through PostgreSQL triggers and functions, minimizing the need for complex application-level logic. If a task can be automated in the database, it should be.
+-   **Project-Based Organization**: Every job execution is tied to a project context through `project_run_id`, providing hierarchical organization and enabling complex multi-agent workflows with shared context and objectives.
 -   **Lean Workers, Smart Agents**: The `worker` is a simple, stateless executor. Its only job is to poll for work, execute it, and report back. The core intelligence resides in the `Agent` class, which handles LLM interaction, and the `metacog-mcp` tools, which provide the agent with its capabilities.
 -   **Tools Over Prompts for Dynamic Context**: Prompts should guide the agent's reasoning process and define its high-level goals. They should not be cluttered with dynamic information (like file lists, database schemas, or tool definitions). Instead, prompts should instruct the agent to *use tools* to discover that information from its environment. This makes prompts more stable, reusable, and focused on reasoning.
 -   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot`, `get_job_graph`, and `trace_lineage`, an agent can analyze operational data, understand system-level causal relationships, and autonomously create new jobs to improve itself.
@@ -56,7 +57,7 @@ jinn-gemini/
 
 The system consists of several key components that work together in a continuous loop.
 
-1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables and a sophisticated trigger system built around a universal event bus (`artifacts` table) to manage the entire workflow. Every dispatched job is explicitly linked to its triggering artifact via `source_artifact_id`, ensuring complete traceability. See `docs/documentation/DATABASE_MAP.md` for a detailed schema.
+1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables and a sophisticated trigger system built around a universal event bus (`events` table) to manage the entire workflow. Every dispatched job is explicitly linked to its triggering event via `source_event_id` and to its project context via `project_run_id`, ensuring complete traceability and organizational structure. See `docs/documentation/DATABASE_MAP.md` for a detailed schema.
 2.  **Worker (`worker/worker.ts`)**: A Node.js application that continuously polls the `job_board` for `PENDING` jobs. It is responsible for claiming a job, invoking the agent, and reporting the outcome.
 3.  **Agent (`gemini-agent/agent.ts`)**: The "brain" of the operation. It wraps the Gemini CLI and is responsible for:
     -   Dynamically generating job-specific settings to enable the correct set of tools.
@@ -69,7 +70,7 @@ The system consists of several key components that work together in a continuous
 ---
 
 ## Constants
-- Supbase project ID is: kmptsnmabdwgjyctowyz
+- Supabase project ID is: kmptsnmabdwgjyctowyz
 
 ---
 
@@ -77,14 +78,14 @@ The system consists of several key components that work together in a continuous
 
 The entire system operates on a continuous, event-driven cycle:
 
-1.  **Event (Artifact Creation)**: An event occurs in the system, which is always represented by the creation of a new artifact. This could be a system-level event (like `system.cron.tick`), a job status change (`system.job.status_changed`), or a declarative emission from another completed job.
-2.  **Dispatch**: The `universal_job_dispatcher` trigger, which listens exclusively for new rows in the `artifacts` table, finds all `jobs` definitions that subscribe to the new artifact's `topic`. It then creates corresponding `PENDING` entries in the `job_board`, critically populating each with the `source_artifact_id` of the artifact that caused it.
+1.  **Event Creation**: An event occurs in the system, which is always represented by the creation of a new record in the `events` table. This could be a system-level event (like `system.cron.tick`), a job status change (`job.completed`), or a declarative emission from another completed job.
+2.  **Dispatch**: The `universal_job_dispatcher` trigger, which listens exclusively for new rows in the `events` table, finds all `jobs` definitions that subscribe to the new event's `event_type` and match the event's payload filters. It then creates corresponding `PENDING` entries in the `job_board`, critically populating each with the `source_event_id` of the event that caused it and a `project_run_id` for organizational context.
 3.  **Claim**: A `worker` instance polls the `job_board`, finds the `PENDING` job, and atomically claims it by setting its status to `IN_PROGRESS` and assigning its own `worker_id`.
 4.  **Execution**: The worker invokes the `Agent`, passing it the prompt, context, and the list of `enabled_tools` for that specific job.
 5.  **Tool Setup**: The agent dynamically creates a `.gemini/settings.json` file that configures the Gemini CLI to use the `gemini-agent/mcp` server and exposes *only* the tools enabled for that job.
 6.  **LLM Interaction**: The agent spawns the Gemini CLI process. The LLM uses the provided tools as needed by making calls to the MCP server, which executes the corresponding database functions.
 7.  **Reporting**: After execution, the worker collects the final output and detailed telemetry (token counts, tool calls, duration, errors, warnings) from the Agent's integrated telemetry parser and creates a comprehensive record in the `job_reports` table with full visibility into job performance and issues.
-8.  **Completion**: The worker updates the job's status in the `job_board` to `COMPLETED` or `FAILED`, making the result available to the rest of the system and potentially triggering the next job in a chain by creating a new artifact.
+8.  **Completion**: The worker updates the job's status in the `job_board` to `COMPLETED` or `FAILED`, making the result available to the rest of the system and potentially triggering the next job in a chain by creating a new event. The job may also create artifacts in the `artifacts` table for data persistence and lineage tracking.
 
 ---
 
@@ -213,11 +214,11 @@ When the worker executes a job, it passes a job context to the MCP tool layer. T
   - `job_id`: The runtime job run ID from `job_board.id`.
   - `job_definition_id`: The definition/version ID from `jobs.id` that the run references.
   - `job_name`: The human‑readable job name from the job definition.
-  - `thread_id`: The resolved thread/project scope for the job, when available.
+  - `project_run_id`: The resolved project scope for the job, when available.
 
 - Auto‑injection behavior in tools:
-  - `create_record` automatically adds `source_job_id`, `source_job_name`, `thread_id`, and `job_definition_id` to the payload it sends to the database function. The database validates and writes only columns that exist on the target table.
-  - This ensures durable lineage across core tables (`artifacts`, `job_reports`, `memories`, `messages`, and `threads`) linking records back to the exact job definition and run that produced them.
+  - `create_record` automatically adds `source_job_id`, `source_job_name`, `project_run_id`, and `job_definition_id` to the payload it sends to the database function. The database validates and writes only columns that exist on the target table.
+  - This ensures durable lineage across core tables (`artifacts`, `job_reports`, `memories`, `messages`, and `project_runs`) linking records back to the exact job definition and run that produced them.
 
 ### Shared Context Manager for tool outputs
 All read/search tools now use a shared module to ensure consistent, token‑budgeted, single‑page responses with pagination and transparent metadata.
@@ -343,7 +344,7 @@ For post-execution analysis, you can inspect the `job_reports` table in the data
 When performing a complete system reset, the database should be cleared to this minimal state:
 
 ### **Tables with Data (Keep):**
-1. **`job_definitions`** - 2 rows:
+1. **`jobs`** - 2 rows:
    - `chief_orchestrator` - The main strategic orchestrator job
    - `human_supervisor` - Human oversight job
 
@@ -360,12 +361,16 @@ When performing a complete system reset, the database should be cleared to this 
 - `events` - No event history
 - `artifacts` - No artifacts
 - `memories` - No memories
-- `threads` - No threads
 
 ### **Reset Commands:**
 ```sql
 -- Clear all dynamic data while preserving core definitions
-TRUNCATE TABLE job_board, project_runs, job_reports, events, artifacts, memories, threads RESTART IDENTITY CASCADE;
+DELETE FROM job_board;
+DELETE FROM project_runs; 
+DELETE FROM job_reports;
+DELETE FROM events;
+DELETE FROM artifacts;
+DELETE FROM memories;
 
 -- Ensure the initial message is in PENDING state
 UPDATE messages SET status = 'PENDING' WHERE status != 'PENDING';
@@ -379,6 +384,7 @@ UPDATE messages SET status = 'PENDING' WHERE status != 'PENDING';
 ### **Important Notes:**
 - **Message Status**: After reset, ensure all messages have `status = 'PENDING'` to prevent them from appearing in red in the frontend
 - **Clean State**: The reset removes all execution history, providing a clean foundation for testing new workflows
+- **Project Context**: All new jobs will be created with proper project context through `project_run_id`
 
 ### **⚠️ CRITICAL WARNING - NEVER DO THIS:**
 **NEVER use `TRUNCATE TABLE` with `CASCADE` on tables that contain the core system definitions!** 

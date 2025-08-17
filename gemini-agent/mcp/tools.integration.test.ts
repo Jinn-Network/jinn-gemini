@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { supabase, setJobContext, clearJobContext } from './tools/shared/supabase.js';
-import { createJob, getContextSnapshot, listTools, manageArtifact, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, sendMessage, getProjectSummary, planProject } from './tools/index.js';
+import { createJob, listTools, manageArtifact, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, sendMessage, getProjectSummary, planProject } from './tools/index.js';
 import { serverTools } from './server.js';
 import { randomUUID } from 'crypto';
 
@@ -354,109 +354,7 @@ describe('Database Tools Integration Tests', () => {
     });
   });
 
-  describe.skip('get_context_snapshot Tool', () => {
-    // This test suite does not require context injection as it's a read-only tool
-    let testProjectDefinitionId: string | null = null;
-    let testProjectRunId: string | null = null;
-    let testArtifactId: string | null = null;
-    let testJobName: string | null = null;
-
-    beforeEach(async () => {
-      // Create a project definition first
-      const { data: projectDef, error: projectDefError } = await supabase.from('project_definitions').insert({ 
-        name: `Context Test Project ${Date.now()}`, 
-        objective: 'Test objective for context snapshot',
-        strategy: 'Test strategy with context data'
-      }).select().single();
-      expect(projectDefError).toBeNull();
-      testProjectDefinitionId = projectDef.id;
-      
-      // Create a project run
-      const { data: projectRun, error: projectRunError } = await supabase.from('project_runs').insert({ 
-        project_definition_id: testProjectDefinitionId!, 
-        status: 'OPEN',
-        summary: { key: 'test summary data' }
-      }).select().single();
-      expect(projectRunError).toBeNull();
-      testProjectRunId = projectRun.id;
-
-      const { data: artifact } = await supabase.from('artifacts').insert({ 
-        project_run_id: testProjectRunId!, 
-        project_definition_id: testProjectDefinitionId!,
-        content: 'This is a test artifact with some meaningful content that provides context about what this artifact contains and represents in the system.',
-        topic: 'test-topic'
-      }).select().single();
-      testArtifactId = artifact.id;
-
-      testJobName = 'test-context-job';
-      
-      // Create an event first (required for job_board)
-      const { data: event } = await supabase.from('events').insert({
-        event_type: 'test.context_setup',
-        payload: { test: 'context snapshot setup' },
-        project_run_id: testProjectRunId
-      }).select().single();
-      
-      const { data: job, error: jobError } = await supabase.from('job_board').insert({
-        job_name: testJobName,
-        status: 'COMPLETED',
-        output: 'Test job completed successfully',
-        input: 'Test prompt',
-        source_event_id: event.id,
-        project_run_id: testProjectRunId!,
-        project_definition_id: testProjectDefinitionId!
-      }).select().single();
-      
-      if (jobError || !job) {
-        console.error('Job creation failed:', jobError);
-        return;
-      }
-      
-      await supabase.from('job_reports').insert({
-        job_id: job.id,
-        worker_id: 'test-worker',
-        status: 'COMPLETED',
-        duration_ms: 5000,
-        total_tokens: 1500,
-        project_definition_id: testProjectDefinitionId
-      });
-
-      await supabase.from('messages').insert([
-        {
-          content: 'Test message for specific job',
-          status: 'PENDING',
-          project_run_id: testProjectRunId!,
-          project_definition_id: testProjectDefinitionId!
-        },
-        {
-          content: 'Message for different project',
-          status: 'READ',
-          project_run_id: testProjectRunId!,
-          project_definition_id: testProjectDefinitionId!
-        }
-      ]);
-    });
-
-    afterEach(async () => {
-      await supabase.from('messages').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
-      await supabase.from('job_reports').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
-      await supabase.from('job_board').delete().eq('job_name', testJobName!);
-      await supabase.from('events').delete().gte('created_at', new Date(Date.now() - 1000 * 60 * 60).toISOString());
-      if (testArtifactId) await supabase.from('artifacts').delete().match({ id: testArtifactId });
-      if (testProjectRunId) await supabase.from('project_runs').delete().match({ id: testProjectRunId });
-      if (testProjectDefinitionId) await supabase.from('project_definitions').delete().match({ id: testProjectDefinitionId });
-      testProjectDefinitionId = null;
-      testProjectRunId = null;
-      testArtifactId = null;
-      testJobName = null;
-    });
-
-    it('should return context snapshot with default time window (6 hours)', async () => {
-      const result = await getContextSnapshot({});
-      const parsed = JSON.parse(result.content[0].text);
-      expect(Array.isArray(parsed.data)).toBe(true);
-    });
-  });
+  // get_context_snapshot tool is not currently available, so tests are skipped
 
   describe('Memory Tools', () => {
     let testMemoryId1: string | null = null;
@@ -584,7 +482,16 @@ describe('Database Tools Integration Tests', () => {
         const result = await createRecord({ table_name: 'nonexistent_table' as any, data: { test: 'data' } });
         const parsed = JSON.parse(result.content[0].text);
         expect(parsed.meta?.ok).toBe(false);
-        expect(parsed.meta?.code).toBe('VALIDATION_ERROR');
+        expect(parsed.meta?.code).toBe('DB_ERROR');
+        expect(parsed.meta?.message).toContain('not allowed for create operations');
+      });
+
+      it('should provide schema help for database errors', async () => {
+        const result = await createRecord({ table_name: 'nonexistent_table' as any, data: { test: 'data' } });
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.meta?.ok).toBe(false);
+        expect(parsed.meta?.message).toContain('SCHEMA HELP');
+        expect(parsed.meta?.message).toContain('Available tables');
       });
     });
 
@@ -634,7 +541,16 @@ describe('Database Tools Integration Tests', () => {
         const result = await readRecords({ table_name: 'nonexistent_table' as any });
         const parsed = JSON.parse(result.content[0].text);
         expect(parsed.meta?.ok).toBe(false);
-        expect(parsed.meta?.code).toBe('VALIDATION_ERROR');
+        expect(parsed.meta?.code).toBe('DB_ERROR');
+        expect(parsed.meta?.message).toContain('not in the list of allowed tables');
+      });
+
+      it('should provide schema help for database errors', async () => {
+        const result = await readRecords({ table_name: 'nonexistent_table' as any });
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.meta?.ok).toBe(false);
+        expect(parsed.meta?.message).toContain('SCHEMA HELP');
+        expect(parsed.meta?.message).toContain('Available tables');
       });
       it('should read records with hours_back filter', async () => {
         const result = await readRecords({ 
