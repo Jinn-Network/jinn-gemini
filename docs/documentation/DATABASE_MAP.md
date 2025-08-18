@@ -10,23 +10,23 @@ For a completely up-to-date, live view of the schema, use the `get_schema` tool 
 ## Core Tables
 
 ### `artifacts`
-This is the heart of the system's event bus. Every event that can trigger a job—be it from a cron schedule, a job status change, or a declarative emission—is first persisted as a record in this table.
+This table stores artifacts created by job executions, providing data persistence and lineage tracking.
 
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | `id` | `uuid` | **Primary Key**. Unique identifier for the artifact. |
 | `project_run_id` | `uuid` | **Required**. Foreign key linking the artifact to a specific `project_runs.id`. |
-| `content` | `text` | The data payload of the event. Structure depends on the `topic`. |
+| `content` | `text` | The data payload of the artifact. Structure depends on the `topic`. |
 | `created_at` | `timestamptz` | Timestamp of creation. |
 | `status` | `text` | The processing status of the artifact (e.g., `RAW`, `PROCESSED`). |
 | `topic` | `text` | **Crucial for routing**. The topic of the artifact, used by the dispatcher to match jobs. |
 | `updated_at` | `timestamptz` | Timestamp of last update. |
 | `job_id` | `uuid` | Foreign key to `job_board.id`, indicating which job run created this artifact. |
-| `job_definition_id` | `uuid` | Foreign key to `jobs.id`, linking to the job definition. |
+| `parent_job_definition_id` | `uuid` | Foreign key to `jobs.id`, linking to the job definition that created this artifact. |
 | `source_event_id` | `uuid` | Foreign key to `events.id`, linking to the source event. |
 | `project_definition_id` | `uuid` | Foreign key to `project_definitions.id`. |
 
-**Indexes**: `idx_artifacts_job_definition_id`, `idx_artifacts_project_definition_id`, `idx_artifacts_source_event_id`
+**Indexes**: `idx_artifacts_parent_job_definition_id`, `idx_artifacts_project_definition_id`, `idx_artifacts_source_event_id`
 
 ### `events`
 The primary event store that drives the entire system. All system activities are captured as events with full lineage tracking.
@@ -65,8 +65,9 @@ This table contains the master definitions for every job the system can run. It 
 | `model_settings` | `jsonb` | **Required**. Configuration for the LLM model. |
 | `project_definition_id` | `uuid` | Foreign key to `project_definitions.id`. |
 | `project_run_id` | `uuid` | Foreign key to `project_runs.id`. |
+| `parent_job_definition_id` | `uuid` | Foreign key to `jobs.id` for delegation tracking. Links this job to a parent job that can delegate work to it. |
 
-**Indexes**: `idx_jobs_active_version`, `idx_jobs_created_at`, `idx_jobs_name`, `idx_jobs_project_definition_id`, `idx_jobs_project_run_id`, `idx_jobs_schedule_config_gin`
+**Indexes**: `idx_jobs_active_version`, `idx_jobs_created_at`, `idx_jobs_name`, `idx_jobs_project_definition_id`, `idx_jobs_project_run_id`, `idx_jobs_schedule_config_gin`, `idx_jobs_parent_job_definition_id`
 
 **Constraints**: `uq_job_version` (job_id, version)
 
@@ -82,7 +83,7 @@ This table is the runtime queue of jobs to be executed. The `worker` polls this 
 | `updated_at` | `timestamptz` | **Required**. Timestamp of last status update. |
 | `output` | `text` | The final output or result from a completed job. |
 | `in_progress_at` | `timestamptz` | When the job started processing. |
-| `job_definition_id` | `uuid` | Foreign key to `jobs.id`, linking to the exact version of the job that was dispatched. |
+| `parent_job_definition_id` | `uuid` | Foreign key to `jobs.id`, linking to the exact version of the job that was dispatched. |
 | `enabled_tools` | `text[]` | Array of tools available to this job run. |
 | `model_settings` | `jsonb` | Model configuration for this job run. |
 | `job_name` | `text` | The name of the job being run. |
@@ -93,8 +94,10 @@ This table is the runtime queue of jobs to be executed. The `worker` polls this 
 | `project_name` | `text` | The name of the project this job belongs to. |
 | `input` | `text` | The input prompt/context for the job. |
 | `inbox` | `jsonb` | **Required**. Messages waiting for this job. |
+| **`trigger_context`** | `jsonb` | **NEW**. Rich information about what triggered the job, including event details and resolved source data (artifacts, job outputs, etc.). |
+| **`delegated_work_context`** | `jsonb` | **NEW**. Comprehensive summaries of work delegated to child jobs, including outputs, artifacts, and job definition IDs for complete traceability. |
 
-**Indexes**: `idx_job_board_job_definition_id`, `idx_job_board_job_report_id`, `idx_job_board_project_definition_id`, `idx_job_board_source_event_id`
+**Indexes**: `idx_job_board_parent_job_definition_id`, `idx_job_board_job_report_id`, `idx_job_board_project_definition_id`, `idx_job_board_source_event_id`
 
 ### `job_reports`
 This table stores the comprehensive results and telemetry for every completed or failed job run. It's the primary source for debugging, analysis, and performance monitoring.
@@ -115,11 +118,11 @@ This table stores the comprehensive results and telemetry for every completed or
 | `error_message` | `text` | Any critical error message if the job failed. |
 | `error_type` | `text` | Classification of the error type. |
 | `raw_telemetry` | `jsonb` | **Required**. The complete, detailed telemetry data. |
-| `job_definition_id` | `uuid` | Foreign key to `jobs.id`. |
+| `parent_job_definition_id` | `uuid` | Foreign key to `jobs.id`. |
 | `project_definition_id` | `uuid` | Foreign key to `project_definitions.id`. |
 | `source_event_id` | `uuid` | Foreign key to `events.id`. |
 
-**Indexes**: `idx_job_reports_created_at`, `idx_job_reports_duration`, `idx_job_reports_error_type`, `idx_job_reports_job_definition_id`, `idx_job_reports_job_id`, `idx_job_reports_project_definition_id`, `idx_job_reports_source_event_id`, `idx_job_reports_status`, `idx_job_reports_worker_id`
+**Indexes**: `idx_job_reports_created_at`, `idx_job_reports_duration`, `idx_job_reports_error_type`, `idx_job_reports_parent_job_definition_id`, `idx_job_reports_job_id`, `idx_job_reports_project_definition_id`, `idx_job_reports_source_event_id`, `idx_job_reports_status`, `idx_job_reports_worker_id`
 
 ### `memories`
 This table stores semantic memories with vector embeddings for intelligent retrieval and context building.
@@ -136,11 +139,11 @@ This table stores semantic memories with vector embeddings for intelligent retri
 | `link_type` | `text` | Type of relationship with linked memory. |
 | `job_id` | `uuid` | Foreign key to `job_board.id`. |
 | `project_run_id` | `uuid` | Foreign key to `project_runs.id`. |
-| `job_definition_id` | `uuid` | Foreign key to `jobs.id`. |
+| `parent_job_definition_id` | `uuid` | Foreign key to `jobs.id`. |
 | `source_event_id` | `uuid` | Foreign key to `events.id`. |
 | `project_definition_id` | `uuid` | Foreign key to `project_definitions.id`. |
 
-**Indexes**: `idx_memories_job_definition_id`, `idx_memories_project_definition_id`, `idx_memories_source_event_id`
+**Indexes**: `idx_memories_parent_job_definition_id`, `idx_memories_project_definition_id`, `idx_memories_source_event_id`
 
 ### `messages`
 This table handles inter-job communication and messaging.
@@ -153,12 +156,12 @@ This table handles inter-job communication and messaging.
 | `status` | `text` | **Required**. Message status (`PENDING`, `READ`). |
 | `job_id` | `uuid` | Foreign key to `job_board.id`. |
 | `project_run_id` | `uuid` | Foreign key to `project_runs.id`. |
-| `job_definition_id` | `uuid` | Foreign key to `jobs.id`. |
+| `parent_job_definition_id` | `uuid` | Foreign key to `jobs.id`. |
 | `source_event_id` | `uuid` | Foreign key to `events.id`. |
 | `project_definition_id` | `uuid` | Foreign key to `project_definitions.id`. |
 | `to_job_definition_id` | `uuid` | Foreign key to `jobs.id` for the recipient. |
 
-**Indexes**: `idx_messages_job_definition_id`, `idx_messages_project_definition_id`, `idx_messages_source_event_id`
+**Indexes**: `idx_messages_parent_job_definition_id`, `idx_messages_project_definition_id`, `idx_messages_source_event_id`
 
 ### `project_definitions`
 This table stores the master definitions for projects, including objectives, strategies, and KPIs.
@@ -237,7 +240,7 @@ A lightweight view for efficient lineage queries that joins `job_board` and `eve
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | `job_run_id` | `uuid` | Job board ID |
-| `job_definition_id` | `uuid` | Job definition ID |
+| `parent_job_definition_id` | `uuid` | Job definition ID |
 | `job_name` | `text` | Job name |
 | `source_event_id` | `uuid` | Source event ID |
 | `project_run_id` | `uuid` | Project run ID |
@@ -249,7 +252,7 @@ A lightweight view for efficient lineage queries that joins `job_board` and `eve
 
 ### Core Event System
 - `emit_event()` - Creates events with full lineage tracking
-- `universal_job_dispatcher()` - Main trigger function for job dispatch
+- `universal_job_dispatcher_v2()` - **UPDATED**. Main trigger function for job dispatch with enhanced context management
 - `jsonb_matches_conditions()` - Filters events based on job criteria
 
 ### Job Management
@@ -280,7 +283,7 @@ Every table has triggers that automatically emit events on INSERT/UPDATE/DELETE:
 - `emit_system_state_events()` - Emits system state changes
 
 ### Job Dispatch Triggers
-- `universal_event_trigger` - Main trigger on events table that dispatches jobs
+- `universal_event_trigger` - **UPDATED**. Main trigger on events table that dispatches jobs using `universal_job_dispatcher_v2`
 - `handle_job_board_status_change()` - Handles job status changes
 - `handle_system_state_update()` - Handles system state updates
 
@@ -289,6 +292,28 @@ Every table has triggers that automatically emit events on INSERT/UPDATE/DELETE:
 - `set_in_progress_timestamp()` - Sets job start times
 - `populate_job_board_inbox()` - Populates job inboxes
 - `link_job_report_automatically()` - Links job reports
+
+## Enhanced Context Management
+
+The system now provides comprehensive operational context through two key mechanisms:
+
+### **Trigger Context (`trigger_context`)**
+Rich information about what triggered the job, including:
+- **Event Details**: Complete event information (ID, type, payload, source)
+- **Resolved Source Data**: Enhanced context from the event's source:
+  - **Artifacts**: Full content, topic, status, and metadata
+  - **Job Board Entries**: Job execution details, outputs, and related data
+  - **Events**: Parent event relationships and correlation IDs
+  - **Other Sources**: Table-specific data resolution
+
+### **Delegated Work Context (`delegated_work_context`)**
+Comprehensive summaries of work delegated to child jobs, including:
+- **Child Job Summaries**: ID, name, output, status, completion time
+- **Job Definition IDs**: Complete traceability back to job definitions
+- **Artifacts**: Related artifacts created by child jobs (with content truncation)
+- **Job Reports**: Performance metrics and final outputs
+- **Timing Filtering**: Only work completed after parent's last execution
+- **Statistical Overview**: Total counts, completion rates, and timing information
 
 ## Relationships
 The core causal flow of the system can be visualized through these relationships:
@@ -303,31 +328,33 @@ graph TD
 
     subgraph Dispatch
         B --> E[events Table];
-        E -- universal_event_trigger --> F{universal_job_dispatcher};
+        E -- universal_event_trigger --> F{universal_job_dispatcher_v2};
         G[jobs Table] -- schedule_config --> F;
     end
     
     subgraph Execution
-        F -- INSERT --> H[job_board Table];
+        F -- INSERT with Context --> H[job_board Table];
         H -- source_event_id --> E;
-        I[Worker] -- Polls --> H;
+        H -- trigger_context --> I[Rich Event Context];
+        H -- delegated_work_context --> J[Child Job Summaries];
+        K[Worker] -- Polls --> H;
     end
     
     subgraph Reporting
-        I -- Executes Job --> J{Create Report};
-        J --> K[job_reports Table];
-        K -- job_id --> H;
+        K -- Executes Job --> L{Create Report};
+        L --> M[job_reports Table];
+        M -- job_id --> H;
     end
     
     subgraph Artifacts
-        I -- Creates --> L[artifacts Table];
-        L -- source_event_id --> E;
+        K -- Creates --> N[artifacts Table];
+        N -- source_event_id --> E;
     end
     
     subgraph Projects
-        M[project_definitions] --> N[project_runs];
-        N --> H;
-        N --> L;
+        O[project_definitions] --> P[project_runs];
+        P --> H;
+        P --> N;
     end
 ```
 
@@ -339,6 +366,7 @@ graph TD
 - **`events.correlation_id`** - Event correlation tracking
 - **`jobs.schedule_config_gin`** - GIN index for JSONB schedule matching
 - **`memories.embedding`** - Vector similarity search
+- **`jobs.parent_job_definition_id`** - **NEW**. Delegation tracking index
 
 ### Key Constraints
 - **`job_board.source_event_id`** - NOT NULL, ensures universal causal tracing
@@ -359,3 +387,5 @@ The database uses several key extensions:
 - The system uses a sophisticated event-driven architecture with automatic job dispatch based on event patterns.
 - Vector embeddings enable semantic memory retrieval and context building.
 - Project definitions provide hierarchical organization and context for job execution.
+- **NEW**: Enhanced context management provides agents with comprehensive operational visibility through trigger context and delegated work context.
+- **NEW**: Consistent naming convention uses `parent_job_definition_id` across all tables for clear delegation tracking.

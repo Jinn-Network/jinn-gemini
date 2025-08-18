@@ -230,6 +230,8 @@ export class Agent {
       const universalTools = [
         'plan_project',
         'create_job',
+        'create_job_batch',
+        'update_job',
         'manage_artifact',
         'get_details',
         'send_message',

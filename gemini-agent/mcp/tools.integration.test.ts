@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { supabase, setJobContext, clearJobContext } from './tools/shared/supabase.js';
-import { createJob, listTools, manageArtifact, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, sendMessage, getProjectSummary, planProject } from './tools/index.js';
+import { createJob, createJobBatch, updateJob, listTools, manageArtifact, getDetails, createMemory, searchMemories, createRecord, readRecords, updateRecords, deleteRecords, sendMessage, getProjectSummary, planProject } from './tools/index.js';
 import { serverTools } from './server.js';
 import { randomUUID } from 'crypto';
 
@@ -348,9 +348,9 @@ describe('Database Tools Integration Tests', () => {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.meta?.ok).toBe(true);
       const resultData = parsed.data;
-      // After removing 6 tools and adding 1 (get_project_summary), we should have around 15 tools
-      expect(resultData.tools.length).toBeGreaterThanOrEqual(12);
-      expect(resultData.tools.length).toBeLessThanOrEqual(18);
+      // After removing 6 tools and adding 3 (get_project_summary, create_job_batch, update_job), we should have around 17 tools
+      expect(resultData.tools.length).toBeGreaterThanOrEqual(14);
+      expect(resultData.tools.length).toBeLessThanOrEqual(21);
     });
   });
 
@@ -851,6 +851,500 @@ describe('Database Tools Integration Tests', () => {
       // Should fail due to no project context, but at least the parameter was accepted
       const resultData = JSON.parse(result.content[0].text);
       expect(resultData.meta.ok).toBe(false);
+    });
+  });
+
+  describe('create_job_batch Tool', () => {
+    let testJobIds: string[] = [];
+    let testCallingJobDefId: string | null = null;
+
+    beforeAll(async () => {
+      // Create a "calling" job that will create the batch
+      const { data: callingJob, error } = await supabase
+        .from('jobs')
+        .insert({
+          job_id: randomUUID(),
+          version: 1,
+          name: `test-calling-job-${Date.now()}`,
+          prompt_content: 'calling job',
+          enabled_tools: [],
+          schedule_config: { trigger: 'manual' },
+          is_active: true,
+        })
+        .select('id')
+        .single();
+      expect(error).toBeNull();
+      testCallingJobDefId = callingJob!.id;
+    });
+
+    afterAll(async () => {
+      if (testCallingJobDefId) {
+        await supabase.from('jobs').delete().eq('id', testCallingJobDefId);
+      }
+    });
+
+    beforeEach(() => {
+      // Set the job context for each test
+      setJobContext(randomUUID(), 'test-calling-job', null, null, null, testCallingJobDefId);
+    });
+
+    afterEach(async () => {
+      // Clean up test jobs created during batch operations
+      if (testJobIds.length > 0) {
+        await supabase.from('jobs').delete().in('id', testJobIds);
+        testJobIds = [];
+      }
+    });
+
+    it('should create multiple jobs in parallel sequence', async () => {
+      const batchName = `parallel_batch_${Date.now()}`;
+      const job1Name = `${batchName}_job1`;
+      const job2Name = `${batchName}_job2`;
+      
+      const result = await createJobBatch({
+        name: batchName,
+        description: 'Test parallel job batch',
+        jobs: [
+          {
+            name: job1Name,
+            prompt_content: 'This is the first parallel job.',
+            enabled_tools: ['get_schema'],
+            description: 'First parallel job'
+          },
+          {
+            name: job2Name,
+            prompt_content: 'This is the second parallel job.',
+            enabled_tools: ['read_records'],
+            description: 'Second parallel job'
+          }
+        ],
+        sequence: 'parallel'
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      expect(parsed.data.created_jobs).toHaveLength(2);
+      testJobIds = parsed.data.created_jobs.map((job: any) => job.id);
+
+      // Verify both jobs were created correctly
+      const { data: jobs } = await supabase
+        .from('jobs')
+        .select('*')
+        .in('id', testJobIds)
+        .order('name');
+
+      expect(jobs).toHaveLength(2);
+      expect(jobs[0].name).toBe(job1Name);
+      expect(jobs[1].name).toBe(job2Name);
+      
+      // For parallel sequencing, both jobs should trigger when calling job completes
+      expect(jobs[0].schedule_config.trigger).toBe('on_new_event');
+      expect(jobs[0].schedule_config.filters.event_type).toBe('job.completed');
+      expect(jobs[0].schedule_config.filters.job_definition_id).toBe(testCallingJobDefId);
+      expect(jobs[1].schedule_config.trigger).toBe('on_new_event');
+      expect(jobs[1].schedule_config.filters.event_type).toBe('job.completed');
+      expect(jobs[1].schedule_config.filters.job_definition_id).toBe(testCallingJobDefId);
+    });
+
+    it('should create multiple jobs in serial sequence', async () => {
+      const batchName = `serial_batch_${Date.now()}`;
+      const job1Name = `${batchName}_job1`;
+      const job2Name = `${batchName}_job2`;
+      const job3Name = `${batchName}_job3`;
+      
+      const result = await createJobBatch({
+        name: batchName,
+        description: 'Test serial job batch',
+        jobs: [
+          {
+            name: job1Name,
+            prompt_content: 'This is the first serial job.',
+            enabled_tools: ['get_schema'],
+            description: 'First serial job'
+          },
+          {
+            name: job2Name,
+            prompt_content: 'This is the second serial job.',
+            enabled_tools: ['read_records'],
+            description: 'Second serial job'
+          },
+          {
+            name: job3Name,
+            prompt_content: 'This is the third serial job.',
+            enabled_tools: ['create_record'],
+            description: 'Third serial job'
+          }
+        ],
+        sequence: 'serial'
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      expect(parsed.data.created_jobs).toHaveLength(3);
+      testJobIds = parsed.data.created_jobs.map((job: any) => job.id);
+
+      // Verify jobs were created with proper chaining
+      const { data: jobs } = await supabase
+        .from('jobs')
+        .select('*')
+        .in('id', testJobIds)
+        .order('name');
+
+      expect(jobs).toHaveLength(3);
+      
+      // First job should trigger when calling job completes
+      expect(jobs[0].schedule_config).toEqual({
+        trigger: 'on_new_event',
+        filters: { 
+          event_type: 'job.completed',
+          job_definition_id: testCallingJobDefId
+        }
+      });
+      
+      // Second job should trigger on completion of first job
+      expect(jobs[1].schedule_config).toEqual({
+        trigger: 'on_new_event',
+        filters: { 
+          event_type: 'job.completed',
+          job_definition_id: jobs[0].id
+        }
+      });
+      
+      // Third job should trigger on completion of second job
+      expect(jobs[2].schedule_config).toEqual({
+        trigger: 'on_new_event',
+        filters: { 
+          event_type: 'job.completed',
+          job_definition_id: jobs[1].id
+        }
+      });
+    });
+
+    it('should fail when required parameters are missing', async () => {
+      const result = await createJobBatch({
+        // Missing required 'jobs' parameter
+        description: 'Test batch',
+        sequence: 'parallel'
+      } as any);
+      
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(false);
+      expect(parsed.meta.code).toBe('VALIDATION_ERROR');
+      expect(parsed.meta.message).toContain('Invalid parameters:');
+    });
+
+    it('should fail when jobs array is empty', async () => {
+      const result = await createJobBatch({
+        name: 'empty_batch',
+        description: 'Test empty batch',
+        jobs: [],
+        sequence: 'parallel'
+      });
+      
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(false);
+      expect(parsed.meta.code).toBe('VALIDATION_ERROR');
+      expect(parsed.meta.message).toContain('Array must contain at least 1 element(s)');
+    });
+
+    it('should handle individual job creation failures gracefully', async () => {
+      const result = await createJobBatch({
+        name: 'failing_batch',
+        description: 'Test batch with invalid job',
+        jobs: [
+          {
+            name: 'valid_job',
+            prompt_content: 'Valid job content',
+            enabled_tools: ['get_schema']
+          },
+          {
+            // Missing required name parameter
+            prompt_content: 'Invalid job content',
+            enabled_tools: ['read_records']
+          } as any
+        ],
+        sequence: 'parallel'
+      });
+      
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(false);
+      expect(parsed.meta.message).toContain('Required');
+    });
+  });
+
+  describe('update_job Tool', () => {
+    let originalJobId: string | null = null;
+    let originalJobUuid: string | null = null;
+    let updatedJobId: string | null = null;
+    let testCallingJobDefId: string | null = null;
+    let testProjectDefinitionId: string | null = null;
+    let testProjectRunId: string | null = null;
+
+    beforeAll(async () => {
+      // Create a "calling" job that will create the original jobs for updating
+      const { data: callingJob, error } = await supabase
+        .from('jobs')
+        .insert({
+          job_id: randomUUID(),
+          version: 1,
+          name: `test-update-calling-job-${Date.now()}`,
+          prompt_content: 'calling job for update tests',
+          enabled_tools: [],
+          schedule_config: { trigger: 'manual' },
+          is_active: true,
+        })
+        .select('id')
+        .single();
+      expect(error).toBeNull();
+      testCallingJobDefId = callingJob!.id;
+    });
+
+    afterAll(async () => {
+      if (testCallingJobDefId) {
+        await supabase.from('jobs').delete().eq('id', testCallingJobDefId);
+      }
+    });
+
+    beforeEach(async () => {
+      // Create project context for manual job creation
+      const { data: projectDef, error: projectDefError } = await supabase.from('project_definitions')
+        .insert({ name: `Update Test Project ${Date.now()}`, objective: 'Test Objective for update job tests' })
+        .select().single();
+      expect(projectDefError).toBeNull();
+      testProjectDefinitionId = projectDef.id;
+      
+      // Create a project run
+      const { data: projectRun, error: projectRunError } = await supabase.from('project_runs')
+        .insert({ project_definition_id: testProjectDefinitionId, status: 'OPEN' })
+        .select().single();
+      expect(projectRunError).toBeNull();
+      testProjectRunId = projectRun.id;
+      
+      // Set the job context with project context for job creation
+      setJobContext(randomUUID(), 'test-update-calling-job', null, testProjectRunId, testProjectDefinitionId, testCallingJobDefId);
+      // Create an original job to update
+      const jobName = `original_job_${Date.now()}`;
+      const createResult = await createJob({
+        name: jobName,
+        description: 'Original job description',
+        prompt_content: 'Original prompt content',
+        enabled_tools: ['get_schema'],
+        schedule_on: 'artifact.created'
+      });
+      
+      const createParsed = JSON.parse(createResult.content[0].text);
+      expect(createParsed.meta.ok).toBe(true);
+      originalJobId = createParsed.data.id;
+      originalJobUuid = createParsed.data.job_id;
+    });
+
+    afterEach(async () => {
+      // Clean up test jobs
+      if (updatedJobId) {
+        await supabase.from('jobs').delete().eq('id', updatedJobId);
+        updatedJobId = null;
+      }
+      if (originalJobId) {
+        await supabase.from('jobs').delete().eq('id', originalJobId);
+        originalJobId = null;
+        originalJobUuid = null;
+      }
+      // Clean up project context
+      if (testProjectRunId) {
+        await supabase.from('project_runs').delete().eq('id', testProjectRunId);
+        testProjectRunId = null;
+      }
+      if (testProjectDefinitionId) {
+        await supabase.from('project_definitions').delete().eq('id', testProjectDefinitionId);
+        testProjectDefinitionId = null;
+      }
+    });
+
+    it('should update job description and prompt content', async () => {
+      const result = await updateJob({
+        job_id: originalJobUuid!,
+        updates: {
+          description: 'Updated job description',
+          prompt_content: 'Updated prompt content'
+        }
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      expect(parsed.data.version).toBe(2);
+      expect(parsed.data.id).toBeDefined();
+      updatedJobId = parsed.data.id;
+
+      // Verify the original job is now inactive
+      const { data: originalJob } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('id', originalJobId!)
+        .single();
+      expect(originalJob.is_active).toBe(false);
+
+      // Verify the new job version
+      const { data: updatedJob } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('id', updatedJobId!)
+        .single();
+      expect(updatedJob.job_id).toBe(originalJobUuid);
+      expect(updatedJob.version).toBe(2);
+      expect(updatedJob.is_active).toBe(true);
+      expect(updatedJob.description).toBe('Updated job description');
+      expect(updatedJob.prompt_content).toBe('Updated prompt content');
+      expect(updatedJob.enabled_tools).toEqual(['get_schema']); // Should preserve original tools
+    });
+
+    it('should update enabled tools and schedule configuration', async () => {
+      const result = await updateJob({
+        job_id: originalJobUuid!,
+        updates: {
+          enabled_tools: ['read_records', 'create_record'],
+          schedule_on: 'artifact.created',
+          filter: { topic: 'analysis' }
+        }
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      updatedJobId = parsed.data.id;
+
+      // Verify the updated job
+      const { data: updatedJob } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('id', updatedJobId!)
+        .single();
+      
+      expect(updatedJob.enabled_tools).toEqual(['read_records', 'create_record']);
+      expect(updatedJob.schedule_config).toEqual({
+        trigger: 'on_new_event',
+        filters: { 
+          event_type: 'artifact.created',
+          topic: 'analysis'
+        }
+      });
+    });
+
+    it('should handle manual schedule configuration', async () => {
+      const result = await updateJob({
+        job_id: originalJobUuid!,
+        updates: {
+          schedule_on: 'manual'
+        }
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      updatedJobId = parsed.data.id;
+
+      const { data: updatedJob } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('id', updatedJobId!)
+        .single();
+      
+      expect(updatedJob.schedule_config).toEqual({ trigger: 'manual', filters: {} });
+    });
+
+    it('should fail when job_id does not exist', async () => {
+      const nonExistentJobId = '550e8400-e29b-41d4-a716-446655440999';
+      
+      const result = await updateJob({
+        job_id: nonExistentJobId,
+        updates: {
+          description: 'This should fail'
+        }
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(false);
+      expect(parsed.meta.code).toBe('JOB_NOT_FOUND');
+      expect(parsed.meta.message).toContain('No active job found');
+    });
+
+    it('should fail when no update parameters are provided', async () => {
+      const result = await updateJob({
+        job_id: originalJobUuid!,
+        updates: {
+          // Empty updates object
+        }
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(false);
+      expect(parsed.meta.code).toBe('VALIDATION_ERROR');
+      expect(parsed.meta.message).toContain('At least one field must be provided in updates object');
+    });
+
+    it('should preserve unchanged fields when updating', async () => {
+      // Get original job details
+      const { data: originalJob } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('id', originalJobId!)
+        .single();
+
+      // Update only the description
+      const result = await updateJob({
+        job_id: originalJobUuid!,
+        updates: {
+          description: 'Only description changed'
+        }
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      updatedJobId = parsed.data.id;
+
+      // Verify other fields were preserved
+      const { data: updatedJob } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('id', updatedJobId!)
+        .single();
+      
+      expect(updatedJob.name).toBe(originalJob.name);
+      expect(updatedJob.prompt_content).toBe(originalJob.prompt_content);
+      expect(updatedJob.enabled_tools).toEqual(originalJob.enabled_tools);
+      expect(updatedJob.schedule_config).toEqual(originalJob.schedule_config);
+      expect(updatedJob.description).toBe('Only description changed');
+    });
+
+    it('should handle complex filter objects', async () => {
+      const complexFilter = {
+        topic: 'analysis',
+        job_name: 'data_processor',
+        status: 'COMPLETED'
+      };
+
+      const result = await updateJob({
+        job_id: originalJobUuid!,
+        updates: {
+          schedule_on: 'job.completed',
+          filter: complexFilter
+        }
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      updatedJobId = parsed.data.id;
+
+      const { data: updatedJob } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('id', updatedJobId!)
+        .single();
+      
+      expect(updatedJob.schedule_config).toEqual({
+        trigger: 'on_new_event',
+        filters: { 
+          event_type: 'job.completed',
+          ...complexFilter
+        }
+      });
     });
   });
 });

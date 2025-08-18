@@ -71,12 +71,14 @@ interface JobBoard {
   input: string;
   enabled_tools: string[];
   model_settings: Record<string, any>;
-  job_definition_id: string;
+  parent_job_definition_id: string;
   job_name: string;
   project_run_id?: string | null;
   source_event_id?: string | null;
   project_definition_id?: string | null;
-  inbox?: Array<{ from?: string | null; content?: string | null }>; // recent messages snapshot
+  inbox?: Array<{ from?: string | null; content?: string | null }>;
+  trigger_context?: any;
+  delegated_work_context?: any;
 }
 
 // input is already fully constructed by dispatcher. No extra context resolution needed.
@@ -361,6 +363,63 @@ This usually means the agent provided arguments that don't match the tool's sche
 ${stderr ? `\nAdditional details: ${stderr.substring(0, 500)}` : ''}`;
 }
 
+const TOKEN_CONFIG = {
+    // Average characters per token
+    CHARS_PER_TOKEN: 4,
+    // Context size limits
+    TRIGGER_CONTEXT_MAX_TOKENS: 10000,
+    DELEGATED_WORK_CONTEXT_MAX_TOKENS: 15000,
+    // Truncation limits
+    ARTIFACT_CONTENT_TRUNCATE_CHARS: 1000,
+    JOB_OUTPUT_TRUNCATE_CHARS: 2000,
+};
+
+function estimateTokens(obj: any): number {
+    if (!obj) return 0;
+    const jsonString = JSON.stringify(obj);
+    return Math.ceil(jsonString.length / TOKEN_CONFIG.CHARS_PER_TOKEN);
+}
+
+function truncateString(str: string | null | undefined, maxLength: number): string {
+    if (!str || str.length <= maxLength) return str || '';
+    return str.substring(0, maxLength) + '... [truncated]';
+}
+
+function truncateContext(context: any, maxTokens: number, isDelegatedWork: boolean): any {
+    if (estimateTokens(context) <= maxTokens) return context;
+
+    if (isDelegatedWork && context.child_jobs) {
+        // Truncate delegated work context
+        const truncatedJobs = context.child_jobs.map((job: any) => {
+            return {
+                ...job,
+                output: truncateString(job.output, TOKEN_CONFIG.JOB_OUTPUT_TRUNCATE_CHARS),
+                artifacts: job.artifacts?.map((art: any) => ({
+                    ...art,
+                    content: truncateString(art.content, TOKEN_CONFIG.ARTIFACT_CONTENT_TRUNCATE_CHARS),
+                }))
+            };
+        });
+        return { ...context, child_jobs: truncatedJobs };
+    } else if (!isDelegatedWork && context.resolved_source) {
+        // Truncate trigger context
+        const source = context.resolved_source;
+        const truncatedSource = { ...source };
+        if (source.output) {
+            truncatedSource.output = truncateString(source.output, TOKEN_CONFIG.JOB_OUTPUT_TRUNCATE_CHARS);
+        }
+        if (source.related_artifacts) {
+            truncatedSource.related_artifacts = source.related_artifacts.map((art: any) => ({
+                ...art,
+                content: truncateString(art.content, TOKEN_CONFIG.ARTIFACT_CONTENT_TRUNCATE_CHARS),
+            }));
+        }
+        return { ...context, resolved_source: truncatedSource };
+    }
+
+    return context;
+}
+
 async function processPendingJobs(): Promise<boolean> {
     console.log(`Worker ${workerId} starting up, checking for ${targetJobId ? `targeted job ${targetJobId}` : 'pending jobs'}...`);
     if (debugMode) {
@@ -447,10 +506,22 @@ async function processPendingJobs(): Promise<boolean> {
             return `\n\n### Inbox (recent messages)\n${lines.join('\n')}`;
         };
 
+        const composeTriggerContextSection = (triggerContext?: any): string => {
+            if (!triggerContext) return '';
+            return `\n\n### Trigger Context\n${JSON.stringify(triggerContext, null, 2)}`;
+        };
+
+        const composeDelegatedWorkContextSection = (delegatedWorkContext?: any): string => {
+            if (!delegatedWorkContext) return '';
+            return `\n\n### Delegated Work Context\n${JSON.stringify(delegatedWorkContext, null, 2)}`;
+        };
+
         // Store the original prompt for potential retries
         const jobHeader = composeJobHeader(job);
         const inboxSection = composeInboxSection(job.inbox);
-        const rawPrompt = `${jobHeader}${job.input || ''}${inboxSection}`.trim();
+        const triggerContextSection = composeTriggerContextSection(truncateContext(job.trigger_context, TOKEN_CONFIG.TRIGGER_CONTEXT_MAX_TOKENS, false));
+        const delegatedWorkContextSection = composeDelegatedWorkContextSection(truncateContext(job.delegated_work_context, TOKEN_CONFIG.DELEGATED_WORK_CONTEXT_MAX_TOKENS, true));
+        const rawPrompt = `${jobHeader}${job.input || ''}${inboxSection}${triggerContextSection}${delegatedWorkContextSection}`.trim();
         
         // Sanitize the prompt to prevent shell interpretation issues
         const sanitizePrompt = (prompt: string): string => {
@@ -494,7 +565,7 @@ async function processPendingJobs(): Promise<boolean> {
 
         const jobContext = {
             jobId: job.id,
-            jobDefinitionId: job.job_definition_id,
+            jobDefinitionId: job.parent_job_definition_id,
             jobName: job.job_name,
             projectRunId: job.project_run_id ?? null,
             sourceEventId: job.source_event_id ?? null,

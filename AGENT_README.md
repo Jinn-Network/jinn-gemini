@@ -23,6 +23,7 @@ The design of this system is guided by a few core principles:
 -   **Lean Workers, Smart Agents**: The `worker` is a simple, stateless executor. Its only job is to poll for work, execute it, and report back. The core intelligence resides in the `Agent` class, which handles LLM interaction, and the `metacog-mcp` tools, which provide the agent with its capabilities.
 -   **Tools Over Prompts for Dynamic Context**: Prompts should guide the agent's reasoning process and define its high-level goals. They should not be cluttered with dynamic information (like file lists, database schemas, or tool definitions). Instead, prompts should instruct the agent to *use tools* to discover that information from its environment. This makes prompts more stable, reusable, and focused on reasoning.
 -   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot`, `get_job_graph`, and `trace_lineage`, an agent can analyze operational data, understand system-level causal relationships, and autonomously create new jobs to improve itself.
+-   **Rich Context Management**: The system provides agents with comprehensive operational context through two key mechanisms: `trigger_context` (rich information about what triggered the job) and `delegated_work_context` (comprehensive summaries of work delegated to child jobs). This ensures agents have the foundation they need to make informed decisions and take effective action.
 
 ---
 
@@ -57,8 +58,8 @@ jinn-gemini/
 
 The system consists of several key components that work together in a continuous loop.
 
-1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables and a sophisticated trigger system built around a universal event bus (`events` table) to manage the entire workflow. Every dispatched job is explicitly linked to its triggering event via `source_event_id` and to its project context via `project_run_id`, ensuring complete traceability and organizational structure. See `docs/documentation/DATABASE_MAP.md` for a detailed schema.
-2.  **Worker (`worker/worker.ts`)**: A Node.js application that continuously polls the `job_board` for `PENDING` jobs. It is responsible for claiming a job, invoking the agent, and reporting the outcome.
+1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables and a sophisticated trigger system built around a universal event bus (`events` table) to manage the entire workflow. Every dispatched job is explicitly linked to its triggering event via `source_event_id` and to its project context via `project_run_id`, ensuring complete traceability and organizational structure. The system now includes enhanced context management with `trigger_context` and `delegated_work_context` columns that provide agents with rich operational context. See `docs/documentation/DATABASE_MAP.md` for a detailed schema.
+2.  **Worker (`worker/worker.ts`)**: A Node.js application that continuously polls the `job_board` for `PENDING` jobs. It is responsible for claiming a job, invoking the agent, and reporting the outcome. The worker now constructs enhanced prompts that include both trigger context and delegated work context, ensuring agents have comprehensive visibility into their operational environment.
 3.  **Agent (`gemini-agent/agent.ts`)**: The "brain" of the operation. It wraps the Gemini CLI and is responsible for:
     -   Dynamically generating job-specific settings to enable the correct set of tools.
     -   Executing the LLM prompt with integrated telemetry collection.
@@ -79,13 +80,55 @@ The system consists of several key components that work together in a continuous
 The entire system operates on a continuous, event-driven cycle:
 
 1.  **Event Creation**: An event occurs in the system, which is always represented by the creation of a new record in the `events` table. This could be a system-level event (like `system.cron.tick`), a job status change (`job.completed`), or a declarative emission from another completed job.
-2.  **Dispatch**: The `universal_job_dispatcher` trigger, which listens exclusively for new rows in the `events` table, finds all `jobs` definitions that subscribe to the new event's `event_type` and match the event's payload filters. It then creates corresponding `PENDING` entries in the `job_board`, critically populating each with the `source_event_id` of the event that caused it and a `project_run_id` for organizational context.
+2.  **Dispatch**: The `universal_job_dispatcher_v2` trigger, which listens exclusively for new rows in the `events` table, finds all `jobs` definitions that subscribe to the new event's `event_type` and match the event's payload filters. It then creates corresponding `PENDING` entries in the `job_board`, critically populating each with:
+    - `source_event_id` of the event that caused it
+    - `project_run_id` for organizational context
+    - `trigger_context` with rich information about the triggering event and resolved source data
+    - `delegated_work_context` with comprehensive summaries of child jobs completed after the parent's last run
 3.  **Claim**: A `worker` instance polls the `job_board`, finds the `PENDING` job, and atomically claims it by setting its status to `IN_PROGRESS` and assigning its own `worker_id`.
-4.  **Execution**: The worker invokes the `Agent`, passing it the prompt, context, and the list of `enabled_tools` for that specific job.
+4.  **Execution**: The worker invokes the `Agent`, passing it an enhanced prompt that includes:
+    - The original job prompt and input
+    - Rich trigger context about what caused the job
+    - Comprehensive delegated work context about child job results
+    - Inbox messages and other operational context
 5.  **Tool Setup**: The agent dynamically creates a `.gemini/settings.json` file that configures the Gemini CLI to use the `gemini-agent/mcp` server and exposes *only* the tools enabled for that job.
 6.  **LLM Interaction**: The agent spawns the Gemini CLI process. The LLM uses the provided tools as needed by making calls to the MCP server, which executes the corresponding database functions.
 7.  **Reporting**: After execution, the worker collects the final output and detailed telemetry (token counts, tool calls, duration, errors, warnings) from the Agent's integrated telemetry parser and creates a comprehensive record in the `job_reports` table with full visibility into job performance and issues.
 8.  **Completion**: The worker updates the job's status in the `job_board` to `COMPLETED` or `FAILED`, making the result available to the rest of the system and potentially triggering the next job in a chain by creating a new event. The job may also create artifacts in the `artifacts` table for data persistence and lineage tracking.
+
+---
+
+## Enhanced Context Management
+
+The system now provides agents with comprehensive operational context through two key mechanisms:
+
+### **Trigger Context (`trigger_context`)**
+Rich information about what triggered the job, including:
+- **Event Details**: Complete event information (ID, type, payload, source)
+- **Resolved Source Data**: Enhanced context from the event's source:
+  - **Artifacts**: Full content, topic, status, and metadata
+  - **Job Board Entries**: Job execution details, outputs, and related data
+  - **Events**: Parent event relationships and correlation IDs
+  - **Other Sources**: Table-specific data resolution
+
+### **Delegated Work Context (`delegated_work_context`)**
+Comprehensive summaries of work delegated to child jobs, including:
+- **Child Job Summaries**: ID, name, output, status, completion time
+- **Job Definition IDs**: Complete traceability back to job definitions
+- **Artifacts**: Related artifacts created by child jobs (with content truncation)
+- **Job Reports**: Performance metrics and final outputs
+- **Timing Filtering**: Only work completed after parent's last execution
+- **Statistical Overview**: Total counts, completion rates, and timing information
+
+### **Context Integration in Worker**
+The worker now constructs enhanced prompts that preserve all existing elements while adding:
+- **Job Header**: Basic job identification and context
+- **Input**: Original job prompt and instructions
+- **Inbox**: Recent messages and communications
+- **Trigger Context**: Rich information about what caused the job
+- **Delegated Work Context**: Comprehensive summaries of delegated work
+
+This ensures agents have the foundation they need to make informed decisions and take effective action without losing any existing functionality.
 
 ---
 
