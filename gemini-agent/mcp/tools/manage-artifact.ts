@@ -180,7 +180,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
                 topic: topic || null,
                 status: status || 'RAW',
                 job_id: jobId,
-                job_definition_id: jobDefinitionId
+                parent_job_definition_id: jobDefinitionId
             };
 
             const { data: createdArtifact, error: createError } = await supabase

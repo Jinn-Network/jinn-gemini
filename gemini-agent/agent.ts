@@ -49,6 +49,19 @@ export class Agent {
   private settingsPath: string;
   private agentRoot: string;
   private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
+  
+  // Define universal tools once as a class property
+  private readonly universalTools = [
+    'get_details',
+    'manage_artifact',
+    'send_message',
+    'create_job_batch',
+    'list_tools',
+    'update_job',
+    'create_job',
+    'create_memory',
+    'search_memories'
+  ];
 
   constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {
     this.model = model;
@@ -205,7 +218,8 @@ export class Agent {
   }
 
   private generateJobSpecificSettings(): void {
-    if (this.enabledTools.length === 0) return;
+    // Always generate settings if we have universal tools, even if no job-specific tools
+    if (this.enabledTools.length === 0 && this.universalTools.length === 0) return;
     try {
       const templateFileName = process.env.USE_TSX_MCP === '1'
         ? 'settings.template.dev.json'
@@ -226,21 +240,9 @@ export class Agent {
       // UNIVERSAL TOOLS: Every agent automatically gets these core capabilities
       // regardless of what's specified in their job definition. This ensures
       // all agents can plan projects, create jobs, manage artifacts, etc.
-      // Define universal tools that every agent gets
-      const universalTools = [
-        'plan_project',
-        'create_job',
-        'create_job_batch',
-        'update_job',
-        'manage_artifact',
-        'get_details',
-        'send_message',
-        'search_memories',
-        'get_project_summary'
-      ];
 
       // Merge universal tools with job-specific tools, removing duplicates
-      const allTools = [...universalTools, ...this.enabledTools];
+      const allTools = [...this.universalTools, ...this.enabledTools];
       const uniqueTools = [...new Set(allTools)];
 
       // Include the merged tool set (universal + job-specific)
@@ -272,7 +274,7 @@ export class Agent {
 
       writeFileSync(this.settingsPath, JSON.stringify(templateSettings, null, 2));
       console.log(`Generated job-specific settings for server '${serverName}' with tools: ${uniqueTools.join(', ')}`);
-      console.log(`  - Universal tools: ${universalTools.join(', ')}`);
+      console.log(`  - Universal tools: ${this.universalTools.join(', ')}`);
       console.log(`  - Job-specific tools: ${this.enabledTools.join(', ') || 'none'}`);
       console.log(`Excluded native tools: ${nativeToolsToExclude.join(', ')}`);
     } catch (error) {
@@ -283,7 +285,8 @@ export class Agent {
   }
 
   private cleanupJobSpecificSettings(): void {
-    if (this.enabledTools.length === 0) return;
+    // Always cleanup if we have universal tools, even if no job-specific tools
+    if (this.enabledTools.length === 0 && this.universalTools.length === 0) return;
     try {
       unlinkSync(this.settingsPath);
       console.log('Cleaned up job-specific settings.');

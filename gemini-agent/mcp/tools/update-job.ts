@@ -3,18 +3,18 @@ import { z } from 'zod';
 import { getCurrentJobContext } from './shared/context.js';
 
 export const UpdateJobInputSchema = z.object({
-  job_id: z.string().uuid().describe('The stable job_id (UUID) of the job to update. This creates a new version.'),
+  job_id: z.string().uuid().describe('The stable job_id (UUID) of the job to update. This identifies the job across all versions.'),
   updates: z.object({
     description: z.string().optional().describe('Updated description of the job purpose'),
-    prompt_content: z.string().optional().describe('Updated prompt content for the job'),
-    enabled_tools: z.array(z.string()).optional().describe('Updated array of tool names this job can use'),
-    schedule_on: z.string().optional().describe('Updated schedule configuration - same format as create_job'),
-    filter: z.record(z.string()).optional().describe('Updated filter configuration for event routing'),
-    project_definition_id: z.string().uuid().optional().describe('Updated project definition link'),
+    prompt_content: z.string().optional().describe('Updated prompt content for the job - the core instructions the job will follow'),
+    enabled_tools: z.array(z.string()).optional().describe('Updated array of tool names this job can use (replaces previous tool list)'),
+    schedule_on: z.string().optional().describe('Updated schedule trigger: "manual", "after_this_job", "job.completed", or event type like "artifact.created"'),
+    filter: z.record(z.string()).optional().describe('Updated filter configuration for event routing (key-value pairs for event matching)'),
+    project_definition_id: z.string().uuid().optional().describe('Updated project definition link for organizational grouping'),
   }).refine(
     (data) => Object.keys(data).length > 0,
     { message: 'At least one field must be provided in updates object' }
-  ).describe('Object containing the fields to update. At least one field is required.'),
+  ).describe('Object containing the fields to update. At least one field is required. Unchanged fields will be preserved from the current version.'),
 });
 
 export type UpdateJobParams = z.infer<typeof UpdateJobInputSchema>;
@@ -30,7 +30,12 @@ This operation:
 
 Only the fields specified in the 'updates' object will be changed. All other fields (name, enabled_tools, etc.) will be copied from the current active version.
 
-The schedule_on and filter parameters work the same as in create_job, with the same auto-binding and normalization logic.
+SCHEDULE CONFIGURATION:
+- schedule_on accepts: 'manual', 'after_this_job', 'job.completed', or any event type (e.g., 'artifact.created')
+- 'after_this_job' auto-binds to the current job's completion
+- 'job.completed' with custom filters allows precise event targeting
+- 'manual' creates jobs that must be explicitly dispatched
+- Other event types create subscriptions to system events
 
 Returns: Complete information about the newly created job version, including the new version number and all job metadata.`,
   inputSchema: UpdateJobInputSchema.shape,
@@ -103,10 +108,10 @@ export async function updateJob(params: UpdateJobParams) {
     // Process schedule configuration if provided
     let schedule_config = currentJob.schedule_config;
     if (updates.schedule_on !== undefined || updates.filter !== undefined) {
-      // Normalize the schedule configuration using similar logic to create_job
+      // Normalize the schedule configuration using the same logic as create_job
       const { jobDefinitionId: currentJobDefinitionId } = getCurrentJobContext();
       
-      const schedule_on = updates.schedule_on || 'after_this_job';
+      const schedule_on = updates.schedule_on;
       const filter = updates.filter || {};
 
       if (schedule_on === 'manual') {
@@ -115,8 +120,8 @@ export async function updateJob(params: UpdateJobParams) {
         // Only auto-bind when explicitly using 'after_this_job' 
         const baseFilters: any = { event_type: 'job.completed' };
         if (currentJobDefinitionId) {
-          filter.job_definition_id = currentJobDefinitionId;
-          schedule_config = { trigger: 'on_new_event', filters: { ...baseFilters, ...filter } };
+          const updatedFilter = { ...filter, job_definition_id: currentJobDefinitionId };
+          schedule_config = { trigger: 'on_new_event', filters: { ...baseFilters, ...updatedFilter } };
         } else {
           schedule_config = { trigger: 'manual', filters: {} };
         }
@@ -124,9 +129,16 @@ export async function updateJob(params: UpdateJobParams) {
         // For explicit 'job.completed', don't auto-bind - use the filter as provided
         const baseFilters: any = { event_type: 'job.completed' };
         schedule_config = { trigger: 'on_new_event', filters: { ...baseFilters, ...filter } };
-      } else {
-        // Generic event subscription
-        schedule_config = { trigger: 'on_new_event', filters: { event_type: schedule_on, ...filter } };
+      } else if (schedule_on) {
+        // Generic event subscription with the provided event type
+        const baseFilters: any = { event_type: schedule_on };
+        schedule_config = { trigger: 'on_new_event', filters: { ...baseFilters, ...filter } };
+      } else if (updates.filter !== undefined) {
+        // Only filter was updated, preserve existing schedule_on behavior but update filters
+        if (schedule_config?.trigger === 'on_new_event' && schedule_config?.filters?.event_type) {
+          const baseFilters: any = { event_type: schedule_config.filters.event_type };
+          schedule_config = { trigger: 'on_new_event', filters: { ...baseFilters, ...filter } };
+        }
       }
     }
 

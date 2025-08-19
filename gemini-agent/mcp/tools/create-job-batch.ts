@@ -12,9 +12,9 @@ const JobDefinitionSchema = z.object({
 });
 
 export const CreateJobBatchInputSchema = z.object({
-  jobs: z.array(JobDefinitionSchema).min(1).describe('Array of job definitions to create'),
-  sequence: z.enum(['parallel', 'serial']).describe('Whether jobs should run in parallel (all triggered by current job completion) or serial (chained one after another)'),
-  project_definition_id: z.string().uuid().optional().describe('Optional. Link all job definitions to a project definition.'),
+  jobs: z.array(JobDefinitionSchema).min(1).describe('Array of job definitions to create. Each job needs name, prompt_content, and enabled_tools.'),
+  sequence: z.enum(['parallel', 'serial']).describe('Execution sequence: "parallel" for simultaneous execution (independent work), "serial" for sequential execution (dependent workflow)'),
+  project_definition_id: z.string().uuid().optional().describe('Optional. Link all job definitions to a specific project definition for organizational grouping.'),
 });
 
 export type CreateJobBatchParams = z.infer<typeof CreateJobBatchInputSchema>;
@@ -24,10 +24,18 @@ export const createJobBatchSchema = {
   description: `Creates multiple job definitions with specified sequencing (parallel or serial execution).
 
 PARALLEL SEQUENCING: All jobs are triggered when the current job completes. They run simultaneously.
+- Use cases: Independent work streams (multiple marketing campaigns, different feature tracks)
+- Performance: Faster overall completion since jobs run concurrently
+- Example: Social media campaign, email campaign, and content creation can all run in parallel
 
 SERIAL SEQUENCING: Jobs are chained so Job 1 triggers when current job completes, Job 2 triggers when Job 1 completes, Job 3 triggers when Job 2 completes, etc.
+- Use cases: Dependent workflows where later jobs need outputs from earlier ones
+- Performance: Sequential execution ensures proper dependency management
+- Example: Data collection → analysis → reporting must run in order
 
 This tool leverages the existing job creation infrastructure and event-driven scheduling system. Each job inherits project context from the current job execution.
+
+Note: For fine-grained control over individual job triggers and scheduling, use the update_job tool after batch creation.
 
 Returns: Array of complete job information for all created jobs, including job_id (shared UUID), version, schedule_config, and execution metadata.`,
   inputSchema: CreateJobBatchInputSchema.shape,
@@ -90,15 +98,15 @@ export async function createJobBatch(params: CreateJobBatchParams) {
       if (sequence === 'parallel') {
         // All jobs trigger when current job completes
         scheduleConfig = 'job.completed';
-        filterConfig = { job_definition_id: currentJobDefinitionId };
+        filterConfig = { parent_job_definition_id: currentJobDefinitionId };
       } else {
         // Serial: first job triggers on current job, subsequent jobs chain
         if (i === 0) {
           scheduleConfig = 'job.completed';
-          filterConfig = { job_definition_id: currentJobDefinitionId };
+          filterConfig = { parent_job_definition_id: currentJobDefinitionId };
         } else {
           scheduleConfig = 'job.completed';
-          filterConfig = { job_definition_id: previousJobId };
+          filterConfig = { parent_job_definition_id: previousJobId };
         }
       }
 
@@ -177,28 +185,13 @@ export async function createJobBatch(params: CreateJobBatchParams) {
       };
     }
 
+    const jobIds = createdJobs.map(job => job.id);
+    const successMessage = `Successfully created ${createdJobs.length} jobs with ${sequence} sequencing. Job IDs: [${jobIds.join(', ')}]`;
+
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          data: {
-            created_jobs: createdJobs,
-            total_created: createdJobs.length,
-            sequence_type: sequence,
-            batch_summary: {
-              first_job: createdJobs[0]?.name,
-              last_job: createdJobs[createdJobs.length - 1]?.name,
-              execution_pattern: sequence === 'parallel' 
-                ? `All ${createdJobs.length} jobs will execute when current job completes`
-                : `Jobs will execute in chain: ${createdJobs.map((j, idx) => `${idx + 1}.${j.name}`).join(' → ')}`
-            }
-          },
-          meta: { 
-            ok: true,
-            code: 'BATCH_SUCCESS',
-            message: `Successfully created ${createdJobs.length} jobs with ${sequence} sequencing`
-          }
-        }, null, 2)
+        text: successMessage
       }]
     };
 

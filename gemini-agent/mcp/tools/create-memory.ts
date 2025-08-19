@@ -64,7 +64,7 @@ export async function createMemory(params: CreateMemoryParams) {
         const final_metadata = {
             ...custom_metadata,
             job_id: jobId ?? null,
-            job_definition_id: jobDefinitionId ?? null,
+            parent_job_definition_id: jobDefinitionId ?? null,
             project_run_id: projectRunId ?? null,
             project_definition_id: projectDefinitionId ?? null,
         };
@@ -79,7 +79,7 @@ export async function createMemory(params: CreateMemoryParams) {
                 link_type,
                 // Also insert the context into the top-level columns for direct querying
                 job_id: jobId ?? null,
-                job_definition_id: jobDefinitionId ?? null,
+                parent_job_definition_id: jobDefinitionId ?? null,
                 project_run_id: projectRunId ?? null,
                 project_definition_id: projectDefinitionId ?? null,
             })

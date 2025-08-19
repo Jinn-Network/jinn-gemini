@@ -292,8 +292,7 @@ export async function createJob(params: CreateJobParams) {
                 prompt_content,
                 enabled_tools: enabled_tools || [],
                 schedule_config,
-                is_active,
-                project_definition_id: project_definition_id || null
+                is_active
             })
             .select()
             .single();
@@ -376,7 +375,7 @@ export async function createJob(params: CreateJobParams) {
                 const { error: jobBoardError } = await supabase
                     .from('job_board')
                     .insert({
-                        job_definition_id: newJob.id,
+                        parent_job_definition_id: newJob.id,
                         job_name: newJob.name,
                         enabled_tools: newJob.enabled_tools || [],
                         model_settings: newJob.model_settings || {},
@@ -436,7 +435,6 @@ export async function createJob(params: CreateJobParams) {
             schedule_config: newJob.schedule_config,
             is_active: newJob.is_active,
             created_at: newJob.created_at,
-            project_definition_id: newJob.project_definition_id,
             auto_dispatched: schedule_config.trigger === 'manual'
         };
 

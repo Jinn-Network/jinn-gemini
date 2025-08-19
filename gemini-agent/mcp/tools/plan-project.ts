@@ -55,7 +55,7 @@ export async function planProject(params: z.infer<typeof planProjectParams>) {
     if (jobId) {
       const { data: jb, error: jbErr } = await supabase
         .from('job_board')
-        .select('job_definition_id')
+        .select('parent_job_definition_id')
         .eq('id', jobId)
         .maybeSingle();
       if (jbErr) {
@@ -63,7 +63,7 @@ export async function planProject(params: z.infer<typeof planProjectParams>) {
           content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error checking job board: ${jbErr.message}` } }) }]
         };
       }
-      if (jb && (jb as any).job_definition_id) ownerJobDefinitionId = (jb as any).job_definition_id as string;
+      if (jb && (jb as any).parent_job_definition_id) ownerJobDefinitionId = (jb as any).parent_job_definition_id as string;
     }
 
     // Fallback: use jobDefinitionId from context if available

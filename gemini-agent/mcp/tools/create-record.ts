@@ -80,11 +80,10 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
     const enrichedData = tablesWithLineage.has(table_name as string)
       ? {
           ...data,
-          source_job_id: jobId,
-          source_job_name: jobName,
+          job_id: jobId,                  // ✅ CORRECT field name for messages table
           project_run_id: projectRunId,
           source_event_id: sourceEventId,
-          job_definition_id: jobDefinitionId,
+          parent_job_definition_id: jobDefinitionId,
         }
       : data;
 

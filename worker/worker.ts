@@ -160,10 +160,13 @@ async function collectAndStoreJobReport(context: {
       data: report
     });
 
-    if (reportResult.content?.[0]?.text?.startsWith('Error')) {
-      console.error(`Failed to store job report: ${reportResult.content[0].text}`);
+    // New standardized tool response handling
+    const parsed = parseToolResponse(reportResult);
+    if (!parsed.success) {
+      console.error(`Failed to store job report for ${context.job.id}: ${parsed.error || 'Unknown error'}`);
     } else {
-      console.log(`Job report stored successfully for ${context.job.id} (automatic linking via DB trigger)`);
+      const newId = parsed.data?.id ?? parsed.data?.data?.id;
+      console.log(`Job report stored successfully for ${context.job.id}${newId ? ` (report_id=${newId})` : ''}`);
     }
   } catch (error) {
     console.error(`Critical error storing job report for ${context.job.id}:`, error);
@@ -385,6 +388,57 @@ function truncateString(str: string | null | undefined, maxLength: number): stri
     return str.substring(0, maxLength) + '... [truncated]';
 }
 
+// Safer JSON stringification for prompts: trims large fields and caps overall size
+function stringifyForPrompt(obj: any, options?: { maxChars?: number; largeFieldTruncate?: number }) : string {
+    const maxChars = options?.maxChars ?? 12000;
+    const largeFieldTruncate = options?.largeFieldTruncate ?? 500;
+
+    const replacer = (_key: string, value: any) => {
+        if (typeof value === 'string') {
+            // Aggressively trim very large strings
+            return value.length > 2000 ? value.slice(0, 2000) + '... [truncated]' : value;
+        }
+        return value;
+    };
+
+    try {
+        // Shallow clone and trim heavy fields by name
+        const redact = (input: any): any => {
+            if (Array.isArray(input)) {
+                return input.map(redact);
+            }
+            if (input && typeof input === 'object') {
+                const out: any = {};
+                for (const [k, v] of Object.entries(input)) {
+                    if (k === 'content' || k === 'output') {
+                        if (typeof v === 'string') out[k] = truncateString(v, largeFieldTruncate);
+                        else out[k] = v;
+                    } else {
+                        out[k] = redact(v as any);
+                    }
+                }
+                return out;
+            }
+            return input;
+        };
+
+        const redacted = redact(obj);
+        let json = JSON.stringify(redacted, replacer, 2);
+        if (json.length > maxChars) {
+            json = json.slice(0, maxChars) + '\n... [truncated]';
+        }
+        return json;
+    } catch {
+        // Fallback to best-effort
+        try {
+            const json = JSON.stringify(obj);
+            return json.length > maxChars ? json.slice(0, maxChars) + '\n... [truncated]' : json;
+        } catch {
+            return '[unserializable json]';
+        }
+    }
+}
+
 function truncateContext(context: any, maxTokens: number, isDelegatedWork: boolean): any {
     if (estimateTokens(context) <= maxTokens) return context;
 
@@ -508,12 +562,14 @@ async function processPendingJobs(): Promise<boolean> {
 
         const composeTriggerContextSection = (triggerContext?: any): string => {
             if (!triggerContext) return '';
-            return `\n\n### Trigger Context\n${JSON.stringify(triggerContext, null, 2)}`;
+            const json = stringifyForPrompt(triggerContext, { maxChars: 10000, largeFieldTruncate: 400 });
+            return `\n\n### Trigger Context\n\n\`\`\`json\n${json}\n\`\`\``;
         };
 
         const composeDelegatedWorkContextSection = (delegatedWorkContext?: any): string => {
             if (!delegatedWorkContext) return '';
-            return `\n\n### Delegated Work Context\n${JSON.stringify(delegatedWorkContext, null, 2)}`;
+            const json = stringifyForPrompt(delegatedWorkContext, { maxChars: 14000, largeFieldTruncate: 400 });
+            return `\n\n### Delegated Work Context\n\n\`\`\`json\n${json}\n\`\`\``;
         };
 
         // Store the original prompt for potential retries

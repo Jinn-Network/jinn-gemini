@@ -37,7 +37,7 @@ export async function sendMessage(params: z.infer<typeof sendMessageParams>) {
       // status defaults to PENDING at DB level
       // lineage (source)
       job_id: jobId ?? null,
-      job_definition_id: jobDefinitionId ?? null,
+      parent_job_definition_id: jobDefinitionId ?? null,
       project_run_id: projectRunId ?? null,
       source_event_id: sourceEventId ?? null,
       project_definition_id: null,

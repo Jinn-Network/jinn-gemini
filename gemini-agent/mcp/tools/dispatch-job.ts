@@ -143,7 +143,7 @@ export async function dispatchJob(params: DispatchJobParams) {
         const { error: jobBoardError } = await supabase
           .from('job_board')
           .insert({
-            job_definition_id: jobDef.id,
+            parent_job_definition_id: jobDef.id,
             job_name: jobDef.name,
             enabled_tools: jobDef.enabled_tools || [],
             model_settings: jobDef.model_settings || {},
