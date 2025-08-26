@@ -138,7 +138,7 @@ export async function getProjectSummary(params: z.infer<typeof getProjectSummary
           .order('created_at', { ascending: false });
 
         if (artifactsError) {
-          console.warn(`Warning: Failed to fetch artifacts for run ${run.id}: ${artifactsError.message}`);
+          // Silently handle artifact fetch errors - artifacts will be empty array
         }
 
         // Count messages for this run
@@ -148,7 +148,7 @@ export async function getProjectSummary(params: z.infer<typeof getProjectSummary
           .eq('project_run_id', run.id);
 
         if (messageError) {
-          console.warn(`Warning: Failed to count messages for run ${run.id}: ${messageError.message}`);
+          // Silently handle message count errors - messageCount will be 0
         }
 
         // Process artifacts to create summaries

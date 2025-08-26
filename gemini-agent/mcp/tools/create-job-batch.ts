@@ -8,7 +8,7 @@ const JobDefinitionSchema = z.object({
   name: z.string().describe('The name of the job'),
   description: z.string().optional().describe('Optional description of the job purpose'),
   prompt_content: z.string().describe('The full prompt content for this job'),
-  enabled_tools: z.array(z.string()).describe('Array of tool names this job can use'),
+  enabled_tools: z.array(z.string()).describe('Array of tool names this job can use. MANDATORY: Call list_tools first to review available tools and select appropriate ones for this job. Research jobs must include web search tools (google_web_search or web_fetch). Misconfigured toolsets will cause job failure.'),
 });
 
 export const CreateJobBatchInputSchema = z.object({

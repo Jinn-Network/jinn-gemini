@@ -92,13 +92,29 @@ function isInternalServerError(messageLower: string): boolean {
     );
 }
 
+// Resolve the active job definition id for the current job name
+async function resolveActiveJobDefinitionId(jobName: string): Promise<string | null> {
+    try {
+        const res = await readRecords({ table_name: 'jobs', filter: { name: jobName, is_active: true } });
+        const parsed = parseToolResponse(res);
+        if (!parsed.success) return null;
+        const rows = Array.isArray(parsed.data) ? (parsed.data as any[]) : (parsed.data?.data ?? []);
+        if (!rows || rows.length === 0) return null;
+        const active = rows.find((r: any) => r.is_active) || rows[0];
+        return active?.id ?? null;
+    } catch {
+        return null;
+    }
+}
+
 function isRetryableError(error: any): boolean {
     if (!error) return false;
     
     // Handle nested error structures from Agent.run()
     let combined = '';
     const primaryMessage = error?.error?.message ?? error?.message ?? error?.error ?? error;
-    const stderr = error?.error?.stderr ?? '';
+    // Include stderr from either wrapped or direct error to capture CLI transport errors
+    const stderr = (error?.error?.stderr ?? error?.stderr ?? '') as string;
     combined = `${String(primaryMessage || '')}\n${String(stderr || '')}`.toLowerCase();
 
     console.log(`[RETRY] Checking if error is retryable: "${combined.substring(0, 200)}..."`);
@@ -167,6 +183,7 @@ async function collectAndStoreJobReport(context: {
     } else {
       const newId = parsed.data?.id ?? parsed.data?.data?.id;
       console.log(`Job report stored successfully for ${context.job.id}${newId ? ` (report_id=${newId})` : ''}`);
+      // DB trigger will link job_report_id; no worker-side linking needed
     }
   } catch (error) {
     console.error(`Critical error storing job report for ${context.job.id}:`, error);
@@ -497,8 +514,6 @@ async function processPendingJobs(): Promise<boolean> {
         return false;
     }
 
-    console.log('Raw read result:', readResult.content[0].text);
-
     // Parse tool response and check for failures
     const readParseResult = parseToolResponse(readResult);
     if (!readParseResult.success) {
@@ -563,13 +578,13 @@ async function processPendingJobs(): Promise<boolean> {
         const composeTriggerContextSection = (triggerContext?: any): string => {
             if (!triggerContext) return '';
             const json = stringifyForPrompt(triggerContext, { maxChars: 10000, largeFieldTruncate: 400 });
-            return `\n\n### Trigger Context\n\n\`\`\`json\n${json}\n\`\`\``;
+            return `\n\n### Trigger Context\n\n${json}`;
         };
 
         const composeDelegatedWorkContextSection = (delegatedWorkContext?: any): string => {
             if (!delegatedWorkContext) return '';
             const json = stringifyForPrompt(delegatedWorkContext, { maxChars: 14000, largeFieldTruncate: 400 });
-            return `\n\n### Delegated Work Context\n\n\`\`\`json\n${json}\n\`\`\``;
+            return `\n\n### Delegated Work Context\n\n${json}`;
         };
 
         // Store the original prompt for potential retries
@@ -614,14 +629,14 @@ async function processPendingJobs(): Promise<boolean> {
         }
         console.log(`Job ${job.id} claimed by worker ${workerId} and status updated to IN_PROGRESS.`);
 
-        const model = job.model_settings.model || 'gemini-2.5-flash';
+        const model = job.model_settings.model || 'gemini-2.5-flash-lite';
         const enabledTools = job.enabled_tools;
 
         console.log(`Executing job ${job.id} with model ${model}`);
 
         const jobContext = {
             jobId: job.id,
-            jobDefinitionId: job.parent_job_definition_id,
+            jobDefinitionId: (job as any).job_definition_id || job.parent_job_definition_id || null,
             jobName: job.job_name,
             projectRunId: job.project_run_id ?? null,
             sourceEventId: job.source_event_id ?? null,
@@ -647,7 +662,6 @@ async function processPendingJobs(): Promise<boolean> {
         const agent = new Agent(model, enabledTools, jobContext);
         result = await agent.run(currentPrompt);
         console.log(`Job ${job.id} execution finished.`);
-        console.log(`Agent output for job ${job.id}:\n`, result.output);
 
         const updateResult = await updateRecords({
             table_name: 'job_board',

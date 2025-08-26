@@ -102,6 +102,7 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
       p_limit: limit,
       p_time_filter: timeFilter,
     });
+    
     if (error) {
       // Get schema help for schema-related errors
       const schemaHelp = await getSchemaHelp(table_name, error);
@@ -122,8 +123,12 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
       };
     }
 
+    // Normalize RPC data to an array to avoid empty pages due to non-array shapes
+    const items = Array.isArray(data) ? data : (data ? [data] : []);
+
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
-    const composed = composeSinglePageResponse(data, {
+    
+    const composed = composeSinglePageResponse(items, {
       startOffset: keyset.offset,
       truncationPolicy: { output: 500, content: 200 },
       requestedMeta: { cursor, table_name, limit, hours_back },

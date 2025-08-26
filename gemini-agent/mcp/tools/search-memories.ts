@@ -108,7 +108,7 @@ export async function searchMemories(params: SearchMemoriesParams) {
 
         return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
     } catch (e: unknown) {
-        console.error('Full error in searchMemories:', e);
+        // Handle runtime errors by returning structured error response
         const errorMessage = e instanceof Error ? e.message : String(e);
         return {
             isError: true,

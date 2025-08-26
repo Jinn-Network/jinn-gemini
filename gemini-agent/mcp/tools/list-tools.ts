@@ -49,7 +49,19 @@ export const listToolsParams = z.object({
 });
 
 export const listToolsSchema = {
-  description:'Lists all tools available in the system for job configuration. These tools may not be enabled for the current job but can be configured for future jobs. Returns descriptions, parameters, and optional usage examples.',
+  description: `Lists all available tools (core CLI + MCP server tools).
+
+MANDATORY: Call this BEFORE using create_job or create_job_batch so you select appropriate enabled_tools. Research jobs should include web search tools (google_web_search or web_fetch) when internet research is required.
+
+Important scope note: This list is a catalog of tools that CAN be enabled for jobs. It does not guarantee they are currently enabled for your job/run. Your effective toolset at runtime is controlled by each job's enabled_tools (plus any universal tools and server exclusions). Use this list to decide which tools to include in enabled_tools when creating jobs.
+
+Usage:
+- Default: returns tool names and descriptions
+- include_parameters=true: include full parameter schemas
+- include_examples=true: include usage examples when available
+- tool_name="<name>": return details for a single tool
+
+Response: { data: { total_tools, tools: [{ name, description, parameters?, examples? }] }, meta: { ok: true } }`,
   inputSchema: listToolsParams.shape,
 };
 

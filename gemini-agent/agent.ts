@@ -135,12 +135,13 @@ export class Agent {
         // No in-process clear; canonical path is env-only
       }
       this.cleanupJobSpecificSettings();
+      // Note: telemetry file cleanup handled in runGeminiWithTelemetry result
     }
   }
 
   private runGeminiWithTelemetry(prompt: string): Promise<{ output: string; telemetryFile: string; stderr: string; exitCode: number }> {
     return new Promise((resolve) => {
-      const args = ['--prompt', prompt, '--yolo'];
+      const args: string[] = ['--yolo'];
       if (this.model) {
         args.unshift('--model', this.model);
       }
@@ -151,17 +152,23 @@ export class Agent {
       }
 
       // Telemetry flags (workaround for known CLI bug pattern)
-      args.push('--telemetry');
+      args.push('--telemetry', 'true');
       args.push('--telemetry-target', 'local');
       args.push('--telemetry-otlp-endpoint', ''); // prevent network attempts
-      args.push('--telemetry-log-prompts');
+      args.push('--telemetry-log-prompts', 'true');
 
       // Telemetry outfile
       const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
       args.push('--telemetry-outfile', telemetryFile);
 
+      // Persist the last prompt locally for debugging/repro and send via stdin instead of --prompt
+      const promptDir = dirname(this.settingsPath);
+      try { mkdirSync(promptDir, { recursive: true }); } catch {}
+      const lastPromptPath = join(promptDir, 'last-prompt.txt');
+      try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch {}
+
       console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
-      console.log(`Spawning Gemini CLI with model: ${this.model} and prompt: "${prompt.substring(0, 100)}..."`);
+      console.log(`Spawning Gemini CLI with model: ${this.model} (prompt provided via stdin from ${lastPromptPath})`);
 
       // Propagate job context to the MCP server via environment variables so the separate
       // MCP process can read them on startup
@@ -185,15 +192,31 @@ export class Agent {
       let stdout = '';
       let stderr = '';
 
+      // Feed prompt to stdin
+      try {
+        geminiProcess.stdin.write(prompt);
+        geminiProcess.stdin.end();
+      } catch {}
+
       geminiProcess.stdout.on('data', (data) => {
         const chunk = data.toString();
-        console.log('Gemini CLI stdout:', chunk);
+        chunk.split('\n').forEach(line => {
+            if (line.trim().length > 0) {
+                const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
+                console.log(truncatedLine);
+            }
+        });
         stdout += chunk;
       });
 
       geminiProcess.stderr.on('data', (data) => {
         const chunk = data.toString();
-        console.error('Gemini CLI stderr:', chunk);
+        chunk.split('\n').forEach(line => {
+            if (line.trim().length > 0) {
+                const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
+                console.error(truncatedLine);
+            }
+        });
         stderr += chunk;
       });
 
@@ -298,6 +321,19 @@ export class Agent {
     }
   }
 
+  private cleanupTelemetryFile(telemetryFile: string): void {
+    if (!telemetryFile || telemetryFile.trim() === '') return;
+    try {
+      unlinkSync(telemetryFile);
+      console.log('Cleaned up telemetry file.');
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('Failed to clean up telemetry file:', errorMsg);
+      }
+    }
+  }
+
   private parseTelemetryFromOutput(output: string, startTime: number): JobTelemetry {
     const telemetry: JobTelemetry = {
       totalTokens: 0,
@@ -330,7 +366,7 @@ export class Agent {
 
   private async parseTelemetryFromFile(telemetryFile: string, output: string, startTime: number): Promise<JobTelemetry> {
     try {
-      if (readFileSync && telemetryFile) {
+      if (readFileSync && telemetryFile && telemetryFile.trim() !== '') {
         console.log(`[TELEMETRY] Attempting to read telemetry file: ${telemetryFile}`);
         const telemetryContent = readFileSync(telemetryFile, 'utf8');
 

@@ -125,6 +125,7 @@ settings.local.json
 .gemini/settings.json
 .gemini/config.json
 .gemini/credentials.json
+gemini-agent/.gemini/last-prompt.txt
 
 # Claude specific
 .claude/

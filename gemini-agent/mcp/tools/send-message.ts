@@ -28,16 +28,32 @@ export async function sendMessage(params: z.infer<typeof sendMessageParams>) {
     }
 
     const { to_job_definition_id, content } = parseResult.data;
-    const { jobId, jobDefinitionId, jobName, projectRunId, sourceEventId } = getCurrentJobContext();
+    const { jobId, jobDefinitionId, projectRunId, sourceEventId } = getCurrentJobContext();
+
+    // Enforce: parent_job_definition_id must be present in the current context
+    if (!jobDefinitionId) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: {
+              ok: false,
+              code: 'NO_JOB_DEFINITION_CONTEXT',
+              message: 'Cannot send message: missing parent job definition in context. Ensure the worker passes JINN_JOB_DEFINITION_ID.'
+            }
+          })
+        }]
+      };
+    }
 
     const payload: Record<string, any> = {
       // addressing
       to_job_definition_id: to_job_definition_id ?? null,
       content,
-      // status defaults to PENDING at DB level
       // lineage (source)
       job_id: jobId ?? null,
-      parent_job_definition_id: jobDefinitionId ?? null,
+      parent_job_definition_id: jobDefinitionId,
       project_run_id: projectRunId ?? null,
       source_event_id: sourceEventId ?? null,
       project_definition_id: null,

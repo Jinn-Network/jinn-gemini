@@ -50,7 +50,7 @@ export async function getDetails(params: GetDetailsParams) {
                     .in('id', ids);
                 
                 if (error) {
-                    console.warn(`Warning: Error searching table ${table}:`, error.message);
+                    // Silently handle table search errors - return empty array
                     return [];
                 }
                 
@@ -60,7 +60,7 @@ export async function getDetails(params: GetDetailsParams) {
                     _source_table: table
                 }));
             } catch (e) {
-                console.warn(`Warning: Failed to search table ${table}:`, e);
+                // Silently handle table search failures - return empty array
                 return [];
             }
         });
