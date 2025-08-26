@@ -52,9 +52,14 @@
  *     break;
  *   case 'failed':
  *     console.error('Bootstrap failed:', result.error);
- *     if (result.code) {
- *       console.error('Error code:', result.code);
- *     }
+ *     console.error('Error code:', result.code);
+ *     break;
+ *   case 'dry_run':
+ *     console.log('Dry run completed');
+ *     console.log('Predicted Safe address:', result.report.predictedSafeAddress);
+ *     console.log('On-chain state:', result.report.onChainState);
+ *     console.log('Is funded:', result.report.isFunded);
+ *     console.log('Planned actions:', result.report.actions);
  *     break;
  * }
  * ```
@@ -71,7 +76,21 @@
  * });
  * ```
  * 
- * @version 2.0.0
+ * @example Dry Run Mode (v3.0.0+)
+ * ```typescript
+ * // Preview what would happen without executing transactions
+ * const result = await walletManager.bootstrap({ dryRun: true });
+ * if (result.status === 'dry_run') {
+ *   console.log('Would deploy to:', result.report.predictedSafeAddress);
+ *   console.log('Current state:', result.report.onChainState);
+ *   console.log('Is funded:', result.report.isFunded);
+ *   result.report.actions.forEach(action => {
+ *     console.log(`Action: ${action.type} - ${action.details}`);
+ *   });
+ * }
+ * ```
+ * 
+ * @version 3.0.0
  * @since 1.0.0
  */
 
@@ -94,12 +113,15 @@ export type {
   FundingRequirements,
   BootstrapError,
   BootstrapResult,
+  BootstrapOptions,
+  DryRunReport,
+  NeedsFundingResult,
   StorageProvider,
   ChainConfig
 } from './types.js';
 
 import { bootstrap } from './bootstrap.js';
-import type { WalletManagerConfig, BootstrapResult } from './types.js';
+import type { WalletManagerConfig, BootstrapResult, BootstrapOptions } from './types.js';
 
 /**
  * Main wallet manager class that provides a clean API for wallet operations.
@@ -316,9 +338,10 @@ export class WalletManager {
    * ```
    * 
    * @since 1.0.0
+   * @version 3.0.0 Added support for dry run mode
    */
-  async bootstrap(): Promise<BootstrapResult> {
-    return bootstrap(this.config);
+  async bootstrap(options: BootstrapOptions = {}): Promise<BootstrapResult> {
+    return bootstrap(this.config, options);
   }
   
   /**

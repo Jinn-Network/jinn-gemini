@@ -120,7 +120,7 @@ export class Agent {
   }
 
   private runGeminiWithTelemetry(prompt: string): Promise<{ output: string; telemetryFile: string; stderr: string; exitCode: number }> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const args = ['--prompt', prompt, '--yolo'];
       if (this.model) {
         args.unshift('--model', this.model);
@@ -172,7 +172,7 @@ export class Agent {
                     reject(new Error(`Gemini process exited with code ${code}\n${stderr}`));
                 } else {
                     // Include stderr even on successful runs for warning-level errors
-                    resolve({ output: stdout, telemetryFile, stderr });
+                    resolve({ output: stdout, telemetryFile, stderr, exitCode: code || 0 });
                 }
             });
 

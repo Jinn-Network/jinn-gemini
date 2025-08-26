@@ -5,7 +5,7 @@ import { composeSinglePageResponse, decodeCursor } from './shared/context-manage
 
 export const readRecordsParams = z.object({
   table_name: tableNameSchema,
-  filter: z.record(z.any()).optional().describe('A JSON object for WHERE clauses (e.g., `{"status": "COMPLETED"}`). An empty filter retrieves all records.'),
+  filter: z.record(z.string(), z.any()).optional().describe('A JSON object for WHERE clauses (e.g., `{"status": "COMPLETED"}`). An empty filter retrieves all records.'),
   limit: z.number().int().positive().optional().describe('Maximum number of records to return (default: 100). Use with caution for large datasets.'),
   hours_back: z.number().int().positive().optional().describe('Filter records from the last N hours based on the `created_at` column. Cannot be used with `filter`.'),
   cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),

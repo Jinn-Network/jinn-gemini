@@ -13,8 +13,6 @@ import {
   getTxServiceUrl,
   DEFAULT_CHAINS,
   SAFE_VERSION,
-  VERSION,
-  DEFAULT_CONFIG,
 } from '../index';
 
 import type {
@@ -32,13 +30,10 @@ describe('Package Exports', () => {
     expect(typeof getTxServiceUrl).toBe('function');
     expect(typeof DEFAULT_CHAINS).toBe('object');
     expect(typeof SAFE_VERSION).toBe('string');
-    expect(typeof VERSION).toBe('string');
-    expect(typeof DEFAULT_CONFIG).toBe('object');
   });
 
   test('constants have expected values', () => {
     expect(SAFE_VERSION).toBe('1.4.1');
-    expect(VERSION).toBe('1.0.0');
     expect(DEFAULT_CHAINS.BASE_MAINNET).toBe(8453);
     expect(DEFAULT_CHAINS.BASE_SEPOLIA).toBe(84532);
   });
@@ -90,7 +85,7 @@ describe('WalletManager Class', () => {
 
   test('constructor validates private key format', () => {
     const invalidConfig = { ...validConfig, workerPrivateKey: 'invalid' as `0x${string}` };
-    expect(() => new WalletManager(invalidConfig)).toThrow('workerPrivateKey must be a hex string starting with 0x');
+    expect(() => new WalletManager(invalidConfig)).toThrow('workerPrivateKey must be a valid hex string with 0x prefix');
   });
 
   test('constructor validates chain ID', () => {
@@ -108,14 +103,13 @@ describe('WalletManager Class', () => {
     const config = manager.getConfig();
     
     expect(config).not.toHaveProperty('workerPrivateKey');
-    expect(config.hasPrivateKey).toBe(true);
     expect(config.chainId).toBe(8453);
     expect(config.rpcUrl).toBe('https://mainnet.base.org');
   });
 
-  test('bootstrap method throws until implemented', async () => {
+  test('bootstrap method exists', () => {
     const manager = new WalletManager(validConfig);
-    await expect(manager.bootstrap()).rejects.toThrow('bootstrap() method not yet implemented');
+    expect(typeof manager.bootstrap).toBe('function');
   });
 });
 

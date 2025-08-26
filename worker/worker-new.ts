@@ -1,7 +1,7 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { WalletManager } from '@jinn/wallet-manager';
-import type { WalletManagerConfig, BootstrapResult } from '@jinn/wallet-manager';
+import { WalletManager } from '../packages/wallet-manager/src/index.js';
+import type { WalletManagerConfig, BootstrapResult } from '../packages/wallet-manager/src/types.js';
 import { config } from './config.js';
 import { logger, walletLogger, workerLogger, exitWithCode, formatAddress, formatWeiToEth } from './logger.js';
 
@@ -69,8 +69,6 @@ async function initializeWallet(args: WorkerArgs): Promise<void> {
     rpcUrl: config.RPC_URL,
     options: {
       storageBasePath: config.JINN_WALLET_STORAGE_PATH,
-      // Disable STS checks in test environments or when using Virtual TestNets
-      disableTxServiceChecks: process.env.NODE_ENV === 'test' || config.RPC_URL.includes('tenderly.co'),
     },
   };
 
@@ -110,7 +108,7 @@ async function initializeWallet(args: WorkerArgs): Promise<void> {
       walletLogger.info(`    - ${formatAddress(result.identity.safeAddress, 'Safe Address')}`);
       walletLogger.info(`    - Chain ID:      ${result.identity.chainId}`);
       if (result.metrics.txHash) {
-        walletLogger.info(`    - Transaction Hash: ${result.metrics.txHash}`);
+        walletLogger.info(`    - View on Block Explorer: https://basescan.org/address/${result.identity.safeAddress}`);
       }
       walletLogger.info(`Identity saved to ~/.jinn/wallets/${result.identity.chainId}/${result.identity.ownerAddress}.json`);
       break;
@@ -125,12 +123,6 @@ async function initializeWallet(args: WorkerArgs): Promise<void> {
   }
 
   logger.info('Wallet bootstrap complete. Worker is now polling for jobs...');
-  
-  // In test environments, exit after successful bootstrap
-  if (process.env.NODE_ENV === 'test') {
-    logger.info('Test environment detected - exiting after bootstrap completion');
-    exitWithCode(0, 'Bootstrap complete in test mode');
-  }
 }
 
 /**
@@ -145,6 +137,7 @@ function handleDryRunResult(result: BootstrapResult): never {
   logger.info('Jinn Worker starting in DRY RUN mode...');
   walletLogger.info('Configuration valid.');
   walletLogger.info(`EOA Owner: ${result.report.ownerAddress}`);
+  walletLogger.info(`EOA Balance: (balance check would be here)`); // TODO: Add balance check
   walletLogger.info(`Predicted Safe Address: ${result.report.predictedSafeAddress}`);
   walletLogger.info(`On-chain status: ${result.report.onChainState}`);
   logger.info('');
@@ -173,7 +166,7 @@ async function handleFundingRequirements(
   logger.info('    Action Required: Please fund the following address.');
   logger.info('');
   logger.info(`    - ${formatAddress(result.address, 'Address')}`);
-  logger.info(`    - Chain ID:   ${walletManager.getChainId()}`);
+  logger.info(`    - Network:    base (Chain ID: ${walletManager.getChainId()})`);
   logger.info(`    - Required:   ${formatWeiToEth(result.required.minRecommendedWei)} (${result.required.minRecommendedWei} wei)`);
   logger.info('');
   walletLogger.info('Waiting for funds. Checking balance every 10 seconds... (Press Ctrl+C to exit)');
@@ -191,6 +184,7 @@ async function handleFundingRequirements(
     
     if (checkResult.status === 'created' || checkResult.status === 'exists') {
       walletLogger.success('Funds detected! Resuming bootstrap process...');
+      walletLogger.info('Deploying new 1-of-1 Gnosis Safe on base (Chain ID: 8453)...');
       return checkResult;
     }
     

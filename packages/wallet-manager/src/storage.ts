@@ -46,7 +46,8 @@ export type StorageError =
   | 'permission_denied'
   | 'file_not_found'
   | 'invalid_json'
-  | 'filesystem_error';
+  | 'filesystem_error'
+  | 'directory_creation_failed';
 
 /**
  * Storage operation result
@@ -253,7 +254,11 @@ export async function acquireLock(walletPath: string): Promise<StorageResult<Loc
   // Ensure the directory exists before attempting to create the lock
   const dirResult = await ensureDirectory(dirname(lockPath));
   if (!dirResult.success) {
-    return dirResult;
+    return { 
+      success: false, 
+      error: 'directory_creation_failed', 
+      message: `Failed to create directory for lock: ${lockPath}` 
+    };
   }
   
   return tryAcquireLock(lockPath, walletPath);
@@ -442,17 +447,19 @@ export async function walletExists(
  * Retry configuration for withLock
  */
 const LOCK_RETRY_CONFIG = {
-  MAX_RETRIES: 5,
-  BASE_DELAY_MS: 50,
+  MAX_RETRIES: 10, // Increased from 5
+  BASE_DELAY_MS: 100, // Increased from 50
+  MAX_DELAY_MS: 2000, // Cap maximum delay at 2 seconds
 } as const;
 
 /**
- * Calculate delay with exponential backoff and jitter
+ * Calculate delay with exponential backoff and jitter, capped at maximum
  */
 function calculateRetryDelay(attempt: number): number {
   const exponentialDelay = LOCK_RETRY_CONFIG.BASE_DELAY_MS * (2 ** attempt);
+  const cappedDelay = Math.min(exponentialDelay, LOCK_RETRY_CONFIG.MAX_DELAY_MS);
   const jitter = Math.random() * LOCK_RETRY_CONFIG.BASE_DELAY_MS;
-  return exponentialDelay + jitter;
+  return cappedDelay + jitter;
 }
 
 /**
@@ -466,7 +473,7 @@ export async function withLock<T>(
   walletPath: string,
   operation: () => Promise<T>
 ): Promise<T> {
-  let lastError: string = '';
+  let lastError: StorageError | string = '';
   
   for (let attempt = 0; attempt < LOCK_RETRY_CONFIG.MAX_RETRIES; attempt++) {
     const lockResult = await acquireLock(walletPath);
@@ -481,12 +488,15 @@ export async function withLock<T>(
       }
     }
     
-    // Store the error for potential throwing
-    lastError = lockResult.message;
-    
-    // If it's not a contention error, or this is the final attempt, don't retry
-    if (lockResult.error !== 'lock_already_held' || attempt === LOCK_RETRY_CONFIG.MAX_RETRIES - 1) {
-      break;
+    // Store the error for potential throwing (we know lockResult.success is false here)
+    if (!lockResult.success) {
+      const failedResult = lockResult as { success: false; error: StorageError; message: string };
+      lastError = failedResult.error;
+      
+      // If it's not a contention error, or this is the final attempt, don't retry
+      if (failedResult.error !== 'lock_already_held' || attempt === LOCK_RETRY_CONFIG.MAX_RETRIES - 1) {
+        break;
+      }
     }
     
     // Wait before retrying with exponential backoff and jitter

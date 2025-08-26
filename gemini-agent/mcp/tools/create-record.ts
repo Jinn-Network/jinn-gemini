@@ -4,7 +4,7 @@ import { tableNameSchema } from './shared/types.js';
 
 export const createRecordParams = z.object({
   table_name: tableNameSchema,
-  data: z.record(z.any()).describe('A JSON object where keys are column names and values are the data to insert.'),
+  data: z.record(z.string(), z.any()).describe('A JSON object where keys are column names and values are the data to insert.'),
 });
 
 export const createRecordSchema = {

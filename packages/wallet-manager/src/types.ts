@@ -22,7 +22,7 @@
  * 3. `BootstrapResult` - Operation outcome with detailed information
  * 4. Supporting types for metrics, requirements, and errors
  * 
- * @version 2.0.0
+ * @version 3.0.0
  * @since 1.0.0
  */
 
@@ -119,6 +119,15 @@ export interface WalletManagerConfig {
      * @example 'https://safe-transaction-base-sepolia.safe.global/'
      */
     txServiceUrl?: string;
+    
+    /** 
+     * Disable Safe Transaction Service checks entirely.
+     * When true, skips pre-existence checks via the STS API.
+     * Useful for testing environments like Virtual TestNets where STS is unavailable.
+     * 
+     * @default false
+     */
+    disableTxServiceChecks?: boolean;
   };
 }
 
@@ -336,8 +345,8 @@ export interface FundingRequirements {
  * ## Error Categories
  * 
  * - **Funding Issues**: `unfunded` - EOA needs more funds
- * - **Configuration Issues**: `unsupported_chain` - Chain not supported
- * - **Blockchain Issues**: `rpc_error` - Network connectivity problems
+ * - **Configuration Issues**: `unsupported_chain` - Chain not supported, `invalid_config` - Malformed configuration
+ * - **Blockchain Issues**: `rpc_error` - Network connectivity problems, `chain_id_mismatch` - RPC vs configured chain ID conflicts
  * - **Deployment Issues**: `deployment_failed` - Transaction failed
  * - **Validation Issues**: `safe_config_mismatch` - Existing Safe incompatible
  * - **Service Issues**: `tx_service_unavailable` - API temporarily down
@@ -351,6 +360,12 @@ export interface FundingRequirements {
  *       break;
  *     case 'unsupported_chain':
  *       // Suggest supported chains
+ *       break;
+ *     case 'invalid_config':
+ *       // Fix malformed private keys, etc.
+ *       break;
+ *     case 'chain_id_mismatch':
+ *       // Check RPC URL vs CHAIN_ID configuration
  *       break;
  *     case 'rpc_error':
  *       // Check network connectivity
@@ -369,6 +384,7 @@ export interface FundingRequirements {
  * ```
  * 
  * @since 1.0.0
+ * @version 3.0.0 Added `invalid_config` and `chain_id_mismatch` error codes
  */
 export type BootstrapError =
   | 'unfunded'                    /** EOA has insufficient funds for deployment */
@@ -376,7 +392,118 @@ export type BootstrapError =
   | 'safe_config_mismatch'       /** Existing Safe has different owners/threshold than expected */
   | 'tx_service_unavailable'     /** Safe Transaction Service API is temporarily unavailable */
   | 'rpc_error'                  /** RPC endpoint returned an error or is unreachable */
-  | 'deployment_failed';         /** Safe deployment transaction failed on-chain */
+  | 'deployment_failed'          /** Safe deployment transaction failed on-chain */
+  | 'invalid_config'             /** Malformed private keys or other configuration errors */
+  | 'chain_id_mismatch';         /** RPC vs. configured chain ID conflicts */
+
+/**
+ * Fully specified needs_funding result shape for v3.0.0.
+ * Replaces the inline type definition for better type safety.
+ * 
+ * @since 3.0.0
+ */
+export type NeedsFundingResult = {
+  status: 'needs_funding';
+  address: `0x${string}`;
+  required: FundingRequirements;
+};
+
+/**
+ * Dry run report providing detailed information about what would happen
+ * during bootstrap without executing any on-chain transactions.
+ * 
+ * This interface supports the new dry-run mode that allows operators
+ * to preview the exact actions that would be taken during bootstrap
+ * without committing to any blockchain transactions or filesystem changes.
+ * 
+ * @example Using Dry Run Mode
+ * ```typescript
+ * const result = await walletManager.bootstrap({ dryRun: true });
+ * if (result.status === 'dry_run') {
+ *   console.log('Owner:', result.report.ownerAddress);
+ *   console.log('Predicted Safe:', result.report.predictedSafeAddress);
+ *   console.log('On-chain state:', result.report.onChainState);
+ *   console.log('Is funded:', result.report.isFunded);
+ *   
+ *   result.report.actions.forEach(action => {
+ *     console.log(`Action: ${action.type} - ${action.details}`);
+ *   });
+ * }
+ * ```
+ * 
+ * @since 3.0.0
+ */
+export interface DryRunReport {
+  /** 
+   * The EOA address that would own the Gnosis Safe.
+   * Derived from the workerPrivateKey in the configuration.
+   * 
+   * @example '0x742C65e68d8d2700ba29399dC13968F7bE4EeB6B'
+   */
+  ownerAddress: `0x${string}`;
+  
+  /** 
+   * The deterministically predicted Safe address.
+   * This is where the Safe would be deployed if bootstrap proceeds.
+   * 
+   * @example '0x1234567890123456789012345678901234567890'
+   */
+  predictedSafeAddress: `0x${string}`;
+  
+  /** 
+   * The current on-chain state at the predicted address.
+   * Used to determine what actions would be taken.
+   */
+  onChainState: 'not_deployed' | 'exists_valid' | 'exists_invalid_config';
+  
+  /** 
+   * Whether the owner EOA has sufficient funds for deployment.
+   * Based on current balance vs estimated deployment costs.
+   */
+  isFunded: boolean;
+  
+  /** 
+   * Required funding amount in wei if the EOA is not sufficiently funded.
+   * Only present when isFunded is false.
+   * 
+   * @example 5268757500000000000n // ~5.27 ETH equivalent in wei
+   */
+  requiredFundingWei?: bigint;
+  
+  /** 
+   * Estimated deployment cost in wei including safety margins.
+   * Present for all dry runs to show anticipated costs.
+   * 
+   * @example 3512505000000000000n // ~3.51 ETH equivalent in wei
+   */
+  estimatedDeploymentCostWei?: bigint;
+  
+  /** 
+   * List of actions that would be performed if bootstrap proceeds.
+   * Each action has a type and human-readable description.
+   */
+  actions: Array<{
+    /** The type of action that would be performed */
+    type: 'DEPLOY_SAFE' | 'WRITE_IDENTITY_FILE';
+    /** Human-readable description of the action */
+    details: string;
+  }>;
+}
+
+/**
+ * Bootstrap options that control the behavior of the bootstrap operation.
+ * 
+ * @since 3.0.0
+ */
+export interface BootstrapOptions {
+  /** 
+   * If true, perform all pre-flight checks and return a detailed report
+   * without executing any on-chain transactions or writing files.
+   * 
+   * @default false
+   */
+  dryRun?: boolean;
+}
 
 /**
  * The result of a wallet bootstrap operation. Uses discriminated unions
@@ -392,6 +519,7 @@ export type BootstrapError =
  * - **`created`**: New Safe was successfully deployed
  * - **`needs_funding`**: EOA requires funding before deployment can proceed
  * - **`failed`**: Operation failed with detailed error information
+ * - **`dry_run`**: Pre-flight check completed, showing what would happen
  * 
  * ## Type Safety
  * 
@@ -400,6 +528,7 @@ export type BootstrapError =
  * - `metrics` is required for 'created', optional for 'exists'
  * - `required` funding info is only available for 'needs_funding'
  * - `error` and `code` are only available for 'failed'
+ * - `report` is only available for 'dry_run'
  * 
  * @example Type-Safe Result Handling
  * ```typescript
@@ -426,15 +555,20 @@ export type BootstrapError =
  * }
  * 
  * if (result.status === 'failed') {
- *   // result.error is guaranteed, result.code might exist
+ *   // result.error is guaranteed, result.code is now mandatory in v3.0.0
  *   console.log(result.error);
- *   if (result.code) {
- *     console.log('Error code:', result.code);
- *   }
+ *   console.log('Error code:', result.code);
+ * }
+ * 
+ * if (result.status === 'dry_run') {
+ *   // result.report is guaranteed to exist
+ *   console.log('Would deploy to:', result.report.predictedSafeAddress);
+ *   console.log('Actions:', result.report.actions);
  * }
  * ```
  * 
  * @since 1.0.0
+ * @version 3.0.0 Added `dry_run` status and made `code` mandatory for `failed` results
  */
 export type BootstrapResult =
   | {
@@ -460,18 +594,7 @@ export type BootstrapResult =
       /** Deployment metrics including gas usage and transaction hash */
       metrics: BootstrapMetrics;
     }
-  | {
-      /** 
-       * EOA needs funding before deployment can proceed.
-       * The owner address needs to be funded with the specified amount
-       * before Safe deployment can be attempted.
-       */
-      status: 'needs_funding';
-      /** The EOA address that needs to be funded */
-      address: `0x${string}`;
-      /** Detailed funding requirements with safety margins */
-      required: FundingRequirements;
-    }
+  | NeedsFundingResult
   | {
       /** 
        * Bootstrap operation failed with an error.
@@ -480,8 +603,17 @@ export type BootstrapResult =
       status: 'failed';
       /** Human-readable error message describing what went wrong */
       error: string;
-      /** Optional standardized error code for programmatic handling */
-      code?: BootstrapError;
+      /** Standardized error code for programmatic handling (mandatory in v3.0.0) */
+      code: BootstrapError;
+    }
+  | {
+      /** 
+       * Dry run completed successfully.
+       * Contains detailed information about what would happen during actual bootstrap.
+       */
+      status: 'dry_run';
+      /** Comprehensive report of planned actions and current state */
+      report: DryRunReport;
     };
 
 /**

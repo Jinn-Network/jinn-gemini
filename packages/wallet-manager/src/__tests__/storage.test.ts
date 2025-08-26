@@ -267,17 +267,17 @@ describe('Storage Layer', () => {
       const startTime = Date.now();
       await expect(withLock(walletPath, async () => {
         return 'should not execute';
-      })).rejects.toThrow('Failed to acquire lock after 5 attempts');
+      })).rejects.toThrow('Failed to acquire lock after 10 attempts');
       
       // Should have taken some time due to retries with backoff
       const elapsed = Date.now() - startTime;
-      expect(elapsed).toBeGreaterThan(50); // At least base delay
+      expect(elapsed).toBeGreaterThan(100); // At least base delay
       
       // Clean up
       if (lockResult.success) {
         await releaseLock(lockResult.data);
       }
-    });
+    }, 30000); // Increase timeout to 30 seconds to account for exponential backoff
 
     it('should retry and succeed when lock becomes available', async () => {
       const walletPath = getWalletPath(testChainId, testOwnerAddress, testBasePath);

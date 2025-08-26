@@ -4,7 +4,7 @@ import { tableNameSchema } from './shared/types.js';
 
 export const deleteRecordsParams = z.object({
   table_name: tableNameSchema,
-  filter: z.record(z.any()).refine(obj => Object.keys(obj).length > 0, {
+  filter: z.record(z.string(), z.any()).refine(obj => Object.keys(obj).length > 0, {
     message: "Filter cannot be empty - must specify at least one condition to prevent accidental deletion of all records"
   }).describe('A JSON object to identify the row(s) to delete. Cannot be empty.'),
 });

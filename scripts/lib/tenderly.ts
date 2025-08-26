@@ -1,0 +1,386 @@
+/**
+ * Tenderly API client for managing Virtual TestNets (vnets) during E2E testing
+ * 
+ * This module provides functionality to programmatically create, manage, and fund
+ * Virtual TestNets using Tenderly's API for testing wallet bootstrap scenarios.
+ * 
+ * Key features:
+ * - Creates ephemeral Virtual TestNets for isolated testing
+ * - Funds EOA addresses via Admin RPC
+ * - Cleans up vnets after testing
+ */
+
+import { promises as fs } from 'fs';
+import path from 'path';
+
+/**
+ * Tenderly API configuration
+ */
+interface TenderlyConfig {
+  accessKey?: string;
+  accountSlug?: string;
+  projectSlug?: string;
+}
+
+/**
+ * Virtual TestNet creation result
+ */
+interface VnetResult {
+  vnetId: string;
+  adminRpcUrl: string;
+  publicRpcUrl?: string;
+  blockExplorerUrl?: string;
+}
+
+/**
+ * Virtual TestNet creation request body
+ */
+interface VnetCreateRequest {
+  slug: string;
+  display_name: string;
+  fork_config: {
+    network_id: number;
+    block_number: string;
+  };
+  virtual_network_config: {
+    chain_config: {
+      chain_id: number;
+    };
+  };
+  sync_state_config: {
+    enabled: boolean;
+    commitment_level: string;
+  };
+  explorer_page_config: {
+    enabled: boolean;
+    verification_visibility: string;
+  };
+}
+
+/**
+ * Virtual TestNet API response structure
+ */
+interface VnetCreateResponse {
+  id: string;
+  slug: string;
+  display_name: string;
+  rpcs: Array<{
+    name: string;
+    url: string;
+  }>;
+  // ... other fields we don't need for now
+}
+
+/**
+ * Tenderly API client for Virtual TestNets
+ */
+export class TenderlyClient {
+  private config: TenderlyConfig;
+  private baseUrl = 'https://api.tenderly.co';
+
+  constructor(config: TenderlyConfig = {}) {
+    this.config = {
+      accessKey: config.accessKey || process.env.TENDERLY_ACCESS_KEY,
+      accountSlug: config.accountSlug || process.env.TENDERLY_ACCOUNT_SLUG,
+      projectSlug: config.projectSlug || process.env.TENDERLY_PROJECT_SLUG,
+      ...config,
+    };
+  }
+
+  /**
+   * Check if Tenderly is properly configured
+   */
+  isConfigured(): boolean {
+    return !!(
+      this.config.accessKey &&
+      this.config.accountSlug &&
+      this.config.projectSlug
+    );
+  }
+
+  /**
+   * Validate required environment variables
+   */
+  private validateConfig(): void {
+    if (!this.config.accessKey) {
+      throw new Error('TENDERLY_ACCESS_KEY is required');
+    }
+    if (!this.config.accountSlug) {
+      throw new Error('TENDERLY_ACCOUNT_SLUG is required');
+    }
+    if (!this.config.projectSlug) {
+      throw new Error('TENDERLY_PROJECT_SLUG is required');
+    }
+  }
+
+  /**
+   * Create a new Virtual TestNet
+   */
+  async createVnet(chainId: number = 8453): Promise<VnetResult> {
+    this.validateConfig();
+
+    // Generate a unique slug for this test run
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(7);
+    const slug = `e2e-test-${timestamp}-${randomId}`;
+
+    const requestBody: VnetCreateRequest = {
+      slug,
+      display_name: `E2E Test VNet ${timestamp}`,
+      fork_config: {
+        network_id: chainId === 8453 ? 8453 : 1, // Base mainnet or Ethereum mainnet
+        block_number: "latest"
+      },
+      virtual_network_config: {
+        chain_config: {
+          chain_id: chainId
+        }
+      },
+      sync_state_config: {
+        enabled: false,
+        commitment_level: "latest"
+      },
+      explorer_page_config: {
+        enabled: true,
+        verification_visibility: "bytecode"
+      }
+    };
+
+    const url = `${this.baseUrl}/api/v1/account/${this.config.accountSlug}/project/${this.config.projectSlug}/vnets`;
+    
+    console.log(`[TENDERLY] Creating Virtual TestNet: ${slug}`);
+    
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Access-Key': this.config.accessKey!,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${response.statusText}. Response: ${errorText}`);
+      }
+
+      const vnetData: VnetCreateResponse = await response.json();
+      
+      // Extract Admin RPC URL from the response
+      const adminRpc = vnetData.rpcs.find(rpc => rpc.name === 'Admin RPC');
+      const publicRpc = vnetData.rpcs.find(rpc => rpc.name === 'Public RPC');
+      
+      if (!adminRpc) {
+        throw new Error('Admin RPC URL not found in vnet creation response');
+      }
+
+      const result: VnetResult = {
+        vnetId: vnetData.id,
+        adminRpcUrl: adminRpc.url,
+        publicRpcUrl: publicRpc?.url,
+        blockExplorerUrl: `https://dashboard.tenderly.co/explorer/vnet/${vnetData.id}`
+      };
+
+      console.log(`[TENDERLY] Created Virtual TestNet: ${result.vnetId}`);
+      console.log(`[TENDERLY] Admin RPC: ${result.adminRpcUrl}`);
+      
+      return result;
+    } catch (error: any) {
+      console.error(`[TENDERLY] Failed to create Virtual TestNet: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Fund an address on a Virtual TestNet using Admin RPC
+   */
+  async fundAddress(
+    address: string,
+    amountWei: string,
+    adminRpcUrl: string
+  ): Promise<void> {
+    if (!adminRpcUrl) {
+      throw new Error('Admin RPC URL is required for funding');
+    }
+
+    try {
+      const response = await fetch(adminRpcUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'tenderly_setBalance',
+          params: [address, `0x${BigInt(amountWei).toString(16)}`],
+          id: 1,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(`RPC Error: ${result.error.message}`);
+      }
+
+      console.log(`[TENDERLY] Successfully funded ${address} with ${amountWei} wei`);
+    } catch (error: any) {
+      console.error(`[TENDERLY] Failed to fund ${address}: ${error.message}`);
+      throw error; // Re-throw instead of failing silently for test reliability
+    }
+  }
+
+  /**
+   * Delete a Virtual TestNet after testing
+   */
+  async deleteVnet(vnetId: string): Promise<void> {
+    if (!this.isConfigured()) {
+      console.warn('[TENDERLY] Not configured, skipping vnet deletion');
+      return;
+    }
+
+    if (!vnetId) {
+      console.warn('[TENDERLY] No vnet ID provided, skipping deletion');
+      return;
+    }
+
+    const url = `${this.baseUrl}/api/v1/account/${this.config.accountSlug}/project/${this.config.projectSlug}/vnets/${vnetId}`;
+    
+    try {
+      console.log(`[TENDERLY] Deleting Virtual TestNet: ${vnetId}`);
+      
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'X-Access-Key': this.config.accessKey!,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn(`[TENDERLY] Failed to delete Virtual TestNet ${vnetId}: ${response.status} ${response.statusText}`);
+      } else {
+        console.log(`[TENDERLY] Successfully deleted Virtual TestNet: ${vnetId}`);
+      }
+    } catch (error: any) {
+      console.warn(`[TENDERLY] Failed to delete Virtual TestNet ${vnetId}:`, error.message);
+    }
+  }
+}
+
+/**
+ * Mock implementation for when Tenderly is not available
+ */
+export class MockTenderlyClient extends TenderlyClient {
+  private mockedBalances = new Map<string, string>();
+  private mockVnetId = 'mock-vnet-' + Math.random().toString(36).substring(7);
+  private mockAdminRpcUrl = 'https://mock.tenderly.rpc/admin';
+
+  isConfigured(): boolean {
+    return true; // Mock is always "configured"
+  }
+
+  async createVnet(): Promise<VnetResult> {
+    console.log('[MOCK] Created Tenderly Virtual TestNet:', this.mockVnetId);
+    return {
+      vnetId: this.mockVnetId,
+      adminRpcUrl: this.mockAdminRpcUrl,
+      publicRpcUrl: 'https://mock.tenderly.rpc/public',
+      blockExplorerUrl: `https://mock.tenderly.co/explorer/vnet/${this.mockVnetId}`
+    };
+  }
+
+  async fundAddress(address: string, amountWei: string, adminRpcUrl: string): Promise<void> {
+    this.mockedBalances.set(address.toLowerCase(), amountWei);
+    console.log(`[MOCK] Funded ${address} with ${amountWei} wei via ${adminRpcUrl}`);
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  async deleteVnet(vnetId: string): Promise<void> {
+    console.log('[MOCK] Deleted Tenderly Virtual TestNet:', vnetId);
+    this.mockedBalances.clear();
+  }
+
+  /**
+   * Check if an address has been mocked as funded
+   */
+  isMockFunded(address: string): boolean {
+    return this.mockedBalances.has(address.toLowerCase());
+  }
+
+  /**
+   * Get mocked balance for an address
+   */
+  getMockBalance(address: string): string | undefined {
+    return this.mockedBalances.get(address.toLowerCase());
+  }
+}
+
+/**
+ * Create a Tenderly client, falling back to mock if not configured
+ */
+export function createTenderlyClient(): TenderlyClient {
+  const realClient = new TenderlyClient();
+  
+  if (realClient.isConfigured()) {
+    console.log('[TENDERLY] Using real Tenderly API client');
+    return realClient;
+  } else {
+    console.log('[TENDERLY] Not configured, using mock client');
+    return new MockTenderlyClient();
+  }
+}
+
+/**
+ * Load Tenderly configuration from environment or config file
+ */
+export async function loadTenderlyConfig(): Promise<TenderlyConfig> {
+  const config: TenderlyConfig = {};
+
+  // Try to load from environment variables
+  config.accessKey = process.env.TENDERLY_ACCESS_KEY;
+  config.accountSlug = process.env.TENDERLY_ACCOUNT_SLUG;
+  config.projectSlug = process.env.TENDERLY_PROJECT_SLUG;
+
+  // Try to load from a config file
+  try {
+    const configPath = path.resolve(process.cwd(), '.tenderly.json');
+    const configContent = await fs.readFile(configPath, 'utf8');
+    const fileConfig = JSON.parse(configContent);
+    
+    Object.assign(config, fileConfig);
+  } catch (error) {
+    // Config file doesn't exist or is invalid, that's okay
+  }
+
+  return config;
+}
+
+/**
+ * Utility function to convert ETH to wei
+ */
+export function ethToWei(ethAmount: string): string {
+  const eth = parseFloat(ethAmount);
+  if (isNaN(eth)) {
+    throw new Error(`Invalid ETH amount: ${ethAmount}`);
+  }
+  
+  // 1 ETH = 10^18 wei
+  const wei = BigInt(Math.floor(eth * 1e18));
+  return wei.toString();
+}
+
+/**
+ * Utility function to convert wei to ETH
+ */
+export function weiToEth(weiAmount: string): string {
+  const wei = BigInt(weiAmount);
+  const eth = Number(wei) / 1e18;
+  return eth.toFixed(6);
+}

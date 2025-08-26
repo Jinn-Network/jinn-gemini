@@ -9,7 +9,6 @@
 import { 
   createPublicClient, 
   http, 
-  type PublicClient,
   keccak256,
   encodePacked,
   parseUnits
@@ -21,14 +20,38 @@ import {
   loadWalletIdentity, 
   saveWalletIdentity, 
   getWalletPath,
-  withLock 
+  withLock,
+  type StorageError,
+  type StorageResult
 } from './storage.js';
 import type { 
   WalletManagerConfig, 
   BootstrapResult, 
   WalletIdentity, 
-  FundingRequirements
+  BootstrapOptions,
+  DryRunReport,
+  NeedsFundingResult
 } from './types.js';
+
+/**
+ * Helper function to access error message from failed StorageResult
+ */
+function getStorageErrorMessage(result: StorageResult<any>): string {
+  if (result.success) {
+    throw new Error('Cannot get error message from successful result');
+  }
+  return (result as { success: false; error: StorageError; message: string }).message;
+}
+
+/**
+ * Helper function to access error code from failed StorageResult
+ */
+function getStorageErrorCode(result: StorageResult<any>): StorageError {
+  if (result.success) {
+    throw new Error('Cannot get error code from successful result');
+  }
+  return (result as { success: false; error: StorageError; message: string }).error;
+}
 
 /**
  * Minimal Safe ABI for verification operations
@@ -55,9 +78,18 @@ const SAFE_ABI = [
 ] as const;
 
 /**
- * On-chain Safe verification states
+ * On-chain Safe verification states for internal use
  */
 type OnChainSafeState = 'NOT_DEPLOYED' | 'VALID_DEPLOYED' | 'INVALID_CONFIG';
+
+/**
+ * On-chain Safe state information for the new helper function contract
+ */
+type OnChainSafeStateInfo = {
+  exists: boolean;
+  owners?: `0x${string}`[];
+  threshold?: number;
+};
 
 /**
  * Default deployment configuration for Gnosis Safe
@@ -67,6 +99,99 @@ const DEFAULT_SAFE_CONFIG: Omit<SafeAccountConfig, 'owners'> = {
 };
 
 /**
+ * Checks the on-chain state of a predicted Safe address.
+ * Helper function contract as specified in Phase 1 requirements.
+ * 
+ * @param predictedAddress - The predicted Safe address to check
+ * @returns An object describing the on-chain state
+ */
+async function getOnChainSafeStateInfo(
+  publicClient: any,
+  predictedAddress: `0x${string}`
+): Promise<OnChainSafeStateInfo> {
+  try {
+    // First check if code exists at the Safe address (indicates deployment)
+    const code = await publicClient.getBytecode({ address: predictedAddress });
+    if (!code || code === '0x') {
+      return { exists: false };
+    }
+    
+    // Verify Safe configuration by checking owners and threshold
+    const [owners, threshold] = await Promise.all([
+      publicClient.readContract({
+        address: predictedAddress,
+        abi: SAFE_ABI,
+        functionName: 'getOwners',
+        args: []
+      } as any),
+      publicClient.readContract({
+        address: predictedAddress,
+        abi: SAFE_ABI,
+        functionName: 'getThreshold',
+        args: []
+      } as any)
+    ]);
+    
+    return {
+      exists: true,
+      owners: owners as `0x${string}`[],
+      threshold: Number(threshold)
+    };
+    
+  } catch (error: any) {
+    console.warn(`Failed to verify Safe on-chain at ${predictedAddress}: ${error.message}`);
+    // If we can't verify, assume it doesn't exist
+    return { exists: false };
+  }
+}
+
+/**
+ * Estimates deployment cost and checks if the owner EOA is funded.
+ * Helper function contract as specified in Phase 1 requirements.
+ * 
+ * @returns An object describing the funding status and requirements
+ */
+async function checkFundingStatus(
+  publicClient: any,
+  config: WalletManagerConfig,
+  ownerAddress: `0x${string}`,
+  saltNonce: `0x${string}`
+): Promise<{
+  isFunded: boolean;
+  required: NeedsFundingResult['required'];
+  estimatedCostWei: bigint;
+}> {
+  // Estimate gas for Safe deployment
+  const gasEstimate = await estimateSafeDeploymentGas(publicClient, config, ownerAddress, saltNonce);
+  
+  // Get current gas prices
+  const feeData = await publicClient.estimateFeesPerGas();
+  
+  // Calculate total required ETH (gas limit * max fee per gas)
+  const maxFeePerGas = feeData.maxFeePerGas || parseUnits('20', 9); // 20 gwei fallback
+  const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || parseUnits('2', 9); // 2 gwei fallback
+  
+  const estimatedCostWei = gasEstimate * maxFeePerGas;
+  const minRecommendedWei = (estimatedCostWei * 15n) / 10n; // 1.5x margin using BigInt
+  
+  const required: NeedsFundingResult['required'] = {
+    gasLimit: gasEstimate,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    minRecommendedWei
+  };
+  
+  // Check current balance
+  const currentBalance = await publicClient.getBalance({ address: ownerAddress });
+  
+  return {
+    isFunded: currentBalance >= minRecommendedWei,
+    required,
+    estimatedCostWei
+  };
+}
+
+/**
  * Bootstrap a Gnosis Safe wallet for the configured EOA.
  * 
  * This is the main entry point for wallet provisioning. It implements a
@@ -74,10 +199,15 @@ const DEFAULT_SAFE_CONFIG: Omit<SafeAccountConfig, 'owners'> = {
  * concurrency issues.
  * 
  * @param config - Wallet manager configuration
+ * @param options - Bootstrap options including dry run mode
  * @returns Bootstrap result indicating success, failure, or funding needs
  */
-export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapResult> {
+export async function bootstrap(
+  config: WalletManagerConfig,
+  options: BootstrapOptions = {}
+): Promise<BootstrapResult> {
   const startTime = Date.now();
+  const { dryRun = false } = options;
   
   try {
     // Validate configuration and set up clients
@@ -86,6 +216,64 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
     // Derive the owner address from the private key
     const ownerAddress = account.address as `0x${string}`;
     
+    // Generate deterministic salt nonce for prediction
+    const saltNonce = generateDeterministicSaltNonce(ownerAddress, config.chainId);
+    
+    // Predict the Safe address
+    const predictedSafeAddress = await predictSafeAddress(config, ownerAddress, saltNonce);
+    
+    // --- Dry Run Pre-computation ---
+    // All necessary read-only data should be gathered here.
+    const onChainState = await getOnChainSafeStateInfo(publicClient, predictedSafeAddress);
+    const { isFunded, required, estimatedCostWei } = await checkFundingStatus(publicClient, config, ownerAddress, saltNonce);
+
+    if (dryRun) {
+      const report: DryRunReport = {
+        ownerAddress,
+        predictedSafeAddress,
+        onChainState: onChainState.exists
+          ? onChainState.owners?.length === 1 && onChainState.threshold === 1
+            ? 'exists_valid'
+            : 'exists_invalid_config'
+          : 'not_deployed',
+        isFunded,
+        ...(isFunded ? {} : { requiredFundingWei: required.minRecommendedWei }),
+        estimatedDeploymentCostWei: estimatedCostWei,
+        actions: []
+      };
+
+      // Determine what actions would be taken
+      if (!onChainState.exists) {
+        if (isFunded) {
+          report.actions.push({
+            type: 'DEPLOY_SAFE',
+            details: `Deploy new 1-of-1 Gnosis Safe to ${predictedSafeAddress}`
+          });
+          report.actions.push({
+            type: 'WRITE_IDENTITY_FILE',
+            details: `Save identity to ~/.jinn/wallets/${config.chainId}/${ownerAddress}.json`
+          });
+        } else {
+          report.actions.push({
+            type: 'DEPLOY_SAFE',
+            details: `Deploy new 1-of-1 Gnosis Safe to ${predictedSafeAddress} (pending funding)`
+          });
+        }
+      } else if (onChainState.owners?.length === 1 && onChainState.threshold === 1) {
+        // Explicit adoption action for clarity
+        report.actions.push({
+          type: 'DEPLOY_SAFE', // Using same type but with adoption semantics
+          details: `Adopt existing 1-of-1 Gnosis Safe at ${predictedSafeAddress}`
+        });
+        report.actions.push({
+          type: 'WRITE_IDENTITY_FILE',
+          details: `Save existing Safe identity to ~/.jinn/wallets/${config.chainId}/${ownerAddress}.json`
+        });
+      }
+
+      return { status: 'dry_run', report };
+    }
+
     // Get the wallet file path for locking
     const walletPath = getWalletPath(config.chainId, ownerAddress, config.options?.storageBasePath);
     
@@ -107,17 +295,25 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
         }
         
         // Log warning about invalid existing identity but continue with fresh deployment
-        console.warn(`Existing Safe identity is invalid on-chain, proceeding with fresh deployment`);
+        console.warn(`Local identity file points to an invalid on-chain Safe. Re-evaluating state to determine next steps.`);
       }
       
-      // Phase 2: Generate deterministic salt nonce
-      const saltNonce = generateDeterministicSaltNonce(ownerAddress, config.chainId);
+      // Phase 2: Re-fetch on-chain state and funding after acquiring lock
+      // This ensures we have fresh data for decision making, preventing race conditions
+      const freshOnChainState = await getOnChainSafeStateInfo(publicClient, predictedSafeAddress);
+      const freshFundingStatus = await checkFundingStatus(publicClient, config, ownerAddress, saltNonce);
       
       // Phase 3: Check on-chain state first (blockchain is source of truth)
-      const predictedSafeAddress = await predictSafeAddress(config, ownerAddress, saltNonce);
-      const onChainState = await getOnChainSafeState(publicClient, predictedSafeAddress, ownerAddress);
+      // Convert the fresh state info to the legacy format for compatibility
+      const onChainStateFormatted = !freshOnChainState.exists 
+        ? 'NOT_DEPLOYED' as const
+        : freshOnChainState.owners?.length === 1 && 
+          freshOnChainState.owners[0].toLowerCase() === ownerAddress.toLowerCase() && 
+          freshOnChainState.threshold === 1
+          ? 'VALID_DEPLOYED' as const
+          : 'INVALID_CONFIG' as const;
       
-      if (onChainState === 'VALID_DEPLOYED') {
+      if (onChainStateFormatted === 'VALID_DEPLOYED') {
         // Safe already exists with correct configuration - adopt it
         const identity: WalletIdentity = {
           ownerAddress,
@@ -137,7 +333,7 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
         if (!saveResult.success) {
           return {
             status: 'failed' as const,
-            error: `Failed to save wallet identity: ${saveResult.message}`,
+            error: `Failed to save wallet identity: ${getStorageErrorMessage(saveResult)}`,
             code: 'deployment_failed' as const
           };
         }
@@ -149,7 +345,7 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
             durationMs: Date.now() - startTime
           }
         };
-      } else if (onChainState === 'INVALID_CONFIG') {
+      } else if (onChainStateFormatted === 'INVALID_CONFIG') {
         // Safe exists but has wrong configuration
         return {
           status: 'failed' as const,
@@ -183,7 +379,7 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
           if (!saveResult.success) {
             return {
               status: 'failed' as const,
-              error: `Failed to save wallet identity: ${saveResult.message}`,
+              error: `Failed to save wallet identity: ${getStorageErrorMessage(saveResult)}`,
               code: 'deployment_failed' as const
             };
           }
@@ -198,10 +394,13 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
         }
       }
       
-      // Phase 4: Estimate gas and check funding
-      const fundingCheck = await checkFunding(publicClient, config, ownerAddress, saltNonce);
-      if (fundingCheck !== null) {
-        return fundingCheck;
+      // Phase 4: Check funding using fresh values from inside the lock
+      if (!freshFundingStatus.isFunded) {
+        return {
+          status: 'needs_funding' as const,
+          address: ownerAddress,
+          required: freshFundingStatus.required
+        };
       }
       
       // Phase 5: Deploy the Safe
@@ -235,7 +434,7 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
       if (!saveResult.success) {
         return {
           status: 'failed' as const,
-          error: `Failed to save wallet identity: ${saveResult.message}`,
+          error: `Failed to save wallet identity: ${getStorageErrorMessage(saveResult)}`,
           code: 'deployment_failed' as const
         };
       }
@@ -259,6 +458,10 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
       code = 'unsupported_chain';
     } else if (message.includes('RPC validation failed')) {
       code = 'rpc_error';
+    } else if (message.includes('Chain ID mismatch')) {
+      code = 'chain_id_mismatch';
+    } else if (message.includes('workerPrivateKey') || message.includes('private key')) {
+      code = 'invalid_config';
     }
     
     return {
@@ -273,11 +476,21 @@ export async function bootstrap(config: WalletManagerConfig): Promise<BootstrapR
  * Set up Viem clients and validate configuration
  */
 async function setupClients(config: WalletManagerConfig) {
+  // Validate private key format
+  if (!config.workerPrivateKey || !config.workerPrivateKey.startsWith('0x') || config.workerPrivateKey.length !== 66) {
+    throw new Error('Invalid workerPrivateKey: must be a 64-character hexadecimal string with 0x prefix');
+  }
+  
   // Validate chain support
   const chainConfig = getChainConfig(config.chainId);
   
   // Create Viem account from private key
-  const account = privateKeyToAccount(config.workerPrivateKey);
+  let account;
+  try {
+    account = privateKeyToAccount(config.workerPrivateKey);
+  } catch (error: any) {
+    throw new Error(`Invalid workerPrivateKey format: ${error.message}`);
+  }
   
   // Create public client for reading blockchain state
   const publicClient = createPublicClient({
@@ -294,6 +507,10 @@ async function setupClients(config: WalletManagerConfig) {
       );
     }
   } catch (error: any) {
+    if (error.message.includes('Chain ID mismatch')) {
+      // Re-throw chain ID mismatch errors as-is for proper categorization
+      throw error;
+    }
     throw new Error(`RPC validation failed: ${error.message}`);
   }
   
@@ -315,12 +532,13 @@ async function checkExistingIdentity(
   }
   
   // Identity doesn't exist or is invalid
-  if (loadResult.error === 'file_not_found') {
-    return null;
+  if (!loadResult.success) {
+    if (getStorageErrorCode(loadResult) === 'file_not_found') {
+      return null;
+    }
+    // Log other errors but don't fail the bootstrap
+    console.warn(`Failed to load existing identity: ${getStorageErrorMessage(loadResult)}`);
   }
-  
-  // Log other errors but don't fail the bootstrap
-  console.warn(`Failed to load existing identity: ${loadResult.message}`);
   return null;
 }
 
@@ -328,7 +546,7 @@ async function checkExistingIdentity(
  * Get the on-chain state of a Safe at the predicted address
  */
 async function getOnChainSafeState(
-  publicClient: PublicClient,
+  publicClient: any,
   predictedAddress: `0x${string}`,
   expectedOwnerAddress: `0x${string}`
 ): Promise<OnChainSafeState> {
@@ -345,12 +563,14 @@ async function getOnChainSafeState(
         address: predictedAddress,
         abi: SAFE_ABI,
         functionName: 'getOwners',
-      }),
+        args: []
+      } as any),
       publicClient.readContract({
         address: predictedAddress,
         abi: SAFE_ABI,
         functionName: 'getThreshold',
-      })
+        args: []
+      } as any)
     ]);
     
     const isOwnerCorrect = owners.length === 1 && owners[0].toLowerCase() === expectedOwnerAddress.toLowerCase();
@@ -374,7 +594,7 @@ async function getOnChainSafeState(
  * Verify that a Safe exists on-chain and has the correct configuration
  */
 async function verifySafeOnChain(
-  publicClient: PublicClient, 
+  publicClient: any, 
   identity: WalletIdentity
 ): Promise<boolean> {
   const state = await getOnChainSafeState(publicClient, identity.safeAddress, identity.ownerAddress);
@@ -397,60 +617,12 @@ function generateDeterministicSaltNonce(
   return keccak256(packed);
 }
 
-/**
- * Check if the EOA has sufficient funds for Safe deployment
- */
-async function checkFunding(
-  publicClient: PublicClient,
-  config: WalletManagerConfig,
-  ownerAddress: `0x${string}`,
-  saltNonce: `0x${string}`
-): Promise<BootstrapResult | null> {
-  try {
-    // Estimate gas for Safe deployment
-    const gasEstimate = await estimateSafeDeploymentGas(publicClient, config, ownerAddress, saltNonce);
-    
-    // Get current gas prices
-    const feeData = await publicClient.estimateFeesPerGas();
-    
-    // Calculate total required ETH (gas limit * max fee per gas)
-    const maxFeePerGas = feeData.maxFeePerGas || parseUnits('20', 9); // 20 gwei fallback
-    const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || parseUnits('2', 9); // 2 gwei fallback
-    
-    const requiredWei = gasEstimate * maxFeePerGas;
-    const minRecommendedWei = (requiredWei * 15n) / 10n; // 1.5x margin using BigInt
-    
-    // Check current balance
-    const currentBalance = await publicClient.getBalance({ address: ownerAddress });
-    
-    if (currentBalance < minRecommendedWei) {
-      const fundingRequirements: FundingRequirements = {
-        gasLimit: gasEstimate,
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-        minRecommendedWei
-      };
-      
-      return {
-        status: 'needs_funding' as const,
-        address: ownerAddress,
-        required: fundingRequirements
-      };
-    }
-    
-    // Funding is sufficient, return null to continue
-    return null;
-    
-  } catch (error: any) {
-    throw new Error(`Failed to check funding: ${error.message}`);
-  }
-}
 
 /**
  * Estimate gas required for Safe deployment using dynamic on-chain estimation
  */
 async function estimateSafeDeploymentGas(
-  publicClient: PublicClient,
+  publicClient: any,
   config: WalletManagerConfig,
   ownerAddress: `0x${string}`,
   saltNonce: `0x${string}`
@@ -504,13 +676,11 @@ async function estimateSafeDeploymentGas(
  */
 async function deploySafe(
   config: WalletManagerConfig,
-  publicClient: PublicClient,
+  publicClient: any,
   ownerAddress: `0x${string}`,
   saltNonce: `0x${string}`
 ): Promise<{ status: 'success'; safeAddress: `0x${string}`; gasUsed: bigint; txHash: `0x${string}` } | { status: 'failed'; error: string; code: import('./types.js').BootstrapError }> {
   try {
-    const chainConfig = getChainConfig(config.chainId);
-    
     // Create Safe account configuration
     const safeAccountConfig: SafeAccountConfig = {
       ...DEFAULT_SAFE_CONFIG,
@@ -565,11 +735,10 @@ async function deploySafe(
     
     try {
       // Execute the deployment transaction
-      txHash = await externalSigner.sendTransaction({
+      txHash = await (externalSigner as any).sendTransaction({
         to: deploymentTransaction.to as `0x${string}`,
         value: BigInt(deploymentTransaction.value),
-        data: deploymentTransaction.data as `0x${string}`,
-        chain: chainConfig.chain
+        data: deploymentTransaction.data as `0x${string}`
       });
       
       // Wait for transaction receipt
@@ -721,6 +890,12 @@ async function checkSafeInTransactionService(
   config: WalletManagerConfig,
   safeAddress: `0x${string}`
 ): Promise<{ exists: boolean; configValid?: boolean }> {
+  // Skip STS checks if disabled (useful for Virtual TestNets)
+  if (config.options?.disableTxServiceChecks) {
+    console.warn('Safe Transaction Service checks disabled - skipping pre-existence check');
+    return { exists: false };
+  }
+  
   try {
     const chainConfig = getChainConfig(config.chainId);
     const txServiceUrl = config.options?.txServiceUrl || chainConfig.txServiceUrl;
