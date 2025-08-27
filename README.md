@@ -179,16 +179,26 @@ yarn workspace @jinn/metacog-mcp start
 
 ### Environment Variables
 
-Required environment variables (see `env.template`):
+To run the Jinn worker and its associated services, you'll need to configure several environment variables. Copy the `.env.template` file to `.env` and populate it with your credentials.
 
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key
+#### Required for Core Functionality
 
-Optional variables:
+-   `WORKER_PRIVATE_KEY`: The private key of an Externally Owned Account (EOA). This is used to deterministically provision and control the agent's on-chain identity (a Gnosis Safe).
+-   `CHAIN_ID`: The chain ID of the target blockchain (e.g., `8453` for Base mainnet).
+-   `RPC_URL`: The URL of an RPC endpoint for the specified `CHAIN_ID`.
+-   `SUPABASE_URL`: Your Supabase project URL.
+-   `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key.
+-   `GEMINI_API_KEY`: Your API key for the Gemini API.
 
-- `NODE_ENV`: Environment (development/production)
-- `OTEL_LOG_LEVEL`: OpenTelemetry log level
-- `DEBUG`: Debug mode for development
+#### Required for E2E Testing
+
+Running the end-to-end test suite requires additional variables to interact with Tenderly, which is used to create ephemeral test environments.
+
+-   `TENDERLY_ACCESS_KEY`: Your Tenderly access key.
+-   `TENDERLY_ACCOUNT_SLUG`: Your Tenderly account slug (the name of your organization).
+-   `TENDERLY_PROJECT_SLUG`: The slug of your project within Tenderly.
+-   `TEST_RPC_URL`: (Optional) An RPC URL to use specifically for testing, overriding the main `RPC_URL`.
+-   `DISABLE_STS_CHECKS`: (Optional) Set to `true` to bypass Safe Transaction Service checks, which is often necessary in test environments.
 
 ### Gemini Configuration
 
