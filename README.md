@@ -53,6 +53,7 @@ This project consists of several key components:
 - Yarn
 - A Supabase project
 - Gemini CLI installed and authenticated
+- An existing EOA (Externally Owned Account) with a private key. The worker uses this EOA to deploy and control its on-chain identity (Gnosis Safe). The system does **not** create an EOA for you.
 
 ### Setup
 

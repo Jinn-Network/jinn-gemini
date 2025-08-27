@@ -7,7 +7,7 @@ import { getOpenAIClient } from './shared/openai.js';
 
 export const createMemoryParams = z.object({
     content: z.string().describe('The textual content of the memory to be stored and embedded.'),
-    custom_metadata: z.record(z.any()).optional().describe('Optional. Any additional, custom, searchable metadata to attach to the memory.'),
+    custom_metadata: z.record(z.string(), z.any()).optional().describe('Optional. Any additional, custom, searchable metadata to attach to the memory.'),
     linked_memory_id: z.string().uuid().optional().describe('The ID of a single, existing memory that this new one is related to.'),
     link_type: linkTypeSchema.optional().describe('Describes the relationship between this new memory and the linked one.'),
 });

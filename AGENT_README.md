@@ -70,6 +70,7 @@ The system consists of several key components that work together in a continuous
 
 ## Constants
 - Supbase project ID is: clnwgxgvmnrkwqdblqgf
+- **Tenderly**: Use Virtual Testnets (vnets), NOT deprecated forks. API endpoint: `/testnet/container`
 
 ---
 

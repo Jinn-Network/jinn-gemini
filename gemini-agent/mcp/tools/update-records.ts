@@ -4,10 +4,10 @@ import { tableNameSchema } from './shared/types.js';
 
 export const updateRecordsParams = z.object({
   table_name: tableNameSchema,
-  filter: z.record(z.any()).refine(obj => Object.keys(obj).length > 0, {
+  filter: z.record(z.string(), z.any()).refine(obj => Object.keys(obj).length > 0, {
     message: "Filter cannot be empty - must specify at least one condition to prevent accidental update of all records"
   }).describe('A JSON object to identify the row(s) to update. Cannot be empty.'),
-  updates: z.record(z.any()).refine(obj => Object.keys(obj).length > 0, {
+  updates: z.record(z.string(), z.any()).refine(obj => Object.keys(obj).length > 0, {
     message: "Updates cannot be empty - must specify at least one field to update"
   }).describe('A JSON object of columns and their new values.'),
 });

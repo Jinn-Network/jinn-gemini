@@ -91,7 +91,7 @@ export interface Job {
 // Zod schemas for job creation
 export const ScheduleConfigSchema = z.object({
   trigger: z.enum(['on_new_artifact', 'on_job_status_change', 'on_new_thread', 'cron', 'manual']),
-  filters: z.record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])),
+  filters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])),
   cron_pattern: z.string().optional(),
 });
 

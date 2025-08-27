@@ -10,6 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "strict": false,
     "skipLibCheck": true,
+    "typeRoots": ["./node_modules/@types"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -28,8 +29,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "packages/*/node_modules",
-    "packages/*/dist",
+    "packages/**",
     "**/*.test.ts",
     "**/*.test.js",
     "**/*.spec.ts",

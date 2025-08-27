@@ -10,7 +10,7 @@ export const searchMemoriesParams = z.object({
     query: z.string().describe('The natural language text to search for.'),
     limit: z.number().int().positive().optional().default(10).describe('The maximum number of memories to return.'),
     similarity_threshold: z.number().min(0).max(1).optional().default(0.5).describe('The minimum similarity score (0 to 1) for a match.'),
-    filter: z.record(z.any()).optional().describe('A key-value object to filter memories by their metadata.'),
+    filter: z.record(z.string(), z.any()).optional().describe('A key-value object to filter memories by their metadata.'),
     include_links: z.boolean().optional().default(false).describe('If true, the results will include details about linked memories.'),
     cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
 });

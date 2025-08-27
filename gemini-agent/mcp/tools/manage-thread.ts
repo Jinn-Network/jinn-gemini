@@ -7,7 +7,7 @@ export const manageThreadParams = z.object({
     objective: z.string().optional().describe('The specific goal of the thread. Required for creation.'),
     parent_thread_id: z.string().uuid().optional().describe('The ID of a parent thread to create a sub-task.'),
     status: z.string().optional().describe("The new status (e.g., 'OPEN', 'COMPLETED'). On update, omission leaves it unchanged."),
-    summary: z.record(z.any()).optional().describe("A summary of the thread's results. On update, omission leaves it unchanged."),
+    summary: z.record(z.string(), z.any()).optional().describe("A summary of the thread's results. On update, omission leaves it unchanged."),
 });
 
 export type ManageThreadParams = z.infer<typeof manageThreadParams>;
