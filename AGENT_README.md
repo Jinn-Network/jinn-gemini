@@ -13,6 +13,29 @@ The core technologies are:
 
 ---
 
+## On-Chain Identity & Wallet Management
+
+To participate in decentralized ecosystems like Olas, each Jinn agent requires a secure and persistent on-chain identity. This is achieved through a Gnosis Safe smart contract wallet, which is deterministically provisioned and controlled by a standard Externally Owned Account (EOA).
+
+The core of this capability is the `wallet-manager` library, which handles the entire lifecycle of the agent's on-chain identity.
+
+### Key Principles
+
+-   **Deterministic Provisioning**: Each agent's Gnosis Safe is generated deterministically from a `WORKER_PRIVATE_KEY` and the `CHAIN_ID`. This ensures that an agent's identity is persistent and recoverable.
+-   **Idempotent "Find-or-Create"**: The wallet bootstrap process is idempotent. When a worker starts, it will securely find its existing Gnosis Safe or create a new one if it doesn't exist. This process is protected against race conditions, making it safe for multiple workers to run concurrently.
+-   **Security**: The EOA private key is a critical secret. The `wallet-manager` library is designed to **never** persist this key to disk. It is held in memory only for the duration of required operations and is sourced from the environment at runtime.
+
+### The Bootstrap Process
+
+When a worker initializes, it undergoes the following steps to establish its identity:
+
+1.  **Load Local Identity**: The system first checks for a locally persisted identity file.
+2.  **Verify On-Chain**: If a local identity exists, it is verified on-chain to ensure its configuration (e.g., owner, threshold) is still valid.
+3.  **Deploy if Needed**: If no identity is found, the system deploys a new 1-of-1 Gnosis Safe, controlled by the EOA derived from the `WORKER_PRIVATE_KEY`.
+4.  **Persist Public Data**: Once the on-chain identity is confirmed, its public data (Safe address, owner address, etc.) is persisted locally to speed up future initializations.
+
+This robust process ensures every agent has a stable, secure, and unique identity on the blockchain, enabling it to own assets, participate in governance, and interact with other decentralized services.
+
 ## Architectural Philosophy
 
 The design of this system is guided by a few core principles:

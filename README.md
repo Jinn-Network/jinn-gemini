@@ -189,6 +189,7 @@ To run the Jinn worker and its associated services, you'll need to configure sev
 -   `SUPABASE_URL`: Your Supabase project URL.
 -   `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key.
 -   `GEMINI_API_KEY`: Your API key for the Gemini API.
+-   `OPENAI_API_KEY`: Your API key for the OpenAI API.
 
 #### Required for E2E Testing
 
