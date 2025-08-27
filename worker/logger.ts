@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { formatEther } from 'viem';
 
 /**
  * Create the main logger instance with appropriate formatting for the worker.
@@ -80,9 +81,14 @@ export function formatAddress(address: string, label?: string): string {
 /**
  * Utility function to format wei amounts to ETH for logging.
  */
-export function formatWeiToEth(wei: bigint, decimals: number = 5): string {
-  const eth = Number(wei) / 1e18;
-  return `${eth.toFixed(decimals)} ETH`;
+export function formatWeiToEth(wei: bigint): string {
+  const eth = formatEther(wei);
+  // Basic trim to remove unnecessary trailing zeros, but keep it simple.
+  // E.g. 1.230000... -> 1.23
+  if (eth.includes('.')) {
+    return eth.replace(/\.?0+$/, '');
+  }
+  return eth;
 }
 
 /**

@@ -405,6 +405,28 @@ export class WalletManager {
   }
 
   /**
+   * Get the balance of the owner EOA.
+   *
+   * This method fetches the current balance of the EOA associated with the
+   * configured private key.
+   *
+   * @returns The balance in wei as a bigint
+   *
+   * @example
+   * ```typescript
+   * const balance = await manager.getOwnerBalance();
+   * console.log('Owner balance (wei):', balance.toString());
+   * ```
+   *
+   * @since 3.1.0
+   */
+  async getOwnerBalance(): Promise<bigint> {
+    const { publicClient, account } = await setupClients(this.config);
+    const ownerAddress = account.address as `0x${string}`;
+    return publicClient.getBalance({ address: ownerAddress });
+  }
+
+  /**
    * Get existing wallet identity from local storage if it exists.
    * 
    * This method checks for a previously saved wallet identity file without

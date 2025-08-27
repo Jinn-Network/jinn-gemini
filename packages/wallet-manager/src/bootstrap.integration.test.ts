@@ -13,6 +13,7 @@ import { bootstrap, predictSafeAddress } from './bootstrap.js';
 import { loadWalletIdentity, saveWalletIdentity } from './storage.js';
 import type { WalletManagerConfig } from './types.js';
 import { privateKeyToAccount } from 'viem/accounts';
+import { vi } from 'vitest';
 
 // Mock configuration for testing
 const TEST_CONFIG: WalletManagerConfig = {
@@ -30,7 +31,7 @@ describe('Phase 4 Bootstrap Integration Tests', () => {
 
   beforeEach(() => {
     // Clean up any existing test files
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('predictSafeAddress', () => {

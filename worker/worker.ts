@@ -214,7 +214,8 @@ async function handleFundingRequirements(
     const checkResult = await walletManager.bootstrap();
     
     if (checkResult.status === 'needs_funding') {
-      walletLogger.info('Balance: 0.00000 ETH. Still waiting...');
+      const currentBalance = await walletManager.getOwnerBalance();
+      walletLogger.info(`Balance: ${formatWeiToEth(currentBalance)}. Still waiting...`);
       continue;
     }
     

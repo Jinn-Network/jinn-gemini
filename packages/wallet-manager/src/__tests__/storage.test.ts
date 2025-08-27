@@ -20,6 +20,7 @@ import {
   getTempPath,
 } from '../storage.js';
 import type { WalletIdentity } from '../types.js';
+import { vi } from 'vitest';
 
 describe('Storage Layer', () => {
   let testBasePath: string;
@@ -369,7 +370,7 @@ describe('Storage Layer', () => {
       let writeCallCount = 0;
       
       // Mock fs.writeFile to fail on the first call (simulating interruption)
-      const mockWriteFile = jest.fn(async (path: any, data: any, options: any) => {
+      const mockWriteFile = vi.fn(async (path: any, data: any, options: any) => {
         writeCallCount++;
         if (writeCallCount === 1 && path.includes('.tmp')) {
           throw new Error('Simulated write failure');
