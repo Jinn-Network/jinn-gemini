@@ -14,6 +14,10 @@ const workerConfigSchema = z.object({
   RPC_URL: z.string().url('RPC_URL must be a valid HTTP/HTTPS URL'),
   JINN_WALLET_STORAGE_PATH: z.string().optional(), // For e2e testing override
   
+  // Testing configuration
+  TEST_RPC_URL: z.string().url().optional(), // Override RPC URL for testing
+  DISABLE_STS_CHECKS: z.coerce.boolean().optional(), // Explicitly disable Safe Transaction Service checks
+  
   // Supabase configuration (optional for wallet-only mode)
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),

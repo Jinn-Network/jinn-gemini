@@ -63,14 +63,19 @@ async function parseArguments(): Promise<WorkerArgs> {
 async function initializeWallet(args: WorkerArgs): Promise<void> {
   walletLogger.info('No local identity found. Beginning bootstrap process...');
 
+  // Use TEST_RPC_URL in test environments if provided, otherwise use RPC_URL
+  const rpcUrl = process.env.NODE_ENV === 'test' && config.TEST_RPC_URL 
+    ? config.TEST_RPC_URL 
+    : config.RPC_URL;
+
   const walletManagerConfig: WalletManagerConfig = {
     workerPrivateKey: config.WORKER_PRIVATE_KEY as `0x${string}`,
     chainId: config.CHAIN_ID,
-    rpcUrl: config.RPC_URL,
+    rpcUrl: rpcUrl,
     options: {
       storageBasePath: config.JINN_WALLET_STORAGE_PATH,
-      // Disable STS checks in test environments or when using Virtual TestNets
-      disableTxServiceChecks: process.env.NODE_ENV === 'test' || config.RPC_URL.includes('tenderly.co'),
+      // Disable STS checks if explicitly configured or in test environments
+      disableTxServiceChecks: config.DISABLE_STS_CHECKS || process.env.NODE_ENV === 'test',
     },
   };
 

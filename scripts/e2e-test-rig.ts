@@ -151,8 +151,9 @@ async function createTestContext(testName: string, vnetResult: VnetResult, tende
       // Base configuration - tests will override specific values
       WORKER_PRIVATE_KEY: uniquePrivateKey,
       CHAIN_ID: TEST_CHAIN_IDS.base_mainnet.toString(), // Use Base mainnet to match Tenderly Virtual Testnet
-      // Use the ephemeral vnet's Admin RPC URL
-      RPC_URL: vnetResult.adminRpcUrl,
+      // Use TEST_RPC_URL for testing to avoid affecting production RPC_URL
+      TEST_RPC_URL: vnetResult.adminRpcUrl,
+      RPC_URL: 'https://mainnet.base.org', // Keep production RPC as fallback
     },
   };
 }
