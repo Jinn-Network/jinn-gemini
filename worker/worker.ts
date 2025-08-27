@@ -61,8 +61,6 @@ async function parseArguments(): Promise<WorkerArgs> {
  * Handles all possible bootstrap outcomes according to the specification.
  */
 async function initializeWallet(args: WorkerArgs): Promise<void> {
-  walletLogger.info('No local identity found. Beginning bootstrap process...');
-
   // Use TEST_RPC_URL in test environments if provided, otherwise use RPC_URL
   const rpcUrl = process.env.NODE_ENV === 'test' && config.TEST_RPC_URL 
     ? config.TEST_RPC_URL 
@@ -80,6 +78,32 @@ async function initializeWallet(args: WorkerArgs): Promise<void> {
   };
 
   const walletManager = new WalletManager(walletManagerConfig);
+
+  // First, check if we already have a valid local identity
+  const existingIdentity = await walletManager.getExistingIdentity();
+  if (existingIdentity) {
+    walletLogger.info('Local identity found. Verifying on-chain state...');
+    walletLogger.info(`    - Safe Address: ${existingIdentity.safeAddress}`);
+    walletLogger.info(`    - Chain ID:     ${existingIdentity.chainId}`);
+    
+    // Verify the existing identity is still valid on-chain
+    const verificationResult = await walletManager.verifyExistingIdentity(existingIdentity);
+    if (verificationResult.isValid) {
+      walletLogger.info('Identity verified.');
+      logger.info('Wallet bootstrap complete. Worker is now polling for jobs...');
+      
+      // In test environments, exit after successful bootstrap
+      if (process.env.NODE_ENV === 'test') {
+        logger.info('Test environment detected - exiting after bootstrap completion');
+        exitWithCode(0, 'Bootstrap complete in test mode');
+      }
+      return;
+    } else {
+      walletLogger.warn('Local identity file points to an invalid on-chain Safe. Re-evaluating state to determine next steps.');
+    }
+  } else {
+    walletLogger.info('No local identity found. Beginning bootstrap process...');
+  }
 
   // If dry run, just run the dry run and exit
   if (args.dryRun) {

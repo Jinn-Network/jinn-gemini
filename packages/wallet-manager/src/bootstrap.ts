@@ -56,7 +56,7 @@ function getStorageErrorCode(result: StorageResult<any>): StorageError {
 /**
  * Minimal Safe ABI for verification operations
  */
-const SAFE_ABI = [
+export const SAFE_ABI = [
   {
     "constant": true,
     "inputs": [],
@@ -475,7 +475,7 @@ export async function bootstrap(
 /**
  * Set up Viem clients and validate configuration
  */
-async function setupClients(config: WalletManagerConfig) {
+export async function setupClients(config: WalletManagerConfig) {
   // Validate private key format
   if (!config.workerPrivateKey || !config.workerPrivateKey.startsWith('0x') || config.workerPrivateKey.length !== 66) {
     throw new Error('Invalid workerPrivateKey: must be a 64-character hexadecimal string with 0x prefix');

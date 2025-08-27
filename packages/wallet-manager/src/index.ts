@@ -120,8 +120,9 @@ export type {
   ChainConfig
 } from './types.js';
 
-import { bootstrap } from './bootstrap.js';
-import type { WalletManagerConfig, BootstrapResult, BootstrapOptions } from './types.js';
+import { bootstrap, setupClients, SAFE_ABI } from './bootstrap.js';
+import { loadWalletIdentity } from './storage.js';
+import type { WalletManagerConfig, BootstrapResult, BootstrapOptions, WalletIdentity } from './types.js';
 
 /**
  * Main wallet manager class that provides a clean API for wallet operations.
@@ -401,6 +402,123 @@ export class WalletManager {
    */
   getRpcUrl(): string {
     return this.config.rpcUrl;
+  }
+
+  /**
+   * Get existing wallet identity from local storage if it exists.
+   * 
+   * This method checks for a previously saved wallet identity file without
+   * performing any blockchain operations. It's useful for quickly determining
+   * if a wallet has been bootstrapped before.
+   * 
+   * @returns The wallet identity if found, null if not found or invalid
+   * 
+   * @example
+   * ```typescript
+   * const existingIdentity = await manager.getExistingIdentity();
+   * if (existingIdentity) {
+   *   console.log('Found existing Safe:', existingIdentity.safeAddress);
+   * } else {
+   *   console.log('No local identity found');
+   * }
+   * ```
+   * 
+   * @since 3.0.0
+   */
+  async getExistingIdentity(): Promise<WalletIdentity | null> {
+    try {
+      // Derive the owner address from the private key to check for existing identity
+      const { account } = await setupClients(this.config);
+      const ownerAddress = account.address as `0x${string}`;
+      
+      const loadResult = await loadWalletIdentity(
+        this.config.chainId,
+        ownerAddress,
+        this.config.options?.storageBasePath
+      );
+      
+      if (loadResult.success) {
+        return loadResult.data;
+      }
+      
+      return null;
+    } catch (error: any) {
+      // Log error but don't throw - this is a best-effort check
+      console.warn('Failed to load existing identity:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Verify that an existing wallet identity is still valid on-chain.
+   * 
+   * This method checks if the Safe referenced in the identity still exists
+   * on-chain with the expected configuration. It's more efficient than a full
+   * bootstrap when you already have a local identity.
+   * 
+   * @param identity The wallet identity to verify
+   * @returns Verification result indicating if the identity is still valid
+   * 
+   * @example
+   * ```typescript
+   * const identity = await manager.getExistingIdentity();
+   * if (identity) {
+   *   const verification = await manager.verifyExistingIdentity(identity);
+   *   if (verification.isValid) {
+   *     console.log('Identity is still valid');
+   *   } else {
+   *     console.log('Identity is invalid:', verification.reason);
+   *   }
+   * }
+   * ```
+   * 
+   * @since 3.0.0
+   */
+  async verifyExistingIdentity(identity: WalletIdentity): Promise<{
+    isValid: boolean;
+    reason?: string;
+  }> {
+    try {
+      const { publicClient } = await setupClients(this.config);
+      
+      // Check if the Safe still exists with correct configuration
+      const code = await publicClient.getBytecode({ address: identity.safeAddress });
+      if (!code || code === '0x') {
+        return { isValid: false, reason: 'Safe no longer exists on-chain' };
+      }
+      
+      // Verify Safe configuration
+      const [owners, threshold] = await Promise.all([
+        publicClient.readContract({
+          address: identity.safeAddress,
+          abi: SAFE_ABI,
+          functionName: 'getOwners',
+          args: []
+        } as any),
+        publicClient.readContract({
+          address: identity.safeAddress,
+          abi: SAFE_ABI,
+          functionName: 'getThreshold',
+          args: []
+        } as any)
+      ]);
+      
+      const actualOwners = owners as `0x${string}`[];
+      const actualThreshold = Number(threshold);
+      
+      if (actualThreshold !== 1) {
+        return { isValid: false, reason: `Safe threshold is ${actualThreshold}, expected 1` };
+      }
+      
+      if (actualOwners.length !== 1 || actualOwners[0].toLowerCase() !== identity.ownerAddress.toLowerCase()) {
+        return { isValid: false, reason: 'Safe owners do not match expected configuration' };
+      }
+      
+      return { isValid: true };
+      
+    } catch (error: any) {
+      return { isValid: false, reason: `Verification failed: ${error.message}` };
+    }
   }
 }
 
