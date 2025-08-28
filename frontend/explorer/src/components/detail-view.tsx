@@ -27,9 +27,9 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
   const [promptData, setPromptData] = useState<{ id: string, content: string } | null>(null)
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false)
 
-  // Fetch prompt content if this is a job_definition with prompt_ref
+  // Fetch prompt content if this is a job with prompt_ref
   useEffect(() => {
-    if (collectionName === 'job_definitions' && record.prompt_ref) {
+    if (collectionName === 'jobs' && record.prompt_ref) {
       const fetchPrompt = async () => {
         setIsLoadingPrompt(true)
         const supabase = createClient()
@@ -84,6 +84,13 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
   const visibleFields = Object.entries(record).filter(([key]) => 
     !hiddenFields.includes(key)
   )
+
+  // Reorder fields to show name first, then other fields
+  const reorderedFields = visibleFields.sort(([keyA], [keyB]) => {
+    if (keyA === 'name') return -1
+    if (keyB === 'name') return 1
+    return 0
+  })
   
   // Check if this record has job creation tracking
   const hasJobCreationInfo = 'source_job_id' in record && record.source_job_id
@@ -93,27 +100,14 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
       <CardHeader>
         <CardTitle>Record Details</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          {/* Job Creation Info Section */}
-          {hasJobCreationInfo && (
-            <div className="border-b border-gray-100 pb-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="font-medium text-gray-900">
-                  Job Creation:
-                </div>
-                <div className="md:col-span-3">
-                  <span className="text-sm text-gray-600">Job ID: {record.source_job_id}</span>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {visibleFields.map(([key, value]) => (
+              <CardContent>
+          <div className="space-y-6">
+            {/* Show basic job information first */}
+          {reorderedFields.map(([key, value]) => (
             <div key={key} className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0">
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-2 lg:gap-4">
-                <div className="font-medium text-gray-900 text-sm lg:text-base" title={`Field: ${key}`}>
-                  {humanizeFieldName(key)}:
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                <div className="lg:col-span-1">
+                  <span className="text-sm font-medium text-gray-900">{key}</span>
                 </div>
                 <div className="lg:col-span-3">
                   <ValueDisplay 
@@ -126,6 +120,42 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
               </div>
             </div>
           ))}
+
+          {/* Show Job Executions and Child Jobs for job records */}
+          {collectionName === 'jobs' && (
+            <>
+              <div className="border-b border-gray-100 pb-4">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                  <div className="lg:col-span-1">
+                    <span className="text-sm font-medium text-gray-900">Job Executions:</span>
+                  </div>
+                  <div className="lg:col-span-3">
+                    <JobExecutions jobDefinitionId={String(record.id)} />
+                  </div>
+                </div>
+              </div>
+              <div className="border-b border-gray-100 pb-4">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                  <div className="lg:col-span-1">
+                    <span className="text-sm font-medium text-gray-900">Child Jobs:</span>
+                  </div>
+                  <div className="lg:col-span-3">
+                    <ChildJobs jobDefinitionId={String(record.id)} />
+                  </div>
+                </div>
+              </div>
+              <div className="border-b border-gray-100 pb-4">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                  <div className="lg:col-span-1">
+                    <span className="text-sm font-medium text-gray-900">Parent Information:</span>
+                  </div>
+                  <div className="lg:col-span-3">
+                    <ParentJobInfo jobRecord={record} />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -395,4 +425,430 @@ function ValueDisplay({ value, fieldName, promptData, isLoadingPrompt }: ValueDi
   }
 
   return <span className="font-mono text-sm">{String(value)}</span>
+}
+
+function CreatedRecords({ jobExecutionId }: { jobExecutionId: string }) {
+  const [artifacts, setArtifacts] = useState<Array<{ id: string; topic: string; created_at: string }>>([])
+  const [messages, setMessages] = useState<Array<{ id: string; content: string; created_at: string }>>([])
+  const [memories, setMemories] = useState<Array<{ id: string; content: string; created_at: string }>>([])
+  const [jobDefs, setJobDefs] = useState<Array<{ id: string; name: string; created_at: string }>>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    const fetchCreatedRecords = async () => {
+      setLoading(true)
+      setError(null)
+
+      try {
+        // Fetch artifacts created by this job execution
+        const { data: artifactsData } = await supabase
+          .from('artifacts')
+          .select('id, topic, created_at')
+          .eq('source_job_id', jobExecutionId)
+          .order('created_at', { ascending: false })
+          .limit(5)
+
+        // Fetch messages created by this job execution
+        const { data: messagesData } = await supabase
+          .from('messages')
+          .select('id, content, created_at')
+          .eq('source_job_id', jobExecutionId)
+          .order('created_at', { ascending: false })
+          .limit(5)
+
+        // Fetch memories created by this job execution
+        const { data: memoriesData } = await supabase
+          .from('memories')
+          .select('id, content, created_at')
+          .eq('source_job_id', jobExecutionId)
+          .order('created_at', { ascending: false })
+          .limit(5)
+
+        // Fetch job definitions created by this job execution
+        const { data: jobDefsData } = await supabase
+          .from('jobs')
+          .select('id, name, created_at')
+          .eq('source_job_id', jobExecutionId)
+          .order('created_at', { ascending: false })
+          .limit(5)
+
+        setArtifacts(artifactsData || [])
+        setMessages(messagesData || [])
+        setMemories(memoriesData || [])
+        setJobDefs(jobDefsData || [])
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchCreatedRecords()
+  }, [jobExecutionId])
+
+  if (loading) return <div className="p-3 text-sm text-gray-500">Loading created records...</div>
+  if (error) return <div className="p-3 text-sm text-red-500">Error: {error}</div>
+
+  const hasRecords = artifacts.length > 0 || messages.length > 0 || memories.length > 0 || jobDefs.length > 0
+
+  if (!hasRecords) {
+    return <div className="p-3 text-sm text-gray-500">No records created during this execution</div>
+  }
+
+  return (
+    <div className="p-3 bg-white">
+      <div className="text-sm font-medium text-gray-900 mb-3">Created Records:</div>
+      <div className="space-y-3">
+        {/* Artifacts */}
+        {artifacts.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Artifacts ({artifacts.length}):</div>
+            <div className="space-y-1">
+              {artifacts.map((artifact) => (
+                <div key={artifact.id} className="flex items-center justify-between text-xs bg-yellow-50 p-2 rounded">
+                  <span className="truncate">{artifact.topic}</span>
+                  <IdLink id={artifact.id} collection="artifacts" className="text-xs text-yellow-600 hover:underline" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Messages */}
+        {messages.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Messages ({messages.length}):</div>
+            <div className="space-y-1">
+              {messages.map((message) => (
+                <div key={message.id} className="flex items-center justify-between text-xs bg-blue-50 p-2 rounded">
+                  <span className="truncate max-w-xs">{message.content}</span>
+                  <IdLink id={message.id} collection="messages" className="text-xs text-blue-600 hover:underline" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Memories */}
+        {memories.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Memories ({memories.length}):</div>
+            <div className="space-y-1">
+              {memories.map((memory) => (
+                <div key={memory.id} className="flex items-center justify-between text-xs bg-green-50 p-2 rounded">
+                  <div className="truncate max-w-xs">{memory.content}</div>
+                  <IdLink id={memory.id} collection="memories" className="text-xs text-green-600 hover:underline" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Job Definitions */}
+        {jobDefs.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Job Definitions ({jobDefs.length}):</div>
+            <div className="space-y-1">
+              {jobDefs.map((jobDef) => (
+                <div key={jobDef.id} className="flex items-center justify-between text-xs bg-purple-50 p-2 rounded">
+                  <span className="truncate">{jobDef.name}</span>
+                  <IdLink id={jobDef.id} collection="jobs" className="text-xs text-purple-600 hover:underline" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function JobExecutions({ jobDefinitionId }: { jobDefinitionId: string }) {
+  const [runs, setRuns] = useState<Array<{
+    id: string;
+    job_name: string;
+    status: string;
+    created_at: string;
+    job_report_id?: string | null;
+    source_event_id?: string | null;
+  }>>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    const fetchRuns = async () => {
+      setLoading(true)
+      setError(null)
+      const { data, error } = await supabase
+        .from('job_board')
+        .select('id, job_name, status, created_at, job_report_id, source_event_id')
+        .eq('job_definition_id', jobDefinitionId)
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      if (error) {
+        setError(error.message)
+      } else {
+        setRuns(data || [])
+      }
+      setLoading(false)
+    }
+
+    fetchRuns()
+  }, [jobDefinitionId])
+
+  if (loading) return <div className="text-sm text-gray-500">Loading executions...</div>
+  if (error) return <div className="text-sm text-red-500">Error: {error}</div>
+  if (runs.length === 0) return <div className="text-sm text-gray-500">No executions found</div>
+
+  return (
+    <div className="space-y-3">
+      {runs.map((run) => (
+        <div key={run.id} className="border rounded-lg overflow-hidden">
+          {/* Job Execution Header */}
+          <div className="flex items-center justify-between p-3 bg-gray-50 border-b">
+            <div className="flex-1">
+              <div className="font-medium text-sm">{run.job_name}</div>
+              <div className="text-xs text-gray-600">
+                {new Date(run.created_at).toLocaleString()}
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className={`px-2 py-1 text-xs rounded ${
+                run.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                run.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                run.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {run.status}
+              </span>
+              <div className="flex space-x-1">
+                <IdLink id={run.id} collection="job_board" className="text-xs text-blue-600 hover:underline" />
+                {run.job_report_id && (
+                  <IdLink id={run.job_report_id} collection="job_reports" className="text-xs text-green-600 hover:underline" />
+                )}
+                {run.source_event_id && (
+                  <IdLink id={run.source_event_id} collection="events" className="text-xs text-purple-600 hover:underline" />
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Created Records Section */}
+          <CreatedRecords jobExecutionId={run.id} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ChildJobs({ jobDefinitionId }: { jobDefinitionId: string }) {
+  const [children, setChildren] = useState<Array<{
+    id: string;
+    name: string;
+    description?: string | null;
+    created_at: string;
+    is_active: boolean;
+  }>>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    const fetchChildren = async () => {
+      setLoading(true)
+      setError(null)
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('id, name, description, created_at, is_active')
+        .eq('parent_job_definition_id', jobDefinitionId)
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      if (error) {
+        setError(error.message)
+      } else {
+        setChildren(data || [])
+      }
+      setLoading(false)
+    }
+
+    fetchChildren()
+  }, [jobDefinitionId])
+
+  if (loading) return <div className="text-sm text-gray-500">Loading child jobs...</div>
+  if (error) return <div className="text-sm text-red-500">Error: {error}</div>
+  if (children.length === 0) return <div className="text-sm text-gray-500">No child jobs found</div>
+
+  return (
+    <div className="space-y-2">
+      {children.map((child) => (
+        <div key={child.id} className="flex items-center justify-between p-2 bg-blue-50 rounded border">
+          <div className="flex-1">
+            <div className="font-medium text-sm">{child.name}</div>
+            {child.description && (
+              <div className="text-xs text-gray-600 mt-1">{child.description}</div>
+            )}
+            <div className="text-xs text-gray-600">
+              {new Date(child.created_at).toLocaleString()}
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className={`px-2 py-1 text-xs rounded ${
+              child.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+            }`}>
+              {child.is_active ? 'Active' : 'Inactive'}
+            </span>
+            <IdLink id={child.id} collection="jobs" className="text-xs text-blue-600 hover:underline" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ParentJobInfo({ jobRecord }: { jobRecord: DbRecord }) {
+  const [parentJobDef, setParentJobDef] = useState<{
+    id: string;
+    name: string;
+    description?: string | null;
+    is_active: boolean;
+  } | null>(null)
+  const [parentJobExec, setParentJobExec] = useState<{
+    id: string;
+    job_name: string;
+    status: string;
+    created_at: string;
+    job_report_id?: string | null;
+    source_event_id?: string | null;
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    const fetchParentInfo = async () => {
+      setLoading(true)
+      setError(null)
+
+      try {
+        // Fetch parent job definition if parent_job_definition_id exists
+        if (jobRecord.parent_job_definition_id) {
+          const { data: jobDefData } = await supabase
+            .from('jobs')
+            .select('id, name, description, is_active')
+            .eq('id', jobRecord.parent_job_definition_id)
+            .single()
+          
+          if (jobDefData) {
+            setParentJobDef(jobDefData)
+          }
+        }
+
+        // Fetch parent job execution if source_job_id exists
+        if (jobRecord.source_job_id) {
+          const { data: jobExecData } = await supabase
+            .from('job_board')
+            .select('id, job_name, status, created_at, job_report_id, source_event_id')
+            .eq('id', jobRecord.source_job_id)
+            .single()
+          
+          if (jobExecData) {
+            setParentJobExec(jobExecData)
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchParentInfo()
+  }, [jobRecord.parent_job_definition_id, jobRecord.source_job_id])
+
+  if (loading) return <div className="text-sm text-gray-500">Loading parent information...</div>
+  if (error) return <div className="text-sm text-red-500">Error: {error}</div>
+
+  return (
+    <div className="space-y-3">
+      {/* Parent Job Definition */}
+      {parentJobDef && (
+        <div className="p-3 bg-green-50 rounded border">
+          <div className="text-sm font-medium text-green-900 mb-2">Parent Job Definition:</div>
+          <div className="space-y-1">
+            <div className="text-sm">
+              <span className="font-medium">Name:</span> {parentJobDef.name}
+            </div>
+            {parentJobDef.description && (
+              <div className="text-sm">
+                <span className="font-medium">Description:</span> {parentJobDef.description}
+              </div>
+            )}
+            <div className="text-sm">
+              <span className="font-medium">Status:</span> 
+              <span className={`ml-1 px-2 py-1 text-xs rounded ${
+                parentJobDef.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+              }`}>
+                {parentJobDef.is_active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div className="text-sm">
+              <span className="font-medium">View:</span> 
+              <IdLink id={parentJobDef.id} collection="jobs" className="ml-1 text-xs text-green-600 hover:underline" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Parent Job Execution */}
+      {parentJobExec && (
+        <div className="p-3 bg-purple-50 rounded border">
+          <div className="text-sm font-medium text-purple-900 mb-2">Parent Job Execution:</div>
+          <div className="space-y-1">
+            <div className="text-sm">
+              <span className="font-medium">Name:</span> {parentJobExec.job_name}
+            </div>
+            <div className="text-sm">
+              <span className="font-medium">Status:</span> 
+              <span className={`ml-1 px-2 py-1 text-xs rounded ${
+                parentJobExec.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                parentJobExec.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                parentJobExec.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {parentJobExec.status}
+              </span>
+            </div>
+            <div className="text-sm">
+              <span className="font-medium">Created:</span> {new Date(parentJobExec.created_at).toLocaleString()}
+            </div>
+            <div className="text-sm">
+              <span className="font-medium">View:</span> 
+              <IdLink id={parentJobExec.id} collection="job_board" className="ml-1 text-xs text-purple-600 hover:underline" />
+              {parentJobExec.job_report_id && (
+                <>
+                  <span className="mx-2">•</span>
+                  <IdLink id={parentJobExec.job_report_id} collection="job_reports" className="text-xs text-green-600 hover:underline" />
+                </>
+              )}
+              {parentJobExec.source_event_id && (
+                <>
+                  <span className="mx-2">•</span>
+                  <IdLink id={parentJobExec.source_event_id} collection="events" className="text-xs text-blue-600 hover:underline" />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!parentJobDef && !parentJobExec && (
+        <div className="text-sm text-gray-500">No parent information found</div>
+      )}
+    </div>
+  )
 }

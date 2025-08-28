@@ -19,12 +19,10 @@ type IdLinkProps = IdLinkPropsWithField | IdLinkPropsWithCollection;
 
 // Mapping of field names to their corresponding collection names
 const fieldToCollectionMap: Record<string, string> = {
-  'job_definition_id': 'job_definitions',
   'job_report_id': 'job_reports', 
   'job_id': 'job_board',
-  'parent_thread_id': 'threads',
-  'thread_id': 'threads',
-}
+  'source_event_id': 'events',
+};
 
 // Helper function to truncate UUID for display
 function truncateId(id: string, showFull: boolean = false): string {

@@ -82,10 +82,7 @@ export function RealtimeJobBoard({
     try {
       let query = supabase
         .from('job_board')
-        .select(`
-          *,
-          artifacts!source_artifact_id(topic)
-        `, { count: 'exact' })
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range((page - 1) * pageSize, page * pageSize - 1)
 
@@ -96,12 +93,7 @@ export function RealtimeJobBoard({
       if (filters.job_name) {
         query = query.ilike('job_name', `%${filters.job_name}%`)
       }
-      if (filters.source_artifact_id) {
-        query = query.eq('source_artifact_id', filters.source_artifact_id)
-      }
-      if (filters.artifact_topic) {
-        query = query.eq('artifacts.topic', filters.artifact_topic)
-      }
+      // Removed artifact-based filters; events table is the source of truth now
 
       const { data, error, count } = await query
 

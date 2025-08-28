@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 
 interface ThreadCitationsProps {
@@ -76,15 +75,9 @@ export function ThreadCitations({ threadId }: ThreadCitationsProps) {
         setLoading(true)
         setError(null)
         
-        const supabase = createClient()
-        
-        // Fetch artifacts that mention this thread ID in their content
-        const { data: artifacts, error: artifactsError } = await supabase
-          .from('artifacts')
-          .select('id, content, topic, created_at, status, thread_id')
-          .ilike('content', `%${threadId}%`)
-          .order('created_at', { ascending: false })
-          .limit(10)
+        // We no longer derive citations from artifacts; events are authoritative
+        const artifacts: Artifact[] = []
+        const artifactsError = null
 
         if (artifactsError) {
           console.error('Error fetching citing artifacts:', artifactsError)
@@ -138,13 +131,13 @@ export function ThreadCitations({ threadId }: ThreadCitationsProps) {
     <Card>
       <CardHeader>
         <CardTitle>
-          Citing Artifacts {citingArtifacts.length > 0 && `(${citingArtifacts.length})`}
+          Citing Artifacts (deprecated by events) {citingArtifacts.length > 0 && `(${citingArtifacts.length})`}
         </CardTitle>
       </CardHeader>
       <CardContent>
         {citingArtifacts.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            No artifacts cite this thread
+            Citations are now modeled via events. No artifact-based citations shown.
           </div>
         ) : (
           <div className="space-y-3">

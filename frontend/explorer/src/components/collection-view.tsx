@@ -26,14 +26,11 @@ function getSortingConfig(collectionName: CollectionName): { column: string; asc
   const sortingConfigs: Record<CollectionName, { column: string; ascending: boolean }> = {
     job_board: { column: 'created_at', ascending: false },
     jobs: { column: 'created_at', ascending: false },
-    job_definitions: { column: 'created_at', ascending: false },
-    job_schedules: { column: 'created_at', ascending: false },
     job_reports: { column: 'created_at', ascending: false },
-    threads: { column: 'created_at', ascending: false },
+    events: { column: 'created_at', ascending: false },
     artifacts: { column: 'created_at', ascending: false },
     messages: { column: 'created_at', ascending: false },
     memories: { column: 'created_at', ascending: false },
-    prompt_library: { column: 'created_at', ascending: false },
     system_state: { column: 'updated_at', ascending: false }, // Use updated_at for system_state as it's more relevant
   }
   
@@ -44,17 +41,14 @@ function getSortingConfig(collectionName: CollectionName): { column: string; asc
 function getSelectColumns(collectionName: CollectionName): string {
   // For collections with large text fields, only select the essential columns for list view
   const selectConfigs: Record<CollectionName, string> = {
-    job_board: '*', // Keep all columns for job_board (no large text fields)
-    jobs: 'id,job_id,version,name,description,enabled_tools,schedule_config,is_active,created_at,updated_at,model_settings', // Exclude prompt_content
-    job_definitions: '*', // Keep all columns
-    job_schedules: '*', // Keep all columns  
-    job_reports: 'id,job_id,worker_id,created_at,status,duration_ms,total_tokens,error_message,error_type', // Exclude large text fields
-    threads: '*', // Keep all columns
-    artifacts: 'id,thread_id,created_at,updated_at,status,topic,source_job_id,source_job_name', // Exclude content
-    messages: '*', // Keep all columns
-    memories: 'id,created_at,last_accessed_at,metadata,linked_memory_id,link_type,source_job_id,source_job_name,thread_id', // Exclude content and embedding
-    prompt_library: '*', // Keep all columns
-    system_state: '*', // Keep all columns
+    job_board: '*',
+    jobs: 'id,job_id,version,name,description,enabled_tools,schedule_config,is_active,created_at,updated_at,model_settings',
+    job_reports: 'id,job_id,worker_id,created_at,status,duration_ms,total_tokens,error_message,error_type',
+    events: 'id,event_type,created_at,job_id,parent_event_id,correlation_id,source_table,source_id',
+    artifacts: 'id,created_at,updated_at,status,topic,job_id',
+    messages: '*',
+    memories: 'id,created_at,last_accessed_at,metadata,linked_memory_id,link_type,job_id,parent_job_definition_id,source_event_id',
+    system_state: '*',
   }
   
   return selectConfigs[collectionName] || '*'

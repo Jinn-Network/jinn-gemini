@@ -9,17 +9,14 @@ import { createClient } from '@/lib/supabase';
 
 interface CausalLink {
   event_id: string;
-  source_artifact_id?: string;
   triggered_by?: {
     id: string;
-    type: 'artifact' | 'job';
-    topic?: string;
+    type: 'event' | 'job';
     job_name?: string;
   };
   triggers?: Array<{
     id: string;
-    type: 'artifact' | 'job';
-    topic?: string;
+    type: 'event' | 'job';
     job_name?: string;
   }>;
 }
@@ -48,82 +45,26 @@ function CausalLinkDisplay({ eventId, eventType }: { eventId: string; eventType:
           job_name?: string;
         }> = [];
 
-        // For job events, find the source artifact
+        // Events-only causality: show which event triggered a job and which jobs were triggered by an event
         if (eventType === 'JOB_CREATED') {
+          // Resolve the source event for this job
           const { data: jobData } = await supabase
             .from('job_board')
-            .select('source_artifact_id')
+            .select('source_event_id')
             .eq('id', eventId)
             .single();
 
-          if (jobData?.source_artifact_id) {
-            const { data: artifactData } = await supabase
-              .from('artifacts')
-              .select('id, topic')
-              .eq('id', jobData.source_artifact_id)
-              .single();
-
-            if (artifactData) {
-              triggeredBy = {
-                id: artifactData.id,
-                type: 'artifact' as const,
-                topic: artifactData.topic,
-              };
-            }
-          }
-
-          // Find artifacts created by this job
-          const { data: artifactsCreated } = await supabase
-            .from('artifacts')
-            .select('id, topic')
-            .eq('source_job_id', eventId);
-
-          if (artifactsCreated) {
-            triggers = artifactsCreated.map(artifact => ({
-              id: artifact.id,
-              type: 'artifact' as const,
-              topic: artifact.topic,
-            }));
+          if (jobData?.source_event_id) {
+            triggeredBy = {
+              id: jobData.source_event_id,
+              type: 'event' as const,
+            };
           }
         }
 
-        // For artifact events, find jobs that were triggered by this artifact
         if (eventType === 'ARTIFACT_CREATED') {
-          const { data: triggeredJobs } = await supabase
-            .from('job_board')
-            .select('id, job_name')
-            .eq('source_artifact_id', eventId);
-
-          if (triggeredJobs) {
-            triggers = triggeredJobs.map(job => ({
-              id: job.id,
-              type: 'job' as const,
-              job_name: job.job_name,
-            }));
-          }
-
-          // Find the job that created this artifact
-          const { data: artifactData } = await supabase
-            .from('artifacts')
-            .select('source_job_id')
-            .eq('id', eventId)
-            .single();
-
-          if (artifactData?.source_job_id) {
-            const { data: jobData } = await supabase
-              .from('job_board')
-              .select('id, job_name')
-              .eq('id', artifactData.source_job_id)
-              .single();
-
-            if (jobData) {
-              triggeredBy = {
-                id: jobData.id,
-                type: 'job' as const,
-                job_name: jobData.job_name,
-              };
-            }
-          }
+          // We no longer use artifacts as causal sources; no artifact-based joins
+          triggers = [];
         }
 
         setCausalData({
@@ -196,12 +137,9 @@ function CausalLinkDisplay({ eventId, eventType }: { eventId: string; eventType:
           <div className="flex items-center gap-2">
             <span className="text-blue-700">↗ Triggered by:</span>
             <IdLink 
-              collection={causalData.triggered_by.type === 'artifact' ? 'artifacts' : 'job_board'} 
+              collection={causalData.triggered_by.type === 'event' ? 'events' : 'job_board'} 
               id={causalData.triggered_by.id} 
             />
-            <span className="text-gray-600">
-              ({causalData.triggered_by.topic || causalData.triggered_by.job_name})
-            </span>
           </div>
         )}
         
@@ -212,12 +150,9 @@ function CausalLinkDisplay({ eventId, eventType }: { eventId: string; eventType:
               {causalData.triggers.map((trigger, index) => (
                 <div key={index} className="flex items-center gap-2">
                   <IdLink 
-                    collection={trigger.type === 'artifact' ? 'artifacts' : 'job_board'} 
+                    collection={trigger.type === 'event' ? 'events' : 'job_board'} 
                     id={trigger.id} 
                   />
-                  <span className="text-gray-600">
-                    ({trigger.topic || trigger.job_name})
-                  </span>
                 </div>
               ))}
             </div>

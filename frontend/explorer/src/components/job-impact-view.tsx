@@ -4,7 +4,6 @@ import { JobImpactReport, CreatedRecord } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IdLink } from './id-link';
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase';
 
 function DetailItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -62,51 +61,11 @@ function CausalChainView({ jobId }: { jobId: string }) {
   useEffect(() => {
     const fetchCausalChain = async () => {
       try {
-        const supabase = createClient();
-        
-        // Get the job board entry to find source_artifact_id
-        const { data: jobData, error: jobError } = await supabase
-          .from('job_board')
-          .select('source_artifact_id')
-          .eq('id', jobId)
-          .single();
-
-        if (jobError) throw jobError;
-
-        let sourceArtifact = null;
-        if (jobData?.source_artifact_id) {
-          // Get source artifact details
-          const { data: artifactData, error: artifactError } = await supabase
-            .from('artifacts')
-            .select('id, topic, content, created_at')
-            .eq('id', jobData.source_artifact_id)
-            .single();
-
-          if (!artifactError && artifactData) {
-            sourceArtifact = artifactData;
-          }
-        }
-
-        // Get jobs triggered by artifacts created by this job
-        const { data: triggeredJobs } = await supabase
-          .from('job_board')
-          .select(`
-            id, job_name, status, created_at,
-            artifacts!inner(source_job_id)
-          `)
-          .eq('artifacts.source_job_id', jobId);
-
-        // Get artifacts emitted by this job
-        const { data: emittedArtifacts } = await supabase
-          .from('artifacts')
-          .select('id, topic, content, created_at')
-          .eq('source_job_id', jobId)
-          .order('created_at', { ascending: false });
-
+        // We no longer use artifact-based causality; events are the source of truth
         setCausalData({
-          source_artifact: sourceArtifact,
-          triggered_jobs: triggeredJobs || [],
-          emitted_artifacts: emittedArtifacts || [],
+          source_artifact: null,
+          triggered_jobs: [],
+          emitted_artifacts: [],
         });
 
       } catch (err) {

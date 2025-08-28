@@ -25,10 +25,10 @@ export default async function ThreadTimelinePage({ params }: ThreadTimelinePageP
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Enhanced Timeline for Thread {id}</h1>
+      <h1 className="text-2xl font-bold mb-4">Enhanced Timeline (Events) for ID {id}</h1>
       <div className="mb-4">
-        <a href={`/threads/${id}`} className="text-blue-500 hover:underline">
-          ← Back to Thread Details
+        <a href={`/events/${id}`} className="text-blue-500 hover:underline">
+          ← Back to Event Details
         </a>
       </div>
       <EnhancedEventTimeline events={events} />

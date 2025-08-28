@@ -14,34 +14,16 @@ interface JobFilterProps {
 export interface JobFilters {
   status?: string
   job_name?: string
-  artifact_topic?: string
-  source_artifact_id?: string
 }
 
 export function JobFilter({ onFilterChange, initialFilters }: JobFilterProps) {
   const [filters, setFilters] = useState<JobFilters>(initialFilters || {})
-  const [availableTopics, setAvailableTopics] = useState<string[]>([])
   const [availableStatuses, setAvailableStatuses] = useState<string[]>([])
 
   // Fetch available filter options
   useEffect(() => {
     const fetchFilterOptions = async () => {
       const supabase = createClient()
-
-      // Get unique artifact topics that have triggered jobs
-      const { data: artifactsData } = await supabase
-        .from('artifacts')
-        .select('topic')
-        .not('topic', 'is', null)
-
-      if (artifactsData) {
-        const uniqueTopics = [...new Set(
-          artifactsData
-            .map(item => item.topic)
-            .filter(Boolean)
-        )] as string[]
-        setAvailableTopics(uniqueTopics.sort())
-      }
 
       // Get unique job statuses
       const { data: statusData } = await supabase
@@ -123,36 +105,7 @@ export function JobFilter({ onFilterChange, initialFilters }: JobFilterProps) {
             />
           </div>
 
-          {/* Artifact Topic Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Triggering Artifact Topic
-            </label>
-            <select
-              value={filters.artifact_topic || ''}
-              onChange={(e) => handleFilterChange('artifact_topic', e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded text-sm"
-            >
-              <option value="">All Topics</option>
-              {availableTopics.map(topic => (
-                <option key={topic} value={topic}>{topic}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Source Artifact ID Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Source Artifact ID
-            </label>
-            <Input
-              type="text"
-              placeholder="Artifact UUID..."
-              value={filters.source_artifact_id || ''}
-              onChange={(e) => handleFilterChange('source_artifact_id', e.target.value)}
-              className="text-sm font-mono"
-            />
-          </div>
+          {/* Removed artifact-based filters; using events-only causality model */}
         </div>
 
         {/* Active Filters Summary */}
