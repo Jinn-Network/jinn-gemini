@@ -40,7 +40,13 @@ import {
   civitaiGenerateImage,
   civitaiGenerateImageSchema,
   civitaiPublishPost,
-  civitaiPublishPostSchema
+  civitaiPublishPostSchema,
+  civitaiSearchModels,
+  civitaiSearchModelsSchema,
+  civitaiGetImageStats,
+  civitaiGetImageStatsSchema,
+  civitaiGetModelDetails,
+  civitaiGetModelDetailsSchema
 } from './tools/index.js';
 
 // This is the single source of truth for all tools registered on this server.
@@ -63,7 +69,10 @@ export const serverTools: { name: string; schema: any; handler: (params: any) =>
   { name: 'get_project_summary', schema: getProjectSummarySchema, handler: getProjectSummary },
   { name: 'send_message', schema: sendMessageSchema, handler: sendMessage },
   { name: 'civitai_generate_image', schema: civitaiGenerateImageSchema, handler: civitaiGenerateImage },
-  { name: 'civitai_publish_post', schema: civitaiPublishPostSchema, handler: civitaiPublishPost }
+  { name: 'civitai_publish_post', schema: civitaiPublishPostSchema, handler: civitaiPublishPost },
+  { name: 'civitai_search_models', schema: civitaiSearchModelsSchema, handler: civitaiSearchModels },
+  { name: 'civitai_get_image_stats', schema: civitaiGetImageStatsSchema, handler: civitaiGetImageStats },
+  { name: 'civitai_get_model_details', schema: civitaiGetModelDetailsSchema, handler: civitaiGetModelDetails }
 ];
 
 async function main() {

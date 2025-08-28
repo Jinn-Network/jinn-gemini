@@ -14,6 +14,9 @@ export { getProjectSummary, getProjectSummaryParams, getProjectSummarySchema } f
 export { sendMessage, sendMessageParams, sendMessageSchema } from './send-message.js';
 export { civitaiGenerateImage, civitaiGenerateImageParams, civitaiGenerateImageSchema } from './civitai-generate-image.js';
 export { civitaiPublishPost, civitaiPublishPostParams, civitaiPublishPostSchema } from './civitai-publish-post.js';
+export { civitaiSearchModels, civitaiSearchModelsParams, civitaiSearchModelsSchema } from './civitai-search-models.js';
+export { civitaiGetModelDetails, civitaiGetModelDetailsParams, civitaiGetModelDetailsSchema } from './civitai-get-model-details.js';
+export { civitaiGetImageStats, civitaiGetImageStatsParams, civitaiGetImageStatsSchema } from './civitai-get-image-stats.js';
 
 // Export shared types
 export { tableNames, tableNameSchema } from './shared/types.js';
