@@ -36,7 +36,11 @@ import {
   getProjectSummary,
   getProjectSummarySchema,
   sendMessage,
-  sendMessageSchema
+  sendMessageSchema,
+  civitaiGenerateImage,
+  civitaiGenerateImageSchema,
+  civitaiPublishPost,
+  civitaiPublishPostSchema
 } from './tools/index.js';
 
 // This is the single source of truth for all tools registered on this server.
@@ -57,7 +61,9 @@ export const serverTools: { name: string; schema: any; handler: (params: any) =>
   { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories },
   { name: 'plan_project', schema: planProjectSchema, handler: planProject },
   { name: 'get_project_summary', schema: getProjectSummarySchema, handler: getProjectSummary },
-  { name: 'send_message', schema: sendMessageSchema, handler: sendMessage }
+  { name: 'send_message', schema: sendMessageSchema, handler: sendMessage },
+  { name: 'civitai_generate_image', schema: civitaiGenerateImageSchema, handler: civitaiGenerateImage },
+  { name: 'civitai_publish_post', schema: civitaiPublishPostSchema, handler: civitaiPublishPost }
 ];
 
 async function main() {
@@ -77,7 +83,6 @@ async function main() {
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error('MCP Server for Metacog tools is running.');
   } catch (e) {
     console.error('Error starting MCP server:', e);
     process.exit(1);

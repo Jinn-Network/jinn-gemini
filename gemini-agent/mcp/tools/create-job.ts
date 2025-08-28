@@ -112,7 +112,8 @@ export async function createJob(params: CreateJobParams) {
             schedule_on,
             filter,
             existing_job_id,
-            project_definition_id
+            project_definition_id,
+            parent_job_definition_id
         } = validatedParams as any;
 
         // Resolve current job context for default/auto-binding behaviors
@@ -292,7 +293,8 @@ export async function createJob(params: CreateJobParams) {
                 prompt_content,
                 enabled_tools: enabled_tools || [],
                 schedule_config,
-                is_active
+                is_active,
+                parent_job_definition_id: parent_job_definition_id || currentJobDefinitionId || null
             })
             .select()
             .single();

@@ -186,7 +186,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
             const { data: createdArtifact, error: createError } = await supabase
                 .from('artifacts')
                 .insert(newArtifact)
-                .select()
+                .select('id')
                 .single();
 
             if (createError) {

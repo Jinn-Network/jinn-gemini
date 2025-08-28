@@ -119,6 +119,7 @@ export async function createJobBatch(params: CreateJobBatchParams) {
         schedule_on: scheduleConfig,
         filter: filterConfig,
         project_definition_id: project_definition_id,
+        parent_job_definition_id: currentJobDefinitionId,
       };
 
       try {

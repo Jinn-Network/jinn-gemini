@@ -152,3 +152,7 @@ gemini-agent/.gemini/last-prompt.txt
 *.crt
 *.cert
 gemini-agent/.gemini/settings.json
+
+# Playwright MCP profiles
+.playwright-mcp/
+**/.playwright-mcp/

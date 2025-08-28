@@ -20,23 +20,27 @@
     "dev:all": "concurrently \"USE_TSX_MCP=1 yarn dev\" \"yarn frontend:dev\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
     "start:all": "concurrently \"yarn start\" \"yarn frontend:start\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
     "clean": "rm -rf dist && cd frontend/explorer && yarn run clean",
-    "mcp:start": "node dist/gemini-agent/mcp/server.js"
+    "mcp:start": "node dist/gemini-agent/mcp/server.js",
+    "civitai:debug": "tsx scripts/civitai-sdk-debug.ts",
+    "civitai:post-intent-debug": "tsx scripts/civitai-post-intent-debug.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.53.0",
+    "civitai": "^0.1.15",
     "dotenv": "^17.2.1",
     "openai": "^5.11.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@google/gemini-cli": "0.1.18",
     "@types/node": "^20.0.0",
     "concurrently": "^8.2.2",
+    "playwright": "^1.55.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.4",
-    "@google/gemini-cli": "0.1.18"
+    "vitest": "^3.2.4"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "overrides": {

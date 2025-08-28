@@ -12,6 +12,8 @@ export { searchMemories, searchMemoriesParams, searchMemoriesSchema, type Search
 export { planProject, planProjectParams, planProjectSchema } from './plan-project.js';
 export { getProjectSummary, getProjectSummaryParams, getProjectSummarySchema } from './get-project-summary.js';
 export { sendMessage, sendMessageParams, sendMessageSchema } from './send-message.js';
+export { civitaiGenerateImage, civitaiGenerateImageParams, civitaiGenerateImageSchema } from './civitai-generate-image.js';
+export { civitaiPublishPost, civitaiPublishPostParams, civitaiPublishPostSchema } from './civitai-publish-post.js';
 
 // Export shared types
 export { tableNames, tableNameSchema } from './shared/types.js';

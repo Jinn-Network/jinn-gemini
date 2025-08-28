@@ -11,15 +11,11 @@ export const collectionNames = [
   'job_board',
   'jobs',
   'job_reports',
-  'threads',
+  'events',
   'artifacts',
   'memories',
   'messages',
   'system_state',
-  // Legacy tables - kept for direct URL access but removed from navigation
-  'job_definitions',
-  'job_schedules', 
-  'prompt_library',
 ] as const;
 
 export type CollectionName = typeof collectionNames[number];
