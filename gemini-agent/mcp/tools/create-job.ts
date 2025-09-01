@@ -1,5 +1,6 @@
 import { supabase } from './shared/supabase.js';
 import { CreateJobInputSchema, type CreateJobInput } from './shared/types.js';
+import { getRegisteredToolNames } from './shared/tool-registry.js';
 import { randomUUID } from 'crypto';
 import { getCurrentJobContext } from './shared/context.js';
 
@@ -116,6 +117,18 @@ export async function createJob(params: CreateJobParams) {
             parent_job_definition_id
         } = validatedParams as any;
 
+        // Validate enabled_tools against registry
+        const allowed = new Set(getRegisteredToolNames());
+        const invalid = (enabled_tools || []).filter((t: string) => !allowed.has(t));
+        if (invalid.length > 0) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ data: null, meta: { ok: false, code: 'UNKNOWN_TOOLS', message: `Unknown tools: ${invalid.join(', ')}`, allowed_tools: Array.from(allowed).sort() } }, null, 2)
+                }]
+            };
+        }
+
         // Resolve current job context for default/auto-binding behaviors
         const { jobId: currentJobId, jobDefinitionId: currentJobDefinitionId } = getCurrentJobContext();
 
@@ -162,7 +175,7 @@ export async function createJob(params: CreateJobParams) {
         if (!hasScheduleOn) {
             // Default: schedule after this job completes if we have a current job definition id; else fallback to manual
             if (currentJobDefinitionId) {
-                schedule_config = { trigger: 'on_new_event', filters: { event_type: 'job.completed', job_definition_id: currentJobDefinitionId } };
+                schedule_config = { trigger: 'on_new_event', filters: { event_type: 'job.completed', payload: { job_definition_id: currentJobDefinitionId } } };
             } else {
                 schedule_config = { trigger: 'manual', filters: {} };
             }
@@ -172,24 +185,45 @@ export async function createJob(params: CreateJobParams) {
                 schedule_config = { trigger: 'manual', filters: {} };
             } else if (normalized === 'after_this_job') {
                 if (currentJobDefinitionId) {
-                    schedule_config = { trigger: 'on_new_event', filters: { event_type: 'job.completed', job_definition_id: currentJobDefinitionId } };
+                    schedule_config = { trigger: 'on_new_event', filters: { event_type: 'job.completed', payload: { job_definition_id: currentJobDefinitionId } } };
                 } else {
                     schedule_config = { trigger: 'manual', filters: {} };
                 }
             } else if (normalized === 'job.completed') {
-                // Auto-bind to current job definition if no explicit job_definition_id provided
+                // Auto-bind to current job definition via payload if no explicit payload.job_definition_id provided
                 const baseFilters: any = { event_type: 'job.completed' };
-                const provided = (filter && typeof filter === 'object') ? { ...filter } : {};
-                if (!('job_definition_id' in provided) && !('job_id' in provided)) {
+                const providedRaw = (filter && typeof filter === 'object') ? { ...filter } : {};
+                // Normalize provided filter to use payload object exclusively
+                const payloadObj: any = { ...(providedRaw.payload || {}) };
+                if ('job_definition_id' in providedRaw && typeof providedRaw.job_definition_id === 'string') {
+                    payloadObj.job_definition_id = providedRaw.job_definition_id;
+                    delete (providedRaw as any).job_definition_id;
+                }
+                if ('job_id' in providedRaw && typeof providedRaw.job_id === 'string') {
+                    payloadObj.job_id = providedRaw.job_id;
+                    delete (providedRaw as any).job_id;
+                }
+                // If still no discriminator, auto-bind to current
+                if (!('job_definition_id' in payloadObj) && !('job_id' in payloadObj)) {
                     if (currentJobDefinitionId) {
-                        provided.job_definition_id = currentJobDefinitionId;
+                        payloadObj.job_definition_id = currentJobDefinitionId;
                     } else {
                         // No context to bind to; fallback to manual to avoid over-broad dispatch
                         schedule_config = { trigger: 'manual', filters: {} };
                     }
                 }
                 if (!schedule_config) {
-                    schedule_config = { trigger: 'on_new_event', filters: { ...baseFilters, ...provided } };
+                    const normalizedFilters: any = { ...baseFilters };
+                    if (Object.keys(providedRaw).length > 0) {
+                        // Merge any remaining simple filters (e.g., event_type overrides should not be here)
+                        for (const [k, v] of Object.entries(providedRaw)) {
+                            if (k !== 'payload') {
+                                (normalizedFilters as any)[k] = v as any;
+                            }
+                        }
+                    }
+                    normalizedFilters.payload = payloadObj;
+                    schedule_config = { trigger: 'on_new_event', filters: normalizedFilters };
                 }
             } else {
                 // Generic event subscription with optional filters

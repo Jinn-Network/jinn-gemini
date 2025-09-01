@@ -29,7 +29,7 @@ export const civitaiGenerateImageParams = z.object({
 export type CivitaiGenerateImageParams = z.infer<typeof civitaiGenerateImageParams>;
 
 export const civitaiGenerateImageSchema = {
-  description: 'Generate an image via Civitai AIR, wait for completion, then create an artifact with the image URL. Returns artifact_id and image_url.',
+  description: 'Generate an image with Civitai AIR and persist a durable public URL as an artifact (topic: image.generated). Returns { artifact_id, image_url }.',
   inputSchema: civitaiGenerateImageParams.shape,
 };
 
@@ -175,32 +175,38 @@ export async function civitaiGenerateImage(params: CivitaiGenerateImageParams) {
       };
     }
 
-    // 3) Persist artifact with DURABLE image URL (mirror manage-artifact: inject job context; no content_type)
-    const newArtifact = {
-      project_run_id: resolvedProjectRunId,
-      project_definition_id: resolvedProjectDefinitionId || null,
-      content: durableUrl,
-      topic: 'image.generated',
-      status: 'READY',
-      job_id: jobId,
-      parent_job_definition_id: jobDefinitionId,
-    } as any;
+    // 3) Persist artifact when job context is available; otherwise return URL only
+    if (jobId) {
+      const newArtifact = {
+        project_run_id: resolvedProjectRunId,
+        project_definition_id: resolvedProjectDefinitionId || null,
+        content: durableUrl,
+        topic: 'image.generated',
+        status: 'READY',
+        job_id: jobId,
+        parent_job_definition_id: jobDefinitionId,
+      } as any;
 
-    const { data: createdArtifact, error: createError } = await supabase
-      .from('artifacts')
-      .insert(newArtifact)
-      .select('id')
-      .single();
+      const { data: createdArtifact, error: createError } = await supabase
+        .from('artifacts')
+        .insert(newArtifact)
+        .select('id')
+        .single();
 
-    if (createError) {
+      if (createError) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'CREATE_FAILED', message: `Failed to create artifact: ${createError.message}` } }, null, 2) }]
+        };
+      }
+
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'CREATE_FAILED', message: `Failed to create artifact: ${createError.message}` } }, null, 2) }]
+        content: [{ type: 'text' as const, text: JSON.stringify({ data: { artifact_id: createdArtifact.id, image_url: durableUrl }, meta: { ok: true } }, null, 2) }]
+      };
+    } else {
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({ data: { artifact_id: null, image_url: durableUrl }, meta: { ok: true, warning: 'NO_JOB_CONTEXT' } }, null, 2) }]
       };
     }
-
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify({ data: { artifact_id: createdArtifact.id, image_url: durableUrl }, meta: { ok: true } }, null, 2) }]
-    };
   } catch (e: any) {
     return {
       content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'UNEXPECTED_ERROR', message: `civitai_generate_image failed: ${e?.message || String(e)}` } }, null, 2) }]

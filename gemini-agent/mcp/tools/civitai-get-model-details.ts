@@ -32,7 +32,7 @@ export const civitaiGetModelDetailsParams = z.object({
 export type CivitaiGetModelDetailsParams = z.infer<typeof civitaiGetModelDetailsParams>;
 
 export const civitaiGetModelDetailsSchema = {
-  description: 'Fetch detailed information for a single Civitai model by ID. Returns normalized model details with paginated versions array.',
+  description: 'Get detailed metadata for one Civitai model (top-level and versions.* fields). Use to inspect a chosen model’s versions, trained words, files, and images before generation.',
   inputSchema: civitaiGetModelDetailsParams.shape,
 };
 

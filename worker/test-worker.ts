@@ -76,13 +76,14 @@ async function main() {
 
   // Hardcoded job context (use real IDs if known; these can be adjusted)
   const jobContext = {
-    jobId: randomUUID(),
-    jobDefinitionId: 'eb462084-3fc4-49da-b92d-a050fad82d63', // Human Supervisor job definition id
+    jobId: null,
+    jobDefinitionId: 'eb462084-3fc4-49da-b92d-a050fad82d64',
     jobName: 'Human Supervisor',
-    projectRunId: '9f13e7da-7f81-4900-814c-aae6dbecfe42',
-    sourceEventId: '402026ac-cec4-431d-91a0-af3bfc5db62d',
-    projectDefinitionId: '20465d3e-b598-433d-b556-cffb5c296de8'
-  };
+    projectRunId: 'f45bb9a7-db17-4115-ab18-7600a2867a55',
+    sourceEventId: '',
+    projectDefinitionId: '4e235bf7-9176-4c50-ae06-e3a0fbe2d825',
+    threadId: ''
+  } as any;
 
   // Pass-through debug flag to process.argv so Agent forwards to CLI
   if (debug && !process.argv.includes('--debug')) process.argv.push('--debug');

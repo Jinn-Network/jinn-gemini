@@ -2,6 +2,8 @@ import { Agent } from '../gemini-agent/agent.js';
 import { readRecords } from '../gemini-agent/mcp/tools/read-records.js';
 import { updateRecords } from '../gemini-agent/mcp/tools/update-records.js';
 import { createRecord } from '../gemini-agent/mcp/tools/create-record.js';
+import { promisify } from 'util';
+import { execFile } from 'child_process';
 
 // Check for command line flags
 const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
@@ -80,6 +82,48 @@ interface JobBoard {
   trigger_context?: any;
   delegated_work_context?: any;
 }
+const execFileAsync = promisify(execFile);
+
+async function fetchCurrentBuzzValue(): Promise<string | null> {
+  try {
+    const env = {
+      ...process.env,
+      BUZZ_ONLY: 'true',
+      PLAYWRIGHT_PROFILE_DIR: process.env.PLAYWRIGHT_PROFILE_DIR || `${process.cwd()}/.playwright-mcp/google-profile`,
+      PLAYWRIGHT_HEADLESS: 'false',
+      PLAYWRIGHT_CHANNEL: process.env.PLAYWRIGHT_CHANNEL || 'chrome',
+      PLAYWRIGHT_FAST: 'true',
+    };
+    const { stdout } = await execFileAsync('npx', ['tsx', 'scripts/civitai-read-buzz.ts'], {
+      env,
+      timeout: 60_000,
+    });
+    const out = String(stdout || '').trim();
+    return out ? out : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function readLastBuzzSnapshot(): Promise<{ current?: string; previous?: string } | null> {
+  try {
+    const res = await readRecords({ table_name: 'artifacts', filter: { topic: 'buzz.snapshot' }, limit: 1 });
+    const parsed = parseToolResponse(res);
+    if (!parsed.success) return null;
+    const rows = Array.isArray(parsed.data) ? parsed.data as any[] : (parsed.data?.data ?? []);
+    if (!rows || rows.length === 0) return null;
+    const content = rows[0]?.content as string;
+    try {
+      const json = JSON.parse(content);
+      return json;
+    } catch {
+      return { current: content };
+    }
+  } catch {
+    return null;
+  }
+}
+
 
 // input is already fully constructed by dispatcher. No extra context resolution needed.
 
@@ -171,19 +215,47 @@ async function collectAndStoreJobReport(context: {
     };
 
     console.log(`Storing job report for ${context.job.id}...`);
-    const reportResult = await createRecord({
-      table_name: 'job_reports',
-      data: report
-    });
+    // Ensure MCP tool lineage injection sees correct job context (tools read from env)
+    const prevEnv = {
+      JINN_JOB_ID: process.env.JINN_JOB_ID,
+      JINN_JOB_DEFINITION_ID: process.env.JINN_JOB_DEFINITION_ID,
+      JINN_JOB_NAME: process.env.JINN_JOB_NAME,
+      JINN_PROJECT_RUN_ID: process.env.JINN_PROJECT_RUN_ID,
+      JINN_SOURCE_EVENT_ID: process.env.JINN_SOURCE_EVENT_ID,
+      JINN_PROJECT_DEFINITION_ID: process.env.JINN_PROJECT_DEFINITION_ID,
+    } as const;
+    try {
+      process.env.JINN_JOB_ID = context.job.id || '';
+      // Prefer explicit job_definition_id if present on row; fall back to parent_job_definition_id
+      const jobDefinitionId = (context.job as any).job_definition_id || context.job.parent_job_definition_id || '';
+      process.env.JINN_JOB_DEFINITION_ID = jobDefinitionId || '';
+      process.env.JINN_JOB_NAME = context.job.job_name || '';
+      process.env.JINN_PROJECT_RUN_ID = (context.job.project_run_id ?? '') as string;
+      process.env.JINN_SOURCE_EVENT_ID = (context.job.source_event_id ?? '') as string;
+      process.env.JINN_PROJECT_DEFINITION_ID = (context.job.project_definition_id ?? '') as string;
 
-    // New standardized tool response handling
-    const parsed = parseToolResponse(reportResult);
-    if (!parsed.success) {
-      console.error(`Failed to store job report for ${context.job.id}: ${parsed.error || 'Unknown error'}`);
-    } else {
-      const newId = parsed.data?.id ?? parsed.data?.data?.id;
-      console.log(`Job report stored successfully for ${context.job.id}${newId ? ` (report_id=${newId})` : ''}`);
-      // DB trigger will link job_report_id; no worker-side linking needed
+      const reportResult = await createRecord({
+        table_name: 'job_reports',
+        data: report
+      });
+
+      // New standardized tool response handling
+      const parsed = parseToolResponse(reportResult);
+      if (!parsed.success) {
+        console.error(`Failed to store job report for ${context.job.id}: ${parsed.error || 'Unknown error'}`);
+      } else {
+        const newId = parsed.data?.id ?? parsed.data?.data?.id;
+        console.log(`Job report stored successfully for ${context.job.id}${newId ? ` (report_id=${newId})` : ''}`);
+        // DB trigger will link job_report_id; no worker-side linking needed
+      }
+    } finally {
+      // Restore previous env to avoid leaking context across jobs
+      if (prevEnv.JINN_JOB_ID !== undefined) process.env.JINN_JOB_ID = prevEnv.JINN_JOB_ID; else delete process.env.JINN_JOB_ID;
+      if (prevEnv.JINN_JOB_DEFINITION_ID !== undefined) process.env.JINN_JOB_DEFINITION_ID = prevEnv.JINN_JOB_DEFINITION_ID; else delete process.env.JINN_JOB_DEFINITION_ID;
+      if (prevEnv.JINN_JOB_NAME !== undefined) process.env.JINN_JOB_NAME = prevEnv.JINN_JOB_NAME; else delete process.env.JINN_JOB_NAME;
+      if (prevEnv.JINN_PROJECT_RUN_ID !== undefined) process.env.JINN_PROJECT_RUN_ID = prevEnv.JINN_PROJECT_RUN_ID; else delete process.env.JINN_PROJECT_RUN_ID;
+      if (prevEnv.JINN_SOURCE_EVENT_ID !== undefined) process.env.JINN_SOURCE_EVENT_ID = prevEnv.JINN_SOURCE_EVENT_ID; else delete process.env.JINN_SOURCE_EVENT_ID;
+      if (prevEnv.JINN_PROJECT_DEFINITION_ID !== undefined) process.env.JINN_PROJECT_DEFINITION_ID = prevEnv.JINN_PROJECT_DEFINITION_ID; else delete process.env.JINN_PROJECT_DEFINITION_ID;
     }
   } catch (error) {
     console.error(`Critical error storing job report for ${context.job.id}:`, error);
@@ -657,6 +729,63 @@ async function processPendingJobs(): Promise<boolean> {
         jobCount++;
 
         console.log(`[ATTEMPT] Job ${job.id} attempt ${retryCount + 1} starting`);
+
+        // Inject Buzz snapshot for Chief Orchestrator
+        if (job.job_name === 'Chief Orchestrator') {
+            try {
+                const current = await fetchCurrentBuzzValue();
+                const last = await readLastBuzzSnapshot();
+                if (current) {
+                    const snapshot = {
+                        current,
+                        previous: last?.current || last?.previous || null,
+                        captured_at: new Date().toISOString(),
+                    };
+                    // Persist as artifact with correct MCP lineage env
+                    const prevEnvBuzz = {
+                      JINN_JOB_ID: process.env.JINN_JOB_ID,
+                      JINN_JOB_DEFINITION_ID: process.env.JINN_JOB_DEFINITION_ID,
+                      JINN_JOB_NAME: process.env.JINN_JOB_NAME,
+                      JINN_PROJECT_RUN_ID: process.env.JINN_PROJECT_RUN_ID,
+                      JINN_SOURCE_EVENT_ID: process.env.JINN_SOURCE_EVENT_ID,
+                      JINN_PROJECT_DEFINITION_ID: process.env.JINN_PROJECT_DEFINITION_ID,
+                    } as const;
+                    try {
+                      process.env.JINN_JOB_ID = job.id || '';
+                      // Prefer explicit job_definition_id if present on row; fall back to parent_job_definition_id
+                      const jobDefinitionId = (job as any).job_definition_id || job.parent_job_definition_id || '';
+                      process.env.JINN_JOB_DEFINITION_ID = jobDefinitionId || '';
+                      process.env.JINN_JOB_NAME = job.job_name || '';
+                      process.env.JINN_PROJECT_RUN_ID = (job.project_run_id ?? '') as string;
+                      process.env.JINN_SOURCE_EVENT_ID = (job.source_event_id ?? '') as string;
+                      process.env.JINN_PROJECT_DEFINITION_ID = (job.project_definition_id ?? '') as string;
+
+                      await createRecord({
+                        table_name: 'artifacts',
+                        data: {
+                          topic: 'buzz.snapshot',
+                          status: 'RAW',
+                          content: JSON.stringify(snapshot),
+                        }
+                      });
+                    } finally {
+                      // restore env
+                      if (prevEnvBuzz.JINN_JOB_ID !== undefined) process.env.JINN_JOB_ID = prevEnvBuzz.JINN_JOB_ID; else delete process.env.JINN_JOB_ID;
+                      if (prevEnvBuzz.JINN_JOB_DEFINITION_ID !== undefined) process.env.JINN_JOB_DEFINITION_ID = prevEnvBuzz.JINN_JOB_DEFINITION_ID; else delete process.env.JINN_JOB_DEFINITION_ID;
+                      if (prevEnvBuzz.JINN_JOB_NAME !== undefined) process.env.JINN_JOB_NAME = prevEnvBuzz.JINN_JOB_NAME; else delete process.env.JINN_JOB_NAME;
+                      if (prevEnvBuzz.JINN_PROJECT_RUN_ID !== undefined) process.env.JINN_PROJECT_RUN_ID = prevEnvBuzz.JINN_PROJECT_RUN_ID; else delete process.env.JINN_PROJECT_RUN_ID;
+                      if (prevEnvBuzz.JINN_SOURCE_EVENT_ID !== undefined) process.env.JINN_SOURCE_EVENT_ID = prevEnvBuzz.JINN_SOURCE_EVENT_ID; else delete process.env.JINN_SOURCE_EVENT_ID;
+                      if (prevEnvBuzz.JINN_PROJECT_DEFINITION_ID !== undefined) process.env.JINN_PROJECT_DEFINITION_ID = prevEnvBuzz.JINN_PROJECT_DEFINITION_ID; else delete process.env.JINN_PROJECT_DEFINITION_ID;
+                    }
+                    // Prepend snapshot to prompt header for agent visibility
+                    const buzzHeader = `\n\n### Buzz Snapshot\n- Current Buzz: ${snapshot.current}${snapshot.previous ? `\n- Previous: ${snapshot.previous}` : ''}`;
+                    // Extend raw prompt
+                    currentPrompt = `${buzzHeader}\n\n${currentPrompt}`;
+                }
+            } catch {
+                // Non-fatal
+            }
+        }
         
         // Create agent with current prompt (which may be enhanced on retries)
         const agent = new Agent(model, enabledTools, jobContext);

@@ -77,8 +77,8 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
     return null
   }
 
-  // Fields to hide from the detail view (including source_job_id since we show it separately)
-  const hiddenFields = ['worker_id', 'source_job_id']
+  // Fields to hide from the detail view
+  const hiddenFields = ['worker_id']
   
   // Filter out hidden fields
   const visibleFields = Object.entries(record).filter(([key]) => 
@@ -93,7 +93,7 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
   })
   
   // Check if this record has job creation tracking
-  const hasJobCreationInfo = 'source_job_id' in record && record.source_job_id
+  const hasJobCreationInfo = 'job_id' in record && record.job_id
 
   return (
     <Card>
@@ -120,6 +120,20 @@ export function DetailView({ record, collectionName }: DetailViewProps) {
               </div>
             </div>
           ))}
+
+          {/* Created Records for a specific job execution */}
+          {collectionName === 'job_board' && (
+            <div className="border-b border-gray-100 pb-4">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                <div className="lg:col-span-1">
+                  <span className="text-sm font-medium text-gray-900">Created Records:</span>
+                </div>
+                <div className="lg:col-span-3">
+                  <CreatedRecords jobExecutionId={String(record.id)} />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Show Job Executions and Child Jobs for job records */}
           {collectionName === 'jobs' && (
@@ -431,7 +445,7 @@ function CreatedRecords({ jobExecutionId }: { jobExecutionId: string }) {
   const [artifacts, setArtifacts] = useState<Array<{ id: string; topic: string; created_at: string }>>([])
   const [messages, setMessages] = useState<Array<{ id: string; content: string; created_at: string }>>([])
   const [memories, setMemories] = useState<Array<{ id: string; content: string; created_at: string }>>([])
-  const [jobDefs, setJobDefs] = useState<Array<{ id: string; name: string; created_at: string }>>([])
+  const [jobsCreated, setJobsCreated] = useState<Array<{ id: string; name: string; created_at: string }>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -446,7 +460,7 @@ function CreatedRecords({ jobExecutionId }: { jobExecutionId: string }) {
         const { data: artifactsData } = await supabase
           .from('artifacts')
           .select('id, topic, created_at')
-          .eq('source_job_id', jobExecutionId)
+          .eq('job_id', jobExecutionId)
           .order('created_at', { ascending: false })
           .limit(5)
 
@@ -454,7 +468,7 @@ function CreatedRecords({ jobExecutionId }: { jobExecutionId: string }) {
         const { data: messagesData } = await supabase
           .from('messages')
           .select('id, content, created_at')
-          .eq('source_job_id', jobExecutionId)
+          .eq('job_id', jobExecutionId)
           .order('created_at', { ascending: false })
           .limit(5)
 
@@ -462,22 +476,22 @@ function CreatedRecords({ jobExecutionId }: { jobExecutionId: string }) {
         const { data: memoriesData } = await supabase
           .from('memories')
           .select('id, content, created_at')
-          .eq('source_job_id', jobExecutionId)
+          .eq('job_id', jobExecutionId)
           .order('created_at', { ascending: false })
           .limit(5)
 
-        // Fetch job definitions created by this job execution
-        const { data: jobDefsData } = await supabase
+        // Fetch jobs created by this job execution
+        const { data: jobsCreatedData } = await supabase
           .from('jobs')
           .select('id, name, created_at')
-          .eq('source_job_id', jobExecutionId)
+          .eq('job_id', jobExecutionId)
           .order('created_at', { ascending: false })
           .limit(5)
 
         setArtifacts(artifactsData || [])
         setMessages(messagesData || [])
         setMemories(memoriesData || [])
-        setJobDefs(jobDefsData || [])
+        setJobsCreated(jobsCreatedData || [])
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error')
       } finally {
@@ -491,7 +505,7 @@ function CreatedRecords({ jobExecutionId }: { jobExecutionId: string }) {
   if (loading) return <div className="p-3 text-sm text-gray-500">Loading created records...</div>
   if (error) return <div className="p-3 text-sm text-red-500">Error: {error}</div>
 
-  const hasRecords = artifacts.length > 0 || messages.length > 0 || memories.length > 0 || jobDefs.length > 0
+  const hasRecords = artifacts.length > 0 || messages.length > 0 || memories.length > 0 || jobsCreated.length > 0
 
   if (!hasRecords) {
     return <div className="p-3 text-sm text-gray-500">No records created during this execution</div>
@@ -531,7 +545,7 @@ function CreatedRecords({ jobExecutionId }: { jobExecutionId: string }) {
           </div>
         )}
 
-        {/* Memories */}
+                {/* Memories */}
         {memories.length > 0 && (
           <div>
             <div className="text-xs font-medium text-gray-700 mb-1">Memories ({memories.length}):</div>
@@ -546,20 +560,22 @@ function CreatedRecords({ jobExecutionId }: { jobExecutionId: string }) {
           </div>
         )}
 
-        {/* Job Definitions */}
-        {jobDefs.length > 0 && (
+        {/* Jobs Created */}
+        {jobsCreated.length > 0 && (
           <div>
-            <div className="text-xs font-medium text-gray-700 mb-1">Job Definitions ({jobDefs.length}):</div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Jobs Created ({jobsCreated.length}):</div>
             <div className="space-y-1">
-              {jobDefs.map((jobDef) => (
-                <div key={jobDef.id} className="flex items-center justify-between text-xs bg-purple-50 p-2 rounded">
-                  <span className="truncate">{jobDef.name}</span>
-                  <IdLink id={jobDef.id} collection="jobs" className="text-xs text-purple-600 hover:underline" />
+              {jobsCreated.map((job) => (
+                <div key={job.id} className="flex items-center justify-between text-xs bg-purple-50 p-2 rounded">
+                  <span className="truncate">{job.name}</span>
+                  <IdLink id={job.id} collection="jobs" className="text-xs text-purple-600 hover:underline" />
                 </div>
               ))}
             </div>
           </div>
         )}
+
+ 
       </div>
     </div>
   )
@@ -717,14 +733,6 @@ function ParentJobInfo({ jobRecord }: { jobRecord: DbRecord }) {
     description?: string | null;
     is_active: boolean;
   } | null>(null)
-  const [parentJobExec, setParentJobExec] = useState<{
-    id: string;
-    job_name: string;
-    status: string;
-    created_at: string;
-    job_report_id?: string | null;
-    source_event_id?: string | null;
-  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -748,18 +756,8 @@ function ParentJobInfo({ jobRecord }: { jobRecord: DbRecord }) {
           }
         }
 
-        // Fetch parent job execution if source_job_id exists
-        if (jobRecord.source_job_id) {
-          const { data: jobExecData } = await supabase
-            .from('job_board')
-            .select('id, job_name, status, created_at, job_report_id, source_event_id')
-            .eq('id', jobRecord.source_job_id)
-            .single()
-          
-          if (jobExecData) {
-            setParentJobExec(jobExecData)
-          }
-        }
+        // Note: We no longer track parent job execution via source_job_id
+        // The parent relationship is now handled through parent_job_definition_id
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error')
       } finally {
@@ -768,7 +766,7 @@ function ParentJobInfo({ jobRecord }: { jobRecord: DbRecord }) {
     }
 
     fetchParentInfo()
-  }, [jobRecord.parent_job_definition_id, jobRecord.source_job_id])
+  }, [jobRecord.parent_job_definition_id])
 
   if (loading) return <div className="text-sm text-gray-500">Loading parent information...</div>
   if (error) return <div className="text-sm text-red-500">Error: {error}</div>
@@ -804,49 +802,7 @@ function ParentJobInfo({ jobRecord }: { jobRecord: DbRecord }) {
         </div>
       )}
 
-      {/* Parent Job Execution */}
-      {parentJobExec && (
-        <div className="p-3 bg-purple-50 rounded border">
-          <div className="text-sm font-medium text-purple-900 mb-2">Parent Job Execution:</div>
-          <div className="space-y-1">
-            <div className="text-sm">
-              <span className="font-medium">Name:</span> {parentJobExec.job_name}
-            </div>
-            <div className="text-sm">
-              <span className="font-medium">Status:</span> 
-              <span className={`ml-1 px-2 py-1 text-xs rounded ${
-                parentJobExec.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                parentJobExec.status === 'FAILED' ? 'bg-red-100 text-red-800' :
-                parentJobExec.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
-                'bg-gray-100 text-gray-800'
-              }`}>
-                {parentJobExec.status}
-              </span>
-            </div>
-            <div className="text-sm">
-              <span className="font-medium">Created:</span> {new Date(parentJobExec.created_at).toLocaleString()}
-            </div>
-            <div className="text-sm">
-              <span className="font-medium">View:</span> 
-              <IdLink id={parentJobExec.id} collection="job_board" className="ml-1 text-xs text-purple-600 hover:underline" />
-              {parentJobExec.job_report_id && (
-                <>
-                  <span className="mx-2">•</span>
-                  <IdLink id={parentJobExec.job_report_id} collection="job_reports" className="text-xs text-green-600 hover:underline" />
-                </>
-              )}
-              {parentJobExec.source_event_id && (
-                <>
-                  <span className="mx-2">•</span>
-                  <IdLink id={parentJobExec.source_event_id} collection="events" className="text-xs text-blue-600 hover:underline" />
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!parentJobDef && !parentJobExec && (
+      {!parentJobDef && (
         <div className="text-sm text-gray-500">No parent information found</div>
       )}
     </div>

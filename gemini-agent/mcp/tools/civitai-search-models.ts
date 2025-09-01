@@ -3,11 +3,13 @@ import { composeSinglePageResponse, decodeCursor } from './shared/context-manage
 import { getBaseModelEnumValues } from './shared/civitai-discovery.js';
 
 // Inputs follow Civitai Public REST for models (single tag only)
-export const civitaiSearchModelsParams = z.object({
+const civitaiSearchModelsBase = z.object({
+  // Search modes (choose exactly one): query | username | tag
   query: z.string().min(1).optional(),
   username: z.string().min(1).optional(),
   tag: z.string().min(1).optional(),
-  // Accept arrays for convenience; we will join with commas as API expects
+
+  // Optional filters (constrained below)
   types: z.array(z.enum([
     'Checkpoint', 'TextualInversion', 'Hypernetwork', 'AestheticGradient', 'LORA', 'Controlnet', 'Poses'
   ])).optional(),
@@ -16,16 +18,39 @@ export const civitaiSearchModelsParams = z.object({
   sort: z.enum(['Highest Rated', 'Most Downloaded', 'Newest']).optional(),
   period: z.enum(['AllTime', 'Year', 'Month', 'Week', 'Day']).optional(),
   limit: z.number().int().min(1).max(100).optional(),
-  // Cursor encodes { page }
+  // Cursor encodes { page } for non-query mode, { cursor } for query mode
   cursor: z.string().optional(),
   page: z.number().int().min(1).optional(),
+});
+
+export const civitaiSearchModelsParams = civitaiSearchModelsBase.superRefine((val, ctx) => {
+  const modes = [Boolean(val.query), Boolean(val.username), Boolean(val.tag)].filter(Boolean).length;
+  if (modes === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide exactly one of: 'query', 'username', or 'tag'" });
+  }
+  if (modes > 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "'query', 'username', and 'tag' are mutually exclusive. Choose one." });
+  }
+
+  // With query mode, enforce types XOR base_models (not both)
+  const inQueryMode = Boolean(val.query);
+  const hasTypes = Array.isArray(val.types) && val.types.length > 0;
+  const hasBaseModels = Array.isArray(val.base_models) && val.base_models.length > 0;
+  if (inQueryMode && hasTypes && hasBaseModels) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "With 'query', use either 'types' or 'base_models' (not both)." });
+  }
+
+  // base_models must be a single value if provided
+  if (hasBaseModels && val.base_models!.length > 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "'base_models' accepts a single value." });
+  }
 });
 
 export type CivitaiSearchModelsParams = z.infer<typeof civitaiSearchModelsParams>;
 
 export const civitaiSearchModelsSchema = {
-  description: 'Search Civitai models via Public REST. Note: only ONE base model filter is supported at a time; if multiple are provided, only the first will be used. Query searches use cursor-based pagination; other filters use page-based pagination. Returns normalized results with pagination cursor.',
-  inputSchema: civitaiSearchModelsParams.shape,
+  description: 'Find models on Civitai with explicit, API-safe parameter rules. Modes: exactly one of query | username | tag. With query: use either types or a single base model (not both). Sorting and period are optional. Returns normalized results and cursor meta.',
+  inputSchema: civitaiSearchModelsBase.shape,
 };
 
 type CivitaiModel = any; // Keep flexible, we normalize below
@@ -77,7 +102,7 @@ function buildQuery(params: (CivitaiSearchModelsParams & { page?: number; cursor
   if (params.username) q.set('username', params.username);
   if (params.types && params.types.length) q.set('types', params.types.join(','));
   const baseModels = normalizeBaseModels(params.base_models);
-  // API only supports a single baseModels value reliably; honor the first if multiple provided
+  // Enforce single base model if present
   if (baseModels && baseModels.length) q.set('baseModels', baseModels[0]);
   const sort = mapSort(params.sort as any);
   if (sort) q.set('sort', sort);

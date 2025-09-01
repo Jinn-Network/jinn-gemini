@@ -56,7 +56,6 @@ export class Agent {
     'manage_artifact',
     'send_message',
     'create_job_batch',
-    'list_tools',
     'update_job',
     'create_job',
     'create_memory',

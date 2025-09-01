@@ -1,31 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import * as path from 'path';
-import * as fs from 'fs';
 export { getCurrentJobContext, setJobContext, clearJobContext, type JobContext } from './context.js';
+import { loadEnvOnce } from './env.js';
 
-// Robust .env discovery: try process.cwd() and ascend from this file's dir to repo root
-function loadEnvOnce() {
-  if (process.env.__ENV_LOADED === '1') return;
-  const candidates: string[] = [];
-  const cwdEnv = path.resolve(process.cwd(), '.env');
-  candidates.push(cwdEnv);
-
-  // Keep it simple and robust across module systems: rely on CWD only
-
-  const tried: string[] = [];
-  for (const p of candidates) {
-    if (!tried.includes(p) && fs.existsSync(p)) {
-      const res = dotenv.config({ path: p });
-      tried.push(p);
-      if (!res.error) {
-        process.env.__ENV_LOADED = '1';
-        break;
-      }
-    }
-  }
-}
-
+// Ensure env is loaded when supabase is referenced (idempotent)
 loadEnvOnce();
 
 const supabaseUrl = process.env.SUPABASE_URL;

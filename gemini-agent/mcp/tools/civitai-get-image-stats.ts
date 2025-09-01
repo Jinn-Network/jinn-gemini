@@ -39,7 +39,7 @@ export const civitaiGetImageStatsParams = z.object({
 export type CivitaiGetImageStatsParams = z.infer<typeof civitaiGetImageStatsParams>;
 
 export const civitaiGetImageStatsSchema = {
-  description: 'Get image performance stats for one or more Civitai post IDs. Aggregates reactions/comments per post and paginates across posts using a context-managed page.',
+  description: 'Retrieve engagement metrics for Civitai posts (likes, hearts, laughs, cries, dislikes, comments) and per-post aggregates. Use this (not read_records) to fetch public engagement/feedback for posted images.',
   inputSchema: civitaiGetImageStatsParams.shape,
 };
 

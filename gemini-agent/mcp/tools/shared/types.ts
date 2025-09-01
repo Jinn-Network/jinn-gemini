@@ -1,19 +1,17 @@
 import { z } from 'zod';
 
-// Common table names used across multiple tools
+// Common table names used across multiple tools (hardcoded allowlist)
 export const tableNames = [
   'artifacts',
+  'events',
   'job_board',
-  'jobs',
   'job_reports',
+  'jobs',
   'memories',
   'messages',
-  'threads',
-  'system_state', // Read-only - cannot be modified by agents
-  'project_definitions',
 ] as const;
 
-export const tableNameSchema = z.string().describe('The name of the table to operate on');
+export const tableNameSchema = z.enum(tableNames).describe('The name of the table to operate on');
 
 // Memory-related types
 export const linkTypeSchema = z.enum(['CAUSE', 'EFFECT', 'ELABORATION', 'CONTRADICTION', 'SUPPORT']);
@@ -88,7 +86,7 @@ export const CreateJobInputSchema = z.object({
   name: z.string().describe('The name of the job'),
   description: z.string().optional().describe('Optional description of the job purpose'),
   prompt_content: z.string().describe('The full prompt content for this job'),
-  enabled_tools: z.array(z.string()).describe('Array of tool names this job can use. MANDATORY: Call list_tools first to review available tools and select appropriate ones for this job. Research jobs must include web search tools (google_web_search or web_fetch). Misconfigured toolsets will cause job failure.'),
+  enabled_tools: z.array(z.string()).describe('Array of tool names this job can use. Tools are validated dynamically against the server\'s registered tool registry; unknown tools will be rejected with an allowed tool list.'),
   project_definition_id: z.string().uuid().optional().describe('Optional. Link this job definition to a project definition.'),
   parent_job_definition_id: z.string().uuid().optional().describe('Optional. Link this job to a parent job for delegation tracking. If omitted, will be automatically set to the current job definition ID when available.'),
   // Simplified scheduling interface
@@ -105,7 +103,8 @@ Common event types:
 - Data: "artifact.created", "artifact.updated", "memory.created", "memory.accessed", "message.created", "message.updated"
 - System: "system.quiescent", "system_state.updated", "job_report.created"`
   ),
-  filter: z.record(z.string()).optional().describe(
+  // Allow nested filter objects (e.g., { payload: { job_definition_id: "..." } })
+  filter: z.record(z.any()).optional().describe(
     `Optional flat filters to refine event routing.
 Examples:
 - For artifacts: { "topic": "analysis" }

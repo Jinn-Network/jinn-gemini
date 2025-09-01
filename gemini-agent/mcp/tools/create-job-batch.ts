@@ -2,6 +2,7 @@ import { supabase } from './shared/supabase.js';
 import { z } from 'zod';
 import { getCurrentJobContext } from './shared/context.js';
 import { createJob, CreateJobParams } from './create-job.js';
+import { getRegisteredToolNames } from './shared/tool-registry.js';
 
 // Individual job definition for batch creation
 const JobDefinitionSchema = z.object({
@@ -88,6 +89,23 @@ export async function createJobBatch(params: CreateJobBatchParams) {
     const errors: any[] = [];
     let previousJobId: string | null = null;
 
+    // Validate tools for all jobs up-front using dynamic registry
+    const allowed = new Set(getRegisteredToolNames());
+    for (const [idx, jobDef] of jobs.entries()) {
+      const invalid = (jobDef.enabled_tools || []).filter((t) => !allowed.has(t));
+      if (invalid.length > 0) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              data: null,
+              meta: { ok: false, code: 'UNKNOWN_TOOLS', message: `Job ${idx + 1} (${jobDef.name}) has unknown tools: ${invalid.join(', ')}`, allowed_tools: Array.from(allowed).sort() }
+            }, null, 2)
+          }]
+        };
+      }
+    }
+
     // Create jobs with appropriate sequencing
     for (let i = 0; i < jobs.length; i++) {
       const jobDef = jobs[i];
@@ -96,17 +114,20 @@ export async function createJobBatch(params: CreateJobBatchParams) {
       let filterConfig: Record<string, any> = {};
 
       if (sequence === 'parallel') {
-        // All jobs trigger when current job completes
+        // All jobs trigger when the CURRENT job (the orchestrator) completes
+        // Put discriminator under payload so dispatcher jsonb_matches_conditions() applies it
         scheduleConfig = 'job.completed';
-        filterConfig = { parent_job_definition_id: currentJobDefinitionId };
+        filterConfig = { payload: { job_definition_id: currentJobDefinitionId } };
       } else {
-        // Serial: first job triggers on current job, subsequent jobs chain
+        // Serial chaining by explicit job_definition_id via payload
         if (i === 0) {
+          // First job listens to completion of the CURRENT job (orchestrator)
           scheduleConfig = 'job.completed';
-          filterConfig = { parent_job_definition_id: currentJobDefinitionId };
+          filterConfig = { payload: { job_definition_id: currentJobDefinitionId } };
         } else {
+          // Subsequent job listens to completion of the PREVIOUS job in the chain
           scheduleConfig = 'job.completed';
-          filterConfig = { parent_job_definition_id: previousJobId };
+          filterConfig = { payload: { job_definition_id: previousJobId } };
         }
       }
 
@@ -136,8 +157,8 @@ export async function createJobBatch(params: CreateJobBatchParams) {
               sequence_position: i + 1,
               sequence_type: sequence
             });
-            // Store the job_id for chaining (use the stable job_id, not the version-specific id)
-            previousJobId = parsedResult.data.id; // This is the job definition ID we need for filtering
+            // Store the job definition ID for chaining
+            previousJobId = parsedResult.data.id;
           } else {
             errors.push({
               job_index: i + 1,

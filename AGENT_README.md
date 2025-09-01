@@ -392,7 +392,7 @@ When performing a complete system reset, the database should be cleared to this 
    - `human_supervisor` - Human oversight job
 
 2. **`project_definitions`** - 1 row:
-   - Main project definition for the Eolas system
+   - Main project definition for the system
 
 3. **`messages`** - 1 row:
    - Initial message from human supervisor to chief orchestrator (status: PENDING)

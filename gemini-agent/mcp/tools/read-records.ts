@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { supabase } from './shared/supabase.js';
-import { tableNameSchema } from './shared/types.js';
+import { tableNames } from './shared/types.js';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
 // Helper function to get schema information when errors occur
@@ -33,11 +33,12 @@ async function getSchemaHelp(tableName: string, error: any): Promise<string> {
         // All tables call failed, fall back to hardcoded list
       }
       
-      // Final fallback: hardcoded table list (based on actual database)
+      // Final fallback: reflect current allowlist
+      const allowedList = Array.from(tableNames).join(', ');
       return `\n\nSCHEMA HELP: 
 - Table: '${tableName}'
 - Error: ${error.message}
-- Available tables: artifacts, job_board, jobs, job_reports, memories, messages, project_runs, project_definitions, system_state, events
+- Available tables: ${allowedList}
 - Use 'get_schema' tool to see detailed table structure
 - Use 'get_schema' without table_name to see all available tables`;
     }
@@ -49,17 +50,25 @@ async function getSchemaHelp(tableName: string, error: any): Promise<string> {
   }
 }
 
-export const readRecordsParams = z.object({
-  table_name: tableNameSchema,
+// Loosen MCP-exposed schema (string) and handle allowlist inside tool to avoid MCP -32602
+const readRecordsBase = z.object({
+  table_name: z.string(),
   filter: z.record(z.any()).optional().describe('A JSON object for WHERE clauses (e.g., `{"status": "COMPLETED"}`). An empty filter retrieves all records.'),
   limit: z.number().int().positive().optional().describe('Maximum number of records to return (default: 100). Use with caution for large datasets.'),
   hours_back: z.number().int().positive().optional().describe('Filter records from the last N hours based on the `created_at` column. Cannot be used with `filter`.'),
   cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
 });
 
+export const readRecordsParams = readRecordsBase.superRefine((val, ctx) => {
+  const allowed = new Set(tableNames as readonly string[]);
+  if (!allowed.has(val.table_name)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Invalid table_name: '${val.table_name}'. Allowed: ${Array.from(allowed).join(', ')}` });
+  }
+});
+
 export const readRecordsSchema = {
-  description: 'Retrieves one or more rows from a table based on filters. DEFAULT LIMIT: 100 records (to prevent timeouts on large tables). For large datasets, use specific filters or increase limit cautiously. Supports basic key-value filtering OR time-based filtering on the `created_at` column. Note: system_state table is read-only and can only be read, not modified.',
-  inputSchema: readRecordsParams.shape,
+  description: 'Retrieves rows from a table using filters (e.g., by status, topic). **IMPORTANT: If you have a specific record ID, use the `get_details` tool instead**—it is faster and more direct for single lookups. `read_records` is for querying multiple records. DEFAULT LIMIT: 100 records.',
+  inputSchema: readRecordsBase.shape,
 };
 
 export async function readRecords(params: z.infer<typeof readRecordsParams>) {
@@ -106,7 +115,8 @@ export async function readRecords(params: z.infer<typeof readRecordsParams>) {
     if (error) {
       // Get schema help for schema-related errors
       const schemaHelp = await getSchemaHelp(table_name, error);
-      const errorMessage = `Error reading records: ${error.message}${schemaHelp}`;
+      const allowedList = Array.from(tableNames).join(', ');
+      const errorMessage = `Error reading records: ${error.message}${schemaHelp}\n\nALLOWED TABLES: ${allowedList}`;
       
       return {
         content: [{
