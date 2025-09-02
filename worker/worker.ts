@@ -81,6 +81,7 @@ interface JobBoard {
   inbox?: Array<{ from?: string | null; content?: string | null }>;
   trigger_context?: any;
   delegated_work_context?: any;
+  recent_runs_context?: any;
 }
 const execFileAsync = promisify(execFile);
 
@@ -659,12 +660,19 @@ async function processPendingJobs(): Promise<boolean> {
             return `\n\n### Delegated Work Context\n\n${json}`;
         };
 
+        const composeRecentRunsContextSection = (recentRunsContext?: any): string => {
+            if (!recentRunsContext) return '';
+            const json = stringifyForPrompt(recentRunsContext, { maxChars: 8000, largeFieldTruncate: 300 });
+            return `\n\n### Recent Runs Context\n\n${json}`;
+        };
+
         // Store the original prompt for potential retries
         const jobHeader = composeJobHeader(job);
         const inboxSection = composeInboxSection(job.inbox);
         const triggerContextSection = composeTriggerContextSection(truncateContext(job.trigger_context, TOKEN_CONFIG.TRIGGER_CONTEXT_MAX_TOKENS, false));
         const delegatedWorkContextSection = composeDelegatedWorkContextSection(truncateContext(job.delegated_work_context, TOKEN_CONFIG.DELEGATED_WORK_CONTEXT_MAX_TOKENS, true));
-        const rawPrompt = `${jobHeader}${job.input || ''}${inboxSection}${triggerContextSection}${delegatedWorkContextSection}`.trim();
+        const recentRunsContextSection = composeRecentRunsContextSection(job.recent_runs_context);
+        const rawPrompt = `${jobHeader}${job.input || ''}${inboxSection}${triggerContextSection}${delegatedWorkContextSection}${recentRunsContextSection}`.trim();
         
         // Sanitize the prompt to prevent shell interpretation issues
         const sanitizePrompt = (prompt: string): string => {

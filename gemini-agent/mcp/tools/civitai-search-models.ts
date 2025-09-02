@@ -1,32 +1,20 @@
 import { z } from 'zod';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
-// Simplified inputs: exactly one of query or types
+// Unified input: single query string with smart type inference
 const civitaiSearchModelsBase = z.object({
-  query: z.string().min(1).optional().describe('Search models by name/description. If the value matches a known type name (e.g., "checkpoint", "lora"), the search switches to types-only browse.'),
-  types: z.array(z.enum([
-    'Checkpoint', 'TextualInversion', 'Hypernetwork', 'AestheticGradient', 'LORA', 'Controlnet', 'Poses'
-  ])).optional().describe('Types-only browse mode. When provided, query must be omitted.'),
+  query: z.string().min(1).describe('Single input. If the value equals a known type (e.g., "checkpoint", "lora"), the tool browses by that type; otherwise it performs full-text search.'),
   limit: z.number().int().min(1).max(100).optional().describe('Number of models to return (1-100, default: 20)'),
   // Cursor encodes { page } for types-only mode, { cursor } for query mode
   cursor: z.string().optional().describe('Cursor for pagination'),
 });
 
-export const civitaiSearchModelsParams = civitaiSearchModelsBase.superRefine((val, ctx) => {
-  const hasQuery = Boolean(val.query);
-  const hasTypes = Array.isArray(val.types) && val.types.length > 0;
-  if (!(hasQuery || hasTypes)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide either 'query' or 'types'." });
-  }
-  if (hasQuery && hasTypes) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "'query' and 'types' are mutually exclusive. Choose one." });
-  }
-});
+export const civitaiSearchModelsParams = civitaiSearchModelsBase;
 
 export type CivitaiSearchModelsParams = z.infer<typeof civitaiSearchModelsParams>;
 
 export const civitaiSearchModelsSchema = {
-  description: 'Search Civitai models for image generation. Use query for text search or types for category browsing. Results include recommendedAir.urn for use with civitai_generate_image. For generation, use checkpoint models as base and LoRAs as enhancements. Model families (SD1/SDXL) must match between base and enhancement models.',
+  description: 'Search Civitai models for image generation using a single input. If the query equals a known type (e.g., "checkpoint", "lora"), the tool browses that category; otherwise it performs text search. Results include recommendedAir.urn for use with civitai_generate_image. For generation, use checkpoint models as base and LoRAs as enhancements. Model families (SD1/SDXL) must match between base and enhancement models.',
   inputSchema: civitaiSearchModelsBase.shape,
 };
 
@@ -46,11 +34,11 @@ function inferTypesFromTerm(term?: string): Array<'Checkpoint'|'LORA'|'TextualIn
   return map[t] as any;
 }
 
-function buildQuery(params: (CivitaiSearchModelsParams & { page?: number; cursorVal?: string })) : string {
+function buildQuery(params: { query?: string; types?: Array<'Checkpoint'|'LORA'|'TextualInversion'|'Hypernetwork'|'AestheticGradient'|'Controlnet'|'Poses'>; limit?: number; page?: number; cursorVal?: string }) : string {
   const q = new URLSearchParams();
   if (params.limit) q.set('limit', String(params.limit));
-  const queryMode = Boolean(params.query);
-  if (queryMode) {
+  const browseMode = Array.isArray(params.types) && params.types.length > 0;
+  if (!browseMode) {
     if (params.cursorVal) q.set('cursor', String(params.cursorVal));
     if (params.query) q.set('query', params.query);
   } else {
@@ -148,25 +136,28 @@ export async function civitaiSearchModels(params: CivitaiSearchModelsParams) {
     const input = parsed.data;
     // If query looks like a known type, switch to types-only browse
     const inferredTypes = inferTypesFromTerm(input.query);
-    const effectiveInput: CivitaiSearchModelsParams = inferredTypes
-      ? { types: inferredTypes, limit: input.limit, cursor: input.cursor }
-      : input;
 
-    const limit = effectiveInput.limit ?? 20;
+    const limit = input.limit ?? 20;
     // Resolve pagination strategy
-    const queryMode = Boolean(effectiveInput.query);
-    const browseMode = !queryMode;
+    const browseMode = Array.isArray(inferredTypes) && inferredTypes.length > 0;
+    const queryMode = !browseMode;
     let page = 1;
     let cursorVal: string | undefined;
     if (queryMode) {
-      const decodedC = decodeCursor<{ cursor: string }>(effectiveInput.cursor);
+      const decodedC = decodeCursor<{ cursor: string }>(input.cursor);
       cursorVal = decodedC?.cursor;
     } else {
-      const decodedP = decodeCursor<{ page: number }>(effectiveInput.cursor);
+      const decodedP = decodeCursor<{ page: number }>(input.cursor);
       page = decodedP?.page || 1;
     }
 
-    const qs = buildQuery({ ...(effectiveInput as any), page, limit, cursorVal });
+    const qs = buildQuery({
+      query: queryMode ? input.query : undefined,
+      types: browseMode ? inferredTypes : undefined,
+      page,
+      limit,
+      cursorVal
+    });
     const url = `https://civitai.com/api/v1/models?${qs}`;
 
     const res = await fetch(url);

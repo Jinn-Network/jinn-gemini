@@ -411,7 +411,8 @@ export async function createJob(params: CreateJobParams) {
                 const { error: jobBoardError } = await supabase
                     .from('job_board')
                     .insert({
-                        parent_job_definition_id: newJob.id,
+                        parent_job_definition_id: currentJobDefinitionId || null,
+                        job_definition_id: newJob.id,
                         job_name: newJob.name,
                         enabled_tools: newJob.enabled_tools || [],
                         model_settings: newJob.model_settings || {},
