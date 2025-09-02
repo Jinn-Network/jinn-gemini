@@ -96,6 +96,7 @@
 
 export { bootstrap, predictSafeAddress } from './bootstrap.js';
 export { getChainConfig, getSupportedChainIds, isChainSupported, getTxServiceUrl, DEFAULT_CHAINS, SAFE_VERSION } from './chains.js';
+export { resolveSafeContracts, createContractNetworks, type SafeContracts } from './contracts.js';
 export { 
   loadWalletIdentity, 
   saveWalletIdentity, 

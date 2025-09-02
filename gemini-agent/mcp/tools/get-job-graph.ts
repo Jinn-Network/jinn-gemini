@@ -17,10 +17,7 @@ export { getJobGraphParams };
 
 export const getJobGraphSchema = {
   description: 'Get Job Graph - Inspect the system\'s "blueprint" of job capabilities. This tool provides static awareness of which job definitions emit artifacts and which subscribe to them, forming the foundational understanding of the system\'s event-driven architecture.',
-  inputSchema: {
-    topic: z.string().optional().describe('Optional topic to filter the graph. If omitted, returns all topics.'),
-    random_string: z.string().optional().describe('Dummy parameter for no-parameter tools')
-  },
+  inputSchema: getJobGraphParams.shape,
 };
 
 /**

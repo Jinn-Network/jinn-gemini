@@ -1,337 +1,90 @@
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
-import { WalletManager } from '@jinn/wallet-manager';
-import type { WalletManagerConfig, BootstrapResult } from '@jinn/wallet-manager';
-import { config } from './config.js';
-import { logger, walletLogger, workerLogger, exitWithCode, formatAddress, formatWeiToEth } from './logger.js';
+import { readRecords } from '../gemini-agent/mcp/tools/read-records.js';
+import { TransactionProcessor } from './TransactionProcessor.js';
+import { processJob } from './JobProcessor.js';
+import { logger } from './logger.js';
+import { JobBoard } from './types.js';
 
-interface WorkerArgs {
-  dryRun: boolean;
-  nonInteractive: boolean;
-  debug: boolean;
-  singleJob: boolean;
-  jobId?: string;
+const mainLogger = logger.child({ component: 'WorkerMain' });
+
+const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
+const jobIdFlagIndex = process.argv.findIndex(arg => arg === '--job-id' || arg === '-j');
+const targetJobId = jobIdFlagIndex !== -1 ? process.argv[jobIdFlagIndex + 1] : null;
+
+if (jobIdFlagIndex !== -1 && (!targetJobId || targetJobId.startsWith('-'))) {
+    mainLogger.fatal("Invalid usage: --job-id|-j requires a job ID value.");
+    process.exit(1);
 }
 
-/**
- * Parse command line arguments using yargs.
- */
-async function parseArguments(): Promise<WorkerArgs> {
-  const argv = await yargs(hideBin(process.argv))
-    .option('dry-run', {
-      alias: 'd',
-      type: 'boolean',
-      description: 'Run all pre-flight checks without executing transactions.',
-      default: false,
-    })
-    .option('non-interactive', {
-      type: 'boolean',
-      description: 'Exit if funding is required instead of polling.',
-      default: false,
-    })
-    .option('debug', {
-      type: 'boolean',
-      description: 'Run in debug mode with verbose output.',
-      default: false,
-    })
-    .option('single-job', {
-      type: 'boolean',
-      description: 'Process only one job then exit.',
-      default: false,
-    })
-    .option('job-id', {
-      alias: 'j',
-      type: 'string',
-      description: 'Target a specific job ID for processing.',
-    })
-    .help()
-    .parse();
+const singleJobMode = process.argv.includes('--single-job') || Boolean(targetJobId);
+const workerId = `worker-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-  return {
-    dryRun: argv.dryRun,
-    nonInteractive: argv.nonInteractive,
-    debug: argv.debug,
-    singleJob: argv.singleJob || Boolean(argv.jobId),
-    jobId: argv.jobId,
-  };
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    mainLogger.fatal("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.");
+    process.exit(1);
 }
 
-/**
- * Initialize and bootstrap the wallet manager.
- * Handles all possible bootstrap outcomes according to the specification.
- */
-async function initializeWallet(args: WorkerArgs): Promise<void> {
-  // Use TEST_RPC_URL in test environments if provided, otherwise use RPC_URL
-  const rpcUrl = process.env.NODE_ENV === 'test' && config.TEST_RPC_URL 
-    ? config.TEST_RPC_URL 
-    : config.RPC_URL;
+async function fetchAndProcessJob(): Promise<boolean> {
+    const readResult = await readRecords({
+        table_name: 'job_board',
+        filter: targetJobId ? { id: targetJobId } : { status: 'PENDING' }
+    });
 
-  const walletManagerConfig: WalletManagerConfig = {
-    workerPrivateKey: config.WORKER_PRIVATE_KEY as `0x${string}`,
-    chainId: config.CHAIN_ID,
-    rpcUrl: rpcUrl,
-    options: {
-      storageBasePath: config.JINN_WALLET_STORAGE_PATH,
-      // Disable STS checks if explicitly configured or in test environments
-      disableTxServiceChecks: config.DISABLE_STS_CHECKS || process.env.NODE_ENV === 'test',
-    },
-  };
-
-  const walletManager = new WalletManager(walletManagerConfig);
-
-  // First, check if we already have a valid local identity
-  const existingIdentity = await walletManager.getExistingIdentity();
-  if (existingIdentity) {
-    walletLogger.info('Local identity found. Verifying on-chain state...');
-    walletLogger.info(`    - Safe Address: ${existingIdentity.safeAddress}`);
-    walletLogger.info(`    - Chain ID:     ${existingIdentity.chainId}`);
-    
-    // Verify the existing identity is still valid on-chain
-    const verificationResult = await walletManager.verifyExistingIdentity(existingIdentity);
-    if (verificationResult.isValid) {
-      walletLogger.info('Identity verified.');
-      logger.info('Wallet bootstrap complete. Worker is now polling for jobs...');
-      
-      // In test environments, exit after successful bootstrap
-      if (process.env.NODE_ENV === 'test') {
-        logger.info('Test environment detected - exiting after bootstrap completion');
-        exitWithCode(0, 'Bootstrap complete in test mode');
-      }
-      return;
-    } else {
-      walletLogger.warn('Local identity file points to an invalid on-chain Safe. Re-evaluating state to determine next steps.');
-    }
-  } else {
-    walletLogger.info('No local identity found. Beginning bootstrap process...');
-  }
-
-  // If dry run, just run the dry run and exit
-  if (args.dryRun) {
-    const result = await walletManager.bootstrap({ dryRun: true });
-    handleDryRunResult(result);
-    return;
-  }
-
-  // Attempt wallet bootstrap
-  let result = await walletManager.bootstrap();
-
-  // Handle needs_funding with polling loop
-  if (result.status === 'needs_funding') {
-    if (args.nonInteractive) {
-      walletLogger.warn('EOA requires funding but --non-interactive flag is set');
-      exitWithCode(3, 'Funding required but running in non-interactive mode');
+    if (!readResult.content?.[0] || readResult.content[0].type !== 'text' || readResult.content[0].text.startsWith('Error')) {
+        mainLogger.error({ result: readResult }, "Failed to read jobs from database or unexpected format.");
+        return false;
     }
 
-    result = await handleFundingRequirements(result, walletManager);
-  }
+    try {
+        const parsed = JSON.parse(readResult.content[0].text);
+        const jobs: JobBoard[] = Array.isArray(parsed) ? parsed : (parsed?.data ?? []);
 
-  // Handle final result
-  switch (result.status) {
-    case 'exists':
-      walletLogger.success('Identity verified.');
-      walletLogger.info(`    - ${formatAddress(result.identity.safeAddress, 'Safe Address')}`);
-      walletLogger.info(`    - Chain ID:     ${result.identity.chainId}`);
-      break;
+        if (jobs.length === 0) {
+            mainLogger.info(targetJobId ? `No job found with id ${targetJobId}.` : "No pending jobs found.");
+            return false;
+        }
 
-    case 'created':
-      walletLogger.success('Safe deployed successfully!');
-      walletLogger.info(`    - ${formatAddress(result.identity.ownerAddress, 'Owner Address')}`);
-      walletLogger.info(`    - ${formatAddress(result.identity.safeAddress, 'Safe Address')}`);
-      walletLogger.info(`    - Chain ID:      ${result.identity.chainId}`);
-      if (result.metrics.txHash) {
-        walletLogger.info(`    - Transaction Hash: ${result.metrics.txHash}`);
-      }
-      walletLogger.info(`Identity saved to ~/.jinn/wallets/${result.identity.chainId}/${result.identity.ownerAddress}.json`);
-      break;
+        await processJob(jobs[0], workerId, debugMode, targetJobId);
+        return true;
 
-    case 'failed':
-      handleBootstrapFailure(result);
-      break;
-
-    default:
-      walletLogger.error(`Unexpected bootstrap result status: ${(result as any).status}`);
-      exitWithCode(1, 'Unexpected bootstrap result');
-  }
-
-  logger.info('Wallet bootstrap complete. Worker is now polling for jobs...');
-  
-  // In test environments, exit after successful bootstrap
-  if (process.env.NODE_ENV === 'test') {
-    logger.info('Test environment detected - exiting after bootstrap completion');
-    exitWithCode(0, 'Bootstrap complete in test mode');
-  }
-}
-
-/**
- * Handle dry run results and exit.
- */
-function handleDryRunResult(result: BootstrapResult): never {
-  if (result.status !== 'dry_run') {
-    logger.error('Expected dry_run result but got: ' + result.status);
-    exitWithCode(1, 'Invalid dry run result');
-  }
-
-  logger.info('Jinn Worker starting in DRY RUN mode...');
-  walletLogger.info('Configuration valid.');
-  walletLogger.info(`EOA Owner: ${result.report.ownerAddress}`);
-  walletLogger.info(`Predicted Safe Address: ${result.report.predictedSafeAddress}`);
-  walletLogger.info(`On-chain status: ${result.report.onChainState}`);
-  logger.info('');
-
-  result.report.actions.forEach(action => {
-    logger.info(`[DRY RUN] ACTION: ${action.details}`);
-  });
-
-  logger.info('');
-  exitWithCode(0, 'Dry run complete. No on-chain or filesystem changes were made.');
-}
-
-/**
- * Handle funding requirements with polling loop.
- */
-async function handleFundingRequirements(
-  result: BootstrapResult,
-  walletManager: WalletManager
-): Promise<BootstrapResult> {
-  if (result.status !== 'needs_funding') {
-    return result;
-  }
-
-  walletLogger.warn('The owner EOA is not sufficiently funded to deploy a Safe.');
-  logger.info('');
-  logger.info('    Action Required: Please fund the following address.');
-  logger.info('');
-  logger.info(`    - ${formatAddress(result.address, 'Address')}`);
-  logger.info(`    - Chain ID:   ${walletManager.getChainId()}`);
-  logger.info(`    - Required:   ${formatWeiToEth(result.required.minRecommendedWei)} (${result.required.minRecommendedWei} wei)`);
-  logger.info('');
-  walletLogger.info('Waiting for funds. Checking balance every 10 seconds... (Press Ctrl+C to exit)');
-
-  // Polling loop
-  while (true) {
-    await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
-    
-    const checkResult = await walletManager.bootstrap();
-    
-    if (checkResult.status === 'needs_funding') {
-      const currentBalance = await walletManager.getOwnerBalance();
-      walletLogger.info(`Balance: ${formatWeiToEth(currentBalance)}. Still waiting...`);
-      continue;
+    } catch (parseErr) {
+        mainLogger.error({ error: parseErr, data: readResult.content[0].text }, "Failed to parse jobs from database.");
+        return false;
     }
-    
-    if (checkResult.status === 'created' || checkResult.status === 'exists') {
-      walletLogger.success('Funds detected! Resuming bootstrap process...');
-      return checkResult;
-    }
-    
-    // If we get a failed status, exit the polling loop
-    if (checkResult.status === 'failed') {
-      return checkResult;
-    }
-  }
 }
 
-/**
- * Handle bootstrap failures with appropriate exit codes.
- */
-function handleBootstrapFailure(result: BootstrapResult): never {
-  if (result.status !== 'failed') {
-    exitWithCode(1, 'Invalid failed result');
-  }
-
-  switch (result.code) {
-    case 'invalid_config':
-      exitWithCode(2, result.error);
-      break;
-    case 'chain_id_mismatch':
-      exitWithCode(2, result.error);
-      break;
-    case 'safe_config_mismatch':
-      exitWithCode(4, result.error);
-      break;
-    case 'rpc_error':
-      exitWithCode(5, result.error);
-      break;
-    case 'unfunded':
-      // This should have been caught in the needs_funding case
-      exitWithCode(3, result.error);
-      break;
-    default:
-      exitWithCode(1, result.error);
-  }
-}
-
-/**
- * Legacy job processing stub (to be implemented later).
- */
-async function processJobs(args: WorkerArgs): Promise<void> {
-  const workerId = `worker-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  
-  workerLogger.info(`Worker ${workerId} starting up...`);
-  
-  if (args.singleJob) {
-    workerLogger.info('Single job mode - would process one job then exit');
-    exitWithCode(0, 'Single job processing not yet implemented');
-  } else {
-    workerLogger.info('Continuous mode - would poll for jobs indefinitely');
-    // For now, just keep the process alive for testing
-    setInterval(() => {
-      workerLogger.debug('Would poll for jobs...');
-    }, 30000);
-  }
-}
-
-/**
- * Main entry point for the Jinn worker.
- */
 async function main() {
-  try {
-    const args = await parseArguments();
-    
-    // Set log level based on debug flag
-    if (args.debug) {
-      logger.level = 'debug';
-      workerLogger.debug('Debug mode enabled');
+    mainLogger.info({ workerId, singleJobMode, targetJobId, debugMode }, "Worker starting up");
+
+    const transactionProcessor = new TransactionProcessor(supabaseUrl, supabaseKey, workerId);
+
+    if (singleJobMode) {
+        await fetchAndProcessJob();
+        await transactionProcessor.processPendingTransaction();
+        mainLogger.info("Single job/transaction processed. Exiting.");
+        process.exit(0);
     }
 
-    logger.info(`Jinn Worker starting...${args.dryRun ? ' in DRY RUN mode' : ''}`);
+    while (true) {
+        try {
+            const jobProcessed = await fetchAndProcessJob();
+            const transactionProcessed = await transactionProcessor.processPendingTransaction();
 
-    // Pre-flight checks are handled by config loading (will exit if invalid)
-    
-    // Initialize wallet (includes bootstrap)
-    await initializeWallet(args);
-    
-    // If we get here and it's not a dry run, start job processing
-    if (!args.dryRun) {
-      await processJobs(args);
+            if (!jobProcessed && !transactionProcessed) {
+                const delay = 5000;
+                mainLogger.info(`No jobs or transactions found, waiting ${delay}ms.`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else if (!transactionProcessed) {
+                // If no transaction was processed, add a small delay to prevent high CPU usage
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        } catch (error) {
+            mainLogger.fatal({ error }, "Critical error in main loop. Waiting 30 seconds before retrying.");
+            await new Promise(resolve => setTimeout(resolve, 30000));
+        }
     }
-
-  } catch (error) {
-    logger.fatal({ error }, 'Worker encountered a fatal error');
-    exitWithCode(1, 'Fatal error in worker main');
-  }
 }
-
-// Handle uncaught exceptions and rejections
-process.on('uncaughtException', (error) => {
-  logger.fatal({ error }, 'Uncaught exception');
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  logger.fatal({ reason, promise }, 'Unhandled promise rejection');
-  process.exit(1);
-});
-
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  logger.info('Received SIGINT, shutting down gracefully...');
-  exitWithCode(0, 'Worker shutdown by user request');
-});
-
-process.on('SIGTERM', () => {
-  logger.info('Received SIGTERM, shutting down gracefully...');
-  exitWithCode(0, 'Worker shutdown by system request');
-});
 
 main();

@@ -27,6 +27,7 @@
  */
 
 import type { Chain } from 'viem';
+import type { SafeContracts } from './contracts.js';
 
 /**
  * Configuration object provided by the consumer application to initialize
@@ -128,6 +129,33 @@ export interface WalletManagerConfig {
      * @default false
      */
     disableTxServiceChecks?: boolean;
+    
+    /** 
+     * Override Safe contract addresses for specific chains.
+     * When provided, these addresses will be used instead of the default
+     * contract resolution from @safe-global/safe-deployments.
+     * 
+     * Useful for:
+     * - Custom Safe deployments on unsupported chains
+     * - Testing with specific contract versions
+     * - Working around deployment resolution issues
+     * 
+     * @example
+     * ```typescript
+     * contractNetworks: {
+     *   8453: { // Base mainnet
+     *     safeMasterCopyAddress: '0x...',
+     *     safeProxyFactoryAddress: '0x...',
+     *     multiSendAddress: '0x...',
+     *     multiSendCallOnlyAddress: '0x...',
+     *     fallbackHandlerAddress: '0x...'
+     *   }
+     * }
+     * ```
+     */
+    contractNetworks?: {
+      [chainId: number]: SafeContracts;
+    };
   };
 }
 
@@ -207,6 +235,14 @@ export interface WalletIdentity {
    * @example '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
    */
   saltNonce: `0x${string}`;
+  
+  /** 
+   * Optional Zora creator coin address associated with this wallet.
+   * Set by the wallet:set-creator-coin CLI tool for Zora protocol integration.
+   * 
+   * @example '0x1234567890123456789012345678901234567890'
+   */
+  creator_coin_address?: `0x${string}`;
 }
 
 /**

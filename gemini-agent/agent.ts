@@ -1,6 +1,9 @@
 import { spawn } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: join(process.cwd(), '.env') });
 
 // Add this interface for better type safety
 interface MCPServerConfig {
@@ -49,11 +52,18 @@ export class Agent {
   private settingsPath: string;
   private agentRoot: string;
   private jobContext?: { jobId: string; jobName: string; threadId: string | null };
+  private telemetryEnabled: boolean;
 
-  constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobName: string; threadId: string | null }) {
+  constructor(model: string, enabledTools: string[], options?: { 
+    jobId?: string; 
+    jobName?: string; 
+    threadId?: string | null;
+    telemetry?: boolean;
+  }) {
     this.model = model;
     this.enabledTools = enabledTools || [];
-    this.jobContext = jobContext;
+    this.jobContext = options?.jobId && options?.jobName ? { jobId: options.jobId, jobName: options.jobName, threadId: options.threadId || null } : undefined;
+    this.telemetryEnabled = options?.telemetry !== false; // Telemetry is on by default
     this.agentRoot = join(process.cwd(), 'gemini-agent');
     this.settingsPath = join(this.agentRoot, '.gemini', 'settings.json');
   }
@@ -63,7 +73,7 @@ export class Agent {
     try {
       // Set job context for tools to access
       if (this.jobContext) {
-        const { setJobContext } = await import('./mcp/tools/shared/supabase.js');
+        const { setJobContext } = await import('./mcp/tools/shared/context.js');
         setJobContext(this.jobContext.jobId, this.jobContext.jobName, this.jobContext.threadId);
       }
 
@@ -111,10 +121,8 @@ export class Agent {
       throw { error, telemetry };
     } finally {
       // Clear job context
-      if (this.jobContext) {
-        const { clearJobContext } = await import('./mcp/tools/shared/supabase.js');
-        clearJobContext();
-      }
+      const { clearJobContext } = await import('./mcp/tools/shared/context.js');
+      clearJobContext();
       this.cleanupJobSpecificSettings();
     }
   }
@@ -131,17 +139,23 @@ export class Agent {
         args.push('--debug');
       }
 
-      // Telemetry flags (workaround for known CLI bug pattern)
-      args.push('--telemetry');
-      args.push('--telemetry-target', 'local');
-      args.push('--telemetry-otlp-endpoint', ''); // prevent network attempts
-      args.push('--telemetry-log-prompts');
+      let telemetryFile = '';
+      if (this.telemetryEnabled) {
+        // Telemetry flags (workaround for known CLI bug pattern)
+        args.push('--telemetry');
+        args.push('--telemetry-target', 'local');
+        args.push('--telemetry-otlp-endpoint', ''); // prevent network attempts
+        args.push('--telemetry-log-prompts');
 
-      // Telemetry outfile
-      const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
-      args.push('--telemetry-outfile', telemetryFile);
+        // Telemetry outfile
+        telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
+        args.push('--telemetry-outfile', telemetryFile);
+        console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
+      } else {
+        args.push('--no-telemetry');
+        console.log('[TELEMETRY] Telemetry is disabled by agent configuration.');
+      }
 
-      console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
       console.log(`Spawning Gemini CLI with model: ${this.model} and prompt: "${prompt.substring(0, 100)}..."`);
 
       const geminiProcess = spawn('gemini', args, {

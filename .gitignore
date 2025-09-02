@@ -151,3 +151,4 @@ settings.local.json
 *.crt
 *.cert
 gemini-agent/.gemini/settings.json
+.cursor/implementation-review-process.md

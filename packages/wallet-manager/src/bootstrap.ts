@@ -16,6 +16,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import Safe, { PredictedSafeProps, SafeAccountConfig } from '@safe-global/protocol-kit';
 import { getChainConfig, SAFE_VERSION } from './chains.js';
+import { resolveSafeContracts, createContractNetworks } from './contracts.js';
 import { 
   loadWalletIdentity, 
   saveWalletIdentity, 
@@ -450,26 +451,28 @@ export async function bootstrap(
       };
     });
     
-  } catch (error: any) {
-    let code: import('./types.js').BootstrapError = 'deployment_failed';
-    const message: string = error.message || 'Unknown error during bootstrap';
-    
-    if (message.includes('Unsupported CHAIN_ID')) {
-      code = 'unsupported_chain';
-    } else if (message.includes('RPC validation failed')) {
-      code = 'rpc_error';
-    } else if (message.includes('Chain ID mismatch')) {
-      code = 'chain_id_mismatch';
-    } else if (message.includes('workerPrivateKey') || message.includes('private key')) {
-      code = 'invalid_config';
-    }
-    
-    return {
-      status: 'failed' as const,
-      error: message,
-      code: code,
-    };
-  }
+      } catch (error: any) {
+        let code: import('./types.js').BootstrapError = 'deployment_failed';
+        const message: string = error.message || 'Unknown error during bootstrap';
+        
+        if (message.includes('Unsupported CHAIN_ID')) {
+          code = 'unsupported_chain';
+        } else if (message.includes('RPC validation failed')) {
+          code = 'rpc_error';
+        } else if (message.includes('Chain ID mismatch')) {
+          code = 'chain_id_mismatch';
+        } else if (message.includes('workerPrivateKey') || message.includes('private key')) {
+          code = 'invalid_config';
+        } else if (message.includes('not deployed on chain') || message.includes('not supported by Safe version')) {
+          code = 'unsupported_chain';
+        }
+        
+        return {
+          status: 'failed' as const,
+          error: message,
+          code: code,
+        };
+      }
 }
 
 /**
@@ -628,6 +631,10 @@ async function estimateSafeDeploymentGas(
   saltNonce: `0x${string}`
 ): Promise<bigint> {
   try {
+    // Resolve Safe contract addresses
+    const contracts = config.options?.contractNetworks?.[config.chainId] ?? 
+      resolveSafeContracts(config.chainId, SAFE_VERSION);
+    
     // Create Safe account configuration
     const safeAccountConfig: SafeAccountConfig = {
       ...DEFAULT_SAFE_CONFIG,
@@ -647,7 +654,8 @@ async function estimateSafeDeploymentGas(
     const protocolKit = await Safe.init({
       provider: config.rpcUrl,
       signer: config.workerPrivateKey,
-      predictedSafe
+      predictedSafe,
+      contractNetworks: createContractNetworks(config.chainId, contracts)
     });
     
     // Create the deployment transaction
@@ -681,6 +689,10 @@ async function deploySafe(
   saltNonce: `0x${string}`
 ): Promise<{ status: 'success'; safeAddress: `0x${string}`; gasUsed: bigint; txHash: `0x${string}` } | { status: 'failed'; error: string; code: import('./types.js').BootstrapError }> {
   try {
+    // Resolve Safe contract addresses
+    const contracts = config.options?.contractNetworks?.[config.chainId] ?? 
+      resolveSafeContracts(config.chainId, SAFE_VERSION);
+    
     // Create Safe account configuration
     const safeAccountConfig: SafeAccountConfig = {
       ...DEFAULT_SAFE_CONFIG,
@@ -701,14 +713,22 @@ async function deploySafe(
       threshold: safeAccountConfig.threshold,
       saltNonce,
       chainId: config.chainId,
-      safeVersion: SAFE_VERSION
+      safeVersion: SAFE_VERSION,
+      contracts: {
+        safeMasterCopy: contracts.safeMasterCopyAddress,
+        proxyFactory: contracts.safeProxyFactoryAddress,
+        multiSend: contracts.multiSendAddress,
+        multiSendCallOnly: contracts.multiSendCallOnlyAddress,
+        fallbackHandler: contracts.fallbackHandlerAddress
+      }
     });
     
     // Initialize Safe with predicted properties
     let protocolKit = await Safe.init({
       provider: config.rpcUrl,
       signer: config.workerPrivateKey,
-      predictedSafe
+      predictedSafe,
+      contractNetworks: createContractNetworks(config.chainId, contracts)
     });
     
     // Get the predicted address before deployment
@@ -852,6 +872,10 @@ export async function predictSafeAddress(
   try {
     getChainConfig(config.chainId); // Validate chain support
     
+    // Resolve Safe contract addresses
+    const contracts = config.options?.contractNetworks?.[config.chainId] ?? 
+      resolveSafeContracts(config.chainId, SAFE_VERSION);
+    
     // Create Safe account configuration
     const safeAccountConfig: SafeAccountConfig = {
       ...DEFAULT_SAFE_CONFIG,
@@ -871,7 +895,8 @@ export async function predictSafeAddress(
     const protocolKit = await Safe.init({
       provider: config.rpcUrl,
       signer: config.workerPrivateKey,
-      predictedSafe
+      predictedSafe,
+      contractNetworks: createContractNetworks(config.chainId, contracts)
     });
     
     // Get the predicted address

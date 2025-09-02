@@ -86,8 +86,12 @@ The system consists of several key components that work together in a continuous
     -   Executing the LLM prompt with integrated telemetry collection.
     -   Parsing detailed telemetry data (token usage, tool calls, performance metrics) directly from Gemini CLI output files.
     -   Capturing both critical errors and warning-level issues for comprehensive job reporting.
-4.  **Tools (`gemini-agent/mcp/`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `read_records`, and powerful awareness tools like `get_job_graph`, `trace_lineage`, and `get_context_snapshot`.
-5.  **Frontend Explorer (`frontend/explorer/`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
+4.  **Tools (`gemini-agent/mcp/`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `read_records`, `enqueue_transaction` for on-chain actions, and powerful awareness tools like `get_job_graph`, `trace_lineage`, and `get_context_snapshot`.
+5.  **On-Chain Execution (Dual-Rail)**: The worker supports two distinct on-chain transaction execution strategies, chosen by the agent at runtime:
+    -   **`EOA` (Externally Owned Account)**: For fast, simple, and low-cost transactions (e.g., creating Zora content coins), the worker can sign and send transactions directly from its own wallet.
+    -   **`SAFE` (Gnosis Safe)**: For high-security operations or interactions with protocols requiring a multi-sig (e.g., OLAS staking), transactions are routed through a Gnosis Safe.
+    -   **Allowlisting**: A flexible, chain-aware allowlist (`worker/config/allowlists.json`) provides granular control, permitting specific contract functions to be executed only by a designated strategy (e.g., restricting `approve()` to `SAFE` only).
+6.  **Frontend Explorer (`frontend/explorer/`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
 
 ---
 
@@ -227,7 +231,7 @@ For easier development, you can run the MCP server or the worker directly on you
 1.  **Create Tool File**: Add a new file in `gemini-agent/mcp/tools/`.
 2.  **Define Schema**: Use Zod to define the input parameter schema for your tool.
 3.  **Implement Logic**: Write the tool's function, which will typically interact with the database via the `supabase` client.
-4.  **Register Tool**: In `gemini-agent/mcp/server.ts`, import your new tool and add it to the `serverTools` array. The tool will be automatically registered and discoverable by the `list_tools` tool.
+4.  **Register Tool**: In `gemini-agent/mcp/server.ts`, import your new tool and add it to the `serverTools` array. The tool name will be automatically prefixed with `mcp_`. The tool will be automatically discoverable by the `list_tools` tool.
 
 ### Shared Context Manager for tool outputs
 All read/search tools now use a shared module to ensure consistent, token‑budgeted, single‑page responses with pagination and transparent metadata.

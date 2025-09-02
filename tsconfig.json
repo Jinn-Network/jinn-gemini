@@ -4,7 +4,6 @@
     "module": "esnext",
     "moduleResolution": "node",
     "outDir": "./dist",
-    "rootDir": "./",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
@@ -19,22 +18,14 @@
     "noImplicitAny": false
   },
   "include": [
-    "*.ts",
-    "*.js",
     "worker/**/*.ts",
-    "worker/**/*.js",
     "gemini-agent/**/*.ts",
-    "gemini-agent/**/*.js"
+    "scripts/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "packages/**",
     "**/*.test.ts",
-    "**/*.test.js",
-    "**/*.spec.ts",
-    "**/*.spec.js",
-    "**/vitest.config.ts",
-    "**/vitest.config.js"
+    "**/*.spec.ts"
   ]
 }

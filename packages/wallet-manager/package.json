@@ -12,7 +12,8 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint src/**/*.ts",
     "type-check": "tsc --noEmit",
-    "prepack": "yarn clean && yarn build"
+    "prepack": "yarn clean && yarn build",
+    "set-creator-coin": "node dist/cli/set-creator-coin.js"
   },
   "keywords": [
     "gnosis-safe",
@@ -27,6 +28,7 @@
   "dependencies": {
     "@safe-global/protocol-kit": "^6.1.0",
     "@safe-global/safe-core-sdk-types": "^5.1.0",
+    "@safe-global/safe-deployments": "^1.37.42",
     "@safe-global/types-kit": "^3.0.0",
     "viem": "2.35.1"
   },

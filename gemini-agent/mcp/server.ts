@@ -36,7 +36,16 @@ import {
   getJobGraph,
   getJobGraphSchema,
   traceLineage,
-  traceLineageSchema
+  traceLineageSchema,
+  // Zora integration tools
+  enqueueTransaction,
+  enqueueTransactionSchema,
+  getTransactionStatus,
+  getTransactionStatusSchema,
+  prepareCreateCoinTx,
+  prepareCreateCoinTxSchema,
+  queryCoins,
+  queryCoinsSchema
 } from './tools/index.js';
 
 // This is the single source of truth for all tools registered on this server.
@@ -57,7 +66,12 @@ export const serverTools: { name: string; schema: any; handler: (params: any) =>
   { name: 'reconstruct_job', schema: reconstructJobSchema, handler: reconstructJob },
   { name: 'search_events', schema: searchEventsSchema, handler: searchEvents },
   { name: 'get_job_graph', schema: getJobGraphSchema, handler: getJobGraph },
-  { name: 'trace_lineage', schema: traceLineageSchema, handler: traceLineage }
+  { name: 'trace_lineage', schema: traceLineageSchema, handler: traceLineage },
+  // Transaction & Blockchain Tools
+  { name: 'zora_prepare_create_coin_tx', schema: prepareCreateCoinTxSchema, handler: prepareCreateCoinTx },
+  { name: 'enqueue_transaction', schema: enqueueTransactionSchema, handler: enqueueTransaction },
+  { name: 'get_transaction_status', schema: getTransactionStatusSchema, handler: getTransactionStatus },
+  { name: 'zora_query_coins', schema: queryCoinsSchema, handler: queryCoins }
 ];
 
 async function main() {

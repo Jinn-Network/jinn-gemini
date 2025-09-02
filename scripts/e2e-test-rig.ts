@@ -19,7 +19,7 @@
  * - Does not read/modify root .env files
  */
 
-import { execa, type ExecaChildProcess } from 'execa';
+import { execa } from 'execa';
 import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -729,7 +729,7 @@ async function runAllTests(): Promise<void> {
 
     console.log('🔗 Creating ephemeral Tenderly Virtual TestNet for test run...');
     vnetResult = await tenderlyClient.createVnet(TEST_CHAIN_IDS.base_mainnet);
-    console.log(`✅ Tenderly Virtual TestNet created: ${vnetResult.vnetId}`);
+    console.log(`✅ Tenderly Virtual TestNet created: ${vnetResult.id}`);
     console.log(`🌐 Admin RPC URL: ${vnetResult.adminRpcUrl}`);
     
     const summary: TestSummary = {
@@ -789,8 +789,9 @@ async function runAllTests(): Promise<void> {
   } finally {
     // Global Teardown: Clean up ephemeral VNet and workspace
     if (vnetResult) {
-      console.log(`\n🗑️ Deleting ephemeral Tenderly Virtual TestNet: ${vnetResult.vnetId}...`);
-      await tenderlyClient.deleteVnet(vnetResult.vnetId);
+      const tenderlyClient = createTenderlyClient();
+      console.log(`\n🗑️ Deleting ephemeral Tenderly Virtual TestNet: ${vnetResult.id}...`);
+      await tenderlyClient.deleteVnet(vnetResult.id);
     }
     
     await fs.rm(TEMP_DIR_BASE, { recursive: true, force: true });

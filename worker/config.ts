@@ -21,6 +21,11 @@ const workerConfigSchema = z.object({
   // Supabase configuration (optional for wallet-only mode)
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  
+  // Transaction Executor configuration
+  ENABLE_TRANSACTION_EXECUTOR: z.coerce.boolean().optional().default(false), // Feature flag for transaction executor
+  WORKER_ID: z.string().optional(), // Optional worker identifier
+  WORKER_TX_CONFIRMATIONS: z.coerce.number().int().positive().optional().default(3), // Number of confirmations to wait for
 });
 
 export type WorkerConfig = z.infer<typeof workerConfigSchema>;

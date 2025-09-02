@@ -1,0 +1,208 @@
+/**
+ * EOA Transaction Executor for Dual-Rail Architecture
+ * 
+ * This module provides direct transaction execution through an Externally Owned Account (EOA)
+ * for the Jinn agent system. It implements the ITransactionExecutor interface and handles
+ * direct signing and execution for transactions that don't require Safe multi-signature.
+ * 
+ * ## Security Features
+ * 
+ * - Allowlist-based contract and function validation
+ * - Chain ID verification
+ * - Payload integrity checks
+ * - Direct EOA signing for speed and simplicity
+ * - Comprehensive error categorization
+ * 
+ * ## Architecture
+ * 
+ * This executor is part of the dual-rail execution system and specifically
+ * handles transactions that can be safely executed directly by an EOA for
+ * improved speed and reduced complexity.
+ * 
+ * @version 2.0.0
+ * @since Phase 3 - Dual Rail Architecture
+ */
+
+import { createClient } from '@supabase/supabase-js';
+import { ethers } from 'ethers';
+import { logger } from './logger.js';
+import { ITransactionExecutor } from './IExecutor.js';
+import { TransactionRequest, ExecutionResult } from './types.js';
+import { validateTransaction } from './validation.js';
+
+// Create a child logger for EOA executor operations
+const eoaLogger = logger.child({ component: 'EOA-EXECUTOR' });
+
+export class EoaExecutor implements ITransactionExecutor {
+  private supabase;
+  private workerId: string;
+  private provider: ethers.providers.JsonRpcProvider;
+  private signer: ethers.Wallet;
+  private chainId: number;
+  private confirmations: number;
+
+  constructor() {
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables');
+    }
+
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Initialize worker configuration
+    this.workerId = process.env.WORKER_ID || `worker-${Date.now()}`;
+    this.chainId = parseInt(process.env.CHAIN_ID || '8453', 10); // Default to Base mainnet
+    this.confirmations = parseInt(process.env.WORKER_TX_CONFIRMATIONS || '3', 10);
+    
+    // Initialize blockchain connection
+    const rpcUrl = process.env.RPC_URL;
+    const privateKey = process.env.WORKER_PRIVATE_KEY;
+    
+    if (!rpcUrl || !privateKey) {
+      throw new Error('Missing RPC_URL or WORKER_PRIVATE_KEY environment variables');
+    }
+
+    this.provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+    this.signer = new ethers.Wallet(privateKey, this.provider);
+    
+    eoaLogger.info('EoaExecutor initialized');
+  }
+
+
+
+  /**
+   * Execute transaction directly with EOA signing
+   */
+  private async executeEoaTransaction(request: TransactionRequest): Promise<ExecutionResult> {
+    try {
+      // Prepare transaction object
+      const tx = {
+        to: request.payload.to,
+        data: request.payload.data,
+        value: request.payload.value
+      };
+
+      eoaLogger.info({ requestId: request.id, payload: tx }, 'Executing EOA transaction');
+
+      // Send transaction
+      const txResponse = await this.signer.sendTransaction(tx);
+      eoaLogger.info({ requestId: request.id, txHash: txResponse.hash }, 'EOA transaction submitted');
+
+      // Wait for confirmation
+      const receipt = await txResponse.wait(this.confirmations);
+      if (!receipt) {
+        throw new Error('Failed to get transaction receipt after execution');
+      }
+
+      eoaLogger.info({ requestId: request.id, txHash: receipt.transactionHash }, 'EOA transaction confirmed on-chain');
+
+      return {
+        success: true,
+        txHash: receipt.transactionHash
+      };
+
+    } catch (error: any) {
+      eoaLogger.error({ requestId: request.id, error: error.message, stack: error.stack }, 'EOA transaction execution failed');
+
+      // Categorize the error using valid transaction_error_code enum values
+      let errorCode = 'UNKNOWN';
+      let errorMessage = error.message || 'Unknown error occurred';
+
+      if (error.message?.includes('insufficient funds')) {
+        errorCode = 'INSUFFICIENT_FUNDS';
+      } else if (error.message?.includes('revert')) {
+        errorCode = 'SAFE_TX_REVERT'; // Use valid enum value
+      } else if (error.message?.includes('network') || error.message?.includes('rpc')) {
+        errorCode = 'RPC_FAILURE';
+      } else if (error.message?.includes('nonce') || error.message?.includes('gas')) {
+        // Consolidate nonce and gas errors into UNKNOWN as specific enum values don't exist
+        errorCode = 'UNKNOWN';
+      }
+
+      return {
+        success: false,
+        errorCode,
+        errorMessage
+      };
+    }
+  }
+
+  /**
+   * Update transaction request status in database
+   */
+  private async updateTransactionStatus(
+    requestId: string, 
+    status: 'CONFIRMED' | 'FAILED',
+    result: ExecutionResult
+  ): Promise<void> {
+    try {
+      const updateData: any = {
+        status,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      if (result.success) {
+        updateData.tx_hash = result.txHash;
+        // Note: safe_tx_hash remains null for EOA transactions
+      } else {
+        updateData.error_code = result.errorCode;
+        updateData.error_message = result.errorMessage;
+      }
+
+      const { error } = await this.supabase
+        .from('transaction_requests')
+        .update(updateData)
+        .eq('id', requestId);
+
+      if (error) {
+        eoaLogger.error({ error }, 'Failed to update transaction status');
+      } else {
+        eoaLogger.info('Transaction status updated');
+      }
+    } catch (error) {
+      eoaLogger.error({ error }, 'Error updating transaction status');
+    }
+  }
+
+  /**
+   * Process a single transaction request (implements ITransactionExecutor interface)
+   */
+  async processTransactionRequest(request: TransactionRequest): Promise<void> {
+    eoaLogger.info({ requestId: request.id }, 'Processing EOA transaction request');
+
+    // Validate the transaction with EOA execution context
+    const validation = validateTransaction(request, {
+      workerChainId: this.chainId,
+      executionStrategy: 'EOA'
+    });
+    
+    if (!validation.valid) {
+      eoaLogger.warn({ requestId: request.id, error: validation.errorMessage }, 'EOA transaction validation failed');
+
+      await this.updateTransactionStatus(request.id, 'FAILED', {
+        success: false,
+        errorCode: validation.errorCode,
+        errorMessage: validation.errorMessage
+      });
+      return;
+    }
+
+    // Execute the transaction
+    const result = await this.executeEoaTransaction(request);
+    
+    // Update status based on result
+    const status = result.success ? 'CONFIRMED' : 'FAILED';
+    await this.updateTransactionStatus(request.id, status, result);
+  }
+}
+
+/**
+ * Factory function to create and configure an EoaExecutor
+ */
+export function createEoaExecutor(): EoaExecutor {
+  return new EoaExecutor();
+}

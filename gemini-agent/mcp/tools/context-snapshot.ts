@@ -10,11 +10,7 @@ export const getContextSnapshotParams = z.object({
 
 export const getContextSnapshotSchema = {
   description: 'Fetches a snapshot of the system state based on a time window. Optimized for Gemini 1M token context window. Messages only included when filtering by job name.',
-  inputSchema: {
-    hours_back: z.number().positive().optional().default(6).describe('Number of hours to look back from now.'),
-    job_name: z.string().optional().describe('Optional job name to filter messages for. Shows only messages directed to this job, including content.'),
-    cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
-  },
+  inputSchema: getContextSnapshotParams.shape,
 };
 
 function getTimeWindow(hoursBack: number): { startTime: string, endTime: string, cappedHours: number } {

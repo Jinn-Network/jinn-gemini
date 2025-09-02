@@ -22,11 +22,10 @@ interface TenderlyConfig {
   projectSlug?: string;
 }
 
-/**
- * Virtual TestNet creation result
- */
-interface VnetResult {
-  vnetId: string;
+export interface VnetResult {
+  id: string;
+  container_name: string;
+  project_id: string;
   adminRpcUrl: string;
   publicRpcUrl?: string;
   blockExplorerUrl?: string;
@@ -177,13 +176,15 @@ export class TenderlyClient {
       }
 
       const result: VnetResult = {
-        vnetId: vnetData.id,
+        id: vnetData.id,
+        container_name: vnetData.slug,
+        project_id: vnetData.id, // Assuming project_id is the same as vnet_id for now
         adminRpcUrl: adminRpc.url,
         publicRpcUrl: publicRpc?.url,
         blockExplorerUrl: `https://dashboard.tenderly.co/explorer/vnet/${vnetData.id}`
       };
 
-      console.log(`[TENDERLY] Created Virtual TestNet: ${result.vnetId}`);
+      console.log(`[TENDERLY] Created Virtual TestNet: ${result.id}`);
       console.log(`[TENDERLY] Admin RPC: ${result.adminRpcUrl}`);
       
       return result;
@@ -287,7 +288,9 @@ export class MockTenderlyClient extends TenderlyClient {
   async createVnet(): Promise<VnetResult> {
     console.log('[MOCK] Created Tenderly Virtual TestNet:', this.mockVnetId);
     return {
-      vnetId: this.mockVnetId,
+      id: this.mockVnetId,
+      container_name: this.mockVnetId,
+      project_id: this.mockVnetId,
       adminRpcUrl: this.mockAdminRpcUrl,
       publicRpcUrl: 'https://mock.tenderly.rpc/public',
       blockExplorerUrl: `https://mock.tenderly.co/explorer/vnet/${this.mockVnetId}`

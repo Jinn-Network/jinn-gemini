@@ -30,12 +30,7 @@ export { traceLineageParams };
 
 export const traceLineageSchema = {
   description: 'Traces the complete causal lineage of events forwards and backwards from any artifact or job. Reveals the full chain of causation in the universal event architecture.',
-  inputSchema: {
-    artifact_id: z.string().uuid().optional().describe('UUID of the artifact to trace lineage from'),
-    job_id: z.string().uuid().optional().describe('UUID of the job to trace lineage from'),
-    max_depth: z.number().int().min(1).max(20).default(10).describe('Maximum depth to traverse (default: 10)'),
-    random_string: z.string().optional().describe('Dummy parameter for no-parameter tools')
-  },
+  inputSchema: traceLineageParams.shape,
 };
 
 /**
