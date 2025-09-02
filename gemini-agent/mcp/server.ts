@@ -38,7 +38,6 @@ async function main() {
       { name: 'civitai_generate_image', schema: tools.civitaiGenerateImageSchema, handler: tools.civitaiGenerateImage },
       { name: 'civitai_publish_post', schema: tools.civitaiPublishPostSchema, handler: tools.civitaiPublishPost },
       { name: 'civitai_search_models', schema: tools.civitaiSearchModelsSchema, handler: tools.civitaiSearchModels },
-      { name: 'civitai_get_image_stats', schema: tools.civitaiGetImageStatsSchema, handler: tools.civitaiGetImageStats },
       { name: 'civitai_get_model_details', schema: tools.civitaiGetModelDetailsSchema, handler: tools.civitaiGetModelDetails },
       { name: 'civitai_search_images', schema: tools.civitaiSearchImagesSchema, handler: tools.civitaiSearchImages }
     ];

@@ -16,7 +16,6 @@ export { civitaiGenerateImage, civitaiGenerateImageParams, civitaiGenerateImageS
 export { civitaiPublishPost, civitaiPublishPostParams, civitaiPublishPostSchema } from './civitai-publish-post.js';
 export { civitaiSearchModels, civitaiSearchModelsParams, civitaiSearchModelsSchema } from './civitai-search-models.js';
 export { civitaiGetModelDetails, civitaiGetModelDetailsParams, civitaiGetModelDetailsSchema } from './civitai-get-model-details.js';
-export { civitaiGetImageStats, civitaiGetImageStatsParams, civitaiGetImageStatsSchema } from './civitai-get-image-stats.js';
 export { civitaiSearchImages, civitaiSearchImagesParams, civitaiSearchImagesSchema } from './civitai-search-images.js';
 
 // Export shared types

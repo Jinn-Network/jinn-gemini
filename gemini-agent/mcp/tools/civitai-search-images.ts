@@ -5,15 +5,14 @@ const civitaiSearchImagesBase = z.object({
   // Search and filtering
   username: z.string().min(1).optional().describe('Filter by specific creator username'),
   modelVersionId: z.number().int().positive().optional().describe('Filter by specific model version ID'),
+  postId: z.number().int().positive().optional().describe('The ID of a post to get images from'),
   
   // Content filtering
   nsfw: z.enum(['None', 'Soft', 'Mature', 'X']).optional().describe('NSFW content level filter'),
   
   // Sorting and time period
-  sort: z.enum([
-    'Most Reactions', 'Most Comments', 'Most Collected', 'Most Liked', 
-    'Most Downloaded', 'Newest', 'Random'
-  ]).optional().describe('Sort order for results'),
+  // Accept any string here; enforce allowed values in tool logic to return structured errors instead of schema failures
+  sort: z.string().optional().describe('Sort order for results. Allowed: Most Reactions, Most Comments, Newest'),
   period: z.enum(['AllTime', 'Year', 'Month', 'Week', 'Day']).optional().describe('Time period for popularity metrics'),
   
   // Pagination
@@ -26,7 +25,7 @@ export const civitaiSearchImagesParams = civitaiSearchImagesBase;
 export type CivitaiSearchImagesParams = z.infer<typeof civitaiSearchImagesParams>;
 
 export const civitaiSearchImagesSchema = {
-  description: 'Search for images on Civitai with filtering and sorting options. Find trending images, popular content, and high-performing posts. Useful for discovering successful prompts, popular styles, and engagement patterns.\n\nSupported filters: username, modelVersionId, postId, nsfw, sort, and period. Use modelVersionId (not modelId) to get images from a specific model version - this works reliably even for popular models since it queries a smaller dataset.',
+  description: 'Search for images on Civitai with filtering and sorting options. This tool can also be used to get image stats, as each returned image includes its own engagement metrics (likes, comments, etc.). Find trending images, popular content, and high-performing posts. Useful for discovering successful prompts, popular styles, and engagement patterns.\n\nSupported filters: postId, username, modelVersionId, nsfw, sort, and period. Allowed sort values (Images endpoint): Most Reactions, Most Comments, Newest. Use modelVersionId (not modelId) to get images from a specific model version - this works reliably even for popular models since it queries a smaller dataset.',
   inputSchema: civitaiSearchImagesBase.shape,
 };
 
@@ -67,18 +66,16 @@ type CivitaiImage = {
   }>;
 };
 
+const ALLOWED_IMAGE_SORTS = ['Most Reactions', 'Most Comments', 'Newest'] as const;
+
 function mapSort(val?: string): string | undefined {
   if (!val) return undefined;
   const sortMap: Record<string, string> = {
     'Most Reactions': 'Most Reactions',
-    'Most Comments': 'Most Comments', 
-    'Most Collected': 'Most Collected',
-    'Most Liked': 'Most Liked',
-    'Most Downloaded': 'Most Downloaded',
+    'Most Comments': 'Most Comments',
     'Newest': 'Newest',
-    'Random': 'Random'
   };
-  return sortMap[val] || val;
+  return sortMap[val] || undefined;
 }
 
 function buildQuery(params: CivitaiSearchImagesParams & { page?: number; cursorVal?: string }): string {
@@ -96,6 +93,7 @@ function buildQuery(params: CivitaiSearchImagesParams & { page?: number; cursorV
   // Search parameters
   if (params.username) q.set('username', params.username);
   if (params.modelVersionId) q.set('modelVersionId', String(params.modelVersionId));
+  if (params.postId) q.set('postId', String(params.postId));
   
   // Filtering
   if (params.nsfw) q.set('nsfw', params.nsfw);
@@ -165,6 +163,22 @@ export async function civitaiSearchImages(params: CivitaiSearchImagesParams) {
     
     const input = parsed.data;
     const limit = input.limit ?? 20;
+
+    // Tool-level validation for sort values (Images endpoint):
+    if (input.sort && !ALLOWED_IMAGE_SORTS.includes(input.sort as any)) {
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({
+          data: [],
+          meta: {
+            ok: false,
+            code: 'UNSUPPORTED_SORT',
+            message: 'Sort value is not supported by the Images endpoint. Use one of the allowed values.',
+            received: input.sort,
+            allowed_sorts: ALLOWED_IMAGE_SORTS,
+          }
+        }) }]
+      };
+    }
     
     // Handle cursor decoding
     let page = 1;
@@ -236,6 +250,7 @@ export async function civitaiSearchImages(params: CivitaiSearchImagesParams) {
       requestedMeta: {
         username: input.username,
         modelVersionId: input.modelVersionId,
+        postId: input.postId,
         sort: input.sort,
         period: input.period,
         nsfw: input.nsfw,
@@ -256,11 +271,6 @@ export async function civitaiSearchImages(params: CivitaiSearchImagesParams) {
     
     // Add warnings about API limitations
     const warnings: string[] = [];
-    
-    // Warn about known problematic sort/period combinations
-    if (input.sort === 'Most Reactions' && input.period) {
-      warnings.push('Some sort/period combinations may return null cursors, preventing pagination.');
-    }
     
     // Warn if nextCursor was null but we had results (indicates potential pagination issue)
     if (images.length > 0 && !nextCursorRaw) {
