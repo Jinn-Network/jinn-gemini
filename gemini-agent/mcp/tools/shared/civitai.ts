@@ -75,6 +75,11 @@ export interface AirCreateImageParams {
     clipSkip?: number;
     [key: string]: any;
   };
+  additionalNetworks?: Record<string, {
+    strength?: number;
+    triggerWord?: string;
+    [key: string]: any;
+  }>;
 }
 
 export interface AirCreateResponse {

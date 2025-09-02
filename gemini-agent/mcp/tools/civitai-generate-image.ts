@@ -18,18 +18,21 @@ export const civitaiGenerateImageParams = z.object({
   scheduler: z.string().optional(),
   seed: z.number().int().optional(),
 
-  // Optional escape hatch for development/testing to bypass AIR call
-  image_url_override: z.string().url().optional().describe('Development override: use this URL as the generated image'),
+  // Simplified additional networks - tool handles URN complexity
+  additional_networks: z.array(z.object({
+    model_id: z.number().int().positive().describe('Civitai model ID (e.g., 82098)'),
+    version_id: z.number().int().positive().describe('Version ID from civitai_search_models results (required)'),
+    strength: z.number().min(0).max(2).default(0.8).describe('Network strength (0-2, default: 0.8)'),
+    trigger_word: z.string().optional().describe('Trigger word for TextualInversion networks')
+  })).optional().describe('Additional networks (LoRA/TextualInversion) to enhance generation. Simple format: [{"model_id": 82098, "version_id": 87153, "strength": 0.8}]. Get model_id and version_id from civitai_search_models results.'),
 
-  // Optional context overrides for non-job testing
-  project_run_id: z.string().uuid().optional(),
-  project_definition_id: z.string().uuid().optional(),
+
 });
 
 export type CivitaiGenerateImageParams = z.infer<typeof civitaiGenerateImageParams>;
 
 export const civitaiGenerateImageSchema = {
-  description: 'Generate an image with Civitai AIR and persist a durable public URL as an artifact (topic: image.generated). Returns { artifact_id, image_url }.',
+  description: 'Generate images using Civitai AIR API. Use checkpoint model_urn from civitai_search_models recommendedAir.urn field. Optionally add LoRAs/TextualInversion networks for enhancement. Typical ranges: steps 20-50, cfg_scale 5-10, LoRA strength 0.3-0.8. Model families (SD1/SDXL) must match between base and enhancement models. Creates artifact and returns {artifact_id, image_url}.',
   inputSchema: civitaiGenerateImageParams.shape,
 };
 
@@ -52,16 +55,14 @@ export async function civitaiGenerateImage(params: CivitaiGenerateImageParams) {
       cfg_scale,
       scheduler,
       seed,
-      image_url_override,
-      project_run_id,
-      project_definition_id,
+      additional_networks,
     } = parsed.data;
 
     const { jobId, jobDefinitionId, projectRunId, projectDefinitionId } = getCurrentJobContext();
 
-    // Resolve project context (prefer job context; allow explicit params for non-job tests)
-    const resolvedProjectRunId = projectRunId || project_run_id || null;
-    const resolvedProjectDefinitionId = projectDefinitionId || project_definition_id || null;
+    // Resolve project context (prefer job context)
+    const resolvedProjectRunId = projectRunId || null;
+    const resolvedProjectDefinitionId = projectDefinitionId || null;
 
     if (!resolvedProjectRunId) {
       return {
@@ -69,18 +70,15 @@ export async function civitaiGenerateImage(params: CivitaiGenerateImageParams) {
       };
     }
 
-    // 1) Obtain image URL either via AIR or override (for development/testing)
+    // 1) Obtain image URL via AIR
     let finalImageUrl: string | null = null;
 
-    if (image_url_override) {
-      finalImageUrl = image_url_override;
-    } else {
-      const apiKey = getCivitaiApiKey();
-      if (!apiKey) {
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'MISSING_API_KEY', message: 'CIVITAI_API_TOKEN/CIVITAI_API_KEY is not set. Provide an API key or use image_url_override for development.' } }, null, 2) }]
-        };
-      }
+    const apiKey = getCivitaiApiKey();
+    if (!apiKey) {
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'MISSING_API_KEY', message: 'CIVITAI_API_TOKEN/CIVITAI_API_KEY is not set.' } }, null, 2) }]
+      };
+    }
 
       // Check model availability first to debug API access
       const modelCheck = await checkModelAvailability();
@@ -88,6 +86,35 @@ export async function civitaiGenerateImage(params: CivitaiGenerateImageParams) {
         return {
           content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'API_ACCESS_DENIED', message: `Civitai API access check failed: ${modelCheck.error}` } }, null, 2) }]
         };
+      }
+
+      // Transform simple additional_networks array to Civitai API format
+      let additionalNetworks: Record<string, any> | undefined = undefined;
+      if (additional_networks && additional_networks.length > 0) {
+        additionalNetworks = {};
+        
+        for (const network of additional_networks) {
+          // Extract base model from the main model_urn to match network compatibility
+          const baseModelMatch = model_urn.match(/urn:air:(sd1|sdxl|sd2|flux):checkpoint:/);
+          const baseModel = baseModelMatch ? baseModelMatch[1] : 'sd1';
+          
+          // Default to LoRA type (most common additional network)
+          const networkType = 'lora';
+          
+          // Require version_id for now (could be enhanced to fetch latest)
+          if (!network.version_id) {
+            throw new Error(`version_id is required for additional network model_id ${network.model_id}. Get both model_id and version_id from civitai_search_models results.`);
+          }
+          
+          // Build URN format that Civitai expects
+          const urn = `urn:air:${baseModel}:${networkType}:civitai:${network.model_id}@${network.version_id}`;
+          
+          // Build network config
+          additionalNetworks[urn] = {
+            strength: network.strength,
+            ...(network.trigger_word && { triggerWord: network.trigger_word })
+          };
+        }
       }
 
       // Create the AIR job (we default to wait=false in SDK wrapper to avoid noisy logs)
@@ -102,7 +129,8 @@ export async function civitaiGenerateImage(params: CivitaiGenerateImageParams) {
           cfgScale: cfg_scale,
           scheduler,
           seed,
-        }
+        },
+        ...(additionalNetworks && { additionalNetworks })
       });
 
       // Try immediate URL first (covers cases where output is present)
@@ -113,12 +141,19 @@ export async function civitaiGenerateImage(params: CivitaiGenerateImageParams) {
         immediateUrl = await waitForImageUrlByToken(token);
       }
       if (!immediateUrl) {
+        const suggestions: string[] = [];
+        suggestions.push('Try simplifying the prompt (shorter, fewer concepts).');
+        if (additional_networks && Object.keys(additional_networks).length > 0) {
+          suggestions.push('Reduce LoRA strength (e.g., 0.3–0.6) or remove extra networks.');
+        }
+        if (typeof steps === 'number' && steps > 30) suggestions.push('Lower steps (e.g., 20–30).');
+        if (typeof cfg_scale === 'number' && cfg_scale > 8) suggestions.push('Lower CFG scale (e.g., 5–8).');
+        suggestions.push('Retry once; tokenless or queued jobs can succeed on retry.');
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'AIR_NO_IMAGE_URL', message: `No image URL found after generation. status=${createRes?.status ?? 'unknown'}` } }, null, 2) }]
+          content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'AIR_NO_IMAGE_URL', message: `No image URL found after generation. status=${createRes?.status ?? 'unknown'}`, suggestions } }, null, 2) }]
         };
       }
       finalImageUrl = immediateUrl;
-    }
 
     // 2) Rehost to Supabase Storage for a durable public URL
     const fetchFn: any = (globalThis as any).fetch;

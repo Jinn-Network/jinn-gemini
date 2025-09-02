@@ -1,112 +1,65 @@
 import { z } from 'zod';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
-import { getBaseModelEnumValues } from './shared/civitai-discovery.js';
 
-// Inputs follow Civitai Public REST for models (single tag only)
+// Simplified inputs: exactly one of query or types
 const civitaiSearchModelsBase = z.object({
-  // Search modes (choose exactly one): query | username | tag
-  query: z.string().min(1).optional(),
-  username: z.string().min(1).optional(),
-  tag: z.string().min(1).optional(),
-
-  // Optional filters (constrained below)
+  query: z.string().min(1).optional().describe('Search models by name/description. If the value matches a known type name (e.g., "checkpoint", "lora"), the search switches to types-only browse.'),
   types: z.array(z.enum([
     'Checkpoint', 'TextualInversion', 'Hypernetwork', 'AestheticGradient', 'LORA', 'Controlnet', 'Poses'
-  ])).optional(),
-  // Dynamic enum sourced from discovery cache; falls back to defaults
-  base_models: z.array(z.enum(getBaseModelEnumValues())).optional(),
-  sort: z.enum(['Highest Rated', 'Most Downloaded', 'Newest']).optional(),
-  period: z.enum(['AllTime', 'Year', 'Month', 'Week', 'Day']).optional(),
-  limit: z.number().int().min(1).max(100).optional(),
-  // Cursor encodes { page } for non-query mode, { cursor } for query mode
-  cursor: z.string().optional(),
-  page: z.number().int().min(1).optional(),
+  ])).optional().describe('Types-only browse mode. When provided, query must be omitted.'),
+  limit: z.number().int().min(1).max(100).optional().describe('Number of models to return (1-100, default: 20)'),
+  // Cursor encodes { page } for types-only mode, { cursor } for query mode
+  cursor: z.string().optional().describe('Cursor for pagination'),
 });
 
 export const civitaiSearchModelsParams = civitaiSearchModelsBase.superRefine((val, ctx) => {
-  const modes = [Boolean(val.query), Boolean(val.username), Boolean(val.tag)].filter(Boolean).length;
-  if (modes === 0) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide exactly one of: 'query', 'username', or 'tag'" });
-  }
-  if (modes > 1) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "'query', 'username', and 'tag' are mutually exclusive. Choose one." });
-  }
-
-  // With query mode, enforce types XOR base_models (not both)
-  const inQueryMode = Boolean(val.query);
+  const hasQuery = Boolean(val.query);
   const hasTypes = Array.isArray(val.types) && val.types.length > 0;
-  const hasBaseModels = Array.isArray(val.base_models) && val.base_models.length > 0;
-  if (inQueryMode && hasTypes && hasBaseModels) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "With 'query', use either 'types' or 'base_models' (not both)." });
+  if (!(hasQuery || hasTypes)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide either 'query' or 'types'." });
   }
-
-  // base_models must be a single value if provided
-  if (hasBaseModels && val.base_models!.length > 1) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "'base_models' accepts a single value." });
+  if (hasQuery && hasTypes) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "'query' and 'types' are mutually exclusive. Choose one." });
   }
 });
 
 export type CivitaiSearchModelsParams = z.infer<typeof civitaiSearchModelsParams>;
 
 export const civitaiSearchModelsSchema = {
-  description: 'Find models on Civitai with explicit, API-safe parameter rules. Modes: exactly one of query | username | tag. With query: use either types or a single base model (not both). Sorting and period are optional. Returns normalized results and cursor meta.',
+  description: 'Search Civitai models for image generation. Use query for text search or types for category browsing. Results include recommendedAir.urn for use with civitai_generate_image. For generation, use checkpoint models as base and LoRAs as enhancements. Model families (SD1/SDXL) must match between base and enhancement models.',
   inputSchema: civitaiSearchModelsBase.shape,
 };
 
 type CivitaiModel = any; // Keep flexible, we normalize below
 
-function mapSort(val?: string): string | undefined {
-  if (!val) return undefined;
-  switch (val) {
-    case 'Most Downloaded': return 'Most Downloaded';
-    case 'Highest Rated': return 'Highest Rated';
-    case 'Newest': return 'Newest';
-    default: return val;
-  }
-}
-
-function normalizeBaseModels(values?: string[]): string[] | undefined {
-  if (!values || !values.length) return undefined;
-  const map: Record<string, string> = {
-    'sdxl': 'SDXL 1.0', 'sdxl1.0': 'SDXL 1.0', 'sdxl10': 'SDXL 1.0', 'sdxl 1.0': 'SDXL 1.0',
-    'sd 1.5': 'SD 1.5', 'sd1.5': 'SD 1.5', '1.5': 'SD 1.5', 'sd15': 'SD 1.5',
-    'sd 2.1': 'SD 2.1', 'sd2.1': 'SD 2.1', '2.1': 'SD 2.1', 'sd21': 'SD 2.1',
-    'pony': 'Pony', 'ponyxl': 'Pony',
-    'illustrious': 'Illustrious', 'illustrious xl': 'Illustrious',
+function inferTypesFromTerm(term?: string): Array<'Checkpoint'|'LORA'|'TextualInversion'|'Hypernetwork'|'AestheticGradient'|'Controlnet'|'Poses'> | undefined {
+  if (!term) return undefined;
+  const t = term.trim().toLowerCase();
+  const map: Record<string, any> = {
+    'checkpoint': ['Checkpoint'], 'checkpoints': ['Checkpoint'], 'model': ['Checkpoint'], 'models': ['Checkpoint'],
+    'lora': ['LORA'], 'loras': ['LORA'],
+    'textualinversion': ['TextualInversion'], 'textual inversion': ['TextualInversion'], 'ti': ['TextualInversion'],
+    'hypernetwork': ['Hypernetwork'], 'hypernetworks': ['Hypernetwork'],
+    'controlnet': ['Controlnet'], 'controlnets': ['Controlnet'],
+    'poses': ['Poses'], 'pose': ['Poses'],
   };
-  const allowed = new Set(['SD 1.5','SDXL 1.0','SD 2.1','Pony','Illustrious']);
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const v of values) {
-    const key = String(v).trim().toLowerCase();
-    const mapped = map[key] || v;
-    if (allowed.has(mapped) && !seen.has(mapped)) {
-      seen.add(mapped); out.push(mapped);
-    }
-  }
-  return out.length ? out : undefined;
+  return map[t] as any;
 }
 
 function buildQuery(params: (CivitaiSearchModelsParams & { page?: number; cursorVal?: string })) : string {
   const q = new URLSearchParams();
   if (params.limit) q.set('limit', String(params.limit));
-  // Query-mode (name search) cannot use page; must use cursor
   const queryMode = Boolean(params.query);
   if (queryMode) {
     if (params.cursorVal) q.set('cursor', String(params.cursorVal));
+    if (params.query) q.set('query', params.query);
   } else {
     q.set('page', String(params.page || 1));
+    // Default to Most Downloaded for types-only browse
+    q.set('sort', 'Most Downloaded');
+    q.set('period', 'AllTime');
+    if (params.types && params.types.length) q.set('types', params.types.join(','));
   }
-  if (params.query) q.set('query', params.query);
-  if (params.tag) q.set('tag', params.tag);
-  if (params.username) q.set('username', params.username);
-  if (params.types && params.types.length) q.set('types', params.types.join(','));
-  const baseModels = normalizeBaseModels(params.base_models);
-  // Enforce single base model if present
-  if (baseModels && baseModels.length) q.set('baseModels', baseModels[0]);
-  const sort = mapSort(params.sort as any);
-  if (sort) q.set('sort', sort);
-  if (params.period) q.set('period', params.period);
   return q.toString();
 }
 
@@ -114,6 +67,39 @@ function normalizeModel(m: CivitaiModel) {
   const firstVersion = Array.isArray(m?.modelVersions) ? m.modelVersions[0] : undefined;
   const primaryFile = Array.isArray(firstVersion?.files) ? firstVersion.files.find((f: any) => f?.primary) || firstVersion.files[0] : undefined;
   const previewImage = Array.isArray(firstVersion?.images) ? firstVersion.images[0]?.url : undefined;
+  // Map base model to AIR family and construct a recommended AIR URN for checkpoints
+  function mapBaseModelToAirFamily(baseModel?: string): string | undefined {
+    if (!baseModel) return undefined;
+    const v = String(baseModel).toLowerCase();
+    if (v.includes('sdxl')) return 'sdxl';
+    if (v.includes('sd 2.1') || v.includes('sd2.1') || v === '2.1' || v === 'sd21') return 'sd2';
+    if (v.includes('sd 1.5') || v.includes('sd1.5') || v === '1.5' || v === 'sd15') return 'sd1';
+    if (v.includes('flux')) return 'flux';
+    return undefined;
+  }
+  const airFamily = mapBaseModelToAirFamily(firstVersion?.baseModel);
+  const modelType = String(m?.type).toLowerCase();
+  
+  // Map model types to AIR network types
+  function mapModelTypeToAirType(type: string): string | undefined {
+    const typeMap: Record<string, string> = {
+      'checkpoint': 'checkpoint',
+      'lora': 'lora', 
+      'textualinversion': 'textual_inversion',
+      'hypernetwork': 'hypernetwork',
+      'lycoris': 'lycoris',
+      'locon': 'locon'
+    };
+    return typeMap[type] || undefined;
+  }
+  
+  const airType = mapModelTypeToAirType(modelType);
+  const canGenerate = modelType === 'checkpoint';
+  const isAdditionalNetwork = ['lora', 'textualinversion', 'hypernetwork', 'lycoris', 'locon'].includes(modelType);
+  
+  const recommendedAirUrn = airType && airFamily && m?.id && firstVersion?.id
+    ? `urn:air:${airFamily}:${airType}:civitai:${m.id}@${firstVersion.id}`
+    : undefined;
   return {
     id: m?.id,
     name: m?.name,
@@ -137,6 +123,12 @@ function normalizeModel(m: CivitaiModel) {
       files: firstVersion.files,
       images: firstVersion.images,
     } : undefined,
+    recommendedAir: recommendedAirUrn ? { family: airFamily, urn: recommendedAirUrn, type: airType } : undefined,
+    capabilities: {
+      canGenerate,
+      isAdditionalNetwork,
+      supportsGeneration: m?.supportsGeneration === true
+    },
     links: {
       modelUrl: m?.id ? `https://civitai.com/models/${m.id}` : undefined,
       downloadUrl: primaryFile?.downloadUrl,
@@ -154,71 +146,88 @@ export async function civitaiSearchModels(params: CivitaiSearchModelsParams) {
       };
     }
     const input = parsed.data;
+    // If query looks like a known type, switch to types-only browse
+    const inferredTypes = inferTypesFromTerm(input.query);
+    const effectiveInput: CivitaiSearchModelsParams = inferredTypes
+      ? { types: inferredTypes, limit: input.limit, cursor: input.cursor }
+      : input;
 
-    const limit = input.limit ?? 20;
-    // Determine applied base model (only the first will be used)
-    const normalizedBaseModels = normalizeBaseModels(input.base_models);
-    const appliedBaseModel = normalizedBaseModels && normalizedBaseModels.length > 0 ? normalizedBaseModels[0] : undefined;
+    const limit = effectiveInput.limit ?? 20;
     // Resolve pagination strategy
-    const queryMode = Boolean(input.query);
+    const queryMode = Boolean(effectiveInput.query);
+    const browseMode = !queryMode;
     let page = 1;
     let cursorVal: string | undefined;
     if (queryMode) {
-      const decodedC = decodeCursor<{ cursor: string }>(input.cursor);
+      const decodedC = decodeCursor<{ cursor: string }>(effectiveInput.cursor);
       cursorVal = decodedC?.cursor;
     } else {
-      const decodedP = decodeCursor<{ page: number }>(input.cursor);
-      page = decodedP?.page || input.page || 1;
+      const decodedP = decodeCursor<{ page: number }>(effectiveInput.cursor);
+      page = decodedP?.page || 1;
     }
 
-    const qs = buildQuery({ ...input, page, limit, cursorVal });
+    const qs = buildQuery({ ...(effectiveInput as any), page, limit, cursorVal });
     const url = `https://civitai.com/api/v1/models?${qs}`;
 
     const res = await fetch(url);
     if (!res.ok) {
+      const errorCode = res.status === 400 ? 'INVALID_CURSOR' : 'HTTP_ERROR';
+      const errorMessage = res.status === 400 ? 'Invalid cursor value. This may be due to a malformed cursor from the API.' : undefined;
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ data: [], meta: { ok: false, code: 'HTTP_ERROR', status: res.status, url } }) }]
+        content: [{ type: 'text' as const, text: JSON.stringify({ 
+          data: [], 
+          meta: { 
+            ok: false, 
+            code: errorCode, 
+            status: res.status, 
+            message: errorMessage,
+            url 
+          } 
+        }) }]
       };
     }
     const json: any = await res.json();
     const items: any[] = Array.isArray(json?.items) ? json.items : (Array.isArray(json?.data) ? json.data : json);
-    const models = Array.isArray(items) ? items.map(normalizeModel) : [];
+    // Map and keep any model that yields a valid AIR URN (Option B)
+    const allModels = (Array.isArray(items) ? items : []).map(normalizeModel);
+    const models = allModels.filter(model => model.recommendedAir?.urn);
 
-    // Determine next cursor
+    // Determine next cursor from API metadata only
     let nextCursor: string | undefined;
     let hasMore = false;
-    if (queryMode) {
-      const nextRaw = (json?.metadata?.nextCursor ?? json?.nextCursor) as any;
-      if (nextRaw != null) {
-        hasMore = true;
-        nextCursor = Buffer.from(JSON.stringify({ v: 1, k: { cursor: String(nextRaw) } }), 'utf8').toString('base64');
-      }
+    
+    const nextCursorRaw = json?.metadata?.nextCursor ?? json?.nextCursor;
+    if (nextCursorRaw != null) {
+      hasMore = true;
+      nextCursor = Buffer.from(JSON.stringify({ v: 1, k: { cursor: String(nextCursorRaw) } }), 'utf8').toString('base64');
     } else {
-      hasMore = models.length >= limit;
-      nextCursor = hasMore ? Buffer.from(JSON.stringify({ v: 1, k: { page: page + 1 } }), 'utf8').toString('base64') : undefined;
+      hasMore = false;
+      nextCursor = undefined;
     }
 
     const pageResponse = composeSinglePageResponse(models, {
-      requestedMeta: queryMode ? { cursor: cursorVal, limit, url } : { page, limit, url },
+      requestedMeta: { cursor: cursorVal, limit, url },
       pageTokenBudget: 15_000,
-      nextCursor, // not used by composer, we will override below
-    } as any);
+    });
 
-    // Override with our page-based cursor
+    // Override with API-provided cursor
     pageResponse.meta.next_cursor = nextCursor;
-    pageResponse.meta.has_more = Boolean(nextCursor);
+    pageResponse.meta.has_more = hasMore;
 
-    // Inject explicit meta for applied base model and warnings when multiple provided
+    // Minimal warnings
     const warnings: string[] = Array.isArray(pageResponse.meta.warnings) ? [...(pageResponse.meta.warnings as string[])] : [];
-    if (Array.isArray(input.base_models) && input.base_models.length > 1) {
-      warnings.push('Multiple base models provided; only the first was used.');
-    }
-    if (warnings.length) {
-      (pageResponse.meta as any).warnings = warnings;
-    }
-    if (appliedBaseModel) {
-      (pageResponse.meta as any).applied_base_model = appliedBaseModel;
-    }
+    if (models.length > 0 && !nextCursorRaw) warnings.push('API returned null cursor despite having results.');
+    if (queryMode && nextCursorRaw) warnings.push('Query mode uses cursor pagination; API may be inconsistent.');
+    if (warnings.length) (pageResponse.meta as any).warnings = warnings;
+
+    // Add summary of returned model types for better UX
+    const modelTypeSummary = models.reduce((acc: Record<string, number>, model) => {
+      const type = model.type?.toLowerCase() || 'unknown';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+    
+    (pageResponse.meta as any).model_types_returned = modelTypeSummary;
 
     return {
       content: [{ type: 'text' as const, text: JSON.stringify({ data: pageResponse.data, meta: { ok: true, ...pageResponse.meta } }) }]

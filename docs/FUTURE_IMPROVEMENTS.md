@@ -613,6 +613,24 @@ Currently, job definitions are created without automatic validation or setup. A 
 *   **Consistency:** Standardized setup process
 *   **Reduced Errors:** Catch configuration issues early
 
+## 9. Civitai Search Flexibility for AIR Generation (PLANNED)
+
+**Status:** 📋 PLANNED
+
+**Goal:** Make the `civitai_search_models` tool flexible in what model types it returns while ensuring AIR usability.
+
+**Current Behavior:** The tool now filters to `Checkpoint` models only and returns a `recommendedAir` block with an AIR family and URN to avoid family mismatches and reduce hangs in AIR generation.
+
+**Future Options:**
+- Add a flag (e.g., `include_non_checkpoints`) to allow returning `LORA`, `TextualInversion`, `Controlnet`, etc., alongside checkpoints.
+- When non-checkpoints are included, annotate results with compatibility hints (required base family, example composition) and omit URNs (or return composition stubs) to prevent accidental misuse as standalone models.
+- Optional `strict_air_only` mode that keeps current behavior as the safest default.
+
+**Benefits:**
+* Safer defaults for production generation
+* Configurable breadth for power users and research flows
+* Clearer guidance to prevent AIR job stalls due to model family mismatches
+
 ## 8. Use gemini.md (COMPLETED)
 
 **Goal:** Implement a standardized documentation format using `gemini.md` files to provide comprehensive context and instructions for agents.
