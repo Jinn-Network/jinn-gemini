@@ -2,7 +2,6 @@
 export { createJob, createJobParams, createJobSchema, type CreateJobParams } from './create-job.js';
 export { createJobBatch, CreateJobBatchInputSchema as createJobBatchParams, createJobBatchSchema, type CreateJobBatchParams } from './create-job-batch.js';
 export { updateJob, UpdateJobInputSchema as updateJobParams, updateJobSchema, type UpdateJobParams } from './update-job.js';
-export { dispatchJob, dispatchJobParams, dispatchJobSchema, type DispatchJobParams } from './dispatch-job.js';
 export { getContextSnapshot, getContextSnapshotParams, getContextSnapshotSchema } from './context-snapshot.js';
 export { listTools, listToolsParams, listToolsSchema } from './list-tools.js';
 export { manageArtifact, manageArtifactParams, manageArtifactSchema, type ManageArtifactParams } from './manage-artifact.js';

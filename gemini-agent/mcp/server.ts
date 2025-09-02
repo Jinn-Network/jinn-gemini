@@ -26,7 +26,6 @@ async function main() {
       { name: 'create_job', schema: tools.createJobSchema, handler: tools.createJob },
       { name: 'create_job_batch', schema: tools.createJobBatchSchema, handler: tools.createJobBatch },
       { name: 'update_job', schema: tools.updateJobSchema, handler: tools.updateJob },
-      { name: 'dispatch_job', schema: tools.dispatchJobSchema, handler: tools.dispatchJob },
       { name: 'get_context_snapshot', schema: tools.getContextSnapshotSchema, handler: tools.getContextSnapshot },
       { name: 'manage_artifact', schema: tools.manageArtifactSchema, handler: tools.manageArtifact },
       { name: 'get_details', schema: tools.getDetailsSchema, handler: tools.getDetails },
