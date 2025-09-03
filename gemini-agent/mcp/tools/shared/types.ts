@@ -1,18 +1,17 @@
 import { z } from 'zod';
 
-// Common table names used across multiple tools
+// Common table names used across multiple tools (hardcoded allowlist)
 export const tableNames = [
   'artifacts',
+  'events',
   'job_board',
-  'jobs',
   'job_reports',
+  'jobs',
   'memories',
   'messages',
-  'threads',
-  'system_state', // Read-only - cannot be modified by agents
 ] as const;
 
-export const tableNameSchema = z.enum(tableNames);
+export const tableNameSchema = z.enum(tableNames).describe('The name of the table to operate on');
 
 // Memory-related types
 export const linkTypeSchema = z.enum(['CAUSE', 'EFFECT', 'ELABORATION', 'CONTRADICTION', 'SUPPORT']);
@@ -68,12 +67,6 @@ export interface ScheduleFilters {
   [key: string]: string | number | boolean | string[];
 }
 
-export interface ScheduleConfig {
-  trigger: 'on_new_artifact' | 'on_job_status_change' | 'on_new_thread' | 'cron' | 'manual';
-  filters: ScheduleFilters;
-  cron_pattern?: string;
-}
-
 export interface Job {
   id: string; // UUID of this specific version
   job_id: string; // Shared UUID across all versions
@@ -82,27 +75,46 @@ export interface Job {
   description?: string;
   prompt_content: string;
   enabled_tools: string[];
-  schedule_config: ScheduleConfig;
+  schedule_config: any; // Simplified internal format
   is_active: boolean;
   created_at: string; // ISO 8601 Date
   updated_at: string; // ISO 8601 Date
 }
 
 // Zod schemas for job creation
-export const ScheduleConfigSchema = z.object({
-  trigger: z.enum(['on_new_artifact', 'on_job_status_change', 'on_new_thread', 'cron', 'manual']),
-  filters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])),
-  cron_pattern: z.string().optional(),
-});
-
 export const CreateJobInputSchema = z.object({
   name: z.string().describe('The name of the job'),
   description: z.string().optional().describe('Optional description of the job purpose'),
   prompt_content: z.string().describe('The full prompt content for this job'),
-  enabled_tools: z.array(z.string()).describe('Array of tool names this job can use'),
-  schedule_config: ScheduleConfigSchema.describe('Schedule and trigger configuration'),
-  // To create a new version of an existing job, provide this ID.
-  // If omitted, a new job (and job_id) will be created.
+  enabled_tools: z.array(z.string()).describe('Array of tool names this job can use. Tools are validated dynamically against the server\'s registered tool registry; unknown tools will be rejected with an allowed tool list.'),
+  project_definition_id: z.string().uuid().optional().describe('Optional. Link this job definition to a project definition.'),
+  parent_job_definition_id: z.string().uuid().optional().describe('Optional. Link this job to a parent job for delegation tracking. If omitted, will be automatically set to the current job definition ID when available.'),
+  // Simplified scheduling interface
+  schedule_on: z.string().optional().describe(
+    `Optional. If omitted, defaults to running the new job after the current job completes (alias: "after_this_job").
+
+Set to "manual" or an event type to subscribe to. Supported alias: "after_this_job" => equivalent to "job.completed" bound to the current job.
+
+Manual jobs are automatically dispatched once when created, then require manual re-enqueueing for future runs. Manual jobs inherit the project context from the current job execution and will fail if created outside of a job context.
+
+Common event types:
+- Job lifecycle: "job.created", "job.claimed", "job.completed", "job.failed"
+- Project: "project_definition.created", "project_run.created", "project_run.updated", "project_run.completed"
+- Data: "artifact.created", "artifact.updated", "memory.created", "memory.accessed", "message.created", "message.updated"
+- System: "system.quiescent", "system_state.updated", "job_report.created"`
+  ),
+  // Allow nested filter objects (e.g., { payload: { job_definition_id: "..." } })
+  filter: z.record(z.any()).optional().describe(
+    `Optional flat filters to refine event routing.
+Examples:
+- For artifacts: { "topic": "analysis" }
+- For job completion: { "job_name": "chief_orchestrator" }
+Keys are simple strings; values are simple strings. These are merged into filters along with { event_type: schedule_on } when schedule_on != "manual".
+
+Defaults and auto-binding:
+- If schedule_on is omitted, the tool will schedule the job to run after this job completes by setting schedule_on = "job.completed" and filter.job_id = <current job id>.
+- If schedule_on = "job.completed" and filter.job_id is not provided, the tool will auto-fill filter.job_id from the current job context when available. If no current job id is available, it will fall back to manual.`
+  ),
   existing_job_id: z.string().uuid().optional().describe('UUID of existing job to create new version for'),
 });
 

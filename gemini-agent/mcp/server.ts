@@ -1,97 +1,91 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { 
-  getSchema, 
-  getSchemaSchema,
-  createRecord, 
-  createRecordSchema,
-  readRecords, 
-  readRecordsSchema,
-  updateRecords, 
-  updateRecordsSchema,
-  deleteRecords, 
-  deleteRecordsSchema,
-  createJob,
-  createJobSchema,
-  getContextSnapshot,
-  getContextSnapshotSchema,
-  listTools,
-  listToolsSchema,
-  manageArtifact,
-  manageArtifactSchema,
-  manageThread,
-  manageThreadSchema,
-  getDetails,
-  getDetailsSchema,
-  createMemory,
-  createMemorySchema,
-  searchMemories,
-  searchMemoriesSchema,
-  traceThread,
-  traceThreadSchema,
-  reconstructJob,
-  reconstructJobSchema,
-  searchEvents,
-  searchEventsSchema,
-  getJobGraph,
-  getJobGraphSchema,
-  traceLineage,
-  traceLineageSchema,
-  // Zora integration tools
-  enqueueTransaction,
-  enqueueTransactionSchema,
-  getTransactionStatus,
-  getTransactionStatusSchema,
-  prepareCreateCoinTx,
-  prepareCreateCoinTxSchema,
-  queryCoins,
-  queryCoinsSchema
-} from './tools/index.js';
+import { setToolRegistry, getRegisteredToolNames } from './tools/shared/tool-registry.js';
+import { loadEnvOnce } from './tools/shared/env.js';
+import { z } from 'zod';
 
-// This is the single source of truth for all tools registered on this server.
-export const serverTools: { name: string; schema: any; handler: (params: any) => any }[] = [
-  { name: 'get_schema', schema: getSchemaSchema, handler: getSchema },
-  { name: 'create_record', schema: createRecordSchema, handler: createRecord },
-  { name: 'read_records', schema: readRecordsSchema, handler: readRecords },
-  { name: 'update_records', schema: updateRecordsSchema, handler: updateRecords },
-  { name: 'delete_records', schema: deleteRecordsSchema, handler: deleteRecords },
-  { name: 'create_job', schema: createJobSchema, handler: createJob },
-  { name: 'get_context_snapshot', schema: getContextSnapshotSchema, handler: getContextSnapshot },
-  { name: 'manage_artifact', schema: manageArtifactSchema, handler: manageArtifact },
-  { name: 'manage_thread', schema: manageThreadSchema, handler: manageThread },
-  { name: 'get_details', schema: getDetailsSchema, handler: getDetails },
-  { name: 'create_memory', schema: createMemorySchema, handler: createMemory },
-  { name: 'search_memories', schema: searchMemoriesSchema, handler: searchMemories },
-  { name: 'trace_thread', schema: traceThreadSchema, handler: traceThread },
-  { name: 'reconstruct_job', schema: reconstructJobSchema, handler: reconstructJob },
-  { name: 'search_events', schema: searchEventsSchema, handler: searchEvents },
-  { name: 'get_job_graph', schema: getJobGraphSchema, handler: getJobGraph },
-  { name: 'trace_lineage', schema: traceLineageSchema, handler: traceLineage },
-  // Transaction & Blockchain Tools
-  { name: 'zora_prepare_create_coin_tx', schema: prepareCreateCoinTxSchema, handler: prepareCreateCoinTx },
-  { name: 'enqueue_transaction', schema: enqueueTransactionSchema, handler: enqueueTransaction },
-  { name: 'get_transaction_status', schema: getTransactionStatusSchema, handler: getTransactionStatus },
-  { name: 'zora_query_coins', schema: queryCoinsSchema, handler: queryCoins }
-];
+// Built at runtime after env is loaded and tools are imported
+export let serverTools: { name: string; schema: any; handler: (params: any) => any }[] = [];
 
 async function main() {
   try {
+    // Ensure .env variables are available to all tools before they are imported/registered
+    loadEnvOnce();
+
+    // Dynamically import tools after env is loaded to guarantee availability
+    const tools = await import('./tools/index.js');
+
     const server = new McpServer({
       name: 'metacog-mcp',
       version: '0.1.0',
     });
 
-    // Register all tools with their full schemas so clients can construct/validate arguments properly.
+    // Build serverTools from imported tool modules
+    serverTools = [
+      { name: 'get_schema', schema: tools.getSchemaSchema, handler: tools.getSchema },
+      { name: 'create_job', schema: tools.createJobSchema, handler: tools.createJob },
+      { name: 'create_job_batch', schema: tools.createJobBatchSchema, handler: tools.createJobBatch },
+      { name: 'update_job', schema: tools.updateJobSchema, handler: tools.updateJob },
+      { name: 'get_context_snapshot', schema: tools.getContextSnapshotSchema, handler: tools.getContextSnapshot },
+      { name: 'manage_artifact', schema: tools.manageArtifactSchema, handler: tools.manageArtifact },
+      { name: 'get_details', schema: tools.getDetailsSchema, handler: tools.getDetails },
+      { name: 'create_memory', schema: tools.createMemorySchema, handler: tools.createMemory },
+      { name: 'search_memories', schema: tools.searchMemoriesSchema, handler: tools.searchMemories },
+      { name: 'plan_project', schema: tools.planProjectSchema, handler: tools.planProject },
+      { name: 'get_project_summary', schema: tools.getProjectSummarySchema, handler: tools.getProjectSummary },
+      { name: 'send_message', schema: tools.sendMessageSchema, handler: tools.sendMessage },
+      { name: 'civitai_generate_image', schema: tools.civitaiGenerateImageSchema, handler: tools.civitaiGenerateImage },
+      { name: 'civitai_publish_post', schema: tools.civitaiPublishPostSchema, handler: tools.civitaiPublishPost },
+      { name: 'civitai_search_models', schema: tools.civitaiSearchModelsSchema, handler: tools.civitaiSearchModels },
+      { name: 'civitai_get_model_details', schema: tools.civitaiGetModelDetailsSchema, handler: tools.civitaiGetModelDetails },
+      { name: 'civitai_search_images', schema: tools.civitaiSearchImagesSchema, handler: tools.civitaiSearchImages },
+      // Zora integration tools (preserved from main)
+      { name: 'zora_prepare_create_coin_tx', schema: tools.prepareCreateCoinTxSchema, handler: tools.prepareCreateCoinTx },
+      { name: 'enqueue_transaction', schema: tools.enqueueTransactionSchema, handler: tools.enqueueTransaction },
+      { name: 'get_transaction_status', schema: tools.getTransactionStatusSchema, handler: tools.getTransactionStatus },
+      { name: 'zora_query_coins', schema: tools.queryCoinsSchema, handler: tools.queryCoins }
+    ];
+
+    // Initialize the dynamic tool registry (internal) for dynamic enums
+    setToolRegistry(serverTools);
+
+    // Compute dynamic enum for enabled_tools and build dynamic schemas
+    const allowedNames = getRegisteredToolNames();
+    const enumValues = (allowedNames.length > 0 ? allowedNames : ['__no_tools__']) as [string, ...string[]];
+    const enabledEnum = z.enum(enumValues);
+
+    const createJobInputDynamic = tools.createJobParams.extend({
+      enabled_tools: z.array(enabledEnum).describe('Array of tool names for this job. Allowed values are dynamically enumerated.'),
+    });
+    const createJobDynamicSchema = { description: 'Creates a new job definition or a new version of an existing job.', inputSchema: createJobInputDynamic.shape } as any;
+
+    const jobDefDynamic = z.object({
+      name: z.string().describe('The name of the job'),
+      description: z.string().optional().describe('Optional description of the job purpose'),
+      prompt_content: z.string().describe('The full prompt content for this job'),
+      enabled_tools: z.array(enabledEnum).describe('Array of tool names this job can use. Allowed values are dynamically enumerated.'),
+    });
+    const createJobBatchInputDynamic = tools.createJobBatchParams.extend({
+      jobs: z.array(jobDefDynamic).min(1).describe('Array of job definitions to create. Each job needs name, prompt_content, and enabled_tools.'),
+    });
+    const createJobBatchDynamicSchema = { description: 'Creates multiple job definitions with specified sequencing (parallel or serial execution).', inputSchema: createJobBatchInputDynamic.shape } as any;
+
+    // Register all tools, swapping schemas for create_job and create_job_batch
     for (const tool of serverTools) {
-      server.registerTool(tool.name, tool.schema as any, tool.handler);
+      if (tool.name === 'create_job') {
+        server.registerTool(tool.name, createJobDynamicSchema, tool.handler);
+      } else if (tool.name === 'create_job_batch') {
+        server.registerTool(tool.name, createJobBatchDynamicSchema, tool.handler);
+      } else {
+        server.registerTool(tool.name, tool.schema as any, tool.handler);
+      }
     }
 
-    // Register the list_tools tool with its actual schema as well, passing serverTools for discovery.
-    server.registerTool('list_tools', listToolsSchema as any, (params) => listTools(params, serverTools));
+    // Expose list_tools for operator introspection (agents may ignore)
+    server.registerTool('list_tools', tools.listToolsSchema as any, (params) => tools.listTools(params, serverTools));
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error('MCP Server for Metacog tools is running.');
   } catch (e) {
     console.error('Error starting MCP server:', e);
     process.exit(1);

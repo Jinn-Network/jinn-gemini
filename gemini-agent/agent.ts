@@ -51,19 +51,24 @@ export class Agent {
   private enabledTools: string[];
   private settingsPath: string;
   private agentRoot: string;
-  private jobContext?: { jobId: string; jobName: string; threadId: string | null };
-  private telemetryEnabled: boolean;
+  private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
+  
+  // Define universal tools once as a class property
+  private readonly universalTools = [
+    'get_details',
+    'manage_artifact',
+    'send_message',
+    'create_job_batch',
+    'update_job',
+    'create_job',
+    'create_memory',
+    'search_memories'
+  ];
 
-  constructor(model: string, enabledTools: string[], options?: { 
-    jobId?: string; 
-    jobName?: string; 
-    threadId?: string | null;
-    telemetry?: boolean;
-  }) {
+  constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {
     this.model = model;
     this.enabledTools = enabledTools || [];
-    this.jobContext = options?.jobId && options?.jobName ? { jobId: options.jobId, jobName: options.jobName, threadId: options.threadId || null } : undefined;
-    this.telemetryEnabled = options?.telemetry !== false; // Telemetry is on by default
+    this.jobContext = jobContext;
     this.agentRoot = join(process.cwd(), 'gemini-agent');
     this.settingsPath = join(this.agentRoot, '.gemini', 'settings.json');
   }
@@ -73,8 +78,7 @@ export class Agent {
     try {
       // Set job context for tools to access
       if (this.jobContext) {
-        const { setJobContext } = await import('./mcp/tools/shared/context.js');
-        setJobContext(this.jobContext.jobId, this.jobContext.jobName, this.jobContext.threadId);
+        // No in-process setter; canonical path is env-only
       }
 
       this.generateJobSpecificSettings();
@@ -111,25 +115,35 @@ export class Agent {
       const output = this.extractFinalOutput(result.output);
       return { output, telemetry };
     } catch (error) {
+      // Normalize wrapped errors like { error, telemetry } to surface a readable message
+      const nestedError = (error as any)?.error ?? error;
+      const primaryMessage =
+        (nestedError && (nestedError as any).message) ||
+        ((error as any)?.message) ||
+        String(nestedError ?? error);
+
       const telemetry: JobTelemetry = {
         totalTokens: 0,
         toolCalls: [],
         duration: Date.now() - startTime,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorType: this.categorizeError(error)
+        errorMessage: String(primaryMessage),
+        errorType: this.categorizeError(nestedError)
       };
-      throw { error, telemetry };
+      // Preserve the original shape { error, telemetry } but ensure `error` is the actual Error, not the wrapper
+      throw { error: nestedError, telemetry };
     } finally {
       // Clear job context
-      const { clearJobContext } = await import('./mcp/tools/shared/context.js');
-      clearJobContext();
+      if (this.jobContext) {
+        // No in-process clear; canonical path is env-only
+      }
       this.cleanupJobSpecificSettings();
+      // Note: telemetry file cleanup handled in runGeminiWithTelemetry result
     }
   }
 
   private runGeminiWithTelemetry(prompt: string): Promise<{ output: string; telemetryFile: string; stderr: string; exitCode: number }> {
-    return new Promise((resolve, reject) => {
-      const args = ['--prompt', prompt, '--yolo'];
+    return new Promise((resolve) => {
+      const args: string[] = ['--yolo'];
       if (this.model) {
         args.unshift('--model', this.model);
       }
@@ -139,56 +153,85 @@ export class Agent {
         args.push('--debug');
       }
 
-      let telemetryFile = '';
-      if (this.telemetryEnabled) {
-        // Telemetry flags (workaround for known CLI bug pattern)
-        args.push('--telemetry');
-        args.push('--telemetry-target', 'local');
-        args.push('--telemetry-otlp-endpoint', ''); // prevent network attempts
-        args.push('--telemetry-log-prompts');
+      // Telemetry flags (workaround for known CLI bug pattern)
+      args.push('--telemetry', 'true');
+      args.push('--telemetry-target', 'local');
+      args.push('--telemetry-otlp-endpoint', ''); // prevent network attempts
+      args.push('--telemetry-log-prompts', 'true');
 
         // Telemetry outfile
-        telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
+        const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
         args.push('--telemetry-outfile', telemetryFile);
-        console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
-      } else {
-        args.push('--no-telemetry');
-        console.log('[TELEMETRY] Telemetry is disabled by agent configuration.');
-      }
 
-      console.log(`Spawning Gemini CLI with model: ${this.model} and prompt: "${prompt.substring(0, 100)}..."`);
+      // Persist the last prompt locally for debugging/repro and send via stdin instead of --prompt
+      const promptDir = dirname(this.settingsPath);
+      try { mkdirSync(promptDir, { recursive: true }); } catch {}
+      const lastPromptPath = join(promptDir, 'last-prompt.txt');
+      try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch {}
+
+      console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
+      console.log(`Spawning Gemini CLI with model: ${this.model} (prompt provided via stdin from ${lastPromptPath})`);
+
+      // Propagate job context to the MCP server via environment variables so the separate
+      // MCP process can read them on startup
+      const envWithJob: NodeJS.ProcessEnv = { ...process.env };
+      try {
+        if (this.jobContext) {
+          envWithJob.JINN_JOB_ID = this.jobContext.jobId || '';
+          envWithJob.JINN_JOB_DEFINITION_ID = this.jobContext.jobDefinitionId || '';
+          envWithJob.JINN_JOB_NAME = this.jobContext.jobName || '';
+          envWithJob.JINN_PROJECT_RUN_ID = this.jobContext.projectRunId || '';
+          envWithJob.JINN_SOURCE_EVENT_ID = this.jobContext.sourceEventId || '';
+          envWithJob.JINN_PROJECT_DEFINITION_ID = this.jobContext.projectDefinitionId || '';
+        }
+      } catch {}
 
       const geminiProcess = spawn('gemini', args, {
         cwd: this.agentRoot,
-        env: { ...process.env }
+        env: envWithJob
       });
 
       let stdout = '';
       let stderr = '';
 
+      // Feed prompt to stdin
+      try {
+        geminiProcess.stdin.write(prompt);
+        geminiProcess.stdin.end();
+      } catch {}
+
       geminiProcess.stdout.on('data', (data) => {
         const chunk = data.toString();
-        console.log('Gemini CLI stdout:', chunk);
+        chunk.split('\n').forEach(line => {
+            if (line.trim().length > 0) {
+                const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
+                console.log(truncatedLine);
+            }
+        });
         stdout += chunk;
       });
 
       geminiProcess.stderr.on('data', (data) => {
         const chunk = data.toString();
-        console.error('Gemini CLI stderr:', chunk);
+        chunk.split('\n').forEach(line => {
+            if (line.trim().length > 0) {
+                const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
+                console.error(truncatedLine);
+            }
+        });
         stderr += chunk;
       });
 
-            geminiProcess.on('close', (code) => {
-                // Check for API errors in stderr even if exit code is 0
-                if (stderr && stderr.includes('Error when talking to Gemini API')) {
-                    reject(new Error(`Gemini API error: ${stderr}`));
-                } else if (code !== 0) {
-                    reject(new Error(`Gemini process exited with code ${code}\n${stderr}`));
-                } else {
-                    // Include stderr even on successful runs for warning-level errors
-                    resolve({ output: stdout, telemetryFile, stderr, exitCode: code || 0 });
-                }
-            });
+      geminiProcess.on('close', (code) => {
+        // Inspect stderr for API/tool errors even if process exits 0
+        const hasApiError = (stderr && (
+          stderr.includes('Error when talking to Gemini API') ||
+          stderr.toLowerCase().includes('could not parse tool response')
+        )) || false;
+        const rawExit = typeof code === 'number' ? code : 0;
+        const exitCode = hasApiError ? (rawExit || 1) : rawExit;
+        resolve({ output: stdout, telemetryFile, stderr, exitCode });
+      });
 
       geminiProcess.on('error', (err) => {
         // Surface as a synthetic non-zero exit with captured streams
@@ -200,7 +243,8 @@ export class Agent {
   }
 
   private generateJobSpecificSettings(): void {
-    if (this.enabledTools.length === 0) return;
+    // Always generate settings if we have universal tools, even if no job-specific tools
+    if (this.enabledTools.length === 0 && this.universalTools.length === 0) return;
     try {
       const templateFileName = process.env.USE_TSX_MCP === '1'
         ? 'settings.template.dev.json'
@@ -218,8 +262,16 @@ export class Agent {
       const mcpServer = templateSettings.mcpServers[serverName];
       if (!mcpServer) throw new Error(`MCP server '${serverName}' not found in template configuration`);
 
-      // Include only job-specific tools
-      mcpServer.includeTools = this.enabledTools;
+      // UNIVERSAL TOOLS: Every agent automatically gets these core capabilities
+      // regardless of what's specified in their job definition. This ensures
+      // all agents can plan projects, create jobs, manage artifacts, etc.
+
+      // Merge universal tools with job-specific tools, removing duplicates
+      const allTools = [...this.universalTools, ...this.enabledTools];
+      const uniqueTools = [...new Set(allTools)];
+
+      // Include the merged tool set (universal + job-specific)
+      mcpServer.includeTools = uniqueTools;
 
       // Exclude native tools not enabled
       const allNativeTools = [
@@ -246,7 +298,9 @@ export class Agent {
       mkdirSync(settingsDir, { recursive: true });
 
       writeFileSync(this.settingsPath, JSON.stringify(templateSettings, null, 2));
-      console.log(`Generated job-specific settings for server '${serverName}' with tools: ${this.enabledTools.join(', ')}`);
+      console.log(`Generated job-specific settings for server '${serverName}' with tools: ${uniqueTools.join(', ')}`);
+      console.log(`  - Universal tools: ${this.universalTools.join(', ')}`);
+      console.log(`  - Job-specific tools: ${this.enabledTools.join(', ') || 'none'}`);
       console.log(`Excluded native tools: ${nativeToolsToExclude.join(', ')}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -256,7 +310,8 @@ export class Agent {
   }
 
   private cleanupJobSpecificSettings(): void {
-    if (this.enabledTools.length === 0) return;
+    // Always cleanup if we have universal tools, even if no job-specific tools
+    if (this.enabledTools.length === 0 && this.universalTools.length === 0) return;
     try {
       unlinkSync(this.settingsPath);
       console.log('Cleaned up job-specific settings.');
@@ -264,6 +319,19 @@ export class Agent {
       if (error.code !== 'ENOENT') {
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error('Failed to clean up job-specific settings:', errorMsg);
+      }
+    }
+  }
+
+  private cleanupTelemetryFile(telemetryFile: string): void {
+    if (!telemetryFile || telemetryFile.trim() === '') return;
+    try {
+      unlinkSync(telemetryFile);
+      console.log('Cleaned up telemetry file.');
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('Failed to clean up telemetry file:', errorMsg);
       }
     }
   }
@@ -300,7 +368,7 @@ export class Agent {
 
   private async parseTelemetryFromFile(telemetryFile: string, output: string, startTime: number): Promise<JobTelemetry> {
     try {
-      if (readFileSync && telemetryFile) {
+      if (readFileSync && telemetryFile && telemetryFile.trim() !== '') {
         console.log(`[TELEMETRY] Attempting to read telemetry file: ${telemetryFile}`);
         const telemetryContent = readFileSync(telemetryFile, 'utf8');
 

@@ -1,9 +1,10 @@
-import { supabase, getCurrentJobContext } from './shared/supabase.js';
+import { supabase } from './shared/supabase.js';
+import { getCurrentJobContext } from './shared/context.js';
 import { z } from 'zod';
 
 export const manageArtifactParams = z.object({
     artifact_id: z.string().uuid().optional().describe('The ID of the artifact to update. If omitted, a new artifact is created.'),
-    thread_id: z.string().uuid().optional().describe('The ID of the thread to associate the artifact with. Only used during creation if the job has no thread context.'),
+    project_definition_id: z.string().uuid().optional().describe('The ID of the project definition to associate the artifact with. Only used during creation if the job has no project context.'),
     operation: z.enum(['CREATE', 'REPLACE', 'APPEND', 'PREPEND']).describe('The content operation to perform. Use CREATE for new artifacts, others for updates.'),
     content: z.string().describe('The content to be used in the specified operation.'),
     topic: z.string().optional().describe('The topic for classification. On update, omission leaves it unchanged.'),
@@ -13,7 +14,7 @@ export const manageArtifactParams = z.object({
 export type ManageArtifactParams = z.infer<typeof manageArtifactParams>;
 
 export const manageArtifactSchema = {
-    description: 'Creates or updates an artifact, automatically linking it to the current job and thread context.',
+    description: 'Creates or updates an artifact, automatically linking it to the current job and project context.',
     inputSchema: manageArtifactParams.shape,
 };
 
@@ -23,69 +24,210 @@ export async function manageArtifact(params: ManageArtifactParams) {
         const parseResult = manageArtifactParams.safeParse(params);
         if (!parseResult.success) {
             return {
-                isError: true,
                 content: [{
                     type: 'text' as const,
-                    text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'VALIDATION_ERROR', 
+                            message: `Invalid parameters: ${parseResult.error.message}`, 
+                            details: parseResult.error.flatten?.() ?? undefined 
+                        } 
+                    }, null, 2)
                 }]
             };
         }
-        const { artifact_id, thread_id: param_thread_id, operation, content, topic, status } = parseResult.data;
-        const { jobId, jobName, threadId: contextThreadId } = getCurrentJobContext();
+        
+        const { artifact_id, project_definition_id: param_project_definition_id, operation, content, topic, status } = parseResult.data;
+        const { jobId, jobName, jobDefinitionId, projectRunId, projectDefinitionId } = getCurrentJobContext();
+
         if (artifact_id) {
-            // Update Mode - context logic remains the same
-            const rpc_params = {
-                p_artifact_id: artifact_id,
-                p_operation: operation,
-                p_content: content,
-                p_topic: topic ?? null,
-                p_status: status ?? null,
-                p_source_job_id: jobId ?? null,
-                p_source_job_name: jobName ?? null,
-            };
-
-            const { data, error } = await supabase.rpc('atomic_update_artifact', rpc_params);
-
-            if (error) {
-                throw new Error(`Failed to update artifact: ${error.message}`);
-            }
-            if (!data || data.length === 0) {
-                throw new Error(`Artifact with ID '${artifact_id}' not found or update failed.`);
-            }
-            return { content: [{ type: 'text' as const, text: JSON.stringify(data[0], null, 2) }] };
-
-        } else {
-            // Create Mode - new flexible thread logic
-            const finalThreadId = contextThreadId || param_thread_id;
-
-            if (!finalThreadId) {
-                throw new Error("Cannot create an artifact. The job has no thread context, and no 'thread_id' parameter was provided. Use `manage_thread` to create a thread first, then pass its ID here.");
-            }
-            if (operation !== 'CREATE' && operation !== 'REPLACE') {
-                throw new Error("Operation must be 'CREATE' or 'REPLACE' when creating a new artifact. Use 'CREATE' for clarity.");
+            // Update Mode - modify existing artifact
+            if (operation === 'CREATE') {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'INVALID_OPERATION', 
+                                message: "Cannot use CREATE operation with artifact_id. Use REPLACE, APPEND, or PREPEND for updates." 
+                            } 
+                        }, null, 2)
+                    }]
+                };
             }
 
-            const newArtifact = {
-                thread_id: finalThreadId,
-                content,
-                topic,
-                status: status ?? 'RAW',
-                source_job_id: jobId ?? null,
-                source_job_name: jobName ?? null,
-            };
-
-            const { data, error: createError } = await supabase
+            // First get the current artifact
+            const { data: currentArtifact, error: fetchError } = await supabase
                 .from('artifacts')
-                .insert(newArtifact)
+                .select('*')
+                .eq('id', artifact_id)
+                .single();
+
+            if (fetchError) {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'ARTIFACT_NOT_FOUND', 
+                                message: `Artifact with ID '${artifact_id}' not found: ${fetchError.message}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
+            }
+
+            // Calculate new content based on operation
+            let newContent = content;
+            if (operation === 'APPEND') {
+                newContent = (currentArtifact.content || '') + content;
+            } else if (operation === 'PREPEND') {
+                newContent = content + (currentArtifact.content || '');
+            }
+            // REPLACE uses content as-is
+
+            // Update the artifact
+            const updateData: any = {
+                content: newContent,
+                updated_at: new Date().toISOString()
+            };
+
+            // Only update topic and status if provided
+            if (topic !== undefined) updateData.topic = topic;
+            if (status !== undefined) updateData.status = status;
+
+            const { data: updatedArtifact, error: updateError } = await supabase
+                .from('artifacts')
+                .update(updateData)
+                .eq('id', artifact_id)
                 .select()
                 .single();
 
-            if (createError) {
-                throw new Error(`Failed to create artifact: ${createError.message}`);
+            if (updateError) {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'UPDATE_FAILED', 
+                                message: `Failed to update artifact: ${updateError.message}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
             }
-            return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+
+            return { 
+                content: [{ 
+                    type: 'text' as const, 
+                    text: JSON.stringify({ 
+                        data: updatedArtifact, 
+                        meta: { ok: true } 
+                    }, null, 2) 
+                }] 
+            };
+
+        } else {
+            // Create Mode - new artifact
+            if (operation !== 'CREATE') {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'INVALID_OPERATION', 
+                                message: "Operation must be 'CREATE' when creating a new artifact without artifact_id." 
+                            } 
+                        }, null, 2)
+                    }]
+                };
+            }
+
+            // Determine project context
+            const finalProjectRunId = projectRunId;
+            const finalProjectDefinitionId = projectDefinitionId || param_project_definition_id;
+
+            if (!finalProjectRunId) {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'MISSING_PROJECT_CONTEXT', 
+                                message: "Cannot create an artifact. The job has no project_run_id context. Artifacts require a project run context." 
+                            } 
+                        }, null, 2)
+                    }]
+                };
+            }
+
+            const newArtifact = {
+                project_run_id: finalProjectRunId,
+                project_definition_id: finalProjectDefinitionId,
+                content,
+                topic: topic || null,
+                status: status || 'RAW',
+                job_id: jobId,
+                parent_job_definition_id: jobDefinitionId
+            };
+
+            const { data: createdArtifact, error: createError } = await supabase
+                .from('artifacts')
+                .insert(newArtifact)
+                .select('id')
+                .single();
+
+            if (createError) {
+                return {
+                    content: [{
+                        type: 'text' as const,
+                        text: JSON.stringify({ 
+                            data: null, 
+                            meta: { 
+                                ok: false, 
+                                code: 'CREATE_FAILED', 
+                                message: `Failed to create artifact: ${createError.message}` 
+                            } 
+                        }, null, 2)
+                    }]
+                };
+            }
+
+            return { 
+                content: [{ 
+                    type: 'text' as const, 
+                    text: JSON.stringify({ 
+                        data: createdArtifact, 
+                        meta: { ok: true } 
+                    }, null, 2) 
+                }] 
+            };
         }
     } catch (e: any) {
-        return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error managing artifact: ${e.message}` }, null, 2) }] };
+        return { 
+            content: [{ 
+                type: 'text' as const, 
+                text: JSON.stringify({ 
+                    data: null, 
+                    meta: { 
+                        ok: false, 
+                        code: 'DB_ERROR', 
+                        message: `Error managing artifact: ${e.message}` 
+                    } 
+                }, null, 2) 
+            }] 
+        };
     }
 }

@@ -52,13 +52,111 @@ async function fetchData(startTime: string, jobName?: string) {
         .order('status', { ascending: true }) // Prioritize unread (pending) messages
         .order('created_at', { ascending: false }) : null;
 
-    if (systemStateRes.error) throw new Error(`Error fetching system_state: ${systemStateRes.error.message}`);
-    if (unifiedJobsRes.error) throw new Error(`Error fetching unified jobs: ${unifiedJobsRes.error.message}`);
-    if (jobsRes.error) throw new Error(`Error fetching job_board: ${jobsRes.error.message}`);
-    if (artifactsRes.error) throw new Error(`Error fetching artifacts: ${artifactsRes.error.message}`);
-    if (threadsRes.error) throw new Error(`Error fetching threads: ${threadsRes.error.message}`);
-    if (jobReportsRes.error) throw new Error(`Error fetching job_reports: ${jobReportsRes.error.message}`);
-    if (messagesRes && messagesRes.error) throw new Error(`Error fetching messages: ${messagesRes.error.message}`);
+            if (systemStateRes.error) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching system_state: ${systemStateRes.error.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
+        if (unifiedJobsRes.error) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching unified jobs: ${unifiedJobsRes.error.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
+        if (jobsRes.error) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching job_board: ${jobsRes.error.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
+        if (artifactsRes.error) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching artifacts: ${artifactsRes.error.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
+        if (threadsRes.error) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching threads: ${threadsRes.error.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
+        if (jobReportsRes.error) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: false, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching job_reports: ${jobReportsRes.error.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
+        if (messagesRes && messagesRes.error) {
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({ 
+                        data: null, 
+                        meta: { 
+                            ok: false, 
+                            code: 'DB_ERROR', 
+                            message: `Error fetching messages: ${messagesRes.error.message}` 
+                        } 
+                    }, null, 2)
+                }]
+            };
+        }
 
     return {
         system_state: systemStateRes.data,
@@ -201,12 +299,12 @@ export async function getContextSnapshot(params: any) {
 
     // Build a single page from a flattened list of "items" for pagination purposes
     const items = [
-      ...data.jobs_in_window.map((r: any) => ({ _type: 'job', ...r })),
-      ...data.artifacts_in_window.map((r: any) => ({ _type: 'artifact', ...r })),
-      ...data.threads_in_window.map((r: any) => ({ _type: 'thread', ...r })),
-      ...data.messages_in_window.map((r: any) => ({ _type: 'message', ...r })),
-      ...data.unified_jobs.map((r: any) => ({ _type: 'definition', ...r })),
-      ...data.system_state.map((r: any) => ({ _type: 'system_state', ...r })),
+      ...(data.jobs_in_window || []).map((r: any) => ({ _type: 'job', ...r })),
+      ...(data.artifacts_in_window || []).map((r: any) => ({ _type: 'artifact', ...r })),
+      ...(data.threads_in_window || []).map((r: any) => ({ _type: 'thread', ...r })),
+      ...(data.messages_in_window || []).map((r: any) => ({ _type: 'message', ...r })),
+      ...(data.unified_jobs || []).map((r: any) => ({ _type: 'definition', ...r })),
+      ...(data.system_state || []).map((r: any) => ({ _type: 'system_state', ...r })),
     ];
 
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
@@ -219,10 +317,9 @@ export async function getContextSnapshot(params: any) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
   } catch (e: any) {
     return {
-      isError: true,
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({ ok: false, code: 'RUNTIME_ERROR', message: `Error getting context snapshot: ${e.message}` }, null, 2)
+        text: JSON.stringify({ data: null, meta: { ok: false, code: 'RUNTIME_ERROR', message: `Error getting context snapshot: ${e.message}` } }, null, 2)
       }]
     };
   }

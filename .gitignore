@@ -125,6 +125,7 @@ settings.local.json
 .gemini/settings.json
 .gemini/config.json
 .gemini/credentials.json
+gemini-agent/.gemini/last-prompt.txt
 
 # Claude specific
 .claude/
@@ -152,3 +153,7 @@ settings.local.json
 *.cert
 gemini-agent/.gemini/settings.json
 .cursor/implementation-review-process.md
+
+# Playwright MCP profiles
+.playwright-mcp/
+**/.playwright-mcp/

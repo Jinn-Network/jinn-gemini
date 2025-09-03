@@ -11,15 +11,12 @@ export function getCollectionLabel(collectionName: CollectionName): string {
   const labelMap: Record<CollectionName, string> = {
     job_board: 'Job Board',
     jobs: 'Jobs',
-    job_definitions: 'Job Definitions (Legacy)', 
-    job_schedules: 'Job Schedules (Legacy)',
-    prompt_library: 'Prompt Library (Legacy)',
-    threads: 'Threads',
+    job_reports: 'Job Reports',
+    events: 'Events',
     artifacts: 'Artifacts',
     memories: 'Memories',
     messages: 'Messages',
     system_state: 'System State',
-    job_reports: 'Job Reports'
   };
   
   return labelMap[collectionName] || collectionName;
@@ -44,15 +41,14 @@ export const navigationCategories: NavigationCategory[] = [
     items: [
       { collection: 'job_board', label: 'Board' },
       { collection: 'jobs', label: 'Jobs' },
+      { collection: 'job_reports', label: 'Reports' },
     ]
   },
   {
-    title: 'Output',
-    icon: '📤',
+    title: 'Events',
+    icon: '🪩',
     items: [
-      { collection: 'threads', label: 'Threads' },
-      { collection: 'artifacts', label: 'Artifacts' },
-      { collection: 'messages', label: 'Messages' },
+      { collection: 'events', label: 'Events' },
     ]
   },
   {

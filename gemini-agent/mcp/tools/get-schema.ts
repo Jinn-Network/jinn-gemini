@@ -30,11 +30,21 @@ export async function getSchema(params: z.infer<typeof getSchemaParams>) {
       const { data, error } = await supabase.rpc('get_table_schema', {
         p_table_name: table_name,
       });
-      if (error) throw error;
+      if (error) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error fetching table schema: ${error.message}` }, null, 2) }]
+        };
+      }
       return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
     } else {
       const { data, error } = await supabase.rpc('get_all_tables');
-      if (error) throw error;
+      if (error) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error fetching all tables: ${error.message}` }, null, 2) }]
+        };
+      }
       return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
     }
   } catch (e: any) {

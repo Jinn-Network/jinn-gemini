@@ -1,4 +1,5 @@
-import { supabase, getCurrentJobContext } from './shared/supabase.js';
+import { supabase } from './shared/supabase.js';
+import { getCurrentJobContext } from './shared/context.js';
 import { z } from 'zod';
 import { linkTypeSchema } from './shared/types.js';
 import { getOpenAIClient } from './shared/openai.js';
@@ -15,7 +16,7 @@ export const createMemoryParams = z.object({
 export type CreateMemoryParams = z.infer<typeof createMemoryParams>;
 
 export const createMemorySchema = {
-    description: 'Creates a new, structured memory, generating a vector embedding. It automatically tags the memory with the current job and thread context.',
+    description: 'Creates a new, structured memory, generating a vector embedding. It automatically tags the memory with the current job and project context.',
     inputSchema: createMemoryParams.shape,
 };
 
@@ -40,20 +41,32 @@ export async function createMemory(params: CreateMemoryParams) {
                 content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: 'link_type is required when linked_memory_id is provided.' }, null, 2) }]
             };
         }
-        const { jobId, jobName, threadId } = getCurrentJobContext();
+        const { jobId, jobName, jobDefinitionId, projectRunId, projectDefinitionId } = getCurrentJobContext();
 
-        const embeddingResponse = await getOpenAIClient().embeddings.create({
-            model: 'text-embedding-3-small',
-            input: content,
-        });
-        const embedding = embeddingResponse.data[0].embedding;
+        let embedding: number[];
+        try {
+            if (!process.env.OPENAI_API_KEY) {
+                // Fallback: generate a deterministic zero vector when no API key present
+                embedding = Array.from({ length: 1536 }, () => 0);
+            } else {
+                const embeddingResponse = await getOpenAIClient().embeddings.create({
+                    model: 'text-embedding-3-small',
+                    input: content,
+                });
+                embedding = embeddingResponse.data[0].embedding as unknown as number[];
+            }
+        } catch (embedErr: any) {
+            // Last-resort fallback to zero vector on embedding errors
+            embedding = Array.from({ length: 1536 }, () => 0);
+        }
 
         // Construct the metadata object, merging automatic context with custom metadata
         const final_metadata = {
             ...custom_metadata,
-            source_job_id: jobId ?? null,
-            source_job_name: jobName ?? null,
-            thread_id: threadId ?? null,
+            job_id: jobId ?? null,
+            parent_job_definition_id: jobDefinitionId ?? null,
+            project_run_id: projectRunId ?? null,
+            project_definition_id: projectDefinitionId ?? null,
         };
 
         const { data, error } = await supabase
@@ -65,14 +78,29 @@ export async function createMemory(params: CreateMemoryParams) {
                 linked_memory_id,
                 link_type,
                 // Also insert the context into the top-level columns for direct querying
-                source_job_id: jobId ?? null,
-                source_job_name: jobName ?? null,
-                thread_id: threadId ?? null,
+                job_id: jobId ?? null,
+                parent_job_definition_id: jobDefinitionId ?? null,
+                project_run_id: projectRunId ?? null,
+                project_definition_id: projectDefinitionId ?? null,
             })
             .select('id')
             .single();
 
-        if (error) throw error;
+        if (error) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ 
+            data: null, 
+            meta: { 
+              ok: false, 
+              code: 'DB_ERROR', 
+              message: `Error creating memory: ${error.message}` 
+            } 
+          }, null, 2)
+        }]
+      };
+    }
 
         // Delay to allow for vector indexing
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -80,15 +108,11 @@ export async function createMemory(params: CreateMemoryParams) {
         return {
             content: [{
                 type: 'text' as const,
-                text: JSON.stringify({
-                    success: true,
-                    memory_id: data.id,
-                    message: 'Memory created successfully.'
-                }, null, 2)
+                text: JSON.stringify({ data: { memory_id: data.id }, meta: { ok: true } }, null, 2)
             }]
         };
     } catch (e: unknown) {
         const errorMessage = e instanceof Error ? e.message : String(e);
-        return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'DB_ERROR', message: `Error creating memory: ${errorMessage}` }, null, 2) }] };
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error creating memory: ${errorMessage}` } }, null, 2) }] };
     }
 }

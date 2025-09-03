@@ -22,14 +22,16 @@
     "frontend:build": "cd frontend/explorer && yarn run build",
     "dev:all": "run-p dev mcp:start",
     "start:all": "concurrently \"yarn start\" \"yarn frontend:start\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
-    "clean": "rimraf dist",
+    "clean": "rm -rf dist && cd frontend/explorer && yarn run clean",
     "mcp:start": "tsx --env-file=.env gemini-agent/mcp/server.ts",
     "wallet:set-creator-coin": "cd packages/wallet-manager && yarn build && yarn set-creator-coin",
     "test:zora-unit": "jest --testPathPatterns=zora",
     "test:zora-e2e": "tsx scripts/zora-e2e-test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "civitai:debug": "tsx scripts/civitai-sdk-debug.ts",
+    "civitai:post-intent-debug": "tsx scripts/civitai-post-intent-debug.ts"
   },
   "dependencies": {
     "@jinn/wallet-manager": "file:packages/wallet-manager",
@@ -38,6 +40,7 @@
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.53.0",
     "@zoralabs/coins-sdk": "^0.3.0",
+    "civitai": "^0.1.15",
     "cross-fetch": "^4.1.0",
     "dotenv": "^17.2.1",
     "ethers": "^5.7.2",
@@ -48,17 +51,22 @@
     "zod": "^4.1.5"
   },
   "devDependencies": {
+    "@google/gemini-cli": "0.1.18",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/yargs": "^17.0.33",
     "concurrently": "^8.2.2",
     "execa": "^9.6.0",
     "jest": "^30.0.5",
+    "playwright": "^1.55.0",
     "ts-jest": "^29.4.1",
     "tsx": "^4.20.5",
     "typescript": "^5.0.0",
     "viem": "^2.35.1",
     "vitest": "^3.2.4"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "overrides": {
+    "@google/genai": "1.15.0"
+  }
 }

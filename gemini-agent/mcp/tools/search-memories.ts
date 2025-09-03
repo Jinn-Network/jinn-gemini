@@ -50,7 +50,21 @@ export async function searchMemories(params: SearchMemoriesParams) {
             p_filter: filter || null,
         });
 
-        if (error) throw error;
+        if (error) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ 
+            data: null, 
+            meta: { 
+              ok: false, 
+              code: 'DB_ERROR', 
+              message: `Error searching memories: ${error.message}` 
+            } 
+          }, null, 2)
+        }]
+      };
+    }
 
         if (include_links && memories.length > 0) {
             const linkedIds = memories.map((m: Memory) => m.linked_memory_id).filter((id: string | undefined): id is string => id !== undefined);
@@ -60,7 +74,21 @@ export async function searchMemories(params: SearchMemoriesParams) {
                     .select('id, content, metadata')
                     .in('id', linkedIds);
                 
-                if (linkError) throw linkError;
+                if (linkError) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({ 
+                data: null, 
+                meta: { 
+                  ok: false, 
+                  code: 'DB_ERROR', 
+                  message: `Error fetching linked memories: ${linkError.message}` 
+                } 
+              }, null, 2)
+            }]
+          };
+        }
 
                 const linkedMap = new Map(linkedMemories.map((m: LinkedMemory) => [m.id, m as Memory]));
                 for (const memory of memories) {
@@ -80,7 +108,7 @@ export async function searchMemories(params: SearchMemoriesParams) {
 
         return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
     } catch (e: unknown) {
-        console.error('Full error in searchMemories:', e);
+        // Handle runtime errors by returning structured error response
         const errorMessage = e instanceof Error ? e.message : String(e);
         return {
             isError: true,

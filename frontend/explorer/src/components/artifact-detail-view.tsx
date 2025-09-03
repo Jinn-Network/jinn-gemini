@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { MarkdownField } from '@/components/markdown-field'
 import { IdLink } from '@/components/id-link'
-import { createClient } from '@/lib/supabase'
 import { DbRecord } from '@/lib/types'
 
 interface ArtifactDetailViewProps {
@@ -54,14 +53,8 @@ function TriggeredJobsList({ artifactId }: { artifactId: string }) {
   useEffect(() => {
     const fetchTriggeredJobs = async () => {
       try {
-        const supabase = createClient()
-        const { data, error } = await supabase
-          .from('job_board')
-          .select('id, job_name, status, created_at, job_report_id')
-          .eq('source_artifact_id', artifactId)
-          .order('created_at', { ascending: false })
-
-        if (error) throw error
+        // We no longer use artifact → job linkage in DB queries. Show none for now.
+        const data: TriggeredJob[] = []
 
         setTriggeredJobs(data || [])
       } catch (err) {

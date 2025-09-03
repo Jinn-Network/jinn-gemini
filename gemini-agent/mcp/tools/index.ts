@@ -1,20 +1,24 @@
 // Export all tools and their types
 export { createJob, createJobParams, createJobSchema, type CreateJobParams } from './create-job.js';
+export { createJobBatch, CreateJobBatchInputSchema as createJobBatchParams, createJobBatchSchema, type CreateJobBatchParams } from './create-job-batch.js';
+export { updateJob, UpdateJobInputSchema as updateJobParams, updateJobSchema, type UpdateJobParams } from './update-job.js';
 export { getContextSnapshot, getContextSnapshotParams, getContextSnapshotSchema } from './context-snapshot.js';
 export { listTools, listToolsParams, listToolsSchema } from './list-tools.js';
 export { manageArtifact, manageArtifactParams, manageArtifactSchema, type ManageArtifactParams } from './manage-artifact.js';
-export { manageThread, manageThreadParams, manageThreadSchema, type ManageThreadParams } from './manage-thread.js';
 export { getDetails, getDetailsParams, getDetailsSchema, type GetDetailsParams } from './get-details.js';
 export { createMemory, createMemoryParams, createMemorySchema, type CreateMemoryParams } from './create-memory.js';
 export { searchMemories, searchMemoriesParams, searchMemoriesSchema, type SearchMemoriesParams } from './search-memories.js';
-export { traceThread, traceThreadSchema } from './trace-thread.js';
-export { reconstructJob, reconstructJobSchema } from './reconstruct-job.js';
-export { searchEvents, searchEventsSchema } from './search-events.js';
-export { getJobGraph, getJobGraphParams, getJobGraphSchema, type GetJobGraphParams } from './get-job-graph.js';
-export { traceLineage, traceLineageParams, traceLineageSchema, type TraceLineageParams } from './trace-lineage.js';
+export { planProject, planProjectParams, planProjectSchema } from './plan-project.js';
+export { getProjectSummary, getProjectSummaryParams, getProjectSummarySchema } from './get-project-summary.js';
+export { sendMessage, sendMessageParams, sendMessageSchema } from './send-message.js';
+export { civitaiGenerateImage, civitaiGenerateImageParams, civitaiGenerateImageSchema } from './civitai-generate-image.js';
+export { civitaiPublishPost, civitaiPublishPostParams, civitaiPublishPostSchema } from './civitai-publish-post.js';
+export { civitaiSearchModels, civitaiSearchModelsParams, civitaiSearchModelsSchema } from './civitai-search-models.js';
+export { civitaiGetModelDetails, civitaiGetModelDetailsParams, civitaiGetModelDetailsSchema } from './civitai-get-model-details.js';
+export { civitaiSearchImages, civitaiSearchImagesParams, civitaiSearchImagesSchema } from './civitai-search-images.js';
 
 // Export shared types
-export { tableNames, tableNameSchema, traceThreadParams, reconstructJobParams, searchEventsParams, type TraceThreadParams, type ReconstructJobParams, type SearchEventsParams } from './shared/types.js';
+export { tableNames, tableNameSchema } from './shared/types.js';
 
 // Export server tools
 export { getSchema, getSchemaParams, getSchemaSchema } from './get-schema.js';

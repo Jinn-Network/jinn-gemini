@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { IdLink } from '@/components/id-link'
@@ -332,20 +331,11 @@ export function LinkedArtifacts({ threadId }: LinkedArtifactsProps) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function fetchLinkedArtifacts() {
+    const fetchLinkedArtifacts = async () => {
       try {
-        setLoading(true)
-        setError(null)
-        
-        const supabase = createClient()
-        
-        // Fetch artifacts that mention this thread ID in their content
-        const { data: artifacts, error: artifactsError } = await supabase
-          .from('artifacts')
-          .select('*')
-          .ilike('content', `%${threadId}%`)
-          .order('created_at', { ascending: false })
-          .limit(10)
+        // We no longer derive linkage from artifacts; events are authoritative
+        const artifacts: Artifact[] = []
+        const artifactsError = null
 
         if (artifactsError) {
           console.error('Error fetching linked artifacts:', artifactsError)
