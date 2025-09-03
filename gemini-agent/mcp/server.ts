@@ -70,19 +70,31 @@ async function main() {
     });
     const createJobBatchDynamicSchema = { description: 'Creates multiple job definitions with specified sequencing (parallel or serial execution).', inputSchema: createJobBatchInputDynamic.shape } as any;
 
-    // Register all tools, swapping schemas for create_job and create_job_batch
+    // Register all tools with a permissive input schema so validation occurs inside handlers
+    // Keep original schemas in serverTools for introspection via list_tools
     for (const tool of serverTools) {
+      let schemaForRegistration: any = tool.schema;
+
+      // Use dynamic variants where applicable (but still register permissively)
       if (tool.name === 'create_job') {
-        server.registerTool(tool.name, createJobDynamicSchema, tool.handler);
+        schemaForRegistration = createJobDynamicSchema;
       } else if (tool.name === 'create_job_batch') {
-        server.registerTool(tool.name, createJobBatchDynamicSchema, tool.handler);
-      } else {
-        server.registerTool(tool.name, tool.schema as any, tool.handler);
+        schemaForRegistration = createJobBatchDynamicSchema;
       }
+
+      // Permissive schema for MCP registration: defer strict validation to tool.safeParse
+      const permissiveSchema = {
+        description: schemaForRegistration?.description || tool.schema?.description || '',
+        inputSchema: {} as any,
+      } as any;
+
+      server.registerTool(tool.name, permissiveSchema, tool.handler);
     }
 
     // Expose list_tools for operator introspection (agents may ignore)
-    server.registerTool('list_tools', tools.listToolsSchema as any, (params) => tools.listTools(params, serverTools));
+    // Register permissively as well to keep validation in-tool
+    const listToolsPermissive = { description: tools.listToolsSchema.description, inputSchema: {} } as any;
+    server.registerTool('list_tools', listToolsPermissive, (params) => tools.listTools(params, serverTools));
 
     const transport = new StdioServerTransport();
     await server.connect(transport);

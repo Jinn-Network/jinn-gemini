@@ -3,8 +3,6 @@ import { RecordPageProps, collectionNames, DbRecord } from '@/lib/types'
 import { DetailView } from '@/components/detail-view'
 import { ArtifactDetailView } from '@/components/artifact-detail-view'
 import { JobReportDetailView } from '@/components/job-report-detail-view'
-import { LinkedArtifacts } from '@/components/linked-artifacts'
-import { ThreadDetailsSidebar } from '@/components/thread-details-sidebar'
 import { getCollectionLabel } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -71,34 +69,19 @@ export default async function RecordPage({ params }: RecordPageProps) {
           {recordTitle}
         </h1>
         
-        {/* Special layout for threads */}
-        {resolvedParams.collection === 'threads' ? (
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 lg:gap-6">
-            {/* Main content area - Linked Artifacts */}
-            <div className="xl:col-span-3 order-2 xl:order-1">
-              <LinkedArtifacts threadId={resolvedParams.id} />
-            </div>
-            
-            {/* Right sidebar - Thread Details */}
-            <div className="xl:col-span-1 order-1 xl:order-2">
-              <ThreadDetailsSidebar record={record} />
-            </div>
-          </div>
-        ) : (
-          <>
-            <p className="text-gray-600 text-sm mb-6">
-              {collectionLabel}
-            </p>
-            
-            {resolvedParams.collection === 'artifacts' ? (
-              <ArtifactDetailView record={record} />
-            ) : resolvedParams.collection === 'job_reports' ? (
-              <JobReportDetailView record={record} />
-            ) : (
-              <DetailView record={record} collectionName={resolvedParams.collection} />
-            )}
-          </>
-        )}
+        <>
+          <p className="text-gray-600 text-sm mb-6">
+            {collectionLabel}
+          </p>
+          
+          {resolvedParams.collection === 'artifacts' ? (
+            <ArtifactDetailView record={record} />
+          ) : resolvedParams.collection === 'job_reports' ? (
+            <JobReportDetailView record={record} />
+          ) : (
+            <DetailView record={record} collectionName={resolvedParams.collection} />
+          )}
+        </>
       </div>
     )
   } catch (error) {

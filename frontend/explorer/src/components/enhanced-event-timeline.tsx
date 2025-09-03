@@ -34,14 +34,12 @@ function CausalLinkDisplay({ eventId, eventType }: { eventId: string; eventType:
         const supabase = createClient();
         let triggeredBy: {
           id: string;
-          type: 'artifact' | 'job';
-          topic?: string;
+          type: 'event' | 'job';
           job_name?: string;
         } | undefined = undefined;
         let triggers: Array<{
           id: string;
-          type: 'artifact' | 'job';
-          topic?: string;
+          type: 'event' | 'job';
           job_name?: string;
         }> = [];
 

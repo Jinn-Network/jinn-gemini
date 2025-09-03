@@ -101,33 +101,7 @@ function getSecondaryInfo(record: DbRecord, collectionName: CollectionName): Rea
       if (record.is_active !== undefined) info.push(`${record.is_active ? 'Active' : 'Inactive'}`)
       if (record.schedule_config?.trigger) info.push(`Trigger: ${record.schedule_config.trigger}`)
       break
-    case 'job_definitions':
-      if (record.trigger) info.push(`Trigger: ${record.trigger}`)
-      if (record.enabled !== undefined) info.push(`${record.enabled ? 'Enabled' : 'Disabled'}`)
-      break
-    case 'job_schedules':
-      if (record.job_definition_id) {
-        info.push(
-          <span key="job_def">
-            Job Definition: <IdLink id={record.job_definition_id} fieldName="job_definition_id" />
-          </span>
-        )
-      }
-      break
-    case 'prompt_library':
-      if (record.version) info.push(`v${record.version}`)
-      if (record.is_active !== undefined) info.push(`${record.is_active ? 'Active' : 'Inactive'}`)
-      break
-    case 'threads':
-      if (record.parent_thread_id) {
-        info.push(
-          <span key="parent">
-            Parent: <IdLink id={record.parent_thread_id} fieldName="parent_thread_id" />
-          </span>
-        )
-      }
-      if (record.status) info.push(`Status: ${record.status}`)
-      break
+    
     case 'artifacts':
       if (record.topic) info.push(`Topic: ${record.topic}`)
       if (record.thread_id) {

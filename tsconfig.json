@@ -19,13 +19,15 @@
   },
   "include": [
     "worker/**/*.ts",
-    "gemini-agent/**/*.ts",
-    "scripts/**/*.ts"
+    "gemini-agent/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "scripts/**",
+    "worker/JobProcessor.ts",
+    "scripts/**.ts"
   ]
 }

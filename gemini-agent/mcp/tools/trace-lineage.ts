@@ -1,27 +1,16 @@
 import { z } from 'zod';
 import { supabase } from './shared/supabase.js';
 
-const traceLineageParams = z.object({
+const traceLineageBase = z.object({
   artifact_id: z.string().uuid().optional().describe('UUID of the artifact to trace lineage from'),
   job_id: z.string().uuid().optional().describe('UUID of the job to trace lineage from'),
   max_depth: z.number().int().min(1).max(20).default(10).describe('Maximum depth to traverse (default: 10)'),
   random_string: z.string().optional().describe('Dummy parameter for no-parameter tools')
-}).refine(
-  (data) => {
-    // Accept if direct params are provided
-    if (data.artifact_id !== undefined || data.job_id !== undefined) {
-      return true;
-    }
-    // Always accept if random_string is provided (we'll handle parsing errors in the function)
-    if (data.random_string !== undefined) {
-      return true;
-    }
-    return false;
-  },
-  {
-    message: "Either artifact_id or job_id must be provided (directly or via random_string JSON)",
-    path: ["artifact_id", "job_id", "random_string"]
-  }
+});
+
+const traceLineageParams = traceLineageBase.refine(
+  (data) => (data.artifact_id !== undefined || data.job_id !== undefined || data.random_string !== undefined),
+  { message: 'Either artifact_id or job_id must be provided (directly or via random_string JSON)', path: ['artifact_id', 'job_id', 'random_string'] }
 );
 
 export type TraceLineageParams = z.infer<typeof traceLineageParams>;
@@ -30,7 +19,7 @@ export { traceLineageParams };
 
 export const traceLineageSchema = {
   description: 'Traces the complete causal lineage of events forwards and backwards from any artifact or job. Reveals the full chain of causation in the universal event architecture.',
-  inputSchema: traceLineageParams.shape,
+  inputSchema: traceLineageBase.shape,
 };
 
 /**

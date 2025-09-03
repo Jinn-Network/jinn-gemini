@@ -81,6 +81,13 @@ interface JobBoard {
 }
 const execFileAsync = promisify(execFile);
 
+// Rate limit configuration (sane defaults for safety)
+const RATE_LIMIT = {
+  requestsPerMinute: 8,
+  minTimeBetweenJobs: 2500,
+  cooldownAfterQuotaError: 60000,
+};
+
 async function fetchCurrentBuzzValue(): Promise<string | null> {
   try {
     const env = {
