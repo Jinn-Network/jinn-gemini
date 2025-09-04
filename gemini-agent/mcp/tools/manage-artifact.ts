@@ -5,10 +5,10 @@ import { z } from 'zod';
 export const manageArtifactParams = z.object({
     artifact_id: z.string().uuid().optional().describe('The ID of the artifact to update. If omitted, a new artifact is created.'),
     project_definition_id: z.string().uuid().optional().describe('The ID of the project definition to associate the artifact with. Only used during creation if the job has no project context.'),
-    operation: z.enum(['CREATE', 'REPLACE', 'APPEND', 'PREPEND']).describe('The content operation to perform. Use CREATE for new artifacts, others for updates.'),
-    content: z.string().describe('The content to be used in the specified operation.'),
+    content: z.string().describe('The content to set or add to the artifact.'),
     topic: z.string().optional().describe('The topic for classification. On update, omission leaves it unchanged.'),
     status: z.string().optional().describe('The processing status. Defaults to RAW on creation. On update, omission leaves it unchanged.'),
+    mode: z.enum(['replace', 'append', 'prepend']).default('replace').optional().describe('How to handle the content: replace (default), append to end, or prepend to beginning. Only used for updates.'),
 });
 
 export type ManageArtifactParams = z.infer<typeof manageArtifactParams>;
@@ -26,39 +26,16 @@ export async function manageArtifact(params: ManageArtifactParams) {
             return {
                 content: [{
                     type: 'text' as const,
-                    text: JSON.stringify({ 
-                        data: null, 
-                        meta: { 
-                            ok: false, 
-                            code: 'VALIDATION_ERROR', 
-                            message: `Invalid parameters: ${parseResult.error.message}`, 
-                            details: parseResult.error.flatten?.() ?? undefined 
-                        } 
-                    }, null, 2)
+                    text: `Invalid parameters: ${parseResult.error.message}`
                 }]
             };
         }
         
-        const { artifact_id, project_definition_id: param_project_definition_id, operation, content, topic, status } = parseResult.data;
+        const { artifact_id, project_definition_id: param_project_definition_id, content, topic, status, mode = 'replace' } = parseResult.data;
         const { jobId, jobName, jobDefinitionId, projectRunId, projectDefinitionId } = getCurrentJobContext();
 
         if (artifact_id) {
             // Update Mode - modify existing artifact
-            if (operation === 'CREATE') {
-                return {
-                    content: [{
-                        type: 'text' as const,
-                        text: JSON.stringify({ 
-                            data: null, 
-                            meta: { 
-                                ok: false, 
-                                code: 'INVALID_OPERATION', 
-                                message: "Cannot use CREATE operation with artifact_id. Use REPLACE, APPEND, or PREPEND for updates." 
-                            } 
-                        }, null, 2)
-                    }]
-                };
-            }
 
             // First get the current artifact
             const { data: currentArtifact, error: fetchError } = await supabase
@@ -71,26 +48,19 @@ export async function manageArtifact(params: ManageArtifactParams) {
                 return {
                     content: [{
                         type: 'text' as const,
-                        text: JSON.stringify({ 
-                            data: null, 
-                            meta: { 
-                                ok: false, 
-                                code: 'ARTIFACT_NOT_FOUND', 
-                                message: `Artifact with ID '${artifact_id}' not found: ${fetchError.message}` 
-                            } 
-                        }, null, 2)
+                        text: `Artifact with ID '${artifact_id}' not found: ${fetchError.message}`
                     }]
                 };
             }
 
-            // Calculate new content based on operation
+            // Calculate new content based on mode
             let newContent = content;
-            if (operation === 'APPEND') {
+            if (mode === 'append') {
                 newContent = (currentArtifact.content || '') + content;
-            } else if (operation === 'PREPEND') {
+            } else if (mode === 'prepend') {
                 newContent = content + (currentArtifact.content || '');
             }
-            // REPLACE uses content as-is
+            // 'replace' uses content as-is
 
             // Update the artifact
             const updateData: any = {
@@ -113,14 +83,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
                 return {
                     content: [{
                         type: 'text' as const,
-                        text: JSON.stringify({ 
-                            data: null, 
-                            meta: { 
-                                ok: false, 
-                                code: 'UPDATE_FAILED', 
-                                message: `Failed to update artifact: ${updateError.message}` 
-                            } 
-                        }, null, 2)
+                        text: `Failed to update artifact: ${updateError.message}`
                     }]
                 };
             }
@@ -128,30 +91,12 @@ export async function manageArtifact(params: ManageArtifactParams) {
             return { 
                 content: [{ 
                     type: 'text' as const, 
-                    text: JSON.stringify({ 
-                        data: updatedArtifact, 
-                        meta: { ok: true } 
-                    }, null, 2) 
+                    text: `Updated artifact: ${artifact_id}`
                 }] 
             };
 
         } else {
             // Create Mode - new artifact
-            if (operation !== 'CREATE') {
-                return {
-                    content: [{
-                        type: 'text' as const,
-                        text: JSON.stringify({ 
-                            data: null, 
-                            meta: { 
-                                ok: false, 
-                                code: 'INVALID_OPERATION', 
-                                message: "Operation must be 'CREATE' when creating a new artifact without artifact_id." 
-                            } 
-                        }, null, 2)
-                    }]
-                };
-            }
 
             // Determine project context
             const finalProjectRunId = projectRunId;
@@ -161,14 +106,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
                 return {
                     content: [{
                         type: 'text' as const,
-                        text: JSON.stringify({ 
-                            data: null, 
-                            meta: { 
-                                ok: false, 
-                                code: 'MISSING_PROJECT_CONTEXT', 
-                                message: "Cannot create an artifact. The job has no project_run_id context. Artifacts require a project run context." 
-                            } 
-                        }, null, 2)
+                        text: "Cannot create an artifact. The job has no project_run_id context. Artifacts require a project run context."
                     }]
                 };
             }
@@ -193,14 +131,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
                 return {
                     content: [{
                         type: 'text' as const,
-                        text: JSON.stringify({ 
-                            data: null, 
-                            meta: { 
-                                ok: false, 
-                                code: 'CREATE_FAILED', 
-                                message: `Failed to create artifact: ${createError.message}` 
-                            } 
-                        }, null, 2)
+                        text: `Failed to create artifact: ${createError.message}`
                     }]
                 };
             }
@@ -208,10 +139,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
             return { 
                 content: [{ 
                     type: 'text' as const, 
-                    text: JSON.stringify({ 
-                        data: createdArtifact, 
-                        meta: { ok: true } 
-                    }, null, 2) 
+                    text: `Created artifact: ${createdArtifact.id}`
                 }] 
             };
         }
@@ -219,14 +147,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
         return { 
             content: [{ 
                 type: 'text' as const, 
-                text: JSON.stringify({ 
-                    data: null, 
-                    meta: { 
-                        ok: false, 
-                        code: 'DB_ERROR', 
-                        message: `Error managing artifact: ${e.message}` 
-                    } 
-                }, null, 2) 
+                text: `Error managing artifact: ${e.message}`
             }] 
         };
     }

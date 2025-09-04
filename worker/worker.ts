@@ -704,7 +704,7 @@ async function processPendingJobs(): Promise<boolean> {
         }
         jobLogger.info({ jobId: job.id, workerId }, 'Job claimed and status updated to IN_PROGRESS');
 
-        const model = job.model_settings.model || 'gemini-2.5-flash-lite';
+        const model = job.model_settings.model || 'gemini-2.5-pro';
         const enabledTools = job.enabled_tools;
 
         jobLogger.started(job.id, model);

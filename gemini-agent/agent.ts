@@ -54,6 +54,15 @@ export class Agent {
   private agentRoot: string;
   private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
   
+  // Stdout protection limits (configurable via environment variables)
+  private readonly MAX_STDOUT_SIZE = parseInt(process.env.AGENT_MAX_STDOUT_SIZE || '5242880'); // 5MB default
+  private readonly MAX_CHUNK_SIZE = parseInt(process.env.AGENT_MAX_CHUNK_SIZE || '102400'); // 100KB default
+  private readonly PROCESS_TIMEOUT_MS = parseInt(process.env.AGENT_PROCESS_TIMEOUT_MS || '600000'); // 10 minutes default
+  private readonly REPETITION_WINDOW = parseInt(process.env.AGENT_REPETITION_WINDOW || '20'); // Track last 20 lines
+  private readonly REPETITION_THRESHOLD = parseInt(process.env.AGENT_REPETITION_THRESHOLD || '5'); // Same line 5+ times = loop
+  private readonly MAX_LINES_PER_SECOND = parseInt(process.env.AGENT_MAX_LINES_PER_SECOND || '50'); // Rate limit output
+  private readonly MAX_IDENTICAL_CHUNKS = parseInt(process.env.AGENT_MAX_IDENTICAL_CHUNKS || '10'); // Same chunk repeated
+  
   // Define universal tools once as a class property
   private readonly universalTools = [
     'get_details',
@@ -63,7 +72,9 @@ export class Agent {
     'update_job',
     'create_job',
     'create_memory',
-    'search_memories'
+    'search_memories',
+    'search_artifacts',
+    'search_jobs'
   ];
 
   constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {
@@ -72,6 +83,9 @@ export class Agent {
     this.jobContext = jobContext;
     this.agentRoot = join(process.cwd(), 'gemini-agent');
     this.settingsPath = join(this.agentRoot, '.gemini', 'settings.json');
+    
+    // Log protection limits
+    console.log(`[AGENT] Loop protection enabled - Max stdout: ${(this.MAX_STDOUT_SIZE / 1024 / 1024).toFixed(1)}MB, Timeout: ${this.PROCESS_TIMEOUT_MS / 1000}s, Repetition threshold: ${this.REPETITION_THRESHOLD} lines`);
   }
 
   public async run(prompt: string): Promise<AgentResult> {
@@ -194,6 +208,30 @@ export class Agent {
 
       let stdout = '';
       let stderr = '';
+      let terminated = false;
+      let terminationReason = '';
+      
+      // Tracking variables for protection
+      const recentLines: string[] = [];
+      const chunkHistory: string[] = [];
+      let lineCount = 0;
+      let lastLineTime = Date.now();
+      
+      // Process timeout
+      const timeoutId = setTimeout(() => {
+        if (!terminated) {
+          console.warn(`[LOOP DETECTION] Terminating process due to timeout (${this.PROCESS_TIMEOUT_MS}ms)`);
+          terminated = true;
+          terminationReason = `Process timeout after ${this.PROCESS_TIMEOUT_MS / 1000}s`;
+          geminiProcess.kill('SIGTERM');
+          setTimeout(() => {
+            if (!geminiProcess.killed) {
+              console.warn(`[LOOP DETECTION] Force killing process with SIGKILL`);
+              geminiProcess.kill('SIGKILL');
+            }
+          }, 5000);
+        }
+      }, this.PROCESS_TIMEOUT_MS);
 
       // Feed prompt to stdin
       try {
@@ -202,13 +240,90 @@ export class Agent {
       } catch {}
 
       geminiProcess.stdout.on('data', (data) => {
+        if (terminated) return;
+        
         const chunk = data.toString();
-        chunk.split('\n').forEach(line => {
-            if (line.trim().length > 0) {
-                const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
-                agentLogger.output(truncatedLine);
+        
+        // Check chunk size
+        if (chunk.length > this.MAX_CHUNK_SIZE) {
+          console.warn(`[LOOP DETECTION] Terminating process due to large chunk (${chunk.length} bytes)`);
+          terminated = true;
+          terminationReason = `Large chunk detected: ${chunk.length} bytes`;
+          geminiProcess.kill('SIGTERM');
+          return;
+        }
+        
+        // Check total stdout size
+        if (stdout.length + chunk.length > this.MAX_STDOUT_SIZE) {
+          console.warn(`[LOOP DETECTION] Terminating process due to output size limit (${stdout.length + chunk.length} bytes)`);
+          terminated = true;
+          terminationReason = `Output size limit exceeded: ${(stdout.length + chunk.length) / 1024 / 1024}MB`;
+          geminiProcess.kill('SIGTERM');
+          return;
+        }
+        
+        // Check for identical chunk repetition
+        chunkHistory.push(chunk);
+        if (chunkHistory.length > this.MAX_IDENTICAL_CHUNKS) {
+          chunkHistory.shift();
+        }
+        
+        const identicalChunks = chunkHistory.filter(c => c === chunk).length;
+        if (identicalChunks >= this.MAX_IDENTICAL_CHUNKS) {
+          console.warn(`[LOOP DETECTION] Terminating process due to identical chunk repetition (${identicalChunks} times)`);
+          terminated = true;
+          terminationReason = `Identical chunks repeated ${identicalChunks} times`;
+          geminiProcess.kill('SIGTERM');
+          return;
+        }
+        
+        // Process lines for repetition detection and rate limiting
+        const lines = chunk.split('\n');
+        const currentTime = Date.now();
+        
+        for (const line of lines) {
+          if (line.trim().length > 0) {
+            lineCount++;
+            
+            // Rate limit check
+            const timeSinceLastLine = currentTime - lastLineTime;
+            if (timeSinceLastLine < 1000) { // Within 1 second
+              const linesPerSecond = lineCount / Math.max(1, timeSinceLastLine / 1000);
+              if (linesPerSecond > this.MAX_LINES_PER_SECOND) {
+                console.warn(`[LOOP DETECTION] Terminating process due to high output rate (${linesPerSecond.toFixed(1)} lines/sec)`);
+                terminated = true;
+                terminationReason = `High output rate: ${linesPerSecond.toFixed(1)} lines/sec`;
+                geminiProcess.kill('SIGTERM');
+                return;
+              }
+            } else {
+              // Reset counter for new second
+              lineCount = 1;
+              lastLineTime = currentTime;
             }
-        });
+            
+            // Line repetition detection
+            recentLines.push(line);
+            if (recentLines.length > this.REPETITION_WINDOW) {
+              recentLines.shift();
+            }
+            
+            const lineOccurrences = recentLines.filter(l => l === line).length;
+            if (lineOccurrences >= this.REPETITION_THRESHOLD) {
+              console.warn(`[LOOP DETECTION] Terminating process due to repetitive output: "${line.substring(0, 100)}..."`);
+              terminated = true;
+              terminationReason = `Repetitive line detected ${lineOccurrences} times`;
+              geminiProcess.kill('SIGTERM');
+              return;
+            }
+            
+            // Console logging (existing logic)
+            const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
+            agentLogger.output(truncatedLine);
+          }
+        }
+        
+        // Add chunk to stdout if not terminated
         stdout += chunk;
       });
 
@@ -224,17 +339,33 @@ export class Agent {
       });
 
       geminiProcess.on('close', (code) => {
+        // Clean up timeout
+        clearTimeout(timeoutId);
+        
         // Inspect stderr for API/tool errors even if process exits 0
         const hasApiError = (stderr && (
           stderr.includes('Error when talking to Gemini API') ||
           stderr.toLowerCase().includes('could not parse tool response')
         )) || false;
         const rawExit = typeof code === 'number' ? code : 0;
-        const exitCode = hasApiError ? (rawExit || 1) : rawExit;
+        let exitCode = hasApiError ? (rawExit || 1) : rawExit;
+        
+        // Handle termination cases
+        if (terminated) {
+          console.log(`[LOOP DETECTION] Process terminated: ${terminationReason}`);
+          // Add termination reason to output for debugging
+          stdout += `\n\n[PROCESS TERMINATED: ${terminationReason}]`;
+          // Force non-zero exit code for terminated processes
+          exitCode = exitCode || 1;
+        }
+        
         resolve({ output: stdout, telemetryFile, stderr, exitCode });
       });
 
       geminiProcess.on('error', (err) => {
+        // Clean up timeout
+        clearTimeout(timeoutId);
+        
         // Surface as a synthetic non-zero exit with captured streams
         const exitCode = 1;
         const synthetic = `Gemini spawn error: ${err?.message || String(err)}`;
@@ -630,7 +761,10 @@ export class Agent {
     const message = error.message || String(error);
 
     if (message.includes('exited with code')) return 'PROCESS_ERROR';
-    if (message.includes('timeout')) return 'TIMEOUT';
+    if (message.includes('timeout') || message.includes('Process timeout')) return 'TIMEOUT';
+    if (message.includes('PROCESS TERMINATED')) return 'LOOP_PROTECTION';
+    if (message.includes('Output size limit') || message.includes('Repetitive line')) return 'LOOP_PROTECTION';
+    if (message.includes('High output rate') || message.includes('Large chunk')) return 'LOOP_PROTECTION';
     if (message.includes('ENOTFOUND') || message.includes('network')) return 'NETWORK_ERROR';
     if (message.includes('API') || message.includes('401') || message.includes('403')) return 'API_ERROR';
     if (message.includes('tool') || message.includes('function')) return 'TOOL_ERROR';
