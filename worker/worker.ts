@@ -5,13 +5,14 @@ import { Agent } from '../gemini-agent/agent.js';
 import { TransactionProcessor } from './TransactionProcessor.js';
 import { promisify } from 'util';
 import { execFile } from 'child_process';
+import { workerLogger, jobLogger, agentLogger } from './logger.js';
 
 const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
 const jobIdFlagIndex = process.argv.findIndex(arg => arg === '--job-id' || arg === '-j');
 const targetJobId = jobIdFlagIndex !== -1 ? process.argv[jobIdFlagIndex + 1] : null;
 
 if (jobIdFlagIndex !== -1 && (!targetJobId || targetJobId.startsWith('-'))) {
-    console.error("Invalid usage: --job-id|-j requires a job ID value.");
+    workerLogger.error("Invalid usage: --job-id|-j requires a job ID value.");
     process.exit(1);
 }
 
@@ -22,7 +23,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-    console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.");
+    workerLogger.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.");
     process.exit(1);
 }
 
@@ -164,13 +165,13 @@ function isRetryableError(error: any): boolean {
     const stderr = (error?.error?.stderr ?? error?.stderr ?? '') as string;
     combined = `${String(primaryMessage || '')}\n${String(stderr || '')}`.toLowerCase();
 
-    console.log(`[RETRY] Checking if error is retryable: "${combined.substring(0, 200)}..."`);
+    workerLogger.debug(`Checking if error is retryable: "${combined.substring(0, 200)}..."`);
 
     const isRetryable = RETRY_CONFIG.retryableErrors.some(retryableError =>
         combined.includes(retryableError.toLowerCase())
     );
     
-    console.log(`[RETRY] Error is ${isRetryable ? 'RETRYABLE' : 'NOT RETRYABLE'}`);
+    workerLogger.debug(`Error is ${isRetryable ? 'RETRYABLE' : 'NOT RETRYABLE'}`);
     return isRetryable;
 }
 
@@ -179,7 +180,7 @@ function calculateRetryDelayWithJitter(retryCount: number): number {
     const noJitter = Math.min(base * Math.pow(2, retryCount), RETRY_CONFIG.maxBackoffMs);
     const jitteredDelay = Math.floor(Math.random() * (noJitter + 1)); // full jitter: [0, noJitter]
     
-    console.log(`[RETRY] Backoff calculation: base=${base}ms, max=${noJitter}ms, chosen (jitter)=${jitteredDelay}ms`);
+    workerLogger.debug(`Backoff calculation: base=${base}ms, max=${noJitter}ms, chosen (jitter)=${jitteredDelay}ms`);
     return jitteredDelay;
 }
 
@@ -217,7 +218,7 @@ async function collectAndStoreJobReport(context: {
       raw_telemetry: context.result?.telemetry?.raw || {}
     };
 
-    console.log(`Storing job report for ${context.job.id}...`);
+    workerLogger.info(`Storing job report for ${context.job.id}...`);
     // Ensure MCP tool lineage injection sees correct job context (tools read from env)
     const prevEnv = {
       JINN_JOB_ID: process.env.JINN_JOB_ID,
@@ -248,7 +249,7 @@ async function collectAndStoreJobReport(context: {
         console.error(`Failed to store job report for ${context.job.id}: ${parsed.error || 'Unknown error'}`);
       } else {
         const newId = parsed.data?.id ?? parsed.data?.data?.id;
-        console.log(`Job report stored successfully for ${context.job.id}${newId ? ` (report_id=${newId})` : ''}`);
+        workerLogger.info(`Job report stored successfully for ${context.job.id}${newId ? ` (report_id=${newId})` : ''}`);
         // DB trigger will link job_report_id; no worker-side linking needed
       }
     } finally {
@@ -567,15 +568,15 @@ function truncateContext(context: any, maxTokens: number, isDelegatedWork: boole
 }
 
 async function processPendingJobs(): Promise<boolean> {
-    console.log(`Worker ${workerId} starting up, checking for ${targetJobId ? `targeted job ${targetJobId}` : 'pending jobs'}...`);
+    workerLogger.info(`Worker ${workerId} starting up, checking for ${targetJobId ? `targeted job ${targetJobId}` : 'pending jobs'}...`);
     if (debugMode) {
-        console.log(`[DEBUG] Worker running in debug mode - Gemini CLI will use --debug flag`);
+        workerLogger.debug('Worker running in debug mode - Gemini CLI will use --debug flag');
     }
 
     // Check rate limiting before proceeding
     const rateLimitCheck = shouldWaitForRateLimit();
     if (rateLimitCheck.shouldWait) {
-        console.log(`[RATE_LIMIT] ${rateLimitCheck.reason}, waiting...`);
+        workerLogger.warn(`[RATE_LIMIT] ${rateLimitCheck.reason}, waiting...`);
         await new Promise(resolve => setTimeout(resolve, rateLimitCheck.waitTime));
     }
 
@@ -587,7 +588,7 @@ async function processPendingJobs(): Promise<boolean> {
     // Parse tool response and check for failures
     const readParseResult = parseToolResponse(readResult);
     if (!readParseResult.success) {
-        console.error('Database read failed:', readParseResult.error);
+        workerLogger.error({ error: readParseResult.error }, 'Database read failed');
         return false;
     }
 
@@ -597,21 +598,21 @@ async function processPendingJobs(): Promise<boolean> {
         const data = readParseResult.data;
         jobs = Array.isArray(data) ? (data as JobBoard[]) : (data?.data ?? []);
     } catch (parseErr) {
-        console.error("Failed to parse jobs from database.", parseErr);
+        workerLogger.error({ error: parseErr }, 'Failed to parse jobs from database');
         return false;
     }
 
     if (!jobs || jobs.length === 0) {
-        console.log(targetJobId ? `No job found with id ${targetJobId}.` : "No pending jobs found.");
+        workerLogger.info(targetJobId ? `No job found with id ${targetJobId}` : 'No pending jobs found');
         return false;
     }
 
-    console.log(targetJobId ? `Found targeted job ${jobs[0].id} (status=${jobs[0].status || 'UNKNOWN'})` : `Found ${jobs.length} pending jobs.`);
+    workerLogger.info(targetJobId ? `Found targeted job ${jobs[0].id} (status=${jobs[0].status || 'UNKNOWN'})` : `Found ${jobs.length} pending jobs`);
 
     // Process one job at a time for now
     const job = jobs[0];
 
-    console.log(`Attempting to claim job ${job.id}${targetJobId ? ' (forced by --job-id)' : ''}...`);
+    jobLogger.info({ jobId: job.id, forced: !!targetJobId }, 'Attempting to claim job');
     const startTime = Date.now();
     let result: any = null;
     let error: any = null;
@@ -701,12 +702,12 @@ async function processPendingJobs(): Promise<boolean> {
         if (!claimParseResult.success) {
             throw new Error(`Failed to claim job: ${claimParseResult.error}`);
         }
-        console.log(`Job ${job.id} claimed by worker ${workerId} and status updated to IN_PROGRESS.`);
+        jobLogger.info({ jobId: job.id, workerId }, 'Job claimed and status updated to IN_PROGRESS');
 
         const model = job.model_settings.model || 'gemini-2.5-flash-lite';
         const enabledTools = job.enabled_tools;
 
-        console.log(`Executing job ${job.id} with model ${model}`);
+        jobLogger.started(job.id, model);
 
         const jobContext = {
             jobId: job.id,
@@ -717,12 +718,12 @@ async function processPendingJobs(): Promise<boolean> {
             projectDefinitionId: job.project_definition_id ?? null
         };
         
-        console.log(`[JOB_CONTEXT] Passing context to agent: ${JSON.stringify(jobContext)}`);
+        jobLogger.debug({ jobContext }, 'Passing context to agent');
 
         // Check rate limits before each attempt (including retries)
         const gate = shouldWaitForRateLimit();
         if (gate.shouldWait) {
-            console.log(`[RATE_LIMIT] ${gate.reason}, waiting...`);
+            workerLogger.warn(`[RATE_LIMIT] ${gate.reason}, waiting...`);
             await new Promise(resolve => setTimeout(resolve, gate.waitTime));
         }
 
@@ -730,7 +731,7 @@ async function processPendingJobs(): Promise<boolean> {
         lastJobTime = Date.now();
         jobCount++;
 
-        console.log(`[ATTEMPT] Job ${job.id} attempt ${retryCount + 1} starting`);
+        jobLogger.retry(job.id, retryCount + 1, RETRY_CONFIG.maxRetries);
 
         // Inject Buzz snapshot for Chief Orchestrator
         if (job.job_name === 'Chief Orchestrator') {
@@ -792,7 +793,7 @@ async function processPendingJobs(): Promise<boolean> {
         // Create agent with current prompt (which may be enhanced on retries)
         const agent = new Agent(model, enabledTools, jobContext);
         result = await agent.run(currentPrompt);
-        console.log(`Job ${job.id} execution finished.`);
+        workerLogger.info(`Job ${job.id} execution finished.`);
 
         const updateResult = await updateRecords({
             table_name: 'job_board',
@@ -807,7 +808,7 @@ async function processPendingJobs(): Promise<boolean> {
         if (!updateParseResult.success) {
             throw new Error(`Failed to update job to COMPLETED: ${updateParseResult.error}`);
         }
-        console.log(`Job ${job.id} completed successfully.`);
+        jobLogger.completed(job.id);
 
     } catch (err: any) {
         console.error(`Job ${job.id} failed:`, err);
@@ -827,10 +828,10 @@ async function processPendingJobs(): Promise<boolean> {
             errorMessage.includes('quota') ||
             errorMessage.includes('resource_exhausted') ||
             errorMessage.includes('too many requests')) {
-            console.log(`[RATE_LIMIT] Quota error detected, activating cooldown period (${RATE_LIMIT.cooldownAfterQuotaError}ms)`);
+            workerLogger.warn(`[RATE_LIMIT] Quota error detected, activating cooldown period (${RATE_LIMIT.cooldownAfterQuotaError}ms)`);
             quotaErrorTime = Date.now();
         } else if (isInternalServerError(errorMessageLower)) {
-            console.log(`[RATE_LIMIT] 500/INTERNAL detected, activating short cooldown (${INTERNAL_ERROR_COOLDOWN_MS}ms)`);
+            workerLogger.warn(`[RATE_LIMIT] 500/INTERNAL detected, activating short cooldown (${INTERNAL_ERROR_COOLDOWN_MS}ms)`);
             internalErrorCooldownTime = Date.now();
         }
 
@@ -838,7 +839,7 @@ async function processPendingJobs(): Promise<boolean> {
         if (err && typeof err === 'object' && 'error' in err && 'telemetry' in err) {
             error = (err as any).error;
             result = { output: '', telemetry: (err as any).telemetry };
-            console.log(`Job ${job.id} failed but captured error telemetry:`, (err as any).telemetry);
+            workerLogger.error({ jobId: job.id, telemetry: (err as any).telemetry }, `Job failed but captured error telemetry`);
         } else {
             error = err;
         }
@@ -848,15 +849,15 @@ async function processPendingJobs(): Promise<boolean> {
         if (isRetryable && retryCount < RETRY_CONFIG.maxRetries) {
             retryCount++;
             const retryDelay = calculateRetryDelayWithJitter(retryCount);
-            console.log(`[RETRY] Job ${job.id} failed with retryable error. Retry ${retryCount}/${RETRY_CONFIG.maxRetries} in ${retryDelay}ms...`);
+            workerLogger.warn({ jobId: job.id, retryCount, maxRetries: RETRY_CONFIG.maxRetries, retryDelay }, `Job failed with retryable error, retrying...`);
             
             // Create an enhanced prompt for the retry
             const enhancedPrompt = createEnhancedPrompt(originalPrompt, error, retryCount - 1);
             currentPrompt = enhancedPrompt; // Update the prompt for the next retry
-            console.log(`[RETRY] Enhanced prompt created for retry ${retryCount}:`);
-            console.log(`[RETRY] Original prompt length: ${originalPrompt.length} chars`);
-            console.log(`[RETRY] Enhanced prompt length: ${enhancedPrompt.length} chars`);
-            console.log(`[RETRY] Error context added: ${enhancedPrompt.substring(originalPrompt.length).substring(0, 200)}...`);
+            workerLogger.debug({ jobId: job.id, retryCount }, `Enhanced prompt created for retry`);
+            workerLogger.debug({ originalPromptLength: originalPrompt.length }, `Original prompt length`);
+            workerLogger.debug({ enhancedPromptLength: enhancedPrompt.length }, `Enhanced prompt length`);
+            workerLogger.debug({ errorContextPreview: enhancedPrompt.substring(originalPrompt.length).substring(0, 200) }, `Error context added to retry prompt`);
 
             // Reset job status to PENDING so it can be retried
             const resetResult = await updateRecords({
@@ -883,7 +884,7 @@ async function processPendingJobs(): Promise<boolean> {
         // If we reach here, either error is not retryable or max retries exceeded
         const errorMsg = error instanceof Error ? error.message : String(error);
         const reason = !isRetryable ? 'error not retryable' : 'max retries exceeded';
-        console.log(`[RETRY] Not retrying: ${reason} (retryable=${isRetryable}, retries=${retryCount})`);
+        workerLogger.info({ jobId: job.id, reason, isRetryable, retryCount }, `Job not retrying`);
         
         const finalUpdate = await updateRecords({
             table_name: 'job_board',
@@ -908,7 +909,7 @@ async function processPendingJobs(): Promise<boolean> {
     }
 
     // Always collect and store job report regardless of success/failure
-    console.log(`Collecting and storing job report for ${job.id}...`);
+    workerLogger.info(`Collecting and storing job report for ${job.id}...`);
     try {
         await collectAndStoreJobReport({
             job,
@@ -917,7 +918,7 @@ async function processPendingJobs(): Promise<boolean> {
             result,
             error
         });
-        console.log(`Job report collection completed for ${job.id}`);
+        workerLogger.info(`Job report collection completed for ${job.id}`);
     } catch (reportError) {
         console.error(`Failed to collect job report for ${job.id}:`, reportError);
     }
@@ -925,14 +926,14 @@ async function processPendingJobs(): Promise<boolean> {
 }
 
 async function main() {
-    console.log(JSON.stringify({ workerId, singleJobMode, targetJobId, debugMode, msg: 'Worker starting up' }));
+    workerLogger.info({ workerId, singleJobMode, targetJobId, debugMode }, 'Worker starting up');
 
     const transactionProcessor = new TransactionProcessor(supabaseUrl!, supabaseKey!, workerId);
 
     if (singleJobMode) {
         await processPendingJobs();
         await transactionProcessor.processPendingTransaction();
-        console.log("Single job/transaction processed. Exiting.");
+        workerLogger.info("Single job/transaction processed. Exiting.");
         process.exit(0);
     }
 
@@ -943,7 +944,7 @@ async function main() {
 
             if (!jobProcessed && !transactionProcessed) {
                 const delay = 5000;
-                console.log(`No jobs or transactions found, waiting ${delay}ms.`);
+                workerLogger.debug(`No jobs or transactions found, waiting ${delay}ms.`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             } else if (!transactionProcessed) {
                 // If no transaction was processed, add a small delay to prevent high CPU usage

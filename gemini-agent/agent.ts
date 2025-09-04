@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import dotenv from 'dotenv';
+import { agentLogger } from '../worker/logger.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
@@ -205,7 +206,7 @@ export class Agent {
         chunk.split('\n').forEach(line => {
             if (line.trim().length > 0) {
                 const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
-                console.log(truncatedLine);
+                agentLogger.output(truncatedLine);
             }
         });
         stdout += chunk;

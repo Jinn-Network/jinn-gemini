@@ -18,7 +18,6 @@ function createLogger() {
           colorize: true,
           translateTime: 'SYS:standard',
           ignore: 'pid,hostname',
-          messageFormat: '[{component}] {msg}',
         }
       }
     });
@@ -69,6 +68,58 @@ export const workerLogger = {
  * Automatically adds the 'config' component tag.
  */
 export const configLogger = logger.child({ component: 'CONFIG' });
+
+/**
+ * Create a child logger for agent operations and AI output.
+ * Uses a distinct color (magenta) to differentiate AI responses from system logs.
+ */
+const baseAgentLogger = logger.child({ component: 'AGENT' });
+export const agentLogger = {
+  debug: baseAgentLogger.debug.bind(baseAgentLogger),
+  info: baseAgentLogger.info.bind(baseAgentLogger),
+  warn: baseAgentLogger.warn.bind(baseAgentLogger),
+  error: baseAgentLogger.error.bind(baseAgentLogger),
+  fatal: baseAgentLogger.fatal.bind(baseAgentLogger),
+  // Special method for agent output/responses - use direct console with color
+  output: (message: string) => {
+    // Use bright magenta for agent output with robot emoji
+    console.log(`\x1b[95m${message}\x1b[0m`);
+  },
+  thinking: (message: string) => baseAgentLogger.debug({ agentThinking: true }, message),
+};
+
+/**
+ * Create a child logger for job lifecycle events.
+ * Automatically adds the 'JOB' component tag.
+ */
+const baseJobLogger = logger.child({ component: 'JOB' });
+export const jobLogger = {
+  debug: baseJobLogger.debug.bind(baseJobLogger),
+  info: baseJobLogger.info.bind(baseJobLogger),
+  warn: baseJobLogger.warn.bind(baseJobLogger),
+  error: baseJobLogger.error.bind(baseJobLogger),
+  fatal: baseJobLogger.fatal.bind(baseJobLogger),
+  started: (jobId: string, model: string) => baseJobLogger.info({ jobId, model }, 'Job execution started'),
+  completed: (jobId: string) => baseJobLogger.info({ jobId }, 'Job completed successfully'),
+  failed: (jobId: string, reason: string) => baseJobLogger.error({ jobId, reason }, 'Job failed'),
+  retry: (jobId: string, attempt: number, maxRetries: number) => 
+    baseJobLogger.warn({ jobId, attempt, maxRetries }, `Job retry attempt ${attempt}/${maxRetries}`),
+};
+
+/**
+ * Create a child logger for MCP/tool operations.
+ * Automatically adds the 'MCP' component tag.
+ */
+const baseMcpLogger = logger.child({ component: 'MCP' });
+export const mcpLogger = {
+  debug: baseMcpLogger.debug.bind(baseMcpLogger),
+  info: baseMcpLogger.info.bind(baseMcpLogger),
+  warn: baseMcpLogger.warn.bind(baseMcpLogger),
+  error: baseMcpLogger.error.bind(baseMcpLogger),
+  fatal: baseMcpLogger.fatal.bind(baseMcpLogger),
+  toolCall: (toolName: string, params?: any) => baseMcpLogger.debug({ toolName, params }, 'Tool call executed'),
+  toolError: (toolName: string, error: string) => baseMcpLogger.error({ toolName, error }, 'Tool call failed'),
+};
 
 /**
  * Utility function to format addresses consistently in logs.

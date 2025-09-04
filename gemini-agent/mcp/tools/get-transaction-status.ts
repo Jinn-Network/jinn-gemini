@@ -17,7 +17,7 @@ export const getTransactionStatusParams = z.object({
 
 export const schema = {
   description: 'Gets the status and details of a queued transaction request, including explorer URLs for any resulting hashes.',
-  inputSchema: getTransactionStatusParams
+  inputSchema: getTransactionStatusParams.shape
 };
 
 // Private helper function to get explorer URLs

@@ -16,6 +16,8 @@ export { civitaiPublishPost, civitaiPublishPostParams, civitaiPublishPostSchema 
 export { civitaiSearchModels, civitaiSearchModelsParams, civitaiSearchModelsSchema } from './civitai-search-models.js';
 export { civitaiGetModelDetails, civitaiGetModelDetailsParams, civitaiGetModelDetailsSchema } from './civitai-get-model-details.js';
 export { civitaiSearchImages, civitaiSearchImagesParams, civitaiSearchImagesSchema } from './civitai-search-images.js';
+export { searchJobs, searchJobsParams, searchJobsSchema, type SearchJobsParams } from './search-jobs.js';
+export { searchArtifacts, searchArtifactsParams, searchArtifactsSchema, type SearchArtifactsParams } from './search-artifacts.js';
 
 // Export shared types
 export { tableNames, tableNameSchema } from './shared/types.js';

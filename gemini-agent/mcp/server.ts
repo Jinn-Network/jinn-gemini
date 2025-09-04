@@ -31,6 +31,8 @@ async function main() {
       { name: 'get_details', schema: tools.getDetailsSchema, handler: tools.getDetails },
       { name: 'create_memory', schema: tools.createMemorySchema, handler: tools.createMemory },
       { name: 'search_memories', schema: tools.searchMemoriesSchema, handler: tools.searchMemories },
+      { name: 'search_jobs', schema: tools.searchJobsSchema, handler: tools.searchJobs },
+      { name: 'search_artifacts', schema: tools.searchArtifactsSchema, handler: tools.searchArtifacts },
       { name: 'plan_project', schema: tools.planProjectSchema, handler: tools.planProject },
       { name: 'get_project_summary', schema: tools.getProjectSummarySchema, handler: tools.getProjectSummary },
       { name: 'send_message', schema: tools.sendMessageSchema, handler: tools.sendMessage },
@@ -70,31 +72,19 @@ async function main() {
     });
     const createJobBatchDynamicSchema = { description: 'Creates multiple job definitions with specified sequencing (parallel or serial execution).', inputSchema: createJobBatchInputDynamic.shape } as any;
 
-    // Register all tools with a permissive input schema so validation occurs inside handlers
-    // Keep original schemas in serverTools for introspection via list_tools
+    // Register all tools, swapping schemas for create_job and create_job_batch
     for (const tool of serverTools) {
-      let schemaForRegistration: any = tool.schema;
-
-      // Use dynamic variants where applicable (but still register permissively)
       if (tool.name === 'create_job') {
-        schemaForRegistration = createJobDynamicSchema;
+        server.registerTool(tool.name, createJobDynamicSchema, tool.handler);
       } else if (tool.name === 'create_job_batch') {
-        schemaForRegistration = createJobBatchDynamicSchema;
+        server.registerTool(tool.name, createJobBatchDynamicSchema, tool.handler);
+      } else {
+        server.registerTool(tool.name, tool.schema as any, tool.handler);
       }
-
-      // Permissive schema for MCP registration: defer strict validation to tool.safeParse
-      const permissiveSchema = {
-        description: schemaForRegistration?.description || tool.schema?.description || '',
-        inputSchema: {} as any,
-      } as any;
-
-      server.registerTool(tool.name, permissiveSchema, tool.handler);
     }
 
     // Expose list_tools for operator introspection (agents may ignore)
-    // Register permissively as well to keep validation in-tool
-    const listToolsPermissive = { description: tools.listToolsSchema.description, inputSchema: {} } as any;
-    server.registerTool('list_tools', listToolsPermissive, (params) => tools.listTools(params, serverTools));
+    server.registerTool('list_tools', tools.listToolsSchema as any, (params) => tools.listTools(params, serverTools));
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
