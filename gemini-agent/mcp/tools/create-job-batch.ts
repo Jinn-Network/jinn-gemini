@@ -160,10 +160,19 @@ export async function createJobBatch(params: CreateJobBatchParams) {
             // Store the job definition ID for chaining
             previousJobId = parsedResult.data.id;
           } else {
+            // Propagate identifiers and guidance when available (e.g., DUPLICATE_JOB_NAME)
+            const meta = parsedResult.meta || {};
+            const enrichedError = {
+              code: meta.code,
+              message: meta.message,
+              id: meta.id,
+              job_id: meta.job_id,
+              hint: meta.hint || (meta.code === 'DUPLICATE_JOB_NAME' ? 'Use get_details to read the existing job by job_id before updating to check if an update is actually needed.' : undefined)
+            };
             errors.push({
               job_index: i + 1,
               job_name: jobDef.name,
-              error: parsedResult.meta
+              error: enrichedError
             });
             // Stop processing on error to maintain consistency
             break;

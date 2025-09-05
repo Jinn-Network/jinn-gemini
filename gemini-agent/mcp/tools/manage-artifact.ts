@@ -5,6 +5,7 @@ import { z } from 'zod';
 export const manageArtifactParams = z.object({
     artifact_id: z.string().uuid().optional().describe('The ID of the artifact to update. If omitted, a new artifact is created.'),
     project_definition_id: z.string().uuid().optional().describe('The ID of the project definition to associate the artifact with. Only used during creation if the job has no project context.'),
+    name: z.string().optional().describe('Optional human-readable name for the artifact.'),
     content: z.string().describe('The content to set or add to the artifact.'),
     topic: z.string().optional().describe('The topic for classification. On update, omission leaves it unchanged.'),
     status: z.string().optional().describe('The processing status. Defaults to RAW on creation. On update, omission leaves it unchanged.'),
@@ -31,7 +32,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
             };
         }
         
-        const { artifact_id, project_definition_id: param_project_definition_id, content, topic, status, mode = 'replace' } = parseResult.data;
+        const { artifact_id, project_definition_id: param_project_definition_id, name, content, topic, status, mode = 'replace' } = parseResult.data;
         const { jobId, jobName, jobDefinitionId, projectRunId, projectDefinitionId } = getCurrentJobContext();
 
         if (artifact_id) {
@@ -71,6 +72,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
             // Only update topic and status if provided
             if (topic !== undefined) updateData.topic = topic;
             if (status !== undefined) updateData.status = status;
+            if (name !== undefined) updateData.name = name;
 
             const { data: updatedArtifact, error: updateError } = await supabase
                 .from('artifacts')
@@ -114,6 +116,7 @@ export async function manageArtifact(params: ManageArtifactParams) {
             const newArtifact = {
                 project_run_id: finalProjectRunId,
                 project_definition_id: finalProjectDefinitionId,
+                name: name || null,
                 content,
                 topic: topic || null,
                 status: status || 'RAW',

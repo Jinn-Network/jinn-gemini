@@ -3,6 +3,15 @@ import { z } from 'zod';
 import { tableNames } from './shared/types.js';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
+// MCP registration schema (permissive) to avoid -32602 pre-validation failures.
+// We normalize and strictly validate inside the handler.
+const getDetailsBase = z.object({
+    ids: z.any(),
+    cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
+    descendants: z.boolean().optional().describe('If true and an id is a job definition (jobs.id), include related items for descendant job definitions.'),
+});
+
+// Strict internal schema used by the handler after normalization
 export const getDetailsParams = z.object({
     ids: z.array(z.string().uuid()).describe('An array containing one or more UUIDs to retrieve. If empty, returns an empty result.'),
     cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
@@ -13,13 +22,25 @@ export type GetDetailsParams = z.infer<typeof getDetailsParams>;
 
 export const getDetailsSchema = {
     description: 'Retrieves one or more records by ID by automatically searching across all tables in the system.',
-    inputSchema: getDetailsParams.shape,
+    // Expose the permissive base to MCP to prevent -32602; validate strictly in handler
+    inputSchema: getDetailsBase.shape,
 };
 
 export async function getDetails(params: GetDetailsParams) {
     try {
-        // Use safeParse to avoid throwing exceptions on validation errors
-        const parseResult = getDetailsParams.safeParse(params);
+        // First normalize permissive inputs (string or array) into the strict shape
+        const raw: any = params ?? {};
+        let { ids, cursor, descendants } = raw as { ids: any; cursor?: string; descendants?: boolean };
+        if (typeof ids === 'string') {
+            ids = [ids];
+        }
+        // If ids is missing, allow empty array (handled below)
+        if (ids === undefined || ids === null) {
+            ids = [];
+        }
+
+        // Use safeParse with strict schema after normalization to avoid exceptions
+        const parseResult = getDetailsParams.safeParse({ ids, cursor, descendants });
         if (!parseResult.success) {
             return {
                 isError: true,
@@ -29,15 +50,15 @@ export async function getDetails(params: GetDetailsParams) {
                 }]
             };
         }
-        const { ids, cursor, descendants } = parseResult.data as { ids: string[]; cursor?: string; descendants?: boolean };
+        const { ids: validIds, cursor: validCursor, descendants: includeDescendants } = parseResult.data as { ids: string[]; cursor?: string; descendants?: boolean };
         const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
         // Handle empty array case
-        if (ids.length === 0) {
+        if (validIds.length === 0) {
             const composed = composeSinglePageResponse([], {
                 startOffset: keyset.offset,
                 truncateChars: 0,
-                requestedMeta: { cursor }
+                requestedMeta: { cursor: validCursor }
             });
             return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
         }
@@ -48,7 +69,7 @@ export async function getDetails(params: GetDetailsParams) {
                 const { data, error } = await supabase
                     .from(table)
                     .select('*')
-                    .in('id', ids);
+                    .in('id', validIds);
                 
                 if (error) {
                     // Silently handle table search errors - return empty array
@@ -82,8 +103,8 @@ export async function getDetails(params: GetDetailsParams) {
 
         // Auto-detect job runs vs job definitions
         const [jobRunsRes, jobDefsRes] = await Promise.all([
-            supabase.from('job_board').select('id').in('id', ids),
-            supabase.from('jobs').select('id').in('id', ids)
+            supabase.from('job_board').select('id').in('id', validIds),
+            supabase.from('jobs').select('id').in('id', validIds)
         ]);
         const jobRunIds = new Set<string>((jobRunsRes.data || []).map((r: any) => r.id));
         const jobDefIds = new Set<string>((jobDefsRes.data || []).map((r: any) => r.id));
@@ -141,7 +162,7 @@ export async function getDetails(params: GetDetailsParams) {
         let jdReports: any[] = [];
         let jdJobBoard: any[] = [];
 
-        const includeDesc = Boolean(descendants);
+        const includeDesc = Boolean(includeDescendants);
         const descendantDepth = new Map<string, number>(); // job_def_id -> depth
         let allDescendants: string[] = [];
         if (includeDesc && jobDefIdList.length > 0) {
@@ -238,7 +259,7 @@ export async function getDetails(params: GetDetailsParams) {
         }
 
         // Attach related info to matched records (job runs + job definitions with optional descendants)
-        for (const id of ids) {
+        for (const id of validIds) {
             const recordIndexes = idToIndexes.get(id);
             if (!recordIndexes || recordIndexes.length === 0) continue;
 
@@ -305,7 +326,7 @@ export async function getDetails(params: GetDetailsParams) {
         const composed = composeSinglePageResponse(allRecords, {
             startOffset: keyset.offset,
             truncateChars: 0,
-            requestedMeta: { cursor }
+            requestedMeta: { cursor: validCursor }
         });
 
         return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };

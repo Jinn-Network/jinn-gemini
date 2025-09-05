@@ -153,7 +153,12 @@ export async function createJob(params: CreateJobParams) {
                             meta: { 
                                 ok: false, 
                                 code: 'DUPLICATE_JOB_NAME', 
-                                message: `Job name "${name}" already exists and is active. Please check job "${name}" with job definition ID ${existingActiveJobResult.id} for review. If you want to update the job definition, increment the version by passing existing_job_id: "${existingActiveJobResult.job_id}".` 
+                                message: `Job name "${name}" already exists and is active. Please review the existing job before updating. If you decide to update, create a new version by passing existing_job_id: "${existingActiveJobResult.job_id}".`,
+                                // Surface identifiers for quick programmatic handling
+                                id: existingActiveJobResult.id,
+                                job_id: existingActiveJobResult.job_id,
+                                // Operator guidance
+                                hint: 'Use get_details to read the existing job by job_id before updating to check if an update is actually needed.'
                             },
                             existing_job: {
                                 id: existingActiveJobResult.id,

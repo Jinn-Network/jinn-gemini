@@ -10,6 +10,7 @@ import { workerLogger, jobLogger, agentLogger } from './logger.js';
 const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
 const jobIdFlagIndex = process.argv.findIndex(arg => arg === '--job-id' || arg === '-j');
 const targetJobId = jobIdFlagIndex !== -1 ? process.argv[jobIdFlagIndex + 1] : null;
+const stopOnChief = process.argv.includes('--stop-on-chief');
 
 if (jobIdFlagIndex !== -1 && (!targetJobId || targetJobId.startsWith('-'))) {
     workerLogger.error("Invalid usage: --job-id|-j requires a job ID value.");
@@ -201,7 +202,9 @@ async function collectAndStoreJobReport(context: {
       // Telemetry data from agent result
       request_text: context.result?.telemetry?.requestText || null,
       response_text: context.result?.telemetry?.responseText || null,
-      final_output: context.result?.output || null,
+      final_output: (context.result?.output && String(context.result.output).trim().length > 0)
+        ? context.result.output
+        : ((context.result?.telemetry?.raw as any)?.partialOutput || null),
       total_tokens: context.result?.telemetry?.totalTokens || 0,
       tools_called: context.result?.telemetry?.toolCalls || [],
 
@@ -612,7 +615,13 @@ async function processPendingJobs(): Promise<boolean> {
     // Process one job at a time for now
     const job = jobs[0];
 
-    jobLogger.info({ jobId: job.id, forced: !!targetJobId }, 'Attempting to claim job');
+    // If configured, stop immediately when we encounter a Chief Orchestrator job
+    if (stopOnChief && job.job_name === 'Chief Orchestrator') {
+        workerLogger.info('`--stop-on-chief` flag set; detected Chief Orchestrator job. Exiting without claiming or processing.');
+        process.exit(0);
+    }
+
+    jobLogger.info({ jobId: job.id, jobName: job.job_name, forced: !!targetJobId }, 'Attempting to claim job');
     const startTime = Date.now();
     let result: any = null;
     let error: any = null;
@@ -702,12 +711,12 @@ async function processPendingJobs(): Promise<boolean> {
         if (!claimParseResult.success) {
             throw new Error(`Failed to claim job: ${claimParseResult.error}`);
         }
-        jobLogger.info({ jobId: job.id, workerId }, 'Job claimed and status updated to IN_PROGRESS');
+        jobLogger.info({ jobId: job.id, jobName: job.job_name, workerId }, 'Job claimed and status updated to IN_PROGRESS');
 
         const model = job.model_settings.model || 'gemini-2.5-pro';
         const enabledTools = job.enabled_tools;
 
-        jobLogger.started(job.id, model);
+        jobLogger.info({ jobId: job.id, jobName: job.job_name, model }, 'Job execution started');
 
         const jobContext = {
             jobId: job.id,
@@ -844,8 +853,19 @@ async function processPendingJobs(): Promise<boolean> {
             error = err;
         }
 
-        // Check if error is retryable
-        const isRetryable = isRetryableError(error);
+        // Check if error is retryable, but force non-retryable on TIMEOUTs from Agent telemetry
+        let isRetryable = isRetryableError(error);
+        try {
+            // If Agent surfaced telemetry with TIMEOUT classification or timeout termination marker, do not retry
+            const t = (err && typeof err === 'object' && 'telemetry' in (err as any)) ? (err as any).telemetry : undefined;
+            const isTimeoutCategory = t?.errorType === 'TIMEOUT';
+            const po: string | undefined = t?.raw?.partialOutput;
+            const hasTimeoutMarker = typeof po === 'string' && /\[PROCESS TERMINATED:\s*Process timeout/i.test(po);
+            if (isTimeoutCategory || hasTimeoutMarker) {
+                isRetryable = false;
+                workerLogger.warn({ jobId: job.id }, 'Timeout detected; treating as non-retryable to persist partial output');
+            }
+        } catch {}
         if (isRetryable && retryCount < RETRY_CONFIG.maxRetries) {
             retryCount++;
             const retryDelay = calculateRetryDelayWithJitter(retryCount);
@@ -886,12 +906,24 @@ async function processPendingJobs(): Promise<boolean> {
         const reason = !isRetryable ? 'error not retryable' : 'max retries exceeded';
         workerLogger.info({ jobId: job.id, reason, isRetryable, retryCount }, `Job not retrying`);
         
+        // Prefer partial output captured by the Agent telemetry when available
+        let failedOutput: string = '';
+        try {
+            const partial = (result?.telemetry?.raw as any)?.partialOutput;
+            if (typeof partial === 'string' && partial.trim().length > 0) {
+                failedOutput = partial;
+            } else if (typeof result?.output === 'string' && result.output.trim().length > 0) {
+                failedOutput = result.output;
+            }
+        } catch {}
+
         const finalUpdate = await updateRecords({
             table_name: 'job_board',
             filter: { id: job.id },
             updates: {
                 status: 'FAILED',
-                output: JSON.stringify({ error: errorMsg, retryCount })
+                // Store structured error context alongside any partial output
+                output: JSON.stringify({ error: errorMsg, retryCount, partial_output: failedOutput })
             }
         });
         
@@ -926,7 +958,7 @@ async function processPendingJobs(): Promise<boolean> {
 }
 
 async function main() {
-    workerLogger.info({ workerId, singleJobMode, targetJobId, debugMode }, 'Worker starting up');
+    workerLogger.info({ workerId, singleJobMode, targetJobId, debugMode, stopOnChief }, 'Worker starting up');
 
     const transactionProcessor = new TransactionProcessor(supabaseUrl!, supabaseKey!, workerId);
 
