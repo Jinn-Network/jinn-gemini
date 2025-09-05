@@ -250,6 +250,7 @@ The worker now constructs enhanced prompts that preserve all existing elements w
 - **Inbox**: Recent messages and communications
 - **Trigger Context**: Rich information about what caused the job
 - **Delegated Work Context**: Comprehensive summaries of delegated work
+ - **Recent Runs Context**: Summaries of recent executions for the same job definition (when available)
 
 This ensures agents have the foundation they need to make informed decisions and take effective action without losing any existing functionality.
 

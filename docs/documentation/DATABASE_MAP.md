@@ -16,6 +16,7 @@ This table stores artifacts created by job executions, providing data persistenc
 | :--- | :--- | :--- |
 | `id` | `uuid` | **Primary Key**. Unique identifier for the artifact. |
 | `project_run_id` | `uuid` | **Required**. Foreign key linking the artifact to a specific `project_runs.id`. |
+| `name` | `text` | Optional human-readable name to aid discovery and search. |
 | `content` | `text` | The data payload of the artifact. Structure depends on the `topic`. |
 | `created_at` | `timestamptz` | Timestamp of creation. |
 | `status` | `text` | The processing status of the artifact (e.g., `RAW`, `PROCESSED`). |
@@ -26,7 +27,7 @@ This table stores artifacts created by job executions, providing data persistenc
 | `source_event_id` | `uuid` | Foreign key to `events.id`, linking to the source event. |
 | `project_definition_id` | `uuid` | Foreign key to `project_definitions.id`. |
 
-**Indexes**: `idx_artifacts_parent_job_definition_id`, `idx_artifacts_project_definition_id`, `idx_artifacts_source_event_id`
+**Indexes**: `idx_artifacts_name`, `idx_artifacts_parent_job_definition_id`, `idx_artifacts_project_definition_id`, `idx_artifacts_source_event_id`
 
 ### `events`
 The primary event store that drives the entire system. All system activities are captured as events with full lineage tracking.
