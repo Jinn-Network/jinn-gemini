@@ -66,8 +66,8 @@ This project consists of several key components:
 
 2. **Configure environment**:
    ```bash
-   cp env.template .env
-   # Edit .env with your Supabase credentials
+   cp .env.template .env
+   # Edit .env with your configuration (see Configuration section below)
    ```
 
 3. **Authenticate with Gemini**:
@@ -190,6 +190,7 @@ To run the Jinn worker and its associated services, you'll need to configure sev
 -   `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key.
 -   `GEMINI_API_KEY`: Your API key for the Gemini API.
 -   `OPENAI_API_KEY`: Your API key for the OpenAI API.
+-   `SNYK_TOKEN`: Your Snyk token for security scanning (get from [https://app.snyk.io/account](https://app.snyk.io/account)).
 
 #### Required for E2E Testing
 
@@ -211,12 +212,51 @@ The system uses Gemini CLI for job execution. Configuration is stored in `.gemin
 
 ## Security
 
-This project includes several security measures:
+This project implements comprehensive security measures to protect against vulnerabilities and ensure safe development practices.
 
+### Automated Security Scanning
+
+The project uses **Snyk** for continuous security monitoring:
+
+#### Security Scripts
+```bash
+# Run security scan (integrated into build process)
+yarn security:check
+
+# Set up continuous monitoring
+yarn security:monitor
+
+# Interactive vulnerability fixing
+yarn security:fix
+
+# Build with security check (automatic)
+yarn build
+```
+
+#### CI/CD Integration
+- **Automated scanning** on every push and pull request
+- **Daily security scans** at 2 AM UTC
+- **GitHub Code Scanning** integration for vulnerability tracking
+- **High/Critical severity threshold** blocking builds
+
+#### Setup Requirements
+1. Copy `.env.template` to `.env`
+2. Add your `SNYK_TOKEN` from [https://app.snyk.io/account](https://app.snyk.io/account)
+3. For GitHub integration, add `SNYK_TOKEN` as a repository secret
+
+### Security Features
+
+- **Dependency Vulnerability Scanning**: Automated detection of known vulnerabilities
 - **Sensitive File Protection**: `.env` and `.gemini/settings.json` are git-ignored
 - **Pre-commit Hooks**: Automatic checks for sensitive data before commits
 - **Template Files**: Example configurations without real credentials
 - **Comprehensive .gitignore**: Prevents accidental commits of sensitive files
+- **Regular Updates**: Automated dependency updates and security patches
+
+### Current Security Status
+✅ **No critical vulnerabilities detected**  
+✅ **All dependencies scanned and secure**  
+✅ **Continuous monitoring active**
 
 ## Database Schema
 

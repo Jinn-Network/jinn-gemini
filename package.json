@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/worker.js",
   "scripts": {
-    "build": "tsc -p .",
+    "build": "yarn security:check && tsc -p .",
     "start": "node dist/worker/worker.js",
     "dev": "USE_TSX_MCP=1 tsx worker/worker.ts -- --single-job",
     "dev:continuous": "USE_TSX_MCP=1 tsx worker/worker.ts",
@@ -31,7 +31,10 @@
     "format": "prettier --write .",
     "lint:fix": "eslint . --fix",
     "civitai:debug": "tsx scripts/civitai-sdk-debug.ts",
-    "civitai:post-intent-debug": "tsx scripts/civitai-post-intent-debug.ts"
+    "civitai:post-intent-debug": "tsx scripts/civitai-post-intent-debug.ts",
+    "security:check": "snyk test --all-projects --severity-threshold=high",
+    "security:monitor": "snyk monitor --all-projects",
+    "security:fix": "snyk wizard"
   },
   "dependencies": {
     "@jinn/wallet-manager": "file:packages/wallet-manager",
@@ -43,7 +46,7 @@
     "civitai": "^0.1.15",
     "cross-fetch": "^4.1.0",
     "dotenv": "^17.2.1",
-    "ethers": "^5.7.2",
+    "ethers": "^6.0.0",
     "openai": "^5.11.0",
     "pino": "^9.9.0",
     "pino-pretty": "^13.1.1",
