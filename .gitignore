@@ -157,3 +157,6 @@ gemini-agent/.gemini/settings.json
 # Playwright MCP profiles
 .playwright-mcp/
 **/.playwright-mcp/
+Icon?
+.AppleDouble
+.LSOverride
