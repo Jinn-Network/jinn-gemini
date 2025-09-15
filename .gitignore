@@ -166,3 +166,6 @@ gemini-agent/.gemini/settings.json
 Icon?
 .AppleDouble
 .LSOverride
+
+# Ponder local cache (never commit runtime DB/cache)
+ponder/.ponder/
