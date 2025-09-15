@@ -1,0 +1,198 @@
+type Query {
+  request(id: String!): request
+  requests(where: requestFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): requestPage!
+  delivery(id: String!): delivery
+  deliverys(where: deliveryFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): deliveryPage!
+  _meta: _meta
+}
+
+type request {
+  id: String!
+  mech: String!
+  sender: String!
+  ipfsHash: String
+  transactionHash: String
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+}
+
+scalar BigInt
+
+type requestPage {
+  items: [request!]!
+  pageInfo: PageInfo!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+input requestFilter {
+  AND: [requestFilter]
+  OR: [requestFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  mech: String
+  mech_not: String
+  mech_in: [String]
+  mech_not_in: [String]
+  mech_gt: String
+  mech_lt: String
+  mech_gte: String
+  mech_lte: String
+  sender: String
+  sender_not: String
+  sender_in: [String]
+  sender_not_in: [String]
+  sender_gt: String
+  sender_lt: String
+  sender_gte: String
+  sender_lte: String
+  ipfsHash: String
+  ipfsHash_not: String
+  ipfsHash_in: [String]
+  ipfsHash_not_in: [String]
+  ipfsHash_contains: String
+  ipfsHash_not_contains: String
+  ipfsHash_starts_with: String
+  ipfsHash_ends_with: String
+  ipfsHash_not_starts_with: String
+  ipfsHash_not_ends_with: String
+  transactionHash: String
+  transactionHash_not: String
+  transactionHash_in: [String]
+  transactionHash_not_in: [String]
+  transactionHash_contains: String
+  transactionHash_not_contains: String
+  transactionHash_starts_with: String
+  transactionHash_ends_with: String
+  transactionHash_not_starts_with: String
+  transactionHash_not_ends_with: String
+  blockNumber: BigInt
+  blockNumber_not: BigInt
+  blockNumber_in: [BigInt]
+  blockNumber_not_in: [BigInt]
+  blockNumber_gt: BigInt
+  blockNumber_lt: BigInt
+  blockNumber_gte: BigInt
+  blockNumber_lte: BigInt
+  blockTimestamp: BigInt
+  blockTimestamp_not: BigInt
+  blockTimestamp_in: [BigInt]
+  blockTimestamp_not_in: [BigInt]
+  blockTimestamp_gt: BigInt
+  blockTimestamp_lt: BigInt
+  blockTimestamp_gte: BigInt
+  blockTimestamp_lte: BigInt
+}
+
+type delivery {
+  id: String!
+  requestId: String!
+  mech: String!
+  mechServiceMultisig: String!
+  deliveryRate: BigInt!
+  transactionHash: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+}
+
+type deliveryPage {
+  items: [delivery!]!
+  pageInfo: PageInfo!
+}
+
+input deliveryFilter {
+  AND: [deliveryFilter]
+  OR: [deliveryFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  requestId: String
+  requestId_not: String
+  requestId_in: [String]
+  requestId_not_in: [String]
+  requestId_contains: String
+  requestId_not_contains: String
+  requestId_starts_with: String
+  requestId_ends_with: String
+  requestId_not_starts_with: String
+  requestId_not_ends_with: String
+  mech: String
+  mech_not: String
+  mech_in: [String]
+  mech_not_in: [String]
+  mech_gt: String
+  mech_lt: String
+  mech_gte: String
+  mech_lte: String
+  mechServiceMultisig: String
+  mechServiceMultisig_not: String
+  mechServiceMultisig_in: [String]
+  mechServiceMultisig_not_in: [String]
+  mechServiceMultisig_gt: String
+  mechServiceMultisig_lt: String
+  mechServiceMultisig_gte: String
+  mechServiceMultisig_lte: String
+  deliveryRate: BigInt
+  deliveryRate_not: BigInt
+  deliveryRate_in: [BigInt]
+  deliveryRate_not_in: [BigInt]
+  deliveryRate_gt: BigInt
+  deliveryRate_lt: BigInt
+  deliveryRate_gte: BigInt
+  deliveryRate_lte: BigInt
+  transactionHash: String
+  transactionHash_not: String
+  transactionHash_in: [String]
+  transactionHash_not_in: [String]
+  transactionHash_contains: String
+  transactionHash_not_contains: String
+  transactionHash_starts_with: String
+  transactionHash_ends_with: String
+  transactionHash_not_starts_with: String
+  transactionHash_not_ends_with: String
+  blockNumber: BigInt
+  blockNumber_not: BigInt
+  blockNumber_in: [BigInt]
+  blockNumber_not_in: [BigInt]
+  blockNumber_gt: BigInt
+  blockNumber_lt: BigInt
+  blockNumber_gte: BigInt
+  blockNumber_lte: BigInt
+  blockTimestamp: BigInt
+  blockTimestamp_not: BigInt
+  blockTimestamp_in: [BigInt]
+  blockTimestamp_not_in: [BigInt]
+  blockTimestamp_gt: BigInt
+  blockTimestamp_lt: BigInt
+  blockTimestamp_gte: BigInt
+  blockTimestamp_lte: BigInt
+}
+
+type _meta {
+  status: JSON
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON

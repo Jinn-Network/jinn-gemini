@@ -151,6 +151,12 @@ gemini-agent/.gemini/last-prompt.txt
 *.key
 *.crt
 *.cert
+
+# Private key files
+ethereum_private_key.txt
+mech_private_key.txt
+**/ethereum_private_key.txt
+**/mech_private_key.txt
 gemini-agent/.gemini/settings.json
 .cursor/implementation-review-process.md
 
