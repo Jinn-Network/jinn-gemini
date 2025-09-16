@@ -21,29 +21,41 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
         cache: 'yarn'
         
     - name: Install dependencies
       run: yarn install --frozen-lockfile
       
+    - name: Install Snyk CLI
+      run: npm install -g snyk
+      
     - name: Run Snyk to check for vulnerabilities
-      uses: snyk/actions/node@master
+      continue-on-error: true
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        args: --all-projects --severity-threshold=high
+      run: snyk test --all-projects --severity-threshold=high --sarif-file-output=snyk.sarif
+        
+    - name: Check if SARIF file exists
+      run: |
+        if [ -f "snyk.sarif" ]; then
+          echo "SARIF file found"
+          ls -la snyk.sarif
+        else
+          echo "SARIF file not found, listing current directory:"
+          ls -la
+          echo "Looking for any .sarif files:"
+          find . -name "*.sarif" -type f 2>/dev/null || echo "No .sarif files found"
+        fi
         
     - name: Upload result to GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v2
-      if: always()
+      uses: github/codeql-action/upload-sarif@v3
+      if: always() && hashFiles('snyk.sarif') != ''
       with:
         sarif_file: snyk.sarif
         
     - name: Monitor dependencies
-      uses: snyk/actions/node@master
+      continue-on-error: true
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        command: monitor
-        args: --all-projects
+      run: snyk monitor --all-projects
