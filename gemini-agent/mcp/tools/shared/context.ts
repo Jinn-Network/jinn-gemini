@@ -6,6 +6,8 @@ export interface JobContext {
   projectRunId: string | null;
   sourceEventId: string | null;
   projectDefinitionId: string | null;
+  requestId?: string | null;
+  mechAddress?: string | null;
 }
 
 // Canonical: read from environment only
@@ -18,6 +20,8 @@ export function getCurrentJobContext(): JobContext {
     projectRunId: process.env.JINN_PROJECT_RUN_ID || null,
     sourceEventId: process.env.JINN_SOURCE_EVENT_ID || null,
     projectDefinitionId: process.env.JINN_PROJECT_DEFINITION_ID || null,
+    requestId: process.env.JINN_REQUEST_ID || null,
+    mechAddress: process.env.JINN_MECH_ADDRESS || null,
   };
 }
 

@@ -18,6 +18,7 @@ export { civitaiGetModelDetails, civitaiGetModelDetailsParams, civitaiGetModelDe
 export { civitaiSearchImages, civitaiSearchImagesParams, civitaiSearchImagesSchema } from './civitai-search-images.js';
 export { searchJobs, searchJobsParams, searchJobsSchema, type SearchJobsParams } from './search-jobs.js';
 export { searchArtifacts, searchArtifactsParams, searchArtifactsSchema, type SearchArtifactsParams } from './search-artifacts.js';
+export { postMarketplaceJob, postMarketplaceJobParams, postMarketplaceJobSchema } from './post_marketplace_job.js';
 
 // Export shared types
 export { tableNames, tableNameSchema } from './shared/types.js';

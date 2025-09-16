@@ -73,10 +73,11 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
     }
     const { table_name: tn, data } = parseResult.data;
     table_name = tn;
-    const { jobId, jobDefinitionId, jobName, projectRunId, sourceEventId, projectDefinitionId } = getCurrentJobContext();
+    const { jobId, jobDefinitionId, jobName, projectRunId, sourceEventId, projectDefinitionId, requestId, mechAddress } = getCurrentJobContext();
     
     // Only inject context into tables designed to carry lineage fields
     const tablesWithLineage = new Set(['artifacts', 'job_reports', 'memories', 'messages', 'threads']);
+    const tablesOnchain = new Set(['onchain_artifacts', 'onchain_job_reports', 'onchain_messages']);
     const enrichedData = tablesWithLineage.has(table_name as string)
       ? {
           ...data,
@@ -85,6 +86,12 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
           source_event_id: sourceEventId,
           parent_job_definition_id: jobDefinitionId,
           project_definition_id: projectDefinitionId,
+        }
+      : tablesOnchain.has(table_name as string)
+      ? {
+          ...data,
+          request_id: requestId,
+          worker_address: mechAddress,
         }
       : data;
 

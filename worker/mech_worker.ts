@@ -3,7 +3,7 @@ import { readRecords } from '../gemini-agent/mcp/tools/read-records.js';
 import { createRecord } from '../gemini-agent/mcp/tools/create-record.js';
 import { updateRecords } from '../gemini-agent/mcp/tools/update-records.js';
 import { Agent } from '../gemini-agent/agent.js';
-import { deliverViaSafe } from '../../mech-client-ts/dist/deliver.js';
+import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
 import { workerLogger } from './logger.js';
 
 type UnclaimedRequest = {

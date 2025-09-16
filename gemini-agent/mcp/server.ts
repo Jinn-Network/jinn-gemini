@@ -41,6 +41,7 @@ async function main() {
       { name: 'civitai_search_models', schema: tools.civitaiSearchModelsSchema, handler: tools.civitaiSearchModels },
       { name: 'civitai_get_model_details', schema: tools.civitaiGetModelDetailsSchema, handler: tools.civitaiGetModelDetails },
       { name: 'civitai_search_images', schema: tools.civitaiSearchImagesSchema, handler: tools.civitaiSearchImages },
+      { name: 'post_marketplace_job', schema: tools.postMarketplaceJobSchema, handler: tools.postMarketplaceJob },
       // Zora integration tools (preserved from main)
       { name: 'zora_prepare_create_coin_tx', schema: tools.prepareCreateCoinTxSchema, handler: tools.prepareCreateCoinTx },
       { name: 'enqueue_transaction', schema: tools.enqueueTransactionSchema, handler: tools.enqueueTransaction },

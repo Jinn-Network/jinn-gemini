@@ -9,6 +9,11 @@ export const tableNames = [
   'jobs',
   'memories',
   'messages',
+  // On-chain parallel tables
+  'onchain_request_claims',
+  'onchain_job_reports',
+  'onchain_artifacts',
+  'onchain_messages',
 ] as const;
 
 export const tableNameSchema = z.enum(tableNames).describe('The name of the table to operate on');

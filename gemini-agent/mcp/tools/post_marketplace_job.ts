@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { getCurrentJobContext } from './shared/context.js';
 import { tableNameSchema } from './shared/types.js';
 import { supabase } from './shared/supabase.js';
-import { get_mech_config } from '../../../../mech-client-ts/dist/config.js';
-import { marketplaceInteract } from '../../../../mech-client-ts/dist/marketplace_interact.js';
+import { get_mech_config } from 'mech-client-ts/dist/config.js';
+import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
 
 export const postMarketplaceJobParams = z.object({
   prompt: z.string().min(1),
@@ -29,6 +29,12 @@ export async function postMarketplaceJob(params: z.infer<typeof postMarketplaceJ
     const extraAttributes: Record<string, any> = {};
     if (ctx.requestId) extraAttributes.parentRequestId = ctx.requestId;
     if (ctx.jobName) extraAttributes.parentJobName = ctx.jobName;
+
+    // Debug: confirm MECH_PRIVATE_KEY presence without leaking value
+    try {
+      const pkLen = (process.env.MECH_PRIVATE_KEY || '').length;
+      console.log(`[metacog-mcp] MECH_PRIVATE_KEY length: ${pkLen}`);
+    } catch {}
 
     const res = await marketplaceInteract({
       prompts: [prompt],
