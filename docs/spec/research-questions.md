@@ -1,6 +1,6 @@
 # Research Questions
 
-Sources: Non‑Goals in [Technical Architecture - MVP](./technical-architecture-mvp) and research items in the [Roadmap](./roadmap).
+Sources: Non‑Goals in [Technical Architecture - MVP](./mvp-spec) and research items in the [Roadmap](./roadmap).
 
 ## Items
 

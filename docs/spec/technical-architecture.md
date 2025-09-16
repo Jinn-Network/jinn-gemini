@@ -1,6 +1,6 @@
 # Technical Architecture
 
-Architecture for the longer‑term platform. For the minimal system that ships the MVP, see [Technical Architecture - MVP](./technical-architecture-mvp) and open items in [Research Questions](./research-questions).
+Architecture for the longer‑term platform. For the minimal system that ships the MVP, see [Technical Architecture - MVP](./mvp-spec) and open items in [Research Questions](./research-questions).
 
 ## Overview
 Ventures anchor the system on-chain via Olas staking contracts. Orchestrators, run by independent operators, instantiate and operate agents for each venture. Jobs are requested on the marketplace; agents may decompose work into sub‑jobs or execute tasks directly via a tool‑driven executor (MCP). Completions originate from the agent’s service address (Safe) to satisfy Proof‑of‑Active‑Agent. Emissions flow via veOLAS gauge weights to venture staking contracts. Wallets, transaction execution, and tool allowlists enforce deterministic, auditable behavior across chains.

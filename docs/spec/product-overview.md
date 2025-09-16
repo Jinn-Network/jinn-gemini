@@ -1,6 +1,6 @@
 # Product Overview
 
-Longer-term platform scope. For MVP, see [Demo Application](./demo-application) and [Technical Architecture - MVP](./technical-architecture-mvp).
+Longer-term platform scope. For MVP, see [Demo Application](./demo-application) and [Technical Architecture - MVP](./mvp-spec).
 
 ## The Vision: A Platform for Agentic Ventures
 
