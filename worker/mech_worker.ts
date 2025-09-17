@@ -4,7 +4,10 @@ import { createRecord } from '../gemini-agent/mcp/tools/create-record.js';
 import { updateRecords } from '../gemini-agent/mcp/tools/update-records.js';
 import { Agent } from '../gemini-agent/agent.js';
 import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
+import { Web3 } from 'web3';
+import agentMechArtifact from 'mech-client-ts/dist/abis/AgentMech.json' assert { type: 'json' };
 import { workerLogger } from './logger.js';
+import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport, createArtifact as apiCreateArtifact } from './control_api_client.js';
 
 type UnclaimedRequest = {
   id: string;           // on-chain requestId (decimal string or 0x)
@@ -16,6 +19,7 @@ type UnclaimedRequest = {
 
 const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
 const SINGLE_SHOT = process.argv.includes('--single');
+const USE_CONTROL_API = (process.env.USE_CONTROL_API ?? 'true') !== 'false';
 const STALE_MINUTES = parseInt(process.env.MECH_RECLAIM_AFTER_MINUTES || '10', 10);
 
 function safeParseToolResponse(response: any): { ok: boolean; data: any; message?: string } {
@@ -29,6 +33,22 @@ function safeParseToolResponse(response: any): { ok: boolean; data: any; message
     return { ok: true, data: parsed };
   } catch (e: any) {
     return { ok: false, data: null, message: e?.message || String(e) };
+  }
+}
+
+// Preflight: verify requestId is currently undelivered on-chain for the target mech
+async function isUndeliveredOnChain(params: { mechAddress: string; requestIdHex: string; rpcHttpUrl?: string }): Promise<boolean> {
+  const { mechAddress, requestIdHex, rpcHttpUrl } = params;
+  try {
+    if (!rpcHttpUrl) return true; // best-effort: if no RPC provided, don't block delivery
+    const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
+    const web3 = new Web3(rpcHttpUrl);
+    const contract = new (web3 as any).eth.Contract(abi, mechAddress);
+    const ids: string[] = await contract.methods.getUndeliveredRequestIds(100, 0).call();
+    const set = new Set((ids || []).map((x: string) => String(x).toLowerCase()));
+    return set.has(String(requestIdHex).toLowerCase());
+  } catch {
+    return true; // don't fail hard on preflight errors
   }
 }
 
@@ -57,18 +77,48 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
   }
 }
 
+async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: string; size?: number; offset?: number }): Promise<Set<string>> {
+  const { mechAddress, rpcHttpUrl, size = 100, offset = 0 } = params;
+  try {
+    if (!rpcHttpUrl) return new Set<string>();
+    const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
+    const web3 = new Web3(rpcHttpUrl);
+    const contract = new (web3 as any).eth.Contract(abi, mechAddress);
+    const ids: string[] = await contract.methods.getUndeliveredRequestIds(size, offset).call();
+    return new Set((ids || []).map((x: string) => String(x).toLowerCase()));
+  } catch {
+    return new Set<string>();
+  }
+}
+
 async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedRequest[]> {
   if (requests.length === 0) return [];
-  const ids = requests.map(r => r.id);
+  // Reliable Supabase per-id check to avoid IN operator ambiguity
+  const notClaimed: UnclaimedRequest[] = [];
+  for (const r of requests) {
+    const existing = await getExistingClaim(r.id);
+    if (!existing) notClaimed.push(r);
+  }
+
+  // Intersect with on-chain undelivered for additional safety
   try {
-    const res = await readRecords({ table_name: 'onchain_request_claims', filter: { request_id: ids } });
-    const parsed = safeParseToolResponse(res);
-    if (!parsed.ok) return requests;
-    const claimed: any[] = Array.isArray(parsed.data) ? parsed.data : (parsed.data?.data ?? []);
-    const claimedSet = new Set((claimed || []).map((r: any) => String(r.request_id)));
-    return requests.filter(r => !claimedSet.has(r.id));
+    const rpcHttpUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+    const mechToSet = new Map<string, Set<string>>();
+    for (const r of notClaimed) {
+      const key = r.mech.toLowerCase();
+      if (!mechToSet.has(key)) {
+        mechToSet.set(key, await getUndeliveredSet({ mechAddress: r.mech, rpcHttpUrl }));
+      }
+    }
+    const filtered = notClaimed.filter(r => {
+      const set = mechToSet.get(r.mech.toLowerCase());
+      if (!set || set.size === 0) return true;
+      const idHex = String(r.id).startsWith('0x') ? String(r.id).toLowerCase() : ('0x' + BigInt(String(r.id)).toString(16)).toLowerCase();
+      return set.has(idHex);
+    });
+    return filtered;
   } catch {
-    return requests;
+    return notClaimed;
   }
 }
 
@@ -86,6 +136,22 @@ async function getExistingClaim(requestId: string): Promise<any | null> {
 
 async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promise<boolean> {
   try {
+    if (USE_CONTROL_API) {
+      try {
+        const res = await apiClaimRequest(request.id);
+        if (res && (res.status === 'IN_PROGRESS' || res.status === 'COMPLETED')) {
+          // If COMPLETED returned, someone else finished it; treat as not claimed
+          const ok = res.status === 'IN_PROGRESS';
+          workerLogger.info({ requestId: request.id, status: res.status }, ok ? 'Claimed via Control API' : 'Already handled via Control API');
+          return ok;
+        }
+      } catch (e: any) {
+        workerLogger.info({ requestId: request.id, reason: e?.message || String(e) }, 'Control API claim failed');
+        return false;
+      }
+      return false;
+    }
+
     // Check if already claimed and possibly stale
     const existing = await getExistingClaim(request.id);
     if (existing) {
@@ -178,36 +244,38 @@ async function runAgentForRequest(request: UnclaimedRequest, metadata: any): Pro
 
 async function storeOnchainReport(request: UnclaimedRequest, workerAddress: string, result: { output: string; telemetry: any }, error?: any): Promise<void> {
   try {
-    await createRecord({
-      table_name: 'onchain_job_reports',
-      data: {
-        request_id: request.id,
-        worker_address: workerAddress,
-        status: error ? 'FAILED' : 'COMPLETED',
-        duration_ms: result?.telemetry?.duration || 0,
-        total_tokens: result?.telemetry?.totalTokens || 0,
-        tools_called: result?.telemetry?.toolCalls || [],
-        final_output: result?.output || null,
-        error_message: error ? (error.message || String(error)) : null,
-        error_type: error ? 'AGENT_ERROR' : null,
-        raw_telemetry: result?.telemetry || {}
-      }
-    });
+    const payload = {
+      status: error ? 'FAILED' : 'COMPLETED',
+      duration_ms: result?.telemetry?.duration || 0,
+      total_tokens: result?.telemetry?.totalTokens || 0,
+      tools_called: result?.telemetry?.toolCalls || [],
+      final_output: result?.output || null,
+      error_message: error ? (error.message || String(error)) : null,
+      error_type: error ? 'AGENT_ERROR' : null,
+      raw_telemetry: result?.telemetry || {}
+    };
+    if (USE_CONTROL_API) {
+      await apiCreateJobReport(request.id, payload);
+    } else {
+      await createRecord({
+        table_name: 'onchain_job_reports',
+        data: { request_id: request.id, worker_address: workerAddress, ...payload }
+      });
+    }
   } catch {}
 }
 
 async function storeOnchainArtifact(request: UnclaimedRequest, workerAddress: string, cid: string, topic: string, content?: string): Promise<void> {
   try {
-    await createRecord({
-      table_name: 'onchain_artifacts',
-      data: {
-        request_id: request.id,
-        worker_address: workerAddress,
-        cid,
-        topic,
-        content: content || null
-      }
-    });
+    const data = { cid, topic, content: content || null };
+    if (USE_CONTROL_API) {
+      await apiCreateArtifact(request.id, data);
+    } else {
+      await createRecord({
+        table_name: 'onchain_artifacts',
+        data: { request_id: request.id, worker_address: workerAddress, ...data }
+      });
+    }
   } catch {}
 }
 
@@ -225,9 +293,13 @@ async function processOnce(): Promise<void> {
     return;
   }
 
-  const target = candidates[0];
-  const claimed = await tryClaim(target, workerAddress);
-  if (!claimed) return;
+  // Iterate candidates until we claim one successfully
+  let target: UnclaimedRequest | null = null;
+  for (const c of candidates) {
+    const ok = await tryClaim(c, workerAddress);
+    if (ok) { target = c; break; }
+  }
+  if (!target) return;
   let result: any = { output: '', telemetry: {} };
   let error: any = null;
   try {
@@ -249,14 +321,16 @@ async function processOnce(): Promise<void> {
     // Here, use axios directly if needed; for now, store content inline and let delivery compute CID again.
     await storeOnchainArtifact(target, workerAddress, 'inline', 'result.output', outputStr);
   } catch {}
-  // Mark claim as completed
-  try {
-    await updateRecords({
-      table_name: 'onchain_request_claims',
-      filter: { request_id: target.id },
-      updates: { status: 'COMPLETED', completed_at: new Date().toISOString() }
-    });
-  } catch {}
+  // Mark claim as completed (Control API handles this upon report; keep fallback only)
+  if (!USE_CONTROL_API) {
+    try {
+      await updateRecords({
+        table_name: 'onchain_request_claims',
+        filter: { request_id: target.id },
+        updates: { status: 'COMPLETED', completed_at: new Date().toISOString() }
+      });
+    } catch {}
+  }
 
   // Attempt on-chain delivery via Safe when configured
   try {
@@ -267,6 +341,14 @@ async function processOnce(): Promise<void> {
     const privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH || 'mech_private_key.txt';
     const rpcHttpUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
     if (safeAddress && targetMechAddress) {
+      // Preflight: ensure request is still undelivered on-chain before constructing Safe tx
+      const requestIdHex = String(target.id).startsWith('0x') ? String(target.id) : '0x' + BigInt(String(target.id)).toString(16);
+      const ok = await isUndeliveredOnChain({ mechAddress: targetMechAddress, requestIdHex, rpcHttpUrl });
+      if (!ok) {
+        workerLogger.info({ requestId: target.id }, 'Preflight: request already delivered or not eligible; skipping Safe delivery');
+        return;
+      }
+
       const payload = {
         chainConfig,
         requestId: String(target.id),

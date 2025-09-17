@@ -24,6 +24,7 @@ ponder.on("MechMarketplace:MarketplaceRequest", async ({ event, context }) => {
           transactionHash: txHash,
           blockNumber,
           blockTimestamp,
+          delivered: false,
         },
         update: {
           mech,
@@ -31,6 +32,7 @@ ponder.on("MechMarketplace:MarketplaceRequest", async ({ event, context }) => {
           transactionHash: txHash,
           blockNumber,
           blockTimestamp,
+          // intentionally do not overwrite delivered here
         },
       });
     }
@@ -81,6 +83,14 @@ ponder.on("MechMarketplace:MarketplaceDelivery", async ({ event, context }) => {
           blockTimestamp,
         },
       });
+      const requestRepo = (context as any).db?.request || (context as any).entities?.request;
+      if (requestRepo) {
+        await requestRepo.upsert({
+          id: reqId,
+          create: { delivered: true },
+          update: { delivered: true },
+        });
+      }
     }
 
     console.log({ deliveryMech, requestIds }, "Indexed MarketplaceDelivery");
@@ -128,6 +138,14 @@ ponder.on("MechMarketplace:MarketplaceDeliveryWithSignatures", async ({ event, c
           blockTimestamp,
         },
       });
+      const requestRepo = (context as any).db?.request || (context as any).entities?.request;
+      if (requestRepo) {
+        await requestRepo.upsert({
+          id: reqId,
+          create: { delivered: true },
+          update: { delivered: true },
+        });
+      }
     }
 
     console.log({ deliveryMech, requestIds }, "Indexed MarketplaceDeliveryWithSignatures");

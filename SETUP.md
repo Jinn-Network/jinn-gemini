@@ -188,3 +188,54 @@ When contributing to this project:
 2. Use template files for configuration examples
 3. Update this setup guide if you add new configuration requirements
 4. Test your changes thoroughly before submitting 
+
+## On-chain Quickstart
+
+### Prerequisites
+- Base RPC reachable from your host
+- Environment configured:
+  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+  - `MECH_PRIVATE_KEY` (preferred) or key file, and any Safe/mech settings used by your runtime
+
+### 1) Start Ponder (Mech Marketplace indexer)
+```bash
+cd ponder && yarn dev
+```
+GraphQL will be live at `http://localhost:42069/graphql` once synced.
+
+### 2) Run the on-chain mech worker
+```bash
+# From repository root
+yarn dev:mech
+```
+This polls Ponder for new Requests, claims atomically, executes, stores reports/artifacts, and delivers on-chain via Safe.
+
+### 3) Post a marketplace job (MCP)
+Use your MCP client to call the tool `post_marketplace_job`:
+```json
+{
+  "prompt": "Phase 2/3 quickstart test: echo this string.",
+  "priorityMech": "0xab15f8d064b59447bd8e9e89dd3fa770abf5eeb7",
+  "tools": ["manage_artifact"],
+  "chainConfig": "base"
+}
+```
+This creates an on-chain Request and returns the transaction hash and request IDs.
+
+### 4) Verify via GraphQL (Ponder)
+- Requests:
+```bash
+curl -s -X POST http://localhost:42069/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"query { requests { items { id mech sender blockTimestamp transactionHash } } }"}' | jq
+```
+- Deliveries:
+```bash
+curl -s -X POST http://localhost:42069/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"query { deliverys { items { id requestId mech blockTimestamp transactionHash } } }"}' | jq
+```
+
+If the worker is running, you should see:
+- A new Request indexed by Ponder
+- A Deliver event after the worker posts results on-chain 

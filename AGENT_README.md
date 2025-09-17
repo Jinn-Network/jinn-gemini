@@ -10,6 +10,8 @@ The core technologies are:
 - **Next.js**: For the frontend explorer interface.
 - **Gemini CLI**: As the underlying engine for interacting with Google's Gemini models.
 - **Model Context Protocol (MCP)**: For providing the agent with a secure and structured way to use tools.
+- **Ponder**: For indexing on-chain events from the Mech Marketplace on Base.
+- **Mech Marketplace on Base**: The on-chain job board for posting and discovering jobs.
 
 ---
 
@@ -57,7 +59,8 @@ The repository has been flattened for simplicity and easier development. Here's 
 ```
 jinn-gemini/
 ├── worker/                    # Worker application
-│   └── worker.ts             # Main worker logic
+│   ├── worker.ts             # Legacy worker logic
+│   └── mech_worker.ts        # NEW: On-chain mech worker
 ├── gemini-agent/             # Agent and MCP server
 │   ├── agent.ts              # Main agent logic
 │   ├── mcp/                  # Model Context Protocol server
@@ -67,6 +70,7 @@ jinn-gemini/
 │   │       ├── index.ts      # Tool exports
 │   │       └── *.ts          # Individual tool files
 │   └── settings.template.json # Gemini CLI settings template
+├── ponder/                   # NEW: Ponder project for indexing on-chain events
 ├── frontend/                 # Frontend application
 │   └── explorer/             # Next.js explorer interface
 ├── docs/                     # Documentation
@@ -81,18 +85,15 @@ jinn-gemini/
 
 The system consists of several key components that work together in a continuous loop.
 
-1.  **Database Core (Supabase/Postgres)**: The heart of the system. It uses a set of tables and a sophisticated trigger system built around a universal event bus (`events` table) to manage the entire workflow. Every dispatched job is explicitly linked to its triggering event via `source_event_id` and to its project context via `project_run_id`, ensuring complete traceability and organizational structure. The system now includes enhanced context management with `trigger_context` and `delegated_work_context` columns that provide agents with rich operational context. See `docs/documentation/DATABASE_MAP.md` for a detailed schema.
-2.  **Worker (`worker/worker.ts`)**: A Node.js application that continuously polls the `job_board` for `PENDING` jobs. It is responsible for claiming a job, invoking the agent, and reporting the outcome. The worker now constructs enhanced prompts that include both trigger context and delegated work context, ensuring agents have comprehensive visibility into their operational environment.
-3.  **Agent (`gemini-agent/agent.ts`)**: The "brain" of the operation. It wraps the Gemini CLI and is responsible for:
-    -   Dynamically generating job-specific settings to enable the correct set of tools.
-    -   Executing the LLM prompt with integrated telemetry collection.
-    -   Parsing detailed telemetry data (token usage, tool calls, performance metrics) directly from Gemini CLI output files.
-    -   Capturing both critical errors and warning-level issues for comprehensive job reporting.
-4.  **Tools (`gemini-agent/mcp/`)**: A set of capabilities the agent can use. These are exposed via a **Model Context Protocol (MCP)** server, which acts as a secure bridge between the agent and the database. Tools include `get_schema`, `read_records`, `enqueue_transaction` for on-chain actions, and powerful awareness tools like `get_job_graph`, `trace_lineage`, and `get_context_snapshot`.
-5.  **On-Chain Execution (Dual-Rail)**: The worker supports two distinct on-chain transaction execution strategies, chosen by the agent at runtime:
-    -   **`EOA` (Externally Owned Account)**: For fast, simple, and low-cost transactions (e.g., creating Zora content coins), the worker can sign and send transactions directly from its own wallet.
-    -   **`SAFE` (Gnosis Safe)**: For high-security operations or interactions with protocols requiring a multi-sig (e.g., OLAS staking), transactions are routed through a Gnosis Safe.
-    -   **Allowlisting**: A flexible, chain-aware allowlist (`worker/config/allowlists.json`) provides granular control, permitting specific contract functions to be executed only by a designated strategy (e.g., restricting `approve()` to `SAFE` only).
+1.  **Hybrid Data Model (Ponder + Supabase)**: The system now uses a hybrid data model.
+    -   **Ponder (Primary Indexer)**: Ponder is the primary data source for on-chain events. It indexes `Request` and `Deliver` events from the Mech Marketplace on Base and exposes them via a GraphQL API. This is the new "single source of truth" for on-chain job status.
+    -   **Supabase (Off-Chain Persistence)**: Supabase is used for off-chain data persistence and worker coordination. It stores `onchain_*` tables for request claims, job reports, and artifacts, all linked back to the on-chain `request_id`.
+2.  **On-Chain Worker (`worker/mech_worker.ts`)**: The new primary worker for processing on-chain jobs. It continuously polls the Ponder GraphQL API for new `Request` events, atomically claims them in Supabase, invokes the agent, stores the results, and delivers the final output on-chain.
+3.  **Agent (`gemini-agent/agent.ts`)**: The "brain" of the operation. It now receives on-chain context (`JINN_REQUEST_ID`, `JINN_MECH_ADDRESS`) and uses tools to interact with the new on-chain system.
+4.  **Tools (`gemini-agent/mcp/`)**: The agent's capabilities have been updated for the on-chain world.
+    -   `post_marketplace_job`: The new tool for posting jobs to the Mech Marketplace.
+    -   `create_record`: Now automatically injects `request_id` and `worker_address` when writing to `onchain_*` tables, ensuring universal causal tracing.
+5.  **On-Chain Execution (Gnosis Safe)**: The worker uses a Gnosis Safe to deliver results on-chain via the `deliverViaSafe` function in `mech-client-ts`.
 6.  **Frontend Explorer (`frontend/explorer/`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
 
 ---
@@ -105,24 +106,17 @@ The system consists of several key components that work together in a continuous
 
 ## The Lifecycle of a Job
 
-The entire system operates on a continuous, event-driven cycle:
+The entire system operates on a continuous, on-chain, event-driven cycle:
 
-1.  **Event Creation**: An event occurs in the system, which is always represented by the creation of a new record in the `events` table. This could be a system-level event (like `system.cron.tick`), a job status change (`job.completed`), or a declarative emission from another completed job.
-2.  **Dispatch**: The `universal_job_dispatcher_v2` trigger, which listens exclusively for new rows in the `events` table, finds all `jobs` definitions that subscribe to the new event's `event_type` and match the event's payload filters. It then creates corresponding `PENDING` entries in the `job_board`, critically populating each with:
-    - `source_event_id` of the event that caused it
-    - `project_run_id` for organizational context
-    - `trigger_context` with rich information about the triggering event and resolved source data
-    - `delegated_work_context` with comprehensive summaries of child jobs completed after the parent's last run
-3.  **Claim**: A `worker` instance polls the `job_board`, finds the `PENDING` job, and atomically claims it by setting its status to `IN_PROGRESS` and assigning its own `worker_id`.
-4.  **Execution**: The worker invokes the `Agent`, passing it an enhanced prompt that includes:
-    - The original job prompt and input
-    - Rich trigger context about what caused the job
-    - Comprehensive delegated work context about child job results
-    - Inbox messages and other operational context
+1.  **Job Creation**: An agent calls the `post_marketplace_job` tool, which posts a `Request` to the Mech Marketplace contract on Base. The request's metadata (prompt, tools) is stored on IPFS.
+2.  **Indexing**: The `Ponder` service, which is listening to the Mech Marketplace contract, indexes the new `Request` event and makes it available via its GraphQL API.
+3.  **Discovery & Claim**: The `mech_worker` polls the Ponder GraphQL API, discovers the new `Request`, and atomically claims it by creating a record in the `onchain_request_claims` table in Supabase. This prevents other workers from processing the same job.
+4.  **Execution**: The worker invokes the `Agent`, passing the on-chain `requestId` and `mechAddress` as environment variables (`JINN_REQUEST_ID`, `JINN_MECH_ADDRESS`). The agent fetches the prompt from IPFS and begins execution.
 5.  **Tool Setup**: The agent dynamically creates a `.gemini/settings.json` file that configures the Gemini CLI to use the `gemini-agent/mcp` server and exposes *only* the tools enabled for that job.
-6.  **LLM Interaction**: The agent spawns the Gemini CLI process. The LLM uses the provided tools as needed by making calls to the MCP server, which executes the corresponding database functions.
-7.  **Reporting**: After execution, the worker collects the final output and detailed telemetry (token counts, tool calls, duration, errors, warnings) from the Agent's integrated telemetry parser and creates a comprehensive record in the `job_reports` table with full visibility into job performance and issues.
-8.  **Completion**: The worker updates the job's status in the `job_board` to `COMPLETED` or `FAILED`, making the result available to the rest of the system and potentially triggering the next job in a chain by creating a new event. The job may also create artifacts in the `artifacts` table for data persistence and lineage tracking.
+6.  **LLM Interaction**: The agent spawns the Gemini CLI process. The LLM uses the provided tools as needed by making calls to the MCP server.
+7.  **Reporting**: After execution, the worker stores the final output and detailed telemetry in the `onchain_job_reports` and `onchain_artifacts` tables in Supabase, linking them to the `request_id`.
+8.  **Delivery**: The worker calls `deliverViaSafe` to submit the IPFS hash of the result to the Mech Marketplace contract on-chain. This creates a `Deliver` event.
+9.  **Completion**: Ponder indexes the `Deliver` event, marking the job as complete on-chain.
 
 ---
 
@@ -382,6 +376,102 @@ get_project_summary({ cursor: "next_cursor_from_previous_call" })
 ```
 
 This tool is essential for the delegation workflow - it allows project leads to efficiently review what their delegated agents have produced without getting overwhelmed by implementation details.
+
+### Control API Integration
+
+The MCP tools now support routing writes to the **Jinn Control API** for on-chain jobs, providing a secure, auditable write layer for `onchain_*` tables.
+
+#### Control API Overview
+
+The Control API is a GraphQL service that provides authenticated write operations for on-chain job data. It ensures:
+- **Data Integrity**: Validates `request_id` exists in Ponder before writes
+- **Automatic Lineage**: Auto-injects `request_id` and `worker_address` from job context
+- **Idempotency**: Supports idempotency keys to prevent duplicate operations
+- **Security**: Enforces worker identity via `X-Worker-Address` header
+
+#### Environment Configuration
+
+Control API behavior is controlled by the `USE_CONTROL_API` environment variable:
+
+```bash
+# Enable Control API (default)
+USE_CONTROL_API=true
+
+# Disable Control API (fallback to direct Supabase)
+USE_CONTROL_API=false
+
+# Control API endpoint (default: http://localhost:4001/graphql)
+CONTROL_API_URL=http://localhost:4001/graphql
+```
+
+#### Tool Behavior Changes
+
+**`create_record` Tool:**
+- **On-chain tables** (`onchain_artifacts`, `onchain_job_reports`, `onchain_messages`): Routes to Control API when enabled
+- **Legacy tables** (`artifacts`, `job_reports`, `memories`, `messages`): Always uses direct Supabase
+- **Response metadata**: Includes `source: 'control_api'` or `source: 'supabase'` to indicate write path
+
+**`update_records` Tool:**
+- **On-chain tables**: Falls back to direct Supabase (Control API doesn't support updates yet)
+- **Response metadata**: Includes `source: 'supabase_fallback'` for on-chain tables
+
+**`create_artifact` Tool (NEW):**
+- Dedicated tool for creating artifacts via Control API
+- Requires `requestId` from job context (only works within on-chain jobs)
+- Automatically injects `request_id` and `worker_address`
+- Returns structured response with artifact metadata
+
+#### Usage Examples
+
+```javascript
+// Create artifact via Control API (on-chain job context required)
+create_artifact({
+  topic: "analysis",
+  content: "Detailed analysis results...",
+  cid: "QmHash..." // Optional IPFS CID
+})
+
+// Create record - automatically routes based on table type
+create_record({
+  table_name: "onchain_job_reports", // Routes to Control API
+  data: {
+    status: "COMPLETED",
+    duration_ms: 5000,
+    final_output: "Task completed successfully"
+  }
+})
+
+create_record({
+  table_name: "artifacts", // Routes to Supabase
+  data: {
+    topic: "legacy_artifact",
+    content: "Legacy system artifact"
+  }
+})
+```
+
+#### Error Handling
+
+Control API errors are clearly distinguished in tool responses:
+
+```json
+{
+  "data": null,
+  "meta": {
+    "ok": false,
+    "code": "CONTROL_API_ERROR",
+    "message": "Control API error: Unknown request_id"
+  }
+}
+```
+
+Common error codes:
+- `CONTROL_API_ERROR`: GraphQL or HTTP errors from Control API
+- `CONTROL_API_DISABLED`: Control API is disabled via environment
+- `MISSING_REQUEST_ID`: Required for on-chain operations
+- `VALIDATION_ERROR`: Invalid parameters
+
+---
 
 #### `get_job_graph` & `trace_lineage`
 These tools provide deep insight into the system's causal architecture.

@@ -29,6 +29,8 @@ export { createRecord, createRecordParams, createRecordSchema } from './create-r
 export { readRecords, readRecordsParams, readRecordsSchema } from './read-records.js';
 export { updateRecords, updateRecordsParams, updateRecordsSchema } from './update-records.js';
 export { deleteRecords, deleteRecordsParams, deleteRecordsSchema } from './delete-records.js';
+export { createArtifactTool as createArtifact, createArtifactParams, createArtifactSchema } from './create_artifact.js';
+export { createMessageTool as createMessage, createMessageParams, createMessageSchema } from './create_message.js';
 
 // Export Zora integration tools
 export { enqueueTransaction, enqueueTransactionParams, enqueueTransactionSchema, type EnqueueTransactionParams } from './enqueue-transaction.js';

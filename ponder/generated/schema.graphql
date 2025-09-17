@@ -14,6 +14,7 @@ type request {
   transactionHash: String
   blockNumber: BigInt!
   blockTimestamp: BigInt!
+  delivered: Boolean!
 }
 
 scalar BigInt
@@ -95,6 +96,10 @@ input requestFilter {
   blockTimestamp_lt: BigInt
   blockTimestamp_gte: BigInt
   blockTimestamp_lte: BigInt
+  delivered: Boolean
+  delivered_not: Boolean
+  delivered_in: [Boolean]
+  delivered_not_in: [Boolean]
 }
 
 type delivery {

@@ -195,13 +195,38 @@ A minimal service with the following GraphQL mutations. The API will derive the 
 - Extend `shared/context.ts` to include `JINN_REQUEST_ID`, `JINN_MECH_ADDRESS`
 - In `create-record.ts`, auto-inject `request_id` (and `worker/mech` if applicable) when table ∈ {artifacts, messages, job_reports}
 
+### Phase 2.5: Jinn Control API — Write Layer
+
+**Goal:** Provide an authenticated, auditable write path for on-chain jobs; move all writes off MCP direct-to-DB into a stable API.
+
+- Surface: GraphQL with mutations:
+  - `claimRequest(requestId: ID!): RequestClaim!`
+  - `createJobReport(requestId: ID!, reportData: JobReportInput!): JobReport!`
+  - `createArtifact(requestId: ID!, artifactData: ArtifactInput!): Artifact!`
+- AuthZ & Identity:
+  - Service-to-service key or signed JWT; enforce RLS-compatible claims
+  - Derive/validate `worker_address` server-side (e.g., from header), ensure it matches `request.mech`
+- Integrity & Idempotency:
+  - Idempotency-Key header for all mutations
+  - Uniqueness on `request_id` for claims (conflicts return existing claim)
+  - Validate `request_id` exists in Ponder before writes (cache allowed)
+- Lineage (server-enforced):
+  - Auto-inject `request_id` and `worker_address`; ignore client-provided values
+- Observability & Limits:
+  - Structured logs with correlation IDs; basic rate limiting per `worker_address`
+
 ### Phase 3: Activation & Transition
 
 **Goal:** Switch to new flow and deprecate legacy job tools.
 
 - Register `post_marketplace_job` in `mcp/server.ts`
 - Remove legacy job tools (`create_job`, `create_job_batch`) from `Agent` `universalTools`
-- Docs: update `AGENT_README.md`, `docs/documentation/DATABASE_MAP.md` for Ponder + `request_claims`
+- Route writes through Control API (feature-flagged; default ON):
+  - mech_worker uses Control API for `claimRequest`, `createJobReport`, `createArtifact`
+  - MCP write tools prefer Control API; fallback to direct DB path only behind a flag
+- Security & RLS hardening:
+  - Tighten onchain_* table policies to service-role only for writes; all app writes go via Control API
+- Docs: update `AGENT_README.md`, `docs/documentation/DATABASE_MAP.md`, `SETUP.md` with Control API usage
 
 ### Phase 4: Testing & Validation
 
@@ -210,9 +235,14 @@ A minimal service with the following GraphQL mutations. The API will derive the 
 - Configure Base test RPC / local Anvil; prepare Safe and Mech fixtures
 - E2E script `scripts/test_onchain_e2e.ts`:
   - Post job via `post_marketplace_job`
-  - Worker claims → runs → stores `job_report`/`artifact` in Supabase (with `request_id`)
+  - Worker claims via Control API → runs → stores `job_report`/`artifact` via Control API (with `request_id`)
   - Deliver via Safe
   - Verify Ponder indexed `Deliver` and links to `Request`
+- Control API test cases:
+  - Claim idempotency under concurrency: exactly one claim row created; others receive existing
+  - Unknown `request_id` rejected (Ponder-backed validation)
+  - Server-side lineage: `request_id`/`worker_address` enforced; client-supplied ignored
+  - Rate limit and retry/backoff behavior on 429/5xx with Idempotency-Key respected
 
 ### Additional Refinements
 

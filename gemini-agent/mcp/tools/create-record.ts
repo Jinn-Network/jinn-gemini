@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { supabase } from './shared/supabase.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { tableNameSchema } from './shared/types.js';
+import { shouldUseControlApi, createJobReport, createArtifact, createMessage } from './shared/control_api.js';
 
 // Helper function to get schema information when errors occur
 async function getSchemaHelp(tableName: string, error: any): Promise<string> {
@@ -75,6 +76,90 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
     table_name = tn;
     const { jobId, jobDefinitionId, jobName, projectRunId, sourceEventId, projectDefinitionId, requestId, mechAddress } = getCurrentJobContext();
     
+    // Route onchain_* tables to Control API
+    if (shouldUseControlApi(table_name)) {
+      try {
+        let newId: string;
+        
+        if (table_name === 'onchain_job_reports') {
+          // Map data to JobReportInput format
+          const reportData = {
+            status: data.status || 'COMPLETED',
+            duration_ms: data.duration_ms || 0,
+            total_tokens: data.total_tokens || null,
+            tools_called: data.tools_called ? JSON.stringify(data.tools_called) : null,
+            final_output: data.final_output || null,
+            error_message: data.error_message || null,
+            error_type: data.error_type || null,
+            raw_telemetry: data.raw_telemetry ? JSON.stringify(data.raw_telemetry) : null,
+          };
+          
+          if (!requestId) {
+            throw new Error('requestId is required for onchain_job_reports via Control API');
+          }
+          
+          newId = await createJobReport(requestId, reportData);
+        } else if (table_name === 'onchain_artifacts') {
+          // Map data to ArtifactInput format
+          const artifactData = {
+            cid: data.cid || 'inline',
+            topic: data.topic || 'default',
+            content: data.content || null,
+          };
+          
+          if (!requestId) {
+            throw new Error('requestId is required for onchain_artifacts via Control API');
+          }
+          
+          newId = await createArtifact(requestId, artifactData);
+        } else if (table_name === 'onchain_messages') {
+          // Map data to MessageInput format
+          const messageData = {
+            content: data.content || '',
+            status: data.status || 'PENDING',
+          };
+          
+          if (!requestId) {
+            throw new Error('requestId is required for onchain_messages via Control API');
+          }
+          
+          newId = await createMessage(requestId, messageData);
+        } else {
+          // For other onchain tables, fall back to direct Supabase
+          const enrichedData = {
+            ...data,
+            request_id: requestId,
+            worker_address: mechAddress,
+          };
+          
+          const { data: directId, error } = await supabase.rpc('create_record', {
+            p_table_name: table_name,
+            p_data: enrichedData,
+          });
+          
+          if (error) throw error;
+          newId = directId;
+        }
+        
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: newId }, meta: { ok: true, source: 'control_api' } }) }] };
+      } catch (controlError: any) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ 
+              data: null, 
+              meta: { 
+                ok: false, 
+                code: 'CONTROL_API_ERROR', 
+                message: `Control API error: ${controlError.message}` 
+              } 
+            }, null, 2)
+          }]
+        };
+      }
+    }
+    
+    // Legacy Supabase path for non-onchain tables
     // Only inject context into tables designed to carry lineage fields
     const tablesWithLineage = new Set(['artifacts', 'job_reports', 'memories', 'messages', 'threads']);
     const tablesOnchain = new Set(['onchain_artifacts', 'onchain_job_reports', 'onchain_messages']);
@@ -118,7 +203,7 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
         }]
       };
     }
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: newId }, meta: { ok: true } }) }] };
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: newId }, meta: { ok: true, source: 'supabase' } }) }] };
   } catch (e: any) {
     // Get schema help for schema-related errors
     const schemaHelp = await getSchemaHelp(table_name, e);

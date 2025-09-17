@@ -390,3 +390,105 @@ The database uses several key extensions:
 - Project definitions provide hierarchical organization and context for job execution.
 - **NEW**: Enhanced context management provides agents with comprehensive operational visibility through trigger context and delegated work context.
 - **NEW**: Consistent naming convention uses `parent_job_definition_id` across all tables for clear delegation tracking.
+
+---
+
+## On-Chain Architecture
+
+With the migration to an on-chain job system, the database now works in tandem with the Ponder indexer to form a hybrid data model.
+
+-   **Ponder (On-Chain Source of Truth)**: Ponder indexes `Request` and `Deliver` events from the Mech Marketplace contract on Base. It is the primary source of truth for on-chain job status.
+-   **Supabase (Off-Chain Persistence & Coordination)**: Supabase stores off-chain data related to on-chain jobs. The new `onchain_*` tables are used for worker coordination (claiming jobs) and persisting results (reports and artifacts). Every record in these tables is linked back to the on-chain `request_id` for universal causal tracing.
+
+### On-Chain Tables
+
+#### `onchain_request_claims`
+This table ensures atomic claiming of on-chain jobs, preventing race conditions between workers.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `request_id` | `text` | **Primary Key**. The on-chain request ID from the Mech Marketplace. |
+| `worker_address` | `text` | **Required**. The address of the worker that claimed this request. |
+| `status` | `text` | **Required**. The current status (`IN_PROGRESS`, `COMPLETED`). |
+| `claimed_at` | `timestamptz` | **Required**. Timestamp of when the request was claimed. |
+| `completed_at` | `timestamptz` | Timestamp of when the request was completed. |
+
+#### `onchain_job_reports`
+Stores comprehensive reports for on-chain job executions.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `uuid` | **Primary Key**. |
+| `request_id` | `text` | **Required**. Foreign key linking to the on-chain `Request`. |
+| `worker_address` | `text` | **Required**. The worker that executed the job. |
+| `status` | `text` | **Required**. The final status (`COMPLETED` or `FAILED`). |
+| `duration_ms` | `integer` | **Required**. Total execution time in milliseconds. |
+| `total_tokens` | `integer` | Total tokens used. |
+| `tools_called` | `jsonb` | Array of tools called during execution. |
+| `final_output` | `text` | The final output from the job. |
+| `error_message` | `text` | Any critical error message if the job failed. |
+| `error_type` | `text` | Classification of the error type. |
+| `raw_telemetry` | `jsonb` | The complete, detailed telemetry data. |
+| `created_at` | `timestamptz` | **Required**. Timestamp of report creation. |
+
+#### `onchain_artifacts`
+Stores artifacts created by on-chain job executions.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `uuid` | **Primary Key**. |
+| `request_id` | `text` | **Required**. Foreign key linking to the on-chain `Request`. |
+| `worker_address` | `text` | **Required**. The worker that created this artifact. |
+| `cid` | `text` | **Required**. The IPFS CID of the artifact. |
+| `topic` | `text` | **Required**. The topic of the artifact. |
+| `content` | `text` | The data payload of the artifact. |
+| `created_at` | `timestamptz` | **Required**. Timestamp of creation. |
+
+#### `onchain_messages`
+Handles messaging for on-chain jobs.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `uuid` | **Primary Key**. |
+| `request_id` | `text` | **Required**. Foreign key linking to the on-chain `Request`. |
+| `worker_address` | `text` | The worker that sent the message. |
+| `content` | `text` | **Required**. The message content. |
+| `status` | `text` | **Required**. Message status (`PENDING`, `READ`). |
+| `created_at` | `timestamptz` | **Required**. When the message was created. |
+
+### On-Chain Data Flow
+
+```mermaid
+graph TD
+    subgraph Agent Execution
+        A[Agent] -- Calls --> B(post_marketplace_job Tool);
+    end
+
+    subgraph On-Chain
+        B -- Sends Tx --> C{Mech Marketplace on Base};
+        C -- Emits --> D[Request Event];
+    end
+
+    subgraph Indexing
+        E[Ponder] -- Listens for --> D;
+        E -- Indexes Event --> F[Ponder GraphQL API];
+    end
+
+    subgraph Worker Execution
+        G[mech_worker] -- Polls --> F;
+        G -- Discovers & Claims --> H(onchain_request_claims);
+        G -- Executes Agent --> I{LLM Interaction};
+        I -- Generates --> J[Job Report & Artifacts];
+    end
+
+    subgraph Off-Chain Persistence
+        J -- Stored in --> K(onchain_job_reports);
+        J -- Stored in --> L(onchain_artifacts);
+    end
+
+    subgraph On-Chain Delivery
+        G -- Calls deliverViaSafe --> C;
+        C -- Emits --> M[Deliver Event];
+        E -- Listens for --> M;
+    end
+```

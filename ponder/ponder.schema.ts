@@ -10,6 +10,7 @@ export default createSchema((p) => ({
       transactionHash: p.string().optional(),
       blockNumber: p.bigint(),
       blockTimestamp: p.bigint(),
+      delivered: p.boolean(),
     },
     {
       ts: p.index("blockTimestamp").desc(),

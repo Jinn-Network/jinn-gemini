@@ -1,0 +1,267 @@
+import { createYoga, createSchema } from 'graphql-yoga';
+import { createClient } from '@supabase/supabase-js';
+import fetch from 'cross-fetch';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+type Context = {
+  supabase: ReturnType<typeof createClient>;
+  ponderUrl: string;
+  req: Request;
+};
+
+const typeDefs = /* GraphQL */ `
+  type RequestClaim {
+    request_id: String!
+    worker_address: String!
+    status: String!
+    claimed_at: String!
+    completed_at: String
+  }
+
+  type JobReport {
+    id: String!
+    request_id: String!
+    worker_address: String!
+    status: String!
+    duration_ms: Int!
+    total_tokens: Int
+    final_output: String
+    error_message: String
+    error_type: String
+    created_at: String!
+  }
+
+  type Artifact {
+    id: String!
+    request_id: String!
+    worker_address: String!
+    cid: String!
+    topic: String!
+    content: String
+    created_at: String!
+  }
+
+  type Message {
+    id: String!
+    request_id: String!
+    worker_address: String!
+    content: String!
+    status: String!
+    created_at: String!
+  }
+
+  input JobReportInput {
+    status: String!
+    duration_ms: Int!
+    total_tokens: Int
+    tools_called: String
+    final_output: String
+    error_message: String
+    error_type: String
+    raw_telemetry: String
+  }
+
+  input ArtifactInput {
+    cid: String!
+    topic: String!
+    content: String
+  }
+
+  input MessageInput {
+    content: String!
+    status: String
+  }
+
+  type Mutation {
+    claimRequest(requestId: String!): RequestClaim!
+    createJobReport(requestId: String!, reportData: JobReportInput!): JobReport!
+    createArtifact(requestId: String!, artifactData: ArtifactInput!): Artifact!
+    createMessage(requestId: String!, messageData: MessageInput!): Message!
+  }
+
+  type Query {
+    _health: String!
+  }
+`;
+
+async function assertRequestExists(ctx: Context, requestId: string) {
+  if (!ctx.ponderUrl) return; // allow skip if not configured
+  const body = {
+    query: `query($id: String!) { request(id: $id) { id } }`,
+    variables: { id: requestId },
+  };
+  try {
+    const res = await fetch(`${ctx.ponderUrl}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (!json?.data?.request?.id) {
+      throw new Error(`Unknown request_id: ${requestId}`);
+    }
+  } catch (error) {
+    console.error('Ponder validation failed:', error);
+    throw new Error(`Request validation failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function getWorkerAddress(ctx: Context): string {
+  const headerVal = (ctx.req.headers as any).get?.('x-worker-address') || (ctx.req as any).headers?.['x-worker-address'];
+  if (!headerVal || typeof headerVal !== 'string') {
+    throw new Error('Missing x-worker-address');
+  }
+  return headerVal;
+}
+
+const resolvers = {
+  Query: {
+    _health: () => 'ok',
+  },
+  Mutation: {
+    claimRequest: async (_: any, args: { requestId: string }, ctx: Context) => {
+      await assertRequestExists(ctx, args.requestId);
+      const worker = getWorkerAddress(ctx);
+
+      const { data, error } = await ctx.supabase
+        .from('onchain_request_claims')
+        .upsert(
+          { request_id: args.requestId, worker_address: worker, status: 'IN_PROGRESS' },
+          { onConflict: 'request_id' }
+        )
+        .select()
+        .limit(1);
+
+      if (error) throw new Error(error.message);
+      let row = data && data[0];
+      if (!row) {
+        const { data: existing, error: exErr } = await ctx.supabase
+          .from('onchain_request_claims')
+          .select('*')
+          .eq('request_id', args.requestId)
+          .limit(1)
+          .maybeSingle();
+        if (exErr) throw new Error(exErr.message);
+        row = existing;
+      }
+      return row;
+    },
+
+    createJobReport: async (
+      _: any,
+      args: { requestId: string; reportData: any },
+      ctx: Context
+    ) => {
+      await assertRequestExists(ctx, args.requestId);
+      const worker = getWorkerAddress(ctx);
+
+      const payload = {
+        request_id: args.requestId,
+        worker_address: worker,
+        status: args.reportData.status,
+        duration_ms: args.reportData.duration_ms,
+        total_tokens: args.reportData.total_tokens ?? 0,
+        tools_called: args.reportData.tools_called ?? '[]',
+        final_output: args.reportData.final_output ?? null,
+        error_message: args.reportData.error_message ?? null,
+        error_type: args.reportData.error_type ?? null,
+        raw_telemetry: args.reportData.raw_telemetry ?? '{}',
+      };
+
+      const { data, error } = await ctx.supabase
+        .from('onchain_job_reports')
+        .insert(payload)
+        .select()
+        .limit(1);
+      if (error) throw new Error(error.message);
+      return data![0];
+    },
+
+    createArtifact: async (
+      _: any,
+      args: { requestId: string; artifactData: any },
+      ctx: Context
+    ) => {
+      await assertRequestExists(ctx, args.requestId);
+      const worker = getWorkerAddress(ctx);
+
+      const payload = {
+        request_id: args.requestId,
+        worker_address: worker,
+        cid: args.artifactData.cid,
+        topic: args.artifactData.topic,
+        content: args.artifactData.content ?? null,
+      };
+
+      const { data, error } = await ctx.supabase
+        .from('onchain_artifacts')
+        .insert(payload)
+        .select()
+        .limit(1);
+      if (error) throw new Error(error.message);
+      return data![0];
+    },
+
+    createMessage: async (
+      _: any,
+      args: { requestId: string; messageData: any },
+      ctx: Context
+    ) => {
+      await assertRequestExists(ctx, args.requestId);
+      const worker = getWorkerAddress(ctx);
+
+      const payload = {
+        request_id: args.requestId,
+        worker_address: worker,
+        content: args.messageData.content,
+        status: args.messageData.status ?? 'PENDING',
+      };
+
+      const { data, error } = await ctx.supabase
+        .from('onchain_messages')
+        .insert(payload)
+        .select()
+        .limit(1);
+      if (error) throw new Error(error.message);
+      return data![0];
+    },
+  },
+};
+
+const schema = createSchema({ typeDefs, resolvers });
+
+const SUPABASE_URL = process.env.SUPABASE_URL as string;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+const PORT = parseInt(process.env.CONTROL_API_PORT || '4001', 10);
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
+
+const yoga = createYoga<Context>({
+  schema,
+  context: ({ request }) => ({
+    supabase,
+    ponderUrl: PONDER_GRAPHQL_URL,
+    req: request,
+  }),
+  graphqlEndpoint: '/graphql',
+});
+
+const http = await import('http');
+const server = http.createServer(yoga);
+server.listen(PORT, () => {
+  // eslint-disable-next-line no-console
+  console.log(`Jinn Control API running on http://localhost:${PORT}/graphql`);
+});
+
+
