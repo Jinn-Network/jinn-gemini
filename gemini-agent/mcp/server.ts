@@ -22,7 +22,6 @@ async function main() {
 
     // Build serverTools from imported tool modules
     serverTools = [
-      { name: 'get_schema', schema: tools.getSchemaSchema, handler: tools.getSchema },
       { name: 'create_job', schema: tools.createJobSchema, handler: tools.createJob },
       { name: 'create_job_batch', schema: tools.createJobBatchSchema, handler: tools.createJobBatch },
       { name: 'update_job', schema: tools.updateJobSchema, handler: tools.updateJob },
@@ -82,7 +81,9 @@ async function main() {
       } else if (tool.name === 'create_job_batch') {
         server.registerTool(tool.name, createJobBatchDynamicSchema, tool.handler);
       } else {
-        server.registerTool(tool.name, tool.schema as any, tool.handler);
+        if (tool.name !== 'get_schema') {
+          server.registerTool(tool.name, tool.schema as any, tool.handler);
+        }
       }
     }
 

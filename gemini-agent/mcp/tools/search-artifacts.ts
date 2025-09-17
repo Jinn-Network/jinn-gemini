@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabase } from './shared/supabase.js';
+import fetch from 'cross-fetch';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
 // MCP registration schema (permissive) to avoid -32602 pre-validation failures.
@@ -43,24 +43,23 @@ export async function searchArtifacts(params: any) {
     ({ query, cursor } = parsed.data);
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
-    const term = `%${query}%`;
-    // Search by name/topic/content; include name in selection
-    const { data, error } = await supabase
-      .from('artifacts')
-      .select('id, name, topic, status, created_at, job_id, parent_job_definition_id')
-      .or(`name.ilike.${term},topic.ilike.${term},content.ilike.${term}`)
-      // Prioritize name matches by ordering: name match first, then recency
-      .order('created_at', { ascending: false });
+    // Query Ponder for recent requests matching text in id/mech/sender (proxy for artifacts search)
+    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    const gql = `query Search($q: String!, $limit: Int!) {
+      requests(where: { OR: [
+        { id_contains: $q }, { mech_contains: $q }, { sender_contains: $q }
+      ] }, orderBy: "blockTimestamp", orderDirection: "desc", limit: $limit) {
+        items { id mech sender ipfsHash blockTimestamp delivered }
+      }
+    }`;
+    const variables = { q: query, limit: 50 };
+    const res = await fetch(PONDER_GRAPHQL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: gql, variables }) });
+    const json = await res.json();
+    const items = json?.data?.requests?.items || [];
 
-    if (error) {
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ data: [], meta: { ok: false, code: 'DB_ERROR', message: error.message } }) }]
-      };
-    }
-
-    const composed = composeSinglePageResponse(data || [], {
+    const composed = composeSinglePageResponse(items, {
       startOffset: keyset.offset,
-      requestedMeta: { cursor, query }
+      requestedMeta: { cursor, query, source: 'ponder' }
     });
 
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: { ok: true, ...composed.meta } }) }] };

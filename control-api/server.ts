@@ -53,6 +53,24 @@ const typeDefs = /* GraphQL */ `
     created_at: String!
   }
 
+  type TransactionRequest {
+    id: String!
+    request_id: String
+    worker_address: String
+    chain_id: Int!
+    payload: String!
+    payload_hash: String!
+    execution_strategy: String!
+    status: String!
+    idempotency_key: String
+    safe_tx_hash: String
+    tx_hash: String
+    error_code: String
+    error_message: String
+    created_at: String!
+    updated_at: String!
+  }
+
   input JobReportInput {
     status: String!
     duration_ms: Int!
@@ -80,6 +98,8 @@ const typeDefs = /* GraphQL */ `
     createJobReport(requestId: String!, reportData: JobReportInput!): JobReport!
     createArtifact(requestId: String!, artifactData: ArtifactInput!): Artifact!
     createMessage(requestId: String!, messageData: MessageInput!): Message!
+    enqueueTransaction(requestId: String, chain_id: Int!, execution_strategy: String!, payload: String!, idempotency_key: String): TransactionRequest!
+    getTransactionStatus(id: String!): TransactionRequest!
   }
 
   type Query {
@@ -227,6 +247,58 @@ const resolvers = {
         .limit(1);
       if (error) throw new Error(error.message);
       return data![0];
+    },
+
+    enqueueTransaction: async (
+      _: any,
+      args: { requestId?: string; chain_id: number; execution_strategy: string; payload: string; idempotency_key?: string },
+      ctx: Context
+    ) => {
+      const worker = getWorkerAddress(ctx);
+      if (args.requestId) {
+        await assertRequestExists(ctx, args.requestId);
+      }
+
+      // Parse payload JSON string
+      let parsedPayload: any;
+      try {
+        parsedPayload = JSON.parse(args.payload);
+      } catch (e) {
+        throw new Error('Invalid payload: must be JSON string');
+      }
+
+      const insert = {
+        request_id: args.requestId ?? null,
+        worker_address: worker,
+        chain_id: args.chain_id,
+        payload: parsedPayload,
+        payload_hash: '', // optionally computed by client; keep server simple
+        execution_strategy: args.execution_strategy,
+        idempotency_key: args.idempotency_key ?? null,
+      } as any;
+
+      const { data, error } = await ctx.supabase
+        .from('onchain_transaction_requests')
+        .insert(insert)
+        .select()
+        .limit(1);
+      if (error) throw new Error(error.message);
+      return data![0];
+    },
+
+    getTransactionStatus: async (
+      _: any,
+      args: { id: string },
+      ctx: Context
+    ) => {
+      const { data, error } = await ctx.supabase
+        .from('onchain_transaction_requests')
+        .select('*')
+        .eq('id', args.id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error('Not found');
+      return data;
     },
   },
 };

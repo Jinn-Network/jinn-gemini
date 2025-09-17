@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { createHash } from 'crypto';
-import { supabase } from './shared/supabase.js';
-// import { getJobContext } from './shared/context.js'; // No longer needed
+import { isControlApiEnabled } from './shared/control_api.js';
 import { getAllowlist } from './shared/allowlist.js';
+import { getCurrentJobContext } from './shared/context.js';
+import { workerLogger } from '../../../worker/logger.js';
+import fetch from 'cross-fetch';
 
 // Input schema for enqueuing transactions
 export const enqueueTransactionParams = z.object({
@@ -59,7 +61,7 @@ export async function enqueueTransaction(params: EnqueueTransactionParams) {
     }
 
     const { payload, chain_id, execution_strategy, idempotency_key } = parseResult.data;
-    // const { jobId } = getJobContext(); // Removed job context dependency
+    const { requestId } = getCurrentJobContext();
 
     /*
     if (!jobId) {
@@ -110,87 +112,48 @@ export async function enqueueTransaction(params: EnqueueTransactionParams) {
     // Calculate payload hash for idempotency
     const payload_hash = calculatePayloadHash(validPayload);
 
-    // Insert transaction request
-    const insertData: any = {
-      payload: validPayload,
-      chain_id,
-      payload_hash,
-      execution_strategy,
-      // source_job_id: jobId // Removed job ID from insert
-    };
-
-    if (idempotency_key) {
-      insertData.idempotency_key = idempotency_key;
-    }
-
-    const { data, error } = await supabase
-      .from('transaction_requests')
-      .insert(insertData)
-      .select('id, payload_hash, created_at, execution_strategy, idempotency_key')
-      .single();
-
-    if (error) {
-      // Check for unique constraint violation (duplicate hash)
-      if (error.code === '23505' && error.message.includes('uq_payload_hash')) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              ok: false,
-              code: 'DUPLICATE_TRANSACTION',
-              message: 'Transaction with identical payload already exists',
-              payload_hash
-            }, null, 2)
-          }]
-        };
-      }
-      // Check for unique constraint violation (duplicate idempotency key)
-      else if (error.code === '23505' && error.message.includes('transaction_requests_idempotency_key_key')) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              ok: false,
-              code: 'DUPLICATE_TRANSACTION',
-              message: 'Transaction with identical idempotency key already exists',
-              idempotency_key
-            }, null, 2)
-          }]
-        };
-      }
-
-      return {
-        isError: true,
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            ok: false,
-            code: 'DATABASE_ERROR',
-            message: 'Failed to enqueue transaction',
-            error: error.message
-          }, null, 2)
-        }]
+    // Route via Control API when enabled
+    if (isControlApiEnabled()) {
+      const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Worker-Address': process.env.MECH_WORKER_ADDRESS || ''
       };
+      const query = `mutation Enqueue($requestId: String, $chain_id: Int!, $execution_strategy: String!, $payload: String!, $idempotency_key: String) {
+        enqueueTransaction(requestId: $requestId, chain_id: $chain_id, execution_strategy: $execution_strategy, payload: $payload, idempotency_key: $idempotency_key) {
+          id
+          payload_hash
+          status
+          created_at
+          chain_id
+          execution_strategy
+          idempotency_key
+        }
+      }`;
+
+      const body = {
+        query,
+        variables: {
+          requestId: requestId ?? null,
+          chain_id,
+          execution_strategy,
+          payload: JSON.stringify(validPayload),
+          idempotency_key: idempotency_key ?? null
+        }
+      };
+
+      const res = await fetch(CONTROL_API_URL, { method: 'POST', headers, body: JSON.stringify(body) });
+      const json = await res.json();
+      if (json.errors) {
+        return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'CONTROL_API_ERROR', message: json.errors[0]?.message || 'Unknown error' }, null, 2) }] };
+      }
+      const tr = json.data.enqueueTransaction;
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: true, transaction_request: tr }, null, 2) }] };
     }
 
-    return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          ok: true,
-          transaction_request: {
-            id: data.id,
-            payload_hash: data.payload_hash,
-            status: 'PENDING',
-            created_at: data.created_at,
-            chain_id,
-            execution_strategy: data.execution_strategy,
-            idempotency_key: data.idempotency_key,
-            payload: validPayload
-          }
-        }, null, 2)
-      }]
-    };
+    // Fallback: legacy path removed for onchain migration
+    workerLogger.warn('Control API disabled; enqueue_transaction requires Control API.');
+    return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, code: 'CONTROL_API_DISABLED', message: 'Enable USE_CONTROL_API to enqueue transactions.' }, null, 2) }] };
 
   } catch (error: any) {
     return {

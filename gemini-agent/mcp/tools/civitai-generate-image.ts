@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { supabase } from './shared/supabase.js';
 import { getCurrentJobContext } from './shared/context.js';
+import { isControlApiEnabled, createArtifact as apiCreateArtifact } from './shared/control_api.js';
 import { getCivitaiApiKey, airCreateImage, extractFirstImageUrl, checkModelAvailability, waitForImageUrlByToken } from './shared/civitai.js';
 import { randomUUID } from 'crypto';
 
@@ -210,38 +211,30 @@ export async function civitaiGenerateImage(params: CivitaiGenerateImageParams) {
       };
     }
 
-    // 3) Persist artifact when job context is available; otherwise return URL only
-    if (jobId) {
-      const newArtifact = {
-        project_run_id: resolvedProjectRunId,
-        project_definition_id: resolvedProjectDefinitionId || null,
-        content: durableUrl,
-        topic: 'image.generated',
-        status: 'READY',
-        job_id: jobId,
-        parent_job_definition_id: jobDefinitionId,
-      } as any;
-
-      const { data: createdArtifact, error: createError } = await supabase
-        .from('artifacts')
-        .insert(newArtifact)
-        .select('id')
-        .single();
-
-      if (createError) {
+    // 3) Persist artifact when on-chain job context is available via Control API; otherwise return URL only
+    const hasRequestContext = !!process.env.JINN_REQUEST_ID;
+    if (hasRequestContext && isControlApiEnabled()) {
+      try {
+        const requestId = String(process.env.JINN_REQUEST_ID);
+        const newId = await apiCreateArtifact(requestId, {
+          cid: 'inline',
+          topic: 'image.generated',
+          content: durableUrl,
+        });
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'CREATE_FAILED', message: `Failed to create artifact: ${createError.message}` } }, null, 2) }]
+          content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: newId, image_url: durableUrl }, meta: { ok: true, source: 'control_api' } }, null, 2) }]
+        };
+      } catch (e: any) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: null, image_url: durableUrl }, meta: { ok: false, code: 'CONTROL_API_ERROR', message: e?.message || String(e) } }, null, 2) }]
         };
       }
-
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ data: { artifact_id: createdArtifact.id, image_url: durableUrl }, meta: { ok: true } }, null, 2) }]
-      };
-    } else {
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ data: { artifact_id: null, image_url: durableUrl }, meta: { ok: true, warning: 'NO_JOB_CONTEXT' } }, null, 2) }]
-      };
     }
+
+    // No on-chain context or Control API disabled → return URL only (no DB write)
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: null, image_url: durableUrl }, meta: { ok: true, source: 'no_db_write' } }, null, 2) }]
+    };
   } catch (e: any) {
     return {
       content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'UNEXPECTED_ERROR', message: `civitai_generate_image failed: ${e?.message || String(e)}` } }, null, 2) }]

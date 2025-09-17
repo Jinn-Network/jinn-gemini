@@ -379,7 +379,7 @@ This tool is essential for the delegation workflow - it allows project leads to 
 
 ### Control API Integration
 
-The MCP tools now support routing writes to the **Jinn Control API** for on-chain jobs, providing a secure, auditable write layer for `onchain_*` tables.
+The MCP tools now support routing writes to the **Jinn Control API** for on-chain jobs, providing a secure, auditable write layer for `onchain_*` tables. New mutations were added for transactions.
 
 #### Control API Overview
 
@@ -421,9 +421,24 @@ CONTROL_API_URL=http://localhost:4001/graphql
 - Automatically injects `request_id` and `worker_address`
 - Returns structured response with artifact metadata
 
+**`enqueue_transaction` Tool:**
+- Routes to Control API `enqueueTransaction` and includes `JINN_REQUEST_ID` when present
+- Enforces allowlist and selector validation prior to submission
+
+**`get_transaction_status` Tool:**
+- Routes to Control API `getTransactionStatus`
+- Adds explorer URLs for any resulting hashes
+
 #### Usage Examples
 
 ```javascript
+// Enqueue transaction via Control API
+enqueue_transaction({
+  payload: { to: "0x...", data: "0xabcdef...", value: "0" },
+  chain_id: 8453,
+  execution_strategy: 'SAFE'
+})
+
 // Create artifact via Control API (on-chain job context required)
 create_artifact({
   topic: "analysis",

@@ -1,4 +1,5 @@
 import { supabase } from './shared/supabase.js';
+import fetch from 'cross-fetch';
 import { z } from 'zod';
 import { tableNames } from './shared/types.js';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
@@ -63,7 +64,22 @@ export async function getDetails(params: GetDetailsParams) {
             return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
         }
 
-        // Search across all tables
+        // If IDs look like on-chain request IDs (0x...), fetch from Ponder
+        const onchainIds = (validIds || []).filter((x) => typeof x === 'string' && x.startsWith('0x')) as string[];
+        const onchainRecords: any[] = [];
+        if (onchainIds.length > 0) {
+            const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+            for (const id of onchainIds) {
+                try {
+                    const res = await fetch(PONDER_GRAPHQL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: `query($id: String!) { request(id: $id) { id mech sender ipfsHash blockTimestamp delivered } }`, variables: { id } }) });
+                    const json = await res.json();
+                    const r = json?.data?.request;
+                    if (r) onchainRecords.push({ ...r, _source_table: 'ponder_request' });
+                } catch {}
+            }
+        }
+
+        // Search across legacy tables (kept for hybrid support)
         const searchPromises = tableNames.map(async (table) => {
             try {
                 const { data, error } = await supabase
@@ -88,7 +104,7 @@ export async function getDetails(params: GetDetailsParams) {
         });
 
         const results = await Promise.all(searchPromises);
-        const allRecords: any[] = results.flat();
+        const allRecords: any[] = onchainRecords.concat(results.flat());
 
         // Build a map from id -> indices to allow in-place augmentation
         const idToIndexes = new Map<string, number[]>();

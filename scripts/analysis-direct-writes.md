@@ -49,3 +49,4 @@ These tools only read data and don't need Control API integration:
 3. **Read operations** → Direct Supabase ✅
 
 No additional changes are needed. The system properly routes onchain writes through the Control API while maintaining direct access for legacy tables.
+

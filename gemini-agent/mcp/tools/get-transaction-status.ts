@@ -1,15 +1,9 @@
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
+import fetch from 'cross-fetch';
+import { isControlApiEnabled } from './shared/control_api.js';
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables');
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Control API URL
+const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
 
 export const getTransactionStatusParams = z.object({
   request_id: z.string().uuid('A valid UUID for the transaction request is required.'),
@@ -43,33 +37,23 @@ function getExplorerUrl(chainId: number, txHash: string): string {
  */
 export async function getTransactionStatus(params: z.infer<typeof getTransactionStatusParams>) {
   try {
-    const { data, error } = await supabase
-      .from('transaction_requests')
-      .select('*')
-      .eq('id', params.request_id)
-      .single();
-
-    if (error) {
-      return {
-        isError: true,
-        content: [{
-          type: 'text',
-          text: `Error fetching transaction status: ${error.message}`
-        }]
-      };
+    if (!isControlApiEnabled()) {
+      return { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: 'CONTROL_API_DISABLED', message: 'Enable USE_CONTROL_API to query transaction status.' }, null, 2) }] };
     }
 
-    if (!data) {
-      return {
-        isError: true,
-        content: [{
-          type: 'text',
-          text: `Transaction request with ID ${params.request_id} not found.`
-        }]
-      };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Worker-Address': process.env.MECH_WORKER_ADDRESS || ''
+    };
+    const query = `query GetTx($id: String!) { getTransactionStatus(id: $id) { id chain_id safe_tx_hash tx_hash status } }`;
+    const body = { query, variables: { id: params.request_id } };
+    const res = await fetch(CONTROL_API_URL, { method: 'POST', headers, body: JSON.stringify(body) });
+    const json = await res.json();
+    if (json.errors) {
+      return { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: 'CONTROL_API_ERROR', message: json.errors[0]?.message || 'Unknown error' }, null, 2) }] };
     }
+    const data = json.data.getTransactionStatus;
 
-    // Construct explorer URLs
     const response = {
       ...data,
       safeTxExplorerUrl: data.safe_tx_hash ? getExplorerUrl(data.chain_id, data.safe_tx_hash) : null,
