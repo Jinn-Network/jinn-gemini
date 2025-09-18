@@ -55,7 +55,7 @@ export const deleteRecordsParams = z.object({
 });
 
 export const deleteRecordsSchema = {
-  description: 'Deletes rows from a table that match a filter. Note: system_state table is read-only and cannot be modified.',
+  description: 'Deletes are disabled for on-chain workflows. Use Control API managed lifecycles.',
   inputSchema: deleteRecordsParams.shape,
 };
 
@@ -74,30 +74,7 @@ export async function deleteRecords(params: z.infer<typeof deleteRecordsParams>)
     const { table_name: tn, filter } = parseResult.data;
     table_name = tn;
 
-    const { data: deletedCount, error } = await supabase.rpc('delete_records', {
-      p_table_name: table_name,
-      p_filter: filter,
-    });
-    if (error) {
-      // Get schema help for schema-related errors
-      const schemaHelp = await getSchemaHelp(table_name, error);
-      const errorMessage = `Error deleting records: ${error.message}${schemaHelp}`;
-      
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({ 
-            data: null, 
-            meta: { 
-              ok: false, 
-              code: 'DB_ERROR', 
-              message: errorMessage 
-            } 
-          }, null, 2)
-        }]
-      };
-    }
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { deleted: deletedCount }, meta: { ok: true } }) }] };
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'UNSUPPORTED', message: 'Deletes are disabled. Use Control API lifecycles.' } }) }] };
   } catch (e: any) {
     // Get schema help for schema-related errors
     const schemaHelp = await getSchemaHelp(table_name, e);

@@ -6,8 +6,6 @@ export { getContextSnapshot, getContextSnapshotParams, getContextSnapshotSchema 
 export { listTools, listToolsParams, listToolsSchema } from './list-tools.js';
 export { manageArtifact, manageArtifactParams, manageArtifactSchema, type ManageArtifactParams } from './manage-artifact.js';
 export { getDetails, getDetailsParams, getDetailsSchema, type GetDetailsParams } from './get-details.js';
-export { createMemory, createMemoryParams, createMemorySchema, type CreateMemoryParams } from './create-memory.js';
-export { searchMemories, searchMemoriesParams, searchMemoriesSchema, type SearchMemoriesParams } from './search-memories.js';
 export { planProject, planProjectParams, planProjectSchema } from './plan-project.js';
 export { getProjectSummary, getProjectSummaryParams, getProjectSummarySchema } from './get-project-summary.js';
 export { sendMessage, sendMessageParams, sendMessageSchema } from './send-message.js';
@@ -24,7 +22,6 @@ export { postMarketplaceJob, postMarketplaceJobParams, postMarketplaceJobSchema 
 export { tableNames, tableNameSchema } from './shared/types.js';
 
 // Export server tools
-export { getSchema, getSchemaParams, getSchemaSchema } from './get-schema.js';
 export { createRecord, createRecordParams, createRecordSchema } from './create-record.js';
 export { readRecords, readRecordsParams, readRecordsSchema } from './read-records.js';
 export { updateRecords, updateRecordsParams, updateRecordsSchema } from './update-records.js';

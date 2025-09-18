@@ -1,7 +1,6 @@
-import { supabase } from './shared/supabase.js';
+// Supabase legacy path removed
 import fetch from 'cross-fetch';
 import { z } from 'zod';
-import { tableNames } from './shared/types.js';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
 // MCP registration schema (permissive) to avoid -32602 pre-validation failures.
@@ -12,18 +11,17 @@ const getDetailsBase = z.object({
     descendants: z.boolean().optional().describe('If true and an id is a job definition (jobs.id), include related items for descendant job definitions.'),
 });
 
-// Strict internal schema used by the handler after normalization
+// Strict internal schema used by the handler after normalization (on-chain only)
 export const getDetailsParams = z.object({
-    ids: z.array(z.string().uuid()).describe('An array containing one or more UUIDs to retrieve. If empty, returns an empty result.'),
+    ids: z.array(z.string()).describe('Array of IDs. 0x-prefixed on-chain request IDs are supported.'),
     cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
-    descendants: z.boolean().optional().describe('If true and an id is a job definition (jobs.id), include related items for descendant job definitions.'),
+    descendants: z.boolean().optional().describe('No-op in on-chain mode.'),
 });
 
 export type GetDetailsParams = z.infer<typeof getDetailsParams>;
 
 export const getDetailsSchema = {
-    description: 'Retrieves one or more records by ID by automatically searching across all tables in the system.',
-    // Expose the permissive base to MCP to prevent -32602; validate strictly in handler
+    description: 'Retrieves on-chain request records by ID from the Ponder subgraph (on-chain only).',
     inputSchema: getDetailsBase.shape,
 };
 
@@ -78,6 +76,14 @@ export async function getDetails(params: GetDetailsParams) {
                 } catch {}
             }
         }
+
+        // On-chain only: return results directly from Ponder
+        const composed = composeSinglePageResponse(onchainRecords, {
+            startOffset: keyset.offset,
+            truncateChars: 0,
+            requestedMeta: { cursor: validCursor }
+        });
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
 
         // Search across legacy tables (kept for hybrid support)
         const searchPromises = tableNames.map(async (table) => {

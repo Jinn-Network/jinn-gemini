@@ -8,7 +8,7 @@ async function main() {
       {
         name: "Growth Strategy Lead",
         prompt_content: "As the Growth Strategy Lead, your responsibility is to define and execute a project to develop a comprehensive growth strategy for Eolas. This includes conducting market research, identifying growth opportunities, and defining key initiatives. You will be responsible for breaking down this project into smaller, actionable tasks and delegating them to other agents.",
-        enabled_tools: ["create-job", "send-message", "read-records", "search-memories", "web-search"]
+        enabled_tools: ["create-job", "send-message", "read-records", "web-search"]
       }
     ]
   });

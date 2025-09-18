@@ -100,6 +100,8 @@ const typeDefs = /* GraphQL */ `
     createMessage(requestId: String!, messageData: MessageInput!): Message!
     enqueueTransaction(requestId: String, chain_id: Int!, execution_strategy: String!, payload: String!, idempotency_key: String): TransactionRequest!
     getTransactionStatus(id: String!): TransactionRequest!
+    claimTransactionRequest: TransactionRequest
+    updateTransactionStatus(id: String!, status: String!, safe_tx_hash: String, tx_hash: String, error_code: String, error_message: String): TransactionRequest!
   }
 
   type Query {
@@ -299,6 +301,63 @@ const resolvers = {
       if (error) throw new Error(error.message);
       if (!data) throw new Error('Not found');
       return data;
+    },
+
+    // Atomically claim the oldest pending transaction request
+    claimTransactionRequest: async (_: any, __: any, ctx: Context) => {
+      const worker = getWorkerAddress(ctx);
+      // 1) Select a candidate to claim (oldest pending, no worker)
+      const { data: candidates, error: selErr } = await ctx.supabase
+        .from('onchain_transaction_requests')
+        .select('id')
+        .eq('status', 'PENDING')
+        .is('worker_address', null)
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if (selErr) throw new Error(selErr.message);
+      const candidate = candidates?.[0]?.id;
+      if (!candidate) return null;
+
+      // 2) Attempt conditional update to avoid races
+      const { data: updated, error: updErr } = await ctx.supabase
+        .from('onchain_transaction_requests')
+        .update({ status: 'IN_PROGRESS', worker_address: worker, updated_at: new Date().toISOString() })
+        .eq('id', candidate)
+        .eq('status', 'PENDING')
+        .is('worker_address', null)
+        .select('*')
+        .limit(1);
+      if (updErr) throw new Error(updErr.message);
+      if (!updated || updated.length === 0) return null; // Lost the race
+      return updated[0];
+    },
+
+    updateTransactionStatus: async (
+      _: any,
+      args: { id: string; status: string; safe_tx_hash?: string; tx_hash?: string; error_code?: string; error_message?: string },
+      ctx: Context
+    ) => {
+      const patch: any = {
+        status: args.status,
+        updated_at: new Date().toISOString(),
+      };
+      if (args.safe_tx_hash !== undefined) patch.safe_tx_hash = args.safe_tx_hash;
+      if (args.tx_hash !== undefined) patch.tx_hash = args.tx_hash;
+      if (args.error_code !== undefined) patch.error_code = args.error_code;
+      if (args.error_message !== undefined) patch.error_message = args.error_message;
+      if (args.status === 'FAILED' || args.status === 'CONFIRMED') {
+        patch.completed_at = new Date().toISOString();
+      }
+
+      const { data, error } = await ctx.supabase
+        .from('onchain_transaction_requests')
+        .update(patch)
+        .eq('id', args.id)
+        .select('*')
+        .limit(1);
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) throw new Error('Not found');
+      return data[0];
     },
   },
 };

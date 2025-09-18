@@ -56,7 +56,7 @@ export const createRecordParams = z.object({
 });
 
 export const createRecordSchema = {
-  description: 'Inserts a new row into a specified table. It automatically adds source_job_id, source_job_name, and thread_id from the current job context. Note: system_state table is read-only and cannot be modified.',
+  description: 'Inserts a new row into a specified table. On-chain tables are written exclusively via the Control API with automatic lineage.',
   inputSchema: createRecordParams.shape,
 };
 
@@ -159,51 +159,8 @@ export async function createRecord(params: z.infer<typeof createRecordParams>) {
       }
     }
     
-    // Legacy Supabase path for non-onchain tables
-    // Only inject context into tables designed to carry lineage fields
-    const tablesWithLineage = new Set(['artifacts', 'job_reports', 'memories', 'messages', 'threads']);
-    const tablesOnchain = new Set(['onchain_artifacts', 'onchain_job_reports', 'onchain_messages']);
-    const enrichedData = tablesWithLineage.has(table_name as string)
-      ? {
-          ...data,
-          job_id: jobId,                  // ✅ CORRECT field name for messages/job_reports tables
-          project_run_id: projectRunId,
-          source_event_id: sourceEventId,
-          parent_job_definition_id: jobDefinitionId,
-          project_definition_id: projectDefinitionId,
-        }
-      : tablesOnchain.has(table_name as string)
-      ? {
-          ...data,
-          request_id: requestId,
-          worker_address: mechAddress,
-        }
-      : data;
-
-    const { data: newId, error } = await supabase.rpc('create_record', {
-      p_table_name: table_name,
-      p_data: enrichedData,
-    });
-    if (error) {
-      // Get schema help for schema-related errors
-      const schemaHelp = await getSchemaHelp(table_name, error);
-      const errorMessage = `Error creating record: ${error.message}${schemaHelp}`;
-      
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({ 
-            data: null, 
-            meta: { 
-              ok: false, 
-              code: 'DB_ERROR', 
-              message: errorMessage 
-            } 
-          }, null, 2)
-        }]
-      };
-    }
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { id: newId }, meta: { ok: true, source: 'supabase' } }) }] };
+    // Legacy path removed: non-onchain writes are no longer supported here
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'UNSUPPORTED', message: 'Direct writes to legacy tables are no longer supported.' } }) }] };
   } catch (e: any) {
     // Get schema help for schema-related errors
     const schemaHelp = await getSchemaHelp(table_name, e);

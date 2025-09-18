@@ -1,8 +1,4 @@
-import { supabase } from './shared/supabase.js';
-import { z } from 'zod';
-import { Memory, LinkedMemory } from './shared/types.js';
-import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
-import { getOpenAIClient } from './shared/openai.js';
+// legacy tool; removed from exports
 
 // Using shared OpenAI client from ./shared/openai.js
 

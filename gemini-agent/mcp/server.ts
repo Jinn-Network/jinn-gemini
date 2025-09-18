@@ -28,8 +28,7 @@ async function main() {
       { name: 'get_context_snapshot', schema: tools.getContextSnapshotSchema, handler: tools.getContextSnapshot },
       { name: 'manage_artifact', schema: tools.manageArtifactSchema, handler: tools.manageArtifact },
       { name: 'get_details', schema: tools.getDetailsSchema, handler: tools.getDetails },
-      { name: 'create_memory', schema: tools.createMemorySchema, handler: tools.createMemory },
-      { name: 'search_memories', schema: tools.searchMemoriesSchema, handler: tools.searchMemories },
+      // memory tools removed
       { name: 'search_jobs', schema: tools.searchJobsSchema, handler: tools.searchJobs },
       { name: 'search_artifacts', schema: tools.searchArtifactsSchema, handler: tools.searchArtifacts },
       { name: 'plan_project', schema: tools.planProjectSchema, handler: tools.planProject },

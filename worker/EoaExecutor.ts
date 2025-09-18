@@ -23,18 +23,17 @@
  * @since Phase 3 - Dual Rail Architecture
  */
 
-import { createClient } from '@supabase/supabase-js';
 import { ethers } from 'ethers';
 import { logger } from './logger.js';
 import { ITransactionExecutor } from './IExecutor.js';
 import { TransactionRequest, ExecutionResult } from './types.js';
 import { validateTransaction } from './validation.js';
+import { updateTransactionStatus } from './control_api_client.js';
 
 // Create a child logger for EOA executor operations
 const eoaLogger = logger.child({ component: 'EOA-EXECUTOR' });
 
 export class EoaExecutor implements ITransactionExecutor {
-  private supabase;
   private workerId: string;
   private provider: ethers.providers.JsonRpcProvider;
   private signer: ethers.Wallet;
@@ -42,16 +41,6 @@ export class EoaExecutor implements ITransactionExecutor {
   private confirmations: number;
 
   constructor() {
-    // Initialize Supabase client
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables');
-    }
-
-    this.supabase = createClient(supabaseUrl, supabaseKey);
-    
     // Initialize worker configuration
     this.workerId = process.env.WORKER_ID || `worker-${Date.now()}`;
     this.chainId = parseInt(process.env.CHAIN_ID || '8453', 10); // Default to Base mainnet
@@ -139,32 +128,14 @@ export class EoaExecutor implements ITransactionExecutor {
     result: ExecutionResult
   ): Promise<void> {
     try {
-      const updateData: any = {
-        status,
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
       if (result.success) {
-        updateData.tx_hash = result.txHash;
-        // Note: safe_tx_hash remains null for EOA transactions
+        await updateTransactionStatus({ id: requestId, status, tx_hash: result.txHash });
       } else {
-        updateData.error_code = result.errorCode;
-        updateData.error_message = result.errorMessage;
+        await updateTransactionStatus({ id: requestId, status, error_code: result.errorCode, error_message: result.errorMessage });
       }
-
-      const { error } = await this.supabase
-        .from('transaction_requests')
-        .update(updateData)
-        .eq('id', requestId);
-
-      if (error) {
-        eoaLogger.error({ error }, 'Failed to update transaction status');
-      } else {
-        eoaLogger.info('Transaction status updated');
-      }
+      eoaLogger.info('Transaction status updated via Control API');
     } catch (error) {
-      eoaLogger.error({ error }, 'Error updating transaction status');
+      eoaLogger.error({ error }, 'Error updating transaction status via Control API');
     }
   }
 

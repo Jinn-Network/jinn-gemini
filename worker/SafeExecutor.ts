@@ -26,13 +26,13 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import { homedir } from 'os';
-import { createClient } from '@supabase/supabase-js';
 import Safe from '@safe-global/protocol-kit';
 import { ethers } from 'ethers';
 import { logger } from './logger.js';
 import { ITransactionExecutor } from './IExecutor.js';
 import { TransactionRequest, ExecutionResult } from './types.js';
 import { validateTransaction } from './validation.js';
+import { updateTransactionStatus } from './control_api_client.js';
 
 // Create a child logger for Safe executor operations
 const safeLogger = logger.child({ component: 'SAFE-EXECUTOR' });
@@ -40,7 +40,6 @@ const safeLogger = logger.child({ component: 'SAFE-EXECUTOR' });
 // Remove local interfaces - now using shared types from types.js
 
 export class SafeExecutor implements ITransactionExecutor {
-  private supabase;
   private workerId: string;
   private provider: ethers.providers.JsonRpcProvider;
   private signer: ethers.Wallet;
@@ -50,16 +49,6 @@ export class SafeExecutor implements ITransactionExecutor {
   private txConfirmations: number;
 
   constructor() {
-    // Initialize Supabase client
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables');
-    }
-
-    this.supabase = createClient(supabaseUrl, supabaseKey);
-    
     // Initialize worker configuration
     this.workerId = process.env.WORKER_ID || `worker-${Date.now()}`;
     this.chainId = parseInt(process.env.CHAIN_ID || '8453', 10); // Default to Base mainnet
@@ -257,32 +246,14 @@ export class SafeExecutor implements ITransactionExecutor {
     result: ExecutionResult
   ): Promise<void> {
     try {
-      const updateData: any = {
-        status,
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
       if (result.success) {
-        updateData.safe_tx_hash = result.safeTxHash;
-        updateData.tx_hash = result.txHash;
+        await updateTransactionStatus({ id: requestId, status, safe_tx_hash: result.safeTxHash, tx_hash: result.txHash });
       } else {
-        updateData.error_code = result.errorCode;
-        updateData.error_message = result.errorMessage;
+        await updateTransactionStatus({ id: requestId, status, error_code: result.errorCode, error_message: result.errorMessage });
       }
-
-      const { error } = await this.supabase
-        .from('transaction_requests')
-        .update(updateData)
-        .eq('id', requestId);
-
-      if (error) {
-        safeLogger.error({ error }, 'Failed to update transaction status');
-      } else {
-        safeLogger.info('Transaction status updated');
-      }
+      safeLogger.info('Transaction status updated via Control API');
     } catch (error) {
-      safeLogger.error({ error }, 'Error updating transaction status');
+      safeLogger.error({ error }, 'Error updating transaction status via Control API');
     }
   }
 

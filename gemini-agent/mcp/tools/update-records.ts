@@ -60,7 +60,7 @@ export const updateRecordsParams = z.object({
 });
 
 export const updateRecordsSchema = {
-  description: 'Modifies existing rows in a table that match a filter. It automatically updates source_job_id and source_job_name. Note: system_state table is read-only and cannot be modified.',
+  description: 'Modifies existing rows in a table that match a filter. On-chain tables are controlled by the Control API; direct updates are not supported.',
   inputSchema: updateRecordsParams.shape,
 };
 
@@ -80,83 +80,8 @@ export async function updateRecords(params: z.infer<typeof updateRecordsParams>)
     table_name = tn;
     const { jobId, jobName } = getCurrentJobContext();
 
-    // Route onchain_* tables to Control API
-    if (shouldUseControlApi(table_name)) {
-      // For onchain tables, we need to fall back to direct Supabase updates
-      // since the Control API doesn't have update mutations yet
-      // This maintains the existing behavior while flagging the source
-      const enrichedUpdates = {
-        ...updates,
-        source_job_id: jobId,
-        source_job_name: jobName,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data: updatedCount, error } = await supabase.rpc('update_records', {
-        p_table_name: table_name,
-        p_filter: filter,
-        p_updates: enrichedUpdates,
-      });
-      
-      if (error) {
-        const schemaHelp = await getSchemaHelp(table_name, error);
-        const errorMessage = `Error updating onchain records: ${error.message}${schemaHelp}`;
-        
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({ 
-              data: null, 
-              meta: { 
-                ok: false, 
-                code: 'DB_ERROR', 
-                message: errorMessage,
-                source: 'supabase_fallback'
-              } 
-            }, null, 2)
-          }]
-        };
-      }
-      
-      return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { updated: updatedCount }, meta: { ok: true, source: 'supabase_fallback' } }) }] };
-    }
-
-    // Legacy Supabase path for non-onchain tables
-    // Automatically inject context and updated_at into the updates payload
-    // The database function will now skip any columns that don't exist in the target table
-    // We don't update thread_id here, as an update shouldn't change the thread a record belongs to.
-    const enrichedUpdates = {
-      ...updates,
-      source_job_id: jobId,
-      source_job_name: jobName,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data: updatedCount, error } = await supabase.rpc('update_records', {
-      p_table_name: table_name,
-      p_filter: filter,
-      p_updates: enrichedUpdates,
-    });
-    if (error) {
-      // Get schema help for schema-related errors
-      const schemaHelp = await getSchemaHelp(table_name, error);
-      const errorMessage = `Error updating records: ${error.message}${schemaHelp}`;
-      
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({ 
-            data: null, 
-            meta: { 
-              ok: false, 
-              code: 'DB_ERROR', 
-              message: errorMessage 
-            } 
-          }, null, 2)
-        }]
-      };
-    }
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { updated: updatedCount }, meta: { ok: true, source: 'supabase' } }) }] };
+    // All direct updates removed
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'UNSUPPORTED', message: 'Direct updates are disabled. Use Control API workflows.' } }) }] };
   } catch (e: any) {
     // Get schema help for schema-related errors
     const schemaHelp = await getSchemaHelp(table_name, e);

@@ -108,4 +108,27 @@ export async function createMessage(requestId: string, message: MessageInput): P
   return json.data.createMessage.id as string;
 }
 
+export async function claimTransactionRequest(): Promise<any | null> {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Worker-Address': getWorkerAddress(),
+    'Idempotency-Key': `tx-claim:${Date.now()}`,
+  };
+  const query = `mutation { claimTransactionRequest { id request_id worker_address chain_id execution_strategy status payload tx_hash safe_tx_hash error_code error_message created_at updated_at } }`;
+  const json = await fetchWithRetry({ query, variables: {} }, headers);
+  return json.data?.claimTransactionRequest ?? null;
+}
+
+export async function updateTransactionStatus(args: { id: string; status: string; safe_tx_hash?: string; tx_hash?: string; error_code?: string; error_message?: string }): Promise<any> {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Worker-Address': getWorkerAddress(),
+    'Idempotency-Key': `tx-update:${args.id}:${args.status}`,
+  };
+  const query = `mutation UpdateTx($id: String!, $status: String!, $safe_tx_hash: String, $tx_hash: String, $error_code: String, $error_message: String) { updateTransactionStatus(id: $id, status: $status, safe_tx_hash: $safe_tx_hash, tx_hash: $tx_hash, error_code: $error_code, error_message: $error_message) { id status tx_hash safe_tx_hash error_code error_message updated_at } }`;
+  const variables = { ...args } as any;
+  const json = await fetchWithRetry({ query, variables }, headers);
+  return json.data.updateTransactionStatus;
+}
+
 

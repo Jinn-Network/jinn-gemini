@@ -1,19 +1,17 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SafeExecutor } from './SafeExecutor.js';
 import { EoaExecutor } from './EoaExecutor.js';
 import { TransactionRequest } from './types.js';
 import { logger } from './logger.js';
+import { claimTransactionRequest, updateTransactionStatus } from './control_api_client.js';
 
 const txLogger = logger.child({ component: 'TransactionProcessor' });
 
 export class TransactionProcessor {
-    private supabase: SupabaseClient;
     private safeExecutor: SafeExecutor;
     private eoaExecutor: EoaExecutor;
     private workerId: string;
 
-    constructor(supabaseUrl: string, supabaseKey: string, workerId: string) {
-        this.supabase = createClient(supabaseUrl, supabaseKey);
+    constructor(_supabaseUrl: string, _supabaseKey: string, workerId: string) {
         this.safeExecutor = new SafeExecutor();
         this.eoaExecutor = new EoaExecutor();
         this.workerId = workerId;
@@ -32,19 +30,12 @@ export class TransactionProcessor {
 
     private async claimPendingTransaction(): Promise<TransactionRequest | null> {
         try {
-            const { data, error } = await this.supabase.rpc('claim_transaction_request', { p_worker_id: this.workerId });
-            if (error) {
-                txLogger.error({ error }, "Database error claiming transaction");
-                return null;
-            }
-            if (!data || data.length === 0) {
-                return null;
-            }
-            const request = data[0] as TransactionRequest;
-            txLogger.info({ requestId: request.id, strategy: request.execution_strategy }, "Claimed transaction request");
-            return request;
+            const req = await claimTransactionRequest();
+            if (!req) return null;
+            txLogger.info({ requestId: req.id, strategy: req.execution_strategy }, "Claimed transaction request via Control API");
+            return req as TransactionRequest;
         } catch (error) {
-            txLogger.error({ error }, "Error claiming transaction request");
+            txLogger.error({ error }, "Error claiming transaction request via Control API");
             return null;
         }
     }
@@ -71,23 +62,10 @@ export class TransactionProcessor {
 
     private async updateTransactionAsFailed(requestId: string, errorCode: string, errorMessage: string): Promise<void> {
         try {
-            const { error } = await this.supabase
-                .from('transaction_requests')
-                .update({
-                    status: 'FAILED',
-                    error_code: errorCode,
-                    error_message: errorMessage,
-                    completed_at: new Date().toISOString()
-                })
-                .eq('id', requestId);
-            
-            if (error) {
-                txLogger.error({ requestId, error }, "Failed to update transaction status to FAILED");
-            } else {
-                txLogger.info({ requestId, errorCode, errorMessage }, "Transaction marked as FAILED");
-            }
+            await updateTransactionStatus({ id: requestId, status: 'FAILED', error_code: errorCode, error_message: errorMessage });
+            txLogger.info({ requestId, errorCode, errorMessage }, "Transaction marked as FAILED via Control API");
         } catch (error) {
-            txLogger.error({ requestId, error }, "Error updating transaction status to FAILED");
+            txLogger.error({ requestId, error }, "Error updating transaction status to FAILED via Control API");
         }
     }
 }
