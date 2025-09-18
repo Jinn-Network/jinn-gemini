@@ -42,13 +42,10 @@ This robust process ensures every agent has a stable, secure, and unique identit
 
 The design of this system is guided by a few core principles:
 
--   **Universal Event Bus & Causal Tracing**: The system is built on a simple, powerful idea: every action is triggered by a persisted event. The `events` table serves as a universal event bus for the entire system. This ensures that every job has a clear, non-nullable `source_event_id`, creating an unbroken, universally traceable causal chain for every operation. This is the foundation of the system's observability and metacognitive capabilities.
--   **Event-Driven & Database-Centric**: The database is the single source of truth. All state changes and actions are modeled as database events. Complex workflows and agent coordination are orchestrated through PostgreSQL triggers and functions, minimizing the need for complex application-level logic. If a task can be automated in the database, it should be.
--   **Project-Based Organization**: Every job execution is tied to a project context through `project_run_id`, providing hierarchical organization and enabling complex multi-agent workflows with shared context and objectives.
+-   **On-Chain First**: The system is designed around a public, on-chain job marketplace. The blockchain is the source of truth for job requests and deliveries.
+-   **Secure and Auditable Writes**: All data written to our off-chain database in relation to an on-chain job is processed through a secure gateway, the Control API. This enforces data integrity, injects lineage, and provides a clear audit trail.
 -   **Lean Workers, Smart Agents**: The `worker` is a simple, stateless executor. Its only job is to poll for work, execute it, and report back. The core intelligence resides in the `Agent` class, which handles LLM interaction, and the `metacog-mcp` tools, which provide the agent with its capabilities.
 -   **Tools Over Prompts for Dynamic Context**: Prompts should guide the agent's reasoning process and define its high-level goals. They should not be cluttered with dynamic information (like file lists, database schemas, or tool definitions). Instead, prompts should instruct the agent to *use tools* to discover that information from its environment. This makes prompts more stable, reusable, and focused on reasoning.
--   **Metacognition & Self-Improvement**: The system is designed for agents to reason about their own behavior and the state of the system. By using tools like `get_context_snapshot`, `get_job_graph`, and `trace_lineage`, an agent can analyze operational data, understand system-level causal relationships, and autonomously create new jobs to improve itself.
--   **Rich Context Management**: The system provides agents with comprehensive operational context through two key mechanisms: `trigger_context` (rich information about what triggered the job) and `delegated_work_context` (comprehensive summaries of work delegated to child jobs). This ensures agents have the foundation they need to make informed decisions and take effective action.
 
 ---
 
@@ -58,9 +55,9 @@ The repository has been flattened for simplicity and easier development. Here's 
 
 ```
 jinn-gemini/
-├── worker/                    # Worker application
-│   ├── worker.ts             # Legacy worker logic
-│   └── mech_worker.ts        # NEW: On-chain mech worker
+├── control-api/              # NEW: The secure GraphQL write gateway
+├── worker/                     # Worker application
+│   └── mech_worker.ts        # The on-chain mech worker
 ├── gemini-agent/             # Agent and MCP server
 │   ├── agent.ts              # Main agent logic
 │   ├── mcp/                  # Model Context Protocol server
@@ -83,18 +80,13 @@ jinn-gemini/
 
 ## System Architecture
 
-The system consists of several key components that work together in a continuous loop.
+The system consists of five key layers that work together in a continuous loop.
 
-1.  **Hybrid Data Model (Ponder + Supabase)**: The system now uses a hybrid data model.
-    -   **Ponder (Primary Indexer)**: Ponder is the primary data source for on-chain events. It indexes `Request` and `Deliver` events from the Mech Marketplace on Base and exposes them via a GraphQL API. This is the new "single source of truth" for on-chain job status.
-    -   **Supabase (Off-Chain Persistence)**: Supabase is used for off-chain data persistence and worker coordination. It stores `onchain_*` tables for request claims, job reports, and artifacts, all linked back to the on-chain `request_id`.
-2.  **On-Chain Worker (`worker/mech_worker.ts`)**: The new primary worker for processing on-chain jobs. It continuously polls the Ponder GraphQL API for new `Request` events, atomically claims them in Supabase, invokes the agent, stores the results, and delivers the final output on-chain.
-3.  **Agent (`gemini-agent/agent.ts`)**: The "brain" of the operation. It now receives on-chain context (`JINN_REQUEST_ID`, `JINN_MECH_ADDRESS`) and uses tools to interact with the new on-chain system.
-4.  **Tools (`gemini-agent/mcp/`)**: The agent's capabilities have been updated for the on-chain world.
-    -   `post_marketplace_job`: The new tool for posting jobs to the Mech Marketplace.
-    -   `create_record`: Now automatically injects `request_id` and `worker_address` when writing to `onchain_*` tables, ensuring universal causal tracing.
-5.  **On-Chain Execution (Gnosis Safe)**: The worker uses a Gnosis Safe to deliver results on-chain via the `deliverViaSafe` function in `mech-client-ts`.
-6.  **Frontend Explorer (`frontend/explorer/`)**: A Next.js web interface for exploring data, viewing job reports, and monitoring system status.
+1.  **On-Chain Layer (Mech Marketplace):** The decentralized source of truth for all jobs. `Request` and `Deliver` events on the Base blockchain define the work to be done and its final status.
+2.  **Indexing Layer (Ponder):** A dedicated service that listens to the Mech Marketplace contract, indexes its events, and provides a fast, reliable GraphQL API for reading on-chain data. This is the primary way the system discovers new work.
+3.  **Worker Layer (`worker/mech_worker.ts`):** The engine of the system. This is the only active worker. It polls the Ponder API to find new `Request` events, executes the associated tasks by invoking the Jinn agent, and delivers the results back to the blockchain.
+4.  **Secure Write Layer (Jinn Control API):** A mandatory GraphQL gateway for all database writes related to on-chain jobs. The worker and agent tools **do not** write directly to the database. They call this API, which validates the request, injects critical lineage data (like the `request_id` and `worker_address`), and then performs the database operation. This ensures all off-chain data is consistent and securely linked to its on-chain origin.
+5.  **Persistence Layer (Supabase):** The off-chain database, now used exclusively for storing supplementary data like job reports, artifacts, and messages in `onchain_*` tables. All writes are managed by the Control API.
 
 ---
 
@@ -108,19 +100,19 @@ The system consists of several key components that work together in a continuous
 
 The entire system operates on a continuous, on-chain, event-driven cycle:
 
-1.  **Job Creation**: An agent calls the `post_marketplace_job` tool, which posts a `Request` to the Mech Marketplace contract on Base. The request's metadata (prompt, tools) is stored on IPFS.
-2.  **Indexing**: The `Ponder` service, which is listening to the Mech Marketplace contract, indexes the new `Request` event and makes it available via its GraphQL API.
-3.  **Discovery & Claim**: The `mech_worker` polls the Ponder GraphQL API, discovers the new `Request`, and atomically claims it by creating a record in the `onchain_request_claims` table in Supabase. This prevents other workers from processing the same job.
-4.  **Execution**: The worker invokes the `Agent`, passing the on-chain `requestId` and `mechAddress` as environment variables (`JINN_REQUEST_ID`, `JINN_MECH_ADDRESS`). The agent fetches the prompt from IPFS and begins execution.
-5.  **Tool Setup**: The agent dynamically creates a `.gemini/settings.json` file that configures the Gemini CLI to use the `gemini-agent/mcp` server and exposes *only* the tools enabled for that job.
-6.  **LLM Interaction**: The agent spawns the Gemini CLI process. The LLM uses the provided tools as needed by making calls to the MCP server.
-7.  **Reporting**: After execution, the worker stores the final output and detailed telemetry in the `onchain_job_reports` and `onchain_artifacts` tables in Supabase, linking them to the `request_id`.
+1.  **Job Creation**: An agent calls the `post_marketplace_job` tool, which posts a `Request` event to the Mech Marketplace contract on the Base blockchain. The request's metadata (prompt, tools) is stored on IPFS.
+2.  **Indexing**: The `Ponder` service indexes the new `Request` event and makes it available via its GraphQL API.
+3.  **Discovery & Claim**: The `mech_worker` polls the Ponder API, discovers the new `Request`, and calls the **Jinn Control API** to atomically claim it. The Control API creates a record in the `onchain_request_claims` table, preventing other workers from processing the same job.
+4.  **Execution**: The worker invokes the `Agent`, passing the on-chain `requestId` and `mechAddress` as environment variables (`JINN_REQUEST_ID`, `JINN_MECH_ADDRESS`). The agent fetches the prompt from IPFS and begins execution using its enabled tools.
+5.  **Reporting**: During execution, the agent's tools (like `create_artifact`) call the **Jinn Control API** to write their outputs (reports, artifacts, messages) to the `onchain_*` tables in Supabase. The Control API ensures all data is correctly linked to the `request_id`.
 8.  **Delivery**: The worker calls `deliverViaSafe` to submit the IPFS hash of the result to the Mech Marketplace contract on-chain. This creates a `Deliver` event.
 9.  **Completion**: Ponder indexes the `Deliver` event, marking the job as complete on-chain.
 
 ---
 
 ## Enhanced Context Management
+
+**NOTE:** The features described below were part of the legacy, database-centric architecture. They are not yet implemented in the new on-chain system but are preserved here as a reference for future development.
 
 The system now provides agents with comprehensive operational context through two key mechanisms:
 
@@ -269,22 +261,23 @@ For easier development, you can run the MCP server or the worker directly on you
 ### Adding a New Tool
 1.  **Create Tool File**: Add a new file in `gemini-agent/mcp/tools/`.
 2.  **Define Schema**: Use Zod to define the input parameter schema for your tool.
-3.  **Implement Logic**: Write the tool's function, which will typically interact with the database via the `supabase` client.
+3.  **Implement Logic**: Write the tool's function. For any writes related to on-chain jobs, the tool **must** use the client in `worker/control_api_client.ts` to interact with the Jinn Control API. Direct database access is prohibited for on-chain workflows.
 4.  **Register Tool**: In `gemini-agent/mcp/server.ts`, import your new tool and add it to the `serverTools` array. The tool name will be automatically prefixed with `mcp_`. The tool will be automatically discoverable by the `list_tools` tool.
 
 ### Job Context Injection
 
+**NOTE:** The context injection described below was part of the legacy system. The new on-chain worker injects a simpler context (`JINN_REQUEST_ID` and `JINN_MECH_ADDRESS`) directly as environment variables. This section is preserved as a reference for planned future enhancements.
+
 When the worker executes a job, it passes a job context to the MCP tool layer. This context is available to tools and is automatically injected into writes where appropriate.
 
 - Fields provided in job context:
-  - `job_id`: The runtime job run ID from `job_board.id`.
   - `job_definition_id`: The definition/version ID from `jobs.id` that the run references.
   - `job_name`: The human‑readable job name from the job definition.
   - `project_run_id`: The resolved project scope for the job, when available.
 
 - Auto‑injection behavior in tools:
   - `create_record` automatically adds `source_job_id`, `source_job_name`, `project_run_id`, and `job_definition_id` to the payload it sends to the database function. The database validates and writes only columns that exist on the target table.
-  - This ensures durable lineage across core tables (`artifacts`, `job_reports`, `memories`, `messages`, and `project_runs`) linking records back to the exact job definition and run that produced them.
+  - This ensures durable lineage across core tables (`artifacts`, `job_reports`, `messages`, and `project_runs`) linking records back to the exact job definition and run that produced them.
 
 ### Shared Context Manager for tool outputs
 All read/search tools now use a shared module to ensure consistent, token‑budgeted, single‑page responses with pagination and transparent metadata.
@@ -297,7 +290,7 @@ All read/search tools now use a shared module to ensure consistent, token‑budg
 - Pagination: Cursor-based (opaque), stateless. Tools accept an optional `cursor` input; pass `meta.next_cursor` to fetch the next page.
 - Truncation:
   - Field‑aware truncation only where appropriate (e.g., `content`, `output`, sometimes `summary`/`description`).
-  - Tools like `search_memories` and `get_details` do not truncate by default.
+  - The `get_details` tool does not truncate by default.
 
 Exposed helpers:
 - `composeSinglePageResponse(items, options)` builds one page under the token budget; computes full token estimate; emits warnings if needed.
@@ -417,178 +410,4 @@ CONTROL_API_URL=http://localhost:4001/graphql
 
 **`create_artifact` Tool (NEW):**
 - Dedicated tool for creating artifacts via Control API
-- Requires `requestId` from job context (only works within on-chain jobs)
-- Automatically injects `request_id` and `worker_address`
-- Returns structured response with artifact metadata
-
-**`enqueue_transaction` Tool:**
-- Routes to Control API `enqueueTransaction` and includes `JINN_REQUEST_ID` when present
-- Enforces allowlist and selector validation prior to submission
-
-**`get_transaction_status` Tool:**
-- Routes to Control API `getTransactionStatus`
-- Adds explorer URLs for any resulting hashes
-
-#### Usage Examples
-
-```javascript
-// Enqueue transaction via Control API
-enqueue_transaction({
-  payload: { to: "0x...", data: "0xabcdef...", value: "0" },
-  chain_id: 8453,
-  execution_strategy: 'SAFE'
-})
-
-// Create artifact via Control API (on-chain job context required)
-create_artifact({
-  topic: "analysis",
-  content: "Detailed analysis results...",
-  cid: "QmHash..." // Optional IPFS CID
-})
-
-// Create record - automatically routes based on table type
-create_record({
-  table_name: "onchain_job_reports", // Routes to Control API
-  data: {
-    status: "COMPLETED",
-    duration_ms: 5000,
-    final_output: "Task completed successfully"
-  }
-})
-
-create_record({
-  table_name: "artifacts", // Routes to Supabase
-  data: {
-    topic: "legacy_artifact",
-    content: "Legacy system artifact"
-  }
-})
-```
-
-#### Error Handling
-
-Control API errors are clearly distinguished in tool responses:
-
-```json
-{
-  "data": null,
-  "meta": {
-    "ok": false,
-    "code": "CONTROL_API_ERROR",
-    "message": "Control API error: Unknown request_id"
-  }
-}
-```
-
-Common error codes:
-- `CONTROL_API_ERROR`: GraphQL or HTTP errors from Control API
-- `CONTROL_API_DISABLED`: Control API is disabled via environment
-- `MISSING_REQUEST_ID`: Required for on-chain operations
-- `VALIDATION_ERROR`: Invalid parameters
-
----
-
-#### `get_job_graph` & `trace_lineage`
-These tools provide deep insight into the system's causal architecture.
-
-- **`get_job_graph({topic?: string})`**: Allows the agent to inspect the system's static "blueprint." It shows which jobs publish artifacts on a given topic and which jobs subscribe to them, revealing the potential chain of events for any given topic.
-- **`trace_lineage({artifact_id?: string, job_id?: string})`**: Provides universal causal tracing. Starting from any job or artifact, it can walk the execution graph forwards (what did this cause?) or backwards (what caused this?), providing a complete history of any process.
-
-These tools are fundamental for advanced metacognition, allowing an agent to understand not just *what* is happening, but *why* it's happening and what the downstream consequences of its actions will be.
-
-### Debugging
-You can run the worker in debug mode by passing the `--debug` or `-d` flag. This will pass the `--debug` flag to the Gemini CLI, providing verbose output on its operations.
-```bash
-node dist/worker.js --debug
-```
-This is extremely useful for inspecting prompts, tool calls, and model responses in detail.
-
-For post-execution analysis, you can inspect the `job_reports` table in the database. It contains comprehensive details about each job's execution, including:
-- **Performance Metrics**: Token usage (`total_tokens`), execution duration (`duration_ms`)
-- **Tool Usage**: Detailed tool call logs with success rates and timing (`tools_called`)
-- **Full Conversations**: Complete request/response data (`request_text`, `response_text`)
-- **Error & Warning Tracking**: Both critical failures and warning-level issues (`error_message`, `error_type`)
-- **Raw Telemetry**: Complete telemetry data for debugging (`raw_telemetry`)
-
-This integrated telemetry system provides complete visibility into system performance and enables data-driven optimization of job definitions and workflows.
-
-For post-execution analysis, you can inspect the `job_reports` table in the database. It contains comprehensive details about each job's execution, including the full request/response, tool calls, duration, and any errors that occurred.
-
----
-
-## Database Reset State
-
-When performing a complete system reset, the database should be cleared to this minimal state:
-
-### **Tables with Data (Keep):**
-1. **`jobs`** - 2 rows:
-   - `chief_orchestrator` - The main strategic orchestrator job
-   - `human_supervisor` - Human oversight job
-
-2. **`project_definitions`** - 1 row:
-   - Main project definition for the system
-
-3. **`messages`** - 1 row:
-   - Initial message from human supervisor to chief orchestrator (status: PENDING)
-
-### **Tables to Empty (Clear All Rows):**
-- `job_board` - No pending jobs
-- `project_runs` - No active project runs  
-- `job_reports` - No job execution reports
-- `events` - No event history
-- `artifacts` - No artifacts
-- `memories` - No memories
-
-### **Reset Commands:**
-```sql
--- Clear all dynamic data while preserving core definitions
-DELETE FROM job_board;
-DELETE FROM project_runs; 
-DELETE FROM job_reports;
-DELETE FROM events;
-DELETE FROM artifacts;
-DELETE FROM memories;
-
--- Ensure the initial message is in PENDING state
-UPDATE messages SET status = 'PENDING' WHERE status != 'PENDING';
-```
-
-### **Post-Reset Behavior:**
-1. **System quiescence event** will automatically trigger the Chief Orchestrator
-2. **Chief Orchestrator** will create new projects and job definitions as needed
-3. **All new jobs** will start fresh without any previous execution history
-
-### **Important Notes:**
-- **Message Status**: After reset, ensure all messages have `status = 'PENDING'` to prevent them from appearing in red in the frontend
-- **Clean State**: The reset removes all execution history, providing a clean foundation for testing new workflows
-- **Project Context**: All new jobs will be created with proper project context through `project_run_id`
-
-### **⚠️ CRITICAL WARNING - NEVER DO THIS:**
-**NEVER use `TRUNCATE TABLE` with `CASCADE` on tables that contain the core system definitions!** 
-
-The `TRUNCATE ... CASCADE` command will delete ALL related data, including the core `jobs`, `project_definitions`, and `messages` tables that contain the system foundation. This completely destroys the system and defeats the purpose of a reset.
-
-**What NOT to do:**
-```sql
--- ❌ NEVER DO THIS - It deletes everything including core definitions
-TRUNCATE TABLE jobs, project_definitions, messages CASCADE;
-```
-
-**What TO do instead:**
-```sql
--- ✅ CORRECT - Only clear dynamic/runtime data
-DELETE FROM job_board;
-DELETE FROM project_runs; 
-DELETE FROM job_reports;
-DELETE FROM events;
-DELETE FROM artifacts;
-DELETE FROM memories;
--- Keep jobs, project_definitions, and messages intact!
-```
-
-**If you accidentally delete everything:**
-1. Stop immediately
-2. Recreate the core system from scratch using the definitions in this README
-3. Never use `TRUNCATE ... CASCADE` on core system tables
-
-This reset state provides a clean foundation for testing new job definitions and workflows while preserving the core system configuration.
+- Requires `

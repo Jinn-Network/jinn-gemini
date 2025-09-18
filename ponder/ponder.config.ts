@@ -1,3 +1,4 @@
+import '../env/index.js';
 import MechMarketplaceAbi from './abis/MechMarketplace.json';
 import { createConfig } from "@ponder/core";
 import { http } from "viem";
