@@ -1,5 +1,7 @@
 # Principles and Vision
 
+![Jinn Logo](./assets/logo.png)
+
 ## Principles
 
 ### Decouple logic from execution

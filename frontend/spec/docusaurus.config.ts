@@ -7,7 +7,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'Jinn Project Specification',
   tagline: 'Multi-Agent Blockchain Automation System',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/favicon.png',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
@@ -70,7 +70,7 @@ const config: Config = {
       title: 'Jinn Project',
       logo: {
         alt: 'Jinn Project Logo',
-        src: 'img/logo.svg',
+        src: 'img/logo.png',
       },
       hideOnScroll: false,
       items: [

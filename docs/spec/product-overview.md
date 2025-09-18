@@ -1,5 +1,7 @@
 # Product Overview
 
+![Jinn Logo](./assets/logo.png)
+
 Longer-term platform scope. For MVP, see [Demo Application](./demo-application) and [Technical Architecture - MVP](./mvp-spec).
 
 ## The Vision: A Platform for Agentic Ventures
@@ -36,12 +38,17 @@ In contrast, an agentic venture can be given the standing objective to "become a
 
 The platform is not built for a single purpose. It is a general-purpose framework for launching ventures across a wide array of verticals and industries. We envision ventures dedicated to producing novel content (MediaFi), conducting new scientific research (DeSci), participating in prediction markets (InfoFi), or improving complex decision-making processes (governance).
 
+![Ventures Network and OLAS Integration](./assets/Ventures-network-olas.png)
+
 #### 3. Streamlined Capital Formation
 
 Jinn is designed to make it radically easier for creators to fund their ideas. The platform leverages the Olas protocol's economic engine to bootstrap new ventures. The core mechanism works as follows:
 - **Incentive Allocation:** OLAS token holders lock their tokens into veOLAS to direct the flow of new OLAS emissions. These emissions act as the fuel for venture operations.
 - **Bootstrapping Ventures:** Launchers create ventures that veOLAS holders can evaluate and support by directing emissions to their staking contracts. This creates a clear, on-chain path for capital formation based on perceived merit.
 - **Competitive Dynamics:** As more launchers join the ecosystem, they will naturally compete for these staking incentives, which in turn drives demand for OLAS and encourages deeper engagement with the underlying protocol.
+
+![OLAS Usage and Value Flow](./assets/olas-usage.png)
+
 - **Venture-Specific Tokens:** Beyond OLAS incentives, launchers can optionally introduce a venture-specific token. This creates a powerful, secondary mechanism for capital formation, allowing ventures to accelerate their progress and create deeper financial alignment among their specific stakeholders.
 
 #### 4. Simplified Deployment & Operation

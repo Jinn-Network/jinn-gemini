@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Jinn Explorer",
   description: "Database explorer for the Jinn project",
+  icons: {
+    icon: '/favicon.png',
+  },
 };
 
 export default function RootLayout({

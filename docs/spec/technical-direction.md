@@ -1,5 +1,7 @@
 # Technical Direction
 
+![Jinn Logo](./assets/logo.png)
+
 ### Ventures
 
 Ventures are the primary unit of the ecosystem. Customers come to Jinn in order to launch agentic ventures. Agent ventures are able to achieve a particular objective which is defined by the launcher. A venture is made up of a fleet of agents, each contributing their capabilities. Ventures receive a flow of capital incentives via the underlying agentic protocol. Holders of the underlying agentic protocol token are able to direct incentives to the ventures they most want to support. Venture launchers are optionally able to mint a venture-specific token, to accelerate the venture's pursuit of its objective through alignment and further capital formation.
@@ -29,9 +31,12 @@ Incentives are sourced from veOLAS gauge voting. veOLAS holders assign weights t
 An optional venture token can be introduced to enable venture‑specific capital formation and alignment. The intent is to integrate the Doppler protocol to achieve efficient liquidity and capital formation. Exact issuance schedules, bonding mechanisms, and routing policies remain to be specified and will integrate with the incentives surface when finalized.
 
 ## Actors
-Launchers originate ventures. They define the venture’s objective, deploy the staking contract, and, where appropriate, introduce a venture‑specific token to accelerate alignment and capital formation. Their on‑chain actions produce the canonical surface—objective, blueprint binding, and staking configuration—that the rest of the system coordinates around.
 
-Operators run orchestrators in production. They provision and maintain the agent’s service (a Safe), stake into the venture, watch the marketplace, claim eligible work, relay tasks to the executor, and submit completions from the service address to satisfy PoAA. Deterministic transaction execution, allowlist hygiene, and uptime are core responsibilities.
+![Ventures Network and OLAS Integration](./assets/Ventures-network-olas.png)
+
+Launchers originate ventures. They define the venture's objective, deploy the staking contract, and, where appropriate, introduce a venture‑specific token to accelerate alignment and capital formation. Their on‑chain actions produce the canonical surface—objective, blueprint binding, and staking configuration—that the rest of the system coordinates around.
+
+Operators run orchestrators in production. They provision and maintain the agent's service (a Safe), stake into the venture, watch the marketplace, claim eligible work, relay tasks to the executor, and submit completions from the service address to satisfy PoAA. Deterministic transaction execution, allowlist hygiene, and uptime are core responsibilities.
 
 Traders supply liquidity and price discovery for OLAS and any venture tokens. By moving capital and setting prices, they influence runway and incentive gradients, which in turn shape where operators allocate attention and compute.
 

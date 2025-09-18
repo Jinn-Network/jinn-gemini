@@ -1,5 +1,7 @@
 # Technical Architecture - MVP
 
+![Jinn Logo](./assets/logo.png)
+
 The MVP aims to put in place a minimal on-chain setup which enables [the demo application](./demo-application). This is effectively a stripped-down first step in standing up the platform in a pragmatic, incremental way where we can maximize learning and show value consistently. Before reading this, it's advisable to read the longer-term platform considerations:
 
 - [Technical Architecture](./technical-architecture)
