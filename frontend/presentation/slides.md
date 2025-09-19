@@ -51,6 +51,15 @@ We're at an inflection point. Technology has evolved from chatbots to autonomous
 -->
 
 ---
+layout: image
+image: /assets/orchestrated-task-execution.png
+---
+
+<!--
+To make this clearer, here's an illustration of the difference between autonomous task execution and an agentic venture. Autonomous task execution completes linear tasks, at a moderate level of complexity. Agentic ventures bundle and orchestrate autonomous task executors to complete significantly higher degrees of complexity over much longer periods of time. Once these objectives are complete, they are learned and can be sold back as a capability via a marketplace.
+-->
+
+---
 layout: default
 ---
 
