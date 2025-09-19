@@ -1,11 +1,11 @@
 import '../env/index.js';
-import { readRecords } from '../gemini-agent/mcp/tools/read-records.js';
-import { createRecord } from '../gemini-agent/mcp/tools/create-record.js';
-import { updateRecords } from '../gemini-agent/mcp/tools/update-records.js';
 import { Agent } from '../gemini-agent/agent.js';
 import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
 import { Web3 } from 'web3';
-import agentMechArtifact from 'mech-client-ts/dist/abis/AgentMech.json' assert { type: 'json' };
+// Import JSON artifact without import assertions for TS compatibility
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import agentMechArtifact from 'mech-client-ts/dist/abis/AgentMech.json';
 import { workerLogger } from './logger.js';
 import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport, createArtifact as apiCreateArtifact } from './control_api_client.js';
 
@@ -15,10 +15,11 @@ type UnclaimedRequest = {
   requester: string;    // requester address (0x...)
   blockTimestamp?: number;
   ipfsHash?: string;
+  delivered?: boolean;
 };
 
 const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-const SINGLE_SHOT = process.argv.includes('--single');
+const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = (process.env.USE_CONTROL_API ?? 'true') !== 'false';
 const STALE_MINUTES = parseInt(process.env.MECH_RECLAIM_AFTER_MINUTES || '10', 10);
 
@@ -55,7 +56,7 @@ async function isUndeliveredOnChain(params: { mechAddress: string; requestIdHex:
 async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest[]> {
   try {
     // Query our local Ponder GraphQL (custom schema)
-    const query = `query RecentRequests($limit: Int!) {\n  requests(orderBy: \"blockTimestamp\", orderDirection: \"desc\", limit: $limit) {\n    items {\n      id\n      mech\n      sender\n      ipfsHash\n      blockTimestamp\n    }\n  }\n}`;
+    const query = `query RecentRequests($limit: Int!) {\n  requests(orderBy: \"blockTimestamp\", orderDirection: \"desc\", limit: $limit) {\n    items {\n      id\n      mech\n      sender\n      ipfsHash\n      blockTimestamp\n      delivered\n    }\n  }\n}`;
     const res = await fetch(PONDER_GRAPHQL_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -69,7 +70,8 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       mech: String(r.mech),
       requester: String(r.sender || ''),
       ipfsHash: r?.ipfsHash ? String(r.ipfsHash) : undefined,
-      blockTimestamp: Number(r.blockTimestamp)
+      blockTimestamp: Number(r.blockTimestamp),
+      delivered: Boolean(r?.delivered === true)
     })) as UnclaimedRequest[];
   } catch (e) {
     workerLogger.warn({ error: e instanceof Error ? e.message : String(e) }, 'Ponder GraphQL not reachable; returning empty set');
@@ -93,24 +95,20 @@ async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: str
 
 async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedRequest[]> {
   if (requests.length === 0) return [];
-  // Reliable Supabase per-id check to avoid IN operator ambiguity
-  const notClaimed: UnclaimedRequest[] = [];
-  for (const r of requests) {
-    const existing = await getExistingClaim(r.id);
-    if (!existing) notClaimed.push(r);
-  }
-
-  // Intersect with on-chain undelivered for additional safety
+  // Filter out already delivered requests first (from indexer)
+  const notDelivered = requests.filter(r => !r.delivered);
+  if (notDelivered.length === 0) return [];
+  // Intersect with on-chain undelivered for additional safety (Control API will enforce atomic claim)
   try {
     const rpcHttpUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
     const mechToSet = new Map<string, Set<string>>();
-    for (const r of notClaimed) {
+    for (const r of notDelivered) {
       const key = r.mech.toLowerCase();
       if (!mechToSet.has(key)) {
         mechToSet.set(key, await getUndeliveredSet({ mechAddress: r.mech, rpcHttpUrl }));
       }
     }
-    const filtered = notClaimed.filter(r => {
+    const filtered = notDelivered.filter(r => {
       const set = mechToSet.get(r.mech.toLowerCase());
       if (!set || set.size === 0) return true;
       const idHex = String(r.id).startsWith('0x') ? String(r.id).toLowerCase() : ('0x' + BigInt(String(r.id)).toString(16)).toLowerCase();
@@ -118,82 +116,26 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
     });
     return filtered;
   } catch {
-    return notClaimed;
-  }
-}
-
-async function getExistingClaim(requestId: string): Promise<any | null> {
-  try {
-    const res = await readRecords({ table_name: 'onchain_request_claims', filter: { request_id: requestId }, limit: 1 });
-    const parsed = safeParseToolResponse(res);
-    if (!parsed.ok) return null;
-    const rows: any[] = Array.isArray(parsed.data) ? parsed.data : (parsed.data?.data ?? []);
-    return rows?.[0] ?? null;
-  } catch {
-    return null;
+    return notDelivered;
   }
 }
 
 async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promise<boolean> {
   try {
-    if (USE_CONTROL_API) {
-      try {
-        const res = await apiClaimRequest(request.id);
-        if (res && (res.status === 'IN_PROGRESS' || res.status === 'COMPLETED')) {
-          // If COMPLETED returned, someone else finished it; treat as not claimed
-          const ok = res.status === 'IN_PROGRESS';
-          workerLogger.info({ requestId: request.id, status: res.status }, ok ? 'Claimed via Control API' : 'Already handled via Control API');
-          return ok;
-        }
-      } catch (e: any) {
-        workerLogger.info({ requestId: request.id, reason: e?.message || String(e) }, 'Control API claim failed');
-        return false;
+    // Control API is the only path for claiming
+    try {
+      const res = await apiClaimRequest(request.id);
+      if (res && (res.status === 'IN_PROGRESS' || res.status === 'COMPLETED')) {
+        const ok = res.status === 'IN_PROGRESS';
+        workerLogger.info({ requestId: request.id, status: res.status }, ok ? 'Claimed via Control API' : 'Already handled via Control API');
+        return ok;
       }
+      workerLogger.info({ requestId: request.id, status: res?.status }, 'Unexpected claim response');
+      return false;
+    } catch (e: any) {
+      workerLogger.info({ requestId: request.id, reason: e?.message || String(e) }, 'Control API claim failed');
       return false;
     }
-
-    // Check if already claimed and possibly stale
-    const existing = await getExistingClaim(request.id);
-    if (existing) {
-      const status = String(existing.status || '');
-      const claimedAt = existing.claimed_at ? new Date(existing.claimed_at) : null;
-      const ageMinutes = claimedAt ? (Date.now() - claimedAt.getTime()) / 60000 : 0;
-      const isStale = status === 'IN_PROGRESS' && ageMinutes > STALE_MINUTES;
-      if (!isStale) {
-        workerLogger.info({ requestId: request.id, status }, 'Request already claimed');
-        return false;
-      }
-      // Reclaim stale entry by updating owner and timestamp
-      const up = await updateRecords({
-        table_name: 'onchain_request_claims',
-        filter: { request_id: request.id, status: 'IN_PROGRESS' },
-        updates: { worker_address: workerAddress, claimed_at: new Date().toISOString() }
-      });
-      const upd = safeParseToolResponse(up);
-      if (!upd.ok) {
-        workerLogger.info({ requestId: request.id, reason: upd.message }, 'Stale reclaim failed');
-        return false;
-      }
-      workerLogger.info({ requestId: request.id }, 'Reclaimed stale request');
-      return true;
-    }
-
-    // Fresh claim
-    const res = await createRecord({
-      table_name: 'onchain_request_claims',
-      data: {
-        request_id: request.id,
-        worker_address: workerAddress,
-        status: 'IN_PROGRESS'
-      }
-    });
-    const parsed = safeParseToolResponse(res);
-    if (!parsed.ok) {
-      workerLogger.info({ requestId: request.id, reason: parsed.message }, 'Claim failed (likely already claimed)');
-      return false;
-    }
-    workerLogger.info({ requestId: request.id, mech: request.mech }, 'Claimed request');
-    return true;
   } catch (e: any) {
     workerLogger.warn({ requestId: request.id, error: e?.message || String(e) }, 'Claim error');
     return false;
@@ -206,20 +148,26 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; 
     const hash = String(ipfsHash).replace(/^0x/, '');
     // The marketplace stores truncated hash in some contexts; attempt direct fetch
     const url = `https://gateway.autonolas.tech/ipfs/${hash}`;
-    const res = await fetch(url, { method: 'GET' });
+    // Add a timeout so we don't hang here
+    const controller = new AbortController();
+    const timeoutMs = parseInt(process.env.IPFS_FETCH_TIMEOUT_MS || '7000', 10);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
+    clearTimeout(timer);
     if (!res.ok) return null;
     const json = await res.json();
     const prompt = json?.prompt || json?.input || undefined;
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
     const parentRequestId = json?.parentRequestId ? String(json.parentRequestId) : undefined;
     return { prompt, enabledTools, parentRequestId };
-  } catch {
+  } catch (e: any) {
+    workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
     return null;
   }
 }
 
 async function runAgentForRequest(request: UnclaimedRequest, metadata: any): Promise<{ output: string; telemetry: any }> {
-  const model = process.env.MECH_MODEL || 'gemini-2.5-pro';
+  const model = process.env.MECH_MODEL || 'gemini-2.5-flash-lite';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const agent = new Agent(model, enabledTools, {
     jobId: request.id,
@@ -248,34 +196,20 @@ async function storeOnchainReport(request: UnclaimedRequest, workerAddress: stri
       status: error ? 'FAILED' : 'COMPLETED',
       duration_ms: result?.telemetry?.duration || 0,
       total_tokens: result?.telemetry?.totalTokens || 0,
-      tools_called: result?.telemetry?.toolCalls || [],
+      tools_called: JSON.stringify(result?.telemetry?.toolCalls ?? []),
       final_output: result?.output || null,
       error_message: error ? (error.message || String(error)) : null,
       error_type: error ? 'AGENT_ERROR' : null,
-      raw_telemetry: result?.telemetry || {}
+      raw_telemetry: JSON.stringify(result?.telemetry ?? {})
     };
-    if (USE_CONTROL_API) {
-      await apiCreateJobReport(request.id, payload);
-    } else {
-      await createRecord({
-        table_name: 'onchain_job_reports',
-        data: { request_id: request.id, worker_address: workerAddress, ...payload }
-      });
-    }
+    await apiCreateJobReport(request.id, payload);
   } catch {}
 }
 
 async function storeOnchainArtifact(request: UnclaimedRequest, workerAddress: string, cid: string, topic: string, content?: string): Promise<void> {
   try {
     const data = { cid, topic, content: content || null };
-    if (USE_CONTROL_API) {
-      await apiCreateArtifact(request.id, data);
-    } else {
-      await createRecord({
-        table_name: 'onchain_artifacts',
-        data: { request_id: request.id, worker_address: workerAddress, ...data }
-      });
-    }
+    await apiCreateArtifact(request.id, data);
   } catch {}
 }
 
@@ -321,16 +255,7 @@ async function processOnce(): Promise<void> {
     // Here, use axios directly if needed; for now, store content inline and let delivery compute CID again.
     await storeOnchainArtifact(target, workerAddress, 'inline', 'result.output', outputStr);
   } catch {}
-  // Mark claim as completed (Control API handles this upon report; keep fallback only)
-  if (!USE_CONTROL_API) {
-    try {
-      await updateRecords({
-        table_name: 'onchain_request_claims',
-        filter: { request_id: target.id },
-        updates: { status: 'COMPLETED', completed_at: new Date().toISOString() }
-      });
-    } catch {}
-  }
+  // Marking claim completed is handled by Control API upon report creation
 
   // Attempt on-chain delivery via Safe when configured
   try {
@@ -369,6 +294,21 @@ async function processOnce(): Promise<void> {
     }
   } catch (e: any) {
     workerLogger.warn({ requestId: target.id, error: e?.message || String(e) }, 'Safe delivery failed');
+    // Record a FAILED status so the claim does not remain IN_PROGRESS
+    try {
+      await apiCreateJobReport(target.id, {
+        status: 'FAILED',
+        duration_ms: result?.telemetry?.duration || 0,
+        total_tokens: result?.telemetry?.totalTokens || 0,
+        tools_called: JSON.stringify(result?.telemetry?.toolCalls ?? []),
+        final_output: typeof result?.output === 'string' ? result.output : JSON.stringify(result?.output ?? ''),
+        error_message: e?.message || String(e),
+        error_type: 'DELIVERY_ERROR',
+        raw_telemetry: JSON.stringify(result?.telemetry ?? {}),
+      } as any);
+    } catch (reportErr: any) {
+      workerLogger.warn({ requestId: target.id, error: reportErr?.message || String(reportErr) }, 'Failed to record FAILED status');
+    }
   }
 }
 

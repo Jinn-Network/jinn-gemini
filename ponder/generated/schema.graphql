@@ -10,11 +10,15 @@ type request {
   id: String!
   mech: String!
   sender: String!
+  requestData: String
   ipfsHash: String
+  deliveryIpfsHash: String
   transactionHash: String
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   delivered: Boolean!
+  jobName: String
+  enabledTools: [String!]
 }
 
 scalar BigInt
@@ -60,6 +64,16 @@ input requestFilter {
   sender_lt: String
   sender_gte: String
   sender_lte: String
+  requestData: String
+  requestData_not: String
+  requestData_in: [String]
+  requestData_not_in: [String]
+  requestData_contains: String
+  requestData_not_contains: String
+  requestData_starts_with: String
+  requestData_ends_with: String
+  requestData_not_starts_with: String
+  requestData_not_ends_with: String
   ipfsHash: String
   ipfsHash_not: String
   ipfsHash_in: [String]
@@ -70,6 +84,16 @@ input requestFilter {
   ipfsHash_ends_with: String
   ipfsHash_not_starts_with: String
   ipfsHash_not_ends_with: String
+  deliveryIpfsHash: String
+  deliveryIpfsHash_not: String
+  deliveryIpfsHash_in: [String]
+  deliveryIpfsHash_not_in: [String]
+  deliveryIpfsHash_contains: String
+  deliveryIpfsHash_not_contains: String
+  deliveryIpfsHash_starts_with: String
+  deliveryIpfsHash_ends_with: String
+  deliveryIpfsHash_not_starts_with: String
+  deliveryIpfsHash_not_ends_with: String
   transactionHash: String
   transactionHash_not: String
   transactionHash_in: [String]
@@ -100,6 +124,20 @@ input requestFilter {
   delivered_not: Boolean
   delivered_in: [Boolean]
   delivered_not_in: [Boolean]
+  jobName: String
+  jobName_not: String
+  jobName_in: [String]
+  jobName_not_in: [String]
+  jobName_contains: String
+  jobName_not_contains: String
+  jobName_starts_with: String
+  jobName_ends_with: String
+  jobName_not_starts_with: String
+  jobName_not_ends_with: String
+  enabledTools: [String]
+  enabledTools_not: [String]
+  enabledTools_has: String
+  enabledTools_not_has: String
 }
 
 type delivery {
@@ -108,6 +146,7 @@ type delivery {
   mech: String!
   mechServiceMultisig: String!
   deliveryRate: BigInt!
+  ipfsHash: String
   transactionHash: String!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
@@ -165,6 +204,16 @@ input deliveryFilter {
   deliveryRate_lt: BigInt
   deliveryRate_gte: BigInt
   deliveryRate_lte: BigInt
+  ipfsHash: String
+  ipfsHash_not: String
+  ipfsHash_in: [String]
+  ipfsHash_not_in: [String]
+  ipfsHash_contains: String
+  ipfsHash_not_contains: String
+  ipfsHash_starts_with: String
+  ipfsHash_ends_with: String
+  ipfsHash_not_starts_with: String
+  ipfsHash_not_ends_with: String
   transactionHash: String
   transactionHash_not: String
   transactionHash_in: [String]

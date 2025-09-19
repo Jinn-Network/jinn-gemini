@@ -52,7 +52,7 @@
     "dotenv": "^17.2.2",
     "ethers": "^6.0.0",
     "graphql-yoga": "^5.15.2",
-    "mech-client-ts": "file:/Users/adrianobradley/mech-client-ts",
+    "mech-client-ts": "file:/Users/adrianobradley/mech-client-ts/mech-client-ts-1.0.5.tgz",
     "openai": "^5.11.0",
     "pino": "^9.9.0",
     "pino-pretty": "^13.1.1",

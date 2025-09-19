@@ -19,24 +19,10 @@ async function main() {
       version: '0.1.0',
     });
 
-    // Build serverTools from imported tool modules (on-chain only + external integrations)
+    // Build serverTools from imported tool modules (core tools only)
     serverTools = [
       { name: 'get_details', schema: tools.getDetailsSchema, handler: tools.getDetails },
-      { name: 'search_jobs', schema: tools.searchJobsSchema, handler: tools.searchJobs },
-      { name: 'search_artifacts', schema: tools.searchArtifactsSchema, handler: tools.searchArtifacts },
-      { name: 'send_message', schema: tools.sendMessageSchema, handler: tools.sendMessage },
-      { name: 'civitai_generate_image', schema: tools.civitaiGenerateImageSchema, handler: tools.civitaiGenerateImage },
-      { name: 'civitai_publish_post', schema: tools.civitaiPublishPostSchema, handler: tools.civitaiPublishPost },
-      { name: 'civitai_search_models', schema: tools.civitaiSearchModelsSchema, handler: tools.civitaiSearchModels },
-      { name: 'civitai_get_model_details', schema: tools.civitaiGetModelDetailsSchema, handler: tools.civitaiGetModelDetails },
-      { name: 'civitai_search_images', schema: tools.civitaiSearchImagesSchema, handler: tools.civitaiSearchImages },
       { name: 'post_marketplace_job', schema: tools.postMarketplaceJobSchema, handler: tools.postMarketplaceJob },
-      { name: 'create_artifact', schema: tools.createArtifactSchema, handler: tools.createArtifact },
-      { name: 'create_message', schema: tools.createMessageSchema, handler: tools.createMessage },
-      { name: 'zora_prepare_create_coin_tx', schema: tools.prepareCreateCoinTxSchema, handler: tools.prepareCreateCoinTx },
-      { name: 'enqueue_transaction', schema: tools.enqueueTransactionSchema, handler: tools.enqueueTransaction },
-      { name: 'get_transaction_status', schema: tools.getTransactionStatusSchema, handler: tools.getTransactionStatus },
-      { name: 'zora_query_coins', schema: tools.queryCoinsSchema, handler: tools.queryCoins },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums

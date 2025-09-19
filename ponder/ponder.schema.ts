@@ -1,16 +1,20 @@
 import { createSchema } from "@ponder/core";
 
-export default createSchema((p) => ({
+export default createSchema((p: any) => ({
   request: p.createTable(
     {
       id: p.string(),
       mech: p.hex(),
       sender: p.hex(),
+      requestData: p.string().optional(),
       ipfsHash: p.string().optional(),
+      deliveryIpfsHash: p.string().optional(),
       transactionHash: p.string().optional(),
       blockNumber: p.bigint(),
       blockTimestamp: p.bigint(),
       delivered: p.boolean(),
+      jobName: p.string().optional(),
+      enabledTools: p.string().list().optional(),
     },
     {
       ts: p.index("blockTimestamp").desc(),
@@ -25,6 +29,7 @@ export default createSchema((p) => ({
       mech: p.hex(),
       mechServiceMultisig: p.hex(),
       deliveryRate: p.bigint(),
+      ipfsHash: p.string().optional(),
       transactionHash: p.string(),
       blockNumber: p.bigint(),
       blockTimestamp: p.bigint(),

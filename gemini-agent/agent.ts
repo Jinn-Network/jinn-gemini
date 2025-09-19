@@ -63,14 +63,9 @@ export class Agent {
   
   // Define universal tools once as a class property
   private readonly universalTools = [
+    'list_tools',
     'get_details',
-    'manage_artifact',
-    'send_message',
-    'update_job',
-    'create_memory',
-    'search_memories',
-    'search_artifacts',
-    'search_jobs'
+    'post_marketplace_job'
   ];
 
   constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {

@@ -148,28 +148,36 @@ const resolvers = {
       await assertRequestExists(ctx, args.requestId);
       const worker = getWorkerAddress(ctx);
 
-      const { data, error } = await ctx.supabase
+      // Fetch existing claim
+      const { data: existing, error: exErr } = await ctx.supabase
         .from('onchain_request_claims')
-        .upsert(
-          { request_id: args.requestId, worker_address: worker, status: 'IN_PROGRESS' },
-          { onConflict: 'request_id' }
-        )
-        .select()
-        .limit(1);
+        .select('*')
+        .eq('request_id', args.requestId)
+        .limit(1)
+        .maybeSingle();
+      if (exErr) throw new Error(exErr.message);
 
-      if (error) throw new Error(error.message);
-      let row = data && data[0];
-      if (!row) {
-        const { data: existing, error: exErr } = await ctx.supabase
-          .from('onchain_request_claims')
-          .select('*')
-          .eq('request_id', args.requestId)
-          .limit(1)
-          .maybeSingle();
-        if (exErr) throw new Error(exErr.message);
-        row = existing;
+      // If already claimed and not completed, return existing (do not re-claim)
+      if (existing && existing.status !== 'COMPLETED') {
+        return existing;
       }
-      return row;
+
+      // Otherwise, (re)claim for this worker
+      const insertPayload = {
+        request_id: args.requestId,
+        worker_address: worker,
+        status: 'IN_PROGRESS',
+        claimed_at: new Date().toISOString(),
+        completed_at: null,
+      } as any;
+
+      const { data: created, error: insErr } = await ctx.supabase
+        .from('onchain_request_claims')
+        .upsert(insertPayload, { onConflict: 'request_id' })
+        .select('*')
+        .limit(1);
+      if (insErr) throw new Error(insErr.message);
+      return created![0];
     },
 
     createJobReport: async (
@@ -199,7 +207,21 @@ const resolvers = {
         .select()
         .limit(1);
       if (error) throw new Error(error.message);
-      return data![0];
+      const report = data![0];
+
+      // Update claim status based on report outcome
+      const finalStatus = payload.status && payload.status !== 'IN_PROGRESS' ? payload.status : 'COMPLETED';
+      const patch: any = {
+        status: finalStatus,
+        completed_at: new Date().toISOString(),
+      };
+      const { error: updErr } = await ctx.supabase
+        .from('onchain_request_claims')
+        .update(patch)
+        .eq('request_id', args.requestId);
+      if (updErr) console.error('Failed to update claim status:', updErr.message);
+
+      return report;
     },
 
     createArtifact: async (

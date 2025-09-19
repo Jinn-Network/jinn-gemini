@@ -2330,9 +2330,9 @@
     undici-types "~6.19.2"
 
 "@types/node@^18.0.0":
-  version "18.19.125"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-18.19.125.tgz#179a577373347f29560cc4dfef9ee36229a09647"
-  integrity sha512-4TWNu0IxTQcszliYdW2mxrVvhHeERUeDCUwVuvQFn9JCU02kxrUDs8v52yOazPo7wLHKgqEd2FKxlSN6m8Deqg==
+  version "18.19.127"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-18.19.127.tgz#7c2e47fa79ad7486134700514d4a975c4607f09d"
+  integrity sha512-gSjxjrnKXML/yo0BO099uPixMqfpJU0TKYjpfLU7TrtA2WWDki412Np/RSTPRil1saKBhvVVKzVx/p/6p94nVA==
   dependencies:
     undici-types "~5.26.4"
 
@@ -5662,8 +5662,9 @@ math-intrinsics@^1.1.0:
   resolved "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz"
   integrity sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==
 
-"mech-client-ts@file:../mech-client-ts":
-  version "1.0.0"
+"mech-client-ts@file:../mech-client-ts/mech-client-ts-1.0.5.tgz":
+  version "1.0.5"
+  resolved "file:../mech-client-ts/mech-client-ts-1.0.5.tgz#859a6debdc0a0189911fa6dad0beaab65ba64162"
   dependencies:
     "@types/form-data" "^2.2.1"
     "@types/uuid" "^10.0.0"
