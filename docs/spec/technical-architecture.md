@@ -5,6 +5,78 @@ Architecture for the longer‑term platform. For the minimal system that ships t
 ## Overview
 Ventures anchor the system on-chain via Olas staking contracts. Orchestrators, run by independent operators, instantiate and operate agents for each venture. Jobs are requested on the marketplace; agents may decompose work into sub‑jobs or execute tasks directly via a tool‑driven executor (MCP). Completions originate from the agent’s service address (Safe) to satisfy Proof‑of‑Active‑Agent. Emissions flow via veOLAS gauge weights to venture staking contracts. Wallets, transaction execution, and tool allowlists enforce deterministic, auditable behavior across chains.
 
+### Work Decomposition
+Agents decide whether to decompose work into sub‑jobs or to execute tasks directly using the task executor. This allows for complex, multi-step workflows with full traceability. For a detailed breakdown of this architecture, see the [Work Decomposition Architecture](./work-decomposition-architecture) document.
+
+```mermaid
+graph TB
+    subgraph "High-Level Goal"
+        Goal["`**Complex Objective**
+        'Become top creator on Zora'`"]
+    end
+    
+    subgraph "Decomposition Decision"
+        Decision{"`Agent Decision:
+        Execute directly or
+        decompose?`"}
+    end
+    
+    subgraph "Direct Execution"
+        DirectExec["`**Single Job**
+        Execute with tools`"]
+    end
+    
+    subgraph "Decomposition Flow"
+        Parent["`**Parent Job**
+        Orchestrator`"]
+        
+        subgraph "Child Jobs"
+            Child1["`**Job 1**
+            Create Content`"]
+            Child2["`**Job 2** 
+            Analyze Trends`"]
+            Child3["`**Job 3**
+            Engage Community`"]
+        end
+        
+        subgraph "Context Flow"
+            TriggerCtx["`**Trigger Context**
+            Parent → Child`"]
+            DelegatedCtx["`**Delegated Context**
+            Child → Parent`"]
+        end
+    end
+    
+    subgraph "Recomposition"
+        Review["`**Review & Synthesis**
+        Analyze child outputs`"]
+        NextSteps["`**Next Steps**
+        Iterate or conclude`"]
+    end
+    
+    Goal --> Decision
+    Decision -->|Simple Task| DirectExec
+    Decision -->|Complex Task| Parent
+    
+    Parent --> Child1
+    Parent --> Child2  
+    Parent --> Child3
+    
+    Parent -.->|Context| TriggerCtx
+    TriggerCtx -.-> Child1
+    TriggerCtx -.-> Child2
+    TriggerCtx -.-> Child3
+    
+    Child1 -.->|Results| DelegatedCtx
+    Child2 -.->|Results| DelegatedCtx
+    Child3 -.->|Results| DelegatedCtx
+    DelegatedCtx -.-> Parent
+    
+    Parent --> Review
+    Review --> NextSteps
+    NextSteps -.->|If needed| Parent
+```
+
 ## Components
 
 ### Ventures
@@ -24,15 +96,12 @@ It will be possible to launch many ventures via Jinn. It is therefore important 
 #### Architecture
 - Venture Registry (staking contract): venture id, launcher, Jinn network tag, bound agent blueprint (AgentRegistry id), objective spec hash
 - OLAS VoteWeighting/Gauge: veOLAS gauge weights direct emissions to the venture’s staking contract
-- Optional Venture Token: venture-specific token minting; capital formation via Doppler; integrates with incentives routing (TBD)
 
 #### Implementation
 
-The Venture Registry is implemented directly as an Olas staking contract that doubles as the canonical registry entry for a venture. At deployment, the an Jinn network identifier is included with the staking contract – likely via the agent blueprint – and binds that single blueprint on the Olas AgentRegistry. That blueprint packages the core Jinn implementation and includes an objective specification hash that captures the venture’s overarching objective. The launch flow is straightforward: the launcher deploys the staking contract, records the blueprint id and objective hash, and the system emits a VentureCreated event. The orchestrator picks up that event and decides whether or not to participate.
+The Venture Registry is implemented directly as an Olas staking contract that doubles as the canonical registry entry for a venture. At deployment, the an Jinn network identifier is included with the staking contract – likely via the agent blueprint – and binds that single blueprint on the Olas AgentRegistry. That blueprint packages the core Jinn implementation and includes an objective specification hash that captures the venture’s overarching objective. The launch flow is straightforward: the launcher deploys the staking contract, records the blueprint id and objective hash, and the system emits a VentureCreated event. The orchestrator picks up that event and decides whether or not to participate.
 
 Incentives are sourced from veOLAS gauge voting. veOLAS holders assign weights to the venture’s staking contract via the OLAS VoteWeighting system; emissions then follow those weights on an epoch basis. Settlement and claims follow the standard OLAS Tokenomics to Dispenser flow, preserving compatibility with OLAS accounting and cross‑chain distribution mechanics.
-
-An optional venture token can be introduced to enable venture‑specific capital formation and alignment. The intent is to integrate the Doppler protocol to achieve efficient liquidity and capital formation. Exact issuance schedules, bonding mechanisms, and routing policies remain to be specified and will integrate with the incentives surface when finalized.
 
 ### Agents
 

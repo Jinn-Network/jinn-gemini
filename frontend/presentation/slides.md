@@ -1,6 +1,6 @@
 ---
 theme: 'geist'
-favicon: './favicon.png'
+favicon: '/favicon.png'
 themeConfig:
   primary: '#503A8E'
 fonts:
@@ -10,7 +10,7 @@ fonts:
 
 # Jinn
 
-![Jinn Logo](./assets/logo.png)
+![Jinn Logo](/assets/logo.png)
 
 <!--
 Welcome everyone. Today we're going to talk about Jinn, the protocol I've been working on since leaving Valory.
@@ -56,10 +56,10 @@ layout: default
 
 # The Olas Ecosystem Opportunity
 
-![OLAS Usage and Value Flow](./assets/olas-usage.png)
+![OLAS Usage and Value Flow](/assets/olas-usage.png)
 
 <!--
-The Olas protocol has immense potential, but its true capabilities haven't been unlocked. We see two key challenges: it's too hard to build capable agents, and it's too hard for builders to benefit from the protocol's economic infrastructure. Jinn solves these problems by providing the tools and framework to launch and sustain agentic applications within the Olas ecosystem, creating clear value flows that benefit OLAS token holders through increased demand and staking activity.
+The Olas protocol has immense potential, but its true capabilities haven't been unlocked. We see two key challenges: it's too hard to build capable agents, and it's too hard for those agents to benefit from the protocol's economic infrastructure. Jinn solves these problems by providing the tools and framework to build, launch, and sustain agents within the Olas ecosystem, creating clear value flows that benefit OLAS token holders through increased demand and staking activity.
 -->
 
 ---
@@ -105,7 +105,7 @@ The Jinn platform provides the framework for launching and operating these ventu
 
 ---
 layout: image
-image: ./assets/Ventures-network-olas.png
+image: /assets/Ventures-network-olas.png
 ---
 
 <!--
@@ -181,8 +181,8 @@ layout: two-cols
 
 ### Completed ✅
 -   **Task Executor**
--   **Transaction Rails**
--   **Research & Validation**
+-   **Work Decomposition Protocol**
+-   **Base Node including Transaction Rails**
 
 ::right::
 
