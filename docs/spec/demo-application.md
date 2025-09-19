@@ -1,7 +1,5 @@
 # Demo Application
 
-![Jinn Logo](./assets/logo.png)
-
 See also: [Technical Architecture - MVP](./mvp-spec.md).
 
 ## Objective

@@ -3,6 +3,9 @@ theme: 'geist'
 favicon: './favicon.png'
 themeConfig:
   primary: '#503A8E'
+fonts:
+  sans: 'Josefin Sans'
+  mono: 'JetBrains Mono'
 ---
 
 # Jinn

@@ -1,7 +1,5 @@
 # Introduction
 
-![Jinn Logo](./assets/logo.png)
-
 ## The Current State of Crypto-Agentic AI
 
 The crypto-agentic AI landscape today is characterized by ambitious promises but underwhelming delivery. While the market buzzes with excitement about autonomous agents operating on-chain, the reality is a collection of limited, often trivial applications that fail to demonstrate the transformative potential of truly autonomous systems. Most "agentic" projects in crypto are essentially sophisticated chatbots with blockchain integration—capable of simple transactions but unable to pursue complex, long-term objectives with the persistence and adaptability that defines genuine autonomy.
@@ -25,6 +23,8 @@ These barriers have prevented Olas from realizing its full potential as the coor
 We stand at a pivotal moment in AI development. The technology has evolved from simple chatbots to sophisticated autonomous task executors capable of complex, multi-step operations. Systems like Gemini CLI demonstrate the power of agents that can understand objectives, plan approaches, use tools dynamically, and execute tasks with minimal human intervention.
 
 The next natural evolution is to orchestrate these individual task executors into cooperative systems—fleets of specialized agents working together toward shared objectives. This represents a fundamental shift from systems that predict the next *tool* to use, to systems that orchestrate the next *task* to perform, enabling the pursuit of ambitious, long-term goals that far exceed the capabilities of any single agent.
+
+![Orchestrated Task Execution](./assets/orchestrated-task-execution.png)
 
 ## Introducing Jinn: The Network for Agentic Ventures
 

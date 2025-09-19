@@ -1,7 +1,5 @@
 # Technical Direction
 
-![Jinn Logo](./assets/logo.png)
-
 ### Ventures
 
 Ventures are the primary unit of the ecosystem. Customers come to Jinn in order to launch agentic ventures. Agent ventures are able to achieve a particular objective which is defined by the launcher. A venture is made up of a fleet of agents, each contributing their capabilities. Ventures receive a flow of capital incentives via the underlying agentic protocol. Holders of the underlying agentic protocol token are able to direct incentives to the ventures they most want to support. Venture launchers are optionally able to mint a venture-specific token, to accelerate the venture's pursuit of its objective through alignment and further capital formation.

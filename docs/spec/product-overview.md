@@ -1,7 +1,5 @@
 # Product Overview
 
-![Jinn Logo](./assets/logo.png)
-
 Longer-term platform scope. For MVP, see [Demo Application](./demo-application) and [Technical Architecture - MVP](./mvp-spec).
 
 ## The Vision: A Platform for Agentic Ventures
