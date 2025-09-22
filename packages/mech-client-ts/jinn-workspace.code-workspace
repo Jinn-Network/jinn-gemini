@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "mech-client-python",
+			"path": "../mech-client-python"
+		},
+		{
+			"name": "mech-client-ts",
+			"path": "."
+		},
+		{
+			"name": "jinn-gemini",
+			"path": "../jinn-gemini"
+		}
+	],
+	"settings": {}
+}
