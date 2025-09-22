@@ -18,7 +18,6 @@
     "noImplicitAny": false
   },
   "include": [
-    "worker/**/*.ts",
     "gemini-agent/**/*.ts"
   ],
   "exclude": [
@@ -27,6 +26,7 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "scripts/**",
+    "worker/**",
     "worker/JobProcessor.ts",
     "scripts/**.ts"
   ]

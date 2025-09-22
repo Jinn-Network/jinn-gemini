@@ -11,6 +11,17 @@ async function main() {
     // Ensure .env variables are available to all tools before they are imported/registered
     loadEnvOnce();
 
+    // Suppress noisy stdout loggers to protect MCP stdio JSON stream
+    // Only allow warnings/errors to reach stderr (Cursor will show those as errors)
+    const level = (process.env.MCP_LOG_LEVEL || 'error').toLowerCase();
+    const noop = () => {};
+    // Always prevent stdout logging
+    (console as any).log = noop;
+    (console as any).info = noop;
+    (console as any).debug = level === 'debug' ? console.debug.bind(console) : noop;
+    // Route warnings to stderr; errors already go to stderr
+    (console as any).warn = console.error.bind(console);
+
     // Dynamically import tools after env is loaded to guarantee availability
     const tools = await import('./tools/index.js');
 
@@ -23,6 +34,7 @@ async function main() {
     serverTools = [
       { name: 'get_details', schema: tools.getDetailsSchema, handler: tools.getDetails },
       { name: 'post_marketplace_job', schema: tools.postMarketplaceJobSchema, handler: tools.postMarketplaceJob },
+      { name: 'create_artifact', schema: tools.createArtifactSchema, handler: tools.createArtifact },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums

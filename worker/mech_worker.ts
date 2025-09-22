@@ -8,6 +8,7 @@ import { Web3 } from 'web3';
 import agentMechArtifact from 'mech-client-ts/dist/abis/AgentMech.json';
 import { workerLogger } from './logger.js';
 import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport, createArtifact as apiCreateArtifact } from './control_api_client.js';
+import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './artifacts.js';
 
 type UnclaimedRequest = {
   id: string;           // on-chain requestId (decimal string or 0x)
@@ -213,6 +214,7 @@ async function storeOnchainArtifact(request: UnclaimedRequest, workerAddress: st
   } catch {}
 }
 
+
 async function processOnce(): Promise<void> {
   const workerAddress = process.env.MECH_WORKER_ADDRESS || '';
   if (!workerAddress) {
@@ -239,6 +241,18 @@ async function processOnce(): Promise<void> {
   try {
     const metadata = await fetchIpfsMetadata(target.ipfsHash);
     result = await runAgentForRequest(target, metadata);
+    // Extract artifacts produced during the run (from tool outputs)
+    const artifacts = [
+      ...extractArtifactsFromOutput(result?.output || ''),
+      ...extractArtifactsFromTelemetry(result?.telemetry || {})
+    ];
+    if (artifacts.length > 0) {
+      (result as any).artifacts = artifacts;
+      // Persist via Control API for queryability immediately (optional)
+      for (const a of artifacts) {
+        try { await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null }); } catch {}
+      }
+    }
     workerLogger.info({ requestId: target.id }, 'Execution completed');
   } catch (e: any) {
     error = e;
@@ -280,7 +294,8 @@ async function processOnce(): Promise<void> {
         resultContent: {
           requestId: String(target.id),
           output: result?.output || '',
-          telemetry: result?.telemetry || {}
+          telemetry: result?.telemetry || {},
+          artifacts: Array.isArray((result as any)?.artifacts) ? (result as any).artifacts : []
         },
         targetMechAddress,
         safeAddress,
