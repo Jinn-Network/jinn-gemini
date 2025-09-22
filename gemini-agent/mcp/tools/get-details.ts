@@ -1,8 +1,8 @@
 // Supabase legacy path removed
 import fetch from 'cross-fetch';
 import { z } from 'zod';
-import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
-import { resolveIpfsContent, resolveRequestIpfsContent } from './shared/ipfs.js';
+import { composeSinglePageResponse, decodeCursor } from './shared/context-management';
+import { resolveRequestIpfsContent } from './shared/ipfs';
 
 // MCP registration schema (permissive) to avoid -32602 pre-validation failures.
 // We normalize and strictly validate inside the handler.
@@ -23,7 +23,7 @@ export const getDetailsParams = z.object({
 export type GetDetailsParams = z.infer<typeof getDetailsParams>;
 
 export const getDetailsSchema = {
-    description: 'Retrieves on-chain request records by ID from the Ponder subgraph (on-chain only).',
+    description: 'Retrieves on-chain request and artifact records by ID from the Ponder subgraph (on-chain only).',
     inputSchema: getDetailsBase.shape,
 };
 
@@ -64,34 +64,87 @@ export async function getDetails(params: GetDetailsParams) {
             return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
         }
 
-        // If IDs look like on-chain request IDs (0x...), fetch from Ponder
-        const onchainIds = (validIds || []).filter((x) => typeof x === 'string' && x.startsWith('0x')) as string[];
-        const onchainRecords: any[] = [];
-        if (onchainIds.length > 0) {
-            const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-            for (const id of onchainIds) {
+        // Partition into request IDs and artifact IDs
+        const isRequestId = (s: string) => /^0x[0-9a-fA-F]+$/.test(s);
+        const isArtifactId = (s: string) => /^0x[0-9a-fA-F]+:\d+$/.test(s);
+
+        const requestIds = (validIds || []).filter((x) => typeof x === 'string' && isRequestId(x)) as string[];
+        const artifactIds = (validIds || []).filter((x) => typeof x === 'string' && isArtifactId(x)) as string[];
+
+        const requestRecords: any[] = [];
+        const artifactRecords: any[] = [];
+
+        const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+
+        // Fetch requests
+        if (requestIds.length > 0) {
+            for (const id of requestIds) {
                 try {
-                    const res = await fetch(PONDER_GRAPHQL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: `query($id: String!) { request(id: $id) { id mech sender ipfsHash deliveryIpfsHash requestData blockTimestamp delivered } }`, variables: { id } }) });
+                    const res = await fetch(PONDER_GRAPHQL_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            query: `query($id: String!) { request(id: $id) { id mech sender ipfsHash deliveryIpfsHash requestData blockTimestamp delivered } }`,
+                            variables: { id }
+                        })
+                    });
                     const json = await res.json();
                     const r = json?.data?.request;
                     if (r) {
                         const record = { ...r, _source_table: 'ponder_request' } as any;
                         if (shouldResolveIpfs && record.ipfsHash) {
-                            // Resolve request IPFS content directly from request CID
                             record.ipfsContent = await resolveRequestIpfsContent(record.ipfsHash, 10000);
                         }
-                        onchainRecords.push(record);
+                        requestRecords.push(record);
                     }
                 } catch {}
             }
         }
 
-        // On-chain only: return results directly from Ponder
-        const composed = composeSinglePageResponse(onchainRecords, {
+        // Fetch artifacts
+        if (artifactIds.length > 0) {
+            for (const id of artifactIds) {
+                try {
+                    const res = await fetch(PONDER_GRAPHQL_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            query: `query($id: String!) { artifact(id: $id) { id requestId name topic cid contentPreview } }`,
+                            variables: { id }
+                        })
+                    });
+                    const json = await res.json();
+                    const a = json?.data?.artifact;
+                    if (a) {
+                        const record: any = { ...a, _source_table: 'ponder_artifact' };
+                        if (shouldResolveIpfs && record.cid) {
+                            record.ipfsContent = await resolveRequestIpfsContent(record.cid, 10000);
+                        }
+                        artifactRecords.push(record);
+                    }
+                } catch {}
+            }
+        }
+
+        // Return combined results in the same order as requested IDs, with no truncation (pagination only)
+        const requestMap = new Map<string, any>();
+        for (const r of requestRecords) requestMap.set(r.id, r);
+        const artifactMap = new Map<string, any>();
+        for (const a of artifactRecords) artifactMap.set(a.id, a);
+        const combined: any[] = [];
+        for (const id of validIds) {
+            if (isRequestId(id)) {
+                const r = requestMap.get(id);
+                if (r) combined.push(r);
+            } else if (isArtifactId(id)) {
+                const a = artifactMap.get(id);
+                if (a) combined.push(a);
+            }
+        }
+        const composed = composeSinglePageResponse(combined, {
             startOffset: keyset.offset,
-            // Use a more reasonable truncation default for potentially large IPFS content
-            truncateChars: 2000,
-            perFieldMaxChars: 10000, // Hard cap on any field
+            truncateChars: -1,
+            enforceHardFieldClamp: false,
             requestedMeta: { cursor: validCursor, resolve_ipfs: shouldResolveIpfs }
         });
         return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };

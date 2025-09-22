@@ -1,5 +1,6 @@
 import '../env/index.js';
 import MechMarketplaceAbi from './abis/MechMarketplace.json';
+import AgentMechAbi from 'mech-client-ts/dist/abis/AgentMech.json';
 import { createConfig } from "@ponder/core";
 import { http } from "viem";
 
@@ -22,6 +23,12 @@ export default createConfig({
       address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
       // Reuse ABI from mech-client-ts to avoid duplication during dev
       abi: MechMarketplaceAbi,
+      startBlock: Number(process.env.PONDER_START_BLOCK || 35577849),
+    },
+    OlasMech: {
+      network: "base",
+      address: process.env.PONDER_MECH_ADDRESS || '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7',
+      abi: (AgentMechAbi as any)?.abi || (AgentMechAbi as any),
       startBlock: Number(process.env.PONDER_START_BLOCK || 35577849),
     },
   },

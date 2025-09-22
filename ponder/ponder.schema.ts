@@ -40,6 +40,20 @@ export default createSchema((p: any) => ({
       requestIdIdx: p.index("requestId"),
     }
   ),
+  artifact: p.createTable(
+    {
+      id: p.string(),
+      requestId: p.string(),
+      name: p.string(),
+      cid: p.string(),
+      topic: p.string(),
+      contentPreview: p.string().optional(),
+    },
+    {
+      requestIdIdx: p.index("requestId"),
+      topicIdx: p.index("topic"),
+    }
+  ),
 }));
 
 

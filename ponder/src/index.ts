@@ -1,17 +1,46 @@
 import { ponder } from "@/generated";
 import { resolveRequestIpfsContent } from "../../gemini-agent/mcp/tools/shared/ipfs";
 import axios from "axios";
-import { decodeFunctionData, parseAbi } from "viem";
 
-ponder.on("MechMarketplace:MarketplaceRequest", async ({ event, context }) => {
+// Minimal local types to avoid implicit any in handler params
+type Repository = {
+  upsert: (args: unknown) => Promise<unknown>;
+};
+
+interface PonderContextShape {
+  db?: Record<string, Repository>;
+  entities?: Record<string, Repository>;
+}
+
+interface PonderEventShape {
+  args: Record<string, unknown>;
+  transaction: { hash: string };
+  block: { number: number | bigint | string; timestamp: number | bigint | string };
+}
+
+// Helpers for safe coercion from unknown shapes
+const toStringArray = (value: unknown): string[] => {
+  return Array.isArray(value) ? value.map((x) => String(x)) : [];
+};
+
+const toBigIntCoercible = (value: unknown): string | number | bigint => {
+  if (typeof value === "bigint" || typeof value === "number" || typeof value === "string") {
+    return value;
+  }
+  return 0;
+};
+
+ponder.on(
+  "MechMarketplace:MarketplaceRequest",
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
   try {
     const mech: string = String(event.args.priorityMech);
     const sender: string = String(event.args.requester);
-    const requestIds: string[] = (event.args.requestIds || []).map((x: any) => String(x));
-    const requestDatas: string[] = (event.args.requestDatas || []).map((x: any) => String(x));
+    const requestIds: string[] = toStringArray((event.args as any).requestIds);
+    const requestDatas: string[] = toStringArray((event.args as any).requestDatas);
     const txHash: string = String(event.transaction.hash);
-    const blockNumber: bigint = BigInt(event.block.number);
-    const blockTimestamp: bigint = BigInt(event.block.timestamp);
+    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
+    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
     const repo = (context as any).db?.request || (context as any).entities?.request;
     if (!repo) {
@@ -74,207 +103,37 @@ ponder.on("MechMarketplace:MarketplaceRequest", async ({ event, context }) => {
   }
 });
 
-// Handle marketplace batch/signed deliveries used by Safe flow
-ponder.on("MechMarketplace:MarketplaceDelivery", async ({ event, context }) => {
-  try {
-    const deliveryMech: string = String(event.args.deliveryMech);
-    const requestIds: string[] = (event.args.requestIds || []).map((x: any) => String(x));
-    const txHash: string = String(event.transaction.hash);
-    const blockNumber: bigint = BigInt(event.block.number);
-    const blockTimestamp: bigint = BigInt(event.block.timestamp);
-
-    const repo = (context as any).db?.delivery || (context as any).entities?.delivery;
-    if (!repo) {
-      console.error("No repository for 'delivery' (neither context.db nor context.entities). Skipping upsert.");
-      return;
-    }
-
-    const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-    const ZERO_RATE = 0n;
-
-    let digestByReqId: Record<string, string> = {};
-    try {
-      const rpcUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
-      if (rpcUrl) {
-        const rpcResp = await axios.post(rpcUrl, { jsonrpc: "2.0", id: 1, method: "eth_getTransactionByHash", params: [txHash] }, { timeout: 8000 });
-        const input: string | undefined = rpcResp?.data?.result?.input;
-        if (input && input.startsWith("0x")) {
-          const safeAbi = parseAbi(["function execTransaction(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,bytes signatures)"]);
-          const decodedSafe = decodeFunctionData({ abi: safeAbi, data: input as `0x${string}` });
-          const innerData: `0x${string}` | undefined = (decodedSafe?.args?.[2] as any);
-          if (innerData) {
-            const agentAbi = parseAbi(["function deliverToMarketplace(bytes32[] requestIds, bytes32[] resultDigests)"]);
-            const decodedInner = decodeFunctionData({ abi: agentAbi, data: innerData });
-            const reqs: readonly string[] = (decodedInner?.args?.[0] as any[]) || [];
-            const digests: readonly string[] = (decodedInner?.args?.[1] as any[]) || [];
-            for (let i = 0; i < Math.min(reqs.length, digests.length); i++) {
-              const rIdHex = String(reqs[i]).toLowerCase();
-              const digestHex = String(digests[i]).replace(/^0x/, '').toLowerCase();
-              const ipfsHash = `f01551220${digestHex}`;
-              digestByReqId[rIdHex] = ipfsHash;
-            }
-          }
-        }
-      }
-    } catch (e: any) {
-      console.warn({ txHash, err: e?.message || String(e) }, "Failed to decode Safe inner call for delivery digest");
-    }
-
-    for (const reqId of requestIds) {
-      const rIdHex = String(reqId).toLowerCase();
-      const ipfsHash = digestByReqId[rIdHex];
-      await repo.upsert({
-        id: reqId,
-        create: {
-          requestId: reqId,
-          mech: deliveryMech,
-          mechServiceMultisig: ZERO_ADDRESS,
-          deliveryRate: ZERO_RATE,
-          ipfsHash,
-          transactionHash: txHash,
-          blockNumber,
-          blockTimestamp,
-        },
-        update: {
-          requestId: reqId,
-          mech: deliveryMech,
-          mechServiceMultisig: ZERO_ADDRESS,
-          deliveryRate: ZERO_RATE,
-          ipfsHash,
-          transactionHash: txHash,
-          blockNumber,
-          blockTimestamp,
-        },
-      });
-      const requestRepo = (context as any).db?.request || (context as any).entities?.request;
-      if (requestRepo) {
-        await requestRepo.upsert({
-          id: reqId,
-          create: { delivered: true, deliveryIpfsHash: ipfsHash },
-          update: { delivered: true, deliveryIpfsHash: ipfsHash },
-        });
-      }
-    }
-
-    console.log({ deliveryMech, requestIds }, "Indexed MarketplaceDelivery");
-  } catch (e: any) {
-    console.error({ err: e?.message || String(e) }, "Failed to index MarketplaceDelivery");
-  }
-});
-
-ponder.on("MechMarketplace:MarketplaceDeliveryWithSignatures", async ({ event, context }) => {
-  try {
-    const deliveryMech: string = String(event.args.deliveryMech);
-    const requestIds: string[] = (event.args.requestIds || []).map((x: any) => String(x));
-    const txHash: string = String(event.transaction.hash);
-    const blockNumber: bigint = BigInt(event.block.number);
-    const blockTimestamp: bigint = BigInt(event.block.timestamp);
-
-    const repo = (context as any).db?.delivery || (context as any).entities?.delivery;
-    if (!repo) {
-      console.error("No repository for 'delivery' (neither context.db nor context.entities). Skipping upsert.");
-      return;
-    }
-
-    const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-    const ZERO_RATE = 0n;
-
-    let digestByReqId: Record<string, string> = {};
-    try {
-      const rpcUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
-      if (rpcUrl) {
-        const rpcResp = await axios.post(rpcUrl, { jsonrpc: "2.0", id: 1, method: "eth_getTransactionByHash", params: [txHash] }, { timeout: 8000 });
-        const input: string | undefined = rpcResp?.data?.result?.input;
-        if (input && input.startsWith("0x")) {
-          const safeAbi = parseAbi(["function execTransaction(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,bytes signatures)"]);
-          const decodedSafe = decodeFunctionData({ abi: safeAbi, data: input as `0x${string}` });
-          const innerData: `0x${string}` | undefined = (decodedSafe?.args?.[2] as any);
-          if (innerData) {
-            const agentAbi = parseAbi(["function deliverToMarketplace(bytes32[] requestIds, bytes32[] resultDigests)"]);
-            const decodedInner = decodeFunctionData({ abi: agentAbi, data: innerData });
-            const reqs: readonly string[] = (decodedInner?.args?.[0] as any[]) || [];
-            const digests: readonly string[] = (decodedInner?.args?.[1] as any[]) || [];
-            for (let i = 0; i < Math.min(reqs.length, digests.length); i++) {
-              const rIdHex = String(reqs[i]).toLowerCase();
-              const digestHex = String(digests[i]).replace(/^0x/, '').toLowerCase();
-              const ipfsHash = `f01551220${digestHex}`;
-              digestByReqId[rIdHex] = ipfsHash;
-            }
-          }
-        }
-      }
-    } catch (e: any) {
-      console.warn({ txHash, err: e?.message || String(e) }, "Failed to decode Safe inner call for delivery digest");
-    }
-
-    for (const reqId of requestIds) {
-      const rIdHex = String(reqId).toLowerCase();
-      const ipfsHash = digestByReqId[rIdHex];
-      await repo.upsert({
-        id: reqId,
-        create: {
-          requestId: reqId,
-          mech: deliveryMech,
-          mechServiceMultisig: ZERO_ADDRESS,
-          deliveryRate: ZERO_RATE,
-          ipfsHash,
-          transactionHash: txHash,
-          blockNumber,
-          blockTimestamp,
-        },
-        update: {
-          requestId: reqId,
-          mech: deliveryMech,
-          mechServiceMultisig: ZERO_ADDRESS,
-          deliveryRate: ZERO_RATE,
-          ipfsHash,
-          transactionHash: txHash,
-          blockNumber,
-          blockTimestamp,
-        },
-      });
-      const requestRepo = (context as any).db?.request || (context as any).entities?.request;
-      if (requestRepo) {
-        await requestRepo.upsert({
-          id: reqId,
-          create: { delivered: true, deliveryIpfsHash: ipfsHash },
-          update: { delivered: true, deliveryIpfsHash: ipfsHash },
-        });
-      }
-    }
-
-    console.log({ deliveryMech, requestIds }, "Indexed MarketplaceDeliveryWithSignatures");
-  } catch (e: any) {
-    console.error({ err: e?.message || String(e) }, "Failed to index MarketplaceDeliveryWithSignatures");
-  }
-});
+// Removed MechMarketplace delivery handlers in favor of OlasMech:Deliver
 
 
-// Capture per-request delivery IPFS hash from Deliver events (deliveryData)
-ponder.on("MechMarketplace:Deliver", async ({ event, context }) => {
+// Fallback path: index AgentMech (OlasMech) Deliver events which include raw delivery data bytes
+ponder.on(
+  "OlasMech:Deliver",
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
   try {
     const requestId: string = String(event.args.requestId);
-    const deliveryData: string | undefined = event.args.deliveryData ? String(event.args.deliveryData) : undefined;
+    const dataBytes: string | undefined = event.args.data ? String(event.args.data) : undefined;
     const txHash: string = String(event.transaction.hash);
-    const blockNumber: bigint = BigInt(event.block.number);
-    const blockTimestamp: bigint = BigInt(event.block.timestamp);
+    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
+    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
     const deliveryRepo = (context as any).db?.delivery || (context as any).entities?.delivery;
     const requestRepo = (context as any).db?.request || (context as any).entities?.request;
     if (!deliveryRepo || !requestRepo) {
-      console.error("No repository for 'delivery' or 'request'. Skipping Deliver handler.");
+      console.error("No repository for 'delivery' or 'request'. Skipping OlasMech Deliver handler.");
       return;
     }
 
-    const ipfsHash = deliveryData ? `f01551220${String(deliveryData).replace(/^0x/, '')}` : undefined;
+    // Convert raw digest bytes to gateway-compatible CIDv1 (raw codec) hex multibase
+    const ipfsHash = dataBytes ? `f01551220${String(dataBytes).replace(/^0x/, '')}` : undefined;
 
     await deliveryRepo.upsert({
       id: requestId,
       create: {
         requestId,
-        mech: String(event.args.mech || event.args.deliveryMech || "0x0000000000000000000000000000000000000000"),
+        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
         mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
-        deliveryRate: BigInt(event.args.deliveryRate || 0),
+        deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
         ipfsHash,
         transactionHash: txHash,
         blockNumber,
@@ -282,9 +141,9 @@ ponder.on("MechMarketplace:Deliver", async ({ event, context }) => {
       },
       update: {
         requestId,
-        mech: String(event.args.mech || event.args.deliveryMech || "0x0000000000000000000000000000000000000000"),
+        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
         mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
-        deliveryRate: BigInt(event.args.deliveryRate || 0),
+        deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
         ipfsHash,
         transactionHash: txHash,
         blockNumber,
@@ -310,10 +169,41 @@ ponder.on("MechMarketplace:Deliver", async ({ event, context }) => {
       },
     });
 
-    // If delivery IPFS JSON includes artifacts array, upsert them
+    // Attempt to resolve artifacts from delivery JSON
     try {
       if (ipfsHash) {
-        const url = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`;
+        // Prefer reconstructing directory CID (dag-pb) from digest and fetch the named file (requestId)
+        // ipfsHash is 'f01551220' + 64-hex digest (raw codec). Extract digest and build CIDv1 dag-pb.
+        const digestHex = String(ipfsHash).replace(/^f01551220/i, '');
+        let url = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`; // fallback
+        try {
+          const digestBytes: number[] = [];
+          for (let i = 0; i < digestHex.length; i += 2) {
+            digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
+          }
+          // Build CIDv1 bytes: [0x01] + [0x70] (dag-pb) + multihash: [0x12, 0x20] + digest
+          const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
+          // Base32 encode (lowercase, no padding), prefix with 'b'
+          const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
+          let bitBuffer = 0;
+          let bitCount = 0;
+          let out = '';
+          for (const b of cidBytes) {
+            bitBuffer = (bitBuffer << 8) | (b & 0xff);
+            bitCount += 8;
+            while (bitCount >= 5) {
+              const idx = (bitBuffer >> (bitCount - 5)) & 0x1f;
+              bitCount -= 5;
+              out += base32Alphabet[idx];
+            }
+          }
+          if (bitCount > 0) {
+            const idx = (bitBuffer << (5 - bitCount)) & 0x1f;
+            out += base32Alphabet[idx];
+          }
+          const dirCid = 'b' + out;
+          url = `https://gateway.autonolas.tech/ipfs/${dirCid}/${requestId}`;
+        } catch {}
         let res: any = null;
         for (let attempt = 0; attempt < 5; attempt++) {
           try {
@@ -328,7 +218,7 @@ ponder.on("MechMarketplace:Deliver", async ({ event, context }) => {
           if (artifactsRepo) {
             for (let idx = 0; idx < res.data.artifacts.length; idx++) {
               const a = res.data.artifacts[idx] || {};
-              const id = `${requestId}:${idx}`; // deterministic within request
+              const id = `${requestId}:${idx}`;
               const name = typeof a.name === 'string' ? a.name : `artifact-${idx}`;
               const cid = String(a.cid || '');
               const topic = String(a.topic || '');
@@ -344,12 +234,12 @@ ponder.on("MechMarketplace:Deliver", async ({ event, context }) => {
         }
       }
     } catch (e: any) {
-      console.error({ requestId, err: e?.message || String(e) }, 'Failed to resolve delivery artifacts');
+      console.error({ requestId, err: e?.message || String(e) }, 'Failed to resolve delivery artifacts (OlasMech)');
     }
 
-    console.log({ requestId, ipfsHash }, "Indexed Deliver (delivery ipfs)");
+    console.log({ requestId, ipfsHash }, "Indexed OlasMech Deliver (delivery ipfs)");
   } catch (e: any) {
-    console.error({ err: e?.message || String(e) }, "Failed to index Deliver");
+    console.error({ err: e?.message || String(e) }, "Failed to index OlasMech Deliver");
   }
 });
 

@@ -88,6 +88,7 @@ async function main() {
     .option('mech', { type: 'string', describe: 'Target mech address (0x...)' })
     .option('force', { type: 'boolean', default: false, describe: 'Skip preflight undelivered check' })
     .option('output', { type: 'string', default: '', describe: 'Delivery output text' })
+    .option('artifacts-json', { type: 'string', describe: 'JSON stringified artifacts array to include in resultContent.artifacts' })
     .help()
     .parse();
 
@@ -146,7 +147,14 @@ async function main() {
       requestId: String(target.id),
       output: String(argv.output || ''),
       telemetry: {},
-      artifacts: []
+      artifacts: (() => {
+        try {
+          const s = (argv as any)['artifacts-json'];
+          if (!s) return [];
+          const parsed = JSON.parse(String(s));
+          return Array.isArray(parsed) ? parsed : [];
+        } catch { return []; }
+      })()
     },
     targetMechAddress,
     safeAddress,

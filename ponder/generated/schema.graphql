@@ -3,6 +3,8 @@ type Query {
   requests(where: requestFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): requestPage!
   delivery(id: String!): delivery
   deliverys(where: deliveryFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): deliveryPage!
+  artifact(id: String!): artifact
+  artifacts(where: artifactFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): artifactPage!
   _meta: _meta
 }
 
@@ -240,6 +242,85 @@ input deliveryFilter {
   blockTimestamp_lt: BigInt
   blockTimestamp_gte: BigInt
   blockTimestamp_lte: BigInt
+}
+
+type artifact {
+  id: String!
+  requestId: String!
+  name: String!
+  cid: String!
+  topic: String!
+  contentPreview: String
+}
+
+type artifactPage {
+  items: [artifact!]!
+  pageInfo: PageInfo!
+}
+
+input artifactFilter {
+  AND: [artifactFilter]
+  OR: [artifactFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  requestId: String
+  requestId_not: String
+  requestId_in: [String]
+  requestId_not_in: [String]
+  requestId_contains: String
+  requestId_not_contains: String
+  requestId_starts_with: String
+  requestId_ends_with: String
+  requestId_not_starts_with: String
+  requestId_not_ends_with: String
+  name: String
+  name_not: String
+  name_in: [String]
+  name_not_in: [String]
+  name_contains: String
+  name_not_contains: String
+  name_starts_with: String
+  name_ends_with: String
+  name_not_starts_with: String
+  name_not_ends_with: String
+  cid: String
+  cid_not: String
+  cid_in: [String]
+  cid_not_in: [String]
+  cid_contains: String
+  cid_not_contains: String
+  cid_starts_with: String
+  cid_ends_with: String
+  cid_not_starts_with: String
+  cid_not_ends_with: String
+  topic: String
+  topic_not: String
+  topic_in: [String]
+  topic_not_in: [String]
+  topic_contains: String
+  topic_not_contains: String
+  topic_starts_with: String
+  topic_ends_with: String
+  topic_not_starts_with: String
+  topic_not_ends_with: String
+  contentPreview: String
+  contentPreview_not: String
+  contentPreview_in: [String]
+  contentPreview_not_in: [String]
+  contentPreview_contains: String
+  contentPreview_not_contains: String
+  contentPreview_starts_with: String
+  contentPreview_ends_with: String
+  contentPreview_not_starts_with: String
+  contentPreview_not_ends_with: String
 }
 
 type _meta {
