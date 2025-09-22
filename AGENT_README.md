@@ -57,7 +57,10 @@ The repository has been flattened for simplicity and easier development. Here's 
 jinn-gemini/
 ├── control-api/              # NEW: The secure GraphQL write gateway
 ├── worker/                     # Worker application
-│   └── mech_worker.ts        # The on-chain mech worker
+│   ├── mech_worker.ts        # The on-chain mech worker
+│   ├── OlasStakingManager.ts # OLAS token staking manager
+│   ├── StakingManagerFactory.ts # Factory for staking manager initialization
+│   └── DelayUtils.ts         # Utility functions for worker delays
 ├── gemini-agent/             # Agent and MCP server
 │   ├── agent.ts              # Main agent logic
 │   ├── mcp/                  # Model Context Protocol server
@@ -87,6 +90,17 @@ The system consists of five key layers that work together in a continuous loop.
 3.  **Worker Layer (`worker/mech_worker.ts`):** The engine of the system. This is the only active worker. It polls the Ponder API to find new `Request` events, executes the associated tasks by invoking the Jinn agent, and delivers the results back to the blockchain.
 4.  **Secure Write Layer (Jinn Control API):** A mandatory GraphQL gateway for all database writes related to on-chain jobs. The worker and agent tools **do not** write directly to the database. They call this API, which validates the request, injects critical lineage data (like the `request_id` and `worker_address`), and then performs the database operation. This ensures all off-chain data is consistent and securely linked to its on-chain origin.
 5.  **Persistence Layer (Supabase):** The off-chain database, now used exclusively for storing supplementary data like job reports, artifacts, and messages in `onchain_*` tables. All writes are managed by the Control API.
+
+### OLAS Staking Integration
+
+The worker system now includes automated OLAS token staking capabilities:
+
+-   **OlasStakingManager**: Manages automated OLAS token staking operations for both Base network staking and Mainnet incentive claiming.
+-   **StakingManagerFactory**: Factory class that handles the creation and initialization of the staking manager with proper error handling.
+-   **Automated Scheduling**: The worker automatically processes staking operations every hour as part of its main loop.
+-   **Graceful Degradation**: If staking components fail to initialize, the worker continues normal operation with staking disabled.
+
+The staking integration is designed as a foundation for future OLAS ecosystem participation, with placeholder implementations ready for full staking logic.
 
 ---
 

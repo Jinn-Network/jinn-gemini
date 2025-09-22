@@ -58,3 +58,24 @@ export function parseWorkerConfig(): WorkerConfig {
  * Will exit the process if configuration is invalid.
  */
 export const config = parseWorkerConfig();
+
+export function getOptionalString(key: string, defaultValue?: string): string | undefined {
+    return process.env[key] ?? defaultValue;
+}
+
+export function getRequiredString(key: string): string {
+    const value = process.env[key];
+    if (value === undefined) {
+        throw new Error(`Missing required environment variable ${key}`);
+    }
+    return value;
+}
+
+export function getOptionalNumber(key: string, defaultValue?: number): number | undefined {
+    const value = process.env[key];
+    if (value === undefined) {
+        return defaultValue;
+    }
+    const num = Number(value);
+    return isNaN(num) ? defaultValue : num;
+}
