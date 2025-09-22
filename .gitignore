@@ -169,3 +169,5 @@ Icon?
 
 # Ponder local cache (never commit runtime DB/cache)
 ponder/.ponder/
+
+code-resources/
