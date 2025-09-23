@@ -1,27 +1,55 @@
-import { createClient } from '@/lib/supabase'
-import { RecordPageProps, collectionNames, DbRecord } from '@/lib/types'
-import { DetailView } from '@/components/detail-view'
-import { ArtifactDetailView } from '@/components/artifact-detail-view'
-import { JobReportDetailView } from '@/components/job-report-detail-view'
+import { RecordPageProps, collectionNames } from '@/lib/types'
+import { SubgraphDetailView } from '@/components/subgraph-detail-view'
 import { getCollectionLabel } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { 
+  getJobDefinition, 
+  getRequest, 
+  getDelivery, 
+  getArtifact,
+  JobDefinition,
+  Request,
+  Delivery,
+  Artifact
+} from '@/lib/subgraph'
+
+type SubgraphRecord = JobDefinition | Request | Delivery | Artifact
 
 // Helper function to get human-readable title from record
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function getRecordTitle(record: DbRecord, _collectionName: string): string {
-  // Priority order for title fields
-  const titleFields = ['name', 'title', 'job_name', 'prompt', 'content', 'topic', 'subject']
-  
-  for (const field of titleFields) {
-    if (record[field] && typeof record[field] === 'string') {
-      const value = record[field] as string
-      return value.length > 50 ? value.substring(0, 50) + '...' : value
-    }
+function getRecordTitle(record: SubgraphRecord, collectionName: string): string {
+  // Job definitions have names
+  if ('name' in record && record.name) {
+    return record.name.length > 50 ? record.name.substring(0, 50) + '...' : record.name
   }
   
-  // Fallback to shortened ID
-  return `${record.id.toString().substring(0, 8)}...`
+  // Requests can have job names
+  if ('jobName' in record && record.jobName) {
+    return record.jobName.length > 50 ? record.jobName.substring(0, 50) + '...' : record.jobName
+  }
+  
+  // Artifacts have topics
+  if ('topic' in record && record.topic) {
+    return record.topic.length > 50 ? record.topic.substring(0, 50) + '...' : record.topic
+  }
+  
+  // Fallback to collection name + shortened ID
+  return `${collectionName.slice(0, -1)} ${record.id.toString().substring(0, 8)}...`
+}
+
+async function fetchRecord(collection: string, id: string): Promise<SubgraphRecord | null> {
+  switch (collection) {
+    case 'jobDefinitions':
+      return await getJobDefinition(id)
+    case 'requests':
+      return await getRequest(id)
+    case 'deliveries':
+      return await getDelivery(id)
+    case 'artifacts':
+      return await getArtifact(id)
+    default:
+      return null
+  }
 }
 
 export default async function RecordPage({ params }: RecordPageProps) {
@@ -31,24 +59,13 @@ export default async function RecordPage({ params }: RecordPageProps) {
   if (!collectionNames.includes(resolvedParams.collection)) {
     notFound()
   }
-
-  const supabase = createClient()
   
   try {
-    // Fetch data from Supabase
-    const { data: record, error } = await supabase
-      .from(resolvedParams.collection)
-      .select('*')
-      .eq('id', resolvedParams.id)
-      .single()
+    // Fetch data from subgraph
+    const record = await fetchRecord(resolvedParams.collection, resolvedParams.id)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // Record not found
-        notFound()
-      }
-      console.error('Error fetching record:', error)
-      throw error
+    if (!record) {
+      notFound()
     }
 
     const recordTitle = getRecordTitle(record, resolvedParams.collection)
@@ -74,13 +91,7 @@ export default async function RecordPage({ params }: RecordPageProps) {
             {collectionLabel}
           </p>
           
-          {resolvedParams.collection === 'artifacts' ? (
-            <ArtifactDetailView record={record} />
-          ) : resolvedParams.collection === 'job_reports' ? (
-            <JobReportDetailView record={record} />
-          ) : (
-            <DetailView record={record} collectionName={resolvedParams.collection} />
-          )}
+          <SubgraphDetailView record={record} collectionName={resolvedParams.collection} />
         </>
       </div>
     )
@@ -100,8 +111,8 @@ export default async function RecordPage({ params }: RecordPageProps) {
           Error loading record
         </h1>
         <p className="text-gray-600">
-          Unable to fetch record {resolvedParams.id} from the {resolvedParams.collection} table. 
-          Please check your database connection and try again.
+          Unable to fetch record {resolvedParams.id} from the {resolvedParams.collection} collection. 
+          Please check the subgraph connection and try again.
         </p>
         <details className="mt-4">
           <summary className="cursor-pointer text-sm text-gray-500">

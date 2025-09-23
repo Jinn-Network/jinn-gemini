@@ -1,17 +1,24 @@
 import React from 'react'
 import Link from 'next/link'
-import { DbRecord, CollectionName } from '@/lib/types'
+import { CollectionName } from '@/lib/types'
+import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { IdLink } from '@/components/id-link'
 
 interface RecordListProps {
-  records: DbRecord[]
+  records: SubgraphRecord[]
   collectionName: CollectionName
 }
 
-// Helper function to format timestamps
-function formatDate(dateString: string): string {
+// Helper function to format timestamps (handles both ISO strings and bigint timestamps)
+function formatDate(dateString: string | number): string {
   try {
-    const date = new Date(dateString)
+    let date: Date
+    if (typeof dateString === 'string') {
+      date = new Date(dateString)
+    } else {
+      // Handle bigint timestamps (convert from seconds to milliseconds)
+      date = new Date(Number(dateString) * 1000)
+    }
     return date.toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric',
@@ -19,48 +26,43 @@ function formatDate(dateString: string): string {
       minute: '2-digit'
     })
   } catch {
-    return dateString
+    return dateString.toString()
   }
 }
 
 // Helper function to get the primary identifier for a record
-function getPrimaryIdentifier(record: DbRecord): string {
-  // Priority order for identifying fields
-  const identifierFields = ['name', 'title', 'job_name', 'prompt', 'content', 'topic', 'id']
-  
-  for (const field of identifierFields) {
-    if (record[field] && typeof record[field] === 'string') {
-      const value = record[field] as string
-      // Truncate long identifiers
-      return value.length > 80 ? value.substring(0, 80) + '...' : value
-    }
+function getPrimaryIdentifier(record: SubgraphRecord): string {
+  // Priority order for identifying fields based on record type
+  if ('name' in record && record.name) {
+    // Job definitions have names
+    const value = record.name
+    return value.length > 80 ? value.substring(0, 80) + '...' : value
   }
   
+  if ('jobName' in record && record.jobName) {
+    // Requests can have job names
+    const value = record.jobName
+    return value.length > 80 ? value.substring(0, 80) + '...' : value
+  }
+  
+  if ('topic' in record && record.topic) {
+    // Artifacts have topics
+    const value = record.topic
+    return value.length > 80 ? value.substring(0, 80) + '...' : value
+  }
+  
+  // Fall back to ID
   return record.id.toString()
 }
 
 // Helper function to get status display
-function getStatusDisplay(record: DbRecord): { status: string; className: string } | null {
-  if (record.status) {
-    const status = record.status.toString().toUpperCase()
-    let className = ''
-    
-    switch (status) {
-      case 'COMPLETED':
-        className = 'text-green-600 bg-green-50 border-green-200'
-        break
-      case 'FAILED':
-        className = 'text-red-600 bg-red-50 border-red-200'
-        break
-      case 'IN_PROGRESS':
-        className = 'text-blue-600 bg-blue-50 border-blue-200'
-        break
-      case 'PENDING':
-        className = 'text-yellow-600 bg-yellow-50 border-yellow-200'
-        break
-      default:
-        className = 'text-muted-foreground bg-muted border-border'
-    }
+function getStatusDisplay(record: SubgraphRecord): { status: string; className: string } | null {
+  // Check if this is a request and show delivery status
+  if ('delivered' in record) {
+    const status = record.delivered ? 'DELIVERED' : 'PENDING'
+    const className = record.delivered 
+      ? 'text-green-600 bg-green-50 border-green-200'
+      : 'text-yellow-600 bg-yellow-50 border-yellow-200'
     
     return { status, className }
   }
@@ -69,68 +71,80 @@ function getStatusDisplay(record: DbRecord): { status: string; className: string
 }
 
 // Helper function to get secondary information based on collection type
-function getSecondaryInfo(record: DbRecord, collectionName: CollectionName): React.ReactNode[] {
+function getSecondaryInfo(record: SubgraphRecord, collectionName: CollectionName): React.ReactNode[] {
   const info: React.ReactNode[] = []
   
   switch (collectionName) {
-    case 'job_board':
-      if (record.source_artifact_id) {
+    case 'jobDefinitions':
+      if ('enabledTools' in record && record.enabledTools && record.enabledTools.length > 0) {
+        info.push(`Tools: ${record.enabledTools.join(', ')}`)
+      }
+      if ('sourceJobDefinitionId' in record && record.sourceJobDefinitionId) {
         info.push(
-          <span key="source_artifact">
-            Triggered by: <IdLink id={record.source_artifact_id} fieldName="artifact_id" />
+          <span key="source_job_def">
+            Source Job: <IdLink id={record.sourceJobDefinitionId} fieldName="jobDefinitionId" />
           </span>
         )
       }
-      if (record.job_definition_id) {
+      if ('sourceRequestId' in record && record.sourceRequestId) {
+        info.push(
+          <span key="source_request">
+            Source Request: <IdLink id={record.sourceRequestId} fieldName="requestId" />
+          </span>
+        )
+      }
+      break
+      
+    case 'requests':
+      if ('mech' in record && record.mech) {
+        info.push(`Mech: ${record.mech.slice(0, 10)}...`)
+      }
+      if ('sender' in record && record.sender) {
+        info.push(`Sender: ${record.sender.slice(0, 10)}...`)
+      }
+      if ('enabledTools' in record && record.enabledTools && record.enabledTools.length > 0) {
+        info.push(`Tools: ${record.enabledTools.join(', ')}`)
+      }
+      if ('sourceJobDefinitionId' in record && record.sourceJobDefinitionId) {
         info.push(
           <span key="job_def">
-            Job Definition: <IdLink id={record.job_definition_id} fieldName="job_definition_id" />
+            Job Def: <IdLink id={record.sourceJobDefinitionId} fieldName="jobDefinitionId" />
           </span>
         )
       }
-      if (record.job_report_id) {
+      break
+      
+    case 'deliveries':
+      if ('mech' in record && record.mech) {
+        info.push(`Mech: ${record.mech.slice(0, 10)}...`)
+      }
+      if ('deliveryRate' in record && record.deliveryRate) {
+        info.push(`Rate: ${record.deliveryRate}`)
+      }
+      if ('requestId' in record && record.requestId) {
         info.push(
-          <span key="job_report">
-            Report: <IdLink id={record.job_report_id} fieldName="job_report_id" />
+          <span key="request">
+            Request: <IdLink id={record.requestId} fieldName="requestId" />
           </span>
         )
       }
       break
-    case 'jobs':
-      if (record.version) info.push(`v${record.version}`)
-      if (record.is_active !== undefined) info.push(`${record.is_active ? 'Active' : 'Inactive'}`)
-      if (record.schedule_config?.trigger) info.push(`Trigger: ${record.schedule_config.trigger}`)
-      break
-    
+      
     case 'artifacts':
-      if (record.topic) info.push(`Topic: ${record.topic}`)
-      if (record.thread_id) {
+      if ('cid' in record && record.cid) {
+        info.push(`CID: ${record.cid.slice(0, 20)}...`)
+      }
+      if ('requestId' in record && record.requestId) {
         info.push(
-          <span key="thread">
-            Thread: <IdLink id={record.thread_id} fieldName="thread_id" />
+          <span key="request">
+            Request: <IdLink id={record.requestId} fieldName="requestId" />
           </span>
         )
       }
-      break
-    case 'memories':
-      if (record.content) {
-        const content = record.content.toString()
-        info.push(content.length > 100 ? content.substring(0, 100) + '...' : content)
+      if ('contentPreview' in record && record.contentPreview) {
+        const preview = record.contentPreview
+        info.push(preview.length > 100 ? preview.substring(0, 100) + '...' : preview)
       }
-      break
-    case 'messages':
-      if (record.sender) info.push(`From: ${record.sender}`)
-      if (record.receiver) info.push(`To: ${record.receiver}`)
-      break
-    case 'job_reports':
-      if (record.job_id) {
-        info.push(
-          <span key="job">
-            Job: <IdLink id={record.job_id} fieldName="job_id" />
-          </span>
-        )
-      }
-      if (record.status) info.push(`Status: ${record.status}`)
       break
   }
   
@@ -184,11 +198,11 @@ export function RecordList({ records, collectionName }: RecordListProps) {
               
               {/* Timestamps */}
               <div className="text-right text-sm text-gray-500 flex-shrink-0">
-                {record.created_at && (
-                  <div>Created: {formatDate(record.created_at)}</div>
+                {'blockTimestamp' in record && record.blockTimestamp && (
+                  <div>Block: {formatDate(record.blockTimestamp)}</div>
                 )}
-                {record.updated_at && record.updated_at !== record.created_at && (
-                  <div>Updated: {formatDate(record.updated_at)}</div>
+                {'blockNumber' in record && record.blockNumber && (
+                  <div>Block #: {record.blockNumber.toString()}</div>
                 )}
               </div>
             </div>

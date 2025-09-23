@@ -6,16 +6,12 @@ export type DbRecord = {
   [key: string]: any;
 };
 
-// List of all explorable table names
+// List of all explorable table names - updated to use subgraph entities
 export const collectionNames = [
-  'job_board',
-  'jobs',
-  'job_reports',
-  'events',
+  'jobDefinitions',
+  'requests', 
+  'deliveries',
   'artifacts',
-  'memories',
-  'messages',
-  'system_state',
 ] as const;
 
 export type CollectionName = typeof collectionNames[number];

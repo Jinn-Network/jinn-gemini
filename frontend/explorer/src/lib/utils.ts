@@ -9,14 +9,10 @@ export function cn(...inputs: ClassValue[]) {
 // Function to convert collection names to human-readable labels
 export function getCollectionLabel(collectionName: CollectionName): string {
   const labelMap: Record<CollectionName, string> = {
-    job_board: 'Job Board',
-    jobs: 'Jobs',
-    job_reports: 'Job Reports',
-    events: 'Events',
+    jobDefinitions: 'Job Definitions',
+    requests: 'Requests',
+    deliveries: 'Deliveries',
     artifacts: 'Artifacts',
-    memories: 'Memories',
-    messages: 'Messages',
-    system_state: 'System State',
   };
   
   return labelMap[collectionName] || collectionName;
@@ -39,24 +35,16 @@ export const navigationCategories: NavigationCategory[] = [
     title: 'Jobs',
     icon: '💼',
     items: [
-      { collection: 'job_board', label: 'Board' },
-      { collection: 'jobs', label: 'Jobs' },
-      { collection: 'job_reports', label: 'Reports' },
+      { collection: 'jobDefinitions', label: 'Job Definitions' },
+      { collection: 'requests', label: 'Requests' },
+      { collection: 'deliveries', label: 'Deliveries' },
     ]
   },
   {
-    title: 'Events',
-    icon: '🪩',
+    title: 'Artifacts',
+    icon: '📄',
     items: [
-      { collection: 'events', label: 'Events' },
-    ]
-  },
-  {
-    title: 'System',
-    icon: '⚙️',
-    items: [
-      { collection: 'memories', label: 'Memories' },
-      { collection: 'system_state', label: 'System State' },
+      { collection: 'artifacts', label: 'Artifacts' },
     ]
   }
 ];
