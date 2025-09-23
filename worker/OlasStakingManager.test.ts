@@ -2,23 +2,24 @@
  * Tests for OlasStakingManager - minimal tests for critical paths
  */
 
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OlasStakingManager } from "./OlasStakingManager.js";
 import { SafeExecutor } from "./SafeExecutor.js";
 
 // Mock SafeExecutor
-jest.mock("./SafeExecutor.js", () => ({
-  SafeExecutor: jest.fn().mockImplementation(() => ({
+vi.mock("./SafeExecutor.js", () => ({
+  SafeExecutor: vi.fn().mockImplementation(() => ({
     // Mock implementation
   })),
 }));
 
 // Mock logger
-jest.mock("./logger.js", () => ({
+vi.mock("./logger.js", () => ({
   logger: {
-    child: jest.fn().mockReturnValue({
-      info: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
+    child: vi.fn().mockReturnValue({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
     }),
   },
 }));

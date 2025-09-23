@@ -113,6 +113,10 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
+# Local data directory
+data/
+**/data/
+
 
 
 # Local configuration files that might contain secrets

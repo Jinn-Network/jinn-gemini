@@ -1,32 +1,31 @@
-import { jest } from '@jest/globals';
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { prepareCreateCoinTx } from './zora-prepare-create-coin-tx.js';
 import { enqueueTransaction } from './enqueue-transaction.js';
 import { getTransactionStatus } from './zora-get-transaction-status.js';
 import { queryCoins } from './zora-query-coins.js';
 
 // Mock the supabase client
-jest.mock('./shared/supabase.js', () => ({
+vi.mock('./shared/supabase.js', () => ({
   supabase: {
-    from: jest.fn(() => ({
-      insert: jest.fn(() => ({
-        select: jest.fn(() => ({
-          single: jest.fn()
+    from: vi.fn(() => ({
+      insert: vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn()
         }))
       })),
-      select: jest.fn(() => ({
-        eq: jest.fn(() => ({
-          single: jest.fn()
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          single: vi.fn()
         }))
       })),
-      rpc: jest.fn()
+      rpc: vi.fn()
     }))
   }
 }));
 
 describe('Zora MCP Tools', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('prepareCreateCoinTx', () => {

@@ -28,6 +28,7 @@ import { logger } from './logger.js';
 import { ITransactionExecutor } from './IExecutor.js';
 import { TransactionRequest, ExecutionResult } from './types.js';
 import { validateTransaction } from './validation.js';
+import { ITransactionQueue } from './queue/index.js';
 import { updateTransactionStatus } from './control_api_client.js';
 
 // Create a child logger for EOA executor operations
@@ -35,14 +36,13 @@ const eoaLogger = logger.child({ component: 'EOA-EXECUTOR' });
 
 export class EoaExecutor implements ITransactionExecutor {
   private workerId: string;
-  private provider: ethers.providers.JsonRpcProvider;
+  private provider: ethers.JsonRpcProvider;
   private signer: ethers.Wallet;
   private chainId: number;
   private confirmations: number;
 
   constructor() {
     // Initialize worker configuration
-    this.workerId = process.env.WORKER_ID || `worker-${Date.now()}`;
     this.chainId = parseInt(process.env.CHAIN_ID || '8453', 10); // Default to Base mainnet
     this.confirmations = parseInt(process.env.WORKER_TX_CONFIRMATIONS || '3', 10);
     
@@ -54,7 +54,7 @@ export class EoaExecutor implements ITransactionExecutor {
       throw new Error('Missing RPC_URL or WORKER_PRIVATE_KEY environment variables');
     }
 
-    this.provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+    this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.signer = new ethers.Wallet(privateKey, this.provider);
     
     eoaLogger.info('EoaExecutor initialized');
@@ -86,11 +86,11 @@ export class EoaExecutor implements ITransactionExecutor {
         throw new Error('Failed to get transaction receipt after execution');
       }
 
-      eoaLogger.info({ requestId: request.id, txHash: receipt.transactionHash }, 'EOA transaction confirmed on-chain');
+      eoaLogger.info({ requestId: request.id, txHash: receipt.hash }, 'EOA transaction confirmed on-chain');
 
       return {
         success: true,
-        txHash: receipt.transactionHash
+        txHash: receipt.hash
       };
 
     } catch (error: any) {
@@ -142,32 +142,53 @@ export class EoaExecutor implements ITransactionExecutor {
   /**
    * Process a single transaction request (implements ITransactionExecutor interface)
    */
-  async processTransactionRequest(request: TransactionRequest): Promise<void> {
+  async processTransactionRequest(request: TransactionRequest, queue: ITransactionQueue): Promise<void> {
     eoaLogger.info({ requestId: request.id }, 'Processing EOA transaction request');
 
-    // Validate the transaction with EOA execution context
-    const validation = validateTransaction(request, {
-      workerChainId: this.chainId,
-      executionStrategy: 'EOA'
-    });
-    
-    if (!validation.valid) {
-      eoaLogger.warn({ requestId: request.id, error: validation.errorMessage }, 'EOA transaction validation failed');
-
-      await this.updateTransactionStatus(request.id, 'FAILED', {
-        success: false,
-        errorCode: validation.errorCode,
-        errorMessage: validation.errorMessage
+    try {
+      // Validate the transaction with EOA execution context
+      const validation = validateTransaction(request, {
+        workerChainId: this.chainId,
+        executionStrategy: 'EOA'
       });
-      return;
-    }
+      
+      if (!validation.valid) {
+        eoaLogger.warn({ requestId: request.id, error: validation.errorMessage }, 'EOA transaction validation failed');
 
-    // Execute the transaction
-    const result = await this.executeEoaTransaction(request);
-    
-    // Update status based on result
-    const status = result.success ? 'CONFIRMED' : 'FAILED';
-    await this.updateTransactionStatus(request.id, status, result);
+        await queue.updateStatus(request.id, 'FAILED', {
+          error_code: validation.errorCode,
+          error_message: validation.errorMessage,
+          completed_at: new Date().toISOString()
+        });
+        return;
+      }
+
+      // Execute the transaction
+      const result = await this.executeEoaTransaction(request);
+      
+      // Update status based on result
+      if (result.success) {
+        await queue.updateStatus(request.id, 'CONFIRMED', {
+          tx_hash: result.txHash,
+          completed_at: new Date().toISOString()
+        });
+        eoaLogger.info({ requestId: request.id, txHash: result.txHash }, 'EOA transaction confirmed');
+      } else {
+        await queue.updateStatus(request.id, 'FAILED', {
+          error_code: result.errorCode,
+          error_message: result.errorMessage,
+          completed_at: new Date().toISOString()
+        });
+        eoaLogger.error({ requestId: request.id, error: result.errorMessage }, 'EOA transaction failed');
+      }
+    } catch (error) {
+      eoaLogger.error({ requestId: request.id, error }, 'Error processing EOA transaction');
+      await queue.updateStatus(request.id, 'FAILED', {
+        error_code: 'UNEXPECTED_ERROR',
+        error_message: error instanceof Error ? error.message : String(error),
+        completed_at: new Date().toISOString()
+      });
+    }
   }
 }
 

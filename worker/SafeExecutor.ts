@@ -32,6 +32,7 @@ import { logger } from './logger.js';
 import { ITransactionExecutor } from './IExecutor.js';
 import { TransactionRequest, ExecutionResult } from './types.js';
 import { validateTransaction } from './validation.js';
+import { ITransactionQueue } from './queue/index.js';
 import { updateTransactionStatus } from './control_api_client.js';
 
 // Create a child logger for Safe executor operations
@@ -41,7 +42,7 @@ const safeLogger = logger.child({ component: 'SAFE-EXECUTOR' });
 
 export class SafeExecutor implements ITransactionExecutor {
   private workerId: string;
-  private provider: ethers.providers.JsonRpcProvider;
+  private provider: ethers.JsonRpcProvider;
   private signer: ethers.Wallet;
   private chainId: number;
   private safeAddress: string;
@@ -50,7 +51,6 @@ export class SafeExecutor implements ITransactionExecutor {
 
   constructor() {
     // Initialize worker configuration
-    this.workerId = process.env.WORKER_ID || `worker-${Date.now()}`;
     this.chainId = parseInt(process.env.CHAIN_ID || '8453', 10); // Default to Base mainnet
     this.txConfirmations = parseInt(process.env.WORKER_TX_CONFIRMATIONS || '3', 10);
     
@@ -62,7 +62,7 @@ export class SafeExecutor implements ITransactionExecutor {
       throw new Error('Missing RPC_URL or WORKER_PRIVATE_KEY environment variables');
     }
 
-    this.provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+    this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.signer = new ethers.Wallet(privateKey, this.provider);
     
     // Load Safe address from wallet identity
@@ -190,11 +190,11 @@ export class SafeExecutor implements ITransactionExecutor {
       throw new Error('Failed to get transaction receipt after execution.');
     }
 
-    safeLogger.info({ requestId: request.id, txHash: receipt.transactionHash }, 'Transaction confirmed on-chain');
+    safeLogger.info({ requestId: request.id, txHash: receipt.hash }, 'Transaction confirmed on-chain');
 
     return {
       safeTxHash,
-      txHash: receipt.transactionHash,
+      txHash: receipt.hash,
       gasUsed: BigInt(receipt.gasUsed.toString())
     };
   }
@@ -260,32 +260,54 @@ export class SafeExecutor implements ITransactionExecutor {
   /**
    * Process a single transaction request (implements ITransactionExecutor interface)
    */
-  async processTransactionRequest(request: TransactionRequest): Promise<void> {
+  async processTransactionRequest(request: TransactionRequest, queue: ITransactionQueue): Promise<void> {
     safeLogger.info({ requestId: request.id }, 'Processing Safe transaction request');
 
-    // Validate the transaction with SAFE execution context
-    const validation = validateTransaction(request, {
-      workerChainId: this.chainId,
-      executionStrategy: 'SAFE'
-    });
-    
-    if (!validation.valid) {
-      safeLogger.warn({ requestId: request.id, error: validation.errorMessage }, 'Safe transaction validation failed');
-
-      await this.updateTransactionStatus(request.id, 'FAILED', {
-        success: false,
-        errorCode: validation.errorCode,
-        errorMessage: validation.errorMessage
+    try {
+      // Validate the transaction with SAFE execution context
+      const validation = validateTransaction(request, {
+        workerChainId: this.chainId,
+        executionStrategy: 'SAFE'
       });
-      return;
-    }
+      
+      if (!validation.valid) {
+        safeLogger.warn({ requestId: request.id, error: validation.errorMessage }, 'Safe transaction validation failed');
 
-    // Execute the transaction
-    const result = await this.executeTransaction(request);
-    
-    // Update status based on result
-    const status = result.success ? 'CONFIRMED' : 'FAILED';
-    await this.updateTransactionStatus(request.id, status, result);
+        await queue.updateStatus(request.id, 'FAILED', {
+          error_code: validation.errorCode,
+          error_message: validation.errorMessage,
+          completed_at: new Date().toISOString()
+        });
+        return;
+      }
+
+      // Execute the transaction
+      const result = await this.executeTransaction(request);
+      
+      // Update status based on result
+      if (result.success) {
+        await queue.updateStatus(request.id, 'CONFIRMED', {
+          safe_tx_hash: result.safeTxHash,
+          tx_hash: result.txHash,
+          completed_at: new Date().toISOString()
+        });
+        safeLogger.info({ requestId: request.id, safeTxHash: result.safeTxHash, txHash: result.txHash }, 'Safe transaction confirmed');
+      } else {
+        await queue.updateStatus(request.id, 'FAILED', {
+          error_code: result.errorCode,
+          error_message: result.errorMessage,
+          completed_at: new Date().toISOString()
+        });
+        safeLogger.error({ requestId: request.id, error: result.errorMessage }, 'Safe transaction failed');
+      }
+    } catch (error) {
+      safeLogger.error({ requestId: request.id, error }, 'Error processing Safe transaction');
+      await queue.updateStatus(request.id, 'FAILED', {
+        error_code: 'UNEXPECTED_ERROR',
+        error_message: error instanceof Error ? error.message : String(error),
+        completed_at: new Date().toISOString()
+      });
+    }
   }
 
 

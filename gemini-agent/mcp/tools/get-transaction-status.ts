@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getTransactionQueue } from './shared/queue.js';
 import fetch from 'cross-fetch';
 import { isControlApiEnabled } from './shared/control_api.js';
 
@@ -37,25 +38,47 @@ function getExplorerUrl(chainId: number, txHash: string): string {
  */
 export async function getTransactionStatus(params: z.infer<typeof getTransactionStatusParams>) {
   try {
-    if (!isControlApiEnabled()) {
-      return { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: 'CONTROL_API_DISABLED', message: 'Enable USE_CONTROL_API to query transaction status.' }, null, 2) }] };
-    }
+    let data;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-Worker-Address': process.env.MECH_WORKER_ADDRESS || ''
-    };
-    const query = `query GetTx($id: String!) { getTransactionStatus(id: $id) { id chain_id safe_tx_hash tx_hash status } }`;
-    const body = { query, variables: { id: params.request_id } };
-    const res = await fetch(CONTROL_API_URL, { method: 'POST', headers, body: JSON.stringify(body) });
-    const json = await res.json();
-    if (json.errors) {
-      return { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: 'CONTROL_API_ERROR', message: json.errors[0]?.message || 'Unknown error' }, null, 2) }] };
+    // Use Control API when enabled (for on-chain jobs)
+    if (isControlApiEnabled()) {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Worker-Address': process.env.MECH_WORKER_ADDRESS || ''
+      };
+      const query = `query GetTx($id: String!) { getTransactionStatus(id: $id) { id chain_id safe_tx_hash tx_hash status } }`;
+      const body = { query, variables: { id: params.request_id } };
+      const res = await fetch(CONTROL_API_URL, { method: 'POST', headers, body: JSON.stringify(body) });
+      const json = await res.json();
+      if (json.errors) {
+        return { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: 'CONTROL_API_ERROR', message: json.errors[0]?.message || 'Unknown error' }, null, 2) }] };
+      }
+      data = json.data.getTransactionStatus;
+    } else {
+      // Fallback: Use local transaction queue
+      const queue = getTransactionQueue();
+      data = await queue.getStatus(params.request_id);
     }
-    const data = json.data.getTransactionStatus;
 
     const response = {
-      ...data,
+      id: data.id,
+      status: data.status,
+      attempt_count: data.attempt_count,
+      payload_hash: data.payload_hash,
+      worker_id: data.worker_id,
+      claimed_at: data.claimed_at,
+      completed_at: data.completed_at,
+      payload: data.payload,
+      chain_id: data.chain_id,
+      safe_tx_hash: data.safe_tx_hash,
+      tx_hash: data.tx_hash,
+      error_code: data.error_code,
+      error_message: data.error_message,
+      source_job_id: data.source_job_id,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+      execution_strategy: data.execution_strategy,
+      idempotency_key: data.idempotency_key,
       safeTxExplorerUrl: data.safe_tx_hash ? getExplorerUrl(data.chain_id, data.safe_tx_hash) : null,
       txExplorerUrl: data.tx_hash ? getExplorerUrl(data.chain_id, data.tx_hash) : null,
     };

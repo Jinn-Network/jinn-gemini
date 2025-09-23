@@ -16,7 +16,7 @@ vi.mock("./config.js", () => ({
 }));
 
 vi.mock("@supabase/supabase-js", () => ({
-  createClient: vi.fn(() => ({
+  createClient: vi.fn((url = "https://test.supabase.co", key = "test-key") => ({
     from: vi.fn(() => ({
       update: vi.fn(() => ({
         eq: vi.fn(() => ({
@@ -42,9 +42,28 @@ vi.mock("@safe-global/protocol-kit", () => ({
 }));
 
 vi.mock("ethers", () => ({
-  JsonRpcProvider: vi.fn(),
-  Wallet: vi.fn(() => ({
+  ethers: {
+    JsonRpcProvider: vi.fn().mockImplementation(() => ({
+      getNetwork: vi.fn().mockResolvedValue({ chainId: 8453 }),
+      getCode: vi.fn().mockResolvedValue("0x"),
+      call: vi.fn(),
+    })),
+    Wallet: vi.fn().mockImplementation(() => ({
+      address: "0x" + "3".repeat(40),
+      connect: vi.fn().mockReturnThis(),
+    })),
+    Contract: vi.fn(),
+    formatEther: vi.fn(),
+    parseEther: vi.fn(),
+  },
+  JsonRpcProvider: vi.fn().mockImplementation(() => ({
+    getNetwork: vi.fn().mockResolvedValue({ chainId: 8453 }),
+    getCode: vi.fn().mockResolvedValue("0x"),
+    call: vi.fn(),
+  })),
+  Wallet: vi.fn().mockImplementation(() => ({
     address: "0x" + "3".repeat(40),
+    connect: vi.fn().mockReturnThis(),
   })),
 }));
 
@@ -88,7 +107,7 @@ describe("SafeExecutor", () => {
     process.env.WORKER_PRIVATE_KEY = "0x" + "1".repeat(64);
 
     executor = new SafeExecutor();
-    mockSupabaseClient = require("@supabase/supabase-js").createClient();
+    mockSupabaseClient = require("@supabase/supabase-js").createClient("https://test.supabase.co", "test-key");
   });
 
   afterEach(() => {

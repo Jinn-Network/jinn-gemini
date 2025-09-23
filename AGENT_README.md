@@ -7,6 +7,7 @@ This project implements a sophisticated, autonomous AI agent system built on an 
 The core technologies are:
 - **Node.js & TypeScript**: For the worker and agent logic.
 - **Supabase (PostgreSQL)**: As the central database for state management, job queuing, and event triggers.
+- **SQLite**: For local transaction queuing with high-performance concurrent access.
 - **Next.js**: For the frontend explorer interface.
 - **Gemini CLI**: As the underlying engine for interacting with Google's Gemini models.
 - **Model Context Protocol (MCP)**: For providing the agent with a secure and structured way to use tools.
@@ -90,6 +91,12 @@ The system consists of five key layers that work together in a continuous loop.
 3.  **Worker Layer (`worker/mech_worker.ts`):** The engine of the system. This is the only active worker. It polls the Ponder API to find new `Request` events, executes the associated tasks by invoking the Jinn agent, and delivers the results back to the blockchain.
 4.  **Secure Write Layer (Jinn Control API):** A mandatory GraphQL gateway for all database writes related to on-chain jobs. The worker and agent tools **do not** write directly to the database. They call this API, which validates the request, injects critical lineage data (like the `request_id` and `worker_address`), and then performs the database operation. This ensures all off-chain data is consistent and securely linked to its on-chain origin.
 5.  **Persistence Layer (Supabase):** The off-chain database, now used exclusively for storing supplementary data like job reports, artifacts, and messages in `onchain_*` tables. All writes are managed by the Control API.
+6.  **Local Transaction Queue**: A high-performance SQLite-based transaction queue that provides:
+    -   **Atomic Operations**: Race-condition-free transaction claiming using SQLite transactions
+    -   **Local-First Architecture**: Reduces external dependencies and improves reliability
+    -   **Concurrent Access**: WAL mode enables multiple workers to safely access the same queue
+    -   **Idempotent Operations**: Payload hashing prevents duplicate transaction submissions
+    -   **Queue Abstraction**: Clean interface allows switching between local and cloud-based queues
 
 ### OLAS Staking Integration
 
@@ -178,6 +185,9 @@ This ensures agents have the foundation they need to make informed decisions and
     ```env
     SUPABASE_URL=https://your-project-ref.supabase.co
     SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+    
+    # Optional: Configure local transaction queue (default: ./transaction_queue.db)
+    LOCAL_QUEUE_DB_PATH=./data/transaction_queue.db
     ```
 3.  **Gemini CLI Authentication**:
     Ensure you have authenticated the Gemini CLI on your host machine first.
