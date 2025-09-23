@@ -1,4 +1,6 @@
 type Query {
+  jobDefinition(id: String!): jobDefinition
+  jobDefinitions(where: jobDefinitionFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): jobDefinitionPage!
   request(id: String!): request
   requests(where: requestFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): requestPage!
   delivery(id: String!): delivery
@@ -8,10 +10,92 @@ type Query {
   _meta: _meta
 }
 
+type jobDefinition {
+  id: String!
+  name: String!
+  enabledTools: [String!]
+  promptContent: String
+  sourceJobDefinitionId: String
+  sourceRequestId: String
+}
+
+type jobDefinitionPage {
+  items: [jobDefinition!]!
+  pageInfo: PageInfo!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+input jobDefinitionFilter {
+  AND: [jobDefinitionFilter]
+  OR: [jobDefinitionFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  name: String
+  name_not: String
+  name_in: [String]
+  name_not_in: [String]
+  name_contains: String
+  name_not_contains: String
+  name_starts_with: String
+  name_ends_with: String
+  name_not_starts_with: String
+  name_not_ends_with: String
+  enabledTools: [String]
+  enabledTools_not: [String]
+  enabledTools_has: String
+  enabledTools_not_has: String
+  promptContent: String
+  promptContent_not: String
+  promptContent_in: [String]
+  promptContent_not_in: [String]
+  promptContent_contains: String
+  promptContent_not_contains: String
+  promptContent_starts_with: String
+  promptContent_ends_with: String
+  promptContent_not_starts_with: String
+  promptContent_not_ends_with: String
+  sourceJobDefinitionId: String
+  sourceJobDefinitionId_not: String
+  sourceJobDefinitionId_in: [String]
+  sourceJobDefinitionId_not_in: [String]
+  sourceJobDefinitionId_contains: String
+  sourceJobDefinitionId_not_contains: String
+  sourceJobDefinitionId_starts_with: String
+  sourceJobDefinitionId_ends_with: String
+  sourceJobDefinitionId_not_starts_with: String
+  sourceJobDefinitionId_not_ends_with: String
+  sourceRequestId: String
+  sourceRequestId_not: String
+  sourceRequestId_in: [String]
+  sourceRequestId_not_in: [String]
+  sourceRequestId_contains: String
+  sourceRequestId_not_contains: String
+  sourceRequestId_starts_with: String
+  sourceRequestId_ends_with: String
+  sourceRequestId_not_starts_with: String
+  sourceRequestId_not_ends_with: String
+}
+
 type request {
   id: String!
   mech: String!
   sender: String!
+  sourceRequestId: String
+  sourceJobDefinitionId: String
   requestData: String
   ipfsHash: String
   deliveryIpfsHash: String
@@ -28,13 +112,6 @@ scalar BigInt
 type requestPage {
   items: [request!]!
   pageInfo: PageInfo!
-}
-
-type PageInfo {
-  hasNextPage: Boolean!
-  hasPreviousPage: Boolean!
-  startCursor: String
-  endCursor: String
 }
 
 input requestFilter {
@@ -66,6 +143,26 @@ input requestFilter {
   sender_lt: String
   sender_gte: String
   sender_lte: String
+  sourceRequestId: String
+  sourceRequestId_not: String
+  sourceRequestId_in: [String]
+  sourceRequestId_not_in: [String]
+  sourceRequestId_contains: String
+  sourceRequestId_not_contains: String
+  sourceRequestId_starts_with: String
+  sourceRequestId_ends_with: String
+  sourceRequestId_not_starts_with: String
+  sourceRequestId_not_ends_with: String
+  sourceJobDefinitionId: String
+  sourceJobDefinitionId_not: String
+  sourceJobDefinitionId_in: [String]
+  sourceJobDefinitionId_not_in: [String]
+  sourceJobDefinitionId_contains: String
+  sourceJobDefinitionId_not_contains: String
+  sourceJobDefinitionId_starts_with: String
+  sourceJobDefinitionId_ends_with: String
+  sourceJobDefinitionId_not_starts_with: String
+  sourceJobDefinitionId_not_ends_with: String
   requestData: String
   requestData_not: String
   requestData_in: [String]
@@ -145,6 +242,8 @@ input requestFilter {
 type delivery {
   id: String!
   requestId: String!
+  sourceRequestId: String
+  sourceJobDefinitionId: String
   mech: String!
   mechServiceMultisig: String!
   deliveryRate: BigInt!
@@ -182,6 +281,26 @@ input deliveryFilter {
   requestId_ends_with: String
   requestId_not_starts_with: String
   requestId_not_ends_with: String
+  sourceRequestId: String
+  sourceRequestId_not: String
+  sourceRequestId_in: [String]
+  sourceRequestId_not_in: [String]
+  sourceRequestId_contains: String
+  sourceRequestId_not_contains: String
+  sourceRequestId_starts_with: String
+  sourceRequestId_ends_with: String
+  sourceRequestId_not_starts_with: String
+  sourceRequestId_not_ends_with: String
+  sourceJobDefinitionId: String
+  sourceJobDefinitionId_not: String
+  sourceJobDefinitionId_in: [String]
+  sourceJobDefinitionId_not_in: [String]
+  sourceJobDefinitionId_contains: String
+  sourceJobDefinitionId_not_contains: String
+  sourceJobDefinitionId_starts_with: String
+  sourceJobDefinitionId_ends_with: String
+  sourceJobDefinitionId_not_starts_with: String
+  sourceJobDefinitionId_not_ends_with: String
   mech: String
   mech_not: String
   mech_in: [String]
@@ -247,6 +366,8 @@ input deliveryFilter {
 type artifact {
   id: String!
   requestId: String!
+  sourceRequestId: String
+  sourceJobDefinitionId: String
   name: String!
   cid: String!
   topic: String!
@@ -281,6 +402,26 @@ input artifactFilter {
   requestId_ends_with: String
   requestId_not_starts_with: String
   requestId_not_ends_with: String
+  sourceRequestId: String
+  sourceRequestId_not: String
+  sourceRequestId_in: [String]
+  sourceRequestId_not_in: [String]
+  sourceRequestId_contains: String
+  sourceRequestId_not_contains: String
+  sourceRequestId_starts_with: String
+  sourceRequestId_ends_with: String
+  sourceRequestId_not_starts_with: String
+  sourceRequestId_not_ends_with: String
+  sourceJobDefinitionId: String
+  sourceJobDefinitionId_not: String
+  sourceJobDefinitionId_in: [String]
+  sourceJobDefinitionId_not_in: [String]
+  sourceJobDefinitionId_contains: String
+  sourceJobDefinitionId_not_contains: String
+  sourceJobDefinitionId_starts_with: String
+  sourceJobDefinitionId_ends_with: String
+  sourceJobDefinitionId_not_starts_with: String
+  sourceJobDefinitionId_not_ends_with: String
   name: String
   name_not: String
   name_in: [String]

@@ -101,7 +101,7 @@ export async function getDetails(params: GetDetailsParams) {
             }
         }
 
-        // Fetch artifacts
+        // Fetch artifacts (schema is paginated; query items and take the first)
         if (artifactIds.length > 0) {
             for (const id of artifactIds) {
                 try {
@@ -109,12 +109,13 @@ export async function getDetails(params: GetDetailsParams) {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            query: `query($id: String!) { artifact(id: $id) { id requestId name topic cid contentPreview } }`,
+                            query: `query($id: String!) { artifacts(where: { id: { equals: $id } }, limit: 1) { items { id requestId name topic cid contentPreview } } }`,
                             variables: { id }
                         })
                     });
                     const json = await res.json();
-                    const a = json?.data?.artifact;
+                    const items = json?.data?.artifacts?.items;
+                    const a = Array.isArray(items) && items.length > 0 ? items[0] : null;
                     if (a) {
                         const record: any = { ...a, _source_table: 'ponder_artifact' };
                         if (shouldResolveIpfs && record.cid) {

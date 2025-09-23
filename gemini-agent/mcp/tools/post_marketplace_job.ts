@@ -22,6 +22,7 @@ export const postMarketplaceJobParams = z.object({
   prompt: z.string().min(1),
   jobName: z.string().min(1),
   enabledTools: z.array(z.string()).optional(),
+  updateExisting: z.boolean().optional().default(false),
 });
 
 export const postMarketplaceJobSchema = {
@@ -35,7 +36,39 @@ export async function postMarketplaceJob(args: unknown) {
     if (!parse.success) {
       return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: parse.error.message } }) }] };
     }
-    const { prompt, jobName, enabledTools } = parse.data;
+    const { prompt, jobName, enabledTools, updateExisting } = parse.data;
+
+    // Optional: guard on existing job by name; if found and updateExisting=false, return early
+    let existingJob: any | null = null;
+    try {
+      const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+      const res = await fetch(gqlUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `query($name: String!) { jobDefinitions(where: { name: { equals: $name } }, limit: 1) { items { id name enabledTools promptContent } } }`,
+          variables: { name: jobName },
+        }),
+      });
+      const json = await res.json();
+      existingJob = json?.data?.jobDefinitions?.items?.[0] || null;
+    } catch (_) {}
+
+    if (existingJob && !updateExisting) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: existingJob,
+            meta: { ok: true, code: 'JOB_EXISTS', message: 'Job already exists. Set updateExisting: true to reuse, or use dispatchExistingJob.' }
+          })
+        }]
+      };
+    }
+    // Always generate a strict UUID for the new job definition (no external param)
+    const jobDefinitionId = (existingJob?.id) || ((globalThis.crypto && typeof globalThis.crypto.randomUUID === "function")
+          ? globalThis.crypto.randomUUID()
+          : (() => { throw new Error('crypto.randomUUID not available; cannot generate strict UUID'); })());
 
     const ctx = getCurrentJobContext();
     const parentContext: Record<string, any> = {};
@@ -48,6 +81,7 @@ export async function postMarketplaceJob(args: unknown) {
       jobName,
       enabledTools,
       nonce: (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      jobDefinitionId,
       ...parentContext,
     };
 

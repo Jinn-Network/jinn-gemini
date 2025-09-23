@@ -1,3 +1,224 @@
+# Project Jinn – Developer Guide (Agent Coder)
+
+## What you can build right now
+
+The current codebase is wired for an on-chain, event-driven loop on Base:
+
+- Post jobs on-chain with MCP (`post_marketplace_job`) → Ponder indexes them → the mech worker claims via the Control API → the Agent runs with MCP tools → result is delivered on-chain and indexed back by Ponder.
+- Reads come from the Ponder GraphQL API. Writes to off-chain tables go through the Control API with a required `X-Worker-Address` header.
+
+Use this guide to run the stack locally, understand the available tools/endpoints, and extend the Agent or MCP.
+
+---
+
+## Monorepo layout
+
+- `ponder/`: Indexer for Base chain events (Ponder). Exposes GraphQL for `request`, `delivery`, and `artifact`.
+- `control-api/`: GraphQL API for secure, auditable writes to Supabase `onchain_*` tables.
+- `gemini-agent/`: The Agent class and MCP server (tools). Generates per-job Gemini settings and enforces loop protection.
+- `frontend/explorer/`: Next.js explorer UI (optional during backend/dev work).
+- `packages/`: Local packages (e.g., `wallet-manager`) and vendored `mech-client-ts` tarball used by MCP tools and worker.
+
+---
+
+## Quick start (local dev)
+
+Prereqs: Node.js, Yarn, Gemini CLI (installed and authenticated on host), a Supabase project.
+
+1) Install dependencies at repo root:
+```bash
+yarn install
+```
+
+2) Create `.env` at repo root (minimal):
+```env
+# Supabase (required by Control API)
+SUPABASE_URL=https://<your-project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+
+# Optional; defaults shown
+PONDER_GRAPHQL_URL=http://localhost:42069/graphql
+CONTROL_API_PORT=4001
+PONDER_RPC_URL=https://mainnet.base.org
+PONDER_START_BLOCK=35577849
+PONDER_MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
+
+# Dev: run MCP server with tsx
+USE_TSX_MCP=1
+```
+
+3) Start the full dev stack (Ponder + Control API + worker):
+```bash
+yarn dev:stack
+```
+
+Services:
+- Ponder GraphQL (reads): `http://localhost:42069/graphql`
+- Control API (writes): `http://localhost:4001/graphql`
+
+Run services individually when needed:
+```bash
+# Indexer
+cd ponder && yarn dev
+
+# Control API
+yarn control:dev
+
+# Mech worker (polls Ponder, claims work, runs Agent)
+yarn dev:mech
+
+# MCP server only (for direct tool use)
+yarn mcp:start
+```
+
+---
+
+## Environment variables (confirmed)
+
+- Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required by `control-api/server.ts`).
+- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `PONDER_RPC_URL` or `RPC_URL`, `PONDER_START_BLOCK`, `PONDER_MECH_ADDRESS` (`ponder/ponder.config.ts`).
+- Control API: `CONTROL_API_PORT` (default `4001`). Requires `X-Worker-Address` on requests.
+- Agent loop protection (optional, `gemini-agent/agent.ts`):
+  - `AGENT_MAX_STDOUT_SIZE` (bytes, default 5MB)
+  - `AGENT_MAX_CHUNK_SIZE` (bytes, default 100KB)
+  - `AGENT_REPETITION_WINDOW` (lines, default 20)
+  - `AGENT_REPETITION_THRESHOLD` (lines, default 10)
+  - `AGENT_MAX_IDENTICAL_CHUNKS` (default 10)
+- MCP: `USE_TSX_MCP=1` to run MCP server via tsx in dev (`settings.template.dev.json`).
+
+---
+
+## Ponder (indexer) – reads
+
+- Network: Base (8453). RPC: `PONDER_RPC_URL` or `RPC_URL`. Start block: `PONDER_START_BLOCK`.
+- Contracts watched: `MechMarketplace` (request events) and `OlasMech` (deliver events).
+- Schema (`ponder/ponder.schema.ts`):
+  - `request(id, mech, sender, requestData?, ipfsHash?, deliveryIpfsHash?, blockNumber, blockTimestamp, delivered, jobName?, enabledTools?[])`
+  - `delivery(id, requestId, mech, mechServiceMultisig, deliveryRate, ipfsHash?, transactionHash, blockNumber, blockTimestamp)`
+  - `artifact(id, requestId, name, cid, topic, contentPreview?)`
+- Handlers (`ponder/src/index.ts`):
+  - On `MarketplaceRequest`: upserts `request`, resolves `ipfsHash` → fetches `jobName` and `enabledTools` from IPFS.
+  - On `OlasMech:Deliver`: upserts `delivery`, marks `request.delivered`, resolves delivery JSON and upserts `artifact` rows.
+
+GraphQL endpoint: `http://localhost:42069/graphql`
+
+Example queries:
+```graphql
+query Request($id: String!) {
+  request(id: $id) {
+    id mech sender ipfsHash deliveryIpfsHash delivered blockTimestamp
+    jobName enabledTools
+  }
+}
+
+query Artifact($id: String!) {
+  artifact(id: $id) { id requestId name topic cid contentPreview }
+}
+```
+
+---
+
+## Control API (secure writes)
+
+Endpoint: `http://localhost:4001/graphql`
+
+Requirements:
+- Header `X-Worker-Address: 0x...` is mandatory.
+- Validates `request_id` by querying Ponder before writes.
+
+Key mutations (`control-api/server.ts`):
+- `claimRequest(requestId: String!): RequestClaim` – idempotent find-or-create claim.
+- `createJobReport(requestId: String!, reportData: JobReportInput!): JobReport`
+- `createArtifact(requestId: String!, artifactData: ArtifactInput!): Artifact`
+- `createMessage(requestId: String!, messageData: MessageInput!): Message`
+- Transaction queue: `enqueueTransaction`, `getTransactionStatus`, `claimTransactionRequest`, `updateTransactionStatus`
+
+Example mutation:
+```graphql
+mutation Report($id: String!) {
+  createJobReport(
+    requestId: $id
+    reportData: { status: "COMPLETED", duration_ms: 1234, total_tokens: 9001, final_output: "OK" }
+  ) {
+    id status created_at
+  }
+}
+```
+
+---
+
+## Agent & MCP
+
+- Agent (`gemini-agent/agent.ts`) spawns the Gemini CLI and loads the MCP server.
+- Universal tools always available: `list_tools`, `get_details`, `post_marketplace_job`.
+- Effective toolset = universal tools + job `enabledTools`. Native Gemini CLI tools are excluded unless explicitly enabled.
+- Per-job MCP settings are generated at `gemini-agent/.gemini/settings.json` from templates:
+  - Dev (`settings.template.dev.json`): runs MCP via `tsx`.
+  - Prod (`settings.template.json`): runs built `server.js`.
+- Loop protection terminates runs on excessive output size, large chunks, or repetitive lines.
+
+MCP server (`gemini-agent/mcp/server.ts`) registers tools from `gemini-agent/mcp/tools/index.ts`:
+- `list_tools` – catalogs both core CLI tools and MCP tools.
+- `get_details` – reads on-chain data via Ponder; supports IPFS resolution.
+- `post_marketplace_job` – uploads flattened JSON to IPFS and posts a marketplace request on Base.
+- `create_artifact` – uploads content to IPFS and returns `{ cid, name, topic, contentPreview }`.
+
+Notes:
+- `create_artifact` does not write to Supabase. To persist artifacts/messages/reports off-chain, call the Control API mutations.
+- `post_marketplace_job` enriches with the IPFS gateway URL by querying Ponder (retrying briefly for indexing).
+
+---
+
+## MCP tool references
+
+### list_tools
+- Purpose: Discover available core CLI and MCP tools.
+- Params: `{ include_parameters?: boolean, include_examples?: boolean, tool_name?: string }`
+- Returns: `{ data: { total_tools, tools: [{ name, description, parameters?, examples? }] }, meta: { ok: true } }`
+
+### get_details
+- Purpose: Fetch `request` and `artifact` records via Ponder; optionally resolve IPFS content.
+- Params: `{ ids: string | string[], cursor?: string, resolve_ipfs?: boolean }`
+  - Request IDs: `0x...`
+  - Artifact IDs: `<requestId>:<index>`
+- Returns: Single-page response with `data` in requested order and `meta` (cursor, token estimates).
+
+### post_marketplace_job
+- Purpose: Post a job on Base by uploading JSON to IPFS and submitting a marketplace request.
+- Params: `{ prompt: string, jobName: string, enabledTools?: string[] }`
+- Returns: Mech client result plus `ipfs_gateway_url` when indexed.
+
+### create_artifact
+- Purpose: Upload content to IPFS.
+- Params: `{ name: string, topic: string, content: string, mimeType?: string }`
+- Returns: `{ cid, name, topic, contentPreview }`
+
+---
+
+## Typical dev flows
+
+- Full stack dev: `yarn dev:stack` and watch worker logs.
+- Inspect a request in Ponder:
+  - `POST http://localhost:42069/graphql` → query `request(id: "0x...")`.
+- Use MCP directly (operator tasks):
+  1) Start MCP: `yarn mcp:start`
+  2) In Gemini CLI, call:
+     - `list_tools({ include_parameters: true })`
+     - `get_details({ ids: ["0x..."], resolve_ipfs: true })`
+     - `post_marketplace_job({ prompt: "...", jobName: "...", enabledTools: ["web_fetch"] })`
+     - `create_artifact({ name: "report", topic: "analysis", content: "..." })`
+
+---
+
+## Adding a new MCP tool
+
+1) Create the tool in `gemini-agent/mcp/tools/your_tool.ts` with a Zod input schema and handler.
+2) Export it from `gemini-agent/mcp/tools/index.ts`.
+3) Register it in `gemini-agent/mcp/server.ts` (add to `serverTools`).
+4) Restart MCP: `yarn mcp:start`. Verify with `list_tools({ include_parameters: true })`.
+
+---
+
 # Project Jinn: An Autonomous, Event-Driven AI Agent System
 
 ## Overview

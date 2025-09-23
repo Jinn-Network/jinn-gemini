@@ -1,11 +1,28 @@
 import { createSchema } from "@ponder/core";
 
 export default createSchema((p: any) => ({
+  jobDefinition: p.createTable(
+    {
+      id: p.string(),
+      name: p.string(),
+      enabledTools: p.string().list().optional(),
+      promptContent: p.string().optional(),
+      sourceJobDefinitionId: p.string().optional(),
+      sourceRequestId: p.string().optional(),
+    },
+    {
+      nameIdx: p.index("name"),
+      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
+      sourceReqIdx: p.index("sourceRequestId"),
+    }
+  ),
   request: p.createTable(
     {
       id: p.string(),
       mech: p.hex(),
       sender: p.hex(),
+      sourceRequestId: p.string().optional(),
+      sourceJobDefinitionId: p.string().optional(),
       requestData: p.string().optional(),
       ipfsHash: p.string().optional(),
       deliveryIpfsHash: p.string().optional(),
@@ -20,12 +37,16 @@ export default createSchema((p: any) => ({
       ts: p.index("blockTimestamp").desc(),
       mechIdx: p.index("mech"),
       senderIdx: p.index("sender"),
+      sourceReqIdx: p.index("sourceRequestId"),
+      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
     }
   ),
   delivery: p.createTable(
     {
       id: p.string(),
       requestId: p.string(),
+      sourceRequestId: p.string().optional(),
+      sourceJobDefinitionId: p.string().optional(),
       mech: p.hex(),
       mechServiceMultisig: p.hex(),
       deliveryRate: p.bigint(),
@@ -38,12 +59,16 @@ export default createSchema((p: any) => ({
       ts: p.index("blockTimestamp").desc(),
       mechIdx: p.index("mech"),
       requestIdIdx: p.index("requestId"),
+      sourceReqIdx: p.index("sourceRequestId"),
+      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
     }
   ),
   artifact: p.createTable(
     {
       id: p.string(),
       requestId: p.string(),
+      sourceRequestId: p.string().optional(),
+      sourceJobDefinitionId: p.string().optional(),
       name: p.string(),
       cid: p.string(),
       topic: p.string(),
@@ -51,6 +76,8 @@ export default createSchema((p: any) => ({
     },
     {
       requestIdIdx: p.index("requestId"),
+      sourceReqIdx: p.index("sourceRequestId"),
+      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
       topicIdx: p.index("topic"),
     }
   ),

@@ -43,6 +43,7 @@ ponder.on(
     const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
     const repo = (context as any).db?.request || (context as any).entities?.request;
+    const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
     if (!repo) {
       console.error("No repository for 'request' (neither context.db nor context.entities). Skipping upsert.");
       return;
@@ -56,16 +57,60 @@ ponder.on(
 
       let jobName: string | undefined;
       let enabledTools: string[] | undefined;
+      let jobDefinitionId: string | undefined;
+      let promptContent: string | undefined;
+      let parentRequestId: string | undefined;
       if (ipfsHash) {
         try {
           const content = await resolveRequestIpfsContent(ipfsHash);
           if (content && !content.error) {
             jobName = content.jobName;
             enabledTools = content.tools || content.enabledTools;
+            jobDefinitionId = typeof content.jobDefinitionId === 'string' ? content.jobDefinitionId : undefined;
+            promptContent = typeof content.prompt === 'string' ? content.prompt : undefined;
+            parentRequestId = typeof content.parentRequestId === 'string' ? content.parentRequestId : undefined;
           }
         } catch (e: any) {
           console.error(`Failed to resolve IPFS content for hash ${ipfsHash}: ${e.message}`);
         }
+      }
+
+      // Upsert jobDefinition if present
+      if (jobDefRepo && jobDefinitionId) {
+        // Look up parent job definition if parentRequestId is provided
+        let parentJobDefinitionId: string | undefined;
+        if (parentRequestId) {
+          try {
+            // Query for job definition with matching requestId
+            const parentJobDefs = await jobDefRepo.findMany({
+              where: { requestId: parentRequestId }
+            });
+            if (parentJobDefs && parentJobDefs.length > 0) {
+              parentJobDefinitionId = parentJobDefs[0].id;
+            }
+          } catch (e: any) {
+            console.error(`Failed to lookup parent job definition for requestId ${parentRequestId}: ${e.message}`);
+          }
+        }
+
+        await jobDefRepo.upsert({
+          id: jobDefinitionId,
+          create: {
+            id: jobDefinitionId,
+            name: jobName || 'Unnamed Job',
+            enabledTools,
+            promptContent,
+            sourceJobDefinitionId: parentJobDefinitionId,
+            sourceRequestId: parentRequestId,
+          },
+          update: {
+            name: jobName || 'Unnamed Job',
+            enabledTools,
+            promptContent,
+            sourceJobDefinitionId: parentJobDefinitionId,
+            sourceRequestId: parentRequestId,
+          },
+        });
       }
 
       await repo.upsert({
@@ -73,6 +118,8 @@ ponder.on(
         create: {
           mech,
           sender,
+          sourceRequestId: parentRequestId,
+          sourceJobDefinitionId: jobDefinitionId,
           requestData: dataHex || undefined,
           ipfsHash,
           transactionHash: txHash,
@@ -85,6 +132,8 @@ ponder.on(
         update: {
           mech,
           sender,
+          sourceRequestId: parentRequestId,
+          sourceJobDefinitionId: jobDefinitionId,
           requestData: dataHex || undefined,
           ipfsHash,
           transactionHash: txHash,
@@ -119,6 +168,8 @@ ponder.on(
 
     const deliveryRepo = (context as any).db?.delivery || (context as any).entities?.delivery;
     const requestRepo = (context as any).db?.request || (context as any).entities?.request;
+    const artifactsRepo = (context as any).db?.artifact || (context as any).entities?.artifact;
+    const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
     if (!deliveryRepo || !requestRepo) {
       console.error("No repository for 'delivery' or 'request'. Skipping OlasMech Deliver handler.");
       return;
@@ -131,6 +182,8 @@ ponder.on(
       id: requestId,
       create: {
         requestId,
+        sourceRequestId: undefined,
+        sourceJobDefinitionId: undefined,
         mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
         mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
         deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
@@ -141,6 +194,8 @@ ponder.on(
       },
       update: {
         requestId,
+        sourceRequestId: undefined,
+        sourceJobDefinitionId: undefined,
         mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
         mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
         deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
@@ -213,9 +268,36 @@ ponder.on(
             if (attempt < 4) await new Promise(r => setTimeout(r, 1500));
           }
         }
-        if (res && res.status === 200 && res.data && Array.isArray(res.data.artifacts)) {
-          const artifactsRepo = (context as any).db?.artifact || (context as any).entities?.artifact;
-          if (artifactsRepo) {
+        if (res && res.status === 200 && res.data) {
+          // Try to extract jobDefinitionId from delivery payload
+          const deliveryJobDefinitionId = typeof res.data.jobDefinitionId === 'string' ? res.data.jobDefinitionId : undefined;
+          const jobName = typeof res.data.jobName === 'string' ? res.data.jobName : undefined;
+          const enabledTools = Array.isArray(res.data.enabledTools) ? res.data.enabledTools.map((x: any) => String(x)) : undefined;
+          const promptContent = typeof res.data.prompt === 'string' ? res.data.prompt : undefined;
+
+          // Backfill source job definition on delivery and request if available
+          if (deliveryJobDefinitionId) {
+            if (jobDefRepo) {
+              await jobDefRepo.upsert({
+                id: deliveryJobDefinitionId,
+                create: { id: deliveryJobDefinitionId, name: jobName || 'Unnamed Job', enabledTools, promptContent, sourceRequestId: requestId },
+                update: { name: jobName || 'Unnamed Job', enabledTools, promptContent, sourceRequestId: requestId },
+              });
+            }
+            await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId, sourceRequestId: requestId } });
+            await requestRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId } });
+          } else {
+            // Fallback: if request has a sourceJobDefinitionId already, propagate it to delivery
+            try {
+              const req = await requestRepo.upsert({ id: requestId, update: {} });
+              const maybeReq = (req as any) || {};
+              if (maybeReq && typeof maybeReq.sourceJobDefinitionId === 'string') {
+                await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: maybeReq.sourceJobDefinitionId, sourceRequestId: requestId } });
+              }
+            } catch {}
+          }
+
+          if (Array.isArray(res.data.artifacts) && artifactsRepo) {
             for (let idx = 0; idx < res.data.artifacts.length; idx++) {
               const a = res.data.artifacts[idx] || {};
               const id = `${requestId}:${idx}`;
@@ -224,11 +306,20 @@ ponder.on(
               const topic = String(a.topic || '');
               const contentPreview = typeof a.contentPreview === 'string' ? a.contentPreview : undefined;
               if (!cid || !topic) continue;
-              await artifactsRepo.upsert({
-                id,
-                create: { requestId, name, cid, topic, contentPreview },
-                update: { requestId, name, cid, topic, contentPreview },
-              });
+              const artifactPayload: any = { requestId, name, cid, topic, contentPreview, sourceRequestId: requestId };
+              // Prefer delivery sourceJobDefinitionId; fallback to request.sourceJobDefinitionId if not present
+              if (deliveryJobDefinitionId) {
+                artifactPayload.sourceJobDefinitionId = deliveryJobDefinitionId;
+              } else {
+                try {
+                  const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
+                  const maybeReq = (req as any) || {};
+                  if (maybeReq && typeof maybeReq.sourceJobDefinitionId === 'string') {
+                    artifactPayload.sourceJobDefinitionId = maybeReq.sourceJobDefinitionId;
+                  }
+                } catch {}
+              }
+              await artifactsRepo.upsert({ id, create: artifactPayload, update: artifactPayload });
             }
           }
         }

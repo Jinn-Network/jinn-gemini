@@ -5305,8 +5305,9 @@ math-intrinsics@^1.1.0:
   resolved "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz"
   integrity sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==
 
-"mech-client-ts@file:packages/mech-client-ts":
+"mech-client-ts@file:packages/mech-client-ts/mech-client-ts-ipfsjson.tgz":
   version "1.0.6"
+  resolved "file:packages/mech-client-ts/mech-client-ts-ipfsjson.tgz#1347c3aa843cb21a736fd692453e3232ad86fb5d"
   dependencies:
     "@types/form-data" "^2.2.1"
     "@types/uuid" "^10.0.0"
