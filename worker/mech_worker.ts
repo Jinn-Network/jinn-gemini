@@ -143,7 +143,7 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
   }
 }
 
-async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; enabledTools?: string[]; parentRequestId?: string } | null> {
+async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; enabledTools?: string[]; sourceRequestId?: string } | null> {
   if (!ipfsHash) return null;
   try {
     const hash = String(ipfsHash).replace(/^0x/, '');
@@ -159,8 +159,8 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; 
     const json = await res.json();
     const prompt = json?.prompt || json?.input || undefined;
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
-    const parentRequestId = json?.parentRequestId ? String(json.parentRequestId) : undefined;
-    return { prompt, enabledTools, parentRequestId };
+    const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
+    return { prompt, enabledTools, sourceRequestId };
   } catch (e: any) {
     workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
     return null;
@@ -344,5 +344,4 @@ async function main() {
 }
 
 main().catch(() => process.exit(1));
-
 

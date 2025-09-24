@@ -1,8 +1,8 @@
 // Supabase legacy path removed
 import fetch from 'cross-fetch';
 import { z } from 'zod';
-import { composeSinglePageResponse, decodeCursor } from './shared/context-management';
-import { resolveRequestIpfsContent } from './shared/ipfs';
+import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
+import { resolveRequestIpfsContent } from './shared/ipfs.js';
 
 // MCP registration schema (permissive) to avoid -32602 pre-validation failures.
 // We normalize and strictly validate inside the handler.
@@ -64,19 +64,22 @@ export async function getDetails(params: GetDetailsParams) {
             return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
         }
 
-        // Partition into request IDs and artifact IDs
+        // Partition into request IDs, artifact IDs, and jobDefinition IDs (uuid)
         const isRequestId = (s: string) => /^0x[0-9a-fA-F]+$/.test(s);
         const isArtifactId = (s: string) => /^0x[0-9a-fA-F]+:\d+$/.test(s);
+        const isJobDefId = (s: string) => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s);
 
         const requestIds = (validIds || []).filter((x) => typeof x === 'string' && isRequestId(x)) as string[];
         const artifactIds = (validIds || []).filter((x) => typeof x === 'string' && isArtifactId(x)) as string[];
+        const jobDefIds = (validIds || []).filter((x) => typeof x === 'string' && isJobDefId(x)) as string[];
 
         const requestRecords: any[] = [];
         const artifactRecords: any[] = [];
+        const jobDefRecords: any[] = [];
 
         const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
 
-        // Fetch requests
+        // Fetch requests (and also fetch delivery for each to expose delivery provenance)
         if (requestIds.length > 0) {
             for (const id of requestIds) {
                 try {
@@ -84,14 +87,24 @@ export async function getDetails(params: GetDetailsParams) {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            query: `query($id: String!) { request(id: $id) { id mech sender ipfsHash deliveryIpfsHash requestData blockTimestamp delivered } }`,
+                            query: `query($id: String!) { request(id: $id) { id mech sender sourceJobDefinitionId sourceRequestId ipfsHash deliveryIpfsHash requestData blockTimestamp delivered } delivery(id: $id) { id sourceJobDefinitionId sourceRequestId } }`,
                             variables: { id }
                         })
                     });
                     const json = await res.json();
                     const r = json?.data?.request;
+                    const d = json?.data?.delivery;
                     if (r) {
-                        const record = { ...r, _source_table: 'ponder_request' } as any;
+                        const record: any = { ...r, _source_table: 'ponder_request' };
+                        // Attach delivery provenance if available
+                        if (d) {
+                            if (d.sourceJobDefinitionId && !record.deliveryJobDefinitionId) {
+                                record.deliveryJobDefinitionId = d.sourceJobDefinitionId;
+                            }
+                            if (d.sourceRequestId && !record.deliverySourceRequestId) {
+                                record.deliverySourceRequestId = d.sourceRequestId;
+                            }
+                        }
                         if (shouldResolveIpfs && record.ipfsHash) {
                             record.ipfsContent = await resolveRequestIpfsContent(record.ipfsHash, 10000);
                         }
@@ -101,7 +114,7 @@ export async function getDetails(params: GetDetailsParams) {
             }
         }
 
-        // Fetch artifacts (schema is paginated; query items and take the first)
+        // Fetch artifacts
         if (artifactIds.length > 0) {
             for (const id of artifactIds) {
                 try {
@@ -109,13 +122,12 @@ export async function getDetails(params: GetDetailsParams) {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            query: `query($id: String!) { artifacts(where: { id: { equals: $id } }, limit: 1) { items { id requestId name topic cid contentPreview } } }`,
+                            query: `query($id: String!) { artifact(id: $id) { id requestId sourceRequestId jobDefinitionId sourceJobDefinitionId name topic cid contentPreview } }`,
                             variables: { id }
                         })
                     });
                     const json = await res.json();
-                    const items = json?.data?.artifacts?.items;
-                    const a = Array.isArray(items) && items.length > 0 ? items[0] : null;
+                    const a = json?.data?.artifact;
                     if (a) {
                         const record: any = { ...a, _source_table: 'ponder_artifact' };
                         if (shouldResolveIpfs && record.cid) {
@@ -127,11 +139,35 @@ export async function getDetails(params: GetDetailsParams) {
             }
         }
 
+        // Fetch jobDefinitions
+        if (jobDefIds.length > 0) {
+            for (const id of jobDefIds) {
+                try {
+                    const res = await fetch(PONDER_GRAPHQL_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            // Align with Ponder schema: include sourceRequestId and sourceJobDefinitionId
+                            query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools promptContent sourceJobDefinitionId sourceRequestId } }`,
+                            variables: { id }
+                        })
+                    });
+                    const json = await res.json();
+                    const j = json?.data?.jobDefinition;
+                    if (j) {
+                        jobDefRecords.push({ ...j, _source_table: 'ponder_jobDefinition' });
+                    }
+                } catch {}
+            }
+        }
+
         // Return combined results in the same order as requested IDs, with no truncation (pagination only)
         const requestMap = new Map<string, any>();
         for (const r of requestRecords) requestMap.set(r.id, r);
         const artifactMap = new Map<string, any>();
         for (const a of artifactRecords) artifactMap.set(a.id, a);
+        const jobDefMap = new Map<string, any>();
+        for (const j of jobDefRecords) jobDefMap.set(j.id, j);
         const combined: any[] = [];
         for (const id of validIds) {
             if (isRequestId(id)) {
@@ -140,6 +176,9 @@ export async function getDetails(params: GetDetailsParams) {
             } else if (isArtifactId(id)) {
                 const a = artifactMap.get(id);
                 if (a) combined.push(a);
+            } else if (isJobDefId(id)) {
+                const j = jobDefMap.get(id);
+                if (j) combined.push(j);
             }
         }
         const composed = composeSinglePageResponse(combined, {

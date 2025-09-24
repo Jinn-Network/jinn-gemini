@@ -1,48 +1,60 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
+import { randomUUID } from 'node:crypto';
 import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
+import { getCurrentJobContext } from './shared/context.js';
 
-const dispatchNewJobBase = z.object({
-  jobId: z.string().uuid().optional(),
-  jobName: z.string().min(1).optional(),
-  // Optional overrides for tools/prompt if caller wants to tweak minor fields
-  // If not provided, we use the values from the job definition as-is
+const dispatchNewJobParamsBase = z.object({
+  prompt: z.string().min(1),
+  jobName: z.string().min(1),
   enabledTools: z.array(z.string()).optional(),
-  prompt: z.string().optional(),
+  updateExisting: z.boolean().optional().default(false),
 });
 
-export const dispatchNewJobParams = dispatchNewJobBase.refine((v) => !!v.jobId || !!v.jobName, { message: 'Provide jobId or jobName' });
+export const dispatchNewJobParams = dispatchNewJobParamsBase;
 
 export const dispatchNewJobSchema = {
-  description: 'Dispatch a new request for an existing job definition (by ID or name). Looks up the job in the subgraph and posts a request anchored to its jobDefinitionId.',
-  inputSchema: dispatchNewJobBase.shape,
+  description: 'Create or update a job definition and dispatch a marketplace request using the supplied prompt, name, and tool configuration.',
+  inputSchema: dispatchNewJobParamsBase.shape,
 };
 
-export async function dispatchNewJob(args: unknown) {
-  const parse = dispatchNewJobParams.safeParse(args);
-  if (!parse.success) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: parse.error.message } }) }] };
+function ensureUuid(): string {
+  if (typeof randomUUID === 'function') return randomUUID();
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
   }
-  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt } = parse.data;
+  throw new Error('crypto.randomUUID not available; cannot generate strict UUID');
+}
 
-  const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-
-  // Find job definition by id or name
-  let jobDef: any | null = null;
+export async function dispatchNewJob(args: unknown) {
   try {
-    if (jobId) {
-      const res = await fetch(gqlUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools promptContent } }`,
-          variables: { id: jobId },
-        }),
-      });
-      const json = await res.json();
-      jobDef = json?.data?.jobDefinition || null;
-    } else if (jobName) {
-      const res = await fetch(gqlUrl, {
+    if (process.env.MCP_DEBUG_MECH_CLIENT === '1') {
+      try {
+        const { createRequire } = await import('node:module');
+        const r = (createRequire as any)(import.meta.url);
+        const resolved = r.resolve('mech-client-ts/dist/marketplace_interact.js');
+        console.error('[mcp-debug] mech-client resolve =', resolved);
+      } catch {}
+    }
+    const parsed = dispatchNewJobParams.safeParse(args);
+    if (!parsed.success) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: { ok: false, code: 'VALIDATION_ERROR', message: parsed.error.message },
+          }),
+        }],
+      };
+    }
+
+    const { prompt, jobName, enabledTools, updateExisting } = parsed.data;
+    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+
+    let existingJob: any | null = null;
+    try {
+      const resp = await fetch(gqlUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -50,50 +62,129 @@ export async function dispatchNewJob(args: unknown) {
           variables: { name: jobName },
         }),
       });
-      const json = await res.json();
-      jobDef = json?.data?.jobDefinitions?.items?.[0] || null;
+      const json = await resp.json();
+      existingJob = json?.data?.jobDefinitions?.items?.[0] || null;
+    } catch (error) {
+      // Duplicate detection is best-effort; ignore lookup failures
+      console.warn('dispatch_new_job: subgraph lookup failed', error);
     }
-  } catch (e: any) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'SUBGRAPH_ERROR', message: e?.message || String(e) } }) }] };
-  }
 
-  if (!jobDef) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'NOT_FOUND', message: 'Job definition not found' } }) }] };
-  }
+    if (existingJob && !updateExisting) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: existingJob,
+            meta: {
+              ok: true,
+              code: 'JOB_EXISTS',
+              message: 'Job already exists. Set updateExisting=true to reuse or call dispatch_existing_job.',
+            },
+          }),
+        }],
+      };
+    }
 
-  const jobDefinitionId: string = jobDef.id;
-  const name: string = jobDef.name;
-  const baseTools: string[] | undefined = Array.isArray(jobDef.enabledTools) ? jobDef.enabledTools : undefined;
-  const basePrompt: string | undefined = typeof jobDef.promptContent === 'string' ? jobDef.promptContent : undefined;
+    const jobDefinitionId: string = existingJob?.id || ensureUuid();
+    const context = getCurrentJobContext();
+    const lineageContext: Record<string, any> = {};
+    if (context.requestId) lineageContext.sourceRequestId = context.requestId;
+    if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
 
-  const finalTools = overridesTools ?? baseTools ?? [];
-  const finalPrompt = overridePrompt ?? basePrompt ?? '';
-  if (!finalPrompt) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'MISSING_PROMPT', message: 'No prompt content available to dispatch.' } }) }] };
-  }
+    const ipfsJsonContents = [{
+      prompt,
+      jobName,
+      enabledTools,
+      jobDefinitionId,
+      nonce: ensureUuid(),
+      ...lineageContext,
+    }];
 
-  // Build request payload mirroring post_marketplace_job expectations
-  const ipfsJsonContents = [{
-    prompt: finalPrompt,
-    jobName: name,
-    enabledTools: finalTools,
-    jobDefinitionId,
-  }];
+    try {
+      const result = await (marketplaceInteract as any)({
+        prompts: [prompt],
+        priorityMech: '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7',
+        tools: enabledTools || [],
+        ipfsJsonContents,
+        chainConfig: 'base',
+        postOnly: true,
+      });
 
-  try {
-    const result = await (marketplaceInteract as any)({
-      prompts: [finalPrompt],
-      priorityMech: '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7',
-      tools: finalTools,
-      ipfsJsonContents,
-      chainConfig: 'base',
-      postOnly: true,
-    });
+      if (!result || !Array.isArray(result.request_ids) || result.request_ids.length === 0) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              data: result ?? null,
+              meta: {
+                ok: false,
+                code: 'DISPATCH_FAILED',
+                message: 'Marketplace dispatch did not return any request IDs. Verify MECH configuration, funding, and private key setup.',
+              },
+            }),
+          }],
+        };
+      }
 
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: { ...result, jobDefinitionId }, meta: { ok: true } }) }] };
-  } catch (e: any) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'EXECUTION_ERROR', message: e?.message || String(e) } }) }] };
+      let ipfsGatewayUrl: string | null = null;
+      try {
+        const firstRequestId = Array.isArray(result?.request_ids) ? result.request_ids[0] : undefined;
+        if (firstRequestId && gqlUrl) {
+          const query = `query ($id: String!) { request(id: $id) { ipfsHash } }`;
+          for (let attempt = 0; attempt < 5; attempt++) {
+            if (attempt > 0) {
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+            }
+            const lookup = await fetch(gqlUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query, variables: { id: firstRequestId } }),
+            });
+            if (!lookup.ok) continue;
+            const json = await lookup.json();
+            const ipfsHash = json?.data?.request?.ipfsHash as string | undefined;
+            if (ipfsHash) {
+              ipfsGatewayUrl = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`;
+              break;
+            }
+          }
+        }
+      } catch (lookupError) {
+        console.warn('dispatch_new_job: ipfs enrichment failed', lookupError);
+      }
+
+      const enriched = {
+        ...result,
+        jobDefinitionId,
+        ipfs_gateway_url: ipfsGatewayUrl,
+      };
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ data: enriched, meta: { ok: true } }),
+        }],
+      };
+    } catch (error: any) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: { ok: false, code: 'EXECUTION_ERROR', message: error?.message || String(error) },
+          }),
+        }],
+      };
+    }
+  } catch (error: any) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          data: null,
+          meta: { ok: false, code: 'UNEXPECTED_ERROR', message: error?.message || String(error) },
+        }),
+      }],
+    };
   }
 }
-
-

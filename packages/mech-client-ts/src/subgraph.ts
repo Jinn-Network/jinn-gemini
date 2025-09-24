@@ -1,6 +1,17 @@
 import axios from 'axios';
-import { request } from 'graphql-request';
 import { get_mech_config } from './config';
+
+type GraphqlRequestFn = (typeof import('graphql-request'))['request'];
+
+let cachedGraphqlRequest: GraphqlRequestFn | null = null;
+
+async function getGraphqlRequest(): Promise<GraphqlRequestFn> {
+  if (!cachedGraphqlRequest) {
+    const mod = await import('graphql-request');
+    cachedGraphqlRequest = mod.request;
+  }
+  return cachedGraphqlRequest;
+}
 
 // Constants
 const RESULTS_LIMIT = 20;
@@ -164,7 +175,8 @@ export async function queryMmMechsInfo(chainConfig: string): Promise<MechInfo[] 
   }
 
   try {
-    const response = await request(mechConfig.subgraph_url, MM_MECHS_INFO_QUERY) as any;
+    const gqlRequest = await getGraphqlRequest();
+    const response = await gqlRequest(mechConfig.subgraph_url, MM_MECHS_INFO_QUERY) as any;
     
     const mechFactoryToMechType = Object.fromEntries(
       Object.entries(CHAIN_TO_MECH_FACTORY_TO_MECH_TYPE[chainConfig] || {}).map(([k, v]) => [k.toLowerCase(), v])
@@ -249,7 +261,8 @@ export async function queryMechRequests(
       }
     `;
 
-    const mrResponse = await request(mechConfig.subgraph_url, mrQuery) as any;
+    const gqlRequest = await getGraphqlRequest();
+    const mrResponse = await gqlRequest(mechConfig.subgraph_url, mrQuery) as any;
     const marketplaceRequests = mrResponse.marketplaceRequests || [];
     
     if (marketplaceRequests.length === 0) {
@@ -287,7 +300,7 @@ export async function queryMechRequests(
         }
       `;
       
-      const reqResponse = await request(mechConfig.subgraph_url, reqQuery) as any;
+      const reqResponse = await gqlRequest(mechConfig.subgraph_url, reqQuery) as any;
       for (const r of reqResponse.requests || []) {
         requestMap[(r.requestId || '').toLowerCase()] = r;
       }
@@ -310,7 +323,7 @@ export async function queryMechRequests(
         }
       `;
       
-      const delResponse = await request(mechConfig.subgraph_url, delQuery) as any;
+      const delResponse = await gqlRequest(mechConfig.subgraph_url, delQuery) as any;
       for (const d of delResponse.delivers || []) {
         deliveryMap[(d.requestId || '').toLowerCase()] = d;
       }

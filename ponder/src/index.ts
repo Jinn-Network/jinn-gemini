@@ -59,7 +59,8 @@ ponder.on(
       let enabledTools: string[] | undefined;
       let jobDefinitionId: string | undefined;
       let promptContent: string | undefined;
-      let parentRequestId: string | undefined;
+      let sourceRequestId: string | undefined;
+      let sourceJobDefinitionIdFromContent: string | undefined;
       if (ipfsHash) {
         try {
           const content = await resolveRequestIpfsContent(ipfsHash);
@@ -68,7 +69,8 @@ ponder.on(
             enabledTools = content.tools || content.enabledTools;
             jobDefinitionId = typeof content.jobDefinitionId === 'string' ? content.jobDefinitionId : undefined;
             promptContent = typeof content.prompt === 'string' ? content.prompt : undefined;
-            parentRequestId = typeof content.parentRequestId === 'string' ? content.parentRequestId : undefined;
+            sourceRequestId = typeof content.sourceRequestId === 'string' ? content.sourceRequestId : undefined;
+            sourceJobDefinitionIdFromContent = typeof (content as any).sourceJobDefinitionId === 'string' ? (content as any).sourceJobDefinitionId : undefined;
           }
         } catch (e: any) {
           console.error(`Failed to resolve IPFS content for hash ${ipfsHash}: ${e.message}`);
@@ -77,21 +79,8 @@ ponder.on(
 
       // Upsert jobDefinition if present
       if (jobDefRepo && jobDefinitionId) {
-        // Look up parent job definition if parentRequestId is provided
-        let parentJobDefinitionId: string | undefined;
-        if (parentRequestId) {
-          try {
-            // Query for job definition with matching requestId
-            const parentJobDefs = await jobDefRepo.findMany({
-              where: { requestId: parentRequestId }
-            });
-            if (parentJobDefs && parentJobDefs.length > 0) {
-              parentJobDefinitionId = parentJobDefs[0].id;
-            }
-          } catch (e: any) {
-            console.error(`Failed to lookup parent job definition for requestId ${parentRequestId}: ${e.message}`);
-          }
-        }
+        // Prefer explicit lineage from payload if provided
+        const parentJobDefinitionId: string | undefined = sourceJobDefinitionIdFromContent;
 
         await jobDefRepo.upsert({
           id: jobDefinitionId,
@@ -101,16 +90,16 @@ ponder.on(
             enabledTools,
             promptContent,
             sourceJobDefinitionId: parentJobDefinitionId,
-            sourceRequestId: parentRequestId,
+            sourceRequestId: sourceRequestId,
           },
-          update: {
-            name: jobName || 'Unnamed Job',
-            enabledTools,
-            promptContent,
-            sourceJobDefinitionId: parentJobDefinitionId,
-            sourceRequestId: parentRequestId,
-          },
-        });
+        update: {
+          name: jobName || 'Unnamed Job',
+          enabledTools,
+          promptContent,
+          sourceJobDefinitionId: parentJobDefinitionId,
+          sourceRequestId: sourceRequestId,
+        },
+      });
       }
 
       await repo.upsert({
@@ -118,7 +107,7 @@ ponder.on(
         create: {
           mech,
           sender,
-          sourceRequestId: parentRequestId,
+          sourceRequestId: sourceRequestId,
           sourceJobDefinitionId: jobDefinitionId,
           requestData: dataHex || undefined,
           ipfsHash,
@@ -132,7 +121,7 @@ ponder.on(
         update: {
           mech,
           sender,
-          sourceRequestId: parentRequestId,
+          sourceRequestId: sourceRequestId,
           sourceJobDefinitionId: jobDefinitionId,
           requestData: dataHex || undefined,
           ipfsHash,
@@ -182,6 +171,7 @@ ponder.on(
       id: requestId,
       create: {
         requestId,
+        jobDefinitionId: undefined,
         sourceRequestId: undefined,
         sourceJobDefinitionId: undefined,
         mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
@@ -194,6 +184,7 @@ ponder.on(
       },
       update: {
         requestId,
+        jobDefinitionId: undefined,
         sourceRequestId: undefined,
         sourceJobDefinitionId: undefined,
         mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
@@ -333,5 +324,3 @@ ponder.on(
     console.error({ err: e?.message || String(e) }, "Failed to index OlasMech Deliver");
   }
 });
-
-

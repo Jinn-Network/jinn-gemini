@@ -93,7 +93,7 @@ export const CreateJobInputSchema = z.object({
   prompt_content: z.string().describe('The full prompt content for this job'),
   enabled_tools: z.array(z.string()).describe('Array of tool names this job can use. Tools are validated dynamically against the server\'s registered tool registry; unknown tools will be rejected with an allowed tool list.'),
   project_definition_id: z.string().uuid().optional().describe('Optional. Link this job definition to a project definition.'),
-  parent_job_definition_id: z.string().uuid().optional().describe('Optional. Link this job to a parent job for delegation tracking. If omitted, will be automatically set to the current job definition ID when available.'),
+  source_job_definition_id: z.string().uuid().optional().describe('Optional. Link this job to a source job for lineage tracking.'),
   // Simplified scheduling interface
   schedule_on: z.string().optional().describe(
     `Optional. If omitted, defaults to running the new job after the current job completes (alias: "after_this_job").

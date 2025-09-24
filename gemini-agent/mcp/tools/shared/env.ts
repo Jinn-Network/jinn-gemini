@@ -49,10 +49,17 @@ export function loadEnvOnce(): void {
     if (tried.includes(abs)) continue;
     tried.push(abs);
     if (!fs.existsSync(abs)) continue;
-    const res = dotenv.config({ path: abs });
-    if (!res.error) {
-      process.env.__ENV_LOADED = '1';
-      return;
+    // Silence dotenv stdout to protect MCP stdio JSON
+    const origWrite = process.stdout.write as any;
+    try {
+      (process.stdout as any).write = () => true;
+      const res = dotenv.config({ path: abs });
+      if (!res.error) {
+        process.env.__ENV_LOADED = '1';
+        return;
+      }
+    } finally {
+      (process.stdout as any).write = origWrite;
     }
   }
 }
@@ -70,5 +77,4 @@ export function envBool(name: string, defaultValue = false): boolean {
   if (['0', 'false', 'no', 'off'].includes(val)) return false;
   return defaultValue;
 }
-
 

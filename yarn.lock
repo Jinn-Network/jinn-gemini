@@ -2605,7 +2605,7 @@ baseline-browser-mapping@^2.8.3:
   resolved "https://registry.yarnpkg.com/baseline-browser-mapping/-/baseline-browser-mapping-2.8.6.tgz#c37dea4291ed8d01682f85661dbe87967028642e"
   integrity sha512-wrH5NNqren/QMtKUEEJf7z86YjfqW/2uw3IL3/xpqZUC95SSVIFXYQeeGjL6FT/X68IROu6RMehZQS5foy2BXw==
 
-better-sqlite3@^12.2.0:
+better-sqlite3@^12.4.1:
   version "12.4.1"
   resolved "https://registry.yarnpkg.com/better-sqlite3/-/better-sqlite3-12.4.1.tgz#f78df6c80530d1a0b750b538033e6199b7d30d26"
   integrity sha512-3yVdyZhklTiNrtg+4WqHpJpFDd+WHTg2oM7UcR80GqL05AOV0xEJzc6qNvFYoEtE+hRp1n9MpN6/+4yhlGkDXQ==
@@ -5330,9 +5330,12 @@ math-intrinsics@^1.1.0:
   resolved "https://registry.yarnpkg.com/math-intrinsics/-/math-intrinsics-1.1.0.tgz#a0dd74be81e2aa5c2f27e65ce283605ee4e2b7f9"
   integrity sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==
 
-"mech-client-ts@file:packages/mech-client-ts/mech-client-ts-ipfsjson.tgz":
+"mech-client-ts@file:packages/mech-client-ts":
   version "1.0.6"
+<<<<<<< HEAD
   resolved "file:packages/mech-client-ts/mech-client-ts-ipfsjson.tgz#af9dacbd4d8d7c1f646f165c171534254a431a58"
+=======
+>>>>>>> 2b963c9 (refactor: update MCP tools and job management functionality)
   dependencies:
     "@types/form-data" "^2.2.1"
     "@types/uuid" "^10.0.0"

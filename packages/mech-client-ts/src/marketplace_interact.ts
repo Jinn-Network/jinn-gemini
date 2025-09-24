@@ -2,7 +2,7 @@ import { Web3 } from 'web3';
 import { Contract } from 'web3-eth-contract';
 import WebSocket from 'ws';
 import { get_mech_config, getPrivateKeyPath, checkPrivateKeyFile, ConfirmationType } from './config';
-import { pushMetadataToIpfs, pushJsonToIpfs, fetchIpfsHash, fetchIpfsHashForJson } from './ipfs';
+import { pushMetadataToIpfs, fetchIpfsHash, pushJsonToIpfs } from './ipfs';
 import { 
   createWebSocketConnection, 
   registerEventHandlers, 
@@ -77,8 +77,9 @@ export interface MarketplaceInteractOptions {
   useOffchain?: boolean;
   mechOffchainUrl?: string;
   tools?: string[];
-  extraAttributes?: Record<string, any>;
+  // Optional: if provided, overrides default metadata shape and uploads these objects to IPFS as-is
   ipfsJsonContents?: Record<string, any>[];
+  extraAttributes?: Record<string, any>;
   privateKeyPath?: string;
   confirmationType?: ConfirmationType;
   retries?: number;
@@ -188,7 +189,8 @@ async function fetchMechInfo(
     console.log('  - Invalid mech type detected.');
     console.log(`  - Received payment type: ${paymentTypeHex}`);
     console.log(`  - Expected values: ${Object.values(PaymentType).join(', ')}`);
-    process.exit(1);
+    const expected = Object.values(PaymentType).join(', ');
+    throw new Error(`Invalid mech payment type ${paymentTypeHex}; expected one of: ${expected}`);
   }
   
   return {
@@ -262,7 +264,7 @@ async function checkPrepaidBalances(
       console.log(`  - Sender ${paymentTypeName} deposited balance low. Needed: ${maxDeliveryRate}, Actual: ${requesterBalance}`);
       console.log(`  - Sender Address: ${requester}`);
       console.log(`  - Please use deposit-${paymentTypeName} command to add balance`);
-      process.exit(1);
+      throw new Error(`Insufficient ${paymentTypeName} deposited balance for ${requester}. Needed: ${maxDeliveryRate}, actual: ${requesterBalance}. Use deposit-${paymentTypeName} to add.`);
     }
     
     console.log(`  - Sender ${paymentTypeName} balance sufficient: ${requesterBalance}`);
@@ -343,16 +345,14 @@ async function sendMarketplaceRequest(
     if (ipfsJsonContents && ipfsJsonContents[i]) {
       const [truncatedHash] = await pushJsonToIpfs(ipfsJsonContents[i]);
       ipfsHashes.push(truncatedHash);
-      continue;
+    } else {
+      const [truncatedHash] = await pushMetadataToIpfs(prompts[i], tools[i] || 'default-tool', extraAttributes);
+      ipfsHashes.push(truncatedHash);
     }
-    const [truncatedHash] = await pushMetadataToIpfs(
-      prompts[i],
-      tools[i] || 'default-tool',
-      extraAttributes
-    );
-    ipfsHashes.push(truncatedHash);
   }
   
+  let lastError: unknown = null;
+
   for (let attempt = 0; attempt < tries && Date.now() < deadline; attempt++) {
     try {
       const from = web3.eth.accounts.wallet[0]?.address as string;
@@ -418,10 +418,18 @@ async function sendMarketplaceRequest(
       return receipt.transactionHash;
     } catch (error) {
       console.log(`Error occurred while sending the transaction: ${error}; Retrying in ${sleepMs}ms`);
+      lastError = error;
       await new Promise(resolve => setTimeout(resolve, sleepMs));
     }
   }
-  
+
+  if (lastError) {
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error(typeof lastError === 'string' ? lastError : JSON.stringify(lastError));
+  }
+
   return null;
 }
 
@@ -436,13 +444,10 @@ async function sendOffchainMarketplaceRequest(
   tool: string,
   methodArgsData: MarketplaceRequestConfig,
   nonce: number,
-  extraAttributes?: Record<string, any>,
-  ipfsJsonContent?: Record<string, any>
+  extraAttributes?: Record<string, any>
 ): Promise<any> {
   // Generate deterministic hash for offchain request
-  const [truncatedHash, fullHash, ipfsData] = ipfsJsonContent
-    ? await fetchIpfsHashForJson(ipfsJsonContent)
-    : await fetchIpfsHash(prompt, tool, extraAttributes);
+  const [truncatedHash, fullHash, ipfsData] = await fetchIpfsHash(prompt, tool, extraAttributes);
   
   // Get request ID
   const requestId = await marketplaceContract.methods.getRequestId(
@@ -540,7 +545,6 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     mechOffchainUrl = '',
     tools = [],
     extraAttributes,
-    ipfsJsonContents,
     privateKeyPath,
     confirmationType = ConfirmationType.WAIT_FOR_BOTH,
     retries,
@@ -678,7 +682,7 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     if (requesterTotalBalanceBefore < price) {
       console.log(`  - Sender Subscription balance low. Needed: ${price}, Actual: ${requesterTotalBalanceBefore}`);
       console.log(`  - Sender Address: ${requester}`);
-      process.exit(1);
+      throw new Error(`Insufficient Nevermined subscription balance for ${requester}. Needed: ${price}, actual: ${requesterTotalBalanceBefore}.`);
     }
 
     console.log(`  - Sender Subscription balance before request: ${requesterTotalBalanceBefore}`);
@@ -693,20 +697,26 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     // Ensure we pass 0x-prefixed payment type to contract
     const ptForContract = `0x${pt}`;
     configValues.paymentType = ptForContract;
-    const transactionDigest = await sendMarketplaceRequest(
-      web3,
-      mechMarketplaceContract,
-      mechConfig.gas_limit,
-      prompts,
-      tools,
-      configValues,
-      extraAttributes,
-      ipfsJsonContents,
-      price,
-      retries,
-      timeout,
-      sleep
-    );
+    let transactionDigest: string | null;
+    try {
+      transactionDigest = await sendMarketplaceRequest(
+        web3,
+        mechMarketplaceContract,
+        mechConfig.gas_limit,
+        prompts,
+        tools,
+        configValues,
+        extraAttributes,
+        options.ipfsJsonContents,
+        price,
+        retries,
+        timeout,
+        sleep,
+      );
+    } catch (error) {
+      console.log('Unable to send request');
+      throw error;
+    }
 
     if (!transactionDigest) {
       console.log('Unable to send request');
@@ -806,8 +816,7 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
       tools[i] || 'default-tool',
       configValues,
       Number(currNonce) + i,
-      extraAttributes,
-      ipfsJsonContents ? ipfsJsonContents[i] : undefined
+      extraAttributes
     );
     responses.push(response);
   }

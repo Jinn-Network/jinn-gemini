@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'fs';
 import { writeFileSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import axios from 'axios';
 import FormData from 'form-data';
 
@@ -20,7 +20,7 @@ export async function pushMetadataToIpfs(
   tool: string,
   extraAttributes?: Record<string, any>
 ): Promise<[string, string]> {
-  const metadata: MetadataObject = { prompt, tool, nonce: uuidv4() };
+  const metadata: MetadataObject = { prompt, tool, nonce: randomUUID() };
   if (extraAttributes) Object.assign(metadata, extraAttributes);
 
   const formData = new FormData();
@@ -111,7 +111,7 @@ export async function fetchIpfsHash(
   tool: string,
   extraAttributes?: Record<string, any>
 ): Promise<[string, string, Buffer]> {
-  const metadata: MetadataObject = { prompt, tool, nonce: uuidv4() };
+  const metadata: MetadataObject = { prompt, tool, nonce: randomUUID() };
   if (extraAttributes) Object.assign(metadata, extraAttributes);
   const tempDir = mkdtempSync('mech-client-');
   const fileName = join(tempDir, 'metadata.json');

@@ -6,14 +6,15 @@
   "type": "module",
   "main": "dist/worker.js",
   "scripts": {
-    "build": "tsc -p . && find dist -name '*.js' -exec sed -i '' \"s|from '\\./shared/\\([^']*\\)'|from './shared/\\1.js'|g\" {} \\; && find dist -name '*.js' -exec sed -i '' \"s|\\.js\\.js|\\.js|g\" {} \\;",
+    "build": "tsc -p .",
     "start": "node dist/worker/worker.js",
     "dev": "USE_TSX_MCP=1 tsx worker/worker.ts -- --single-job",
     "dev:continuous": "USE_TSX_MCP=1 tsx worker/worker.ts",
     "dev:job": "USE_TSX_MCP=1 tsx worker/worker.ts -- --job-id",
     "start:job": "node dist/worker/worker.js -- --job-id",
     "dev:mech": "USE_TSX_MCP=1 tsx worker/mech_worker.ts -- --single-job",
-    "dev:stack": "concurrently \"cd ponder && yarn dev\" \"yarn control:dev\" \"yarn dev:mech\" --names \"ponder,control,worker\" --prefix-colors \"cyan,magenta,blue\"",
+    "kill:stack": "bash -c 'pkill -f \"ponder[\\/]dist\" || true; pkill -f \"ponder.*yarn dev\" || true; pkill -f \"control-api/server.ts\" || true; pkill -f \"worker/mech_worker.ts\" || true'",
+    "dev:stack": "bash -lc 'pkill -f \"ponder[\\\\/]dist\" || true; pkill -f \"ponder.*yarn dev\" || true; pkill -f \"control-api/server.ts\" || true; pkill -f \"worker/mech_worker.ts\" || true; concurrently \"cd ponder && yarn dev\" \"yarn control:dev\" --names \"ponder,control\" --prefix-colors \"cyan,magenta\"'",
     "control:dev": "tsx control-api/server.ts",
     "test:onchain:e2e": "tsx scripts/test_onchain_e2e.ts",
     "test": "vitest",
@@ -48,13 +49,12 @@
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.53.0",
     "@zoralabs/coins-sdk": "^0.3.0",
-    "better-sqlite3": "^12.2.0",
     "civitai": "^0.1.15",
     "cross-fetch": "^4.1.0",
     "dotenv": "^17.2.2",
     "ethers": "^6.0.0",
     "graphql-yoga": "^5.15.2",
-    "mech-client-ts": "file:packages/mech-client-ts/mech-client-ts-ipfsjson.tgz",
+    "mech-client-ts": "file:packages/mech-client-ts",
     "openai": "^5.11.0",
     "pino": "^9.9.0",
     "pino-pretty": "^13.1.1",
@@ -67,6 +67,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/yargs": "^17.0.33",
+    "better-sqlite3": "^12.4.1",
     "concurrently": "^8.2.2",
     "execa": "^9.6.0",
     "jest": "^30.0.5",
@@ -80,5 +81,12 @@
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "overrides": {
     "@google/genai": "1.15.0"
+  },
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "volta": {
+    "node": "22.11.0",
+    "yarn": "1.22.22"
   }
 }

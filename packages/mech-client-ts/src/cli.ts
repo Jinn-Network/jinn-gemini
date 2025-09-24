@@ -32,6 +32,7 @@ program
   .option('--use-offchain <bool>', 'Use offchain payment model')
   .option('--key <path>', 'Path to private key file')
   .option('--tools <tools...>', 'One or more tools to use')
+  .option('--ipfs-json-file <path>', 'Path to JSON file to upload as request metadata (overrides legacy prompt/tool metadata)')
   .option('--extra-attribute <attributes...>', 'Extra attributes (key=value)')
   .option('--confirm <type>', 'Confirmation method (on-chain/off-chain)')
   .option('--retries <number>', 'Number of retries')
@@ -43,12 +44,19 @@ program
     try {
       // If priority-mech is provided, use marketplace interact
       if (options.priorityMech) {
+        let ipfsJsonContents: Record<string, any>[] | undefined = undefined;
+        if (options.ipfsJsonFile) {
+          const fs = require('fs');
+          const payload = JSON.parse(fs.readFileSync(options.ipfsJsonFile, 'utf8'));
+          ipfsJsonContents = Array.isArray(payload) ? payload : [payload];
+        }
         await marketplaceInteract({
           prompts: options.prompts,
           priorityMech: options.priorityMech,
           usePrepaid: options.usePrepaid,
           useOffchain: options.useOffchain,
           tools: options.tools,
+          ipfsJsonContents,
           privateKeyPath: options.key,
           confirmationType: options.confirm,
           retries: options.retries,
