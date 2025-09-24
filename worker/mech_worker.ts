@@ -229,9 +229,24 @@ async function processOnce(): Promise<void> {
     return;
   }
 
+  // Optional: target a specific request id if provided (for deterministic tests)
+  const targetIdEnv = (process.env.MECH_TARGET_REQUEST_ID || '').trim();
+  let filtered = candidates;
+  if (targetIdEnv) {
+    const targetHex = targetIdEnv.startsWith('0x') ? targetIdEnv.toLowerCase() : ('0x' + BigInt(targetIdEnv).toString(16)).toLowerCase();
+    filtered = candidates.filter(c => {
+      const idHex = String(c.id).startsWith('0x') ? String(c.id).toLowerCase() : ('0x' + BigInt(String(c.id)).toString(16)).toLowerCase();
+      return idHex === targetHex;
+    });
+    if (filtered.length === 0) {
+      workerLogger.info({ target: targetHex }, 'Target request not found among candidates');
+      return;
+    }
+  }
+
   // Iterate candidates until we claim one successfully
   let target: UnclaimedRequest | null = null;
-  for (const c of candidates) {
+  for (const c of filtered) {
     const ok = await tryClaim(c, workerAddress);
     if (ok) { target = c; break; }
   }
@@ -344,4 +359,3 @@ async function main() {
 }
 
 main().catch(() => process.exit(1));
-

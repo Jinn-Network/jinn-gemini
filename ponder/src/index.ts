@@ -167,34 +167,23 @@ ponder.on(
     // Convert raw digest bytes to gateway-compatible CIDv1 (raw codec) hex multibase
     const ipfsHash = dataBytes ? `f01551220${String(dataBytes).replace(/^0x/, '')}` : undefined;
 
+    const baseDeliveryRecord = {
+      requestId,
+      sourceRequestId: undefined,
+      sourceJobDefinitionId: undefined,
+      mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
+      mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
+      deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
+      ipfsHash,
+      transactionHash: txHash,
+      blockNumber,
+      blockTimestamp,
+    } as const;
+
     await deliveryRepo.upsert({
       id: requestId,
-      create: {
-        requestId,
-        jobDefinitionId: undefined,
-        sourceRequestId: undefined,
-        sourceJobDefinitionId: undefined,
-        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
-        mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
-        deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
-        ipfsHash,
-        transactionHash: txHash,
-        blockNumber,
-        blockTimestamp,
-      },
-      update: {
-        requestId,
-        jobDefinitionId: undefined,
-        sourceRequestId: undefined,
-        sourceJobDefinitionId: undefined,
-        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
-        mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
-        deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
-        ipfsHash,
-        transactionHash: txHash,
-        blockNumber,
-        blockTimestamp,
-      },
+      create: baseDeliveryRecord,
+      update: baseDeliveryRecord,
     });
 
     await requestRepo.upsert({

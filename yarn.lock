@@ -5332,10 +5332,6 @@ math-intrinsics@^1.1.0:
 
 "mech-client-ts@file:packages/mech-client-ts":
   version "1.0.6"
-<<<<<<< HEAD
-  resolved "file:packages/mech-client-ts/mech-client-ts-ipfsjson.tgz#af9dacbd4d8d7c1f646f165c171534254a431a58"
-=======
->>>>>>> 2b963c9 (refactor: update MCP tools and job management functionality)
   dependencies:
     "@types/form-data" "^2.2.1"
     "@types/uuid" "^10.0.0"

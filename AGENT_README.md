@@ -162,10 +162,12 @@ MCP server (`gemini-agent/mcp/server.ts`) registers tools from `gemini-agent/mcp
 - `get_details` – reads on-chain data via Ponder; supports IPFS resolution.
 - `post_marketplace_job` – uploads flattened JSON to IPFS and posts a marketplace request on Base.
 - `create_artifact` – uploads content to IPFS and returns `{ cid, name, topic, contentPreview }`.
+- `dispatch_new_job` – preferred path for dispatching because it routes through the MCP server. When the Safe delivers, the AgentMech contract emits the `Deliver` event that Ponder listens for. CLI-only delivery shortcuts (for example `scripts/deliver_request.ts`) emit only `MarketplaceDelivery` with `delivered=false`, so the subgraph will never flip the `request.delivered` flag.
 
 Notes:
 - `create_artifact` does not write to Supabase. To persist artifacts/messages/reports off-chain, call the Control API mutations.
 - `post_marketplace_job` enriches with the IPFS gateway URL by querying Ponder (retrying briefly for indexing).
+- CLI tooling (e.g. `yarn tsx scripts/deliver_request.ts`) is still useful for manual debugging, but it bypasses the MCP dispatch path. Because it only triggers `MarketplaceDelivery`, those deliveries remain `delivered=false` in Ponder. For automated tests and production flows always go through the MCP toolchain (dispatch via `dispatch_new_job`, deliver via Safe).
 
 ---
 

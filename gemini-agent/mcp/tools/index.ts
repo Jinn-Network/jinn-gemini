@@ -4,4 +4,5 @@ export { getDetails, getDetailsParams, getDetailsSchema, type GetDetailsParams }
 export { dispatchNewJob, dispatchNewJobParams, dispatchNewJobSchema } from './dispatch_new_job.js';
 export { createArtifact, createArtifactParams, createArtifactSchema } from './create_artifact.js';
 export { dispatchExistingJob, dispatchExistingJobParams, dispatchExistingJobSchema } from './dispatch_existing_job.js';
+export { loadMcpServer, stopMcpServer } from './shared/mcp-bootstrap.js';
  
