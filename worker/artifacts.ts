@@ -72,6 +72,8 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
   const artifacts: ExtractedArtifact[] = [];
   if (!telemetry) return artifacts;
   const texts: string[] = [];
+  
+  // Collect all text strings from request and response
   if (Array.isArray(telemetry?.responseText)) {
     for (const t of telemetry.responseText) {
       if (typeof t === 'string') texts.push(t);
@@ -82,16 +84,71 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
       if (typeof t === 'string') texts.push(t);
     }
   }
+  
   const seen = new Set<string>();
+  
   for (const t of texts) {
-    const items = extractArtifactsFromOutput(t);
-    for (const it of items) {
+    // First try to extract from the text as-is (for backward compatibility with flat structures)
+    const flatItems = extractArtifactsFromOutput(t);
+    for (const it of flatItems) {
+      const key = `${it.cid}|${it.topic}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      artifacts.push(it);
+    }
+    
+    // Then try to parse as JSON and extract from nested Gemini CLI structure
+    const nestedItems = extractArtifactsFromNestedStructure(t);
+    for (const it of nestedItems) {
       const key = `${it.cid}|${it.topic}`;
       if (seen.has(key)) continue;
       seen.add(key);
       artifacts.push(it);
     }
   }
+  
+  return artifacts;
+}
+
+function extractArtifactsFromNestedStructure(text: string): ExtractedArtifact[] {
+  const artifacts: ExtractedArtifact[] = [];
+  
+  try {
+    const parsed = JSON.parse(text);
+    
+    // Handle Gemini API response structure: candidates[].content.parts[].functionResponse.response.output
+    if (parsed.candidates && Array.isArray(parsed.candidates)) {
+      for (const candidate of parsed.candidates) {
+        if (candidate.content && candidate.content.parts && Array.isArray(candidate.content.parts)) {
+          for (const part of candidate.content.parts) {
+            if (part.functionResponse && part.functionResponse.response && part.functionResponse.response.output) {
+              // The output field contains a JSON string that needs to be parsed again
+              try {
+                const output = JSON.parse(part.functionResponse.response.output);
+                const maybe = output?.data || output;
+                
+                if (maybe && typeof maybe === 'object' && typeof maybe.cid === 'string' && typeof maybe.topic === 'string') {
+                  const item: ExtractedArtifact = {
+                    cid: String(maybe.cid),
+                    topic: String(maybe.topic),
+                  };
+                  if (typeof maybe.name === 'string') item.name = maybe.name;
+                  if (typeof maybe.contentPreview === 'string') item.contentPreview = maybe.contentPreview;
+                  artifacts.push(item);
+                }
+              } catch (outputParseError) {
+                // If inner JSON parsing fails, skip this part
+                continue;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (parseError) {
+    // If outer JSON parsing fails, return empty array (not an error, just not nested structure)
+  }
+  
   return artifacts;
 }
 
