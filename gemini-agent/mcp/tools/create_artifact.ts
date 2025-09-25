@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-type PushJsonToIpfsResult = readonly [unknown, unknown];
+type PushJsonToIpfsResult = readonly [string, string];
 
 type PushJsonToIpfs = (content: unknown) => Promise<PushJsonToIpfsResult>;
 
@@ -8,20 +8,13 @@ type MechClientIpfs = {
   pushJsonToIpfs: PushJsonToIpfs;
 };
 
-// Dynamic import helper for mech-client-ts compatibility
+// Dynamic import helper for mech-client-ts; no silent fallback
 async function getMechClientIpfs(): Promise<MechClientIpfs> {
-  try {
-    const mechClient = await import('mech-client-ts/dist/ipfs.js');
-    if (typeof mechClient?.pushJsonToIpfs !== 'function') {
-      throw new Error('mech-client-ts IPFS helper unavailable');
-    }
-    return mechClient as MechClientIpfs;
-  } catch (error) {
-    // Fallback for tests - return mock implementation
-    return {
-      pushJsonToIpfs: async () => [null, `mock-cid-${Date.now()}`]
-    };
+  const mechClient = await import('mech-client-ts/dist/ipfs.js');
+  if (typeof (mechClient as any)?.pushJsonToIpfs !== 'function') {
+    throw new Error('mech-client-ts IPFS helper unavailable');
   }
+  return mechClient as MechClientIpfs;
 }
 
 export const createArtifactParams = z.object({
@@ -49,15 +42,17 @@ export async function createArtifact(args: unknown) {
 
     // Get mech-client-ts functions dynamically
     const mechClient = await getMechClientIpfs();
-    const [err, cidHex] = await mechClient.pushJsonToIpfs(payload);
-    if (err) {
-      const message =
-        typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message?: unknown }).message === 'string'
-          ? (err as { message: string }).message
-          : 'IPFS upload failed';
-      throw new Error(message);
+    const [digestHex, cidHex] = await mechClient.pushJsonToIpfs(payload);
+    console.error('[create_artifact] pushJsonToIpfs result', {
+      digestHex,
+      cidHex,
+      cidHexType: typeof cidHex,
+      digestHexType: typeof digestHex,
+    });
+    if (typeof cidHex !== 'string' || cidHex.length === 0) {
+      throw new Error('IPFS upload failed: missing CID');
     }
-    const cid = typeof cidHex === 'string' ? cidHex : String(cidHex);
+    const cid = cidHex;
 
     const result = { cid, name, topic, contentPreview };
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: result, meta: { ok: true } }) }] };
@@ -66,4 +61,3 @@ export async function createArtifact(args: unknown) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'EXECUTION_ERROR', message } }) }] };
   }
 }
-

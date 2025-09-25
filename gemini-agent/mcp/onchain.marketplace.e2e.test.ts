@@ -112,8 +112,7 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     if (!ready) {
       // Start dev server (indexer + HTTP). Pipe logs for diagnosis.
       ponderProc = execa('yarn', ['--cwd', 'ponder', 'dev'], { cwd: process.cwd(), stdio: 'pipe', env: { ...process.env } });
-      if (ponderProc.stdout) ponderProc.stdout.on('data', (d: any) => { try { process.stderr.write(`[ponder] ${d}`); } catch {} });
-      if (ponderProc.stderr) ponderProc.stderr.on('data', (d: any) => { try { process.stderr.write(`[ponder] ${d}`); } catch {} });
+      console.log('[ponder] dev server spawned (logs suppressed)');
       // Give it time to come up
       await waitForGraphql(gqlUrl, 120_000);
     }
@@ -416,15 +415,13 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       if (artifact?.id) break;
     }
 
-    if (!artifact) {
-      console.warn('No artifact indexed for request', requestIdHex, '- delivery JSON artifact count:', Array.isArray(deliveryJson?.artifacts) ? deliveryJson.artifacts.length : 'n/a');
-    } else {
-      expect(artifact?.id).toBe(`${requestIdHex}:0`);
-      expect(artifact?.requestId).toBe(requestIdHex);
-      expect(artifact?.topic).toBe(artifactTopic);
-      if (artifact?.name) expect(artifact?.name).toBe(artifactName);
-      expect(typeof artifact?.cid).toBe('string');
-    }
+    expect(artifact, `Artifact should be indexed for request ${requestIdHex}`).toBeTruthy();
+    const artifactRecord = artifact!;
+    expect(artifactRecord.id).toBe(`${requestIdHex}:0`);
+    expect(artifactRecord.requestId).toBe(requestIdHex);
+    expect(artifactRecord.topic).toBe(artifactTopic);
+    if (artifactRecord.name) expect(artifactRecord.name).toBe(artifactName);
+    expect(typeof artifactRecord.cid).toBe('string');
 
     // 6) Cross-check get_details for artifact and request delivery lineage
     const detailsRes = await getDetails({ ids: [requestIdHex, `${requestIdHex}:0`], resolve_ipfs: false });
@@ -433,18 +430,13 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     const artRec = (parsed?.data || []).find((x: any) => x.id === `${requestIdHex}:0`);
     expect(reqRec?.delivered).toBe(true);
     expect(typeof reqRec?.deliveryIpfsHash).toBe('string');
-    if (artRec) {
-      expect(artRec?.topic).toBe(artifactTopic);
-      expect(typeof artRec?.cid).toBe('string');
-    }
+    expect(artRec, `get_details should return artifact record ${requestIdHex}:0`).toBeTruthy();
+    expect(artRec?.topic).toBe(artifactTopic);
+    expect(typeof artRec?.cid).toBe('string');
 
-    if (deliveryJson && Array.isArray(deliveryJson.artifacts)) {
-      const a = deliveryJson.artifacts.find((x: any) => x.topic === artifactTopic);
-      if (!a) {
-        console.warn('Delivery JSON contained no artifacts with topic', artifactTopic);
-      } else {
-        expect(typeof a.cid).toBe('string');
-      }
-    }
+    expect(Array.isArray(deliveryJson?.artifacts), 'Delivery JSON should include an artifacts array').toBe(true);
+    const deliveryArtifact = (deliveryJson as any)?.artifacts?.find((x: any) => x.topic === artifactTopic);
+    expect(deliveryArtifact, `Delivery JSON should include artifact with topic ${artifactTopic}`).toBeTruthy();
+    expect(typeof deliveryArtifact?.cid).toBe('string');
   }, 600_000);
 });
