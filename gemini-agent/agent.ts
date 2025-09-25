@@ -171,6 +171,10 @@ export class Agent {
         args.unshift('--model', this.model);
       }
 
+      // CRITICAL: Use --prompt flag for non-interactive mode to prevent "Please continue" loops
+      // The --prompt flag enables non-interactive mode and appends to stdin (if any)
+      args.push('--prompt', '');
+
       // Debug passthrough
       if (process.argv.includes('--debug') || process.argv.includes('-d')) {
         args.push('--debug');
@@ -186,14 +190,14 @@ export class Agent {
         const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
         args.push('--telemetry-outfile', telemetryFile);
 
-      // Persist the last prompt locally for debugging/repro and send via stdin instead of --prompt
+      // Persist the last prompt locally for debugging/repro and send via stdin + --prompt for non-interactive mode
       const promptDir = dirname(this.settingsPath);
       try { mkdirSync(promptDir, { recursive: true }); } catch {}
       const lastPromptPath = join(promptDir, 'last-prompt.txt');
       try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch {}
 
       console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
-      console.log(`Spawning Gemini CLI with model: ${this.model} (prompt provided via stdin from ${lastPromptPath})`);
+      console.log(`Spawning Gemini CLI with model: ${this.model} (prompt provided via stdin + --prompt flag for non-interactive mode)`);
 
       // Propagate job context to the MCP server via environment variables so the separate
       // MCP process can read them on startup
@@ -229,7 +233,7 @@ export class Agent {
       
       // Removed time-based process timeout
 
-      // Feed prompt to stdin
+      // Feed prompt to stdin (combined with --prompt flag for non-interactive mode)
       try {
         geminiProcess.stdin.write(prompt);
         geminiProcess.stdin.end();
