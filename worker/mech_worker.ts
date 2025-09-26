@@ -154,7 +154,14 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
   }
 }
 
-async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; enabledTools?: string[]; sourceRequestId?: string } | null> {
+async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ 
+  prompt?: string; 
+  enabledTools?: string[]; 
+  sourceRequestId?: string; 
+  additionalContext?: any;
+  jobName?: string;
+  jobDefinitionId?: string;
+} | null> {
   if (!ipfsHash) return null;
   try {
     const hash = String(ipfsHash).replace(/^0x/, '');
@@ -171,7 +178,10 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; 
     const prompt = json?.prompt || json?.input || undefined;
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
     const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
-    return { prompt, enabledTools, sourceRequestId };
+    const additionalContext = json?.additionalContext || undefined;
+    const jobName = json?.jobName || undefined;
+    const jobDefinitionId = json?.jobDefinitionId || undefined;
+    return { prompt, enabledTools, sourceRequestId, additionalContext, jobName, jobDefinitionId };
   } catch (e: any) {
     workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
     return null;
@@ -183,13 +193,47 @@ async function runAgentForRequest(request: UnclaimedRequest, metadata: any): Pro
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const agent = new Agent(model, enabledTools, {
     jobId: request.id,
-    jobDefinitionId: null,
-    jobName: 'Onchain Task',
+    jobDefinitionId: metadata?.jobDefinitionId || null,
+    jobName: metadata?.jobName || 'Onchain Task',
     projectRunId: null,
     sourceEventId: null,
     projectDefinitionId: null
   });
-  const prompt = String(metadata?.prompt || '').trim() || `Process request ${request.id} for mech ${request.mech}`;
+
+  // Construct enhanced prompt with context if available
+  let prompt = String(metadata?.prompt || '').trim() || `Process request ${request.id} for mech ${request.mech}`;
+  
+  if (metadata?.additionalContext) {
+    const context = metadata.additionalContext;
+    const contextSummary = `
+
+## Job Context
+This job is part of a larger workflow. Here's the context:
+
+**Job Hierarchy Summary:**
+- Total jobs in hierarchy: ${context.summary?.totalJobs || 0}
+- Completed jobs: ${context.summary?.completedJobs || 0}
+- Active jobs: ${context.summary?.activeJobs || 0}
+- Available artifacts: ${context.summary?.totalArtifacts || 0}
+
+**Related Jobs:**
+${context.hierarchy?.map((job: any) => 
+  `- ${job.name} (Level ${job.level}, Status: ${job.status})`
+).join('\n') || 'No related jobs found'}
+
+**Available Artifacts:**
+${context.hierarchy?.flatMap((job: any) => 
+  job.artifactRefs?.map((artifact: any) => 
+    `- ${artifact.name} (${artifact.topic}) - CID: ${artifact.cid}`
+  ) || []
+).join('\n') || 'No artifacts available'}
+
+---
+
+`;
+    prompt = contextSummary + prompt;
+  }
+
   // Provide request context to downstream tools via env
   const prev = { JINN_REQUEST_ID: process.env.JINN_REQUEST_ID, JINN_MECH_ADDRESS: process.env.JINN_MECH_ADDRESS } as const;
   try {
