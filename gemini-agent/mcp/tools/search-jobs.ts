@@ -1,21 +1,44 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
-import { resolveRequestIpfsContent } from './shared/ipfs.js';
 
 const base = z.object({
   query: z.string().min(1).describe('Case-insensitive text to match against job name and description.'),
   cursor: z.string().optional().describe('Opaque cursor for pagination.'),
-  resolve_ipfs: z.boolean().optional().default(true).describe('If true, resolve and embed IPFS content for requests.'),
+  include_requests: z.boolean().optional().default(true).describe('If true, include requests made for each job.'),
+  max_requests_per_job: z.number().optional().default(10).describe('Maximum number of requests to include per job.'),
 });
 
 export const searchJobsParams = base;
 export type SearchJobsParams = z.infer<typeof searchJobsParams>;
 
 export const searchJobsSchema = {
-  description: 'Search job definitions by name/description. Returns lightweight rows with pagination.',
+  description: 'Search job definitions by name/description. Returns job definitions with their associated requests.',
   inputSchema: searchJobsParams.shape,
 };
+
+async function fetchRequestsForJob(jobId: string, maxRequests: number): Promise<any[]> {
+  const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+  const gql = `query GetJobRequests($jobId: String!, $limit: Int!) {
+    requests(where: { sourceJobDefinitionId: $jobId }, 
+            orderBy: "blockTimestamp", orderDirection: "desc", limit: $limit) {
+      items { 
+        id mech sender ipfsHash deliveryIpfsHash 
+        blockTimestamp delivered requestData jobName
+      }
+    }
+  }`;
+  
+  const variables = { jobId, limit: maxRequests };
+  const res = await fetch(PONDER_GRAPHQL_URL, {
+    method: 'POST', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify({ query: gql, variables })
+  });
+  
+  const json = await res.json();
+  return json?.data?.requests?.items || [];
+}
 
 export async function searchJobs(params: SearchJobsParams) {
   try {
@@ -26,49 +49,67 @@ export async function searchJobs(params: SearchJobsParams) {
       };
     }
 
-    const { query, cursor, resolve_ipfs } = parsed.data;
+    const { query, cursor, include_requests, max_requests_per_job } = parsed.data;
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
-    // Use Ponder GraphQL to search requests by id/mech/sender substring
+    // Step 1: Search job definitions by name and promptContent
     const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-    const gql = `query Search($q: String!, $limit: Int!) {
-      requests(where: { OR: [
-        { id_contains: $q }, { mech_contains: $q }, { sender_contains: $q }
-      ] }, orderBy: "blockTimestamp", orderDirection: "desc", limit: $limit) {
-        items { id mech sender ipfsHash blockTimestamp delivered }
+    const jobsGql = `query SearchJobs($q: String!, $limit: Int!) {
+      jobDefinitions(where: { OR: [
+        { name_contains: $q }, 
+        { promptContent_contains: $q }
+      ] }, limit: $limit) {
+        items { 
+          id name promptContent enabledTools 
+          sourceJobDefinitionId sourceRequestId
+        }
       }
     }`;
-    const variables = { q: query, limit: 50 };
+    
+    const variables = { q: query, limit: 100 }; // Get more jobs to allow for pagination
     const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: gql, variables })
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ query: jobsGql, variables })
     });
+    
     const json = await res.json();
-    const items = json?.data?.requests?.items || [];
-    let sliced = items.slice(keyset.offset, keyset.offset + 50);
+    const jobs = json?.data?.jobDefinitions?.items || [];
 
-    // Optionally resolve IPFS content for each item
-    if (resolve_ipfs) {
-      sliced = await Promise.all(
-        sliced.map(async (it: any) => {
-          try {
-            if (it?.ipfsHash) {
-              const ipfsContent = await resolveRequestIpfsContent(it.ipfsHash, 10000);
-              return { ...it, ipfsContent };
-            }
-          } catch {}
-          return it;
-        })
-      );
+    // Step 2: For each job, fetch its requests (if requested)
+    let enrichedJobs = jobs;
+    if (include_requests && jobs.length > 0) {
+      const requestPromises = jobs.map(async (job: any) => {
+        try {
+          const requests = await fetchRequestsForJob(job.id, max_requests_per_job || 10);
+          return { ...job, requests };
+        } catch (error) {
+          // If fetching requests fails for a job, include the job without requests
+          return { ...job, requests: [], requestsError: 'Failed to fetch requests' };
+        }
+      });
+      
+      enrichedJobs = await Promise.all(requestPromises);
     }
 
-    const composed = composeSinglePageResponse(sliced, {
+    // Step 3: Apply pagination using context management utilities
+    const composed = composeSinglePageResponse(enrichedJobs, {
       startOffset: keyset.offset,
-      truncateChars: 2000,
-      perFieldMaxChars: 10000,
-      requestedMeta: { cursor, query, resolve_ipfs }
+      truncateChars: 1000, // Reduced since we're including more data
+      perFieldMaxChars: 5000,
+      pageTokenBudget: 10000, // 10k token budget per page
+      requestedMeta: { cursor, query, include_requests, max_requests_per_job }
     });
 
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: { ok: true, ...composed.meta, source: 'ponder' } }) }] };
+    return { 
+      content: [{ 
+        type: 'text' as const, 
+        text: JSON.stringify({ 
+          data: composed.data, 
+          meta: { ok: true, ...composed.meta, source: 'ponder', type: 'job_definitions' } 
+        }) 
+      }] 
+    };
   } catch (e: any) {
     return {
       content: [{ type: 'text' as const, text: JSON.stringify({ data: [], meta: { ok: false, code: 'UNEXPECTED_ERROR', message: e?.message || String(e) } }) }]

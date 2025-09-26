@@ -2,67 +2,116 @@ import { z } from 'zod';
 import fetch from 'cross-fetch';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 
-// MCP registration schema (permissive) to avoid -32602 pre-validation failures.
-// We normalize and strictly validate inside the handler.
-const base = z.object({
-  query: z.any(),
-  cursor: z.string().optional().describe('Opaque cursor for pagination.'),
-});
-
-// Strict internal schema used by the handler after normalization
 export const searchArtifactsParams = z.object({
-  query: z.string().min(1).describe('Case-insensitive text to match against name, topic and content.'),
+  query: z.string().min(1).describe('Case-insensitive text to match against artifact name, topic, and content preview.'),
   cursor: z.string().optional().describe('Opaque cursor for pagination.'),
+  include_request_context: z.boolean().optional().default(false).describe('If true, include basic request information for each artifact.'),
 });
 export type SearchArtifactsParams = z.infer<typeof searchArtifactsParams>;
 
 export const searchArtifactsSchema = {
-  description: 'Search artifacts by name/topic/content. Returns minimal fields with pagination.',
+  description: 'Search artifacts by name, topic, and content preview. Returns artifact metadata with optional request context.',
   inputSchema: searchArtifactsParams.shape,
 };
 
-export async function searchArtifacts(params: any) {
-  try {
-    // Normalize permissive inputs, then validate strictly
-    const raw: any = params ?? {};
-    let { query, cursor } = raw as { query?: any; cursor?: string };
-    if (query === undefined || query === null) query = '';
-    if (typeof query !== 'string') query = String(query);
+async function fetchRequestForArtifact(requestId: string): Promise<any | null> {
+  const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+  const gql = `query GetRequest($requestId: String!) {
+    requests(where: { id: $requestId }, limit: 1) {
+      items { 
+        id mech sender blockTimestamp delivered jobName
+      }
+    }
+  }`;
+  
+  const variables = { requestId };
+  const res = await fetch(PONDER_GRAPHQL_URL, {
+    method: 'POST', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify({ query: gql, variables })
+  });
+  
+  const json = await res.json();
+  const requests = json?.data?.requests?.items || [];
+  return requests.length > 0 ? requests[0] : null;
+}
 
-    const parsed = searchArtifactsParams.safeParse({ query, cursor });
+export async function searchArtifacts(params: SearchArtifactsParams) {
+  try {
+    const parsed = searchArtifactsParams.safeParse(params);
     if (!parsed.success) {
-      const message = parsed.error?.errors?.[0]?.message || 'Invalid parameters';
       return {
         content: [{ type: 'text' as const, text: JSON.stringify({ 
           data: [], 
-          meta: { ok: false, code: 'VALIDATION_ERROR', message, details: parsed.error.flatten?.() ?? undefined }
+          meta: { ok: false, code: 'VALIDATION_ERROR', message: parsed.error.message }
         }) }]
       };
     }
 
-    ({ query, cursor } = parsed.data);
+    const { query, cursor, include_request_context } = parsed.data;
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
-    // Query Ponder for recent requests matching text in id/mech/sender (proxy for artifacts search)
+    // Query artifacts table directly
     const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-    const gql = `query Search($q: String!, $limit: Int!) {
-      requests(where: { OR: [
-        { id_contains: $q }, { mech_contains: $q }, { sender_contains: $q }
-      ] }, orderBy: "blockTimestamp", orderDirection: "desc", limit: $limit) {
-        items { id mech sender ipfsHash blockTimestamp delivered }
+    const artifactsGql = `query SearchArtifacts($q: String!, $limit: Int!) {
+      artifacts(where: { OR: [
+        { name_contains: $q }, 
+        { topic_contains: $q }, 
+        { contentPreview_contains: $q }
+      ] }, limit: $limit) {
+        items { 
+          id requestId sourceRequestId sourceJobDefinitionId
+          name cid topic contentPreview
+        }
       }
     }`;
-    const variables = { q: query, limit: 50 };
-    const res = await fetch(PONDER_GRAPHQL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: gql, variables }) });
+    
+    const variables = { q: query, limit: 100 };
+    const res = await fetch(PONDER_GRAPHQL_URL, {
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ query: artifactsGql, variables })
+    });
+    
     const json = await res.json();
-    const items = json?.data?.requests?.items || [];
+    const artifacts = json?.data?.artifacts?.items || [];
 
-    const composed = composeSinglePageResponse(items, {
+    // Optionally enrich with request context
+    let enrichedArtifacts = artifacts;
+    if (include_request_context && artifacts.length > 0) {
+      const requestPromises = artifacts.map(async (artifact: any) => {
+        try {
+          if (artifact.requestId) {
+            const requestContext = await fetchRequestForArtifact(artifact.requestId);
+            return { ...artifact, requestContext };
+          }
+          return artifact;
+        } catch (error) {
+          return artifact; // Return artifact without request context on error
+        }
+      });
+      
+      enrichedArtifacts = await Promise.all(requestPromises);
+    }
+
+    // Apply pagination using context management utilities
+    const composed = composeSinglePageResponse(enrichedArtifacts, {
       startOffset: keyset.offset,
-      requestedMeta: { cursor, query, source: 'ponder' }
+      truncateChars: 800, // Moderate truncation for artifact content
+      perFieldMaxChars: 3000,
+      pageTokenBudget: 10000, // 10k token budget per page
+      requestedMeta: { cursor, query, include_request_context }
     });
 
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: { ok: true, ...composed.meta } }) }] };
+    return { 
+      content: [{ 
+        type: 'text' as const, 
+        text: JSON.stringify({ 
+          data: composed.data, 
+          meta: { ok: true, ...composed.meta, source: 'ponder', type: 'artifacts' } 
+        }) 
+      }] 
+    };
   } catch (e: any) {
     return {
       content: [{ type: 'text' as const, text: JSON.stringify({ data: [], meta: { ok: false, code: 'UNEXPECTED_ERROR', message: e?.message || String(e) } }) }]
