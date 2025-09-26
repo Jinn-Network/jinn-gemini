@@ -33,6 +33,7 @@ async function main() {
     // Build serverTools from imported tool modules (core tools only)
     serverTools = [
       { name: 'get_details', schema: tools.getDetailsSchema, handler: tools.getDetails },
+      { name: 'get_job_context', schema: tools.getJobContextSchema, handler: tools.getJobContext },
       { name: 'dispatch_new_job', schema: tools.dispatchNewJobSchema, handler: tools.dispatchNewJob },
       { name: 'create_artifact', schema: tools.createArtifactSchema, handler: tools.createArtifact },
       { name: 'dispatch_existing_job', schema: tools.dispatchExistingJobSchema, handler: tools.dispatchExistingJob },
