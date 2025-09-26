@@ -1,6 +1,8 @@
 import '../env/index.js';
 import { Agent } from '../gemini-agent/agent.js';
 import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
+import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
+import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
 import { Web3 } from 'web3';
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -19,10 +21,18 @@ type UnclaimedRequest = {
   delivered?: boolean;
 };
 
+
 const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = (process.env.USE_CONTROL_API ?? 'true') !== 'false';
 const STALE_MINUTES = parseInt(process.env.MECH_RECLAIM_AFTER_MINUTES || '10', 10);
+
+// Auto-reposting configuration
+const ENABLE_AUTO_REPOST = (process.env.ENABLE_AUTO_REPOST ?? 'true') !== 'false';
+const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
+
+// Track recent reposts to prevent loops
+const recentReposts = new Map<string, number>();
 
 function safeParseToolResponse(response: any): { ok: boolean; data: any; message?: string } {
   try {
@@ -214,6 +224,130 @@ async function storeOnchainArtifact(request: UnclaimedRequest, workerAddress: st
   } catch {}
 }
 
+/**
+ * Check if a job chain is complete by verifying all requests are delivered
+ */
+async function isChainComplete(rootJobDefinitionId: string): Promise<boolean> {
+  try {
+    const res = await fetch(PONDER_GRAPHQL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `query($rootId: String!) { 
+          requests(where: { sourceJobDefinitionId: { equals: $rootId } }) {
+            items {
+              id
+              delivered
+            }
+          }
+        }`,
+        variables: { rootId: rootJobDefinitionId },
+      }),
+    });
+    const json = await res.json();
+    const requests = json?.data?.requests?.items || [];
+    
+    if (requests.length === 0) {
+      return false; // No requests in chain
+    }
+    
+    // Check if all requests are delivered
+    return requests.every((req: any) => req.delivered);
+  } catch (e) {
+    workerLogger.error(`Error checking chain completion for ${rootJobDefinitionId}:`, e);
+    return false;
+  }
+}
+
+/**
+ * Check if a job should be reposted based on recent repost history
+ */
+function shouldRepost(rootJobDefinitionId: string): boolean {
+  const now = Date.now();
+  const lastRepost = recentReposts.get(rootJobDefinitionId);
+  
+  if (lastRepost && (now - lastRepost) < MIN_TIME_BETWEEN_REPOSTS) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Repost an existing job definition using the dispatch_existing_job pattern
+ */
+async function repostExistingJob(jobDefinitionId: string): Promise<void> {
+  try {
+    const result = await dispatchNewJob({ jobId: jobDefinitionId });
+    
+    // Parse the result to check if it was successful
+    const text = result?.content?.[0]?.text;
+    if (!text) {
+      workerLogger.error(`Cannot repost: no response content for job ${jobDefinitionId}`);
+      return;
+    }
+    
+    const parsedResult = JSON.parse(text);
+    if (!parsedResult.meta?.ok) {
+      workerLogger.error(`Cannot repost job ${jobDefinitionId}: ${parsedResult.meta?.message || 'Unknown error'}`);
+      return;
+    }
+    
+    // Track the repost to prevent loops
+    recentReposts.set(jobDefinitionId, Date.now());
+    
+    workerLogger.info(`Successfully reposted job (${jobDefinitionId}) after chain completion`);
+    workerLogger.info(`Repost result:`, parsedResult.data);
+    
+  } catch (e) {
+    workerLogger.error(`Error reposting job ${jobDefinitionId}:`, e);
+  }
+}
+
+/**
+ * Check for completed decomposition chains and repost root jobs if needed
+ */
+async function checkAndRepostCompletedChains(): Promise<void> {
+  if (!ENABLE_AUTO_REPOST) {
+    return;
+  }
+
+  try {
+    // Find all root job definitions (no sourceJobDefinitionId)
+    const res = await fetch(PONDER_GRAPHQL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `query { 
+          jobDefinitions(where: { sourceJobDefinitionId: { equals: null } }, limit: 100) {
+            items {
+              id
+              name
+            }
+          }
+        }`,
+      }),
+    });
+    const json = await res.json();
+    const rootJobDefs = json?.data?.jobDefinitions?.items || [];
+    
+    for (const rootJobDef of rootJobDefs) {
+      // Skip if recently reposted
+      if (!shouldRepost(rootJobDef.id)) {
+        continue;
+      }
+      
+      // Check if chain is complete and repost if needed
+      if (await isChainComplete(rootJobDef.id)) {
+        workerLogger.info(`Found completed chain for root job ${rootJobDef.name}, reposting...`);
+        await repostExistingJob(rootJobDef.id);
+      }
+    }
+  } catch (e) {
+    workerLogger.error(`Error checking for completed chains:`, e);
+  }
+}
+
 
 async function processOnce(): Promise<void> {
   const workerAddress = process.env.MECH_WORKER_ADDRESS || '';
@@ -335,6 +469,9 @@ async function main() {
   }
   for (;;) {
     try {
+      // Check for completed chains and repost if needed
+      await checkAndRepostCompletedChains();
+      
       await processOnce();
     } catch (e: any) {
       workerLogger.error({ error: e?.message || String(e) }, 'Error in mech loop');
