@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
 import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
+import { getCurrentJobContext } from './shared/context.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
@@ -84,11 +85,17 @@ export async function dispatchExistingJob(args: unknown) {
   }
 
   // Build request payload mirroring post_marketplace_job expectations
+  const context = getCurrentJobContext();
+  const lineageContext: Record<string, any> = {};
+  if (context.requestId) lineageContext.sourceRequestId = context.requestId;
+  if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
+
   const ipfsJsonContents = [{
     prompt: finalPrompt,
     jobName: name,
     enabledTools: finalTools,
     jobDefinitionId,
+    ...lineageContext,
   }];
 
   try {

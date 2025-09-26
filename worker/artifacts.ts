@@ -71,6 +71,32 @@ export function extractArtifactsFromOutput(output: string): ExtractedArtifact[] 
 export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact[] {
   const artifacts: ExtractedArtifact[] = [];
   if (!telemetry) return artifacts;
+
+  // NEW: Extract artifacts directly from structured tool calls
+  if (Array.isArray(telemetry.toolCalls)) {
+    for (const toolCall of telemetry.toolCalls) {
+      if (toolCall.tool === 'create_artifact' && toolCall.success && toolCall.result) {
+        const result = toolCall.result;
+        if (result.cid && result.topic) {
+          const artifact: ExtractedArtifact = {
+            cid: String(result.cid),
+            topic: String(result.topic),
+          };
+          if (result.name) artifact.name = String(result.name);
+          if (result.contentPreview) artifact.contentPreview = String(result.contentPreview);
+          
+          artifacts.push(artifact);
+        }
+      }
+    }
+  }
+
+  // If we found artifacts from structured tool calls, return them
+  if (artifacts.length > 0) {
+    return artifacts;
+  }
+
+  // FALLBACK: Legacy parsing for backward compatibility
   const texts: string[] = [];
   
   // Collect all text strings from request and response

@@ -76,6 +76,7 @@ export async function getDetails(params: GetDetailsParams) {
         const requestRecords: any[] = [];
         const artifactRecords: any[] = [];
         const jobDefRecords: any[] = [];
+        const errors: string[] = [];
 
         const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
 
@@ -91,7 +92,15 @@ export async function getDetails(params: GetDetailsParams) {
                             variables: { id }
                         })
                     });
+                    if (!res.ok) {
+                        errors.push(`request:${id}: HTTP ${res.status}`);
+                        continue;
+                    }
                     const json = await res.json();
+                    if (Array.isArray(json?.errors) && json.errors.length) {
+                        errors.push(`request:${id}: ${json.errors.map((e: any) => e?.message || 'Unknown error').join('; ')}`);
+                        continue;
+                    }
                     const r = json?.data?.request;
                     const d = json?.data?.delivery;
                     if (r) {
@@ -110,7 +119,9 @@ export async function getDetails(params: GetDetailsParams) {
                         }
                         requestRecords.push(record);
                     }
-                } catch {}
+                } catch (error: any) {
+                    errors.push(`request:${id}: ${error?.message || String(error)}`);
+                }
             }
         }
 
@@ -122,11 +133,19 @@ export async function getDetails(params: GetDetailsParams) {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            query: `query($id: String!) { artifact(id: $id) { id requestId sourceRequestId jobDefinitionId sourceJobDefinitionId name topic cid contentPreview } }`,
+                            query: `query($id: String!) { artifact(id: $id) { id requestId sourceRequestId sourceJobDefinitionId name topic cid contentPreview } }`,
                             variables: { id }
                         })
                     });
+                    if (!res.ok) {
+                        errors.push(`artifact:${id}: HTTP ${res.status}`);
+                        continue;
+                    }
                     const json = await res.json();
+                    if (Array.isArray(json?.errors) && json.errors.length) {
+                        errors.push(`artifact:${id}: ${json.errors.map((e: any) => e?.message || 'Unknown error').join('; ')}`);
+                        continue;
+                    }
                     const a = json?.data?.artifact;
                     if (a) {
                         const record: any = { ...a, _source_table: 'ponder_artifact' };
@@ -135,7 +154,9 @@ export async function getDetails(params: GetDetailsParams) {
                         }
                         artifactRecords.push(record);
                     }
-                } catch {}
+                } catch (error: any) {
+                    errors.push(`artifact:${id}: ${error?.message || String(error)}`);
+                }
             }
         }
 
@@ -152,12 +173,22 @@ export async function getDetails(params: GetDetailsParams) {
                             variables: { id }
                         })
                     });
+                    if (!res.ok) {
+                        errors.push(`jobDefinition:${id}: HTTP ${res.status}`);
+                        continue;
+                    }
                     const json = await res.json();
+                    if (Array.isArray(json?.errors) && json.errors.length) {
+                        errors.push(`jobDefinition:${id}: ${json.errors.map((e: any) => e?.message || 'Unknown error').join('; ')}`);
+                        continue;
+                    }
                     const j = json?.data?.jobDefinition;
                     if (j) {
                         jobDefRecords.push({ ...j, _source_table: 'ponder_jobDefinition' });
                     }
-                } catch {}
+                } catch (error: any) {
+                    errors.push(`jobDefinition:${id}: ${error?.message || String(error)}`);
+                }
             }
         }
 
@@ -187,7 +218,8 @@ export async function getDetails(params: GetDetailsParams) {
             enforceHardFieldClamp: false,
             requestedMeta: { cursor: validCursor, resolve_ipfs: shouldResolveIpfs }
         });
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
+        const meta = errors.length ? { ...composed.meta, errors } : composed.meta;
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta }, null, 2) }] };
 
         // Legacy/hybrid path removed. This tool is on-chain only.
         // Any code below this point has been intentionally deleted to prevent fallback to legacy tables.

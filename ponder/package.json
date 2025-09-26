@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node -e \"try{require('better-sqlite3');console.log('better-sqlite3 ok')}catch(e){process.exitCode=0}\" || npm rebuild better-sqlite3",
     "dev": "ponder dev",
     "start": "ponder start",
-    "build": "ponder build"
+    "build": "ponder build",
+    "postinstall": "npm rebuild better-sqlite3 || true"
   },
   "dependencies": {
     "@ponder/core": "^0.6.11",
@@ -15,5 +17,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.12.8"
+  },
+  "engines": {
+    "node": "22.11.x"
   }
 }

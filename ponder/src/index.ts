@@ -92,15 +92,16 @@ ponder.on(
             sourceJobDefinitionId: parentJobDefinitionId,
             sourceRequestId: sourceRequestId,
           },
-        update: {
-          name: jobName || 'Unnamed Job',
-          enabledTools,
-          promptContent,
-          sourceJobDefinitionId: parentJobDefinitionId,
-          sourceRequestId: sourceRequestId,
-        },
-      });
+          update: {
+            name: jobName || 'Unnamed Job',
+            enabledTools,
+            promptContent,
+            // Do NOT re-attribute lineage on updates; preserve original creator
+          },
+        });
       }
+
+      const sourceJobDefinitionForRequest = sourceJobDefinitionIdFromContent ?? jobDefinitionId;
 
       await repo.upsert({
         id,
@@ -108,7 +109,7 @@ ponder.on(
           mech,
           sender,
           sourceRequestId: sourceRequestId,
-          sourceJobDefinitionId: jobDefinitionId,
+          sourceJobDefinitionId: sourceJobDefinitionForRequest,
           requestData: dataHex || undefined,
           ipfsHash,
           transactionHash: txHash,
@@ -122,7 +123,7 @@ ponder.on(
           mech,
           sender,
           sourceRequestId: sourceRequestId,
-          sourceJobDefinitionId: jobDefinitionId,
+          sourceJobDefinitionId: sourceJobDefinitionForRequest,
           requestData: dataHex || undefined,
           ipfsHash,
           transactionHash: txHash,

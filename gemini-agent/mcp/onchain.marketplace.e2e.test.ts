@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { execa } from 'execa';
 
 // Import tools via the MCP tools index (NodeNext resolution allows .js for TS modules)
-import { loadMcpServer, stopMcpServer, dispatchNewJob, getDetails } from './tools/index.js';
+import { getDetails, loadMcpServer, stopMcpServer, dispatchNewJob, dispatchExistingJob } from './tools/index.js';
 import { loadEnvOnce } from './tools/shared/env.js';
 
 // Helper: parse MCP tool response content
@@ -74,6 +74,7 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
   let ponderProc: any = null;
   let controlApiProc: any = null;
   let mcpStarted = false;
+  let jobDefForRepost: string | null = null;
 
   async function waitForGraphql(url: string, timeoutMs = 60_000): Promise<void> {
     const start = Date.now();
@@ -180,6 +181,7 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     const requestIdInt: string = Array.isArray(data.request_id_ints) ? data.request_id_ints[0] : '';
     const jobDefinitionId: string = data.jobDefinitionId;
     expect(typeof jobDefinitionId).toBe('string');
+    jobDefForRepost = jobDefinitionId;
 
     // 2) Resolve IPFS JSON (via gateway URL if available; else via subgraph lookup of request.ipfsHash)
     let gatewayUrl: string | null = data.ipfs_gateway_url || null;
@@ -321,13 +323,66 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       const reqObj = jr2?.data?.request || null;
       expect(reqObj?.id).toBe(requestIdHex);
       expect(reqObj?.sourceRequestId).toBe(lineageRequest);
-      expect(reqObj?.sourceJobDefinitionId).toBe(jobDefinitionId);
+      expect(reqObj?.sourceJobDefinitionId).toBe(lineageJobDef);
     } finally {
       // Restore env
       if (prevReq !== undefined) process.env.JINN_REQUEST_ID = prevReq; else delete process.env.JINN_REQUEST_ID;
       if (prevJob !== undefined) process.env.JINN_JOB_DEFINITION_ID = prevJob; else delete process.env.JINN_JOB_DEFINITION_ID;
     }
   }, 240_000);
+
+  it('reposts existing job: request lineage uses poster context while job definition lineage remains unchanged', async () => {
+    loadEnvOnce();
+    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    expect(jobDefForRepost, 'Need a jobDefinitionId from earlier test').toBeTruthy();
+
+    const lineageRequest = process.env.TEST_LINEAGE_REQUEST_ID || '0x4ce84fa46e5aa543fd2703e06f2da9d42bfa808475e191e430326751ce709cc3';
+    const lineageJobDef = process.env.TEST_LINEAGE_JOB_DEFINITION_ID || 'b1c5ebe4-9368-4762-b528-15645b54ddb8';
+    const prevReq = process.env.JINN_REQUEST_ID;
+    const prevJob = process.env.JINN_JOB_DEFINITION_ID;
+    process.env.JINN_REQUEST_ID = lineageRequest;
+    process.env.JINN_JOB_DEFINITION_ID = lineageJobDef;
+
+    try {
+      const repostRes = await dispatchExistingJob({ jobId: jobDefForRepost! });
+      const parsed = parseToolText(repostRes);
+      expect(parsed?.meta?.ok).toBe(true);
+      const reqId: string | undefined = parsed?.data?.request_ids?.[0];
+      expect(typeof reqId).toBe('string');
+
+      const qReq = 'query($id:String!){ request(id:$id){ id sourceRequestId sourceJobDefinitionId ipfsHash delivered } }';
+      let reqObj: any = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, i === 0 ? 0 : 1500));
+        const resp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qReq, variables: { id: reqId } }) });
+        if (!resp.ok) continue;
+        const jr = await resp.json();
+        reqObj = jr?.data?.request || null;
+        if (reqObj?.id) break;
+      }
+      expect(reqObj?.id).toBe(reqId);
+      expect(reqObj?.sourceRequestId).toBe(lineageRequest);
+      expect(reqObj?.sourceJobDefinitionId).toBe(lineageJobDef);
+
+      const qJob = 'query($id:String!){ jobDefinition(id:$id){ id sourceRequestId sourceJobDefinitionId } }';
+      const respJob = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qJob, variables: { id: jobDefForRepost } }) });
+      expect(respJob.ok).toBe(true);
+      const jobJson = await respJob.json();
+      const job = jobJson?.data?.jobDefinition;
+      expect(job?.id).toBe(jobDefForRepost);
+      expect(job?.sourceRequestId ?? null).toBe(null);
+      expect(job?.sourceJobDefinitionId ?? null).toBe(null);
+
+      // Optional: ensure get_details surfaces the reposted request
+      const detailsRes = await getDetails({ ids: [reqId!], resolve_ipfs: false });
+      const detailsParsed = parseToolText(detailsRes);
+      const hasReq = (detailsParsed?.data || []).some((r: any) => r.id === reqId);
+      expect(hasReq).toBe(true);
+    } finally {
+      if (prevReq !== undefined) process.env.JINN_REQUEST_ID = prevReq; else delete process.env.JINN_REQUEST_ID;
+      if (prevJob !== undefined) process.env.JINN_JOB_DEFINITION_ID = prevJob; else delete process.env.JINN_JOB_DEFINITION_ID;
+    }
+  }, 180_000);
 
   it('end-to-end: worker processes request, creates artifact via MCP, delivers on-chain, and subgraph indexes delivery + artifact', async () => {
     loadEnvOnce();

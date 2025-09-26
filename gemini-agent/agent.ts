@@ -29,6 +29,7 @@ interface ToolCall {
   duration_ms?: number;
   success: boolean;
   error?: string;
+  result?: any;
 }
 
 interface JobTelemetry {
@@ -670,6 +671,9 @@ export class Agent {
         }
       }
 
+      // Extract tool results from conversation history and attach to tool calls
+      this.attachToolResultsToToolCalls(telemetry);
+
       telemetry.raw.eventCount = telemetryEvents.length;
       telemetry.raw.events = telemetryEvents.map(e => e.attributes?.['event.name']).filter(Boolean);
       console.log(`[TELEMETRY] Final parsing results - tokens: ${telemetry.totalTokens}, tools: ${telemetry.toolCalls.length}, session: ${telemetry.raw.sessionId}`);
@@ -752,6 +756,57 @@ export class Agent {
     }
 
     return finalOutput.join('\n').trim();
+  }
+
+  private attachToolResultsToToolCalls(telemetry: JobTelemetry): void {
+    if (!telemetry.requestText || telemetry.toolCalls.length === 0) return;
+
+    try {
+      // Parse conversation history from requestText to find tool responses
+      for (const requestText of telemetry.requestText) {
+        if (typeof requestText !== 'string') continue;
+
+        try {
+          const conversations = JSON.parse(requestText);
+          if (!Array.isArray(conversations)) continue;
+
+          for (const message of conversations) {
+            if (message.role === 'user' && Array.isArray(message.parts)) {
+              for (const part of message.parts) {
+                if (part.functionResponse && part.functionResponse.name && part.functionResponse.response) {
+                  const toolName = part.functionResponse.name;
+                  const response = part.functionResponse.response;
+
+                  // Find corresponding tool call and attach result
+                  const toolCall = telemetry.toolCalls.find(tc => 
+                    tc.tool === toolName && tc.success && !tc.result
+                  );
+
+                  if (toolCall && response.output) {
+                    try {
+                      // Parse the tool response output
+                      const output = JSON.parse(response.output);
+                      if (output.data && output.meta?.ok) {
+                        toolCall.result = output.data;
+                        console.log(`[TELEMETRY] Attached result to ${toolName} tool call:`, Object.keys(output.data));
+                      }
+                    } catch (parseError) {
+                      // If JSON parsing fails, store raw output
+                      toolCall.result = { rawOutput: response.output };
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (parseError) {
+          // Skip malformed conversation JSON
+          continue;
+        }
+      }
+    } catch (error: any) {
+      console.warn(`[TELEMETRY] Failed to attach tool results:`, error.message);
+    }
   }
 
   private categorizeError(error: any): string {
