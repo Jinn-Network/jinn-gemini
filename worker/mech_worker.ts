@@ -3,6 +3,7 @@ import { Agent } from '../gemini-agent/agent.js';
 import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
 import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
 import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import { Web3 } from 'web3';
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -278,27 +279,21 @@ function shouldRepost(rootJobDefinitionId: string): boolean {
  */
 async function repostExistingJob(jobDefinitionId: string): Promise<void> {
   try {
-    const result = await dispatchNewJob({ jobId: jobDefinitionId });
-    
+    const result = await dispatchExistingJob({ jobId: jobDefinitionId });
+
     // Parse the result to check if it was successful
-    const text = result?.content?.[0]?.text;
-    if (!text) {
-      workerLogger.error(`Cannot repost: no response content for job ${jobDefinitionId}`);
+    const { ok, data, message } = safeParseToolResponse(result);
+    if (!ok) {
+      workerLogger.error(`Cannot repost job ${jobDefinitionId}: ${message || 'Unknown error'}`);
       return;
     }
-    
-    const parsedResult = JSON.parse(text);
-    if (!parsedResult.meta?.ok) {
-      workerLogger.error(`Cannot repost job ${jobDefinitionId}: ${parsedResult.meta?.message || 'Unknown error'}`);
-      return;
-    }
-    
+
     // Track the repost to prevent loops
     recentReposts.set(jobDefinitionId, Date.now());
-    
+
     workerLogger.info(`Successfully reposted job (${jobDefinitionId}) after chain completion`);
-    workerLogger.info(`Repost result:`, parsedResult.data);
-    
+    workerLogger.info(`Repost result:`, data);
+
   } catch (e) {
     workerLogger.error(`Error reposting job ${jobDefinitionId}:`, e);
   }
