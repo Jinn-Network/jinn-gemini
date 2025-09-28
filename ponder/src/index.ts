@@ -61,6 +61,7 @@ ponder.on(
       let promptContent: string | undefined;
       let sourceRequestId: string | undefined;
       let sourceJobDefinitionIdFromContent: string | undefined;
+      let additionalContext: any = undefined;
       if (ipfsHash) {
         try {
           const content = await resolveRequestIpfsContent(ipfsHash);
@@ -71,6 +72,7 @@ ponder.on(
             promptContent = typeof content.prompt === 'string' ? content.prompt : undefined;
             sourceRequestId = typeof content.sourceRequestId === 'string' ? content.sourceRequestId : undefined;
             sourceJobDefinitionIdFromContent = typeof (content as any).sourceJobDefinitionId === 'string' ? (content as any).sourceJobDefinitionId : undefined;
+            additionalContext = (content as any).additionalContext || undefined;
           }
         } catch (e: any) {
           console.error(`Failed to resolve IPFS content for hash ${ipfsHash}: ${e.message}`);
@@ -118,6 +120,7 @@ ponder.on(
           delivered: false,
           jobName,
           enabledTools,
+          additionalContext,
         },
         update: {
           mech,
@@ -131,6 +134,7 @@ ponder.on(
           blockTimestamp,
           jobName,
           enabledTools,
+          additionalContext,
           // intentionally do not overwrite delivered here
         },
       });

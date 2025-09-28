@@ -404,7 +404,7 @@ export class Agent {
       // Include the merged tool set (universal + job-specific)
       mcpServer.includeTools = uniqueTools;
 
-      // Exclude native tools not enabled
+      // Exclude native tools not enabled, BUT allow web tools by default
       const allNativeTools = [
         'list_directory',
         'read_file',
@@ -415,13 +415,15 @@ export class Agent {
         'read_many_files',
         'run_shell_command',
         'save_memory',
-        'web_fetch',
-        'google_web_search'
+        // Intentionally exclude web tools from this list so they remain enabled by default:
+        // 'web_fetch', 'google_web_search'
       ];
 
-      const nativeToolsToExclude = this.enabledTools.length === 0
-        ? allNativeTools
-        : allNativeTools.filter(tool => !this.enabledTools.includes(tool));
+      // Always-enabled native tools
+      const alwaysEnabledNativeTools = ['web_fetch', 'google_web_search'];
+
+      // Compute native tools to exclude (never exclude always-enabled web tools)
+      const nativeToolsToExclude = allNativeTools.filter(tool => !alwaysEnabledNativeTools.includes(tool));
       templateSettings.excludeTools = nativeToolsToExclude;
 
       // Ensure directory exists

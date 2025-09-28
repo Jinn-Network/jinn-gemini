@@ -494,4 +494,240 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     expect(deliveryArtifact, `Delivery JSON should include artifact with topic ${artifactTopic}`).toBeTruthy();
     expect(typeof deliveryArtifact?.cid).toBe('string');
   }, 600_000);
+
+  it('context envelope: dispatch existing job with hierarchical context from child jobs and artifacts', async () => {
+    loadEnvOnce();
+    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    expect(process.env.MECH_PRIVATE_KEY, 'MECH_PRIVATE_KEY required').toBeTruthy();
+
+    // Test scenario: Create parent job → Dispatch 2 child jobs → Create artifacts → Redispatch parent with context
+    
+    // 1) Create a parent job that will coordinate child tasks
+    const parentJobName = `context-parent-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    const parentPrompt = 'Parent job: coordinate child tasks for data analysis and report generation. This job will be reposted with context of child work.';
+    const parentTools = ['dispatch_new_job', 'dispatch_existing_job', 'create_artifact'];
+    
+    const parentDispatch = await dispatchNewJob({ 
+      prompt: parentPrompt, 
+      jobName: parentJobName, 
+      enabledTools: parentTools, 
+      updateExisting: true 
+    });
+    const parentParsed = parseToolText(parentDispatch);
+    expect(parentParsed?.meta?.ok).toBe(true);
+    const parentJobDefinitionId: string = parentParsed?.data?.jobDefinitionId;
+    const parentRequestId: string = parentParsed?.data?.request_ids?.[0];
+    expect(typeof parentJobDefinitionId).toBe('string');
+    expect(typeof parentRequestId).toBe('string');
+
+    // Wait for parent job to be indexed
+    const qParentExists = 'query($id:String!){ jobDefinition(id:$id){ id name } }';
+    let parentIndexed = false;
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, i === 0 ? 0 : 1500));
+      const resp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qParentExists, variables: { id: parentJobDefinitionId } }) });
+      if (!resp.ok) continue;
+      const jr = await resp.json();
+      if (jr?.data?.jobDefinition?.id === parentJobDefinitionId) { parentIndexed = true; break; }
+    }
+    expect(parentIndexed, 'Parent job should be indexed').toBe(true);
+
+    // 2) Set lineage context to simulate parent job dispatching children
+    const prevReq = process.env.JINN_REQUEST_ID;
+    const prevJob = process.env.JINN_JOB_DEFINITION_ID;
+    process.env.JINN_REQUEST_ID = parentRequestId;
+    process.env.JINN_JOB_DEFINITION_ID = parentJobDefinitionId;
+
+    try {
+      // 3) Dispatch child job 1: Data Analysis
+      const child1Name = `context-child1-${Date.now()}-${randomUUID().slice(0, 6)}`;
+      const child1Prompt = 'Child job 1: Analyze sample data and generate insights. Create artifact with analysis results.';
+      const child1Tools = ['create_artifact'];
+      
+      const child1Dispatch = await dispatchNewJob({ 
+        prompt: child1Prompt, 
+        jobName: child1Name, 
+        enabledTools: child1Tools, 
+        updateExisting: true 
+      });
+      const child1Parsed = parseToolText(child1Dispatch);
+      expect(child1Parsed?.meta?.ok).toBe(true);
+      const child1JobDefinitionId: string = child1Parsed?.data?.jobDefinitionId;
+      const child1RequestId: string = child1Parsed?.data?.request_ids?.[0];
+
+      // 4) Dispatch child job 2: Report Generation 
+      const child2Name = `context-child2-${Date.now()}-${randomUUID().slice(0, 6)}`;
+      const child2Prompt = 'Child job 2: Generate summary report from analysis. Create artifact with formatted report.';
+      const child2Tools = ['create_artifact'];
+      
+      const child2Dispatch = await dispatchNewJob({ 
+        prompt: child2Prompt, 
+        jobName: child2Name, 
+        enabledTools: child2Tools, 
+        updateExisting: true 
+      });
+      const child2Parsed = parseToolText(child2Dispatch);
+      expect(child2Parsed?.meta?.ok).toBe(true);
+      const child2JobDefinitionId: string = child2Parsed?.data?.jobDefinitionId;
+      const child2RequestId: string = child2Parsed?.data?.request_ids?.[0];
+
+      // 5) Create some artifacts to simulate child job outputs
+      const testArtifact1 = await import('./tools/index.js').then(m => m.createArtifact({
+        name: 'analysis-results',
+        topic: 'data-analysis', 
+        content: JSON.stringify({
+          insights: ['Pattern A detected', 'Trend B identified'],
+          metrics: { accuracy: 0.95, completeness: 0.87 },
+          timestamp: new Date().toISOString()
+        })
+      }));
+      const artifact1Parsed = parseToolText(testArtifact1);
+      expect(artifact1Parsed?.data?.cid).toBeTruthy();
+
+      const testArtifact2 = await import('./tools/index.js').then(m => m.createArtifact({
+        name: 'summary-report',
+        topic: 'reporting',
+        content: JSON.stringify({
+          summary: 'Analysis completed successfully with high confidence.',
+          recommendations: ['Continue monitoring Pattern A', 'Investigate Trend B further'],
+          status: 'completed',
+          timestamp: new Date().toISOString()
+        })
+      }));
+      const artifact2Parsed = parseToolText(testArtifact2);
+      expect(artifact2Parsed?.data?.cid).toBeTruthy();
+
+      // 6) Wait for child jobs to be indexed
+      const qChildExists = 'query($id:String!){ jobDefinition(id:$id){ id name sourceJobDefinitionId sourceRequestId } }';
+      
+      // Check child 1 indexing
+      let child1Indexed = false;
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, i === 0 ? 0 : 1500));
+        const resp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qChildExists, variables: { id: child1JobDefinitionId } }) });
+        if (!resp.ok) continue;
+        const jr = await resp.json();
+        const child1Job = jr?.data?.jobDefinition;
+        if (child1Job?.id === child1JobDefinitionId) { 
+          // Verify lineage
+          expect(child1Job.sourceJobDefinitionId).toBe(parentJobDefinitionId);
+          expect(child1Job.sourceRequestId).toBe(parentRequestId);
+          child1Indexed = true; 
+          break; 
+        }
+      }
+      expect(child1Indexed, 'Child job 1 should be indexed with proper lineage').toBe(true);
+
+      // Check child 2 indexing  
+      let child2Indexed = false;
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, i === 0 ? 0 : 1500));
+        const resp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qChildExists, variables: { id: child2JobDefinitionId } }) });
+        if (!resp.ok) continue;
+        const jr = await resp.json();
+        const child2Job = jr?.data?.jobDefinition;
+        if (child2Job?.id === child2JobDefinitionId) {
+          // Verify lineage
+          expect(child2Job.sourceJobDefinitionId).toBe(parentJobDefinitionId);
+          expect(child2Job.sourceRequestId).toBe(parentRequestId);
+          child2Indexed = true; 
+          break; 
+        }
+      }
+      expect(child2Indexed, 'Child job 2 should be indexed with proper lineage').toBe(true);
+
+    } finally {
+      // Restore original context
+      if (prevReq !== undefined) process.env.JINN_REQUEST_ID = prevReq; else delete process.env.JINN_REQUEST_ID;
+      if (prevJob !== undefined) process.env.JINN_JOB_DEFINITION_ID = prevJob; else delete process.env.JINN_JOB_DEFINITION_ID;
+    }
+
+    // 7) Now redispatch the parent job - this should include context envelope with child job hierarchy
+    const repostRes = await dispatchExistingJob({ jobId: parentJobDefinitionId });
+    const repostParsed = parseToolText(repostRes);
+    expect(repostParsed?.meta?.ok).toBe(true);
+    const repostRequestId: string = repostParsed?.data?.request_ids?.[0];
+    expect(typeof repostRequestId).toBe('string');
+
+    // 8) Verify the reposted request contains additionalContext in IPFS
+    const qRepostReq = 'query($id:String!){ request(id:$id){ id ipfsHash additionalContext } }';
+    let repostRequest: any = null;
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, i === 0 ? 0 : 2000));
+      const resp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qRepostReq, variables: { id: repostRequestId } }) });
+      if (!resp.ok) continue;
+      const jr = await resp.json();
+      repostRequest = jr?.data?.request || null;
+      if (repostRequest?.id && repostRequest?.ipfsHash) break;
+    }
+    expect(repostRequest?.id).toBe(repostRequestId);
+    expect(typeof repostRequest?.ipfsHash).toBe('string');
+
+    // 9) Fetch and verify IPFS content contains additionalContext
+    let ipfsJsonWithContext: any = null;
+    if (repostRequest?.ipfsHash) {
+      const gatewayUrl = `https://gateway.autonolas.tech/ipfs/${repostRequest.ipfsHash}`;
+      for (let i = 0; i < 5; i++) {
+        try {
+          const ipfsResp = await fetch(gatewayUrl, { method: 'GET' });
+          if (ipfsResp.ok) {
+            ipfsJsonWithContext = await ipfsResp.json();
+            break;
+          }
+        } catch {}
+        if (i < 4) await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    expect(ipfsJsonWithContext, 'IPFS content should be accessible').toBeTruthy();
+    console.log('IPFS content for debugging:', JSON.stringify(ipfsJsonWithContext, null, 2));
+    expect(ipfsJsonWithContext?.jobDefinitionId).toBe(parentJobDefinitionId);
+    expect(ipfsJsonWithContext?.additionalContext, 'IPFS should contain additionalContext').toBeTruthy();
+    
+    // 10) Verify context envelope structure
+    const context = ipfsJsonWithContext.additionalContext;
+    expect(context?.hierarchy, 'Context should contain hierarchy').toBeTruthy();
+    expect(context?.summary, 'Context should contain summary').toBeTruthy();
+    expect(Array.isArray(context.hierarchy)).toBe(true);
+    expect(context.hierarchy.length).toBeGreaterThan(0);
+    
+    // 11) Verify hierarchy contains parent and child jobs
+    const hierarchyIds = context.hierarchy.map((job: any) => job.jobId);
+    expect(hierarchyIds).toContain(parentJobDefinitionId); // Parent should be in hierarchy
+    
+    // Check if child jobs appear in hierarchy (they should if the context gathering worked)
+    const hasChildJob = context.hierarchy.some((job: any) => job.level > 0);
+    expect(hasChildJob, 'Hierarchy should contain child jobs at level > 0').toBe(true);
+    
+    // 12) Verify summary statistics
+    expect(typeof context.summary.totalJobs).toBe('number');
+    expect(typeof context.summary.completedJobs).toBe('number');
+    expect(typeof context.summary.activeJobs).toBe('number');
+    expect(typeof context.summary.totalArtifacts).toBe('number');
+    expect(context.summary.totalJobs).toBeGreaterThan(0);
+
+    // 13) Verify the reposted request has additionalContext indexed in Ponder
+    expect(repostRequest?.additionalContext, 'Ponder should index additionalContext').toBeTruthy();
+    const indexedContext = repostRequest.additionalContext;
+    expect(indexedContext?.hierarchy).toBeTruthy();
+    expect(indexedContext?.summary).toBeTruthy();
+    expect(Array.isArray(indexedContext.hierarchy)).toBe(true);
+
+    // Audit log for verification
+    /* eslint-disable no-console */
+    console.log(JSON.stringify({
+      audit: {
+        step: 'context_envelope_verification',
+        parent_job_id: parentJobDefinitionId,
+        repost_request_id: repostRequestId,
+        context_summary: context.summary,
+        hierarchy_job_count: context.hierarchy.length,
+        hierarchy_levels: [...new Set(context.hierarchy.map((j: any) => j.level))].sort(),
+        ipfs_gateway_url: `https://gateway.autonolas.tech/ipfs/${repostRequest.ipfsHash}`,
+        context_envelope_present: !!context,
+        indexed_context_present: !!indexedContext
+      }
+    }, null, 2));
+    /* eslint-enable no-console */
+
+  }, 300_000);
 });

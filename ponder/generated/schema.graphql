@@ -105,9 +105,15 @@ type request {
   delivered: Boolean!
   jobName: String
   enabledTools: [String!]
+  additionalContext: JSON
 }
 
 scalar BigInt
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
 
 type requestPage {
   items: [request!]!
@@ -467,8 +473,3 @@ input artifactFilter {
 type _meta {
   status: JSON
 }
-
-"""
-The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
-"""
-scalar JSON

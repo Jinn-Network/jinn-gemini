@@ -32,6 +32,7 @@ export default createSchema((p: any) => ({
       delivered: p.boolean(),
       jobName: p.string().optional(),
       enabledTools: p.string().list().optional(),
+      additionalContext: p.json().optional(),
     },
     {
       ts: p.index("blockTimestamp").desc(),

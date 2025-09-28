@@ -43,9 +43,10 @@ interface BatchedJobData {
 }
 
 async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string): Promise<BatchedJobData> {
+
     const batchQuery = `
         query GetBatchedJobData($jobIds: [String!]!) {
-            jobDefinitions(where: { id: { in: $jobIds } }, limit: 1000) {
+            jobDefinitions(where: { id_in: $jobIds }, limit: 1000) {
                 items {
                     id
                     name
@@ -53,7 +54,7 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
                     sourceJobDefinitionId
                 }
             }
-            requests(where: { sourceJobDefinitionId: { in: $jobIds } }, limit: 1000) {
+            requests(where: { sourceJobDefinitionId_in: $jobIds }, limit: 1000) {
                 items {
                     id
                     delivered
@@ -61,7 +62,7 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
                     sourceJobDefinitionId
                 }
             }
-            artifacts(where: { sourceJobDefinitionId: { in: $jobIds } }, limit: 1000) {
+            artifacts(where: { sourceJobDefinitionId_in: $jobIds }, limit: 1000) {
                 items {
                     id
                     name
@@ -70,7 +71,7 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
                     sourceJobDefinitionId
                 }
             }
-            childJobs: jobDefinitions(where: { sourceJobDefinitionId: { in: $jobIds } }, limit: 1000) {
+            childJobs: jobDefinitions(where: { sourceJobDefinitionId_in: $jobIds }, limit: 1000) {
                 items {
                     id
                     sourceJobDefinitionId
