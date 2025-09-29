@@ -37,6 +37,8 @@ async function main() {
       { name: 'dispatch_new_job', schema: tools.dispatchNewJobSchema, handler: tools.dispatchNewJob },
       { name: 'create_artifact', schema: tools.createArtifactSchema, handler: tools.createArtifact },
       { name: 'dispatch_existing_job', schema: tools.dispatchExistingJobSchema, handler: tools.dispatchExistingJob },
+      { name: 'search_jobs', schema: tools.searchJobsSchema, handler: tools.searchJobs },
+      { name: 'search_artifacts', schema: tools.searchArtifactsSchema, handler: tools.searchArtifacts },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums
