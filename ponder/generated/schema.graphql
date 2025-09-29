@@ -7,6 +7,8 @@ type Query {
   deliverys(where: deliveryFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): deliveryPage!
   artifact(id: String!): artifact
   artifacts(where: artifactFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): artifactPage!
+  message(id: String!): message
+  messages(where: messageFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): messagePage!
   _meta: _meta
 }
 
@@ -468,6 +470,94 @@ input artifactFilter {
   contentPreview_ends_with: String
   contentPreview_not_starts_with: String
   contentPreview_not_ends_with: String
+}
+
+type message {
+  id: String!
+  requestId: String!
+  sourceRequestId: String
+  sourceJobDefinitionId: String
+  to: String
+  content: String!
+  blockTimestamp: BigInt!
+}
+
+type messagePage {
+  items: [message!]!
+  pageInfo: PageInfo!
+}
+
+input messageFilter {
+  AND: [messageFilter]
+  OR: [messageFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  requestId: String
+  requestId_not: String
+  requestId_in: [String]
+  requestId_not_in: [String]
+  requestId_contains: String
+  requestId_not_contains: String
+  requestId_starts_with: String
+  requestId_ends_with: String
+  requestId_not_starts_with: String
+  requestId_not_ends_with: String
+  sourceRequestId: String
+  sourceRequestId_not: String
+  sourceRequestId_in: [String]
+  sourceRequestId_not_in: [String]
+  sourceRequestId_contains: String
+  sourceRequestId_not_contains: String
+  sourceRequestId_starts_with: String
+  sourceRequestId_ends_with: String
+  sourceRequestId_not_starts_with: String
+  sourceRequestId_not_ends_with: String
+  sourceJobDefinitionId: String
+  sourceJobDefinitionId_not: String
+  sourceJobDefinitionId_in: [String]
+  sourceJobDefinitionId_not_in: [String]
+  sourceJobDefinitionId_contains: String
+  sourceJobDefinitionId_not_contains: String
+  sourceJobDefinitionId_starts_with: String
+  sourceJobDefinitionId_ends_with: String
+  sourceJobDefinitionId_not_starts_with: String
+  sourceJobDefinitionId_not_ends_with: String
+  to: String
+  to_not: String
+  to_in: [String]
+  to_not_in: [String]
+  to_contains: String
+  to_not_contains: String
+  to_starts_with: String
+  to_ends_with: String
+  to_not_starts_with: String
+  to_not_ends_with: String
+  content: String
+  content_not: String
+  content_in: [String]
+  content_not_in: [String]
+  content_contains: String
+  content_not_contains: String
+  content_starts_with: String
+  content_ends_with: String
+  content_not_starts_with: String
+  content_not_ends_with: String
+  blockTimestamp: BigInt
+  blockTimestamp_not: BigInt
+  blockTimestamp_in: [BigInt]
+  blockTimestamp_not_in: [BigInt]
+  blockTimestamp_gt: BigInt
+  blockTimestamp_lt: BigInt
+  blockTimestamp_gte: BigInt
+  blockTimestamp_lte: BigInt
 }
 
 type _meta {

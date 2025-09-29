@@ -82,6 +82,24 @@ export default createSchema((p: any) => ({
       topicIdx: p.index("topic"),
     }
   ),
+  message: p.createTable(
+    {
+      id: p.string(),
+      requestId: p.string(),
+      sourceRequestId: p.string().optional(),
+      sourceJobDefinitionId: p.string().optional(),
+      to: p.string().optional(),
+      content: p.string(),
+      blockTimestamp: p.bigint(),
+    },
+    {
+      requestIdx: p.index("requestId"),
+      sourceReqIdx: p.index("sourceRequestId"),
+      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
+      toIdx: p.index("to"),
+      ts: p.index("blockTimestamp").desc(),
+    }
+  ),
 }));
 
 

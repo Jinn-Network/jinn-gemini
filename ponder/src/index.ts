@@ -44,6 +44,7 @@ ponder.on(
 
     const repo = (context as any).db?.request || (context as any).entities?.request;
     const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
+    const messageRepo = (context as any).db?.message || (context as any).entities?.message;
     if (!repo) {
       console.error("No repository for 'request' (neither context.db nor context.entities). Skipping upsert.");
       return;
@@ -62,6 +63,7 @@ ponder.on(
       let sourceRequestId: string | undefined;
       let sourceJobDefinitionIdFromContent: string | undefined;
       let additionalContext: any = undefined;
+      let messageContent: any = undefined;
       if (ipfsHash) {
         try {
           const content = await resolveRequestIpfsContent(ipfsHash);
@@ -73,6 +75,10 @@ ponder.on(
             sourceRequestId = typeof content.sourceRequestId === 'string' ? content.sourceRequestId : undefined;
             sourceJobDefinitionIdFromContent = typeof (content as any).sourceJobDefinitionId === 'string' ? (content as any).sourceJobDefinitionId : undefined;
             additionalContext = (content as any).additionalContext || undefined;
+            // Extract message if present
+            if (additionalContext?.message) {
+              messageContent = additionalContext.message;
+            }
           }
         } catch (e: any) {
           console.error(`Failed to resolve IPFS content for hash ${ipfsHash}: ${e.message}`);
@@ -138,6 +144,32 @@ ponder.on(
           // intentionally do not overwrite delivered here
         },
       });
+
+      // Index message if present
+      if (messageRepo && messageContent) {
+        const msgTo = typeof messageContent === 'object' && messageContent.to ? messageContent.to : jobDefinitionId;
+        const msgFrom = typeof messageContent === 'object' && messageContent.from ? messageContent.from : sourceJobDefinitionIdFromContent;
+        const msgText = typeof messageContent === 'string' ? messageContent : messageContent.content;
+        
+        if (msgText) {
+          await messageRepo.upsert({
+            id,
+            create: {
+              requestId: id,
+              sourceRequestId: sourceRequestId,
+              sourceJobDefinitionId: msgFrom,
+              to: msgTo,
+              content: msgText,
+              blockTimestamp,
+            },
+            update: {
+              content: msgText,
+              to: msgTo,
+              sourceJobDefinitionId: msgFrom,
+            },
+          });
+        }
+      }
     }
 
     console.log({ mech, sender, requestIds }, "Indexed MarketplaceRequest");

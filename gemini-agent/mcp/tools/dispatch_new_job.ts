@@ -9,6 +9,7 @@ const dispatchNewJobParamsBase = z.object({
   jobName: z.string().min(1),
   enabledTools: z.array(z.string()).optional(),
   updateExisting: z.boolean().optional().default(false),
+  message: z.string().optional(),
 });
 
 export const dispatchNewJobParams = dispatchNewJobParamsBase;
@@ -49,7 +50,7 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { prompt, jobName, enabledTools, updateExisting } = parsed.data;
+    const { prompt, jobName, enabledTools, updateExisting, message } = parsed.data;
     const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
 
     let existingJob: any | null = null;
@@ -91,12 +92,25 @@ export async function dispatchNewJob(args: unknown) {
     if (context.requestId) lineageContext.sourceRequestId = context.requestId;
     if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
 
+    // Build additionalContext with message if provided
+    let additionalContext: Record<string, any> | undefined;
+    if (message) {
+      additionalContext = {
+        message: {
+          content: message,
+          to: jobDefinitionId,
+          from: context.jobDefinitionId || undefined,
+        }
+      };
+    }
+
     const ipfsJsonContents = [{
       prompt,
       jobName,
       enabledTools,
       jobDefinitionId,
       nonce: ensureUuid(),
+      ...(additionalContext && { additionalContext }),
       ...lineageContext,
     }];
 

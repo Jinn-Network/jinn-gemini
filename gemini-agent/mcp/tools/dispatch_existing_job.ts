@@ -11,6 +11,7 @@ const dispatchExistingJobParamsBase = z.object({
   // If not provided, we use the values from the job definition as-is
   enabledTools: z.array(z.string()).optional(),
   prompt: z.string().optional(),
+  message: z.string().optional(),
 });
 
 export const dispatchExistingJobParams = dispatchExistingJobParamsBase.refine(
@@ -36,7 +37,7 @@ export async function dispatchExistingJob(args: unknown) {
   if (!parse.success) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: parse.error.message } }) }] };
   }
-  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt } = parse.data;
+  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message } = parse.data;
 
   const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
 
@@ -92,7 +93,19 @@ export async function dispatchExistingJob(args: unknown) {
   if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
 
   // Fetch job context for the existing job being dispatched
-  const additionalContext = await getJobContextForDispatch(jobDefinitionId, 3);
+  let additionalContext = await getJobContextForDispatch(jobDefinitionId, 3);
+  
+  // Add message to additionalContext if provided
+  if (message) {
+    if (!additionalContext) {
+      additionalContext = {};
+    }
+    additionalContext.message = {
+      content: message,
+      to: jobDefinitionId,
+      from: context.jobDefinitionId || undefined,
+    };
+  }
 
   const ipfsJsonContents = [{
     prompt: finalPrompt,

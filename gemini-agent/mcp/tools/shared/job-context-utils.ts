@@ -14,6 +14,12 @@ export interface JobHierarchyItem {
         topic: string;
         cid: string;
     }[];
+    messageRefs: {
+        id: string;
+        content: string;
+        from: string | null;
+        blockTimestamp: string;
+    }[];
 }
 
 interface BatchedJobData {
@@ -39,6 +45,13 @@ interface BatchedJobData {
     childJobs: Array<{
         id: string;
         sourceJobDefinitionId?: string;
+    }>;
+    messages: Array<{
+        id: string;
+        content: string;
+        sourceJobDefinitionId?: string;
+        to?: string;
+        blockTimestamp: string;
     }>;
 }
 
@@ -77,6 +90,15 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
                     sourceJobDefinitionId
                 }
             }
+            messages(where: { to_in: $jobIds }, limit: 1000) {
+                items {
+                    id
+                    content
+                    sourceJobDefinitionId
+                    to
+                    blockTimestamp
+                }
+            }
         }
     `;
 
@@ -102,7 +124,8 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
         jobDefinitions: json.data?.jobDefinitions?.items || [],
         requests: json.data?.requests?.items || [],
         artifacts: json.data?.artifacts?.items || [],
-        childJobs: json.data?.childJobs?.items || []
+        childJobs: json.data?.childJobs?.items || [],
+        messages: json.data?.messages?.items || []
     };
 }
 
@@ -137,6 +160,7 @@ export async function fetchJobHierarchy(rootJobId: string, maxDepth: number = 3)
             const requestsByJob = new Map<string, typeof batchData.requests>();
             const artifactsByJob = new Map<string, typeof batchData.artifacts>();
             const childrenByJob = new Map<string, typeof batchData.childJobs>();
+            const messagesByJob = new Map<string, typeof batchData.messages>();
             
             // Group related data by job ID
             batchData.requests.forEach(req => {
@@ -162,6 +186,14 @@ export async function fetchJobHierarchy(rootJobId: string, maxDepth: number = 3)
                     childrenByJob.set(child.sourceJobDefinitionId, existing);
                 }
             });
+            
+            batchData.messages.forEach(msg => {
+                if (msg.to) {
+                    const existing = messagesByJob.get(msg.to) || [];
+                    existing.push(msg);
+                    messagesByJob.set(msg.to, existing);
+                }
+            });
 
             // Process each job in current level
             const nextLevel: Array<{jobId: string, level: number, sourceId: string | null}> = [];
@@ -176,6 +208,7 @@ export async function fetchJobHierarchy(rootJobId: string, maxDepth: number = 3)
                 const requests = requestsByJob.get(jobId) || [];
                 const artifacts = artifactsByJob.get(jobId) || [];
                 const children = childrenByJob.get(jobId) || [];
+                const messages = messagesByJob.get(jobId) || [];
 
                 // Determine job status based on requests
                 let status: 'active' | 'completed' | 'failed' | 'unknown' = 'unknown';
@@ -203,6 +236,12 @@ export async function fetchJobHierarchy(rootJobId: string, maxDepth: number = 3)
                         name: a.name,
                         topic: a.topic,
                         cid: a.cid
+                    })),
+                    messageRefs: messages.map(m => ({
+                        id: m.id,
+                        content: m.content,
+                        from: m.sourceJobDefinitionId || null,
+                        blockTimestamp: m.blockTimestamp
                     }))
                 });
 

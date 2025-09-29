@@ -102,21 +102,22 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     await loadMcpServer();
     mcpStarted = true;
 
-    // Start Ponder subgraph locally if not already running
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-    // Try a quick probe; if it fails, spawn the process
-    let ready = false;
+    // Kill any existing Ponder instances to ensure clean state
     try {
-      await waitForGraphql(gqlUrl, 2000);
-      ready = true;
-    } catch {}
-    if (!ready) {
-      // Start dev server (indexer + HTTP). Pipe logs for diagnosis.
-      ponderProc = execa('yarn', ['--cwd', 'ponder', 'dev'], { cwd: process.cwd(), stdio: 'pipe', env: { ...process.env } });
-      console.log('[ponder] dev server spawned (logs suppressed)');
-      // Give it time to come up
-      await waitForGraphql(gqlUrl, 120_000);
+      await execa('pkill', ['-f', 'ponder.*dev'], { reject: false });
+      console.log('[ponder] killed existing instances');
+      // Wait a moment for processes to terminate
+      await new Promise(r => setTimeout(r, 2000));
+    } catch {
+      // Ignore errors if no processes to kill
     }
+
+    // Start fresh Ponder instance
+    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    ponderProc = execa('yarn', ['--cwd', 'ponder', 'dev'], { cwd: process.cwd(), stdio: 'pipe', env: { ...process.env } });
+    console.log('[ponder] dev server spawned (logs suppressed)');
+    // Give it time to come up
+    await waitForGraphql(gqlUrl, 120_000);
 
     // Start Control API if not already running (required for worker claim/report/artifacts)
     let controlReady = false;
@@ -729,5 +730,98 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     }, null, 2));
     /* eslint-enable no-console */
 
+  }, 300_000);
+
+  it('message system: dispatch job with message and verify indexing', async () => {
+    loadEnvOnce();
+    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    expect(process.env.MECH_PRIVATE_KEY, 'MECH_PRIVATE_KEY required').toBeTruthy();
+
+    // Test scenario: Create job with message and verify it gets indexed
+    
+    // 1) Dispatch job with message
+    const jobName = `msg-test-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    const jobPrompt = 'Test job: verify message indexing functionality';
+    const testMessage = 'Test message: verify this gets indexed correctly';
+    
+    const dispatch = await dispatchNewJob({ 
+      prompt: jobPrompt, 
+      jobName: jobName,
+      enabledTools: ['create_artifact'],
+      updateExisting: true,
+      message: testMessage 
+    });
+    const parsed = parseToolText(dispatch);
+    expect(parsed?.meta?.ok).toBe(true);
+    const jobDefinitionId: string = parsed?.data?.jobDefinitionId;
+    const requestId: string = parsed?.data?.request_ids?.[0];
+    
+    // 2) Verify message was indexed in the messages table
+    const qMessage = 'query($to:String!){ messages(where:{to:$to}){ items { id content sourceJobDefinitionId to blockTimestamp } } }';
+    let messageIndexed = false;
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, i === 0 ? 0 : 2000));
+      const resp = await fetch(gqlUrl, { 
+        method: 'POST', 
+        headers: { 'content-type': 'application/json' }, 
+        body: JSON.stringify({ query: qMessage, variables: { to: jobDefinitionId } }) 
+      });
+      if (!resp.ok) continue;
+      const jr = await resp.json();
+      const messages = jr?.data?.messages?.items || [];
+      const foundMsg = messages.find((m: any) => m.content === testMessage);
+      if (foundMsg) {
+        expect(foundMsg.to).toBe(jobDefinitionId);
+        expect(foundMsg.content).toBe(testMessage);
+        messageIndexed = true;
+        break;
+      }
+    }
+    expect(messageIndexed, 'Message should be indexed in messages table').toBe(true);
+    
+    // 3) Test dispatch existing job with different message
+    const repostMessage = 'Repost message: different context for retry';
+    const repostRes = await dispatchExistingJob({ 
+      jobId: jobDefinitionId,
+      message: repostMessage 
+    });
+    const repostParsed = parseToolText(repostRes);
+    expect(repostParsed?.meta?.ok).toBe(true);
+    const repostRequestId: string = repostParsed?.data?.request_ids?.[0];
+    
+    // 4) Verify second message was also indexed
+    let repostMessageIndexed = false;
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, i === 0 ? 0 : 2000));
+      const resp = await fetch(gqlUrl, { 
+        method: 'POST', 
+        headers: { 'content-type': 'application/json' }, 
+        body: JSON.stringify({ query: qMessage, variables: { to: jobDefinitionId } }) 
+      });
+      if (!resp.ok) continue;
+      const jr = await resp.json();
+      const messages = jr?.data?.messages?.items || [];
+      const foundRepostMsg = messages.find((m: any) => m.content === repostMessage);
+      if (foundRepostMsg) {
+        expect(foundRepostMsg.to).toBe(jobDefinitionId);
+        expect(foundRepostMsg.content).toBe(repostMessage);
+        repostMessageIndexed = true;
+        break;
+      }
+    }
+    expect(repostMessageIndexed, 'Repost message should be indexed').toBe(true);
+    
+    /* eslint-disable no-console */
+    console.log(JSON.stringify({
+      audit: {
+        step: 'message_system_verification',
+        job_id: jobDefinitionId,
+        original_request_id: requestId,
+        repost_request_id: repostRequestId,
+        messages_verified: [testMessage, repostMessage],
+        message_indexing_working: true
+      }
+    }, null, 2));
+    /* eslint-enable no-console */
   }, 300_000);
 });
