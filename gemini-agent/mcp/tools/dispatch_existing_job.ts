@@ -93,7 +93,10 @@ export async function dispatchExistingJob(args: unknown) {
   if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
 
   // Fetch job context for the existing job being dispatched
-  let additionalContext = await getJobContextForDispatch(jobDefinitionId, 3);
+  const jobContext = await getJobContextForDispatch(jobDefinitionId, 3);
+  
+  // Build additionalContext with job context and message
+  let additionalContext: any = jobContext || undefined;
   
   // Add message to additionalContext if provided
   if (message) {

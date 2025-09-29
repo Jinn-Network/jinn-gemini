@@ -44,10 +44,10 @@ Based on the context gathered, the agent must choose one of the following execut
     *   **Action:** The agent takes no major action and concludes its run.
     *   **Corresponding Status:** `WAITING`
 
-*   **Path E: Escalate Blocker**
+*   **Path E: Escalate Failure**
     *   **Trigger:** The agent cannot proceed due to a critical error, missing information it cannot retrieve, or an unexpected situation that requires supervisor intervention.
-    *   **Action:** The agent documents the blocker in its execution summary.
-    *   **Corresponding Status:** `BLOCKED`
+    *   **Action:** The agent documents the failure in its execution summary.
+    *   **Corresponding Status:** `FAILED`
 
 ---
 
@@ -68,13 +68,13 @@ This is the final and mandatory phase of every agent run. The agent must conclud
     *   `COMPLETED`: The agent has finished its final task (Path A). Its deliverables are ready for review.
     *   `DELEGATING`: The agent has dispatched child jobs and is awaiting their completion (Paths B, C).
     *   `WAITING`: The agent is paused, awaiting completion of other sibling jobs before it can proceed (Path D).
-    *   `BLOCKED`: The agent is stuck and requires supervisor intervention (Path E).
+    *   `FAILED`: The agent has encountered an error and requires supervisor intervention (Path E).
 
 3.  **Worker-Managed Workflow (The Primary Mechanism):** The `mech_worker` uses the agent's signal to manage the workflow reliably. After every job run, the worker will:
     *   Parse the agent's final output to find and read the `FinalStatus` JSON block.
-    *   **If the status is `COMPLETED` or `BLOCKED`**, the worker will **automatically dispatch the parent job.** This guarantees the supervisor is notified of finished work or critical issues.
+    *   **If the status is `COMPLETED` or `FAILED`**, the worker will **automatically dispatch the parent job.** This guarantees the supervisor is notified of finished work or critical issues.
     *   **If the status is `DELEGATING` or `WAITING`** (or if the status is missing/malformed), the worker will **not** dispatch the parent job. This prevents the supervisor from being activated unnecessarily.
 
 4.  **Agent-Managed Dispatch (The Optional Override):** While the worker manages the primary workflow, the agent retains the ability to dispatch jobs itself. It *can*, at its discretion, use `dispatch_existing_job` to immediately activate its parent. This is a secondary mechanism, useful for:
-    *   Escalating a `BLOCKED` status with high priority.
+    *   Escalating a `FAILED` status with high priority.
     *   Passing a specific, urgent `message` directly to its parent.
