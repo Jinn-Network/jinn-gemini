@@ -35,6 +35,50 @@ const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
 // Track recent reposts to prevent loops
 const recentReposts = new Map<string, number>();
 
+// Work Protocol types and parser
+interface FinalStatus {
+  status: 'COMPLETED' | 'DELEGATING' | 'WAITING' | 'FAILED';
+  message: string;
+}
+
+function parseFinalStatus(output: string): FinalStatus | null {
+  if (!output) return null;
+  
+  // Match FinalStatus: {...} pattern
+  const pattern = /FinalStatus:\s*(\{[^}]+\})/;
+  const match = output.match(pattern);
+  
+  if (!match) {
+    workerLogger.debug('No FinalStatus found in agent output');
+    return null;
+  }
+  
+  try {
+    const parsed = JSON.parse(match[1]);
+    
+    // Validate structure
+    if (!parsed.status || !parsed.message) {
+      workerLogger.warn('Invalid FinalStatus structure', parsed);
+      return null;
+    }
+    
+    // Validate status code
+    const validStatuses = ['COMPLETED', 'DELEGATING', 'WAITING', 'FAILED'];
+    if (!validStatuses.includes(parsed.status)) {
+      workerLogger.warn(`Invalid status code: ${parsed.status}`);
+      return null;
+    }
+    
+    return {
+      status: parsed.status,
+      message: parsed.message
+    };
+  } catch (e) {
+    workerLogger.warn('Failed to parse FinalStatus', e);
+    return null;
+  }
+}
+
 function safeParseToolResponse(response: any): { ok: boolean; data: any; message?: string } {
   try {
     const text = response?.content?.[0]?.text;
@@ -246,20 +290,51 @@ ${context.hierarchy?.flatMap((job: any) =>
   }
 }
 
-async function storeOnchainReport(request: UnclaimedRequest, workerAddress: string, result: { output: string; telemetry: any }, error?: any): Promise<void> {
+async function storeOnchainReport(
+  request: UnclaimedRequest, 
+  workerAddress: string, 
+  result: { output: string; telemetry: any }, 
+  error?: any,
+  metadata?: any
+): Promise<FinalStatus | null> {
   try {
+    // Parse FinalStatus from output
+    const finalStatus = parseFinalStatus(result?.output || '');
+    
+    // Determine status for job report
+    let reportStatus: string;
+    if (error) {
+      reportStatus = 'FAILED';
+    } else if (finalStatus) {
+      // Use the actual FinalStatus from agent (COMPLETED, DELEGATING, WAITING, or FAILED)
+      reportStatus = finalStatus.status;
+    } else {
+      // Fallback for agents not using work protocol yet
+      reportStatus = 'COMPLETED';
+      workerLogger.debug('No FinalStatus found, defaulting to COMPLETED');
+    }
+    
     const payload = {
-      status: error ? 'FAILED' : 'COMPLETED',
+      status: reportStatus,  // Use actual work protocol status
       duration_ms: result?.telemetry?.duration || 0,
       total_tokens: result?.telemetry?.totalTokens || 0,
       tools_called: JSON.stringify(result?.telemetry?.toolCalls ?? []),
       final_output: result?.output || null,
       error_message: error ? (error.message || String(error)) : null,
       error_type: error ? 'AGENT_ERROR' : null,
-      raw_telemetry: JSON.stringify(result?.telemetry ?? {})
+      raw_telemetry: JSON.stringify({
+        ...result?.telemetry ?? {},
+        finalStatus,  // Include parsed status in telemetry
+        sourceJobDefinitionId: metadata?.sourceJobDefinitionId  // Preserve parent reference
+      })
     };
     await apiCreateJobReport(request.id, payload);
-  } catch {}
+    
+    // Return finalStatus for parent dispatch logic
+    return finalStatus;
+  } catch {
+    return null;
+  }
 }
 
 async function storeOnchainArtifact(request: UnclaimedRequest, workerAddress: string, cid: string, topic: string, content?: string): Promise<void> {
@@ -267,6 +342,56 @@ async function storeOnchainArtifact(request: UnclaimedRequest, workerAddress: st
     const data = { cid, topic, content: content || null };
     await apiCreateArtifact(request.id, data);
   } catch {}
+}
+
+/**
+ * Dispatch parent job when child completes or fails (Work Protocol)
+ */
+async function dispatchParentIfNeeded(
+  finalStatus: FinalStatus | null,
+  metadata: any,
+  requestId: string,
+  output: string
+): Promise<void> {
+  // Only dispatch on terminal states
+  if (!finalStatus || (finalStatus.status !== 'COMPLETED' && finalStatus.status !== 'FAILED')) {
+    workerLogger.debug(`Not dispatching parent - status: ${finalStatus?.status || 'none'}`);
+    return;
+  }
+  
+  // Get parent job ID from metadata
+  const parentJobDefId = metadata?.sourceJobDefinitionId;
+  if (!parentJobDefId) {
+    workerLogger.debug('No parent job to dispatch');
+    return;
+  }
+  
+  try {
+    workerLogger.info(`Dispatching parent job ${parentJobDefId} after child ${finalStatus.status}`);
+    
+    // Create message with child results
+    const message = JSON.stringify({
+      childRequestId: requestId,
+      childStatus: finalStatus.status,
+      childMessage: finalStatus.message,
+      childOutput: output.length > 1000 ? output.substring(0, 1000) + '...' : output
+    });
+    
+    // Dispatch parent job
+    const result = await dispatchExistingJob({ 
+      jobId: parentJobDefId,
+      message
+    });
+    
+    const dispatchResult = safeParseToolResponse(result);
+    if (dispatchResult.ok) {
+      workerLogger.info(`Parent job ${parentJobDefId} dispatched successfully`);
+    } else {
+      workerLogger.error(`Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult.message}`);
+    }
+  } catch (e) {
+    workerLogger.error(`Error dispatching parent job ${parentJobDefId}:`, e);
+  }
 }
 
 /**
@@ -426,8 +551,9 @@ async function processOnce(): Promise<void> {
   if (!target) return;
   let result: any = { output: '', telemetry: {} };
   let error: any = null;
+  let metadata: any = null;
   try {
-    const metadata = await fetchIpfsMetadata(target.ipfsHash);
+    metadata = await fetchIpfsMetadata(target.ipfsHash);
     result = await runAgentForRequest(target, metadata);
     // Extract artifacts produced during the run (from tool outputs)
     const artifacts = [
@@ -446,7 +572,12 @@ async function processOnce(): Promise<void> {
     error = e;
     workerLogger.error({ requestId: target.id, error: e?.message || String(e) }, 'Execution failed');
   }
-  await storeOnchainReport(target, workerAddress, result, error);
+  
+  // Store report and get FinalStatus
+  const finalStatus = await storeOnchainReport(target, workerAddress, result, error, metadata);
+  
+  // Dispatch parent if needed (Work Protocol)
+  await dispatchParentIfNeeded(finalStatus, metadata, target.id, result?.output || '');
   // Persist output as artifact (optional, topic=result.output)
   try {
     const outputStr = typeof result?.output === 'string' ? result.output : JSON.stringify(result?.output ?? '');
