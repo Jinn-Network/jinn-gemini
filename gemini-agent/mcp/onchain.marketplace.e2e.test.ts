@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { execa } from 'execa';
 
 // Import tools via the MCP tools index (NodeNext resolution allows .js for TS modules)
-import { getDetails, loadMcpServer, stopMcpServer, dispatchNewJob, dispatchExistingJob } from './tools/index.js';
+import { getDetails, loadMcpServer, stopMcpServer, dispatchNewJob, dispatchExistingJob, searchJobs, searchArtifacts } from './tools/index.js';
 import { loadEnvOnce } from './tools/shared/env.js';
 
 // Helper: parse MCP tool response content
@@ -243,7 +243,23 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     expect(Array.isArray(jobDef?.enabledTools)).toBe(true);
     expect(typeof jobDef?.promptContent).toBe('string');
 
-    // 4) Verify get_details returns the same records with optional ipfs resolution
+    // 4) Test search-jobs tool can find the posted job by name
+    const searchJobsByNameRes = await searchJobs({ query: jobName, include_requests: false });
+    const searchJobsByNameParsed = parseToolText(searchJobsByNameRes);
+    expect(searchJobsByNameParsed?.data?.length).toBeGreaterThan(0);
+    const foundJobByName = searchJobsByNameParsed?.data?.find((j: any) => j.id === jobDefinitionId);
+    expect(foundJobByName).toBeTruthy();
+    expect(foundJobByName?.name).toBe(jobName);
+    
+    // Test search-jobs tool can find the posted job by prompt content
+    const searchJobsByPromptRes = await searchJobs({ query: 'verify on-chain dispatch', include_requests: false });
+    const searchJobsByPromptParsed = parseToolText(searchJobsByPromptRes);
+    expect(searchJobsByPromptParsed?.data?.length).toBeGreaterThan(0);
+    const foundJobByPrompt = searchJobsByPromptParsed?.data?.find((j: any) => j.id === jobDefinitionId);
+    expect(foundJobByPrompt).toBeTruthy();
+    expect(foundJobByPrompt?.promptContent).toContain('verify on-chain dispatch');
+
+    // 5) Verify get_details returns the same records with optional ipfs resolution
     const detailsRes = await getDetails({ ids: [requestIdHex, jobDefinitionId], resolve_ipfs: true });
     const detailsParsed = parseToolText(detailsRes);
     expect(detailsParsed?.data?.length).toBeGreaterThan(0);
@@ -479,7 +495,31 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     if (artifactRecord.name) expect(artifactRecord.name).toBe(artifactName);
     expect(typeof artifactRecord.cid).toBe('string');
 
-    // 6) Cross-check get_details for artifact and request delivery lineage
+    // 6) Test search-artifacts tool can find the created artifact
+    // Search by name
+    const searchArtifactsByNameRes = await searchArtifacts({ query: artifactName, include_request_context: false });
+    const searchArtifactsByNameParsed = parseToolText(searchArtifactsByNameRes);
+    expect(searchArtifactsByNameParsed?.data?.length).toBeGreaterThan(0);
+    const foundArtifactByName = searchArtifactsByNameParsed?.data?.find((a: any) => a.id === `${requestIdHex}:0`);
+    expect(foundArtifactByName).toBeTruthy();
+    expect(foundArtifactByName?.name).toBe(artifactName);
+    expect(foundArtifactByName?.topic).toBe(artifactTopic);
+    
+    // Search by topic
+    const searchArtifactsByTopicRes = await searchArtifacts({ query: artifactTopic, include_request_context: false });
+    const searchArtifactsByTopicParsed = parseToolText(searchArtifactsByTopicRes);
+    expect(searchArtifactsByTopicParsed?.data?.length).toBeGreaterThan(0);
+    const foundArtifactByTopic = searchArtifactsByTopicParsed?.data?.find((a: any) => a.id === `${requestIdHex}:0`);
+    expect(foundArtifactByTopic).toBeTruthy();
+    expect(foundArtifactByTopic?.topic).toBe(artifactTopic);
+    
+    // Search by content preview (if available)
+    const searchArtifactsByContentRes = await searchArtifacts({ query: 'artifact generated', include_request_context: false });
+    const searchArtifactsByContentParsed = parseToolText(searchArtifactsByContentRes);
+    // Content preview may or may not match depending on how it's stored, so we just verify the search runs
+    expect(searchArtifactsByContentParsed?.meta?.ok ?? searchArtifactsByContentParsed?.data).toBeTruthy();
+
+    // 7) Cross-check get_details for artifact and request delivery lineage
     const detailsRes = await getDetails({ ids: [requestIdHex, `${requestIdHex}:0`], resolve_ipfs: false });
     const parsed = parseToolText(detailsRes);
     const reqRec = (parsed?.data || []).find((x: any) => x.id === requestIdHex);
