@@ -28,7 +28,7 @@ export const prepareCreateCoinTxSchema = {
 // Function to create Viem clients
 function getClients(chainId: number) {
   const chain = chainId === 8453 ? base : baseSepolia;
-  const transport = http(process.env.BASE_RPC_URL);
+  const transport = http(process.env.RPC_URL || process.env.BASE_RPC_URL);
 
   const publicClient = createPublicClient({
     chain,

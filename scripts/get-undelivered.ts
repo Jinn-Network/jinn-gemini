@@ -3,10 +3,10 @@ import { Web3 } from 'web3';
 import artifact from 'mech-client-ts/dist/abis/AgentMech.json' assert { type: 'json' };
 
 async function main() {
-  const rpc = process.env.MECH_RPC_HTTP_URL || process.env.MECHX_CHAIN_RPC;
+  const rpc = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
   const mech = (process.env.MECH_WORKER_ADDRESS || '').trim();
   if (!rpc || !mech) {
-    console.error('Missing MECH_RPC_HTTP_URL/MECHX_CHAIN_RPC or MECH_WORKER_ADDRESS');
+    console.error('Missing RPC_URL (or MECHX_CHAIN_RPC/MECH_RPC_HTTP_URL) or MECH_WORKER_ADDRESS');
     process.exit(1);
   }
   const abi = (artifact as any).abi || (artifact as any);

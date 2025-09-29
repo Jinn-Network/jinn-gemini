@@ -3,11 +3,11 @@ import { Web3 } from 'web3';
 import safeAbi from 'mech-client-ts/dist/abis/GnosisSafe_v1.3.0.json' assert { type: 'json' };
 
 async function main() {
-  const rpc = process.env.MECH_RPC_HTTP_URL || process.env.MECHX_CHAIN_RPC;
+  const rpc = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
   const safe = process.env.MECH_SAFE_ADDRESS;
   const pkRaw = (process.env.MECH_PRIVATE_KEY || '').trim();
   if (!rpc || !safe) {
-    console.error('Missing MECH_RPC_HTTP_URL/MECHX_CHAIN_RPC or MECH_SAFE_ADDRESS');
+    console.error('Missing RPC_URL (or MECHX_CHAIN_RPC/MECH_RPC_HTTP_URL) or MECH_SAFE_ADDRESS');
     process.exit(1);
   }
   const pk = pkRaw.startsWith('0x') ? pkRaw : (pkRaw ? `0x${pkRaw}` : '');

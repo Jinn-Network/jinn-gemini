@@ -94,7 +94,7 @@ async function main() {
 
   const chainConfig = process.env.MECH_CHAIN_CONFIG || 'base';
   const safeAddress = process.env.MECH_SAFE_ADDRESS || '';
-  const rpcHttpUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+  const rpcHttpUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
   const privateKeyEnv = (process.env.MECH_PRIVATE_KEY || '').trim();
   const privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH || 'mech_private_key.txt';
 

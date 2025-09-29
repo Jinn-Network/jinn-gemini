@@ -133,7 +133,8 @@ export class MechConfigImpl implements MechConfig {
       this.service_registry_contract = service_registry_contract;
     }
 
-    const rpc_url = process.env.MECHX_CHAIN_RPC;
+    // Priority: MECHX_CHAIN_RPC > RPC_URL (for backwards compatibility)
+    const rpc_url = process.env.MECHX_CHAIN_RPC || process.env.RPC_URL;
     if (rpc_url) {
       this.rpc_url = rpc_url;
     }
