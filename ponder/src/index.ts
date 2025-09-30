@@ -66,7 +66,18 @@ ponder.on(
       let messageContent: any = undefined;
       if (ipfsHash) {
         try {
-          const content = await resolveRequestIpfsContent(ipfsHash);
+          // Retry IPFS fetch with exponential backoff (IPFS propagation takes time)
+          let content: any = null;
+          for (let attempt = 0; attempt < 10; attempt++) {
+            if (attempt > 0) {
+              const delay = Math.min(3000, 1000 * Math.pow(1.5, attempt));
+              await new Promise(r => setTimeout(r, delay));
+            }
+            content = await resolveRequestIpfsContent(ipfsHash);
+            if (content && !content.error) {
+              break;
+            }
+          }
           if (content && !content.error) {
             jobName = content.jobName;
             enabledTools = content.tools || content.enabledTools;
@@ -109,15 +120,34 @@ ponder.on(
         });
       }
 
-      const sourceJobDefinitionForRequest = sourceJobDefinitionIdFromContent ?? jobDefinitionId;
+      // jobDefinitionId = target job being dispatched (what this request is FOR)
+      // sourceJobDefinitionIdFromContent = parent job that created this request (lineage tracking)
+
+      // Ensure additionalContext is properly structured with message preserved
+      // The message should remain in additionalContext even after being extracted
+      // for the messages table, so that request.additionalContext is complete
+      //
+      // IMPORTANT: Ponder's p.json() type expects serializable objects.
+      // Deep clone through JSON to ensure no circular references.
+      let contextToStore: any = undefined;
+      if (additionalContext && typeof additionalContext === 'object') {
+        try {
+          // Deep clone to ensure serializability - this preserves ALL fields including
+          // hierarchy, summary, and message
+          contextToStore = JSON.parse(JSON.stringify(additionalContext));
+        } catch (e) {
+          contextToStore = undefined;
+        }
+      }
 
       await repo.upsert({
         id,
         create: {
           mech,
           sender,
+          jobDefinitionId: jobDefinitionId,
           sourceRequestId: sourceRequestId,
-          sourceJobDefinitionId: sourceJobDefinitionForRequest,
+          sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
           requestData: dataHex || undefined,
           ipfsHash,
           transactionHash: txHash,
@@ -126,13 +156,14 @@ ponder.on(
           delivered: false,
           jobName,
           enabledTools,
-          additionalContext,
+          additionalContext: contextToStore,
         },
         update: {
           mech,
           sender,
+          jobDefinitionId: jobDefinitionId,
           sourceRequestId: sourceRequestId,
-          sourceJobDefinitionId: sourceJobDefinitionForRequest,
+          sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
           requestData: dataHex || undefined,
           ipfsHash,
           transactionHash: txHash,
@@ -140,7 +171,7 @@ ponder.on(
           blockTimestamp,
           jobName,
           enabledTools,
-          additionalContext,
+          additionalContext: contextToStore,
           // intentionally do not overwrite delivered here
         },
       });
@@ -292,7 +323,8 @@ ponder.on(
           const enabledTools = Array.isArray(res.data.enabledTools) ? res.data.enabledTools.map((x: any) => String(x)) : undefined;
           const promptContent = typeof res.data.prompt === 'string' ? res.data.prompt : undefined;
 
-          // Backfill source job definition on delivery and request if available
+          // Backfill job definition on delivery if available
+          // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
           if (deliveryJobDefinitionId) {
             if (jobDefRepo) {
               await jobDefRepo.upsert({
@@ -301,15 +333,16 @@ ponder.on(
                 update: { name: jobName || 'Unnamed Job', enabledTools, promptContent, sourceRequestId: requestId },
               });
             }
+            // Backfill jobDefinitionId (target job) on delivery and request
             await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId, sourceRequestId: requestId } });
-            await requestRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId } });
+            await requestRepo.upsert({ id: requestId, update: { jobDefinitionId: deliveryJobDefinitionId } });
           } else {
-            // Fallback: if request has a sourceJobDefinitionId already, propagate it to delivery
+            // Fallback: if request has a jobDefinitionId already, propagate it to delivery as sourceJobDefinitionId
             try {
               const req = await requestRepo.upsert({ id: requestId, update: {} });
               const maybeReq = (req as any) || {};
-              if (maybeReq && typeof maybeReq.sourceJobDefinitionId === 'string') {
-                await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: maybeReq.sourceJobDefinitionId, sourceRequestId: requestId } });
+              if (maybeReq && typeof maybeReq.jobDefinitionId === 'string') {
+                await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: maybeReq.jobDefinitionId, sourceRequestId: requestId } });
               }
             } catch {}
           }

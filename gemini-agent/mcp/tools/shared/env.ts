@@ -53,7 +53,7 @@ export function loadEnvOnce(): void {
     const origWrite = process.stdout.write as any;
     try {
       (process.stdout as any).write = () => true;
-      const res = dotenv.config({ path: abs });
+      const res = dotenv.config({ path: abs, override: true });
       if (!res.error) {
         process.env.__ENV_LOADED = '1';
         return;

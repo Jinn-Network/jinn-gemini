@@ -96,6 +96,7 @@ type request {
   id: String!
   mech: String!
   sender: String!
+  jobDefinitionId: String
   sourceRequestId: String
   sourceJobDefinitionId: String
   requestData: String
@@ -151,6 +152,16 @@ input requestFilter {
   sender_lt: String
   sender_gte: String
   sender_lte: String
+  jobDefinitionId: String
+  jobDefinitionId_not: String
+  jobDefinitionId_in: [String]
+  jobDefinitionId_not_in: [String]
+  jobDefinitionId_contains: String
+  jobDefinitionId_not_contains: String
+  jobDefinitionId_starts_with: String
+  jobDefinitionId_ends_with: String
+  jobDefinitionId_not_starts_with: String
+  jobDefinitionId_not_ends_with: String
   sourceRequestId: String
   sourceRequestId_not: String
   sourceRequestId_in: [String]

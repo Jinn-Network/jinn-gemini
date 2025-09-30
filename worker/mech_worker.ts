@@ -41,34 +41,99 @@ interface FinalStatus {
   message: string;
 }
 
-function parseFinalStatus(output: string): FinalStatus | null {
+/**
+ * Extract signal_completion from telemetry (structured tool call)
+ * This is the preferred method as it's deterministic
+ */
+function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
+  // Support both camelCase (toolCalls) and snake_case (tool_calls)
+  const toolCalls = telemetry?.toolCalls || telemetry?.tool_calls;
+
+  workerLogger.debug(`[SIGNAL_DEBUG] Checking telemetry for signal_completion`, {
+    has_tool_calls: !!toolCalls,
+    tool_call_count: toolCalls?.length || 0,
+    tool_names: toolCalls?.map((c: any) => c.tool || c.name) || []
+  });
+
+  if (!toolCalls) return null;
+
+  // Find signal_completion tool call - check both name and tool fields
+  const signalCall = toolCalls.find((call: any) =>
+    call.name === 'signal_completion' || call.tool === 'signal_completion'
+  );
+
+  workerLogger.debug(`[SIGNAL_DEBUG] Found signal call:`, signalCall ? 'YES' : 'NO');
+
+  if (!signalCall) return null;
+
+  try {
+    // Tool call arguments can be in input, arguments, args, or result fields
+    const input = signalCall.input || signalCall.arguments || signalCall.args || signalCall.result;
+
+    workerLogger.debug(`[SIGNAL_DEBUG] Signal call structure:`, {
+      has_input: !!signalCall.input,
+      has_arguments: !!signalCall.arguments,
+      has_args: !!signalCall.args,
+      has_result: !!signalCall.result,
+      input_value: input
+    });
+
+    if (!input) return null;
+
+    const status = input.status;
+    const message = input.message;
+
+    if (!status || !message) {
+      workerLogger.warn('signal_completion missing status or message', input);
+      return null;
+    }
+
+    const validStatuses = ['COMPLETED', 'FAILED'];
+    if (!validStatuses.includes(status)) {
+      workerLogger.warn(`Invalid signal_completion status: ${status}`);
+      return null;
+    }
+
+    workerLogger.info(`✅ Detected signal_completion from telemetry: ${status}`);
+    return { status, message };
+  } catch (e) {
+    workerLogger.warn('Failed to extract signal_completion from telemetry', e);
+    return null;
+  }
+}
+
+/**
+ * Parse FinalStatus from text output (legacy method, fallback only)
+ * DEPRECATED: Use signal_completion tool instead
+ */
+function parseFinalStatusFromText(output: string): FinalStatus | null {
   if (!output) return null;
-  
+
   // Match FinalStatus: {...} pattern
   const pattern = /FinalStatus:\s*(\{[^}]+\})/;
   const match = output.match(pattern);
-  
+
   if (!match) {
-    workerLogger.debug('No FinalStatus found in agent output');
     return null;
   }
-  
+
   try {
     const parsed = JSON.parse(match[1]);
-    
+
     // Validate structure
     if (!parsed.status || !parsed.message) {
       workerLogger.warn('Invalid FinalStatus structure', parsed);
       return null;
     }
-    
+
     // Validate status code
     const validStatuses = ['COMPLETED', 'DELEGATING', 'WAITING', 'FAILED'];
     if (!validStatuses.includes(parsed.status)) {
       workerLogger.warn(`Invalid status code: ${parsed.status}`);
       return null;
     }
-    
+
+    workerLogger.info(`Detected FinalStatus from text output: ${parsed.status} (legacy method)`);
     return {
       status: parsed.status,
       message: parsed.message
@@ -77,6 +142,22 @@ function parseFinalStatus(output: string): FinalStatus | null {
     workerLogger.warn('Failed to parse FinalStatus', e);
     return null;
   }
+}
+
+/**
+ * Extract final status from either telemetry (preferred) or text output (fallback)
+ */
+function extractFinalStatus(output: string, telemetry: any): FinalStatus | null {
+  // Try telemetry first (deterministic, structured)
+  const fromTelemetry = extractSignalFromTelemetry(telemetry);
+  if (fromTelemetry) return fromTelemetry;
+
+  // Fall back to text parsing (non-deterministic, legacy)
+  const fromText = parseFinalStatusFromText(output);
+  if (fromText) return fromText;
+
+  workerLogger.debug('No FinalStatus found in telemetry or output');
+  return null;
 }
 
 function safeParseToolResponse(response: any): { ok: boolean; data: any; message?: string } {
@@ -198,10 +279,11 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
   }
 }
 
-async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ 
-  prompt?: string; 
-  enabledTools?: string[]; 
-  sourceRequestId?: string; 
+async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
+  prompt?: string;
+  enabledTools?: string[];
+  sourceRequestId?: string;
+  sourceJobDefinitionId?: string;
   additionalContext?: any;
   jobName?: string;
   jobDefinitionId?: string;
@@ -222,10 +304,11 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
     const prompt = json?.prompt || json?.input || undefined;
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
     const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
+    const sourceJobDefinitionId = json?.sourceJobDefinitionId ? String(json.sourceJobDefinitionId) : undefined;
     const additionalContext = json?.additionalContext || undefined;
     const jobName = json?.jobName || undefined;
     const jobDefinitionId = json?.jobDefinitionId || undefined;
-    return { prompt, enabledTools, sourceRequestId, additionalContext, jobName, jobDefinitionId };
+    return { prompt, enabledTools, sourceRequestId, sourceJobDefinitionId, additionalContext, jobName, jobDefinitionId };
   } catch (e: any) {
     workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
     return null;
@@ -233,7 +316,7 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
 }
 
 async function runAgentForRequest(request: UnclaimedRequest, metadata: any): Promise<{ output: string; telemetry: any }> {
-  const model = process.env.MECH_MODEL || 'gemini-2.5-flash-lite';
+  const model = process.env.MECH_MODEL || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const agent = new Agent(model, enabledTools, {
     jobId: request.id,
@@ -291,15 +374,15 @@ ${context.hierarchy?.flatMap((job: any) =>
 }
 
 async function storeOnchainReport(
-  request: UnclaimedRequest, 
-  workerAddress: string, 
-  result: { output: string; telemetry: any }, 
+  request: UnclaimedRequest,
+  workerAddress: string,
+  result: { output: string; telemetry: any },
   error?: any,
   metadata?: any
 ): Promise<FinalStatus | null> {
   try {
-    // Parse FinalStatus from output
-    const finalStatus = parseFinalStatus(result?.output || '');
+    // Extract FinalStatus from telemetry (preferred) or text output (fallback)
+    const finalStatus = extractFinalStatus(result?.output || '', result?.telemetry || {});
     
     // Determine status for job report
     let reportStatus: string;
@@ -358,7 +441,7 @@ async function dispatchParentIfNeeded(
     workerLogger.debug(`Not dispatching parent - status: ${finalStatus?.status || 'none'}`);
     return;
   }
-  
+
   // Get parent job ID from metadata
   const parentJobDefId = metadata?.sourceJobDefinitionId;
   if (!parentJobDefId) {
@@ -369,18 +452,21 @@ async function dispatchParentIfNeeded(
   try {
     workerLogger.info(`Dispatching parent job ${parentJobDefId} after child ${finalStatus.status}`);
     
-    // Create message with child results
-    const message = JSON.stringify({
-      childRequestId: requestId,
-      childStatus: finalStatus.status,
-      childMessage: finalStatus.message,
-      childOutput: output.length > 1000 ? output.substring(0, 1000) + '...' : output
-    });
+    // Create message with child results using standard format
+    const messageContent = `Child job ${finalStatus.status}: ${finalStatus.message}. Output: ${
+      output.length > 500 ? output.substring(0, 500) + '...' : output
+    }`;
     
+    const message = {
+      content: messageContent,
+      to: parentJobDefId,
+      from: requestId
+    };
+
     // Dispatch parent job
-    const result = await dispatchExistingJob({ 
+    const result = await dispatchExistingJob({
       jobId: parentJobDefId,
-      message
+      message: JSON.stringify(message)
     });
     
     const dispatchResult = safeParseToolResponse(result);

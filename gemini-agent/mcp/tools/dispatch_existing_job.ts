@@ -94,20 +94,41 @@ export async function dispatchExistingJob(args: unknown) {
 
   // Fetch job context for the existing job being dispatched
   const jobContext = await getJobContextForDispatch(jobDefinitionId, 3);
-  
+
   // Build additionalContext with job context and message
-  let additionalContext: any = jobContext || undefined;
-  
+  let additionalContext: any = {};
+
+  // Include hierarchy and summary if job context was successfully fetched
+  if (jobContext) {
+    additionalContext.hierarchy = jobContext.hierarchy;
+    additionalContext.summary = jobContext.summary;
+  }
+
   // Add message to additionalContext if provided
+  // This is CRITICAL for Work Protocol - message must always be preserved
   if (message) {
-    if (!additionalContext) {
-      additionalContext = {};
+    // Try to parse message as JSON (for structured messages from worker)
+    let messageObj: any = null;
+    try {
+      const parsed = JSON.parse(message);
+      // If it's already a structured message with content/to/from, use it directly
+      if (parsed && typeof parsed === 'object' && parsed.content) {
+        messageObj = parsed;
+      }
+    } catch {
+      // Not JSON, treat as plain string
     }
-    additionalContext.message = {
-      content: message,
-      to: jobDefinitionId,
-      from: context.jobDefinitionId || undefined,
-    };
+
+    // Use parsed structure if available, otherwise create envelope
+    if (messageObj) {
+      additionalContext.message = messageObj;
+    } else {
+      additionalContext.message = {
+        content: message,
+        to: jobDefinitionId,
+        from: context.jobDefinitionId || undefined,
+      };
+    }
   }
 
   const ipfsJsonContents = [{

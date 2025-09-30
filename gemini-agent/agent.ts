@@ -68,7 +68,8 @@ export class Agent {
     'get_details',
     'dispatch_new_job',
     'dispatch_existing_job',
-    'create_artifact'
+    'create_artifact',
+    'signal_completion'
   ];
 
   constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {

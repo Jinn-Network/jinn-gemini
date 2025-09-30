@@ -21,6 +21,7 @@ export default createSchema((p: any) => ({
       id: p.string(),
       mech: p.hex(),
       sender: p.hex(),
+      jobDefinitionId: p.string().optional(),
       sourceRequestId: p.string().optional(),
       sourceJobDefinitionId: p.string().optional(),
       requestData: p.string().optional(),
@@ -38,6 +39,7 @@ export default createSchema((p: any) => ({
       ts: p.index("blockTimestamp").desc(),
       mechIdx: p.index("mech"),
       senderIdx: p.index("sender"),
+      jobDefIdx: p.index("jobDefinitionId"),
       sourceReqIdx: p.index("sourceRequestId"),
       sourceJobDefIdx: p.index("sourceJobDefinitionId"),
     }

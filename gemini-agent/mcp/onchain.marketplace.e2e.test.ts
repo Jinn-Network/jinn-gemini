@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fetch from 'cross-fetch';
 import { randomUUID } from 'node:crypto';
 import { execa } from 'execa';
+import path from 'node:path';
 
 // Import tools via the MCP tools index (NodeNext resolution allows .js for TS modules)
 import { getDetails, loadMcpServer, stopMcpServer, dispatchNewJob, dispatchExistingJob, searchJobs, searchArtifacts } from './tools/index.js';
@@ -75,6 +76,7 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
   let controlApiProc: any = null;
   let mcpStarted = false;
   let jobDefForRepost: string | null = null;
+  let controlUrl: string;
 
   async function waitForGraphql(url: string, timeoutMs = 60_000): Promise<void> {
     const start = Date.now();
@@ -112,16 +114,52 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       // Ignore errors if no processes to kill
     }
 
+    // Clean Ponder cache to force fresh start with current .env
+    try {
+      await execa('rm', ['-rf', 'ponder/.ponder/sqlite']);
+      console.log('[ponder] cleaned cache');
+    } catch {
+      // Ignore if directory doesn't exist
+    }
+
     // Start fresh Ponder instance
     const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-    ponderProc = execa('yarn', ['--cwd', 'ponder', 'dev'], { cwd: process.cwd(), stdio: 'pipe', env: { ...process.env } });
-    console.log('[ponder] dev server spawned (logs suppressed)');
+    const ponderDir = path.join(process.cwd(), 'ponder');
+
+    // Ensure Ponder uses the correct environment - explicitly pass critical vars
+    const ponderEnv = {
+      ...process.env,
+      PONDER_RPC_URL: process.env.PONDER_RPC_URL,
+      PONDER_GRAPHQL_URL: gqlUrl,
+      PONDER_START_BLOCK: process.env.PONDER_START_BLOCK,
+    };
+
+    console.log('[test] Starting Ponder with PONDER_RPC_URL:', process.env.PONDER_RPC_URL);
+    ponderProc = execa('yarn', ['dev'], { cwd: ponderDir, stdio: 'pipe', env: ponderEnv });
+    // Attach handlers to prevent pipe buffer blocking and capture errors
+    const ponderLogs: string[] = [];
+    if (ponderProc.stdout) ponderProc.stdout.on('data', (d: any) => { ponderLogs.push(d.toString()); });
+    if (ponderProc.stderr) ponderProc.stderr.on('data', (d: any) => {
+      const msg = d.toString();
+      ponderLogs.push(msg);
+      process.stderr.write(`[ponder stderr] ${msg}`);
+    });
+
+    // Monitor process exit
+    ponderProc.on('exit', (code: number | null) => {
+      if (code !== 0 && code !== null) {
+        console.error(`[ponder] Process exited with code ${code}`);
+        console.error(`[ponder] Last 50 lines of output:\n${ponderLogs.slice(-50).join('')}`);
+      }
+    });
+
+    console.log('[ponder] dev server spawned');
     // Give it time to come up
     await waitForGraphql(gqlUrl, 120_000);
 
     // Start Control API if not already running (required for worker claim/report/artifacts)
     let controlReady = false;
-    const controlUrl = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
+    controlUrl = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
     try {
       const resp = await fetch(controlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: '{ _health }' }) });
       const j = await resp.json();
@@ -407,32 +445,92 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     const mechWorker = process.env.MECH_WORKER_ADDRESS;
     expect(mechWorker, 'MECH_WORKER_ADDRESS required').toBeTruthy();
 
-    // 1) Dispatch a new job instructing artifact creation
-    const jobName = `e2e-worker-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    // 1) Create parent job first (for Work Protocol testing)
+    const parentJobName = `e2e-parent-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    const parentPrompt = 'Parent job: review child work results and coordinate next steps';
+    const parentDispatch = await dispatchNewJob({ 
+      prompt: parentPrompt, 
+      jobName: parentJobName, 
+      enabledTools: ['create_artifact'], 
+      updateExisting: true 
+    });
+    const parentParsed = parseToolText(parentDispatch);
+    expect(parentParsed?.meta?.ok).toBe(true);
+    const parentJobDefinitionId: string = parentParsed?.data?.jobDefinitionId;
+    const parentRequestId: string = parentParsed?.data?.request_ids?.[0];
+
+    // Wait for parent job to be indexed
+    const qParentExists = 'query($id:String!){ jobDefinition(id:$id){ id name } }';
+    let parentIndexed = false;
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, i === 0 ? 0 : 1500));
+      const resp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qParentExists, variables: { id: parentJobDefinitionId } }) });
+      if (!resp.ok) continue;
+      const jr = await resp.json();
+      if (jr?.data?.jobDefinition?.id === parentJobDefinitionId) { parentIndexed = true; break; }
+    }
+    expect(parentIndexed, 'Parent job should be indexed').toBe(true);
+
+    // 2) Set lineage context and dispatch child job with Work Protocol signal
+    const prevReq = process.env.JINN_REQUEST_ID;
+    const prevJob = process.env.JINN_JOB_DEFINITION_ID;
+    process.env.JINN_REQUEST_ID = parentRequestId;
+    process.env.JINN_JOB_DEFINITION_ID = parentJobDefinitionId;
+
+    let requestIdHex: string;
+    let jobDefinitionId: string;
+    // Move these outside the try block so they're accessible throughout the test
     const artifactName = 'e2e-report';
     const artifactTopic = 'analysis';
     const artifactContent = `artifact generated at ${new Date().toISOString()}`;
-    const prompt = `Create a concise artifact using the create_artifact tool, exactly once, with: name: \"${artifactName}\", topic: \"${artifactTopic}\", content: \"${artifactContent}\". Do not print extra text; let the tool response be the final output.`;
-    const enabledTools = ['create_artifact'];
-    const dispatchRes = await dispatchNewJob({ prompt, jobName, enabledTools, updateExisting: true });
-    const dispatchParsed = parseToolText(dispatchRes);
-    expect(dispatchParsed?.meta?.ok).toBe(true);
-    const data = dispatchParsed?.data || {};
-    expect(Array.isArray(data.request_ids) && data.request_ids.length > 0).toBe(true);
-    const requestIdHex: string = data.request_ids[0];
-    const jobDefinitionId: string = data.jobDefinitionId;
+    
+    try {
+      const jobName = `e2e-worker-${Date.now()}-${randomUUID().slice(0, 6)}`;
+      const prompt = `Create a concise artifact using the create_artifact tool, exactly once, with: name: \"${artifactName}\", topic: \"${artifactTopic}\", content: \"${artifactContent}\". After the artifact is created, call the signal_completion tool with status: "COMPLETED" and message: "Successfully created artifact and completed analysis"`;
+      const enabledTools = ['create_artifact', 'signal_completion'];
+      const dispatchRes = await dispatchNewJob({ prompt, jobName, enabledTools, updateExisting: true });
+      const dispatchParsed = parseToolText(dispatchRes);
+      expect(dispatchParsed?.meta?.ok).toBe(true);
+      const data = dispatchParsed?.data || {};
+      expect(Array.isArray(data.request_ids) && data.request_ids.length > 0).toBe(true);
+      requestIdHex = data.request_ids[0];
+      jobDefinitionId = data.jobDefinitionId;
+    } finally {
+      // Restore context for worker execution
+      if (prevReq !== undefined) process.env.JINN_REQUEST_ID = prevReq; else delete process.env.JINN_REQUEST_ID;
+      if (prevJob !== undefined) process.env.JINN_JOB_DEFINITION_ID = prevJob; else delete process.env.JINN_JOB_DEFINITION_ID;
+    }
 
     // Ensure the request is indexed before running worker (Control API validates against Ponder)
-    const qReqExists = 'query($id:String!){ request(id:$id){ id } }';
+    const qReqExists = 'query($id:String!){ request(id:$id){ id jobDefinitionId } }';
     let seen = false;
+    let requestRecord: any = null;
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, i === 0 ? 0 : 2000));
       const resp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qReqExists, variables: { id: requestIdHex } }) });
       if (!resp.ok) continue;
       const jr = await resp.json();
-      if (jr?.data?.request?.id === requestIdHex) { seen = true; break; }
+      if (jr?.data?.request?.id === requestIdHex) {
+        seen = true;
+        requestRecord = jr.data.request;
+        break;
+      }
     }
     expect(seen, 'Request should be indexed before worker runs').toBe(true);
+
+    // Verify worker can load correct job definition: request has jobDefinitionId field
+    expect(requestRecord.jobDefinitionId, 'Request should have jobDefinitionId field populated').toBeTruthy();
+    expect(requestRecord.jobDefinitionId, 'Request jobDefinitionId should match created job').toBe(jobDefinitionId);
+
+    // Verify job definition can be queried from Ponder using jobDefinitionId
+    const qJobDef = 'query($id:String!){ jobDefinition(id:$id){ id name enabledTools promptContent } }';
+    const jobDefResp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qJobDef, variables: { id: requestRecord.jobDefinitionId } }) });
+    expect(jobDefResp.ok).toBe(true);
+    const jobDefJson = await jobDefResp.json();
+    const jobDef = jobDefJson?.data?.jobDefinition;
+    expect(jobDef, 'Worker should be able to query job definition from Ponder using jobDefinitionId').toBeTruthy();
+    expect(jobDef.id).toBe(jobDefinitionId);
+    expect(Array.isArray(jobDef.enabledTools) && jobDef.enabledTools.includes('create_artifact')).toBe(true);
 
     // 2) Run mech worker single-shot to claim and process our request
     const env: any = { ...process.env };
@@ -534,6 +632,73 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     const deliveryArtifact = (deliveryJson as any)?.artifacts?.find((x: any) => x.topic === artifactTopic);
     expect(deliveryArtifact, `Delivery JSON should include artifact with topic ${artifactTopic}`).toBeTruthy();
     expect(typeof deliveryArtifact?.cid).toBe('string');
+
+    // 8) Work Protocol: Verify parent job was automatically dispatched
+    // The child job calls signal_completion tool with status "COMPLETED", which triggers the worker
+    // to automatically dispatch the parent job. This is the core of Work Protocol.
+    // Query for NEW requests that target the parent job definition (jobDefinitionId = parent) created after the child completed
+    // These auto-dispatched requests will have additionalContext with message from the child
+    // Filter out the original parent request by excluding the initial parent request ID
+    const qParentRequests = 'query($jobId:String!){ requests(where:{jobDefinitionId:$jobId}, orderBy:"blockTimestamp", orderDirection:"desc"){ items { id blockTimestamp additionalContext jobDefinitionId } } }';
+    let parentRequests: any[] = [];
+    let latestParentRequest: any = null;
+
+    // Poll for parent request with additionalContext populated
+    for (let i = 0; i < 25; i++) {
+      await new Promise(r => setTimeout(r, i === 0 ? 0 : 3000));
+      const resp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qParentRequests, variables: { jobId: parentJobDefinitionId } }) });
+      if (!resp.ok) continue;
+      const jr = await resp.json();
+      // Query returns ALL requests for the parent job, filter for auto-dispatched ones (those created after initial parent request AND have message)
+      const allRequests = jr?.data?.requests?.items || [];
+      parentRequests = allRequests.filter((r: any) => r.id !== parentRequestId && r.additionalContext && r.additionalContext.message);
+
+      // Check if we have a parent request with additionalContext populated
+      if (parentRequests.length > 0) {
+        latestParentRequest = parentRequests[0];
+        // Ponder fetches IPFS content asynchronously, so additionalContext may be null/empty initially
+        // Keep polling until it's populated with the message field
+        // Note: Empty object {} is truthy, so we need to check for actual content
+        if (latestParentRequest.additionalContext && latestParentRequest.additionalContext.message) {
+          break;
+        }
+      }
+    }
+    expect(parentRequests.length, 'Work Protocol: Parent job should have been auto-dispatched after child COMPLETED').toBeGreaterThan(0);
+    expect(latestParentRequest.additionalContext, 'Auto-dispatched parent should have additionalContext').toBeTruthy();
+
+    // Extract message from additionalContext
+    // Ponder's GraphQL returns additionalContext as an object (already parsed)
+    let workProtocolMessage: any = null;
+    const additionalContext = latestParentRequest.additionalContext;
+
+    if (typeof additionalContext === 'object' && additionalContext.message) {
+      // Already an object with message field
+      workProtocolMessage = additionalContext.message;
+    } else if (typeof additionalContext === 'string') {
+      // Fallback: if it's a string, parse it
+      try {
+        const parsed = JSON.parse(additionalContext);
+        workProtocolMessage = typeof parsed.message === 'string' ?
+          JSON.parse(parsed.message) : parsed.message;
+      } catch {
+        // Message extraction failed
+      }
+    }
+    
+    expect(workProtocolMessage, 'Work Protocol message should be present').toBeTruthy();
+    expect(workProtocolMessage.content, 'Message should have content about child completion').toContain('Child job COMPLETED');
+    expect(workProtocolMessage.to, 'Message should be addressed to parent job').toBe(parentJobDefinitionId);
+    expect(workProtocolMessage.from, 'Message should be from child request').toBe(requestIdHex);
+
+    /* eslint-disable no-console */
+    console.log('Work Protocol verification:', {
+      parentAutoDispatched: parentRequests.length > 0,
+      messageFormat: 'standardized',
+      protocolWorking: true
+    });
+    /* eslint-enable no-console */
+
   }, 600_000);
 
   it('context envelope: dispatch existing job with hierarchical context from child jobs and artifacts', async () => {
@@ -581,8 +746,9 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
     try {
       // 3) Dispatch child job 1: Data Analysis
+      // Note: This child does NOT call signal_completion, so it won't trigger Work Protocol auto-dispatch
       const child1Name = `context-child1-${Date.now()}-${randomUUID().slice(0, 6)}`;
-      const child1Prompt = 'Child job 1: Analyze sample data and generate insights. Create artifact with analysis results.';
+      const child1Prompt = 'Child job 1: Analyze sample data and generate insights. Create artifact with analysis results. Do not signal completion - this is an intermediate step.';
       const child1Tools = ['create_artifact'];
       
       const child1Dispatch = await dispatchNewJob({ 
@@ -596,9 +762,10 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       const child1JobDefinitionId: string = child1Parsed?.data?.jobDefinitionId;
       const child1RequestId: string = child1Parsed?.data?.request_ids?.[0];
 
-      // 4) Dispatch child job 2: Report Generation 
+      // 4) Dispatch child job 2: Report Generation
+      // Note: This child also does NOT call signal_completion, so it won't trigger Work Protocol auto-dispatch
       const child2Name = `context-child2-${Date.now()}-${randomUUID().slice(0, 6)}`;
-      const child2Prompt = 'Child job 2: Generate summary report from analysis. Create artifact with formatted report.';
+      const child2Prompt = 'Child job 2: Generate summary report from analysis. Create artifact with formatted report. Do not signal completion - waiting for additional data.';
       const child2Tools = ['create_artifact'];
       
       const child2Dispatch = await dispatchNewJob({ 
@@ -753,6 +920,27 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     expect(indexedContext?.summary).toBeTruthy();
     expect(Array.isArray(indexedContext.hierarchy)).toBe(true);
 
+    // Work Protocol: Verify that child jobs without signal_completion do NOT trigger parent dispatch
+    // In this test, child jobs do not call signal_completion, so parent should NOT be auto-dispatched
+    // (Only the manual repost above should exist, not auto-dispatches from Work Protocol)
+
+    const qAutoDispatchCheck = 'query($jobId:String!){ requests(where:{jobDefinitionId:$jobId}, orderBy:"blockTimestamp", orderDirection:"desc"){ items { id blockTimestamp } } }';
+    const autoDispatchResp = await fetch(gqlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: qAutoDispatchCheck, variables: { jobId: parentJobDefinitionId } }) });
+    expect(autoDispatchResp.ok).toBe(true);
+    const autoDispatchData = await autoDispatchResp.json();
+    const allParentRequests = autoDispatchData?.data?.requests?.items || [];
+    
+    // Debug: Log all requests to understand what's happening
+    console.log('DEBUG: All parent requests:', allParentRequests.map(r => ({ id: r.id, timestamp: r.blockTimestamp })));
+    console.log('DEBUG: Original parent request ID:', parentRequestId);
+    console.log('DEBUG: Manual repost request ID:', repostRequestId);
+    
+    // Should have: 1) Original parent request, 2) Manual repost from dispatchExistingJob
+    // Should NOT have: Additional auto-dispatches from Work Protocol (since children didn't call signal_completion)
+    const nonOriginalRequests = allParentRequests.filter((r: any) => r.id !== parentRequestId);
+    expect(nonOriginalRequests.length, 'Should only have manual repost, no Work Protocol auto-dispatch without signal_completion').toBe(1);
+    expect(nonOriginalRequests[0]?.id, 'Manual repost should match expected ID').toBe(repostRequestId);
+
     // Audit log for verification
     /* eslint-disable no-console */
     console.log(JSON.stringify({
@@ -765,7 +953,12 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
         hierarchy_levels: [...new Set(context.hierarchy.map((j: any) => j.level))].sort(),
         ipfs_gateway_url: `https://gateway.autonolas.tech/ipfs/${repostRequest.ipfsHash}`,
         context_envelope_present: !!context,
-        indexed_context_present: !!indexedContext
+        indexed_context_present: !!indexedContext,
+        work_protocol_verification: {
+          total_parent_requests: allParentRequests.length,
+          auto_dispatch_prevented: true,
+          reason: 'Children did not call signal_completion'
+        }
       }
     }, null, 2));
     /* eslint-enable no-console */
@@ -864,4 +1057,5 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     }, null, 2));
     /* eslint-enable no-console */
   }, 300_000);
+
 });

@@ -8,4 +8,5 @@ export { createArtifact, createArtifactParams, createArtifactSchema } from './cr
 export { dispatchExistingJob, dispatchExistingJobParams, dispatchExistingJobSchema } from './dispatch_existing_job.js';
 export { searchJobs, searchJobsParams, searchJobsSchema, type SearchJobsParams } from './search-jobs.js';
 export { searchArtifacts, searchArtifactsParams, searchArtifactsSchema, type SearchArtifactsParams } from './search-artifacts.js';
+export { signalCompletion, signalCompletionParams, signalCompletionSchema } from './signal_completion.js';
 export { loadMcpServer, stopMcpServer } from './shared/mcp-bootstrap.js';

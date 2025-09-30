@@ -93,10 +93,24 @@ export async function dispatchNewJob(args: unknown) {
     if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
 
     // Build additionalContext with message if provided
-    let additionalContext: Record<string, any> | undefined;
+    // Always initialize as object to ensure it's included in IPFS even if empty
+    let additionalContext: Record<string, any> = {};
     if (message) {
+      // Try to parse message as JSON (for structured messages from worker)
+      let messageObj: any = null;
+      try {
+        const parsed = JSON.parse(message);
+        // If it's already a structured message with content/to/from, use it directly
+        if (parsed && typeof parsed === 'object' && parsed.content) {
+          messageObj = parsed;
+        }
+      } catch {
+        // Not JSON, treat as plain string
+      }
+
+      // Use parsed structure if available, otherwise create envelope
       additionalContext = {
-        message: {
+        message: messageObj || {
           content: message,
           to: jobDefinitionId,
           from: context.jobDefinitionId || undefined,
@@ -110,7 +124,7 @@ export async function dispatchNewJob(args: unknown) {
       enabledTools,
       jobDefinitionId,
       nonce: ensureUuid(),
-      ...(additionalContext && { additionalContext }),
+      additionalContext,
       ...lineageContext,
     }];
 
