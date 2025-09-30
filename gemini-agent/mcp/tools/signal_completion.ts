@@ -1,19 +1,33 @@
 import { z } from 'zod';
 
+// Schema for MCP registration - permissive to allow MCP to pass through to handler
+const signalCompletionParamsBase = z.object({
+  status: z.string().min(1),
+  message: z.string().min(1),
+});
+
+// Strict validation schema for handler
 export const signalCompletionParams = z.object({
   status: z.enum(['COMPLETED', 'FAILED']),
   message: z.string().min(1),
 });
 
 export const signalCompletionSchema = {
-  description: 'Signal that this job has reached a terminal state (COMPLETED or FAILED) and notify the parent job if one exists. Use this when a child job finishes its work to trigger the Work Protocol.',
-  inputSchema: signalCompletionParams.shape,
+  description: 'Signal that this job has reached a TERMINAL state and notify the parent job if one exists. ONLY use when the job is completely finished - either COMPLETED (success) or FAILED (error). Do NOT use for intermediate states like delegating work to child jobs or waiting for responses. The status must be either "COMPLETED" or "FAILED".',
+  inputSchema: signalCompletionParamsBase.shape,
 };
 
 export async function signalCompletion(args: unknown) {
   try {
     const parsed = signalCompletionParams.safeParse(args);
     if (!parsed.success) {
+      // Extract the actual status value if provided for better error message
+      const providedStatus = (args as any)?.status;
+      const baseMessage = parsed.error.message;
+      const helpfulMessage = providedStatus
+        ? `Invalid status "${providedStatus}". The signal_completion tool only accepts "COMPLETED" or "FAILED" for terminal job states. Do not use this tool for intermediate states like delegating or waiting. ${baseMessage}`
+        : baseMessage;
+
       return {
         content: [{
           type: 'text' as const,
@@ -22,7 +36,7 @@ export async function signalCompletion(args: unknown) {
             meta: {
               ok: false,
               code: 'VALIDATION_ERROR',
-              message: parsed.error.message
+              message: helpfulMessage
             }
           })
         }]

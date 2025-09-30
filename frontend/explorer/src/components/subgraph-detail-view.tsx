@@ -123,7 +123,11 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
     if (fieldName === 'requestId' || fieldName === 'sourceRequestId') {
       return <IdLink id={value} collection="requests" showFullId={true} />
     }
-    if (fieldName === 'sourceJobDefinitionId') {
+    if (fieldName === 'jobDefinitionId' || fieldName === 'sourceJobDefinitionId') {
+      return <IdLink id={value} collection="jobDefinitions" showFullId={true} />
+    }
+    if (fieldName === 'to') {
+      // 'to' field in messages points to a job definition
       return <IdLink id={value} collection="jobDefinitions" showFullId={true} />
     }
 
@@ -164,6 +168,27 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Handle objects (like additionalContext)
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value)
+    if (entries.length === 0) {
+      return <span className="text-gray-400 italic text-sm">Empty object</span>
+    }
+
+    return (
+      <div className="space-y-2">
+        <div className="text-xs text-gray-500">Object ({entries.length} properties)</div>
+        <div className="bg-muted rounded border overflow-hidden">
+          <div className="max-h-64 overflow-auto p-3">
+            <pre className="text-xs font-mono whitespace-pre-wrap">
+              {JSON.stringify(value, null, 2)}
+            </pre>
           </div>
         </div>
       </div>

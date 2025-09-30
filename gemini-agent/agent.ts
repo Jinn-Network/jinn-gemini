@@ -66,10 +66,15 @@ export class Agent {
   private readonly universalTools = [
     'list_tools',
     'get_details',
+    'get_job_context',
     'dispatch_new_job',
     'dispatch_existing_job',
     'create_artifact',
-    'signal_completion'
+    'signal_completion',
+    'search_jobs',
+    'search_artifacts',
+    'google_web_search',
+    'web_fetch'
   ];
 
   constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {

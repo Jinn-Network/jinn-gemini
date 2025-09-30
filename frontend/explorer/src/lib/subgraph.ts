@@ -15,6 +15,7 @@ export interface Request {
   id: string
   mech: string
   sender: string
+  jobDefinitionId?: string
   sourceRequestId?: string
   sourceJobDefinitionId?: string
   requestData?: string
@@ -26,6 +27,7 @@ export interface Request {
   delivered: boolean
   jobName?: string
   enabledTools: string[]
+  additionalContext?: any
 }
 
 export interface Delivery {
@@ -51,6 +53,16 @@ export interface Artifact {
   cid: string
   topic: string
   contentPreview?: string
+}
+
+export interface Message {
+  id: string
+  requestId: string
+  sourceRequestId?: string
+  sourceJobDefinitionId?: string
+  to?: string
+  content: string
+  blockTimestamp: string
 }
 
 export interface PageInfo {
@@ -84,6 +96,13 @@ export interface DeliveriesResponse {
 export interface ArtifactsResponse {
   artifacts: {
     items: Artifact[]
+    pageInfo: PageInfo
+  }
+}
+
+export interface MessagesResponse {
+  messages: {
+    items: Message[]
     pageInfo: PageInfo
   }
 }
@@ -175,6 +194,7 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Request
           id
           mech
           sender
+          jobDefinitionId
           sourceRequestId
           sourceJobDefinitionId
           requestData
@@ -186,6 +206,7 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Request
           delivered
           jobName
           enabledTools
+          additionalContext
         }
         pageInfo {
           hasNextPage
@@ -358,6 +379,7 @@ export async function getRequest(id: string): Promise<Request | null> {
         id
         mech
         sender
+        jobDefinitionId
         sourceRequestId
         sourceJobDefinitionId
         requestData
@@ -369,6 +391,7 @@ export async function getRequest(id: string): Promise<Request | null> {
         delivered
         jobName
         enabledTools
+        additionalContext
       }
     }
   `
@@ -435,11 +458,90 @@ export async function getArtifact(id: string): Promise<Artifact | null> {
   }
 }
 
+export async function queryMessages(options: QueryOptions = {}): Promise<Message[]> {
+  const {
+    limit = 100,
+    after,
+    before,
+    orderBy = 'blockTimestamp',
+    orderDirection = 'desc',
+    where
+  } = options
+
+  const query = `
+    query Messages($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String, $where: messageFilter) {
+      messages(
+        limit: $limit,
+        after: $after,
+        before: $before,
+        orderBy: $orderBy,
+        orderDirection: $orderDirection,
+        where: $where
+      ) {
+        items {
+          id
+          requestId
+          sourceRequestId
+          sourceJobDefinitionId
+          to
+          content
+          blockTimestamp
+        }
+        pageInfo {
+          hasNextPage
+          hasPreviousPage
+          startCursor
+          endCursor
+        }
+      }
+    }
+  `
+
+  try {
+    const response = await request<MessagesResponse>(SUBGRAPH_URL, query, {
+      limit,
+      after,
+      before,
+      orderBy,
+      orderDirection,
+      where
+    })
+    return response.messages.items
+  } catch (error) {
+    console.error('Error querying messages:', error)
+    return []
+  }
+}
+
+export async function getMessage(id: string): Promise<Message | null> {
+  const query = `
+    query Message($id: String!) {
+      message(id: $id) {
+        id
+        requestId
+        sourceRequestId
+        sourceJobDefinitionId
+        to
+        content
+        blockTimestamp
+      }
+    }
+  `
+
+  try {
+    const response = await request<{ message: Message | null }>(SUBGRAPH_URL, query, { id })
+    return response.message
+  } catch (error) {
+    console.error('Error querying message:', error)
+    return null
+  }
+}
+
 export async function getRequestsAndDeliveries(options: QueryOptions = {}): Promise<{ requests: Request[], deliveries: Delivery[] }> {
   const [requests, deliveries] = await Promise.all([
     queryRequests(options),
     queryDeliveries(options)
   ])
-  
+
   return { requests, deliveries }
 }

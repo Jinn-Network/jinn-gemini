@@ -2,20 +2,22 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { CollectionName } from '@/lib/types'
-import { 
-  queryJobDefinitions, 
-  queryRequests, 
-  queryDeliveries, 
+import {
+  queryJobDefinitions,
+  queryRequests,
+  queryDeliveries,
   queryArtifacts,
+  queryMessages,
   JobDefinition,
   Request,
   Delivery,
   Artifact,
+  Message,
   QueryOptions
 } from '@/lib/subgraph'
 import { toast } from 'sonner'
 
-export type SubgraphRecord = JobDefinition | Request | Delivery | Artifact
+export type SubgraphRecord = JobDefinition | Request | Delivery | Artifact | Message
 
 interface UseSubgraphCollectionOptions {
   collectionName: CollectionName
@@ -65,6 +67,8 @@ export function useSubgraphCollection({
         return queryDeliveries
       case 'artifacts':
         return queryArtifacts
+      case 'messages':
+        return queryMessages
       default:
         throw new Error(`Unknown collection: ${collectionName}`)
     }
@@ -79,6 +83,7 @@ export function useSubgraphCollection({
         return 'name'
       case 'requests':
       case 'deliveries':
+      case 'messages':
         return 'blockTimestamp'
       case 'artifacts':
         return 'requestId'

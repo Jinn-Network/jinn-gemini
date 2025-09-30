@@ -17,19 +17,23 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <div className="flex flex-col space-y-1">
               <span className="font-medium">jobDefinitions</span>
-              <span className="text-slate-500">Job template definitions</span>
+              <span className="text-slate-500">Job template definitions with prompts and tool configs</span>
             </div>
             <div className="flex flex-col space-y-1">
               <span className="font-medium">requests</span>
-              <span className="text-slate-500">On-chain job requests</span>
+              <span className="text-slate-500">On-chain job requests with lineage and context</span>
             </div>
             <div className="flex flex-col space-y-1">
               <span className="font-medium">deliveries</span>
-              <span className="text-slate-500">Job execution results</span>
+              <span className="text-slate-500">Job execution results delivered on-chain</span>
             </div>
             <div className="flex flex-col space-y-1">
               <span className="font-medium">artifacts</span>
-              <span className="text-slate-500">Generated content and outputs</span>
+              <span className="text-slate-500">Generated content, reports, and outputs</span>
+            </div>
+            <div className="flex flex-col space-y-1">
+              <span className="font-medium">messages</span>
+              <span className="text-slate-500">Work Protocol messages between parent and child jobs</span>
             </div>
           </div>
         </div>

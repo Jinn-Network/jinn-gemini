@@ -9,9 +9,10 @@ export type DbRecord = {
 // List of all explorable table names - updated to use subgraph entities
 export const collectionNames = [
   'jobDefinitions',
-  'requests', 
+  'requests',
   'deliveries',
   'artifacts',
+  'messages',
 ] as const;
 
 export type CollectionName = typeof collectionNames[number];
