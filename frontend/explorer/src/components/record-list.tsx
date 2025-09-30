@@ -14,13 +14,25 @@ function formatDate(dateString: string | number): string {
   try {
     let date: Date
     if (typeof dateString === 'string') {
-      date = new Date(dateString)
+      // Try parsing as number first if it looks like a timestamp
+      const asNumber = Number(dateString)
+      if (!isNaN(asNumber) && asNumber > 0) {
+        date = new Date(asNumber * 1000)
+      } else {
+        date = new Date(dateString)
+      }
     } else {
       // Handle bigint timestamps (convert from seconds to milliseconds)
       date = new Date(Number(dateString) * 1000)
     }
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
+
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return dateString.toString()
+    }
+
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -89,7 +101,7 @@ function getSecondaryInfo(record: SubgraphRecord, collectionName: CollectionName
       if ('sourceRequestId' in record && record.sourceRequestId) {
         info.push(
           <span key="source_request">
-            Source Request: <IdLink id={record.sourceRequestId} fieldName="requestId" />
+            Source Job Execution: <IdLink id={record.sourceRequestId} fieldName="requestId" />
           </span>
         )
       }
@@ -124,12 +136,12 @@ function getSecondaryInfo(record: SubgraphRecord, collectionName: CollectionName
       if ('requestId' in record && record.requestId) {
         info.push(
           <span key="request">
-            Request: <IdLink id={record.requestId} fieldName="requestId" />
+            Job Execution: <IdLink id={record.requestId} fieldName="requestId" />
           </span>
         )
       }
       break
-      
+
     case 'artifacts':
       if ('cid' in record && record.cid) {
         info.push(`CID: ${record.cid.slice(0, 20)}...`)
@@ -137,7 +149,7 @@ function getSecondaryInfo(record: SubgraphRecord, collectionName: CollectionName
       if ('requestId' in record && record.requestId) {
         info.push(
           <span key="request">
-            Request: <IdLink id={record.requestId} fieldName="requestId" />
+            Job Execution: <IdLink id={record.requestId} fieldName="requestId" />
           </span>
         )
       }

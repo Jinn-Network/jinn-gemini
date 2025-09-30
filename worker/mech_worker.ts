@@ -640,6 +640,7 @@ async function processOnce(): Promise<void> {
   let metadata: any = null;
   try {
     metadata = await fetchIpfsMetadata(target.ipfsHash);
+    workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Processing request');
     result = await runAgentForRequest(target, metadata);
     // Extract artifacts produced during the run (from tool outputs)
     const artifacts = [
@@ -653,10 +654,10 @@ async function processOnce(): Promise<void> {
         try { await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null }); } catch {}
       }
     }
-    workerLogger.info({ requestId: target.id }, 'Execution completed');
+    workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Execution completed');
   } catch (e: any) {
     error = e;
-    workerLogger.error({ requestId: target.id, error: e?.message || String(e) }, 'Execution failed');
+    workerLogger.error({ jobName: metadata?.jobName, requestId: target.id, error: e?.message || String(e) }, 'Execution failed');
   }
   
   // Store report and get FinalStatus
@@ -689,7 +690,7 @@ async function processOnce(): Promise<void> {
       const requestIdHex = String(target.id).startsWith('0x') ? String(target.id) : '0x' + BigInt(String(target.id)).toString(16);
       const ok = await isUndeliveredOnChain({ mechAddress: targetMechAddress, requestIdHex, rpcHttpUrl });
       if (!ok) {
-        workerLogger.info({ requestId: target.id }, 'Preflight: request already delivered or not eligible; skipping Safe delivery');
+        workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Preflight: request already delivered or not eligible; skipping Safe delivery');
         return;
       }
 
@@ -710,10 +711,10 @@ async function processOnce(): Promise<void> {
         wait: true
       } as const;
       const delivery = await (deliverViaSafe as any)(payload);
-      workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
+      workerLogger.info({ jobName: metadata?.jobName, requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
     }
   } catch (e: any) {
-    workerLogger.warn({ requestId: target.id, error: e?.message || String(e) }, 'Safe delivery failed');
+    workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: e?.message || String(e) }, 'Safe delivery failed');
     // Record a FAILED status so the claim does not remain IN_PROGRESS
     try {
       await apiCreateJobReport(target.id, {
@@ -727,7 +728,7 @@ async function processOnce(): Promise<void> {
         raw_telemetry: JSON.stringify(result?.telemetry ?? {}),
       } as any);
     } catch (reportErr: any) {
-      workerLogger.warn({ requestId: target.id, error: reportErr?.message || String(reportErr) }, 'Failed to record FAILED status');
+      workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: reportErr?.message || String(reportErr) }, 'Failed to record FAILED status');
     }
   }
 }

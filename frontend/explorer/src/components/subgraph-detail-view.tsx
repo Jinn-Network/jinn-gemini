@@ -4,6 +4,70 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { CollectionName } from '@/lib/types'
 import { IdLink } from '@/components/id-link'
+import { useEffect, useState } from 'react'
+import { getJobName, fetchIpfsContent } from '@/lib/subgraph'
+import ReactMarkdown from 'react-markdown'
+
+// Custom field ordering configuration - fields appear in this order for each collection
+const FIELD_ORDER: Record<string, string[]> = {
+  jobDefinitions: [
+    'id',
+    'name',
+    'promptContent',
+    'sourceJobDefinitionId',
+    'sourceRequestId',
+    'enabledTools',
+    'blockTimestamp',
+    'blockNumber',
+    'transactionHash'
+  ],
+  requests: [
+    'id',
+    'jobName',
+    'ipfsHash', // This is the prompt field (getFieldLabel converts to "Prompt")
+    'sourceJobDefinitionId',
+    'sourceRequestId',
+    'additionalContext',
+    'enabledTools',
+    'mech',
+    'sender',
+    'blockTimestamp',
+    'blockNumber',
+    'transactionHash',
+    'delivered',
+    'deliveryIpfsHash'
+  ],
+  deliveries: [
+    'id',
+    'requestId',
+    'executionSummary',
+    'telemetry',
+    'actionsTaken',
+    'jobsDispatched',
+    'ipfsHash',
+    'deliveryRate',
+    'mech',
+    'blockTimestamp',
+    'blockNumber',
+    'transactionHash'
+  ],
+  artifacts: [
+    'id',
+    'topic',
+    'name',
+    'contentPreview',
+    'requestId',
+    'cid',
+    'blockTimestamp'
+  ],
+  messages: [
+    'id',
+    'content',
+    'to',
+    'requestId',
+    'blockTimestamp'
+  ]
+}
 
 interface SubgraphDetailViewProps {
   record: SubgraphRecord
@@ -29,7 +93,255 @@ function formatBlockTimestamp(timestamp: string): string {
   }
 }
 
-function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string }) {
+function JobNameDisplay({ jobDefinitionId }: { jobDefinitionId: string }) {
+  const [jobName, setJobName] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getJobName(jobDefinitionId).then(name => {
+      setJobName(name)
+      setLoading(false)
+    })
+  }, [jobDefinitionId])
+
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        <div className="text-sm text-gray-500">Loading job name...</div>
+        <IdLink id={jobDefinitionId} collection="jobDefinitions" showFullId={true} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {jobName && (
+        <div className="text-sm font-medium text-gray-900">{jobName}</div>
+      )}
+      <IdLink id={jobDefinitionId} collection="jobDefinitions" showFullId={true} />
+    </div>
+  )
+}
+
+// Structured delivery content display
+function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: string }) {
+  const [parsed, setParsed] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchIpfsContent(cid, requestId).then(result => {
+      if (result) {
+        try {
+          const data = JSON.parse(result.content)
+          setParsed(data)
+        } catch (e) {
+          setError('Failed to parse JSON content')
+        }
+      } else {
+        setError('Failed to fetch content')
+      }
+      setLoading(false)
+    })
+  }, [cid, requestId])
+
+  if (loading) return <div className="text-sm text-gray-500">Loading delivery content...</div>
+  if (error) return <div className="text-sm text-red-600">{error}</div>
+  if (!parsed) return null
+
+  const toolCalls = parsed.telemetry?.toolCalls || []
+  const dispatchedJobs = toolCalls.filter((tc: any) => tc.tool === 'dispatch_new_job' && tc.success)
+  const telemetry = parsed.telemetry || {}
+  const durationSec = telemetry.duration ? (telemetry.duration / 1000).toFixed(1) : '0'
+
+  // Try to extract function calls from raw API request history
+  const rawRequests = telemetry.raw?.lastApiRequest || telemetry.raw?.requestText?.[0] || ''
+  let functionCallsMap = new Map()
+
+  try {
+    if (typeof rawRequests === 'string' && rawRequests.includes('functionCall')) {
+      const requestData = JSON.parse(rawRequests)
+      if (Array.isArray(requestData)) {
+        requestData.forEach((turn: any) => {
+          if (turn.parts) {
+            turn.parts.forEach((part: any) => {
+              if (part.functionCall) {
+                functionCallsMap.set(part.functionCall.name, part.functionCall.args)
+              }
+            })
+          }
+        })
+      }
+    }
+  } catch (e) {
+    // Silently ignore parsing errors
+  }
+
+  // Render individual flat fields without wrapper - each field is self-contained
+  return (
+    <>
+      {/* Execution Summary Field */}
+      {parsed.output && (
+        <div data-field="executionSummary" className="prose prose-sm max-w-none bg-white p-4 rounded border">
+          <ReactMarkdown>{parsed.output}</ReactMarkdown>
+        </div>
+      )}
+
+      {/* Telemetry Field - rendered as inline badges */}
+      <div data-field="telemetry" className="flex flex-wrap gap-3">
+        <span className="inline-flex items-center px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-sm">
+          <span className="text-gray-600">Tokens:</span>
+          <strong className="ml-1 text-gray-900">{telemetry.totalTokens?.toLocaleString() || 0}</strong>
+        </span>
+        <span className="inline-flex items-center px-3 py-1 rounded-md bg-green-50 border border-green-200 text-sm">
+          <span className="text-gray-600">Duration:</span>
+          <strong className="ml-1 text-gray-900">{durationSec}s</strong>
+        </span>
+        {telemetry.raw?.model && (
+          <span className="inline-flex items-center px-3 py-1 rounded-md bg-purple-50 border border-purple-200 text-sm">
+            <span className="text-gray-600">Model:</span>
+            <strong className="ml-1 text-gray-900">{telemetry.raw.model}</strong>
+          </span>
+        )}
+      </div>
+
+      {/* Actions Taken Field - collapsible list of tool calls */}
+      {toolCalls.length > 0 && (
+        <div data-field="actionsTaken" className="space-y-2">
+          <div className="text-xs text-gray-500 mb-2">{toolCalls.length} action{toolCalls.length !== 1 ? 's' : ''} taken</div>
+          {toolCalls.map((tc: any, idx: number) => (
+            <details key={idx} className="bg-muted p-3 rounded border">
+              <summary className="cursor-pointer text-sm font-medium">
+                <span className={tc.success ? 'text-green-600' : 'text-red-600'}>
+                  {tc.success ? '✓' : '✗'}
+                </span>
+                {' '}{tc.tool} <span className="text-gray-500">({tc.duration_ms}ms)</span>
+              </summary>
+              <div className="mt-2 text-xs space-y-1">
+                <pre className="whitespace-pre-wrap overflow-auto max-h-48 bg-white p-2 rounded">
+                  {JSON.stringify(tc.result || tc, null, 2)}
+                </pre>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+
+      {/* Jobs Dispatched Field - links to job definitions and requests */}
+      {dispatchedJobs.length > 0 && (
+        <div data-field="jobsDispatched" className="space-y-2">
+          <div className="text-xs text-gray-500 mb-2">{dispatchedJobs.length} job{dispatchedJobs.length !== 1 ? 's' : ''} dispatched</div>
+          {dispatchedJobs.map((job: any, idx: number) => {
+            const result = job.result || {}
+            const requestIds = result.request_ids || []
+            const jobDefinitionId = result.job_definition_id || result.jobDefinitionId
+            const txHash = result.transaction_hash
+            // Try to get job name from function call args in raw API history
+            const functionCallArgs = functionCallsMap.get('dispatch_new_job')
+            const jobName = functionCallArgs?.jobName ||
+                           job.input?.jobName ||
+                           job.params?.jobName ||
+                           job.args?.jobName ||
+                           result.job_name ||
+                           result.jobName ||
+                           'Unnamed Job'
+            return (
+              <div key={idx} className="bg-white p-3 rounded border space-y-2">
+                <div className="font-medium text-sm text-gray-900">
+                  {idx + 1}. {jobName}
+                </div>
+                {jobDefinitionId && (
+                  <div className="text-xs">
+                    <span className="text-gray-600">Job Definition: </span>
+                    <IdLink id={jobDefinitionId} collection="jobDefinitions" showFullId={false} />
+                  </div>
+                )}
+                {requestIds.length > 0 && (
+                  <div className="text-xs">
+                    <span className="text-gray-600">Job Execution: </span>
+                    <IdLink id={requestIds[0]} collection="requests" showFullId={false} />
+                  </div>
+                )}
+                {txHash && (
+                  <div className="text-xs">
+                    <a
+                      href={result.transaction_url || `https://basescan.org/tx/${txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      View Transaction
+                    </a>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Raw JSON Field - always present but collapsed */}
+      <div data-field="rawJson">
+        <details className="text-xs">
+          <summary className="cursor-pointer text-gray-600 hover:text-gray-900">View Raw JSON</summary>
+          <pre className="mt-2 p-3 bg-muted rounded border overflow-auto max-h-96">
+            {JSON.stringify(parsed, null, 2)}
+          </pre>
+        </details>
+      </div>
+    </>
+  )
+}
+
+// Structured request content display - shows only the prompt
+function RequestContentDisplay({ cid }: { cid: string }) {
+  const [parsed, setParsed] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchIpfsContent(cid).then(result => {
+      if (result) {
+        try {
+          const data = JSON.parse(result.content)
+          setParsed(data)
+        } catch (e) {
+          setError('Failed to parse JSON content')
+        }
+      } else {
+        setError('Failed to fetch content')
+      }
+      setLoading(false)
+    })
+  }, [cid])
+
+  if (loading) return <div className="text-sm text-gray-500">Loading prompt...</div>
+  if (error) return <div className="text-sm text-red-600">Error loading: {error}</div>
+  if (!parsed) return null
+
+  return (
+    <div className="space-y-4">
+      {/* Prompt Display - Only show the prompt field */}
+      {parsed.prompt ? (
+        <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
+          <ReactMarkdown>{parsed.prompt}</ReactMarkdown>
+        </div>
+      ) : (
+        <p className="text-gray-500">No prompt found in request</p>
+      )}
+
+      {/* Raw JSON Toggle for debugging */}
+      <details className="text-xs">
+        <summary className="cursor-pointer text-gray-600 hover:text-gray-900">View Raw JSON</summary>
+        <pre className="mt-2 p-3 bg-muted rounded border overflow-auto max-h-96">
+          {JSON.stringify(parsed, null, 2)}
+        </pre>
+      </details>
+    </div>
+  )
+}
+
+function ValueDisplay({ value, fieldName, record, collectionName }: { value: unknown; fieldName: string; record: SubgraphRecord; collectionName: CollectionName }) {
   if (value === null || value === undefined) {
     return <span className="text-gray-400 italic">null</span>
   }
@@ -83,35 +395,39 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
       )
     }
 
-    // Handle IPFS hashes
-    if (fieldName === 'ipfsHash' || fieldName === 'deliveryIpfsHash') {
-      return (
-        <div className="space-y-1">
-          <div className="font-mono text-sm break-all text-gray-700">{value}</div>
-          {value && (
-            <a 
-              href={`https://gateway.autonolas.tech/ipfs/${value}`}
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800 underline text-xs"
-            >
-              View on IPFS Gateway
-            </a>
-          )}
-        </div>
-      )
+    // Handle IPFS hashes - use structured display for deliveries and requests
+    if (fieldName === 'deliveryIpfsHash') {
+      const requestId = 'requestId' in record ? String(record.requestId) :
+                       'id' in record ? String(record.id) : undefined
+      if (requestId) {
+        return <DeliveryContentDisplay cid={value} requestId={requestId} />
+      }
     }
 
-    // Handle CIDs for artifacts
+    // Handle delivery ipfsHash (when viewing deliveries directly)
+    if (fieldName === 'ipfsHash' && collectionName === 'deliveries') {
+      const requestId = 'requestId' in record ? String(record.requestId) :
+                       'id' in record ? String(record.id) : undefined
+      if (requestId) {
+        return <DeliveryContentDisplay cid={value} requestId={requestId} />
+      }
+    }
+
+    // Handle request ipfsHash (request metadata)
+    if (fieldName === 'ipfsHash') {
+      return <RequestContentDisplay cid={value} />
+    }
+
+    // For artifact CIDs, keep the old simple display
     if (fieldName === 'cid') {
       return (
-        <div className="space-y-1">
+        <div className="space-y-2">
           <div className="font-mono text-sm break-all text-gray-700">{value}</div>
-          <a 
+          <a
             href={`https://gateway.autonolas.tech/ipfs/${value}`}
-            target="_blank" 
+            target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 underline text-xs"
+            className="text-blue-600 hover:text-blue-800 underline text-xs inline-block"
           >
             View on IPFS Gateway
           </a>
@@ -119,16 +435,31 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
       )
     }
 
+    // Handle job name as hyperlink to job definition
+    if (fieldName === 'jobName' && value) {
+      const jobDefId = 'jobDefinitionId' in record ? String(record.jobDefinitionId) : null
+      if (jobDefId) {
+        return (
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-900">{value}</div>
+            <IdLink id={jobDefId} collection="jobDefinitions" showFullId={true} />
+          </div>
+        )
+      }
+      // If no jobDefinitionId, render as plain text
+      return <span className="text-sm font-medium">{value}</span>
+    }
+
     // Handle foreign key relationships
     if (fieldName === 'requestId' || fieldName === 'sourceRequestId') {
       return <IdLink id={value} collection="requests" showFullId={true} />
     }
     if (fieldName === 'jobDefinitionId' || fieldName === 'sourceJobDefinitionId') {
-      return <IdLink id={value} collection="jobDefinitions" showFullId={true} />
+      return <JobNameDisplay jobDefinitionId={value} />
     }
     if (fieldName === 'to') {
       // 'to' field in messages points to a job definition
-      return <IdLink id={value} collection="jobDefinitions" showFullId={true} />
+      return <JobNameDisplay jobDefinitionId={value} />
     }
 
     // For long strings, show in a scrollable area
@@ -198,21 +529,106 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
   return <span className="font-mono text-sm">{String(value)}</span>
 }
 
+// Helper to convert field names to user-friendly labels
+function getFieldLabel(fieldName: string, collectionName: CollectionName): string {
+  // Hide jobDefinitionId for requests collection (shown as job name link)
+  if (collectionName === 'requests' && fieldName === 'jobDefinitionId') {
+    return '' // Will be filtered out in rendering
+  }
+
+  const labelMap: Record<string, string> = {
+    // IDs
+    id: 'ID',
+
+    // Job-related fields
+    jobDefinitionId: 'Job Definition',
+    jobName: 'Job Name',
+    enabledTools: 'Enabled Tools',
+
+    // Request/Delivery content fields
+    deliveryIpfsHash: 'Execution Results',
+    ipfsHash: collectionName === 'deliveries' ? 'Execution Results' : 'Prompt',
+    requestIpfsHash: 'Prompt',
+    promptContent: 'Prompt',
+
+    // Parent/Source relationships (renamed from Parent to Source)
+    parentJobDefinitionId: 'Source Job Definition',
+    parentRequestId: 'Source Job Execution',
+    sourceJobDefinitionId: 'Source Job Definition',
+    sourceRequestId: 'Source Job Execution',
+
+    // Request field (displayed as Job Execution for consistency)
+    requestId: 'Job Execution',
+
+    // Flattened execution result fields
+    executionSummary: 'Execution Summary',
+    telemetry: 'Telemetry',
+    actionsTaken: 'Actions Taken',
+    jobsDispatched: 'Jobs Dispatched',
+
+    // Blockchain fields
+    blockNumber: 'Block Number',
+    blockTimestamp: 'Timestamp',
+    transactionHash: 'Transaction Hash',
+
+    // Additional data fields
+    additionalContext: 'Additional Context',
+    requestData: 'Request Data',
+
+    // Artifact fields
+    name: 'Name',
+    topic: 'Topic',
+    cid: 'Content ID (CID)',
+    contentPreview: 'Content Preview',
+    content: 'Content',
+
+    // Message fields
+    to: 'To (Job Definition)',
+
+    // Status/metadata fields
+    delivered: 'Delivered',
+    deliveryRate: 'Delivery Rate',
+
+    // Address fields
+    mech: 'Mech Address',
+    sender: 'Sender Address',
+  }
+
+  // Return mapped label or convert camelCase to Title Case as fallback
+  return labelMap[fieldName] || fieldName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim()
+}
+
 export function SubgraphDetailView({ record, collectionName }: SubgraphDetailViewProps) {
-  // Get all fields from the record
-  const fields = Object.entries(record).sort(([keyA], [keyB]) => {
-    // Sort id first, then name if it exists, then rest alphabetically
-    if (keyA === 'id') return -1
-    if (keyB === 'id') return 1
-    if (keyA === 'name') return -1
-    if (keyB === 'name') return 1
-    return keyA.localeCompare(keyB)
-  })
+  // Get field order for this collection (with fallback to empty array)
+  const fieldOrder = FIELD_ORDER[collectionName] || []
+
+  // Get all fields from the record, filtering out mechServiceMultisig and fields with empty labels
+  const allFields = Object.keys(record)
+    .filter(key => key !== 'mechServiceMultisig') // Hide mech multisig service
+    .filter(key => getFieldLabel(key, collectionName) !== '') // Hide fields with empty labels
+
+  // Sort fields: ordered fields first (in specified order), then remaining fields alphabetically
+  const orderedFieldNames = [
+    ...fieldOrder.filter(f => allFields.includes(f)), // Ordered fields that exist
+    ...allFields.filter(f => !fieldOrder.includes(f)).sort() // Remaining fields alphabetically
+  ]
+
+  // Create the fields array with [key, value] tuples
+  const fields = orderedFieldNames.map(key => [key, record[key]] as [string, unknown])
+
+  // Get display title - use name or jobName if available
+  const displayTitle = ('name' in record && record.name) ||
+                       ('jobName' in record && record.jobName) ||
+                       (collectionName === 'jobDefinitions' ? 'Job Definition' :
+                        collectionName === 'requests' ? 'Job Execution' :
+                        collectionName === 'deliveries' ? 'Job Execution' :
+                        collectionName === 'artifacts' ? 'Artifact' :
+                        collectionName.slice(0, -1))
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{collectionName.slice(0, -1)} Details</CardTitle>
+        <CardTitle>{displayTitle}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
@@ -220,10 +636,10 @@ export function SubgraphDetailView({ record, collectionName }: SubgraphDetailVie
             <div key={key} className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
                 <div className="lg:col-span-1">
-                  <span className="text-sm font-medium text-gray-900">{key}</span>
+                  <span className="text-sm font-medium text-gray-900">{getFieldLabel(key, collectionName)}</span>
                 </div>
                 <div className="lg:col-span-3">
-                  <ValueDisplay value={value} fieldName={key} />
+                  <ValueDisplay value={value} fieldName={key} record={record} collectionName={collectionName} />
                 </div>
               </div>
             </div>

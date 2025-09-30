@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
-import { navigationCategories } from '@/lib/utils';
+import { useEffect } from 'react';
+import { navigationItems } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 interface SidebarProps {
@@ -11,20 +11,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isOpen, onToggle }: SidebarProps) {
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(['Jobs', 'Output', 'System']) // All categories expanded by default
-  );
-
-  const toggleCategory = (categoryTitle: string) => {
-    const newExpanded = new Set(expandedCategories);
-    if (newExpanded.has(categoryTitle)) {
-      newExpanded.delete(categoryTitle);
-    } else {
-      newExpanded.add(categoryTitle);
-    }
-    setExpandedCategories(newExpanded);
-  };
-
   // Close sidebar on route change (mobile)
   useEffect(() => {
     const handleResize = () => {
@@ -87,49 +73,24 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
         </div>
         
         <nav>
-          <div className="space-y-4">
-            {navigationCategories.map((category) => {
-              const isExpanded = expandedCategories.has(category.title);
-              
-              return (
-                <div key={category.title}>
-                  <button
-                    onClick={() => toggleCategory(category.title)}
-                    className="w-full flex items-center justify-between px-2 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent rounded-md transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">{category.icon}</span>
-                      <span>{category.title}</span>
-                    </div>
-                    <span className={`text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
-                      ▶
-                    </span>
-                  </button>
-                  
-                  {isExpanded && (
-                    <ul className="mt-2 ml-4 space-y-1">
-                      {category.items.map((item) => (
-                        <li key={item.collection}>
-                          <Link 
-                            href={`/${item.collection}`}
-                            className="block px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground rounded-md transition-colors"
-                            onClick={() => {
-                              // Close sidebar on mobile when clicking links
-                              if (window.innerWidth < 768) {
-                                onToggle();
-                              }
-                            }}
-                          >
-                            {item.label}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <ul className="space-y-1">
+            {navigationItems.map((item) => (
+              <li key={item.collection}>
+                <Link
+                  href={`/${item.collection}`}
+                  className="block px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent rounded-md transition-colors"
+                  onClick={() => {
+                    // Close sidebar on mobile when clicking links
+                    if (window.innerWidth < 768) {
+                      onToggle();
+                    }
+                  }}
+                >
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </nav>
       </aside>
     </>
