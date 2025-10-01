@@ -600,9 +600,9 @@ async function checkAndRepostCompletedChains(): Promise<void> {
 
 
 async function processOnce(): Promise<void> {
-  const workerAddress = process.env.MECH_WORKER_ADDRESS || '';
+  const workerAddress = process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '';
   if (!workerAddress) {
-    workerLogger.error('Missing MECH_WORKER_ADDRESS environment variable');
+    workerLogger.error('Missing MECH_ADDRESS environment variable');
     return;
   }
 

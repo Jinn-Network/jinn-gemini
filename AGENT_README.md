@@ -36,10 +36,12 @@ yarn install
 SUPABASE_URL=https://<your-project-ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 
+# RPC Configuration (single source for all blockchain interactions)
+RPC_URL=https://mainnet.base.org
+
 # Optional; defaults shown
 PONDER_GRAPHQL_URL=http://localhost:42069/graphql
 CONTROL_API_PORT=4001
-PONDER_RPC_URL=https://mainnet.base.org
 PONDER_START_BLOCK=35577849
 PONDER_MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
 
@@ -76,7 +78,12 @@ yarn mcp:start
 ## Environment variables (confirmed)
 
 - Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required by `control-api/server.ts`).
-- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `PONDER_RPC_URL` or `RPC_URL`, `PONDER_START_BLOCK`, `PONDER_MECH_ADDRESS` (`ponder/ponder.config.ts`).
+- RPC Configuration: `RPC_URL` (single source for all blockchain interactions)
+  - Legacy variables (`PONDER_RPC_URL`, `MECHX_CHAIN_RPC`, `MECH_RPC_HTTP_URL`, `BASE_RPC_URL`) are automatically mapped to `RPC_URL` if not explicitly set
+  - For new deployments, only `RPC_URL` is required
+- Mech Configuration: `MECH_ADDRESS` (the mech contract address for both worker operations and indexing)
+  - Legacy variables (`MECH_WORKER_ADDRESS`, `PONDER_MECH_ADDRESS`) are supported for backwards compatibility
+- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `PONDER_START_BLOCK` (`ponder/ponder.config.ts`).
 - Control API: `CONTROL_API_PORT` (default `4001`). Requires `X-Worker-Address` on requests.
 - Agent loop protection (optional, `gemini-agent/agent.ts`):
   - `AGENT_MAX_STDOUT_SIZE` (bytes, default 5MB)
@@ -90,8 +97,8 @@ yarn mcp:start
 
 ## Ponder (indexer) – reads
 
-- Network: Base (8453). RPC: `PONDER_RPC_URL` or `RPC_URL`. Start block: `PONDER_START_BLOCK`.
-- Contracts watched: `MechMarketplace` (request events) and `OlasMech` (deliver events).
+- Network: Base (8453). RPC: `RPC_URL` (or legacy `PONDER_RPC_URL`). Start block: `PONDER_START_BLOCK`.
+- Contracts watched: `MechMarketplace` (request events) and `OlasMech` at `MECH_ADDRESS` (deliver events).
 - Schema (`ponder/ponder.schema.ts`):
   - `request(id, mech, sender, requestData?, ipfsHash?, deliveryIpfsHash?, blockNumber, blockTimestamp, delivered, jobName?, enabledTools?[])`
   - `delivery(id, requestId, mech, mechServiceMultisig, deliveryRate, ipfsHash?, transactionHash, blockNumber, blockTimestamp)`
@@ -404,14 +411,20 @@ This ensures agents have the foundation they need to make informed decisions and
     yarn install
     ```
 2.  **Configure Environment**:
-    Create a `.env` file in the root directory with your Supabase credentials:
+    Create a `.env` file in the root directory based on `.env.template`:
     ```env
+    # Required
     SUPABASE_URL=https://your-project-ref.supabase.co
     SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-    
+    RPC_URL=https://mainnet.base.org
+
     # Optional: Configure local transaction queue (default: ./transaction_queue.db)
     LOCAL_QUEUE_DB_PATH=./data/transaction_queue.db
     ```
+
+    **Migration Note for Existing Users**:
+    - RPC URLs: If you're upgrading from an older version that used multiple RPC variables (`PONDER_RPC_URL`, `MECHX_CHAIN_RPC`, `MECH_RPC_HTTP_URL`, `BASE_RPC_URL`), you can now consolidate these into a single `RPC_URL` variable. The system automatically maps `RPC_URL` to all legacy variables for backwards compatibility.
+    - Mech Address: Similarly, `MECH_WORKER_ADDRESS` and `PONDER_MECH_ADDRESS` are now consolidated into `MECH_ADDRESS`. Legacy variables are still supported for backwards compatibility.
 3.  **Gemini CLI Authentication**:
     Ensure you have authenticated the Gemini CLI on your host machine first.
 

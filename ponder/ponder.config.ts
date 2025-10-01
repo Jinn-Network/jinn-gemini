@@ -27,7 +27,7 @@ export default createConfig({
     },
     OlasMech: {
       network: "base",
-      address: process.env.PONDER_MECH_ADDRESS || '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7',
+      address: process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || process.env.PONDER_MECH_ADDRESS || '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7',
       abi: (AgentMechAbi as any)?.abi || (AgentMechAbi as any),
       startBlock: Number(process.env.PONDER_START_BLOCK || 35577849),
     },

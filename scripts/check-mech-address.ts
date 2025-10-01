@@ -4,10 +4,10 @@ import agentMechAbi from 'mech-client-ts/dist/abis/AgentMech.json' assert { type
 
 async function main() {
   const rpc = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
-  const mech = (process.env.MECH_WORKER_ADDRESS || '').trim();
+  const mech = (process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '').trim();
   const safe = (process.env.MECH_SAFE_ADDRESS || '').trim();
   if (!rpc || !mech) {
-    console.error('Missing RPC_URL (or MECHX_CHAIN_RPC/MECH_RPC_HTTP_URL) or MECH_WORKER_ADDRESS');
+    console.error('Missing RPC_URL (or MECHX_CHAIN_RPC/MECH_RPC_HTTP_URL) or MECH_ADDRESS');
     process.exit(1);
   }
   const web3 = new Web3(rpc);
