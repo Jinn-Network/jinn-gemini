@@ -20,7 +20,7 @@ async function main() {
   const chainConfig = process.env.MECH_CHAIN_CONFIG || 'base';
   const targetMechAddress = (process.env.MECH_WORKER_ADDRESS || '').trim();
   const safeAddress = (process.env.MECH_SAFE_ADDRESS || '').trim();
-  const rpcHttpUrl = (process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL || '').trim();
+  const rpcHttpUrl = (process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL || '').trim();
 
   if (!targetMechAddress || !safeAddress) {
     console.error('Missing MECH_WORKER_ADDRESS or MECH_SAFE_ADDRESS');

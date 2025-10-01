@@ -237,7 +237,7 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
   if (notDelivered.length === 0) return [];
   // Intersect with on-chain undelivered for additional safety (Control API will enforce atomic claim)
   try {
-    const rpcHttpUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+    const rpcHttpUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
     const mechToSet = new Map<string, Set<string>>();
     for (const r of notDelivered) {
       const key = r.mech.toLowerCase();
@@ -684,7 +684,7 @@ async function processOnce(): Promise<void> {
     const targetMechAddress = target.mech;
     const privateKeyEnv = (process.env.MECH_PRIVATE_KEY || '').trim();
     const privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH || 'mech_private_key.txt';
-    const rpcHttpUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+    const rpcHttpUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
     if (safeAddress && targetMechAddress) {
       // Preflight: ensure request is still undelivered on-chain before constructing Safe tx
       const requestIdHex = String(target.id).startsWith('0x') ? String(target.id) : '0x' + BigInt(String(target.id)).toString(16);
