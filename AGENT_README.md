@@ -39,11 +39,13 @@ SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 # RPC Configuration (single source for all blockchain interactions)
 RPC_URL=https://mainnet.base.org
 
+# Mech Configuration
+MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
+
 # Optional; defaults shown
 PONDER_GRAPHQL_URL=http://localhost:42069/graphql
 CONTROL_API_PORT=4001
 PONDER_START_BLOCK=35577849
-PONDER_MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
 
 # Dev: run MCP server with tsx
 USE_TSX_MCP=1
