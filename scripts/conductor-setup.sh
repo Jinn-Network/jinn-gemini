@@ -101,7 +101,7 @@ yarn install --ignore-engines
 
 # Build the main project
 print_status "Building the main project..."
-if yarn build; then
+if yarn build --ignore-engines; then
     print_success "Main project built successfully"
 else
     print_error "Main project build failed"
@@ -109,7 +109,7 @@ fi
 
 # Build the MCP package (optional - not required for yarn dev)
 print_status "Building MCP package..."
-if yarn workspace @jinn/metacog-mcp build 2>/dev/null; then
+if yarn workspace @jinn/metacog-mcp build --ignore-engines 2>/dev/null; then
     print_success "MCP package built successfully"
 else
     echo -e "${YELLOW}[WARNING]${NC} MCP package build skipped (not required for development)"
