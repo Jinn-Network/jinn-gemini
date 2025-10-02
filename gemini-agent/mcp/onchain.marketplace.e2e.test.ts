@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fetch from 'cross-fetch';
 import { randomUUID } from 'node:crypto';
 import { execa } from 'execa';
@@ -7,6 +7,7 @@ import path from 'node:path';
 // Import tools via the MCP tools index (NodeNext resolution allows .js for TS modules)
 import { getDetails, loadMcpServer, stopMcpServer, dispatchNewJob, dispatchExistingJob, searchJobs, searchArtifacts } from './tools/index.js';
 import { loadEnvOnce } from './tools/shared/env.js';
+import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
 
 // Helper: parse MCP tool response content
 function parseToolText(result: any): any {
@@ -77,6 +78,8 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
   let mcpStarted = false;
   let jobDefForRepost: string | null = null;
   let controlUrl: string;
+  let vnetResult: VnetResult | null = null;
+  let tenderlyClient: ReturnType<typeof createTenderlyClient> | null = null;
 
   async function waitForGraphql(url: string, timeoutMs = 60_000): Promise<void> {
     const start = Date.now();
@@ -101,6 +104,27 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
   beforeAll(async () => {
     // Ensure env in this process
     loadEnvOnce();
+
+    // Create Tenderly Virtual TestNet for isolated testing
+    tenderlyClient = createTenderlyClient();
+    console.log('[tenderly] Creating ephemeral Virtual TestNet for E2E test...');
+    vnetResult = await tenderlyClient.createVnet(8453); // Base mainnet
+    console.log(`[tenderly] VNet created: ${vnetResult.id}`);
+    console.log(`[tenderly] Admin RPC: ${vnetResult.adminRpcUrl}`);
+
+    // Fund the test wallet
+    const testWallet = '0x6ad64135eae1a5a78ec74c44d337a596c682f690';
+    console.log(`[tenderly] Funding test wallet: ${testWallet}`);
+    await tenderlyClient.fundAddress(testWallet, ethToWei('10'), vnetResult.adminRpcUrl);
+    console.log('[tenderly] Test wallet funded with 10 ETH');
+
+    // Override RPC URLs to use Tenderly VNet
+    process.env.RPC_URL = vnetResult.adminRpcUrl;
+    process.env.PONDER_RPC_URL = vnetResult.adminRpcUrl;
+    process.env.MECH_RPC_HTTP_URL = vnetResult.adminRpcUrl;
+    process.env.MECHX_CHAIN_RPC = vnetResult.adminRpcUrl;
+    process.env.BASE_RPC_URL = vnetResult.adminRpcUrl;
+
     await loadMcpServer();
     mcpStarted = true;
 
@@ -197,6 +221,13 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       try { controlApiProc.kill('SIGTERM', { forceKillAfterTimeout: 5000 }); } catch {}
       controlApiProc = null;
     }
+
+    // Clean up Tenderly Virtual TestNet
+    if (vnetResult && tenderlyClient) {
+      console.log(`[tenderly] Deleting Virtual TestNet: ${vnetResult.id}`);
+      await tenderlyClient.deleteVnet(vnetResult.id);
+      console.log('[tenderly] VNet cleanup complete');
+    }
   });
   it('posts a marketplace request, verifies IPFS and subgraph indexing, and fetches via get_details', async () => {
     // Ensure env is loaded for mech client ts and tools
@@ -213,6 +244,9 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
     const dispatchRes = await dispatchNewJob({ prompt, jobName, enabledTools, updateExisting: true });
     const dispatchParsed = parseToolText(dispatchRes);
+    if (!dispatchParsed?.meta?.ok) {
+      console.error('[TEST DEBUG] dispatchNewJob failed:', JSON.stringify(dispatchParsed, null, 2));
+    }
     expect(dispatchParsed?.meta?.ok).toBe(true);
     const data = dispatchParsed?.data || {};
     expect(Array.isArray(data.request_ids) && data.request_ids.length > 0).toBe(true);
@@ -442,8 +476,8 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
   it('end-to-end: worker processes request, creates artifact via MCP, delivers on-chain, and subgraph indexes delivery + artifact', async () => {
     loadEnvOnce();
     const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-    const mechWorker = process.env.MECH_ADDRESS;
-    expect(mechWorker, 'MECH_ADDRESS required').toBeTruthy();
+    const mechWorker = process.env.MECH_WORKER_ADDRESS || process.env.MECH_ADDRESS;
+    expect(mechWorker, 'MECH_WORKER_ADDRESS or MECH_ADDRESS required').toBeTruthy();
 
     // 1) Create parent job first (for Work Protocol testing)
     const parentJobName = `e2e-parent-${Date.now()}-${randomUUID().slice(0, 6)}`;
