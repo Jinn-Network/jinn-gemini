@@ -40,10 +40,10 @@ function getWorkerAddress(): string {
   if (context.mechAddress) {
     return context.mechAddress;
   }
-  
-  const addr = (process.env.MECH_WORKER_ADDRESS || '').trim();
+
+  const addr = (process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '').trim();
   if (!addr) {
-    throw new Error('MECH_WORKER_ADDRESS is required for Control API calls');
+    throw new Error('MECH_ADDRESS is required for Control API calls');
   }
   return addr;
 }

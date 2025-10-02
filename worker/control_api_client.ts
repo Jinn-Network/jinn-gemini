@@ -27,8 +27,8 @@ export type MessageInput = {
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
 
 function getWorkerAddress(): string {
-  const addr = (process.env.MECH_WORKER_ADDRESS || '').trim();
-  if (!addr) throw new Error('MECH_WORKER_ADDRESS is required for Control API calls');
+  const addr = (process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '').trim();
+  if (!addr) throw new Error('MECH_ADDRESS is required for Control API calls');
   return addr;
 }
 
