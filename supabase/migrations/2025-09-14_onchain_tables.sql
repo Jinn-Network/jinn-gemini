@@ -16,9 +16,9 @@ CREATE INDEX IF NOT EXISTS idx_onchain_request_claims_claimed_at ON public.oncha
 -- 2) On-chain job reports
 CREATE TABLE IF NOT EXISTS public.onchain_job_reports (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  request_id     TEXT NOT NULL,
+  request_id     TEXT NOT NULL UNIQUE,
   worker_address TEXT NOT NULL,
-  status         TEXT NOT NULL CHECK (status IN ('COMPLETED','FAILED')),
+  status         TEXT NOT NULL CHECK (status IN ('COMPLETED','DELEGATING','WAITING','FAILED')),
   duration_ms    INTEGER NOT NULL,
   total_tokens   INTEGER NOT NULL DEFAULT 0,
   tools_called   JSONB NOT NULL DEFAULT '[]'::jsonb,
