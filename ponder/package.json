@@ -17,8 +17,5 @@
   },
   "devDependencies": {
     "@types/node": "^20.12.8"
-  },
-  "engines": {
-    "node": "22.11.x"
   }
 }

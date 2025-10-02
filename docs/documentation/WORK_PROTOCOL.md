@@ -57,11 +57,11 @@ This is the final and mandatory phase of every agent run. The agent must conclud
 
 1.  **Produce an Execution Summary:** The agent's final output for every run **must** be a comprehensive **Execution Summary**. This summary details the agent's reasoning, actions, and outcome for the run.
 
-2.  **Embed a `FinalStatus` Signal:** Within the execution summary, the agent **must** include a machine-readable JSON block to declare its final status. This signal is the formal mechanism for handing off workflow control to the worker.
+2.  **Signal Status Using `finalize_job` Tool (Preferred Method):** The agent **must** call the `finalize_job` tool to declare its final status. This immediately records the job state and is the formal mechanism for handing off workflow control to the worker.
 
-    **Format:**
-    ```json
-    FinalStatus: {"status": "STATUS_CODE", "message": "A brief, human-readable summary of the outcome."}
+    **Tool Call:**
+    ```
+    finalize_job(status: "STATUS_CODE", message: "A brief, human-readable summary of the outcome.")
     ```
 
     **Status Codes:**
@@ -70,8 +70,10 @@ This is the final and mandatory phase of every agent run. The agent must conclud
     *   `WAITING`: The agent is paused, awaiting completion of other sibling jobs before it can proceed (Path D).
     *   `FAILED`: The agent has encountered an error and requires supervisor intervention (Path E).
 
+    **Legacy Fallback:** For backwards compatibility, agents may also embed a text-based `FinalStatus:` JSON block in their execution summary, which the worker will parse if the tool was not used.
+
 3.  **Worker-Managed Workflow (The Primary Mechanism):** The `mech_worker` uses the agent's signal to manage the workflow reliably. After every job run, the worker will:
-    *   Parse the agent's final output to find and read the `FinalStatus` JSON block.
+    *   Extract the final status from the `finalize_job` tool call in telemetry (or parse text-based `FinalStatus` as fallback).
     *   **If the status is `COMPLETED` or `FAILED`**, the worker will **automatically dispatch the parent job.** This guarantees the supervisor is notified of finished work or critical issues.
     *   **If the status is `DELEGATING` or `WAITING`** (or if the status is missing/malformed), the worker will **not** dispatch the parent job. This prevents the supervisor from being activated unnecessarily.
 

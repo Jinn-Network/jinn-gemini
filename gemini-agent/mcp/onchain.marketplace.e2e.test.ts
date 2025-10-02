@@ -442,8 +442,8 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
   it('end-to-end: worker processes request, creates artifact via MCP, delivers on-chain, and subgraph indexes delivery + artifact', async () => {
     loadEnvOnce();
     const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
-    const mechWorker = process.env.MECH_WORKER_ADDRESS;
-    expect(mechWorker, 'MECH_WORKER_ADDRESS required').toBeTruthy();
+    const mechWorker = process.env.MECH_ADDRESS;
+    expect(mechWorker, 'MECH_ADDRESS required').toBeTruthy();
 
     // 1) Create parent job first (for Work Protocol testing)
     const parentJobName = `e2e-parent-${Date.now()}-${randomUUID().slice(0, 6)}`;
@@ -486,8 +486,8 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     
     try {
       const jobName = `e2e-worker-${Date.now()}-${randomUUID().slice(0, 6)}`;
-      const prompt = `Create a concise artifact using the create_artifact tool, exactly once, with: name: \"${artifactName}\", topic: \"${artifactTopic}\", content: \"${artifactContent}\". After the artifact is created, call the signal_completion tool with status: "COMPLETED" and message: "Successfully created artifact and completed analysis"`;
-      const enabledTools = ['create_artifact', 'signal_completion'];
+      const prompt = `Create a concise artifact using the create_artifact tool, exactly once, with: name: \"${artifactName}\", topic: \"${artifactTopic}\", content: \"${artifactContent}\". After the artifact is created, call the finalize_job tool with status: "COMPLETED" and message: "Successfully created artifact and completed analysis"`;
+      const enabledTools = ['create_artifact', 'finalize_job'];
       const dispatchRes = await dispatchNewJob({ prompt, jobName, enabledTools, updateExisting: true });
       const dispatchParsed = parseToolText(dispatchRes);
       expect(dispatchParsed?.meta?.ok).toBe(true);
@@ -634,7 +634,7 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     expect(typeof deliveryArtifact?.cid).toBe('string');
 
     // 8) Work Protocol: Verify parent job was automatically dispatched
-    // The child job calls signal_completion tool with status "COMPLETED", which triggers the worker
+    // The child job calls finalize_job tool with status "COMPLETED", which triggers the worker
     // to automatically dispatch the parent job. This is the core of Work Protocol.
     // Query for NEW requests that target the parent job definition (jobDefinitionId = parent) created after the child completed
     // These auto-dispatched requests will have additionalContext with message from the child
@@ -746,9 +746,9 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
     try {
       // 3) Dispatch child job 1: Data Analysis
-      // Note: This child does NOT call signal_completion, so it won't trigger Work Protocol auto-dispatch
+      // Note: This child does NOT call finalize_job, so it won't trigger Work Protocol auto-dispatch
       const child1Name = `context-child1-${Date.now()}-${randomUUID().slice(0, 6)}`;
-      const child1Prompt = 'Child job 1: Analyze sample data and generate insights. Create artifact with analysis results. Do not signal completion - this is an intermediate step.';
+      const child1Prompt = 'Child job 1: Analyze sample data and generate insights. Create artifact with analysis results. Do not finalize job - this is an intermediate step.';
       const child1Tools = ['create_artifact'];
       
       const child1Dispatch = await dispatchNewJob({ 
@@ -763,9 +763,9 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       const child1RequestId: string = child1Parsed?.data?.request_ids?.[0];
 
       // 4) Dispatch child job 2: Report Generation
-      // Note: This child also does NOT call signal_completion, so it won't trigger Work Protocol auto-dispatch
+      // Note: This child also does NOT call finalize_job, so it won't trigger Work Protocol auto-dispatch
       const child2Name = `context-child2-${Date.now()}-${randomUUID().slice(0, 6)}`;
-      const child2Prompt = 'Child job 2: Generate summary report from analysis. Create artifact with formatted report. Do not signal completion - waiting for additional data.';
+      const child2Prompt = 'Child job 2: Generate summary report from analysis. Create artifact with formatted report. Do not finalize job - waiting for additional data.';
       const child2Tools = ['create_artifact'];
       
       const child2Dispatch = await dispatchNewJob({ 
@@ -920,8 +920,8 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     expect(indexedContext?.summary).toBeTruthy();
     expect(Array.isArray(indexedContext.hierarchy)).toBe(true);
 
-    // Work Protocol: Verify that child jobs without signal_completion do NOT trigger parent dispatch
-    // In this test, child jobs do not call signal_completion, so parent should NOT be auto-dispatched
+    // Work Protocol: Verify that child jobs without finalize_job do NOT trigger parent dispatch
+    // In this test, child jobs do not call finalize_job, so parent should NOT be auto-dispatched
     // (Only the manual repost above should exist, not auto-dispatches from Work Protocol)
 
     const qAutoDispatchCheck = 'query($jobId:String!){ requests(where:{jobDefinitionId:$jobId}, orderBy:"blockTimestamp", orderDirection:"desc"){ items { id blockTimestamp } } }';
@@ -936,9 +936,9 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     console.log('DEBUG: Manual repost request ID:', repostRequestId);
     
     // Should have: 1) Original parent request, 2) Manual repost from dispatchExistingJob
-    // Should NOT have: Additional auto-dispatches from Work Protocol (since children didn't call signal_completion)
+    // Should NOT have: Additional auto-dispatches from Work Protocol (since children didn't call finalize_job)
     const nonOriginalRequests = allParentRequests.filter((r: any) => r.id !== parentRequestId);
-    expect(nonOriginalRequests.length, 'Should only have manual repost, no Work Protocol auto-dispatch without signal_completion').toBe(1);
+    expect(nonOriginalRequests.length, 'Should only have manual repost, no Work Protocol auto-dispatch without finalize_job').toBe(1);
     expect(nonOriginalRequests[0]?.id, 'Manual repost should match expected ID').toBe(repostRequestId);
 
     // Audit log for verification
@@ -957,7 +957,7 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
         work_protocol_verification: {
           total_parent_requests: allParentRequests.length,
           auto_dispatch_prevented: true,
-          reason: 'Children did not call signal_completion'
+          reason: 'Children did not call finalize_job'
         }
       }
     }, null, 2));

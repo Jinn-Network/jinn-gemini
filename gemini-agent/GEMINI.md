@@ -62,7 +62,7 @@ Based on the context gathered, I choose an execution status and take appropriate
 - Produce clean deliverable output
 - Document what was accomplished
 
-**Signal:** ✅ Call `signal_completion(status: "COMPLETED", ...)`
+**Signal:** ✅ Call `finalize_job(status: "COMPLETED", ...)`
 
 ---
 
@@ -80,7 +80,7 @@ Based on the context gathered, I choose an execution status and take appropriate
 - Document delegation plan and what each child job will do
 - Use `dispatch_existing_job` for continuing work, `dispatch_new_job` for new job containers
 
-**Signal:** ❌ No - Conclude run cleanly, system tracks active child jobs
+**Signal:** ✅ Call `finalize_job(status: "DELEGATING", ...)`
 
 ---
 
@@ -98,7 +98,7 @@ Based on the context gathered, I choose an execution status and take appropriate
 - Conclude run without major action
 - Do not re-dispatch or create new children
 
-**Signal:** ❌ No - Conclude run cleanly, wait for child completion to trigger next run
+**Signal:** ✅ Call `finalize_job(status: "WAITING", ...)`
 
 ---
 
@@ -116,14 +116,14 @@ Based on the context gathered, I choose an execution status and take appropriate
 - Detail what information or capability is missing
 - Provide enough context for supervisor to resolve the issue
 
-**Signal:** ✅ Call `signal_completion(status: "FAILED", ...)`
+**Signal:** ✅ Call `finalize_job(status: "FAILED", ...)`
 
 ---
 
 **Note on Work Protocol Flow:**
 - Statuses `COMPLETED` and `FAILED` are terminal - they trigger parent job dispatch via Work Protocol
 - Statuses `DELEGATING` and `WAITING` are intermediate - the job remains active for future runs
-- I only use `signal_completion` for terminal statuses (COMPLETED or FAILED)
+- I MUST use `finalize_job` for ALL statuses (COMPLETED, DELEGATING, WAITING, or FAILED) to record the job state
 
 ### Phase 3: Signal & Report
 
@@ -131,13 +131,15 @@ Every run must conclude with a structured signal:
 
 1. **Produce an Execution Summary**: A comprehensive summary of my reasoning, actions, and outcome.
 
-2. **Use signal_completion Tool**: I MUST call the `signal_completion` tool with appropriate status:
+2. **Use finalize_job Tool**: I MUST call the `finalize_job` tool with appropriate status:
    - `COMPLETED`: Final work is done, deliverables ready for review
+   - `DELEGATING`: Dispatched child jobs, awaiting their completion
+   - `WAITING`: Paused, waiting for sibling jobs to complete
    - `FAILED`: Critical error requiring supervisor intervention
 
-3. **Worker-Managed Workflow**: The system automatically dispatches my parent job when I signal `COMPLETED` or `FAILED`. For `DELEGATING` or `WAITING` states, I handle coordination through my execution and do not signal completion.
+3. **Worker-Managed Workflow**: The system automatically dispatches my parent job when I finalize with `COMPLETED` or `FAILED`. For `DELEGATING` or `WAITING` states, the job remains active and the system waits for child/sibling completion before re-activating.
 
-**Important**: The `signal_completion` tool is ONLY for terminal states (COMPLETED/FAILED). I do not use it for intermediate states like delegating or waiting.
+**Important**: I MUST use the `finalize_job` tool for ALL execution statuses to properly record the job state in the work protocol.
 
 ## IV. Job Dispatch Strategy
 
@@ -169,7 +171,7 @@ Every run must produce an Execution Summary with this structure:
 - **Deliverables**: Summary of outputs, artifacts, or jobs created, with IDs when available.
 - **Completion Status**: Clear statement if work has reached a terminal state (COMPLETED or FAILED).
 
-After the summary, I call `signal_completion` with the appropriate status if the work has reached a terminal state.
+After the summary, I call `finalize_job` with the appropriate status for the current execution state (COMPLETED, DELEGATING, WAITING, or FAILED).
 
 ## VI. Resource Efficiency
 

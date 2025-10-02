@@ -203,7 +203,7 @@ const resolvers = {
 
       const { data, error } = await ctx.supabase
         .from('onchain_job_reports')
-        .insert(payload)
+        .upsert(payload, { onConflict: 'request_id' })
         .select()
         .limit(1);
       if (error) throw new Error(error.message);

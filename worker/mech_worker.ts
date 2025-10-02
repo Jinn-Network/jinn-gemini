@@ -42,14 +42,14 @@ interface FinalStatus {
 }
 
 /**
- * Extract signal_completion from telemetry (structured tool call)
+ * Extract finalize_job from telemetry (structured tool call)
  * This is the preferred method as it's deterministic
  */
 function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
   // Support both camelCase (toolCalls) and snake_case (tool_calls)
   const toolCalls = telemetry?.toolCalls || telemetry?.tool_calls;
 
-  workerLogger.debug(`[SIGNAL_DEBUG] Checking telemetry for signal_completion`, {
+  workerLogger.debug(`[SIGNAL_DEBUG] Checking telemetry for finalize_job`, {
     has_tool_calls: !!toolCalls,
     tool_call_count: toolCalls?.length || 0,
     tool_names: toolCalls?.map((c: any) => c.tool || c.name) || []
@@ -57,12 +57,12 @@ function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
 
   if (!toolCalls) return null;
 
-  // Find signal_completion tool call - check both name and tool fields
+  // Find finalize_job tool call - check both name and tool fields
   const signalCall = toolCalls.find((call: any) =>
-    call.name === 'signal_completion' || call.tool === 'signal_completion'
+    call.name === 'finalize_job' || call.tool === 'finalize_job'
   );
 
-  workerLogger.debug(`[SIGNAL_DEBUG] Found signal call:`, signalCall ? 'YES' : 'NO');
+  workerLogger.debug(`[SIGNAL_DEBUG] Found finalize_job call:`, signalCall ? 'YES' : 'NO');
 
   if (!signalCall) return null;
 
@@ -70,7 +70,7 @@ function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
     // Tool call arguments can be in input, arguments, args, or result fields
     const input = signalCall.input || signalCall.arguments || signalCall.args || signalCall.result;
 
-    workerLogger.debug(`[SIGNAL_DEBUG] Signal call structure:`, {
+    workerLogger.debug(`[SIGNAL_DEBUG] finalize_job call structure:`, {
       has_input: !!signalCall.input,
       has_arguments: !!signalCall.arguments,
       has_args: !!signalCall.args,
@@ -84,27 +84,27 @@ function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
     const message = input.message;
 
     if (!status || !message) {
-      workerLogger.warn('signal_completion missing status or message', input);
+      workerLogger.warn('finalize_job missing status or message', input);
       return null;
     }
 
-    const validStatuses = ['COMPLETED', 'FAILED'];
+    const validStatuses = ['COMPLETED', 'DELEGATING', 'WAITING', 'FAILED'];
     if (!validStatuses.includes(status)) {
-      workerLogger.warn(`Invalid signal_completion status: ${status}`);
+      workerLogger.warn(`Invalid finalize_job status: ${status}`);
       return null;
     }
 
-    workerLogger.info(`✅ Detected signal_completion from telemetry: ${status}`);
+    workerLogger.info(`✅ Detected finalize_job from telemetry: ${status}`);
     return { status, message };
   } catch (e) {
-    workerLogger.warn('Failed to extract signal_completion from telemetry', e);
+    workerLogger.warn('Failed to extract finalize_job from telemetry', e);
     return null;
   }
 }
 
 /**
  * Parse FinalStatus from text output (legacy method, fallback only)
- * DEPRECATED: Use signal_completion tool instead
+ * DEPRECATED: Use finalize_job tool instead
  */
 function parseFinalStatusFromText(output: string): FinalStatus | null {
   if (!output) return null;
