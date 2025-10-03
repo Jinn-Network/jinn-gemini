@@ -220,7 +220,7 @@ export class Agent {
         }
       } catch {}
 
-      const geminiProcess = spawn('gemini', args, {
+      const geminiProcess = spawn('npx', ['@google/gemini-cli', ...args], {
         cwd: this.agentRoot,
         env: envWithJob
       });
