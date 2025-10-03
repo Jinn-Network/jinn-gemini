@@ -239,10 +239,16 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
     // 1) Dispatch a new job
     const jobName = `e2e-job-${Date.now()}-${randomUUID().slice(0, 8)}`;
-    const prompt = 'E2E prompt: verify on-chain dispatch, IPFS upload, and subgraph indexing. Include variables exactly.';
     const enabledTools = ['create_artifact'];
 
-    const dispatchRes = await dispatchNewJob({ prompt, jobName, enabledTools, updateExisting: true });
+    const dispatchRes = await dispatchNewJob({
+      objective: 'Verify on-chain dispatch and IPFS upload',
+      context: 'E2E test to validate marketplace integration and subgraph indexing with exact variable matching',
+      acceptanceCriteria: 'Request is indexed, IPFS content is valid, variables match exactly',
+      jobName,
+      enabledTools,
+      updateExisting: true
+    });
     const dispatchParsed = parseToolText(dispatchRes);
     if (!dispatchParsed?.meta?.ok) {
       console.error('[TEST DEBUG] dispatchNewJob failed:', JSON.stringify(dispatchParsed, null, 2));
@@ -361,10 +367,16 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     process.env.JINN_JOB_DEFINITION_ID = lineageJobDef;
     try {
       const jobName = `e2e-lineage-${Date.now()}-${randomUUID().slice(0, 8)}`;
-      const prompt = 'E2E lineage: ensure env lineage is embedded and indexed.';
       const enabledTools = ['google_web_search'];
 
-      const dispatchRes = await dispatchNewJob({ prompt, jobName, enabledTools, updateExisting: true });
+      const dispatchRes = await dispatchNewJob({
+        objective: 'Validate lineage propagation in IPFS and subgraph',
+        context: 'E2E test to verify sourceRequestId and sourceJobDefinitionId flow through the system correctly',
+        acceptanceCriteria: 'IPFS contains lineage fields, subgraph indexes them correctly, env vars propagate',
+        jobName,
+        enabledTools,
+        updateExisting: true
+      });
       const dispatchParsed = parseToolText(dispatchRes);
       expect(dispatchParsed?.meta?.ok).toBe(true);
       const data = dispatchParsed?.data || {};
@@ -435,6 +447,9 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     try {
       const repostRes = await dispatchExistingJob({ jobId: jobDefForRepost! });
       const parsed = parseToolText(repostRes);
+      if (!parsed?.meta?.ok) {
+        console.log('[DEBUG] dispatchExistingJob failed:', JSON.stringify(parsed, null, 2));
+      }
       expect(parsed?.meta?.ok).toBe(true);
       const reqId: string | undefined = parsed?.data?.request_ids?.[0];
       expect(typeof reqId).toBe('string');
@@ -481,12 +496,13 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
     // 1) Create parent job first (for Work Protocol testing)
     const parentJobName = `e2e-parent-${Date.now()}-${randomUUID().slice(0, 6)}`;
-    const parentPrompt = 'Parent job: review child work results and coordinate next steps';
-    const parentDispatch = await dispatchNewJob({ 
-      prompt: parentPrompt, 
-      jobName: parentJobName, 
-      enabledTools: ['create_artifact'], 
-      updateExisting: true 
+    const parentDispatch = await dispatchNewJob({
+      objective: 'Coordinate child job execution and review results',
+      context: 'Parent job for Work Protocol testing - orchestrates child tasks and aggregates outputs',
+      acceptanceCriteria: 'Child jobs are dispatched, results aggregated, next steps determined',
+      jobName: parentJobName,
+      enabledTools: ['create_artifact'],
+      updateExisting: true
     });
     const parentParsed = parseToolText(parentDispatch);
     expect(parentParsed?.meta?.ok).toBe(true);
@@ -520,9 +536,17 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     
     try {
       const jobName = `e2e-worker-${Date.now()}-${randomUUID().slice(0, 6)}`;
-      const prompt = `Create a concise artifact using the create_artifact tool, exactly once, with: name: \"${artifactName}\", topic: \"${artifactTopic}\", content: \"${artifactContent}\". After the artifact is created, call the finalize_job tool with status: "COMPLETED" and message: "Successfully created artifact and completed analysis"`;
       const enabledTools = ['create_artifact', 'finalize_job'];
-      const dispatchRes = await dispatchNewJob({ prompt, jobName, enabledTools, updateExisting: true });
+      const dispatchRes = await dispatchNewJob({
+        objective: 'Create test artifact via MCP tool',
+        context: 'Worker execution test - validates artifact creation and finalize_job flow for Work Protocol',
+        acceptanceCriteria: `Artifact created with name "${artifactName}", topic "${artifactTopic}", content "${artifactContent}", finalize_job called with COMPLETED status`,
+        deliverables: 'Single artifact with specified metadata and content',
+        constraints: 'Call create_artifact exactly once, then finalize_job with status COMPLETED',
+        jobName,
+        enabledTools,
+        updateExisting: true
+      });
       const dispatchParsed = parseToolText(dispatchRes);
       expect(dispatchParsed?.meta?.ok).toBe(true);
       const data = dispatchParsed?.data || {};
@@ -744,14 +768,15 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     
     // 1) Create a parent job that will coordinate child tasks
     const parentJobName = `context-parent-${Date.now()}-${randomUUID().slice(0, 6)}`;
-    const parentPrompt = 'Parent job: coordinate child tasks for data analysis and report generation. This job will be reposted with context of child work.';
     const parentTools = ['dispatch_new_job', 'dispatch_existing_job', 'create_artifact'];
-    
-    const parentDispatch = await dispatchNewJob({ 
-      prompt: parentPrompt, 
-      jobName: parentJobName, 
-      enabledTools: parentTools, 
-      updateExisting: true 
+
+    const parentDispatch = await dispatchNewJob({
+      objective: 'Coordinate data analysis and report generation workflow',
+      context: 'Context envelope test - job will be reposted with child job hierarchy and artifact context',
+      acceptanceCriteria: 'Child jobs complete, context envelope includes hierarchy and artifacts when reposted',
+      jobName: parentJobName,
+      enabledTools: parentTools,
+      updateExisting: true
     });
     const parentParsed = parseToolText(parentDispatch);
     expect(parentParsed?.meta?.ok).toBe(true);
@@ -782,14 +807,17 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       // 3) Dispatch child job 1: Data Analysis
       // Note: This child does NOT call finalize_job, so it won't trigger Work Protocol auto-dispatch
       const child1Name = `context-child1-${Date.now()}-${randomUUID().slice(0, 6)}`;
-      const child1Prompt = 'Child job 1: Analyze sample data and generate insights. Create artifact with analysis results. Do not finalize job - this is an intermediate step.';
       const child1Tools = ['create_artifact'];
-      
-      const child1Dispatch = await dispatchNewJob({ 
-        prompt: child1Prompt, 
-        jobName: child1Name, 
-        enabledTools: child1Tools, 
-        updateExisting: true 
+
+      const child1Dispatch = await dispatchNewJob({
+        objective: 'Analyze sample data and generate insights',
+        context: 'First child job in decomposition hierarchy - intermediate analysis step for parent workflow',
+        acceptanceCriteria: 'Analysis artifact created with insights and metrics',
+        constraints: 'Do not finalize - this is intermediate work',
+        deliverables: 'Analysis results artifact with insights and metrics',
+        jobName: child1Name,
+        enabledTools: child1Tools,
+        updateExisting: true
       });
       const child1Parsed = parseToolText(child1Dispatch);
       expect(child1Parsed?.meta?.ok).toBe(true);
@@ -799,14 +827,17 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       // 4) Dispatch child job 2: Report Generation
       // Note: This child also does NOT call finalize_job, so it won't trigger Work Protocol auto-dispatch
       const child2Name = `context-child2-${Date.now()}-${randomUUID().slice(0, 6)}`;
-      const child2Prompt = 'Child job 2: Generate summary report from analysis. Create artifact with formatted report. Do not finalize job - waiting for additional data.';
       const child2Tools = ['create_artifact'];
-      
-      const child2Dispatch = await dispatchNewJob({ 
-        prompt: child2Prompt, 
-        jobName: child2Name, 
-        enabledTools: child2Tools, 
-        updateExisting: true 
+
+      const child2Dispatch = await dispatchNewJob({
+        objective: 'Generate summary report from analysis',
+        context: 'Second child job in decomposition hierarchy - report generation step for parent workflow',
+        acceptanceCriteria: 'Summary report artifact created with recommendations',
+        constraints: 'Do not finalize - waiting for additional data',
+        deliverables: 'Formatted summary report with analysis and recommendations',
+        jobName: child2Name,
+        enabledTools: child2Tools,
+        updateExisting: true
       });
       const child2Parsed = parseToolText(child2Dispatch);
       expect(child2Parsed?.meta?.ok).toBe(true);
@@ -1005,18 +1036,19 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     expect(process.env.MECH_PRIVATE_KEY, 'MECH_PRIVATE_KEY required').toBeTruthy();
 
     // Test scenario: Create job with message and verify it gets indexed
-    
+
     // 1) Dispatch job with message
     const jobName = `msg-test-${Date.now()}-${randomUUID().slice(0, 6)}`;
-    const jobPrompt = 'Test job: verify message indexing functionality';
     const testMessage = 'Test message: verify this gets indexed correctly';
-    
-    const dispatch = await dispatchNewJob({ 
-      prompt: jobPrompt, 
+
+    const dispatch = await dispatchNewJob({
+      objective: 'Verify message system indexing',
+      context: 'Message system test - validates message creation and subgraph indexing for Work Protocol',
+      acceptanceCriteria: 'Message is indexed in messages table with correct content and recipient',
       jobName: jobName,
       enabledTools: ['create_artifact'],
       updateExisting: true,
-      message: testMessage 
+      message: testMessage
     });
     const parsed = parseToolText(dispatch);
     expect(parsed?.meta?.ok).toBe(true);

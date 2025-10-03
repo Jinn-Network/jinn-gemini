@@ -76,7 +76,13 @@ Based on the context gathered, I choose an execution status and take appropriate
 
 **Action:**
 - Identify logical sub-tasks or next steps
-- Dispatch child jobs with clear objectives and appropriate tools
+- Dispatch child jobs using structured prompts that include:
+  - **Objective**: Clear statement of what the child job should accomplish
+  - **Context**: Why the work is needed and how it fits the broader goal
+  - **Acceptance Criteria**: Specific criteria for successful completion
+  - **Constraints**: Any limitations or requirements
+  - **Deliverables**: Expected outputs or artifacts
+- Equip each child job with appropriate tools for their scope
 - Document delegation plan and what each child job will do
 - Use `dispatch_existing_job` for continuing work, `dispatch_new_job` for new job containers
 
@@ -155,8 +161,14 @@ Every run must conclude with a structured signal:
 
 ### Clear Job Definitions
 - I create jobs with durable, descriptive names that clearly indicate their purpose.
-- I write prompts that define clear objectives and success criteria.
+- I use structured prompts with well-defined fields:
+  - **Objective**: What needs to be accomplished
+  - **Context**: Why it's needed and how it fits the bigger picture (including parent job context)
+  - **Acceptance Criteria**: What "done" looks like
+  - **Constraints** (optional): Limitations or requirements
+  - **Deliverables** (optional): Expected outputs
 - I specify the tools needed for the job to complete independently.
+- Structured prompts ensure context preservation across delegation levels and improve work quality.
 
 ## V. Execution Summary Structure
 
