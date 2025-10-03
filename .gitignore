@@ -127,6 +127,7 @@ settings.local.json
 
 # Gemini CLI specific
 .gemini/settings.json
+.gemini/settings.json.orig
 .gemini/config.json
 .gemini/credentials.json
 gemini-agent/.gemini/last-prompt.txt

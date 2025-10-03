@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "metacog": {
+      "command": "tsx",
+      "args": [
+        "../gemini-agent/mcp/server.ts"
+      ],
+      "trust": true,
+      "includeTools": [
+        "list_tools",
+        "get_details",
+        "get_job_context",
+        "dispatch_new_job",
+        "dispatch_existing_job",
+        "create_artifact",
+        "finalize_job",
+        "search_jobs",
+        "search_artifacts",
+        "google_web_search",
+        "web_fetch"
+      ]
+    }
+  },
+  "excludeTools": [
+    "list_directory",
+    "read_file",
+    "write_file",
+    "search_file_content",
+    "glob",
+    "replace",
+    "read_many_files",
+    "run_shell_command",
+    "save_memory"
+  ]
+}
