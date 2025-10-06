@@ -7,7 +7,7 @@ import { resolveRequestIpfsContent } from './shared/ipfs.js';
 // MCP registration schema (permissive) to avoid -32602 pre-validation failures.
 // We normalize and strictly validate inside the handler.
 const getDetailsBase = z.object({
-    ids: z.any(),
+    ids: z.union([z.string(), z.array(z.string())]).describe('ID or array of IDs to retrieve. Supports 0x-prefixed request IDs, artifact IDs (requestId:index), and job definition UUIDs.'),
     cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
     descendants: z.boolean().optional().describe('If true and an id is a job definition (jobs.id), include related items for descendant job definitions.'),
 });

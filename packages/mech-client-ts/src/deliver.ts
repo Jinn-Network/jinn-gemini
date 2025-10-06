@@ -310,13 +310,15 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
   if (!cid) {
     throw new Error('IPFS registry upload failed');
   }
-  console.log(`Uploaded to IPFS with CID: ${cid}`);
+  const ipfsUrl = `https://gateway.autonolas.tech/ipfs/${cid}`;
+  console.log(`Uploaded to IPFS: ${ipfsUrl}`);
 
   // Derive raw digest bytes from CID
   const digestBytes = extractSha256DigestFromCid(cid);
   console.log(`Extracted digest: ${digestBytes.toString('hex')}`);
 
-  // Web3 setup
+  // Web3 setup and config
+  const mechConfig = get_mech_config(chainConfig);
   const web3 = getWeb3Http(chainConfig, rpcHttpUrl);
   const chainId = await web3.eth.getChainId();
 
@@ -445,9 +447,10 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
       result.status = 'confirmed';
       result.block_number = Number(receipt.blockNumber);
       result.gas_used = Number(receipt.gasUsed);
-      
+
       // Log transaction confirmation details
-      console.log(`Transaction Hash: ${txHash}`);
+      const txUrl = mechConfig.transaction_url.replace('{transaction_digest}', txHash);
+      console.log(`Transaction: ${txUrl}`);
       console.log(`Status: ${result.status}`);
       console.log(`Block Number: ${result.block_number}`);
       console.log(`Gas Used: ${result.gas_used}`);
@@ -455,15 +458,17 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
       result.status = 'reverted';
       result.block_number = Number(receipt.blockNumber);
       result.gas_used = Number(receipt.gasUsed);
-      
+
       // Log transaction reversion details
-      console.log(`Transaction Hash: ${txHash}`);
+      const txUrl = mechConfig.transaction_url.replace('{transaction_digest}', txHash);
+      console.log(`Transaction: ${txUrl}`);
       console.log(`Status: ${result.status}`);
       console.log(`Block Number: ${result.block_number}`);
       console.log(`Gas Used: ${result.gas_used}`);
     } else {
       result.status = 'unknown';
-      console.log(`Transaction Hash: ${txHash}`);
+      const txUrl = mechConfig.transaction_url.replace('{transaction_digest}', txHash);
+      console.log(`Transaction: ${txUrl}`);
       console.log(`Status: ${result.status}`);
     }
   }

@@ -11,7 +11,7 @@
  */
 
 import { promises as fs } from 'fs';
-import path from 'path';
+import { resolve } from 'path';
 
 /**
  * Tenderly API configuration
@@ -353,10 +353,10 @@ export async function loadTenderlyConfig(): Promise<TenderlyConfig> {
 
   // Try to load from a config file
   try {
-    const configPath = path.resolve(process.cwd(), '.tenderly.json');
+    const configPath = resolve(process.cwd(), '.tenderly.json');
     const configContent = await fs.readFile(configPath, 'utf8');
     const fileConfig = JSON.parse(configContent);
-    
+
     Object.assign(config, fileConfig);
   } catch (error) {
     // Config file doesn't exist or is invalid, that's okay

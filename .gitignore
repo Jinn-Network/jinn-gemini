@@ -175,4 +175,7 @@ Icon?
 # Ponder local cache (never commit runtime DB/cache)
 ponder/.ponder/
 
+# VNet session files
+.vnet-session-*.json
+
 code-resources/

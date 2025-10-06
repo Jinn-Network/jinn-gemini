@@ -35,6 +35,19 @@ const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
 // Track recent reposts to prevent loops
 const recentReposts = new Map<string, number>();
 
+// Error serialization helper
+function serializeError(e: any): string {
+  if (!e) return 'Unknown error';
+  if (typeof e === 'string') return e;
+  if (e?.message) return e.message;
+  if (e instanceof Error) return e.toString();
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 // Work Protocol types and parser
 interface FinalStatus {
   status: 'COMPLETED' | 'DELEGATING' | 'WAITING' | 'FAILED';
@@ -274,7 +287,7 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
       return false;
     }
   } catch (e: any) {
-    workerLogger.warn({ requestId: request.id, error: e?.message || String(e) }, 'Claim error');
+    workerLogger.warn({ requestId: request.id, error: serializeError(e) }, 'Claim error');
     return false;
   }
 }
@@ -310,7 +323,7 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
     const jobDefinitionId = json?.jobDefinitionId || undefined;
     return { prompt, enabledTools, sourceRequestId, sourceJobDefinitionId, additionalContext, jobName, jobDefinitionId };
   } catch (e: any) {
-    workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
+    workerLogger.warn({ error: serializeError(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
     return null;
   }
 }
@@ -657,7 +670,7 @@ async function processOnce(): Promise<void> {
     workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Execution completed');
   } catch (e: any) {
     error = e;
-    workerLogger.error({ jobName: metadata?.jobName, requestId: target.id, error: e?.message || String(e) }, 'Execution failed');
+    workerLogger.error({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(e) }, 'Execution failed');
   }
   
   // Store report and get FinalStatus
@@ -714,7 +727,7 @@ async function processOnce(): Promise<void> {
       workerLogger.info({ jobName: metadata?.jobName, requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
     }
   } catch (e: any) {
-    workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: e?.message || String(e) }, 'Safe delivery failed');
+    workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(e) }, 'Safe delivery failed');
     // Record a FAILED status so the claim does not remain IN_PROGRESS
     try {
       await apiCreateJobReport(target.id, {
@@ -746,7 +759,7 @@ async function main() {
       
       await processOnce();
     } catch (e: any) {
-      workerLogger.error({ error: e?.message || String(e) }, 'Error in mech loop');
+      workerLogger.error({ error: serializeError(e) }, 'Error in mech loop');
     }
     await new Promise(r => setTimeout(r, 5000));
   }

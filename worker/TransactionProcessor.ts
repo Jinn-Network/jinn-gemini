@@ -34,7 +34,6 @@ export class TransactionProcessor {
 
     private async claimPendingTransaction(): Promise<TransactionRequest | null> {
         try {
-<<<<<<< HEAD
             const queueRequest = await this.queue.claim(this.workerId);
             if (!queueRequest) {
                 return null;
@@ -80,7 +79,6 @@ export class TransactionProcessor {
 
     private async updateTransactionAsFailed(requestId: string, errorCode: string, errorMessage: string): Promise<void> {
         try {
-<<<<<<< HEAD
             await this.queue.updateStatus(requestId, 'FAILED', {
                 error_code: errorCode,
                 error_message: errorMessage,

@@ -38,6 +38,8 @@
     "civitai:debug": "tsx scripts/civitai-sdk-debug.ts",
     "civitai:post-intent-debug": "tsx scripts/civitai-post-intent-debug.ts",
     "deliver:request": "tsx scripts/deliver_request.ts",
+    "dev:vnet": "tsx scripts/dev-vnet.ts",
+    "cleanup:vnet": "tsx scripts/cleanup-vnet.ts",
     "security:check": "snyk test --all-projects --severity-threshold=high",
     "security:monitor": "snyk monitor --all-projects",
     "security:fix": "snyk wizard"

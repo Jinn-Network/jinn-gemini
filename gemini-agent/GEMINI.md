@@ -137,7 +137,9 @@ Every run must conclude with a structured signal:
    - `WAITING`: Paused, waiting for sibling jobs to complete
    - `FAILED`: Critical error requiring supervisor intervention
 
-3. **Worker-Managed Workflow**: The system automatically dispatches my parent job when I finalize with `COMPLETED` or `FAILED`. For `DELEGATING` or `WAITING` states, the job remains active and the system waits for child/sibling completion before re-activating.
+3. **Confirm Finalization**: After calling `finalize_job`, I MUST provide a brief confirmation message acknowledging the job status and next steps (e.g., "Job finalized as COMPLETED. Results are ready for review." or "Job finalized as DELEGATING. Awaiting child job completion.").
+
+4. **Worker-Managed Workflow**: The system automatically dispatches my parent job when I finalize with `COMPLETED` or `FAILED`. For `DELEGATING` or `WAITING` states, the job remains active and the system waits for child/sibling completion before re-activating.
 
 **Important**: I MUST use the `finalize_job` tool for ALL execution statuses to properly record the job state in the work protocol.
 
