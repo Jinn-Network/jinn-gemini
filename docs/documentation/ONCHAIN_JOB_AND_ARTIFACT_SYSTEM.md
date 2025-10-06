@@ -20,22 +20,42 @@ The system is composed of several key components that work together:
 
 ### `dispatch_new_job`
 
-This tool is used to create and dispatch a completely new job.
+This tool is used to create and dispatch a completely new job using structured prompt fields for high-quality work delegation.
 
 -   **Inputs**:
-    -   `prompt` (string, required): The main instruction or prompt for the job.
+    -   `objective` (string, required, min 10 chars): Clear, specific statement of what needs to be accomplished.
+    -   `context` (string, required, min 20 chars): Why this work is needed and how it fits into the broader goal. Include relevant background from parent job.
+    -   `acceptanceCriteria` (string, required, min 10 chars): Specific, measurable criteria for successful completion - what "done" looks like.
+    -   `constraints` (string, optional): Limitations, requirements, dependencies, or important considerations.
+    -   `deliverables` (string, optional): Expected outputs or artifacts to be created.
     -   `jobName` (string, required): A unique, human-readable name for the job definition.
     -   `enabledTools` (string[], optional): A list of tools that the agent is allowed to use.
     -   `updateExisting` (boolean, optional, default: `false`): A flag to control behavior if a job with the same `jobName` already exists.
+    -   `message` (string, optional): Additional message context for the job.
 -   **Behavior**:
     1.  **Duplicate Check**: It first queries the subgraph to see if a `jobDefinition` with the given `jobName` already exists.
     2.  **Guard Logic**:
         -   If a job exists and `updateExisting` is `false` (the default), the tool will **not** post a new job. Instead, it returns the details of the existing job definition and a message indicating that it already exists.
         -   If a job exists and `updateExisting` is `true`, the tool will reuse the existing `jobDefinitionId`.
         -   If no job with that name exists, it generates a new, unique `jobDefinitionId` (a strict UUID).
-    3.  **IPFS Upload & Dispatch**: It constructs a JSON payload containing the `prompt`, `jobName`, `enabledTools`, the determined `jobDefinitionId`, and any parent context (`parentRequestId`). This payload is uploaded to IPFS.
-    4.  **Marketplace Request**: It then calls the `MechMarketplace` contract to post a new request, pointing to the metadata on IPFS.
+    3.  **Prompt Assembly**: The structured fields (`objective`, `context`, `acceptanceCriteria`, `constraints`, `deliverables`) are assembled into a well-formatted prompt string that preserves context through delegation levels.
+    4.  **IPFS Upload & Dispatch**: It constructs a JSON payload containing the assembled `prompt`, `jobName`, `enabledTools`, the determined `jobDefinitionId`, and any parent context (`sourceRequestId`, `sourceJobDefinitionId`). This payload is uploaded to IPFS.
+    5.  **Marketplace Request**: It then calls the `MechMarketplace` contract to post a new request, pointing to the metadata on IPFS.
 -   **Output**: A JSON object containing the transaction details from the marketplace interaction (e.g., `transaction_hash`, `request_ids`) and a link to the request metadata on the IPFS gateway.
+
+**Example Usage**:
+```javascript
+await dispatchNewJob({
+  objective: 'Analyze user engagement metrics',
+  context: 'Part of Q4 analytics initiative - need data to inform product roadmap',
+  acceptanceCriteria: 'Report includes MAU, DAU, retention rates, and trend analysis',
+  deliverables: 'Executive summary report and raw data artifact',
+  constraints: 'Use only production database, no PII in outputs',
+  jobName: 'q4-engagement-analysis',
+  enabledTools: ['query_database', 'create_artifact'],
+  updateExisting: false
+});
+```
 
 ### `dispatch_existing_job`
 
