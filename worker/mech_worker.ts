@@ -1,17 +1,17 @@
 import '../env/index.js';
 import { Agent } from '../gemini-agent/agent.js';
-import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
-import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
-import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
+import { deliverViaSafe } from '../packages/mech-client-ts/dist/deliver.js';
 import { Web3 } from 'web3';
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import agentMechArtifact from 'mech-client-ts/dist/abis/AgentMech.json';
+import agentMechArtifact from '../packages/mech-client-ts/dist/abis/AgentMech.json';
 import { workerLogger } from './logger.js';
 import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport, createArtifact as apiCreateArtifact } from './control_api_client.js';
 import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './artifacts.js';
+import { readServiceConfig } from './ServiceConfigReader.js';
+import { loadAgentPrivateKey } from './MechMarketplaceRequester.js';
+import { join } from 'path';
 
 type UnclaimedRequest = {
   id: string;           // on-chain requestId (decimal string or 0x)
@@ -22,156 +22,10 @@ type UnclaimedRequest = {
   delivered?: boolean;
 };
 
-
 const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = (process.env.USE_CONTROL_API ?? 'true') !== 'false';
 const STALE_MINUTES = parseInt(process.env.MECH_RECLAIM_AFTER_MINUTES || '10', 10);
-
-// Auto-reposting configuration
-const ENABLE_AUTO_REPOST = (process.env.ENABLE_AUTO_REPOST ?? 'true') !== 'false';
-const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
-
-// Track recent reposts to prevent loops
-const recentReposts = new Map<string, number>();
-
-// Error serialization helper
-function serializeError(e: any): string {
-  if (!e) return 'Unknown error';
-  if (typeof e === 'string') return e;
-  if (e?.message) return e.message;
-  if (e instanceof Error) return e.toString();
-  try {
-    return JSON.stringify(e);
-  } catch {
-    return String(e);
-  }
-}
-
-// Work Protocol types and parser
-interface FinalStatus {
-  status: 'COMPLETED' | 'DELEGATING' | 'WAITING' | 'FAILED';
-  message: string;
-}
-
-/**
- * Extract finalize_job from telemetry (structured tool call)
- * This is the preferred method as it's deterministic
- */
-function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
-  // Support both camelCase (toolCalls) and snake_case (tool_calls)
-  const toolCalls = telemetry?.toolCalls || telemetry?.tool_calls;
-
-  workerLogger.debug(`[SIGNAL_DEBUG] Checking telemetry for finalize_job`, {
-    has_tool_calls: !!toolCalls,
-    tool_call_count: toolCalls?.length || 0,
-    tool_names: toolCalls?.map((c: any) => c.tool || c.name) || []
-  });
-
-  if (!toolCalls) return null;
-
-  // Find finalize_job tool call - check both name and tool fields
-  const signalCall = toolCalls.find((call: any) =>
-    call.name === 'finalize_job' || call.tool === 'finalize_job'
-  );
-
-  workerLogger.debug(`[SIGNAL_DEBUG] Found finalize_job call:`, signalCall ? 'YES' : 'NO');
-
-  if (!signalCall) return null;
-
-  try {
-    // Tool call arguments can be in input, arguments, args, or result fields
-    const input = signalCall.input || signalCall.arguments || signalCall.args || signalCall.result;
-
-    workerLogger.debug(`[SIGNAL_DEBUG] finalize_job call structure:`, {
-      has_input: !!signalCall.input,
-      has_arguments: !!signalCall.arguments,
-      has_args: !!signalCall.args,
-      has_result: !!signalCall.result,
-      input_value: input
-    });
-
-    if (!input) return null;
-
-    const status = input.status;
-    const message = input.message;
-
-    if (!status || !message) {
-      workerLogger.warn('finalize_job missing status or message', input);
-      return null;
-    }
-
-    const validStatuses = ['COMPLETED', 'DELEGATING', 'WAITING', 'FAILED'];
-    if (!validStatuses.includes(status)) {
-      workerLogger.warn(`Invalid finalize_job status: ${status}`);
-      return null;
-    }
-
-    workerLogger.info(`✅ Detected finalize_job from telemetry: ${status}`);
-    return { status, message };
-  } catch (e) {
-    workerLogger.warn('Failed to extract finalize_job from telemetry', e);
-    return null;
-  }
-}
-
-/**
- * Parse FinalStatus from text output (legacy method, fallback only)
- * DEPRECATED: Use finalize_job tool instead
- */
-function parseFinalStatusFromText(output: string): FinalStatus | null {
-  if (!output) return null;
-
-  // Match FinalStatus: {...} pattern
-  const pattern = /FinalStatus:\s*(\{[^}]+\})/;
-  const match = output.match(pattern);
-
-  if (!match) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(match[1]);
-
-    // Validate structure
-    if (!parsed.status || !parsed.message) {
-      workerLogger.warn('Invalid FinalStatus structure', parsed);
-      return null;
-    }
-
-    // Validate status code
-    const validStatuses = ['COMPLETED', 'DELEGATING', 'WAITING', 'FAILED'];
-    if (!validStatuses.includes(parsed.status)) {
-      workerLogger.warn(`Invalid status code: ${parsed.status}`);
-      return null;
-    }
-
-    workerLogger.info(`Detected FinalStatus from text output: ${parsed.status} (legacy method)`);
-    return {
-      status: parsed.status,
-      message: parsed.message
-    };
-  } catch (e) {
-    workerLogger.warn('Failed to parse FinalStatus', e);
-    return null;
-  }
-}
-
-/**
- * Extract final status from either telemetry (preferred) or text output (fallback)
- */
-function extractFinalStatus(output: string, telemetry: any): FinalStatus | null {
-  // Try telemetry first (deterministic, structured)
-  const fromTelemetry = extractSignalFromTelemetry(telemetry);
-  if (fromTelemetry) return fromTelemetry;
-
-  // Fall back to text parsing (non-deterministic, legacy)
-  const fromText = parseFinalStatusFromText(output);
-  if (fromText) return fromText;
-
-  workerLogger.debug('No FinalStatus found in telemetry or output');
-  return null;
-}
 
 function safeParseToolResponse(response: any): { ok: boolean; data: any; message?: string } {
   try {
@@ -250,7 +104,7 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
   if (notDelivered.length === 0) return [];
   // Intersect with on-chain undelivered for additional safety (Control API will enforce atomic claim)
   try {
-    const rpcHttpUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+    const rpcHttpUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
     const mechToSet = new Map<string, Set<string>>();
     for (const r of notDelivered) {
       const key = r.mech.toLowerCase();
@@ -274,7 +128,7 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
   try {
     // Control API is the only path for claiming
     try {
-      const res = await apiClaimRequest(request.id);
+      const res = await apiClaimRequest(request.id, workerAddress);
       if (res && (res.status === 'IN_PROGRESS' || res.status === 'COMPLETED')) {
         const ok = res.status === 'IN_PROGRESS';
         workerLogger.info({ requestId: request.id, status: res.status }, ok ? 'Claimed via Control API' : 'Already handled via Control API');
@@ -287,93 +141,67 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
       return false;
     }
   } catch (e: any) {
-    workerLogger.warn({ requestId: request.id, error: serializeError(e) }, 'Claim error');
+    workerLogger.warn({ requestId: request.id, error: e?.message || String(e) }, 'Claim error');
     return false;
   }
 }
 
-async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
-  prompt?: string;
-  enabledTools?: string[];
-  sourceRequestId?: string;
-  sourceJobDefinitionId?: string;
-  additionalContext?: any;
-  jobName?: string;
-  jobDefinitionId?: string;
-} | null> {
+async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; enabledTools?: string[]; parentRequestId?: string } | null> {
   if (!ipfsHash) return null;
   try {
     const hash = String(ipfsHash).replace(/^0x/, '');
-    // The marketplace stores truncated hash in some contexts; attempt direct fetch
-    const url = `https://gateway.autonolas.tech/ipfs/${hash}`;
+    // Use configured IPFS gateway or fallback to Autonolas
+    const gatewayBase = process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/';
+    const url = gatewayBase.endsWith('/') ? `${gatewayBase}${hash}` : `${gatewayBase}/${hash}`;
+    
+    workerLogger.info({ url, hash, timeout: process.env.IPFS_FETCH_TIMEOUT_MS || '7000' }, 'Fetching IPFS metadata');
+    
     // Add a timeout so we don't hang here
     const controller = new AbortController();
     const timeoutMs = parseInt(process.env.IPFS_FETCH_TIMEOUT_MS || '7000', 10);
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    
     const res = await fetch(url, { method: 'GET', signal: controller.signal });
     clearTimeout(timer);
-    if (!res.ok) return null;
+    
+    workerLogger.info({ status: res.status, statusText: res.statusText }, 'IPFS fetch response');
+    
+    if (!res.ok) {
+      workerLogger.warn({ status: res.status, statusText: res.statusText, url }, 'IPFS fetch returned non-OK status');
+      return null;
+    }
+    
     const json = await res.json();
     const prompt = json?.prompt || json?.input || undefined;
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
-    const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
-    const sourceJobDefinitionId = json?.sourceJobDefinitionId ? String(json.sourceJobDefinitionId) : undefined;
-    const additionalContext = json?.additionalContext || undefined;
-    const jobName = json?.jobName || undefined;
-    const jobDefinitionId = json?.jobDefinitionId || undefined;
-    return { prompt, enabledTools, sourceRequestId, sourceJobDefinitionId, additionalContext, jobName, jobDefinitionId };
+    const parentRequestId = json?.parentRequestId ? String(json.parentRequestId) : undefined;
+    
+    workerLogger.info({ hasPrompt: !!prompt, hasTools: !!enabledTools }, 'IPFS metadata parsed');
+    
+    return { prompt, enabledTools, parentRequestId };
   } catch (e: any) {
-    workerLogger.warn({ error: serializeError(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
+    workerLogger.error({ 
+      error: e?.message || String(e), 
+      errorName: e?.name,
+      errorStack: e?.stack?.split('\n').slice(0, 3).join('\n'),
+      ipfsHash 
+    }, 'Failed to fetch IPFS metadata');
     return null;
   }
 }
 
 async function runAgentForRequest(request: UnclaimedRequest, metadata: any): Promise<{ output: string; telemetry: any }> {
-  const model = process.env.MECH_MODEL || 'gemini-2.5-flash';
+  const model = process.env.MECH_MODEL || 'gemini-2.5-flash-lite';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const agent = new Agent(model, enabledTools, {
     jobId: request.id,
-    jobDefinitionId: metadata?.jobDefinitionId || null,
-    jobName: metadata?.jobName || 'Onchain Task',
+    jobDefinitionId: null,
+    jobName: 'Onchain Task',
     projectRunId: null,
     sourceEventId: null,
     projectDefinitionId: null
   });
-
-  // Construct enhanced prompt with context if available
-  let prompt = String(metadata?.prompt || '').trim() || `Process request ${request.id} for mech ${request.mech}`;
-  
-  if (metadata?.additionalContext) {
-    const context = metadata.additionalContext;
-    const contextSummary = `
-
-## Job Context
-This job is part of a larger workflow. Here's the context:
-
-**Job Hierarchy Summary:**
-- Total jobs in hierarchy: ${context.summary?.totalJobs || 0}
-- Completed jobs: ${context.summary?.completedJobs || 0}
-- Active jobs: ${context.summary?.activeJobs || 0}
-- Available artifacts: ${context.summary?.totalArtifacts || 0}
-
-**Related Jobs:**
-${context.hierarchy?.map((job: any) => 
-  `- ${job.name} (Level ${job.level}, Status: ${job.status})`
-).join('\n') || 'No related jobs found'}
-
-**Available Artifacts:**
-${context.hierarchy?.flatMap((job: any) => 
-  job.artifactRefs?.map((artifact: any) => 
-    `- ${artifact.name} (${artifact.topic}) - CID: ${artifact.cid}`
-  ) || []
-).join('\n') || 'No artifacts available'}
-
----
-
-`;
-    prompt = contextSummary + prompt;
-  }
-
+  const prompt = String(metadata?.prompt || '').trim() || `Process request ${request.id} for mech ${request.mech}`;
   // Provide request context to downstream tools via env
   const prev = { JINN_REQUEST_ID: process.env.JINN_REQUEST_ID, JINN_MECH_ADDRESS: process.env.JINN_MECH_ADDRESS } as const;
   try {
@@ -386,237 +214,44 @@ ${context.hierarchy?.flatMap((job: any) =>
   }
 }
 
-async function storeOnchainReport(
-  request: UnclaimedRequest,
-  workerAddress: string,
-  result: { output: string; telemetry: any },
-  error?: any,
-  metadata?: any
-): Promise<FinalStatus | null> {
+async function storeOnchainReport(request: UnclaimedRequest, workerAddress: string, result: { output: string; telemetry: any }, error?: any): Promise<void> {
   try {
-    // Extract FinalStatus from telemetry (preferred) or text output (fallback)
-    const finalStatus = extractFinalStatus(result?.output || '', result?.telemetry || {});
-    
-    // Determine status for job report
-    let reportStatus: string;
-    if (error) {
-      reportStatus = 'FAILED';
-    } else if (finalStatus) {
-      // Use the actual FinalStatus from agent (COMPLETED, DELEGATING, WAITING, or FAILED)
-      reportStatus = finalStatus.status;
-    } else {
-      // Fallback for agents not using work protocol yet
-      reportStatus = 'COMPLETED';
-      workerLogger.debug('No FinalStatus found, defaulting to COMPLETED');
-    }
-    
     const payload = {
-      status: reportStatus,  // Use actual work protocol status
+      status: error ? 'FAILED' : 'COMPLETED',
       duration_ms: result?.telemetry?.duration || 0,
       total_tokens: result?.telemetry?.totalTokens || 0,
       tools_called: JSON.stringify(result?.telemetry?.toolCalls ?? []),
       final_output: result?.output || null,
       error_message: error ? (error.message || String(error)) : null,
       error_type: error ? 'AGENT_ERROR' : null,
-      raw_telemetry: JSON.stringify({
-        ...result?.telemetry ?? {},
-        finalStatus,  // Include parsed status in telemetry
-        sourceJobDefinitionId: metadata?.sourceJobDefinitionId  // Preserve parent reference
-      })
+      raw_telemetry: JSON.stringify(result?.telemetry ?? {})
     };
-    await apiCreateJobReport(request.id, payload);
-    
-    // Return finalStatus for parent dispatch logic
-    return finalStatus;
-  } catch {
-    return null;
-  }
+    await apiCreateJobReport(request.id, payload, workerAddress);
+  } catch {}
 }
 
 async function storeOnchainArtifact(request: UnclaimedRequest, workerAddress: string, cid: string, topic: string, content?: string): Promise<void> {
   try {
     const data = { cid, topic, content: content || null };
-    await apiCreateArtifact(request.id, data);
+    await apiCreateArtifact(request.id, data, workerAddress);
   } catch {}
-}
-
-/**
- * Dispatch parent job when child completes or fails (Work Protocol)
- */
-async function dispatchParentIfNeeded(
-  finalStatus: FinalStatus | null,
-  metadata: any,
-  requestId: string,
-  output: string
-): Promise<void> {
-  // Only dispatch on terminal states
-  if (!finalStatus || (finalStatus.status !== 'COMPLETED' && finalStatus.status !== 'FAILED')) {
-    workerLogger.debug(`Not dispatching parent - status: ${finalStatus?.status || 'none'}`);
-    return;
-  }
-
-  // Get parent job ID from metadata
-  const parentJobDefId = metadata?.sourceJobDefinitionId;
-  if (!parentJobDefId) {
-    workerLogger.debug('No parent job to dispatch');
-    return;
-  }
-  
-  try {
-    workerLogger.info(`Dispatching parent job ${parentJobDefId} after child ${finalStatus.status}`);
-    
-    // Create message with child results using standard format
-    const messageContent = `Child job ${finalStatus.status}: ${finalStatus.message}. Output: ${
-      output.length > 500 ? output.substring(0, 500) + '...' : output
-    }`;
-    
-    const message = {
-      content: messageContent,
-      to: parentJobDefId,
-      from: requestId
-    };
-
-    // Dispatch parent job
-    const result = await dispatchExistingJob({
-      jobId: parentJobDefId,
-      message: JSON.stringify(message)
-    });
-    
-    const dispatchResult = safeParseToolResponse(result);
-    if (dispatchResult.ok) {
-      workerLogger.info(`Parent job ${parentJobDefId} dispatched successfully`);
-    } else {
-      workerLogger.error(`Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult.message}`);
-    }
-  } catch (e) {
-    workerLogger.error(`Error dispatching parent job ${parentJobDefId}:`, e);
-  }
-}
-
-/**
- * Check if a job chain is complete by verifying all requests are delivered
- */
-async function isChainComplete(rootJobDefinitionId: string): Promise<boolean> {
-  try {
-    const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query($rootId: String!) { 
-          requests(where: { sourceJobDefinitionId: { equals: $rootId } }) {
-            items {
-              id
-              delivered
-            }
-          }
-        }`,
-        variables: { rootId: rootJobDefinitionId },
-      }),
-    });
-    const json = await res.json();
-    const requests = json?.data?.requests?.items || [];
-    
-    if (requests.length === 0) {
-      return false; // No requests in chain
-    }
-    
-    // Check if all requests are delivered
-    return requests.every((req: any) => req.delivered);
-  } catch (e) {
-    workerLogger.error(`Error checking chain completion for ${rootJobDefinitionId}:`, e);
-    return false;
-  }
-}
-
-/**
- * Check if a job should be reposted based on recent repost history
- */
-function shouldRepost(rootJobDefinitionId: string): boolean {
-  const now = Date.now();
-  const lastRepost = recentReposts.get(rootJobDefinitionId);
-  
-  if (lastRepost && (now - lastRepost) < MIN_TIME_BETWEEN_REPOSTS) {
-    return false;
-  }
-  
-  return true;
-}
-
-/**
- * Repost an existing job definition using the dispatch_existing_job pattern
- */
-async function repostExistingJob(jobDefinitionId: string): Promise<void> {
-  try {
-    const result = await dispatchExistingJob({ jobId: jobDefinitionId });
-
-    // Parse the result to check if it was successful
-    const { ok, data, message } = safeParseToolResponse(result);
-    if (!ok) {
-      workerLogger.error(`Cannot repost job ${jobDefinitionId}: ${message || 'Unknown error'}`);
-      return;
-    }
-
-    // Track the repost to prevent loops
-    recentReposts.set(jobDefinitionId, Date.now());
-
-    workerLogger.info(`Successfully reposted job (${jobDefinitionId}) after chain completion`);
-    workerLogger.info(`Repost result:`, data);
-
-  } catch (e) {
-    workerLogger.error(`Error reposting job ${jobDefinitionId}:`, e);
-  }
-}
-
-/**
- * Check for completed decomposition chains and repost root jobs if needed
- */
-async function checkAndRepostCompletedChains(): Promise<void> {
-  if (!ENABLE_AUTO_REPOST) {
-    return;
-  }
-
-  try {
-    // Find all root job definitions (no sourceJobDefinitionId)
-    const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query { 
-          jobDefinitions(where: { sourceJobDefinitionId: { equals: null } }, limit: 100) {
-            items {
-              id
-              name
-            }
-          }
-        }`,
-      }),
-    });
-    const json = await res.json();
-    const rootJobDefs = json?.data?.jobDefinitions?.items || [];
-    
-    for (const rootJobDef of rootJobDefs) {
-      // Skip if recently reposted
-      if (!shouldRepost(rootJobDef.id)) {
-        continue;
-      }
-      
-      // Check if chain is complete and repost if needed
-      if (await isChainComplete(rootJobDef.id)) {
-        workerLogger.info(`Found completed chain for root job ${rootJobDef.name}, reposting...`);
-        await repostExistingJob(rootJobDef.id);
-      }
-    }
-  } catch (e) {
-    workerLogger.error(`Error checking for completed chains:`, e);
-  }
 }
 
 
 async function processOnce(): Promise<void> {
-  const workerAddress = process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '';
+  // JINN-209: Default to service Safe address if MECH_WORKER_ADDRESS not provided
+  let workerAddress = process.env.MECH_WORKER_ADDRESS || '';
+  
   if (!workerAddress) {
-    workerLogger.error('Missing MECH_ADDRESS environment variable');
-    return;
+    const middlewarePath = process.env.MIDDLEWARE_PATH || join(process.cwd(), 'olas-operate-middleware');
+    const serviceInfo = await readServiceConfig(middlewarePath);
+    if (serviceInfo?.serviceSafeAddress) {
+      workerAddress = serviceInfo.serviceSafeAddress;
+      workerLogger.info({ workerAddress, source: 'service-config' }, 'Using service Safe address as worker address');
+    } else {
+      workerLogger.error('No worker address found: MECH_WORKER_ADDRESS not set and service config not available');
+      return;
+    }
   }
 
   const recent = await fetchRecentRequests(10);
@@ -626,34 +261,24 @@ async function processOnce(): Promise<void> {
     return;
   }
 
-  // Optional: target a specific request id if provided (for deterministic tests)
-  const targetIdEnv = (process.env.MECH_TARGET_REQUEST_ID || '').trim();
-  let filtered = candidates;
-  if (targetIdEnv) {
-    const targetHex = targetIdEnv.startsWith('0x') ? targetIdEnv.toLowerCase() : ('0x' + BigInt(targetIdEnv).toString(16)).toLowerCase();
-    filtered = candidates.filter(c => {
-      const idHex = String(c.id).startsWith('0x') ? String(c.id).toLowerCase() : ('0x' + BigInt(String(c.id)).toString(16)).toLowerCase();
-      return idHex === targetHex;
-    });
-    if (filtered.length === 0) {
-      workerLogger.info({ target: targetHex }, 'Target request not found among candidates');
-      return;
-    }
-  }
-
   // Iterate candidates until we claim one successfully
   let target: UnclaimedRequest | null = null;
-  for (const c of filtered) {
-    const ok = await tryClaim(c, workerAddress);
-    if (ok) { target = c; break; }
+  if (USE_CONTROL_API) {
+    for (const c of candidates) {
+      const ok = await tryClaim(c, workerAddress);
+      if (ok) { target = c; break; }
+    }
+    if (!target) return;
+  } else {
+    // No Control API - just pick the first unclaimed request
+    target = candidates[0];
+    if (!target) return;
+    workerLogger.info({ requestId: target.id }, 'Processing request (Control API disabled)');
   }
-  if (!target) return;
   let result: any = { output: '', telemetry: {} };
   let error: any = null;
-  let metadata: any = null;
   try {
-    metadata = await fetchIpfsMetadata(target.ipfsHash);
-    workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Processing request');
+    const metadata = await fetchIpfsMetadata(target.ipfsHash);
     result = await runAgentForRequest(target, metadata);
     // Extract artifacts produced during the run (from tool outputs)
     const artifacts = [
@@ -664,20 +289,15 @@ async function processOnce(): Promise<void> {
       (result as any).artifacts = artifacts;
       // Persist via Control API for queryability immediately (optional)
       for (const a of artifacts) {
-        try { await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null }); } catch {}
+        try { await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null }, workerAddress); } catch {}
       }
     }
-    workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Execution completed');
+    workerLogger.info({ requestId: target.id }, 'Execution completed');
   } catch (e: any) {
     error = e;
-    workerLogger.error({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(e) }, 'Execution failed');
+    workerLogger.error({ requestId: target.id, error: e?.message || String(e) }, 'Execution failed');
   }
-  
-  // Store report and get FinalStatus
-  const finalStatus = await storeOnchainReport(target, workerAddress, result, error, metadata);
-  
-  // Dispatch parent if needed (Work Protocol)
-  await dispatchParentIfNeeded(finalStatus, metadata, target.id, result?.output || '');
+  await storeOnchainReport(target, workerAddress, result, error);
   // Persist output as artifact (optional, topic=result.output)
   try {
     const outputStr = typeof result?.output === 'string' ? result.output : JSON.stringify(result?.output ?? '');
@@ -693,17 +313,40 @@ async function processOnce(): Promise<void> {
   // Attempt on-chain delivery via Safe when configured
   try {
     const chainConfig = process.env.MECH_CHAIN_CONFIG || 'base';
-    const safeAddress = process.env.MECH_SAFE_ADDRESS || '';
+    let safeAddress = process.env.MECH_SAFE_ADDRESS || '';
     const targetMechAddress = target.mech;
     const privateKeyEnv = (process.env.MECH_PRIVATE_KEY || '').trim();
-    const privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH || 'mech_private_key.txt';
-    const rpcHttpUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+    let privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH || 'mech_private_key.txt';
+    const rpcHttpUrl = process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+    
+    // JINN-209: Read Safe address from service config if not provided via env
+    if (!safeAddress) {
+      const middlewarePath = process.env.MIDDLEWARE_PATH || join(process.cwd(), 'olas-operate-middleware');
+      const serviceInfo = await readServiceConfig(middlewarePath);
+      if (serviceInfo?.serviceSafeAddress) {
+        safeAddress = serviceInfo.serviceSafeAddress;
+        workerLogger.info({ safeAddress, source: 'service-config' }, 'Using Safe address from service config');
+        
+        // Also load agent private key from middleware if available
+        if (serviceInfo.agentEoaAddress && !privateKeyEnv) {
+          const agentKey = await loadAgentPrivateKey(middlewarePath, serviceInfo.agentEoaAddress);
+          if (agentKey) {
+            // Use inline private key instead of path
+            privateKeyPath = ''; // Clear path
+            // Set temporary env var for deliverViaSafe
+            process.env.MECH_PRIVATE_KEY_TEMP = agentKey;
+            workerLogger.info({ agentAddress: serviceInfo.agentEoaAddress }, 'Loaded agent private key from service config');
+          }
+        }
+      }
+    }
+    
     if (safeAddress && targetMechAddress) {
       // Preflight: ensure request is still undelivered on-chain before constructing Safe tx
       const requestIdHex = String(target.id).startsWith('0x') ? String(target.id) : '0x' + BigInt(String(target.id)).toString(16);
       const ok = await isUndeliveredOnChain({ mechAddress: targetMechAddress, requestIdHex, rpcHttpUrl });
       if (!ok) {
-        workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Preflight: request already delivered or not eligible; skipping Safe delivery');
+        workerLogger.info({ requestId: target.id }, 'Preflight: request already delivered or not eligible; skipping Safe delivery');
         return;
       }
 
@@ -719,15 +362,24 @@ async function processOnce(): Promise<void> {
         targetMechAddress,
         safeAddress,
         // Prefer inline env private key when provided; otherwise fall back to path
-        ...(privateKeyEnv ? { privateKey: privateKeyEnv } : { privateKeyPath }),
+        ...(privateKeyEnv || process.env.MECH_PRIVATE_KEY_TEMP ? { privateKey: privateKeyEnv || process.env.MECH_PRIVATE_KEY_TEMP } : { privateKeyPath }),
         ...(rpcHttpUrl ? { rpcHttpUrl } : {}),
         wait: true
       } as const;
       const delivery = await (deliverViaSafe as any)(payload);
-      workerLogger.info({ jobName: metadata?.jobName, requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
+      workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
+      
+      // Cleanup temp env var
+      if (process.env.MECH_PRIVATE_KEY_TEMP) {
+        delete process.env.MECH_PRIVATE_KEY_TEMP;
+      }
     }
   } catch (e: any) {
-    workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(e) }, 'Safe delivery failed');
+    workerLogger.warn({ requestId: target.id, error: e?.message || String(e) }, 'Safe delivery failed');
+    // Cleanup temp env var
+    if (process.env.MECH_PRIVATE_KEY_TEMP) {
+      delete process.env.MECH_PRIVATE_KEY_TEMP;
+    }
     // Record a FAILED status so the claim does not remain IN_PROGRESS
     try {
       await apiCreateJobReport(target.id, {
@@ -739,9 +391,9 @@ async function processOnce(): Promise<void> {
         error_message: e?.message || String(e),
         error_type: 'DELIVERY_ERROR',
         raw_telemetry: JSON.stringify(result?.telemetry ?? {}),
-      } as any);
+      } as any, workerAddress);
     } catch (reportErr: any) {
-      workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: reportErr?.message || String(reportErr) }, 'Failed to record FAILED status');
+      workerLogger.warn({ requestId: target.id, error: reportErr?.message || String(reportErr) }, 'Failed to record FAILED status');
     }
   }
 }
@@ -754,15 +406,14 @@ async function main() {
   }
   for (;;) {
     try {
-      // Check for completed chains and repost if needed
-      await checkAndRepostCompletedChains();
-      
       await processOnce();
     } catch (e: any) {
-      workerLogger.error({ error: serializeError(e) }, 'Error in mech loop');
+      workerLogger.error({ error: e?.message || String(e) }, 'Error in mech loop');
     }
     await new Promise(r => setTimeout(r, 5000));
   }
 }
 
 main().catch(() => process.exit(1));
+
+

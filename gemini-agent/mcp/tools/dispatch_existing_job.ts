@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
-import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
+import { marketplaceInteract } from '../../../packages/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
 

@@ -4,13 +4,11 @@ import {
   getOptionalString,
   getOptionalNumber,
 } from "./config.js";
-import { OlasStakingManager } from "./OlasStakingManager.js";
 import { StakingManagerFactory } from "./StakingManagerFactory.js";
 import { DelayUtils } from "./DelayUtils.js";
 import { Agent } from "../gemini-agent/agent.js";
 import { getTools, Tool, ToolExecutionError } from "../gemini-agent/tools.js";
 import { TransactionProcessor } from "./TransactionProcessor.js";
-import { SafeExecutor } from "./SafeExecutor.js";
 import { promisify } from "util";
 import { execFile } from "child_process";
 const asyncExecFile = promisify(execFile);
@@ -19,12 +17,23 @@ import { logger } from "./logger.js";
 import { createClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 import { deliverRequest } from "../../scripts/lib/deliverRequest.js";
+import {
+  readRecords,
+  createRecord,
+} from "../gemini-agent/mcp/tools/index.js";
 
 const CONTROL_API_URL = getRequiredString("CONTROL_API_URL");
 const SUPABASE_URL = getRequiredString("SUPABASE_URL");
-const SUPABASE_ANON_KEY = getRequiredString("SUPABASE_ANON_KEY");
-const WALLET_MANAGER_API_URL = getRequiredString("WALLET_MANAGER_API_URL");
-const ORCHESTRATOR_URL = getRequiredString("ORCHESTRATOR_URL");
+const SUPABASE_ANON_KEY =
+  getOptionalString("SUPABASE_ANON_KEY") ||
+  getOptionalString("SUPABASE_SERVICE_ANON_KEY");
+if (!SUPABASE_ANON_KEY) {
+  throw new Error(
+    "Missing required environment variable: SUPABASE_ANON_KEY or SUPABASE_SERVICE_ANON_KEY",
+  );
+}
+const WALLET_MANAGER_API_URL = getOptionalString("WALLET_MANAGER_API_URL");
+const ORCHESTRATOR_URL = getOptionalString("ORCHESTRATOR_URL");
 const MECH_SPEC_URL = getOptionalString("MECH_SPEC_URL");
 const POLLING_INTERVAL = getOptionalNumber("POLLING_INTERVAL", 2000); // 2 seconds default
 
@@ -93,7 +102,9 @@ let jobCountResetTime = Date.now();
 
 // Staking operation timing
 let lastStakingTime = 0;
-const STAKING_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const STAKING_INTERVAL_MS = process.env.STAKING_INTERVAL_MS_OVERRIDE 
+  ? parseInt(process.env.STAKING_INTERVAL_MS_OVERRIDE, 10)
+  : 60 * 60 * 1000; // 1 hour default, overridable for testing
 
 // Represents the structure of the job_board table row
 interface JobBoard {

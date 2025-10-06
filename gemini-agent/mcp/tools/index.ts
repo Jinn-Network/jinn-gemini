@@ -10,3 +10,6 @@ export { searchJobs, searchJobsParams, searchJobsSchema, type SearchJobsParams }
 export { searchArtifacts, searchArtifactsParams, searchArtifactsSchema, type SearchArtifactsParams } from './search-artifacts.js';
 export { finalizeJob, finalizeJobParams, finalizeJobSchema } from './finalize_job.js';
 export { loadMcpServer, stopMcpServer } from './shared/mcp-bootstrap.js';
+
+// Export database functions
+export { readRecords, createRecord, type ReadRecordsParams, type CreateRecordParams } from './shared/database.js';

@@ -1,0 +1,72 @@
+{
+  "version": 8,
+  "service_config_id": "sc-1e296607-5470-41a7-ade6-7368c888a4a8",
+  "hash": "bafybeiardecju3sygh7hwuywka2bgjinbr7vrzob4mpdrookyfsbdmoq2m",
+  "hash_history": {
+    "1759338710": "bafybeiardecju3sygh7hwuywka2bgjinbr7vrzob4mpdrookyfsbdmoq2m"
+  },
+  "agent_addresses": [
+    "0xbE83DB66b6Ffe1eD9791792Bb89fC55490306cea"
+  ],
+  "home_chain": "base",
+  "chain_configs": {
+    "base": {
+      "ledger_config": {
+        "rpc": "https://quick-sly-needle.base-mainnet.quiknode.pro/4f34d3d5372ca01c3fbb15ed3571865c81312db8/",
+        "chain": "base"
+      },
+      "chain_data": {
+        "instances": [
+          "0xbE83DB66b6Ffe1eD9791792Bb89fC55490306cea"
+        ],
+        "token": 158,
+        "multisig": "0x85cCa19f096cdaE00057c1CB1a26281bB47Cd5CE",
+        "user_params": {
+          "staking_program_id": "no_staking",
+          "nft": "bafybeiardecju3sygh7hwuywka2bgjinbr7vrzob4mpdrookyfsbdmoq2m",
+          "agent_id": 43,
+          "cost_of_bond": 1,
+          "fund_requirements": {
+            "0x0000000000000000000000000000000000000000": {
+              "agent": 500000000000000,
+              "safe": 500000000000000
+            },
+            "0x54330d28ca3357F294334BDC454a032e7f353416": {
+              "agent": 50000000000000000000,
+              "safe": 50000000000000000000
+            }
+          }
+        }
+      }
+    }
+  },
+  "description": "Default OLAS service configuration",
+  "env_variables": {
+    "MECH_MARKETPLACE_ADDRESS": {
+      "value": "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
+      "provision_type": "fixed"
+    },
+    "AGENT_ID": {
+      "value": "43",
+      "provision_type": "computed"
+    },
+    "MECH_TO_CONFIG": {
+      "value": "{\"0x436FC548d0cF78A71852756E9b4dD53077d2B06c\":{\"use_dynamic_pricing\":false,\"is_marketplace_mech\":true}}",
+      "provision_type": "computed"
+    },
+    "ON_CHAIN_SERVICE_ID": {
+      "value": "",
+      "provision_type": "computed"
+    },
+    "ETHEREUM_LEDGER_RPC_0": {
+      "value": "",
+      "provision_type": "computed"
+    },
+    "GNOSIS_LEDGER_RPC_0": {
+      "value": "",
+      "provision_type": "computed"
+    }
+  },
+  "package_path": "memeooorr",
+  "name": "default-service"
+}

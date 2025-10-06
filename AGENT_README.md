@@ -36,16 +36,12 @@ yarn install
 SUPABASE_URL=https://<your-project-ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 
-# RPC Configuration (single source for all blockchain interactions)
-RPC_URL=https://mainnet.base.org
-
-# Mech Configuration
-MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
-
 # Optional; defaults shown
 PONDER_GRAPHQL_URL=http://localhost:42069/graphql
 CONTROL_API_PORT=4001
+PONDER_RPC_URL=https://mainnet.base.org
 PONDER_START_BLOCK=35577849
+PONDER_MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
 
 # Dev: run MCP server with tsx
 USE_TSX_MCP=1
@@ -80,12 +76,7 @@ yarn mcp:start
 ## Environment variables (confirmed)
 
 - Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required by `control-api/server.ts`).
-- RPC Configuration: `RPC_URL` (single source for all blockchain interactions)
-  - Legacy variables (`PONDER_RPC_URL`, `MECHX_CHAIN_RPC`, `MECH_RPC_HTTP_URL`, `BASE_RPC_URL`) are automatically mapped to `RPC_URL` if not explicitly set
-  - For new deployments, only `RPC_URL` is required
-- Mech Configuration: `MECH_ADDRESS` (the mech contract address for both worker operations and indexing)
-  - Legacy variables (`MECH_WORKER_ADDRESS`, `PONDER_MECH_ADDRESS`) are supported for backwards compatibility
-- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `PONDER_START_BLOCK` (`ponder/ponder.config.ts`).
+- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `PONDER_RPC_URL` or `RPC_URL`, `PONDER_START_BLOCK`, `PONDER_MECH_ADDRESS` (`ponder/ponder.config.ts`).
 - Control API: `CONTROL_API_PORT` (default `4001`). Requires `X-Worker-Address` on requests.
 - Agent loop protection (optional, `gemini-agent/agent.ts`):
   - `AGENT_MAX_STDOUT_SIZE` (bytes, default 5MB)
@@ -99,8 +90,8 @@ yarn mcp:start
 
 ## Ponder (indexer) – reads
 
-- Network: Base (8453). RPC: `RPC_URL` (or legacy `PONDER_RPC_URL`). Start block: `PONDER_START_BLOCK`.
-- Contracts watched: `MechMarketplace` (request events) and `OlasMech` at `MECH_ADDRESS` (deliver events).
+- Network: Base (8453). RPC: `PONDER_RPC_URL` or `RPC_URL`. Start block: `PONDER_START_BLOCK`.
+- Contracts watched: `MechMarketplace` (request events) and `OlasMech` (deliver events).
 - Schema (`ponder/ponder.schema.ts`):
   - `request(id, mech, sender, requestData?, ipfsHash?, deliveryIpfsHash?, blockNumber, blockTimestamp, delivered, jobName?, enabledTools?[])`
   - `delivery(id, requestId, mech, mechServiceMultisig, deliveryRate, ipfsHash?, transactionHash, blockNumber, blockTimestamp)`
@@ -238,9 +229,6 @@ This project implements a sophisticated, autonomous AI agent system built on an 
 
 The core technologies are:
 - **Node.js & TypeScript**: For the worker and agent logic.
-- **Supabase (PostgreSQL)**: As the central database for state management, job queuing, and event triggers.
-- **SQLite**: For local transaction queuing with high-performance concurrent access.
-- **Next.js**: For the frontend explorer interface.
 - **Gemini CLI**: As the underlying engine for interacting with Google's Gemini models.
 - **Model Context Protocol (MCP)**: For providing the agent with a secure and structured way to use tools.
 - **Ponder**: For indexing on-chain events from the Mech Marketplace on Base.
@@ -248,28 +236,411 @@ The core technologies are:
 
 ---
 
+## OLAS Architecture Documentation
+
+**For comprehensive OLAS middleware integration guidance**, see `OLAS_ARCHITECTURE_GUIDE.md`:
+- Complete wallet/Safe/agent key architecture
+- Service lifecycle management
+- Testing strategies (Tenderly, E2E)
+- Common gotchas and solutions
+- Recovery procedures
+- Code patterns and best practices
+
+This consolidated guide combines learnings from JINN-186, JINN-197, JINN-198, and JINN-202.
+
+---
+
 ## On-Chain Identity & Wallet Management
 
-To participate in decentralized ecosystems like Olas, each Jinn agent requires a secure and persistent on-chain identity. This is achieved through a Gnosis Safe smart contract wallet, which is deterministically provisioned and controlled by a standard Externally Owned Account (EOA).
+To participate in decentralized ecosystems like Olas, each Jinn agent requires a secure and persistent on-chain identity. This is achieved through a Gnosis Safe smart contract wallet, which is created and managed via the `olas-operate-middleware` integration.
 
-The core of this capability is the `wallet-manager` library, which handles the entire lifecycle of the agent's on-chain identity.
+The core of this capability is the `OlasOperateWrapper`, which provides a TypeScript interface to the `olas-operate-middleware` HTTP server for wallet operations.
 
 ### Key Principles
 
--   **Deterministic Provisioning**: Each agent's Gnosis Safe is generated deterministically from a `WORKER_PRIVATE_KEY` and the `CHAIN_ID`. This ensures that an agent's identity is persistent and recoverable.
--   **Idempotent "Find-or-Create"**: The wallet bootstrap process is idempotent. When a worker starts, it will securely find its existing Gnosis Safe or create a new one if it doesn't exist. This process is protected against race conditions, making it safe for multiple workers to run concurrently.
--   **Security**: The EOA private key is a critical secret. The `wallet-manager` library is designed to **never** persist this key to disk. It is held in memory only for the duration of required operations and is sourced from the environment at runtime.
+-   **Middleware Integration**: Wallet and Safe creation is handled by the `olas-operate-middleware` Python service, providing standardized OLAS protocol compatibility.
+-   **HTTP API Interface**: The `OlasOperateWrapper` manages the middleware's HTTP server lifecycle and provides clean TypeScript APIs for wallet operations.
+-   **Secure Server Management**: The wrapper automatically starts and stops the middleware server as needed, ensuring proper resource cleanup.
+-   **Environment Validation**: Comprehensive preflight checks ensure Python dependencies and middleware components are available before operations begin.
+
+### Critical Architecture: Wallet, Safe, and Agent Keys
+
+The middleware maintains **TWO separate key stores** that serve different purposes in the OLAS service lifecycle:
+
+#### **1. Master Wallet (EOA)**
+- **Location**: `olas-operate-middleware/.operate/wallets/`
+- **Format**: Encrypted JSON keystore (one per chain, e.g., `ethereum.txt`, `base.txt`)
+- **Encryption**: Uses `OPERATE_PASSWORD` environment variable
+- **Purpose**: 
+  - Creates and deploys Gnosis Safes (pays gas for Safe deployment)
+  - Controls Safes during creation phase
+  - Acts as the transaction submitter for Safe operations
+- **Persistence**: Must be preserved on mainnet to maintain access to created Safes
+
+#### **2. Agent Keys**
+- **Location**: `olas-operate-middleware/.operate/keys/`
+- **Format**: Plain JSON with private keys (e.g., `0xABCD1234...json`)
+- **Storage**: Global directory, shared across all services
+- **Purpose**:
+  - Become the **signers** on Safe multisigs (1/1 configuration)
+  - Sign transactions from within the Safe
+  - Execute service operations on behalf of the Safe
+- **Lifecycle**: 
+  - Created when service is created (`ServiceManager.create()`)
+  - Survive service deletion (stored globally, not per-service)
+  - Can be reused across service deployments
+
+#### **Service → Safe → Agent Key Relationship**
+
+```
+Service Creation Flow:
+1. create service → generates new agent key in /.operate/keys/
+2. deploy service → creates NEW Safe with agent key as signer
+3. Safe configured as 1/1 multisig with agent key
+4. Service runs using agent key to sign transactions from Safe
+
+CRITICAL: Each service deployment creates a NEW Safe, even with same master wallet
+```
+
+**Key Architectural Facts:**
+- ✅ Agent keys are stored globally in `/.operate/keys/` (survive service deletion)
+- ✅ Master wallet creates multiple Safes (one per service deployment)
+- ✅ Each Safe is independent with its own agent key signer
+- ✅ Deleting a service does NOT delete the agent keys
+- ✅ Safes can be recovered using agent private keys from `/.operate/keys/`
+
+**Security Model:**
+- **Master Wallet**: Encrypted, requires password, creates Safes
+- **Agent Keys**: Plain JSON (protected by filesystem permissions), sign from Safes
+- **Safe**: On-chain smart contract, controlled by agent key
+- **Service**: Off-chain configuration referencing Safe and agent key
+
+**Recovery Procedures:**
+If funds are locked in a Safe:
+1. Locate agent key in `/.operate/keys/AGENT_ADDRESS`
+2. Extract private key from JSON file
+3. Import key into MetaMask or other wallet
+4. Access Safe via https://app.safe.global/
+5. Transfer funds to desired destination
+
+**Documentation:**
+- Full architecture: `ARCHITECTURE_WALLET_SAFES.md`
+- Safety procedures: `MAINNET_SAFETY.md`
+- Incident report: `SAFETY_IMPROVEMENTS_SUMMARY.md`
 
 ### The Bootstrap Process
 
-When a worker initializes, it undergoes the following steps to establish its identity:
+When setting up a new service, the system creates a hierarchical wallet structure:
 
-1.  **Load Local Identity**: The system first checks for a locally persisted identity file.
-2.  **Verify On-Chain**: If a local identity exists, it is verified on-chain to ensure its configuration (e.g., owner, threshold) is still valid.
-3.  **Deploy if Needed**: If no identity is found, the system deploys a new 1-of-1 Gnosis Safe, controlled by the EOA derived from the `WORKER_PRIVATE_KEY`.
-4.  **Persist Public Data**: Once the on-chain identity is confirmed, its public data (Safe address, owner address, etc.) is persisted locally to speed up future initializations.
+1.  **Master Wallet (EOA)**: Created first, requires initial ETH funding (~0.002 ETH for gas)
+2.  **Master Safe**: Deployed by Master Wallet, requires ETH + OLAS funding (~0.002 ETH + 100 OLAS)
+3.  **Agent Key**: Generated when service is created, stored in `/.operate/keys/`
+4.  **Service Safe**: Deployed by Master Safe, requires ETH + OLAS funding (~0.001 ETH + 50 OLAS)
 
-This robust process ensures every agent has a stable, secure, and unique identity on the blockchain, enabling it to own assets, participate in governance, and interact with other decentralized services.
+**Interactive Setup Wizard (JINN-202)**: Use `yarn setup:service` for a guided setup using the middleware's native attended mode:
+
+```bash
+# Interactive service setup on Base mainnet
+yarn setup:service --chain=base
+
+# With mech deployment
+yarn setup:service --chain=base --with-mech
+
+# Other supported chains
+yarn setup:service --chain=gnosis
+yarn setup:service --chain=mode
+yarn setup:service --chain=optimism
+```
+
+**How it works:**
+- The middleware detects or reuses existing Master EOA/Safe
+- Shows **native funding prompts** when addresses need funding
+- Displays exact amounts needed with real-time waiting indicators
+- **Auto-continues** when funding is detected (no manual "continue" needed)
+- Handles the complete lifecycle in one atomic operation
+- Total time: 5-10 minutes depending on transfer confirmation speed
+
+**Key Features:**
+- ✅ Single command for complete setup
+- ✅ Native middleware prompts (battle-tested in olas-operate-app)
+- ✅ Automatic balance polling and verification
+- ✅ Clear error messages and recovery guidance
+- ✅ Can interrupt with Ctrl+C (auto-cleanup on next run)
+- ✅ Saves all addresses and configuration for reference
+
+**Example Output:**
+```
+🚀 Starting quickstart in attended mode...
+
+Pearl Trader quickstart
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Master EOA exists: 0xB151...
+✓ Master Safe exists: 0x15aD...
+
+[base] Creating Agent Key...
+✓ Agent Key: 0x9876...
+
+[base] Please transfer at least 0.001 ETH to Agent Key 0x9876...
+⠋ [base] Waiting for 0.001 ETH... (0.001 ETH remaining)
+
+[User funds address → auto-continues]
+
+✓ Service Safe deployed: 0x1234...
+[base] Please transfer at least 50.0 OLAS to Service Safe 0x1234...
+
+[User funds address → auto-continues]
+
+✅ SETUP COMPLETED SUCCESSFULLY
+```
+
+**Troubleshooting:**
+- Common issues: See [docs/TROUBLESHOOTING_INTERACTIVE_SETUP.md](docs/TROUBLESHOOTING_INTERACTIVE_SETUP.md)
+- Recovery procedures: Auto-cleanup handles interrupted setups
+- Getting help: Include full error output and on-chain state
+
+**IMPORTANT**: On mainnet, wallet state must be preserved between runs. The validation scripts include comprehensive safety checks to prevent accidental wallet deletion and warn about new Safe creation.
+
+### Testing on Tenderly Virtual TestNet (JINN-204)
+
+For cost-free testing before mainnet deployment, use Tenderly Virtual TestNets:
+
+**Automated testing (recommended):**
+```bash
+# Full integration test (staking + mech)
+yarn test:tenderly
+
+# Test staking only
+yarn test:tenderly --no-mech
+
+# Test mech only
+yarn test:tenderly --no-staking
+
+# Baseline test (neither)
+yarn test:tenderly --baseline
+```
+
+The automated script will:
+1. Create a Tenderly Virtual TestNet (forked Base mainnet)
+2. Update `env.tenderly` with VNet credentials
+3. Deploy service with specified configuration
+4. Verify staking state on-chain (if enabled)
+5. Display Tenderly dashboard link for transaction inspection
+
+**Manual testing:**
+```bash
+# 1. Setup Tenderly credentials in env.tenderly
+cp env.tenderly.template env.tenderly
+# Edit with your Tenderly API key and project details
+
+# 2. Create Virtual TestNet
+source env.tenderly
+yarn tsx scripts/setup-tenderly-vnet.ts
+
+# 3. Export VNet RPC URL (shown in script output)
+export TENDERLY_ENABLED=true
+export TENDERLY_RPC_URL="<vnet-rpc-url>"
+export BASE_LEDGER_RPC="$TENDERLY_RPC_URL"
+
+# 4. Run service setup
+yarn setup:service --chain=base --with-mech
+```
+
+**Benefits:**
+- ✅ Zero cost (no real ETH/OLAS needed)
+- ✅ Instant transactions (no waiting for confirmations)
+- ✅ Complete transaction visibility in Tenderly dashboard
+- ✅ Safe testing environment (can't lose real funds)
+- ✅ Repeatable (delete VNet and create new one)
+
+**View test results:**
+- Tenderly Dashboard: `https://dashboard.tenderly.co/{account}/{project}/virtual-testnets/{vnet-id}`
+- Inspect all transactions, state changes, and gas usage
+- Debug reverts with detailed stack traces
+
+**IMPORTANT**: On mainnet, wallet state must be preserved between runs. The validation scripts include comprehensive safety checks to prevent accidental wallet deletion and warn about new Safe creation.
+
+### Recovering Funds from Failed Deployments
+
+If a service deployment fails partway through, funds may be stranded in agent EOAs or Service Safes. The system includes automated recovery procedures:
+
+#### **Automatic Cleanup**
+- Corrupt services (missing config, null Safe address, unminted tokens) are auto-deleted on next run
+- No manual intervention needed for service state cleanup
+- Agent keys are preserved in `/.operate/keys/` (never deleted)
+
+#### **Fund Recovery Script (Agent EOAs)**
+For stranded OLAS tokens in agent EOAs:
+
+```bash
+# Edit scripts/recover-stranded-olas.ts to add agent addresses/keys
+# Keys are in: olas-operate-middleware/.operate/keys/AGENT_ADDRESS
+yarn tsx scripts/recover-stranded-olas.ts
+```
+
+**The script:**
+1. Checks OLAS balance in each agent EOA
+2. Estimates gas for transfer
+3. Sends OLAS back to Master Safe
+4. Includes 3-second delays to avoid RPC rate limiting
+
+**Example output:**
+```
+🔄 OLAS Recovery Script
+
+Master Safe: 0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645
+OLAS Token: 0x54330d28ca3357F294334BDC454a032e7f353416
+
+📍 Agent: 0x38bE2396d43a157eEDCF1d3d63f5F074053180D0
+   Balance: 50.0 OLAS
+   ETH Balance: 0.0005 ETH
+   🚀 Sending 50.0 OLAS to Master Safe...
+   ✅ Success! Recovered 50.0 OLAS
+
+📊 Recovery Summary:
+   ✅ Successful: 1
+   💰 Total Recovered: 50.0 OLAS
+```
+
+#### **Checking for Stranded Funds**
+To scan all agent keys for OLAS balances:
+
+```bash
+yarn tsx scripts/check-agent-balances.ts
+```
+
+**The script:**
+1. Scans all agent keys in `olas-operate-middleware/.operate/keys/`
+2. Checks OLAS balance for each
+3. Includes rate limiting delays
+4. Reports summary of stranded funds
+
+**Example output:**
+```
+🔍 Checking OLAS balances in agent keys...
+
+Found 5 agent keys
+
+═══════════════════════════════════════════════════════════════════
+✅ 0x38bE2396d43a157eEDCF1d3d63f5F074053180D0: 50.0 OLAS
+   0x1234567890abcdef1234567890abcdef12345678: 0 OLAS
+═══════════════════════════════════════════════════════════════════
+
+📊 Summary:
+   Agents with OLAS: 1/5
+   Total OLAS: 50.0 OLAS
+
+⚠️  Stranded OLAS found! Consider running scripts/recover-stranded-olas.ts
+```
+
+#### **Recovery from Service Safes**
+Service Safes are Gnosis Safe multisigs (1/1 with agent key as signer). Two methods available:
+
+**Method 1: Programmatic Recovery (Recommended for RPC reliability)**
+```bash
+# Edit scripts/recover-from-service-safe.ts to set:
+# - SERVICE_SAFE address
+# - AGENT_KEY_PRIVATE_KEY (from /.operate/keys/)
+# - AGENT_KEY_ADDRESS
+yarn tsx scripts/recover-from-service-safe.ts
+```
+
+**The script:**
+1. Verifies agent key is Safe owner
+2. Checks OLAS balance in Service Safe
+3. Constructs and signs Safe transaction
+4. Transfers OLAS to Master Safe
+5. Falls back to Safe UI instructions if signature fails
+
+**Note:** If RPC is rate-limited, the script will provide Safe UI instructions.
+
+**Method 2: Manual Recovery via Safe UI** (Most reliable)
+
+1. **Find the agent key**:
+   ```bash
+   ls olas-operate-middleware/.operate/keys/
+   cat olas-operate-middleware/.operate/keys/0xAGENT_ADDRESS
+   ```
+
+2. **Extract the private key** from the JSON file
+
+3. **Import to MetaMask**:
+   - MetaMask → Import Account → Paste private key
+
+4. **Access the Safe**:
+   - Go to https://app.safe.global/
+   - Connect MetaMask (now controls the Safe as 1/1 multisig)
+   - Switch to Base network
+   - Load the Service Safe address (or use direct URL):
+     ```
+     https://app.safe.global/home?safe=base:SERVICE_SAFE_ADDRESS
+     ```
+
+5. **Transfer funds**:
+   - New Transaction → Send tokens
+   - Select OLAS token
+   - Enter amount and Master Safe address
+   - Sign with MetaMask (agent key)
+   - Execute transaction
+
+**Master Safe Address (Base)**: `0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645`
+
+**Example Recovery Session:**
+```
+# Step 1: Check which services have funds
+yarn tsx scripts/check-agent-balances.ts
+
+# Step 2: Recover from agent EOAs
+yarn tsx scripts/recover-stranded-olas.ts
+
+# Step 3: Identify Service Safes (from middleware config)
+grep -r "multisig" olas-operate-middleware/.operate/services/*/config.json
+
+# Step 4: Recover from Service Safes
+# Option A: Programmatic (if RPC is healthy)
+yarn tsx scripts/recover-from-service-safe.ts
+
+# Option B: Safe UI (if RPC rate-limited)
+# Use instructions above with Safe UI
+```
+
+#### **Prevention**
+To minimize failed deployments:
+- Ensure Master Safe has sufficient OLAS (100+ OLAS recommended)
+- Use QuickNode or reliable RPC provider (avoid rate limits)
+- Don't interrupt during "Deploying service on-chain" phase
+- Monitor middleware output for funding prompts
+
+#### **Service Backups**
+Before deleting or re-deploying a service, back up the configuration:
+
+```bash
+# Backup service config
+mkdir -p service-backups
+cp -r olas-operate-middleware/.operate/services/SERVICE_ID \
+      service-backups/SERVICE_ID-$(date +%Y%m%d-%H%M%S)
+```
+
+**Backups preserve:**
+- Service configuration (`config.json`)
+- Deployment artifacts (Docker Compose files)
+- SSL certificates
+- Persistent data (if any)
+- Service metadata
+
+**To restore a backup:**
+```bash
+cp -r service-backups/SERVICE_ID-TIMESTAMP \
+      olas-operate-middleware/.operate/services/SERVICE_ID
+```
+
+**Existing backups:**
+- `service-backups/service-158-20251001-185810/` - Service 158 with mech `0x436FC548d0cF78A71852756E9b4dD53077d2B06c` (middleware crashed after mech deployment)
+
+**See also:**
+- Full architecture: `ARCHITECTURE_WALLET_SAFES.md`
+- Safety procedures: `MAINNET_SAFETY.md`
+- Recovery script: `scripts/recover-stranded-olas.ts`
 
 ## Architectural Philosophy
 
@@ -323,23 +694,137 @@ The system consists of five key layers that work together in a continuous loop.
 3.  **Worker Layer (`worker/mech_worker.ts`):** The engine of the system. This is the only active worker. It polls the Ponder API to find new `Request` events, executes the associated tasks by invoking the Jinn agent, and delivers the results back to the blockchain.
 4.  **Secure Write Layer (Jinn Control API):** A mandatory GraphQL gateway for all database writes related to on-chain jobs. The worker and agent tools **do not** write directly to the database. They call this API, which validates the request, injects critical lineage data (like the `request_id` and `worker_address`), and then performs the database operation. This ensures all off-chain data is consistent and securely linked to its on-chain origin.
 5.  **Persistence Layer (Supabase):** The off-chain database, now used exclusively for storing supplementary data like job reports, artifacts, and messages in `onchain_*` tables. All writes are managed by the Control API.
-6.  **Local Transaction Queue**: A high-performance SQLite-based transaction queue that provides:
-    -   **Atomic Operations**: Race-condition-free transaction claiming using SQLite transactions
-    -   **Local-First Architecture**: Reduces external dependencies and improves reliability
-    -   **Concurrent Access**: WAL mode enables multiple workers to safely access the same queue
-    -   **Idempotent Operations**: Payload hashing prevents duplicate transaction submissions
-    -   **Queue Abstraction**: Clean interface allows switching between local and cloud-based queues
 
-### OLAS Staking Integration
+### OLAS Service Management Integration
 
-The worker system now includes automated OLAS token staking capabilities:
+The system includes comprehensive OLAS (Open Autonomy) protocol integration for autonomous service creation and staking through the `olas-operate-middleware`:
 
--   **OlasStakingManager**: Manages automated OLAS token staking operations for both Base network staking and Mainnet incentive claiming.
--   **StakingManagerFactory**: Factory class that handles the creation and initialization of the staking manager with proper error handling.
--   **Automated Scheduling**: The worker automatically processes staking operations every hour as part of its main loop.
--   **Graceful Degradation**: If staking components fail to initialize, the worker continues normal operation with staking disabled.
+#### **Core Components**
+-   **OlasServiceManager**: High-level service lifecycle management including mech deployment for marketplace participation
+-   **OlasOperateWrapper**: TypeScript wrapper providing a clean interface to the Python middleware
+-   **OlasStakingManager**: Orchestrates automated OLAS staking operations and mech deployment via service lifecycle
+-   **StakingManagerFactory**: Factory for initializing staking managers with proper dependency injection
+-   **ServiceConfig & MechConfig**: Centralized configuration utilities for service and mech deployment settings
 
-The staking integration is designed as a foundation for future OLAS ecosystem participation, with placeholder implementations ready for full staking logic.
+#### **Key Features**
+-   **Middleware-Based Architecture**: All service operations delegate to the battle-tested `olas-operate-middleware` CLI
+-   **Complete Service Lifecycle**: Full automation of deploy/stake/deploy-mech/claim/terminate operations via CLI commands
+-   **Integrated Mech Deployment (JINN-198)**: Automated mech deployment during service creation with `deployMech` option
+-   **Mech Marketplace Integration**: Automated mech deployment for marketplace participation with persistent address tracking
+-   **Multi-Chain Support**: Base network support for mech factory contracts and marketplace operations
+-   **CLI Flag Compatibility**: Graceful fallback for unsupported flags across different middleware versions
+-   **Accurate Status Reporting**: Real-time service status queries via the middleware's status commands
+-   **Environment Flexibility**: Optional configuration with intelligent defaults for missing environment variables
+-   **Lazy Initialization**: Service managers initialize on-demand to prevent startup failures
+-   **Comprehensive Error Handling**: Robust error handling with detailed logging and recovery mechanisms
+
+#### **Architecture (Updated)**
+```
+Jinn Worker (TypeScript)
+    ↓
+OlasStakingManager (Lazy Initialization)
+    ↓
+OlasServiceManager (CLI Delegation)
+    ↓
+OlasOperateWrapper (Python CLI Interface)
+    ↓
+olas-operate-middleware (Python CLI)
+    ↓
+OLAS Protocol Contracts
+```
+
+#### **Security Model (Simplified)**
+- **CLI-Based Execution**: All operations delegate to the trusted `olas-operate-middleware` CLI
+- **Process Isolation**: Service operations run in isolated Python processes with timeout protection
+- **Comprehensive Validation**: Environment validation and health checks before operations
+- **Audit Trail**: Structured logging of all CLI operations and their outcomes
+- **Graceful Degradation**: System continues operation even if OLAS components fail during initialization
+
+#### **Setup Requirements (Simplified)**
+- Environment variables for Base network contract addresses:
+  - `OLAS_AGENT_REGISTRY_ADDRESS_BASE`
+  - `OLAS_SERVICE_REGISTRY_ADDRESS_BASE`
+  - `OLAS_STAKING_CONTRACT_ADDRESS_BASE`
+  - `RPC_URL` for Base network access
+
+#### **OLAS Staking Integration**
+The system provides automated OLAS staking through:
+-   **Timed Triggers**: Hourly execution in the main worker loop
+-   **Service Lifecycle Progression**: Automated advancement through agent registration, service creation, activation, and staking
+-   **Graceful Degradation**: Worker continues operation if staking components fail during initialization
+-   **Flexible Configuration**: Dependency injection support for testing and custom deployments
+
+For detailed setup instructions, see `docs/implementation/OLAS_MIDDLEWARE_SETUP.md`.
+
+#### **Mech Deployment During Service Creation (JINN-198)**
+
+Services can now have mechs deployed automatically during creation by passing the `deployMech` option:
+
+```typescript
+const serviceInfo = await serviceManager.deployAndStakeService(undefined, {
+  deployMech: true,
+  mechType: 'Native', // 'Native' | 'Token' | 'Nevermined'
+  mechRequestPrice: '10000000000000000', // 0.01 ETH in wei
+  mechMarketplaceAddress: '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020' // Base mainnet
+});
+
+console.log(`Mech deployed: ${serviceInfo.mechAddress}`);
+console.log(`Agent ID: ${serviceInfo.agentId}`);
+```
+
+**How it works:**
+1. The service manager injects mech environment variables into the service config before deployment
+2. The middleware detects empty `AGENT_ID` and `MECH_TO_CONFIG` env vars
+3. The middleware's `deploy_mech()` function is called automatically during service deployment
+4. The mech address and agent ID are returned in the service info
+
+**Configuration:**
+- **mechType**: Type of mech contract (`'Native'` default)
+- **mechRequestPrice**: Price per request in wei (`'10000000000000000'` = 0.01 ETH default)
+- **mechMarketplaceAddress**: MechMarketplace contract address (Base mainnet: `'0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020'`)
+
+**Testing:**
+```bash
+yarn test:jinn-198  # Run E2E mech deployment test on Tenderly
+```
+
+#### **IPFS Integration (JINN-210)**
+
+The system uses Autonolas IPFS infrastructure for all request/delivery content storage:
+
+**Upload (Registry)**
+- **Endpoint**: `https://registry.autonolas.tech/api/v0/add`
+- **Usage**: Uploads request prompts and delivery results
+- **Format**: Wrap-with-directory disabled, CIDv1
+- **Implementation**: `packages/mech-client-ts/src/ipfs.ts` → `pushMetadataToIpfs()`
+
+**Download (Gateway)**
+- **Default**: `https://gateway.autonolas.tech/ipfs/`
+- **Configurable**: Set `IPFS_GATEWAY_URL` env var
+- **Fallback**: Can use any public IPFS gateway (`dweb.link`, `ipfs.io`)
+- **Timeout**: Configurable via `IPFS_FETCH_TIMEOUT_MS` (default: 7000ms)
+
+**Architecture**:
+1. **Request Submission**: Prompt uploaded to Autonolas registry, hash stored on-chain
+2. **Worker Fetch**: Worker retrieves prompt from gateway using IPFS hash from chain
+3. **Result Upload**: Delivery result uploaded to registry, hash stored on-chain
+4. **Network Distribution**: Content propagates across IPFS network, accessible from any gateway
+
+**Important Notes**:
+- Dedicated IPFS gateways (QuickNode, Pinata) only serve their own pinned content
+- Autonolas gateway can retrieve content from the broader IPFS network
+- ISP-level DNS filtering may block some gateways (use public DNS like 8.8.8.8)
+
+#### **E2E Testing Infrastructure**
+The system includes comprehensive end-to-end testing for OLAS service staking operations:
+
+- **Automated Environment Setup**: The `yarn setup:dev` command automatically configures Python/Poetry environments and handles pyenv compatibility
+- **Service Lifecycle Testing**: Full E2E tests verify the complete service lifecycle (setup → deploy → stake → claim → terminate) using real Tenderly Virtual TestNets
+- **Environment Validation**: Tests require proper environment configuration including `OPERATE_PASSWORD` and Base network RPC settings
+- **Utility Functions**: Extracted common testing utilities to `scripts/lib/e2e-test-utils.ts` for reusable service configuration and environment setup
+- **Robust Error Handling**: Tests properly validate middleware responses and provide clear failure diagnostics
+
+The E2E test suite serves as both validation and documentation of the OLAS integration, ensuring the service lifecycle works correctly in realistic blockchain environments.
 
 ---
 
@@ -405,7 +890,8 @@ This ensures agents have the foundation they need to make informed decisions and
 ### Prerequisites
 - Node.js and Yarn
 - A Supabase project
-- Gemini CLI installed and authenticated on your host machine.
+- Gemini CLI installed and authenticated on your host machine
+- (Optional) Tenderly account for cost-free testing
 
 ### 1. Setup
 1.  **Install Dependencies**:
@@ -413,20 +899,11 @@ This ensures agents have the foundation they need to make informed decisions and
     yarn install
     ```
 2.  **Configure Environment**:
-    Create a `.env` file in the root directory based on `.env.template`:
+    Create a `.env` file in the root directory with your Supabase credentials:
     ```env
-    # Required
     SUPABASE_URL=https://your-project-ref.supabase.co
     SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-    RPC_URL=https://mainnet.base.org
-
-    # Optional: Configure local transaction queue (default: ./transaction_queue.db)
-    LOCAL_QUEUE_DB_PATH=./data/transaction_queue.db
     ```
-
-    **Migration Note for Existing Users**:
-    - RPC URLs: If you're upgrading from an older version that used multiple RPC variables (`PONDER_RPC_URL`, `MECHX_CHAIN_RPC`, `MECH_RPC_HTTP_URL`, `BASE_RPC_URL`), you can now consolidate these into a single `RPC_URL` variable. The system automatically maps `RPC_URL` to all legacy variables for backwards compatibility.
-    - Mech Address: Similarly, `MECH_WORKER_ADDRESS` and `PONDER_MECH_ADDRESS` are now consolidated into `MECH_ADDRESS`. Legacy variables are still supported for backwards compatibility.
 3.  **Gemini CLI Authentication**:
     Ensure you have authenticated the Gemini CLI on your host machine first.
 
@@ -437,7 +914,30 @@ yarn build
 yarn frontend:build
 ```
 
-### 3. Running the System
+### 3. Testing OLAS Integration (Optional)
+
+Before deploying to mainnet, test the complete OLAS integration on Tenderly:
+
+```bash
+# Test full integration (staking + mech) on Tenderly Virtual TestNet
+yarn test:tenderly
+
+# This will:
+# 1. Create a cost-free simulated Base mainnet environment
+# 2. Deploy and stake service automatically
+# 3. Deploy mech contract
+# 4. Verify everything on-chain
+# 5. Show results with dashboard link
+
+# Other test scenarios:
+yarn test:tenderly --no-mech      # Test staking only
+yarn test:tenderly --no-staking   # Test mech only
+yarn test:tenderly --baseline     # Test baseline deployment
+```
+
+See **Testing on Tenderly Virtual TestNet** section above for details.
+
+### 4. Running the System
 
 #### Development Mode (Recommended)
 Start both the worker and frontend in development mode:
@@ -471,10 +971,34 @@ yarn frontend:build
 yarn start:all
 ```
 
-### 4. Viewing Logs and Monitoring
+### 5. Viewing Logs and Monitoring
 - **Worker logs**: Displayed in the console where you run the command
 - **Frontend**: Access at http://localhost:3000 to explore data and job reports
 - **Database**: Check Supabase dashboard for job status and reports
+
+### 6. Git Worktree Development Setup
+
+For development using git worktrees (recommended for parallel feature development), the system includes automated environment setup:
+
+```bash
+# Quick setup for new worktrees
+yarn setup:dev
+```
+
+This automated setup script:
+- Initializes git submodules (including olas-operate-middleware)
+- Sets up Python environment with AEA framework dependencies
+- Installs Node.js dependencies across all workspaces
+- Creates `.env` file from template with inline documentation
+- Validates environment and provides actionable feedback
+
+**Additional setup commands:**
+```bash
+yarn setup:python    # Python environment only
+yarn qa:jinn-179      # Comprehensive environment validation
+```
+
+For detailed setup instructions and troubleshooting, see `SETUP.md`.
 
 ---
 
@@ -659,6 +1183,25 @@ USE_CONTROL_API=false
 CONTROL_API_URL=http://localhost:4001/graphql
 ```
 
+### RPC Provider Rate Limits
+
+When interacting with blockchain networks, be aware of RPC rate limits:
+
+**QuickNode (Free Tier)**:
+- **15 requests/second** limit
+- Bulk operations must throttle requests
+- Add delays between consecutive calls (70ms minimum = ~14 req/sec)
+
+**Public RPCs** (e.g., https://mainnet.base.org):
+- Often unreliable or rate-limited
+- Not recommended for production
+
+**Best Practices**:
+- Use QuickNode or Alchemy for reliability
+- Implement exponential backoff for retries
+- Batch requests where possible
+- Add `await new Promise(r => setTimeout(r, 100))` between calls
+
 #### Tool Behavior Changes
 
 **`create_record` Tool:**
@@ -673,3 +1216,106 @@ CONTROL_API_URL=http://localhost:4001/graphql
 **`create_artifact` Tool (NEW):**
 - Dedicated tool for creating artifacts via Control API
 - Requires `
+---
+
+## OLAS Service Deployment & Troubleshooting
+
+### Authentication Issues
+
+#### Issue 1: "Invalid password" during quickstart (JINN-188)
+
+**Problem**: OLAS `quickstart` command fails with "Invalid password" error  
+**Root Cause**: Stale wallet configuration in `olas-operate-middleware/.operate` directory  
+**Solution**: 
+```bash
+rm -rf olas-operate-middleware/.operate
+```
+
+**Environment Setup**: Ensure these variables are set:
+```bash
+OPERATE_PASSWORD=12345678
+BASE_LEDGER_RPC="https://your-base-rpc-url"
+```
+
+#### Issue 2: "User not logged in" during API calls (JINN-198)
+
+**Problem**: Middleware API calls fail with "User not logged in" even after successful `bootstrapWallet()`  
+**Root Cause**: The middleware's password state (`operate.password`) is stored in-process memory and can be lost between API calls, especially:
+- When time elapses between login and service creation
+- When the Python process garbage collects session state
+- When multiple API calls happen in sequence
+
+**Solution**: Automatic re-authentication before every API call  
+**Implementation**: `OlasOperateWrapper.makeRequest()` now:
+1. Stores the password during `bootstrapWallet()`
+2. Calls `_ensureLoggedIn()` before every API request (except `/api/account/login` itself)
+3. Refreshes the session silently without affecting the main flow
+
+**Code Location**: `worker/OlasOperateWrapper.ts`
+```typescript
+// CRITICAL: Re-authenticate before EVERY API call
+if (this.password && endpoint !== '/api/account/login') {
+  await this._ensureLoggedIn(); // Refresh session
+}
+```
+
+**Why This Works**: The middleware accepts login requests at any time and immediately refreshes the in-process `operate.password` variable. By logging in before each API call, we ensure the session is always valid.
+
+**Alternative Considered**: Keeping the middleware server process alive indefinitely was rejected because:
+- The process still loses session state over time
+- Resource leaks and port conflicts in long-running scenarios
+- The overhead of re-login (~50ms) is negligible compared to deployment operations (minutes)
+
+### Quickstart Command Requirements
+
+For unattended mode (`--attended=false`), the quickstart command requires:
+```bash
+OPERATE_PASSWORD=12345678
+BASE_LEDGER_RPC="https://mainnet.base.org"
+STAKING_PROGRAM="custom_staking"  # or "no_staking"
+CUSTOM_STAKING_ADDRESS="0x2585e63df7BD9De8e058884D496658a030b5c6ce"  # AgentsFun1 staking
+```
+
+### Service Configuration Templates
+
+Proper service configurations are available in `code-resources/olas-operate-app/frontend/`:
+
+**Base Network Services:**
+- **Template**: `AGENTS_FUN_BASE_TEMPLATE`
+- **Agent ID**: 43
+- **Staking Contract**: `0x2585e63df7BD9De8e058884D496658a030b5c6ce` (AgentsFun1)
+- **Bond Amount**: 50 OLAS
+- **Fund Requirements**: 0.00625 ETH (agent), 0.0125 ETH (safe)
+
+**Available Staking Programs on Base:**
+- `agents_fun_1`: 100 OLAS requirement
+- `agents_fun_2`: 1000 OLAS requirement  
+- `agents_fun_3`: 5000 OLAS requirement
+
+### Alternative Deployment Methods
+
+1. **Interactive Mode**: 
+   ```bash
+   poetry run operate quickstart config.json --attended=true
+   ```
+
+2. **OlasServiceManager Class**:
+   ```typescript
+   const serviceManager = await OlasServiceManager.createDefault();
+   const result = await serviceManager.deployAndStakeService();
+   ```
+
+3. **Individual Commands**:
+   ```bash
+   poetry run operate service create
+   poetry run operate service deploy
+   poetry run operate service stake
+   ```
+
+### Debugging Tips
+
+- **Check Authentication**: Look for "Invalid password" in `worker.log`
+- **Find Stuck Processes**: `ps aux | grep operate`
+- **Kill Stuck Processes**: `pkill -f "poetry run operate"`
+- **Reset State**: Remove `.operate` directory if authentication fails
+- **Validate RPC**: Ensure Base RPC URL is accessible and supports required methods

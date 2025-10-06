@@ -1,232 +1,191 @@
-# Olas Staking Implementation Plan
+# Olas Staking Implementation Plan (Revised)
 
-**Date:** September 22, 2025
+**Date:** September 23, 2025
 **Linear Project:** [Implement Olas Staking](https://linear.app/jinn-lads/project/implement-olas-staking-147a0523b807)
 
 ---
 
 ## 1. High-Level Goal
 
-The primary objective is to enable the worker agent to automatically and programmatically stake OLAS tokens into a staking contract on the Base network. The system should operate autonomously, earning OLAS rewards for our node through this staking mechanism.
+The primary objective is to enable the worker agent to automatically and programmatically create, register, and stake an **Olas service** on the Base network. The system must manage the entire service lifecycle to earn OLAS rewards for our node through the protocol's service staking mechanism.
 
 ## 2. Core Requirements
 
-### 2.1. Staking Operations
-- The worker agent must be able to perform two primary actions with the staking contract:
-    - **Deposit (Stake):** Send OLAS tokens to the contract to begin staking.
-    - **Claim:** Claim accrued OLAS rewards from the contract.
-- These operations must be fully automated within the worker-agent's existing operational loop and require no manual intervention.
+### 2.1. Service Lifecycle and Staking Operations
+- The worker agent must be able to perform the full lifecycle of service management:
+    - **Agent Registration:** Ensure an agent is registered in the `AgentRegistry`.
+    - **Service Creation & Registration:** Create and register a new service in the `ServiceRegistry`, receiving a service NFT.
+    - **Service Activation:** Provide the necessary security deposit (bond) to activate the service.
+    - **Staking:** Stake the service NFT in a designated staking contract.
+    - **Claiming:** Claim accrued OLAS rewards from the staking contract.
+- These operations must be fully automated within the worker-agent's existing operational loop.
 
 ### 2.2. Dual-Track Contract Strategy
 This project will proceed on two parallel tracks:
 - **Track 1: Integration with Existing Contract (Practical Testing)**
-    - The agent will first be integrated with an existing, live staking contract on the Base blockchain. This will serve as the primary environment for development, testing, and initial deployment.
+    - The agent will first be integrated with an existing, live staking contract on the Base blockchain. This will serve as the primary environment for development and testing.
 - **Track 2: Deployment of Proprietary Contract (Production Goal)**
     - In parallel, we will deploy our own proprietary staking contract. This contract should be launched, funded, and ready for our agent to use in the subsequent epoch.
     - The ABI for our proprietary contract will be identical to the existing staking contracts we integrate with.
 
 ### 2.3. Network Specificity
-- All automated staking and claiming operations performed by the agent will occur exclusively on the **Base network**.
+- All automated service management and staking operations will occur exclusively on the **Base network**.
 - The setup and funding of our proprietary staking contract will involve some OLAS token activity on **Ethereum Mainnet**.
 
 ### 2.4. Reward Accrual
-- The end-to-end system must successfully generate OLAS staking rewards for our node.
+- The end-to-end system must successfully generate OLAS staking rewards for our node by maintaining an active, staked service.
 
 ## 3. Technical Implementation Details
 
 ### 3.1. Wallet and Transaction Execution
-- All on-chain transactions (stake, claim) **must** be executed through the project's existing **Safe**, utilizing the `SafeExecutor`.
-- The `EoaExecutor` should not be used for any staking-related operations.
+- The `olas-operate-middleware` will create and manage a **Safe** during the service creation process, which is controlled by our worker's EOA.
+- All service-related on-chain transactions (agent registration, service creation, staking) will be executed through this middleware-managed Safe.
+- The existing marketplace interaction system can continue to use the Safe created by the middleware for its transactions.
 
-### 3.2. Contract ABIs
-- We must source the ABIs for the target staking contracts on the Base network.
+### 3.2. Leverage `olas-operate-middleware` via Git Submodule
+- To ensure version stability and a clear upgrade path, the `olas-operate-middleware` repository will be integrated as a **Git submodule**.
+- This approach pins our project to a specific commit of the middleware, preventing unexpected breakages from upstream changes.
+- The worker will execute the middleware's CLI (`operate`) as a **child process** from within the submodule directory.
 
-### 3.3. Staking Logic
-- The initial staking logic can be hard-coded. A dynamic or complex decision-making process is not required for the first iteration.
-- The logic should be simple, such as staking all available OLAS in the Safe's wallet when triggered.
+### 3.3. Service and Staking Logic
+- The worker will follow a stateful, sequential process:
+    1.  **Compatibility Check**: Before any action, determine the required `agent_id` for the target staking contract.
+    2.  **Service Management**:
+        - Check for the existence of a managed, compatible service NFT in the Safe's wallet.
+        - If no service exists, create one:
+            - Ensure the required agent is registered in the `AgentRegistry`.
+            - Create and register the service in the `ServiceRegistry`, receiving the service NFT.
+    3.  **Activation**: Once the service NFT is owned, activate it by providing the required **minimum staking deposit**.
+    4.  **Staking**: Stake the active service NFT into the target staking contract using the middleware's `stake` command.
+- **Note on Proprietary Contract**: When the proprietary staking contract is deployed (Track 2), a corresponding proprietary agent will need to be created and registered first.
 
 ### 3.4. System Configuration & Monitoring
-- **Transaction Monitoring:** The agent must monitor its staking and claiming transactions to confirm they are successfully mined on the Base network.
-- **Environment Configuration:** The application's configuration must be updated to include:
-    - The address of the target staking contract on Base.
+- **Transaction Monitoring:** The agent must monitor all its transactions (agent/service registration, activation, staking, claiming) to confirm they are successfully mined on the Base network.
+- **Environment Configuration:** The application's configuration must be updated to include addresses for:
+    - `AgentRegistry` on Base.
+    - `ServiceRegistry` on Base.
+    - The target staking contract on Base.
     - RPC endpoints for the Base network.
 
 ## 4. Acceptance Criteria
 
-### AC1: Successful Staking Operation
-- **Given** the agent's Safe wallet holds a balance of OLAS on the Base network,
+### AC1: Successful Service Creation and Registration
+- **Given** the agent's Safe wallet has an OLAS balance,
+- **When** the service management logic is triggered,
+- **Then** the agent ensures an agent is registered, creates a new service, and registers it with the `ServiceRegistry`,
+- **And** the Safe wallet receives the corresponding service NFT.
+
+### AC2: Successful Service Staking Operation
+- **Given** the agent's Safe owns an active service NFT,
 - **When** the staking logic is triggered,
-- **Then** the agent successfully signs and dispatches a `stake` transaction via the `SafeExecutor` to the target staking contract,
-- **And** the transaction is confirmed on-chain,
-- **And** the staking contract's records are updated to reflect the new staked amount for the Safe.
+- **Then** the agent successfully signs and dispatches a `stake` transaction via the `SafeExecutor` to the target staking contract, referencing the `service_id`,
+- **And** the transaction is confirmed on-chain.
 
-### AC2: Successful Reward Claim Operation
-- **Given** the agent's Safe has a staked position and has accrued OLAS rewards,
+### AC3: Successful Reward Claim Operation
+- **Given** the agent has a staked service that has accrued rewards,
 - **When** the reward claiming logic is triggered,
-- **Then** the agent successfully signs and dispatches a `claim` transaction via the `SafeExecutor`,
-- **And** the transaction is confirmed on-chain,
-- **And** the OLAS balance of the Safe wallet on Base increases by the claimed amount.
+- **Then** the agent successfully dispatches a `claim` transaction via the `SafeExecutor`,
+- **And** the OLAS balance of the Safe wallet on Base increases.
 
-### AC3: Automation within Worker Loop
+### AC4: Automation within Worker Loop
 - **Given** the worker agent is running its main operational loop,
-- **When** conditions for staking or claiming are met,
-- **Then** the corresponding operations are executed automatically without any manual user intervention.
+- **When** conditions for any lifecycle step (create, register, activate, stake, claim) are met,
+- **Then** the corresponding operations are executed automatically without manual intervention.
 
-### AC4: Exclusive Use of Safe Executor
-- **Given** any staking or claiming transaction is initiated,
-- **Then** the transaction is executed through the `SafeExecutor`,
-- **And** logs confirm that the `EoaExecutor` was not used for the operation.
+### AC5: Safe Management via Middleware
+- **Given** any service or staking transaction is initiated,
+- **Then** it is executed through the Safe created and managed by the `olas-operate-middleware`.
 
-### AC5: Externalized Configuration
+### AC6: Externalized Configuration
 - **Given** the agent is initialized,
-- **Then** the staking contract address and Base network RPC endpoint are loaded from a configuration file or environment variables,
-- **And** these values are not hard-coded within the application's source code.
+- **Then** all required contract addresses and the Base network RPC endpoint are loaded from configuration, not hard-coded.
 
-### AC6: End-to-End Test with Existing Contract (Track 1)
-- **Given** a test suite is executed against a live, existing staking contract on a testnet or mainnet fork,
-- **Then** an end-to-end test successfully demonstrates the agent staking OLAS and later claiming the accrued rewards.
-
-### AC7: Proprietary Contract Deployed and Ready (Track 2)
-- **Given** the project is nearing completion,
-- **Then** a new proprietary staking contract is successfully deployed to the Base network,
-- **And** this new contract has been funded with OLAS tokens to ensure it is operational for rewards distribution.
+---
 
 ## 6. Implementation Specification (Revised)
 
-This section details the technical approach to meet the acceptance criteria, incorporating critical feedback.
+This section details the technical approach, now centered on using the `olas-operate-middleware`.
 
 ### 6.1. Configuration and Environment
+- All new configuration variables will be added to and loaded from `.env` via `env/index.ts`.
+- **Required Environment Variables**:
+    - `RPC_URL`, `CHAIN_ID`: For Base network.
+    - `OLAS_AGENT_REGISTRY_ADDRESS_BASE`: The `AgentRegistry` contract address.
+    - `OLAS_SERVICE_REGISTRY_ADDRESS_BASE`: The `ServiceRegistry` contract address.
+    - `OLAS_STAKING_CONTRACT_ADDRESS_BASE`: The target staking contract address.
 
-All new configuration variables will be added to and loaded from `.env` via `env/index.ts`.
+### 6.2. Service & Staking Logic (`OlasServiceManager`)
+A new class, `OlasServiceManager`, will be created in `worker/OlasServiceManager.ts` to encapsulate all service lifecycle and staking logic. This class will act as a TypeScript wrapper around the Python-based `olas-operate-middleware`.
 
--   **Required Environment Variables**:
-    -   `RPC_URL`, `CHAIN_ID`: For Base network.
-    -   `OLAS_TOKEN_ADDRESS_BASE`: The OLAS ERC20 token contract address on Base.
-    -   `OLAS_STAKING_PROXY_ADDRESS_BASE`: The target staking contract address on Base.
-    -   `OLAS_MAINNET_RPC_URL`, `OLAS_MAINNET_CHAIN_ID`: For Ethereum Mainnet.
-    -   `OLAS_DISPENSER_ADDRESS_MAINNET`: The L1 `Dispenser` contract address.
-    -   `OLAS_DEPOSIT_PROCESSOR_L1_ADDRESS`: The L1 deposit processor for Base.
-    -   `OLAS_CLAIM_NUM_EPOCHS`, `OLAS_BRIDGE_PAYLOAD`: Parameters for the incentive claim.
--   **Validation**: The application must validate the checksums of all provided addresses on startup to prevent configuration errors.
-
-### 6.2. Staking and Claiming Logic (`OlasStakingManager`)
-
-A new class, `OlasStakingManager`, will be created in `worker/OlasStakingManager.ts` to encapsulate all staking logic.
-
--   **Dependencies**: The class must be initialized with `SafeExecutor` instances and will reject any other executor type.
-
-#### 6.2.1. `stakeOlas()` Method
-
-This method orchestrates the staking of all available OLAS tokens from the Safe wallet on Base.
-
-1.  **Idempotency Check**: Before executing, check the current OLAS balance and the current allowance granted to the `OLAS_STAKING_PROXY_ADDRESS_BASE`. If the balance is zero or the allowance is already sufficient, log and terminate.
-2.  **Build MultiSend Transaction**:
-    -   **Transaction 1 (Approve)**: Encode `approve(spender, amount)` for the OLAS token.
-    -   **Transaction 2 (Deposit)**: Encode `deposit(amount)` for the staking proxy.
-    -   These two transactions **must** be batched into a single MultiSend transaction to ensure atomicity.
-3.  **Execute via Safe**: Execute the batched transaction via the Base `SafeExecutor` and wait for confirmation. Log the success, including the transaction hash.
-
-#### 6.2.2. `claimIncentives()` Method
-
-This method triggers the cross-chain incentive distribution from L1 Mainnet.
-
-1.  **Encode L1 Call**:
-    -   Encode `claimStakingIncentives(numClaimedEpochs, chainId, stakingTarget, bridgePayload)`.
-    -   Ensure `stakingTarget` is correctly encoded as a left-padded `bytes32` from the `OLAS_STAKING_PROXY_ADDRESS_BASE`.
-2.  **Execute L1 Transaction**: Execute via the **Mainnet** `SafeExecutor` and wait for confirmation.
+- **Dependencies**: The class will be initialized with the worker's EOA private key and will use the `OlasOperateWrapper` for middleware interactions.
+- **Core Logic**: It will orchestrate calls to the middleware's CLI to perform:
+    1.  `setup_user_account()` - Set up operate middleware user account
+    2.  `create_wallet()` - Create wallet in middleware  
+    3.  `create_safe()` - Deploy Safe controlled by worker's EOA
+    4.  `agent.register()` - Register agent in AgentRegistry
+    5.  `service.create()` - Create and register service, receiving service NFT
+    6.  `service.activate()` - Activate service with required deposit
+    7.  `service.stake()` - Stake service NFT in staking contract
+    8.  `service.claim()` - Claim accrued rewards
 
 ### 6.3. Worker Integration
+- The `OlasServiceManager` will be integrated into the main worker process (`worker/worker.ts`), instantiated with a dedicated `SafeExecutor` for Base, and triggered periodically to check and advance the service's state.
 
-The `OlasStakingManager` will be integrated into the main worker process (`worker/worker.ts`), instantiated with dedicated `SafeExecutor`s for Base and Mainnet, and triggered periodically.
+### 6.4. End-to-End Testing
+- A new test script (`scripts/e2e-service-stake-test.ts`) will validate the entire flow from service creation to staking and claiming.
+- **Verification**: Test success will be determined by querying the on-chain state of the registries and staking contract, not just by transaction confirmation.
 
-### 6.4. Contract ABIs
+## 7. Development Plan
 
-A new `/abis` directory will be created to store pinned, version-controlled copies of the required ABIs (ERC20, Staking Proxy, L1 Dispenser). ABIs must not be fetched at runtime.
+### Slice 1: Middleware Integration & Configuration
+- **Goal**: Integrate the `olas-operate-middleware` as a version-controlled submodule.
+- **Tasks**:
+    1.  Add the `valory-xyz/olas-operate-middleware` repository as a Git submodule to the project.
+    2.  Create a TypeScript wrapper/utility to reliably execute the `operate` CLI from the submodule path as a child process and parse its output.
+    3.  Add required `OLAS_*` registry and staking contract addresses to `.env` and `env/index.ts`.
 
-### 6.5. End-to-End Testing
+### Slice 2: Implement Service Creation and Registration
+- **Goal**: Create the `OlasServiceManager` and implement the initial service setup logic.
+- **Tasks**:
+    1.  Create `worker/OlasServiceManager.ts`.
+    2.  Implement methods that use the CLI wrapper to handle agent registration and service creation/registration, ensuring the correct `agent_id` is used based on the staking contract.
+    3.  Implement logic to check if a compatible service already exists for the Safe.
 
-A new test script (`scripts/e2e-stake-test.ts`) will validate the flow.
+### Slice 3: Implement Service Activation and Staking
+- **Goal**: Add staking capabilities to the manager.
+- **Tasks**:
+    1.  Implement methods in `OlasServiceManager` that call the middleware to handle service activation (providing the minimum staking deposit) and staking.
+    2.  Ensure the logic correctly passes the `service_id` to the staking function.
 
--   **Prerequisites**: The test setup must include steps to seed the test Safe with both OLAS tokens and native gas (ETH) on Base.
--   **Verification**: Test success will be determined by listening for on-chain events (`Approval`, `Transfer`, `Deposit`) and verifying final contract/wallet balances, not just by transaction confirmation.
+### Slice 4: Worker Integration and Automation
+- **Goal**: Automate the entire service lifecycle in the worker.
+- **Tasks**:
+    1.  In `worker/worker.ts`, instantiate the `OlasServiceManager`.
+    2.  Add a timed trigger in the main loop that calls the manager. The manager should contain the state machine logic to progress the service from creation to staking.
 
-### 6.6. Transaction and Error Handling
+### Slice 5: Mech Contract Deployment
+- **Goal**: Deploy the Mech contract via the marketplace to enable requests and deliveries.
+- **Tasks**:
+    1.  Implement a `deployMech()` method in `OlasServiceManager` that calls the middleware's logic for mech creation.
+    2.  Ensure the method captures and stores the resulting mech contract address and agent ID.
+    3.  Update the worker's state machine to call this method after a service is successfully staked.
 
--   **Lifecycle Management**: The system must robustly manage the transaction lifecycle, including submission, confirmation, and replacement logic (speed-up/cancel). It should handle transient RPC errors with a backoff-and-retry mechanism.
--   **Logging**: All staking-related operations must generate structured logs using Pino, including key details like chain, Safe address, method, amounts, and transaction hash to ensure observability.
-
-## 7. Development Plan (Vertically Sliced)
-
-The project will be implemented in the following slices to deliver end-to-end functionality incrementally.
-
-### Slice 1: Configuration & ABI Setup
-
--   **Goal**: Prepare the environment and contract interfaces.
--   **Tasks**:
-    1.  Add all required `OLAS_*` variables to the `.env` file and `env/index.ts` and validate checksummed addresses on boot.
-    2.  Create a new top-level `/abis` directory.
-    3.  Copy the required ABIs (ERC20, L1 Dispenser, Staking Proxy) into the `/abis` directory. Pin versions and do not fetch at runtime.
-
-### Slice 2: Implement Core Staking Logic
-
--   **Goal**: Create the `OlasStakingManager` and implement the primary `stakeOlas` functionality.
--   **Tasks**:
-    1.  Create `worker/OlasStakingManager.ts`.
-    2.  Implement the class constructor to accept `SafeExecutor` instances, rejecting any other executor type.
-    3.  Implement the `stakeOlas()` method, including idempotency checks (balance, allowance). It must batch `approve` and `deposit` into a single MultiSend transaction via the Base `SafeExecutor`.
-
-### Slice 3: Worker Integration
-
--   **Goal**: Automate the staking logic within the main worker loop.
--   **Tasks**:
-    1.  In `worker/worker.ts`, initialize the Base and Mainnet `SafeExecutor`s.
-    2.  Instantiate `OlasStakingManager`.
-    3.  Add a timed trigger in the `JobProcessor` loop to call `stakeOlas()` periodically.
-
-### Slice 4: End-to-End Staking Test
-
--   **Goal**: Verify the complete staking flow on a live network.
--   **Tasks**:
-    1.  Create the `scripts/e2e-stake-test.ts` script.
-    2.  Add test prerequisites: seeding the Safe wallet with OLAS and gas tokens.
-    3.  Implement the test logic to initialize, execute `stakeOlas()`, and verify success by listening for the relevant on-chain events and confirming balance changes.
-    4.  Execute the test against a configured testnet/fork to satisfy AC6.
-
-### Slice 5: Incentive Claiming
-
--   **Goal**: Implement the L1 incentive claiming mechanism.
--   **Tasks**:
-    1.  Implement the `claimIncentives()` method in `OlasStakingManager`, ensuring correct parameter encoding (`stakingTarget` as left-padded `bytes32`) and executing the transaction via the Mainnet `SafeExecutor`.
-    2.  Add a separate timed trigger in the `JobProcessor` to call `claimIncentives()` periodically.
-    3.  Manually test the L1 transaction and observe the `StakingIncentivesClaimed` and `StakingTargetDeposited` events to satisfy AC2.
-
-### Slice 6: Proprietary Contract Deployment (Track 2)
-
--   **Goal**: Deploy and prepare the project's own staking contract.
--   **Tasks**:
-    1.  Deploy the proprietary staking contract to the Base network.
-    2.  Fund the new contract with OLAS tokens.
-    3.  Update the `.env` configuration to point `OLAS_STAKING_PROXY_ADDRESS_BASE` to the new contract address to complete AC7.
+### Slice 6: Incentive Claiming & E2E Test
+- **Goal**: Implement reward claiming and verify the complete flow.
+- **Tasks**:
+    1.  Implement a `claimIncentives()` method in `OlasServiceManager`.
+    2.  Create the `scripts/e2e-service-stake-test.ts` script to test the full lifecycle: create -> register -> activate -> stake -> **deploy-mech** -> claim.
+    3.  Execute the test against a configured testnet/fork.
 
 ## 5. Context from Code Resources (Revised)
 
-### 5.1. Autonolas Tokenomics (code-resources/autonolas-tokenomics)
+### 5.1. Autonolas Tokenomics (`autonolas-tokenomics`)
+- **Core Contracts**: The key contracts are now understood to be `ServiceRegistry.sol`, `AgentRegistry.sol`, and `Tokenomics.sol`, which governs the incentive and bonding mechanisms. The staking process is intrinsically linked to the lifecycle of a service registered in these contracts.
+- **Staking Model**: The staking model is "service staking," not "token staking." It involves depositing a service NFT and providing a **minimum staking deposit** to activate, not just bonding ERC20 tokens.
 
--   **Core Staking-Related Contracts**:
-    -   `contracts/Dispenser.sol`: The L1 contract responsible for distributing incentives. The key function is `claimStakingIncentives`, which triggers the cross-chain deposit flow.
-    -   `contracts/staking/*`: A suite of cross-chain contracts for routing deposits from L1 to L2. `DefaultDepositProcessorL1.sol` and `DefaultTargetDispenserL2.sol` provide the generic mechanism for bridging incentives to an L2 staking target.
-    -   `contracts/Treasury.sol` and `contracts/Tokenomics.sol`: Central to the OLAS economy but not directly interacted with for staking operations.
--   **ABIs**: The `abis/` directory, particularly version `0.8.25`, contains the necessary `Dispenser.json`, `DefaultDepositProcessorL1.json`, and `DefaultTargetDispenserL2.json` ABIs. An ERC20 ABI for OLAS is also available.
-
-### 5.2. Olas Operate Middleware (code-resources/olas-operate-middleware)
-
--   **Execution Primitives**:
-    -   The middleware provides a `SafeTxBuilder` (`operate/services/protocol.py`) which is the foundation for creating and executing transactions through a Gnosis Safe. This aligns with the project's `SafeExecutor`-only requirement. The existing `olas-operate-middleware` demonstrates patterns for interacting with contracts via a Safe, which should be adapted.
--   **Base Network Coverage** (`operate/ledger/profiles.py`):
-    -   This file serves as a canonical source for on-chain constants. It provides the **OLAS token address on Base** (`0x54330d28ca3357F294334BDC454a032e7f353416`) and a list of known staking program addresses on Base which can be used as targets for `OLAS_STAKING_PROXY_ADDRESS_BASE`.
-
-### 5.3. Practical Implications for this Implementation
-
--   **Staking Model**: The implementation must focus exclusively on the **OLAS token staking** flow: `ERC20.approve(stakingProxy, amount)` followed by `stakingProxy.deposit(amount)`. All context related to service staking (`stake(serviceId)`) from the middleware is irrelevant and must be ignored.
--   **Execution**: The `SafeExecutor` is the correct tool for this task, and its transactions should be constructed to be compatible with the Gnosis Safe contracts. The use of **MultiSend** for batching `approve` and `deposit` is critical.
--   **Configuration**: The on-chain addresses for the OLAS token and known staking proxies can be sourced from the middleware's profile definitions, providing a reliable starting point.
+### 5.2. Olas Operate Middleware (`olas-operate-middleware`)
+- **The Correct Tool for the Job**: This middleware is the canonical client for interacting with the Olas protocol. It is an application that must be executed as a child process.
+- **Key Primitives**:
+    - `operate/services/protocol.py`: Contains the `StakingManager`, which is the central class for all staking operations. Its methods, like `stake(service_id: int, ...)` and `unstake(service_id: int, ...)` are service-centric and must be used.
+    - `operate/quickstart/`: This directory contains example scripts (`run_service.py`, `reset_staking.py`) that demonstrate the correct, end-to-end user workflows for service management and staking. These should be used as a reference for our implementation.
+- **Conclusion**: The implementation must be a wrapper around this middleware's CLI. A custom implementation of the staking logic is unnecessary and would likely be incorrect.

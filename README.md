@@ -7,6 +7,7 @@ A sophisticated worker system that integrates with Gemini CLI to process jobs th
 This project consists of several key components:
 
 - **Worker System**: A Node.js worker that polls for jobs and executes them
+- **OLAS Integration**: Automated service lifecycle management and staking via olas-operate-middleware
 - **MCP Server**: A Model Context Protocol server that provides tools for database operations
 - **Frontend Explorer**: A Next.js web interface for exploring data and job reports
 - **Telemetry Collection**: OpenTelemetry integration for monitoring and observability
@@ -49,43 +50,168 @@ This project consists of several key components:
 
 ### Prerequisites
 
-- Node.js (v18 or higher)
-- Yarn
-- A Supabase project
-- Gemini CLI installed and authenticated
-- An existing EOA (Externally Owned Account) with a private key. The worker uses this EOA to deploy and control its on-chain identity (Gnosis Safe). The system does **not** create an EOA for you.
+**System Requirements**:
+- Node.js v18+ (v20+ recommended)
+- Python **3.11.0-3.11.6** (⚠️ NOT 3.12+, middleware incompatible)
+- Poetry 1.5+ ([installation](https://python-poetry.org/docs/#installation))
+- Yarn 1.22+ or later
+- Git with submodule support
+
+**Required Services**:
+- Base RPC endpoint (e.g., [Base mainnet](https://mainnet.base.org) or testnet)
+- (Optional) Supabase project for Control API
+- (Optional) Gemini API key for AI-powered job execution
+
+**Required Accounts**:
+- An EOA (Externally Owned Account) with private key for OLAS service operations
+- Funded wallet for gas (Base ETH) and service staking (OLAS tokens)
 
 ### Setup
 
-1. **Clone and setup**:
-   ```bash
-   git clone <repository-url>
-   cd gemini_cli_jinn
-   ./scripts/setup.sh
-   ```
+#### 1. Clone and Install
 
-2. **Configure environment**:
-   ```bash
-   cp .env.template .env
-   # Edit .env with your configuration (see Configuration section below)
-   ```
+```bash
+git clone <repository-url>
+cd jinn-cli-agents
+yarn setup:dev  # Initializes submodules, installs Node.js + Python dependencies
+```
 
-3. **Authenticate with Gemini**:
-   ```bash
-   gemini auth login
-   ```
+#### 2. Configure Environment
 
-4. **Build all packages**:
-   ```bash
-   yarn build:all
-   ```
+```bash
+cp .env.template .env
+```
 
-5. **Start development**:
-   ```bash
-   yarn dev:all
-   ```
+**Edit `.env` with the following REQUIRED variables**:
 
-For detailed setup instructions, see [SETUP.md](SETUP.md).
+```bash
+# === Core Worker Configuration ===
+WORKER_PRIVATE_KEY=0x...           # Your EOA private key
+CHAIN_ID=8453                       # 8453 = Base mainnet, 84532 = Base Sepolia
+RPC_URL=https://mainnet.base.org    # Base RPC endpoint
+
+# === Ponder (On-chain Event Indexer) ===
+PONDER_RPC_URL=https://mainnet.base.org
+MECH_MARKETPLACE_ADDRESS_BASE=0x...  # MechMarketplace contract address
+
+# === Control API (GraphQL Gateway) ===
+CONTROL_API_URL=http://localhost:4001/graphql  # ⚠️ Must include /graphql path
+SUPABASE_URL=https://<project>.supabase.co     # (Optional if using Supabase)
+SUPABASE_SERVICE_ROLE_KEY=...                  # (Optional if using Supabase)
+
+# === OLAS Middleware (Service Deployment) ===
+OPERATE_PASSWORD=<password>         # Encrypts wallet keystore
+OLAS_STAKING_CONTRACT_ADDRESS_BASE=0x...
+OLAS_AGENT_REGISTRY_ADDRESS_BASE=0x...
+OLAS_SERVICE_REGISTRY_ADDRESS_BASE=0x...
+
+# === IPFS Configuration ===
+IPFS_GATEWAY_URL=https://gateway.autonolas.tech/ipfs/
+IPFS_FETCH_TIMEOUT_MS=30000
+
+# === AI Model API Keys (Optional) ===
+GEMINI_API_KEY=...
+OPENAI_API_KEY=...
+```
+
+**See [Configuration](#configuration) section below for detailed descriptions.**
+
+#### 3. Create and Deploy Service
+
+**Before running the worker, you MUST create and deploy an OLAS service**:
+
+```bash
+tsx scripts/interactive-service-setup.ts
+```
+
+This will:
+- Create a master wallet and Safe
+- Generate agent keys
+- Deploy a service Safe on-chain
+- Register your mech in the marketplace
+- Store service configuration in `olas-operate-middleware/.operate/`
+
+**⚠️ CRITICAL**: The `.operate/` directory contains your keys and wallets. It is automatically git-ignored. Back up this directory to `~/Documents/olas-service-backups` or similar.
+
+#### 4. Build Packages
+
+```bash
+yarn build:all  # Builds worker, mech-client-ts, and all packages
+```
+
+#### 5. Start Development Stack
+
+```bash
+# Start Ponder (indexer), Control API, and Mech Worker
+yarn dev:stack
+```
+
+This starts:
+- **Ponder** (http://localhost:42069) - Indexes MechMarketplace events
+- **Control API** (http://localhost:4001/graphql) - GraphQL write gateway
+- **Mech Worker** (continuous mode) - Polls for jobs and delivers results
+
+#### 6. Submit a Test Job
+
+In a **separate terminal**:
+
+```bash
+yarn post:job
+```
+
+This submits a test request to the on-chain MechMarketplace. The worker will:
+1. Detect the new request via Ponder
+2. Claim it via Control API
+3. Execute the prompt
+4. Deliver the result via Safe transaction
+
+**Verify the full loop** by checking worker logs for:
+```
+[WORKER] Found 1 unclaimed requests
+[WORKER] Claimed request <id>
+[WORKER] Executing job...
+[WORKER] Result delivered successfully
+```
+
+### Testing with Tenderly Virtual TestNet (Optional)
+
+For cost-free testing without using real funds, you can use Tenderly's Virtual TestNet:
+
+```bash
+# Copy the Tenderly configuration template
+cp env.tenderly.template env.tenderly
+
+# Edit env.tenderly with your Tenderly credentials
+# Get credentials from: https://dashboard.tenderly.co/account/authorization
+```
+
+**Key benefits**:
+- Unlimited ETH (no real funds needed)
+- Instant transaction confirmation
+- Fork of Base mainnet with all contracts
+- Full transaction debugging in Tenderly dashboard
+
+**To use Tenderly instead of mainnet**:
+```bash
+# Load Tenderly config instead of .env
+source env.tenderly
+yarn dev:stack
+```
+
+See `env.tenderly.template` for detailed configuration instructions.
+
+### Common Setup Issues
+
+| Issue | Solution |
+|-------|----------|
+| `Python.h not found` | Install Python 3.11 (not 3.12+) and development headers |
+| `ModuleNotFoundError: operate` | Run `yarn setup:dev` to install middleware dependencies |
+| `No service configuration found` | Run `tsx scripts/interactive-service-setup.ts` first |
+| `HTTP 404` from Control API | Ensure `CONTROL_API_URL` includes `/graphql` path |
+| `IPFS fetch timeout` | Increase `IPFS_FETCH_TIMEOUT_MS` or use faster gateway |
+| `Safe Transaction Service rate limit` | Use testnet, or wait 1-2 minutes between requests |
+
+For comprehensive troubleshooting, see [OLAS_ARCHITECTURE_GUIDE.md](OLAS_ARCHITECTURE_GUIDE.md).
 
 ## Project Structure
 
@@ -191,6 +317,14 @@ To run the Jinn worker and its associated services, you'll need to configure sev
 -   `GEMINI_API_KEY`: Your API key for the Gemini API.
 -   `OPENAI_API_KEY`: Your API key for the OpenAI API.
 -   `SNYK_TOKEN`: Your Snyk token for security scanning (get from [https://app.snyk.io/account](https://app.snyk.io/account)).
+
+#### Required for OLAS Service Staking
+
+-   `OPERATE_PASSWORD`: Password for the olas-operate-middleware (used for unattended operations).
+-   `OLAS_STAKING_CONTRACT_ADDRESS_BASE`: The address of the OLAS staking contract on Base.
+-   `OLAS_AGENT_REGISTRY_ADDRESS_BASE`: The address of the OLAS Agent Registry on Base.
+-   `OLAS_SERVICE_REGISTRY_ADDRESS_BASE`: The address of the OLAS Service Registry on Base.
+-   `MECH_MARKETPLACE_ADDRESS_BASE`: The address of the MechMarketplace contract on Base (required for mech deployment).
 
 #### Required for E2E Testing
 

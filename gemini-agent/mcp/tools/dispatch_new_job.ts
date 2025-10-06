@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
 import { randomUUID } from 'node:crypto';
-import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
+import { marketplaceInteract } from '../../../packages/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 
 const dispatchNewJobParamsBase = z.object({

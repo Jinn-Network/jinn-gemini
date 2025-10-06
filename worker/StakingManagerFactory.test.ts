@@ -1,26 +1,33 @@
 /**
  * Tests for StakingManagerFactory - minimal tests for critical paths
+ * Refactored for JINN-180: Test OlasOperateWrapper-based implementation
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { StakingManagerFactory } from "./StakingManagerFactory.js";
 import { OlasStakingManager } from "./OlasStakingManager.js";
-import { SafeExecutor } from "./SafeExecutor.js";
+import { OlasOperateWrapper } from "./OlasOperateWrapper.js";
+import { OlasServiceManager } from "./OlasServiceManager.js";
 
 // Mock dependencies
-vi.mock("./SafeExecutor.js", () => ({
-  SafeExecutor: vi.fn().mockImplementation(() => ({
-    // Mock implementation
-  })),
+vi.mock("./OlasOperateWrapper.js", () => ({
+  OlasOperateWrapper: {
+    create: vi.fn(),
+  },
 }));
 
 vi.mock("./OlasStakingManager.js", () => ({
   OlasStakingManager: vi
     .fn()
-    .mockImplementation((baseExecutor, mainnetExecutor) => ({
-      baseExecutor,
-      mainnetExecutor,
+    .mockImplementation((operateWrapper) => ({
+      operateWrapper,
     })),
+}));
+
+vi.mock("./OlasServiceManager.js", () => ({
+  OlasServiceManager: {
+    createDefault: vi.fn().mockResolvedValue({}),
+  },
 }));
 
 vi.mock("./logger.js", () => ({
@@ -34,8 +41,14 @@ vi.mock("./logger.js", () => ({
 }));
 
 describe("StakingManagerFactory", () => {
+  const mockOperateWrapperInstance = { 
+    executeCommand: vi.fn(),
+    checkHealth: vi.fn().mockResolvedValue(true),
+  } as any;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    (OlasOperateWrapper.create as any).mockResolvedValue(mockOperateWrapperInstance);
   });
 
   describe("createStakingManager", () => {
@@ -43,15 +56,14 @@ describe("StakingManagerFactory", () => {
       const result = await StakingManagerFactory.createStakingManager();
 
       expect(result).toBeDefined();
-      expect(SafeExecutor).toHaveBeenCalledTimes(2);
+      expect(OlasOperateWrapper.create).toHaveBeenCalledTimes(1);
       expect(OlasStakingManager).toHaveBeenCalledTimes(1);
+      expect(OlasStakingManager).toHaveBeenCalledWith(mockOperateWrapperInstance);
     });
 
     it("should return null if initialization fails", async () => {
-      // Mock SafeExecutor to throw an error
-      (SafeExecutor as jest.Mock).mockImplementationOnce(() => {
-        throw new Error("Initialization failed");
-      });
+      // Mock OlasOperateWrapper.create to throw an error
+      (OlasOperateWrapper.create as any).mockRejectedValueOnce(new Error("Initialization failed"));
 
       const result = await StakingManagerFactory.createStakingManager();
 

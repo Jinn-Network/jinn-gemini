@@ -11,7 +11,7 @@
     "mechx": "./dist/index.js"
   },
   "scripts": {
-    "build": "yarn tsc",
+    "build": "yarn tsc && cp -r src/abis dist/",
     "dev": "yarn ts-node src/index.ts",
     "start": "yarn node dist/index.js",
     "test": "jest -c jest.config.js"
@@ -50,5 +50,9 @@
     "jest": "^29.0.0",
     "ts-node": "^10.0.0",
     "typescript": "^5.9.2"
+  },
+  "resolutions": {
+    "nanoid": "^5.0.9",
+    "parse-duration": "^2.1.3"
   }
 }

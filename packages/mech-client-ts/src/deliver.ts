@@ -431,8 +431,30 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
   // Sign & send
   console.log('Signing and sending transaction...');
   const signedTx = await web3.eth.accounts.signTransaction(txPayload, pk);
-  const sendRes = await web3.eth.sendSignedTransaction(signedTx.rawTransaction!);
-  const txHash = String(sendRes.transactionHash);
+  
+  let txHash: string | undefined;
+  let sendError: Error | undefined;
+  
+  try {
+    const sendRes = await web3.eth.sendSignedTransaction(signedTx.rawTransaction!);
+    txHash = String(sendRes.transactionHash);
+  } catch (e: any) {
+    // Safe's execTransaction can fail in web3.js even when the transaction succeeds
+    // This happens when the Safe call returns false but the transaction is mined
+    // Extract tx hash from error if available and verify with receipt
+    sendError = e;
+    
+    if (e?.receipt?.transactionHash) {
+      txHash = String(e.receipt.transactionHash);
+      console.log('Transaction may have failed in web3.js, but checking receipt...');
+    } else if (e?.transactionHash) {
+      txHash = String(e.transactionHash);
+      console.log('Transaction may have failed in web3.js, but checking receipt...');
+    } else {
+      // No tx hash available, this is a real error
+      throw e;
+    }
+  }
 
   const result: DeliverResult = {
     tx_hash: String(txHash),
@@ -441,7 +463,7 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
 
   if (wait) {
     console.log('Waiting for transaction receipt...');
-    const receipt = await web3.eth.getTransactionReceipt(txHash);
+    const receipt = await web3.eth.getTransactionReceipt(txHash!);
     
     if (receipt && receipt.status) {
       result.status = 'confirmed';
@@ -454,6 +476,10 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
       console.log(`Status: ${result.status}`);
       console.log(`Block Number: ${result.block_number}`);
       console.log(`Gas Used: ${result.gas_used}`);
+      
+      if (sendError) {
+        console.log('Note: web3.js reported an error, but transaction succeeded on-chain');
+      }
     } else if (receipt) {
       result.status = 'reverted';
       result.block_number = Number(receipt.blockNumber);

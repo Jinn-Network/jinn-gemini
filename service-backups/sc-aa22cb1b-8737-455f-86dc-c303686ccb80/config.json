@@ -1,0 +1,74 @@
+{
+  "version": 8,
+  "service_config_id": "sc-aa22cb1b-8737-455f-86dc-c303686ccb80",
+  "hash": "bafybeiardecju3sygh7hwuywka2bgjinbr7vrzob4mpdrookyfsbdmoq2m",
+  "hash_history": {
+    "1759406539": "bafybeiardecju3sygh7hwuywka2bgjinbr7vrzob4mpdrookyfsbdmoq2m"
+  },
+  "agent_addresses": [
+    "0x362bD1b626413bbDea67821Ef57d2CDfFA725626"
+  ],
+  "home_chain": "base",
+  "chain_configs": {
+    "base": {
+      "ledger_config": {
+        "rpc": "https://virtual.base.eu.rpc.tenderly.co/2c7c0836-d689-4289-8a87-de2ff12ea99a",
+        "chain": "base"
+      },
+      "chain_data": {
+        "instances": [],
+        "token": -1,
+        "multisig": null,
+        "user_params": {
+          "staking_program_id": "0x2585e63df7BD9De8e058884D496658a030b5c6ce",
+          "nft": "bafybeiardecju3sygh7hwuywka2bgjinbr7vrzob4mpdrookyfsbdmoq2m",
+          "agent_id": 43,
+          "cost_of_bond": 50000000000000000000,
+          "fund_requirements": {
+            "0x0000000000000000000000000000000000000000": {
+              "agent": 500000000000000,
+              "safe": 500000000000000
+            },
+            "0x54330d28ca3357F294334BDC454a032e7f353416": {
+              "agent": 50000000000000000000,
+              "safe": 50000000000000000000
+            }
+          }
+        }
+      }
+    }
+  },
+  "description": "Default OLAS service configuration",
+  "env_variables": {
+    "MECH_MARKETPLACE_ADDRESS": {
+      "value": "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
+      "provision_type": "fixed"
+    },
+    "AGENT_ID": {
+      "value": "",
+      "provision_type": "computed"
+    },
+    "MECH_TO_CONFIG": {
+      "value": "",
+      "provision_type": "computed"
+    },
+    "ON_CHAIN_SERVICE_ID": {
+      "value": "",
+      "provision_type": "computed"
+    },
+    "GNOSIS_LEDGER_RPC": {
+      "value": "https://gnosis-rpc.publicnode.com",
+      "provision_type": "computed"
+    },
+    "ETHEREUM_LEDGER_RPC_0": {
+      "value": "",
+      "provision_type": "computed"
+    },
+    "GNOSIS_LEDGER_RPC_0": {
+      "value": "",
+      "provision_type": "computed"
+    }
+  },
+  "package_path": "memeooorr",
+  "name": "tenderly-test-1759406490117"
+}

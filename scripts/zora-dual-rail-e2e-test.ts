@@ -23,7 +23,7 @@ import { promises as fs } from 'fs';
 import { createTenderlyClient, ethToWei, type TenderlyClient, type VnetResult } from './lib/tenderly.js';
 import { privateKeyToAccount } from 'viem/accounts';
 import crypto from 'crypto';
-import { bootstrap } from '../packages/wallet-manager/dist/index.js';
+import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
 
 // Load environment variables
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -104,6 +104,11 @@ class ZoraDualRailE2ETest {
     this.workerPrivateKey = `0x${crypto.randomBytes(32).toString('hex')}`;
   }
 
+  private getWorkerAddress(): string {
+    const account = privateKeyToAccount(this.workerPrivateKey as `0x${string}`);
+    return account.address;
+  }
+
   async run(): Promise<void> {
     // Set up global test timeout
     const globalTimeoutMs = 10 * 60 * 1000; // 10 minutes total
@@ -117,7 +122,7 @@ class ZoraDualRailE2ETest {
       console.log('🚀 Starting Zora Dual-Rail E2E Test\n');
       console.log(`Test ID: ${this.testId}`);
       console.log(`Temp Directory: ${this.tempDir}`);
-      console.log(`Worker Private Key: ${this.workerPrivateKey}`);
+      console.log(`Worker Address: ${this.getWorkerAddress()}`);
       console.log(`⏰ Global timeout: ${globalTimeoutMs/1000/60} minutes\n`);
 
       // Race the main test logic against the global timeout
@@ -183,27 +188,29 @@ class ZoraDualRailE2ETest {
     console.log(`Funding EOA ${eoaAddress} for bootstrap...`);
     await this.tenderlyClient.fundAddress(eoaAddress, ethToWei('2'), this.vnetResult!.adminRpcUrl);
 
-    // Run wallet bootstrap programmatically
-    console.log('Running wallet bootstrap...');
+    // Run wallet bootstrap using OlasOperateWrapper
+    console.log('Running wallet bootstrap with OlasOperateWrapper...');
     try {
-      const result = await bootstrap({
-        workerPrivateKey: this.workerPrivateKey as `0x${string}`,
-        rpcUrl: this.vnetResult!.adminRpcUrl,
-        chainId: 8453,
-        options: {
-          storageBasePath: path.join(this.tempDir, 'wallets')
-        }
+      const operateWrapper = await OlasOperateWrapper.create({
+        middlewarePath: path.join(process.cwd(), 'olas-operate-middleware')
       });
 
-      if (result.status === 'created' || result.status === 'exists') {
-        console.log(`✅ Wallet bootstrap completed - Safe address: ${result.identity.safeAddress}`);
-        this.safeAddress = result.identity.safeAddress;
-      } else if (result.status === 'needs_funding') {
-        throw new Error(`Bootstrap failed - needs funding: ${result.required.minRecommendedWei} wei required`);
-      } else if (result.status === 'failed') {
-        throw new Error(`Bootstrap failed: ${result.error} (${result.code})`);
+      // Generate a test password
+      const testPassword = crypto.randomBytes(16).toString('hex');
+
+      const result = await operateWrapper.bootstrapWallet({
+        password: testPassword,
+        ledgerType: 'ethereum',
+        chain: 'base',
+        backupOwner: eoaAddress // Use EOA as backup owner
+      });
+
+      if (result.success && result.safeAddress) {
+        console.log(`✅ Wallet bootstrap completed - Safe address: ${result.safeAddress}`);
+        console.log(`✅ Wallet address: ${result.walletAddress}`);
+        this.safeAddress = result.safeAddress;
       } else {
-        throw new Error(`Unexpected bootstrap result status: ${(result as any).status}`);
+        throw new Error(`Bootstrap failed: ${result.error}`);
       }
     } catch (error) {
       throw new Error(`Bootstrap failed: ${error instanceof Error ? error.message : String(error)}`);

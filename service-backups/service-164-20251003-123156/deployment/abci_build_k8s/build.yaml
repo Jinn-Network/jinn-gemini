@@ -1,0 +1,512 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: abci0
+  name: abci0
+spec:
+  ports:
+  - name: tcp1
+    port: 26656
+    protocol: TCP
+  - name: tcp2
+    port: 26657
+    protocol: TCP
+  selector:
+    app: agent-svc
+    instance: agent-node-0
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-node-0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-svc
+      instance: agent-node-0
+  template:
+    metadata:
+      labels:
+        app: agent-svc
+        instance: agent-node-0
+    spec:
+      containers:
+      - args:
+        - run
+        - --no-reload
+        - --host=0.0.0.0
+        - --port=8080
+        env:
+        - name: HOSTNAME
+          value: node0
+        - name: ID
+          value: '0'
+        - name: PROXY_APP
+          value: tcp://localhost:26658
+        - name: TMHOME
+          value: /tendermint
+        - name: CREATE_EMPTY_BLOCKS
+          value: 'true'
+        - name: LOG_FILE
+          value: /logs/node_0.txt
+        - name: LOG_LEVEL
+          value: INFO
+        - name: WRITE_TO_LOG
+          value: 'true'
+        image: valory/open-autonomy-tendermint:0.20.2
+        imagePullPolicy: Always
+        name: node0
+        ports:
+        - containerPort: 26656
+        - containerPort: 26657
+        resources:
+          limits:
+            cpu: '0.05'
+            memory: 350Mi
+          requests:
+            cpu: '0.05'
+            memory: 350Mi
+        volumeMounts:
+        - mountPath: /tm_state
+          name: persistent-data-tm
+        - mountPath: /logs
+          name: persistent-data
+        - mountPath: /tendermint
+          name: local-tendermint
+        workingDir: /tendermint
+      - env:
+        - name: HOSTNAME
+          value: agent-node-0
+        - name: CLUSTERED
+          value: '1'
+        - name: LOG_FILE
+          value: /logs/aea_0.txt
+        - name: PYTHONHASHSEED
+          value: '0'
+        - name: ID
+          value: '0'
+        - name: AEA_AGENT
+          value: dvilela/memeooorr:0.1.0:bafybeihxlzohhj5o3fjf6x5n3kwsvcwx54go4qfh26qw2zhytxwobysxau
+        - name: LOG_LEVEL
+          value: INFO
+        - name: AEA_PASSWORD
+          value: ''
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_BENCHMARK_TOOL_ARGS_LOG_DIR
+          value: /logs
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SETUP_SAFE_CONTRACT_ADDRESS
+          value: '0x0000000000000000000000000000000000000000'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SETUP_ALL_PARTICIPANTS
+          value: '[]'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SETUP_CONSENSUS_THRESHOLD
+          value: None
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_GENESIS_TIME
+          value: '2022-09-26T00:00:00.000000000Z'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_CHAIN_ID
+          value: chain-c4daS1
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_CONSENSUS_PARAMS_BLOCK_MAX_BYTES
+          value: '22020096'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_CONSENSUS_PARAMS_BLOCK_MAX_GAS
+          value: '-1'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_CONSENSUS_PARAMS_BLOCK_TIME_IOTA_MS
+          value: '1000'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_CONSENSUS_PARAMS_EVIDENCE_MAX_AGE_NUM_BLOCKS
+          value: '100000'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_CONSENSUS_PARAMS_EVIDENCE_MAX_AGE_DURATION
+          value: '172800000000000'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_CONSENSUS_PARAMS_EVIDENCE_MAX_BYTES
+          value: '1048576'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_CONSENSUS_PARAMS_VALIDATOR_PUB_KEY_TYPES
+          value: '["ed25519"]'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_GENESIS_CONFIG_VOTING_POWER
+          value: '10'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_CLEANUP_HISTORY_DEPTH
+          value: '1'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_CLEANUP_HISTORY_DEPTH_CURRENT
+          value: None
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_DRAND_PUBLIC_KEY
+          value: 868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_KEEPER_TIMEOUT
+          value: '30.0'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MAX_ATTEMPTS
+          value: '10'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MAX_HEALTHCHECK
+          value: '120'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MULTISEND_ADDRESS
+          value: '0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TERMINATION_SLEEP
+          value: '900'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_RESET_PAUSE_DURATION
+          value: '300'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_ON_CHAIN_SERVICE_ID
+          value: '164'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_RESET_TENDERMINT_AFTER
+          value: '1'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_RETRY_ATTEMPTS
+          value: '400'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_RETRY_TIMEOUT
+          value: '3'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_REQUEST_RETRY_DELAY
+          value: '1.0'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_REQUEST_TIMEOUT
+          value: '10.0'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_ROUND_TIMEOUT_SECONDS
+          value: '30.0'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SERVICE_ID
+          value: memeooorr
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SERVICE_REGISTRY_ADDRESS
+          value: '0x48b6af7B12C71f09e2fC8aF4855De4Ff54e775cA'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SHARE_TM_CONFIG_ON_STARTUP
+          value: 'False'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SLEEP_TIME
+          value: '1'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TENDERMINT_CHECK_SLEEP_DELAY
+          value: '3'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TENDERMINT_COM_URL
+          value: http://localhost:8080
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TENDERMINT_MAX_RETRIES
+          value: '5'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TENDERMINT_URL
+          value: http://localhost:26657
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TENDERMINT_P2P_URL
+          value: memeooorr_tm_0:26656
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TX_TIMEOUT
+          value: '10.0'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_USE_TERMINATION
+          value: 'False'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_VALIDATE_TIMEOUT
+          value: '1205'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MULTISEND_BATCH_SIZE
+          value: '5'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_IPFS_ADDRESS
+          value: https://gateway.autonolas.tech/ipfs/
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_DEFAULT_CHAIN_ID
+          value: base
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TERMINATION_FROM_BLOCK
+          value: '21629820'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MINIMUM_GAS_BALANCE
+          value: 5e-05
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MIN_FEEDBACK_REPLIES
+          value: '10'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MEME_FACTORY_ADDRESS_BASE
+          value: '0x82a9c823332518c32a0c0edc050ef00934cf04d4'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MEME_FACTORY_ADDRESS_CELO
+          value: '0xeea5f1e202dc43607273d54101ff8b58fb008a99'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MEME_FACTORY_DEPLOYMENT_BLOCK_BASE
+          value: '23540622'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MEME_FACTORY_DEPLOYMENT_BLOCK_CELO
+          value: '29323752'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_OLAS_TOKEN_ADDRESS_BASE
+          value: '0x54330d28ca3357F294334BDC454a032e7f353416'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_OLAS_TOKEN_ADDRESS_CELO
+          value: '0xaCFfAe8e57Ec6E394Eb1b41939A8CF7892DbDc51'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_PERSONA
+          value: a cat lover that is crazy about all-things cats.
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_STORE_PATH
+          value: /data
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_HOME_CHAIN_ID
+          value: BASE
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SERVICE_REGISTRY_ADDRESS_BASE
+          value: '0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SERVICE_REGISTRY_ADDRESS_CELO
+          value: '0xE3607b00E75f6405248323A9417ff6b39B244b50'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MEME_SUBGRAPH_URL
+          value: https://agentsfun-indexer-production.up.railway.app
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SKIP_ENGAGEMENT
+          value: 'False'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MIN_SUMMON_AMOUNT_BASE
+          value: '0.01'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MAX_SUMMON_AMOUNT_BASE
+          value: '0.02'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MAX_HEART_AMOUNT_BASE
+          value: '0.0002'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MIN_SUMMON_AMOUNT_CELO
+          value: '10.0'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MAX_SUMMON_AMOUNT_CELO
+          value: '20.0'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MAX_HEART_AMOUNT_CELO
+          value: '0.2'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_USE_MECH_MARKETPLACE
+          value: 'False'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MECH_MARKETPLACE_CONFIG
+          value: '{"mech_marketplace_address": "0x0000000000000000000000000000000000000000",
+            "priority_mech_address": "0x0000000000000000000000000000000000000000",
+            "response_timeout": 300}'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MECH_CONTRACT_ADDRESS
+          value: 0x
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MECH_REQUEST_PRICE
+          value: '100'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_MECH_CHAIN_ID
+          value: gnosis
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_STAKING_TOKEN_CONTRACT_ADDRESS
+          value: '0x0000000000000000000000000000000000000000'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_ACTIVITY_CHECKER_CONTRACT_ADDRESS
+          value: '0x0000000000000000000000000000000000000000'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_ALTERNATIVE_MODEL_FOR_TWEETS
+          value: '{"use": false, "url": "https://api.fireworks.ai/inference/v1/chat/completions",
+            "api_key": null, "model": "accounts/sentientfoundation/models/dobby-unhinged-llama-3-3-70b-new",
+            "max_tokens": 16384, "top_p": 1, "top_k": 40, "presence_penalty": 0, "frequency_penalty":
+            0, "temperature": 0.6}'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_FIREWORKS_API_KEY
+          value: None
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_TX_LOOP_BREAKER_COUNT
+          value: '3'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_USE_ACN_FOR_DELIVERS
+          value: 'False'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_SUMMON_COOLDOWN_SECONDS
+          value: '2592000'
+        - name: SKILL_MEMEOOORR_CHAINED_ABCI_MODELS_PARAMS_ARGS_HEART_COOLDOWN_HOURS
+          value: '48'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_ADDRESS
+          value: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c31d04025de6c556a6eb1145a801657a7/
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_CHAIN_ID
+          value: '8453'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_POA_CHAIN
+          value: 'False'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_DEFAULT_GAS_PRICE_STRATEGY
+          value: eip1559
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_GAS_STATION_GAS_PRICE_API_KEY
+          value: None
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_GAS_STATION_GAS_PRICE_STRATEGY
+          value: fast
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_EIP1559_MAX_GAS_FAST
+          value: '1500'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_EIP1559_FEE_HISTORY_BLOCKS
+          value: '10'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_EIP1559_FEE_HISTORY_PERCENTILE
+          value: '5'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_EIP1559_DEFAULT_PRIORITY_FEE
+          value: '30000000'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_EIP1559_FALLBACK_ESTIMATE_MAXFEEPERGAS
+          value: '20000000000'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_EIP1559_FALLBACK_ESTIMATE_MAXPRIORITYFEEPERGAS
+          value: '3000000000'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_EIP1559_FALLBACK_ESTIMATE_BASEFEE
+          value: None
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_GAS_PRICE_STRATEGIES_EIP1559_PRIORITY_FEE_INCREASE_BOUNDARY
+          value: '200'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_ADDRESS
+          value: http://host.docker.internal:8545
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_CHAIN_ID
+          value: '42220'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_POA_CHAIN
+          value: 'False'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_DEFAULT_GAS_PRICE_STRATEGY
+          value: eip1559
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_GAS_STATION_GAS_PRICE_API_KEY
+          value: None
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_GAS_STATION_GAS_PRICE_STRATEGY
+          value: fast
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_EIP1559_MAX_GAS_FAST
+          value: '1500'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_EIP1559_FEE_HISTORY_BLOCKS
+          value: '10'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_EIP1559_FEE_HISTORY_PERCENTILE
+          value: '5'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_EIP1559_DEFAULT_PRIORITY_FEE
+          value: '30000000'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_EIP1559_FALLBACK_ESTIMATE_MAXFEEPERGAS
+          value: '20000000000'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_EIP1559_FALLBACK_ESTIMATE_MAXPRIORITYFEEPERGAS
+          value: '3000000000'
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_EIP1559_FALLBACK_ESTIMATE_BASEFEE
+          value: None
+        - name: CONNECTION_LEDGER_CONFIG_LEDGER_APIS_CELO_GAS_PRICE_STRATEGIES_EIP1559_PRIORITY_FEE_INCREASE_BOUNDARY
+          value: '200'
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CERT_REQUESTS_0_IDENTIFIER
+          value: acn
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CERT_REQUESTS_0_LEDGER_ID
+          value: ethereum
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CERT_REQUESTS_0_MESSAGE_FORMAT
+          value: '{public_key}'
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CERT_REQUESTS_0_NOT_AFTER
+          value: '2023-01-01'
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CERT_REQUESTS_0_NOT_BEFORE
+          value: '2022-01-01'
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CERT_REQUESTS_0_PUBLIC_KEY
+          value: 02d3a830c9d6ea1ae91936951430dee11f4662f33118b02190693be835359a9d77
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CERT_REQUESTS_0_SAVE_PATH
+          value: .certs/acn_cosmos_11000.txt
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CONFIG_NODES_0_URI
+          value: acn.staging.autonolas.tech:9005
+        - name: CONNECTION_P2P_LIBP2P_CLIENT_CONFIG_NODES_0_PUBLIC_KEY
+          value: 02d3a830c9d6ea1ae91936951430dee11f4662f33118b02190693be835359a9d77
+        - name: CONNECTION_GENAI_CONFIG_GENAI_API_KEY
+          value: None
+        - name: CONNECTION_TWEEPY_CONFIG_TWEEPY_CONSUMER_API_KEY
+          value: None
+        - name: CONNECTION_TWEEPY_CONFIG_TWEEPY_CONSUMER_API_KEY_SECRET
+          value: None
+        - name: CONNECTION_TWEEPY_CONFIG_TWEEPY_BEARER_TOKEN
+          value: None
+        - name: CONNECTION_TWEEPY_CONFIG_TWEEPY_ACCESS_TOKEN
+          value: None
+        - name: CONNECTION_TWEEPY_CONFIG_TWEEPY_ACCESS_TOKEN_SECRET
+          value: None
+        - name: CONNECTION_TWEEPY_CONFIG_TWEEPY_SKIP_AUTH
+          value: 'False'
+        - name: CONNECTION_KV_STORE_CONFIG_STORE_PATH
+          value: /data/
+        - name: CONNECTION_HTTP_SERVER_CONFIG_HOST
+          value: 0.0.0.0
+        - name: CONNECTION_HTTP_SERVER_CONFIG_PORT
+          value: '8716'
+        - name: CONNECTION_HTTP_SERVER_CONFIG_TARGET_SKILL_ID
+          value: dvilela/memeooorr_chained_abci:0.1.0
+        image: dvilela/oar-memeooorr:bafybeihxlzohhj5o3fjf6x5n3kwsvcwx54go4qfh26qw2zhytxwobysxau
+        imagePullPolicy: Always
+        name: aea
+        ports:
+        - containerPort: 8716
+        resources:
+          limits:
+            cpu: '1.0'
+            memory: 1024Mi
+          requests:
+            cpu: '1.0'
+            memory: 256Mi
+        volumeMounts:
+        - mountPath: /logs
+          name: persistent-data
+        - mountPath: /benchmark
+          name: persistent-data-benchmark
+        - mountPath: /build
+          name: nodes
+        - mountPath: /agent_key
+          name: agent-key
+        - mountPath: /data
+          name: data
+      imagePullSecrets:
+      - name: regcred
+      initContainers:
+      - args:
+        - while [ ! -d /tendermint/node0 ]; do sleep 1; done; cp -r /tendermint/node0/*
+          /tm/
+        command:
+        - bash
+        - -c
+        image: ubuntu:20.04
+        name: copy-tendermint-configuration
+        volumeMounts:
+        - mountPath: /tendermint
+          name: nodes
+        - mountPath: /tm
+          name: local-tendermint
+      restartPolicy: Always
+      volumes:
+      - name: agent-key
+        secret:
+          items:
+          - key: ethereum_private_key.txt
+            path: ethereum_private_key.txt
+          secretName: agent-validator-0-key
+      - name: persistent-data
+        persistentVolumeClaim:
+          claimName: logs-pvc
+      - name: persistent-data-benchmark
+        persistentVolumeClaim:
+          claimName: benchmark-pvc
+      - name: persistent-data-tm
+        persistentVolumeClaim:
+          claimName: tendermint-pvc
+      - name: nodes
+        persistentVolumeClaim:
+          claimName: nodes
+      - emptyDir: {}
+        name: local-tendermint
+      - name: data
+        persistentVolumeClaim:
+          claimName: data
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: config-nodes
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: config-nodes
+        image: valory/open-autonomy-tendermint:0.20.2
+        command: ['/usr/bin/tendermint']
+        args: ["testnet",
+         "--config",
+         "/etc/tendermint/config-template.toml",
+         "--o",  ".", "--hostname=abci0",
+         "--v", "1"
+         ]
+        volumeMounts:
+          - mountPath: /tendermint
+            name: nodes
+      volumes:
+        - name: nodes
+          persistentVolumeClaim:
+            claimName: 'nodes'
+      restartPolicy: Never
+  backoffLimit: 3
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: logs-pvc
+spec:
+  storageClassName: nfs-ephemeral
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1000M
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tendermint-pvc
+spec:
+  storageClassName: nfs-ephemeral
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1000M
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: benchmark-pvc
+spec:
+  storageClassName: nfs-ephemeral
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1000M
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nodes
+spec:
+  storageClassName: nfs-ephemeral
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1000M
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+spec:
+  storageClassName: nfs-ephemeral
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1000M
+

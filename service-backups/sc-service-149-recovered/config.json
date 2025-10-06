@@ -1,0 +1,78 @@
+{
+  "version": 8,
+  "service_config_id": "sc-service-149-recovered",
+  "hash": "bafybeiardecju3sygh7hwuywka2bgjinbr7vrzob4mpdrookyfsbdmoq2m",
+  "hash_history": {
+    "1759228080": "bafybeiardecju3sygh7hwuywka2bgjinbr7vrzob4mpdrookyfsbdmoq2m"
+  },
+  "agent_addresses": [
+    "0xd36f1C72268d97af2D16426c060646Ec9aBB74F9"
+  ],
+  "home_chain": "base",
+  "chain_configs": {
+    "base": {
+      "ledger_config": {
+        "rpc": "https://mainnet.base.org",
+        "chain": "base"
+      },
+      "chain_data": {
+        "instances": [
+          "0xd36f1C72268d97af2D16426c060646Ec9aBB74F9"
+        ],
+        "token": 149,
+        "multisig": "0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645",
+        "user_params": {
+          "staking_program_id": "agents_fun_1",
+          "nft": "bafybeiaakdeconw7j5z76fgghfdjmsr6tzejotxcwnvmp3nroaw3glgyve",
+          "agent_id": 43,
+          "cost_of_bond": 50000000000000000000,
+          "fund_requirements": {
+            "0x0000000000000000000000000000000000000000": {
+              "agent": 2000000000000000000,
+              "safe": 5000000000000000000
+            },
+            "0x54330d28ca3357F294334BDC454a032e7f353416": {
+              "agent": 0,
+              "safe": 100000000000000000000
+            }
+          }
+        }
+      }
+    }
+  },
+  "description": "Service #149 - AgentsFun Base (Recovered)",
+  "env_variables": {
+    "TWEEPY_CONSUMER_API_KEY": "test_key",
+    "TWEEPY_CONSUMER_API_KEY_SECRET": "test_secret",
+    "TWEEPY_BEARER_TOKEN": "test_bearer",
+    "TWITTER_ACCESS_TOKEN": "test_access",
+    "TWITTER_ACCESS_SECRET": "test_access_secret",
+    "TWITTER_HANDLE": "@test_handle",
+    "MECH_MARKETPLACE_ADDRESS": {
+      "value": "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020"
+    },
+    "AGENT_ID": {
+      "value": ""
+    },
+    "MECH_TO_CONFIG": {
+      "value": ""
+    },
+    "ON_CHAIN_SERVICE_ID": {
+      "value": "149"
+    },
+    "ETHEREUM_LEDGER_RPC_0": {
+      "value": "https://mainnet.base.org"
+    },
+    "GNOSIS_LEDGER_RPC_0": {
+      "value": "https://mainnet.base.org"
+    },
+    "MECH_REQUEST_PRICE": {
+      "value": 10000000000000000
+    },
+    "MECH_TYPE": {
+      "value": "Native"
+    }
+  },
+  "package_path": "memeooorr",
+  "name": "service-149-recovered"
+}

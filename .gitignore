@@ -163,7 +163,6 @@ mech_private_key.txt
 **/ethereum_private_key.txt
 **/mech_private_key.txt
 gemini-agent/.gemini/settings.json
-.cursor/implementation-review-process.md
 
 # Playwright MCP profiles
 .playwright-mcp/
@@ -175,7 +174,13 @@ Icon?
 # Ponder local cache (never commit runtime DB/cache)
 ponder/.ponder/
 
-# VNet session files
-.vnet-session-*.json
+service-backups/*
+# OLAS Middleware - Critical Data (keys, wallets, services)
+olas-operate-middleware/.operate/wallets/
+olas-operate-middleware/.operate/keys/
+olas-operate-middleware/.operate/services/
+olas-operate-middleware/.operate/*.json
+olas-operate-middleware/.operate/*.txt
 
-code-resources/
+# Service backups (moved to ~/Documents)
+service-backups/

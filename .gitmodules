@@ -1,0 +1,3 @@
+[submodule "olas-operate-middleware"]
+	path = olas-operate-middleware
+	url = https://github.com/valory-xyz/olas-operate-middleware.git

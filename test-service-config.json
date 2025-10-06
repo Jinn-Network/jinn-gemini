@@ -1,0 +1,27 @@
+{
+  "name": "canonical-validation-service",
+  "hash": "bafybeihnzvqexxegm6auq7vcpb6prybd2xcz5glbvhos2lmmuazqt75nuq",
+  "description": "⚠️ CANONICAL SERVICE CONFIG - Reference implementation for OLAS service staking integration",
+  "image": "https://operate.olas.network/_next/image?url=%2Fimages%2Fprediction-agent.png&w=3840&q=75",
+  "service_version": "v0.26.3",
+  "home_chain": "gnosis",
+  "configurations": {
+    "gnosis": {
+      "staking_program_id": "pearl_beta",
+      "nft": "bafybeig64atqaladigoc3ds4arltdu63wkdrk3gesjfvnfdmz35amv7faq",
+      "rpc": "https://gnosis-rpc.publicnode.com",
+      "threshold": 1,
+      "agent_id": 14,
+      "use_staking": true,
+      "use_mech_marketplace": false,
+      "cost_of_bond": "1000000000000000",
+      "fund_requirements": {
+        "0x0000000000000000000000000000000000000000": {
+          "agent": 100000000000000000,
+          "safe": 50000000000000000
+        }
+      }
+    }
+  },
+  "env_variables": {}
+}

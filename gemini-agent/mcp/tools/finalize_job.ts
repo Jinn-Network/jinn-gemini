@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { getCurrentJobContext } from './shared/context.js';
 import { createJobReport as apiCreateJobReport } from '../../../worker/control_api_client.js';
 
+function getWorkerAddress(): string {
+  const addr = (process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '').trim();
+  if (!addr) throw new Error('MECH_ADDRESS is required for Control API calls');
+  return addr;
+}
+
 // Schema for MCP registration - permissive to allow MCP to pass through to handler
 const finalizeJobParamsBase = z.object({
   status: z.string().min(1),
@@ -84,6 +90,7 @@ export async function finalizeJob(args: unknown) {
 
     // Immediately record the status by creating/updating job report
     try {
+      const workerAddress = getWorkerAddress();
       await apiCreateJobReport(requestId, {
         status,
         duration_ms: 0, // Worker will update with actual duration
@@ -91,7 +98,7 @@ export async function finalizeJob(args: unknown) {
         final_output: message,
         tools_called: '[]', // Worker will update with actual tool calls
         raw_telemetry: JSON.stringify({ finalized_at: new Date().toISOString() })
-      });
+      }, workerAddress);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {
@@ -101,33 +108,29 @@ export async function finalizeJob(args: unknown) {
             data: null,
             meta: {
               ok: false,
-              code: 'STORAGE_ERROR',
-              message: `Failed to record job status: ${errorMessage}`
+              code: 'API_ERROR',
+              message: `Failed to record finalization in Control API: ${errorMessage}`
             }
           })
         }]
       };
     }
 
-    // Return success result
-    const result = {
-      status,
-      message,
-      finalized_at: new Date().toISOString(),
-      request_id: requestId
-    };
-
     return {
       content: [{
         type: 'text' as const,
         text: JSON.stringify({
-          data: result,
-          meta: { ok: true }
+          data: { status, message },
+          meta: {
+            ok: true,
+            code: 'JOB_FINALIZED',
+            message: `Job finalized with status ${status}`
+          }
         })
       }]
     };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       content: [{
         type: 'text' as const,
@@ -135,8 +138,8 @@ export async function finalizeJob(args: unknown) {
           data: null,
           meta: {
             ok: false,
-            code: 'EXECUTION_ERROR',
-            message
+            code: 'INTERNAL_ERROR',
+            message: errorMessage
           }
         })
       }]

@@ -1,0 +1,8 @@
+apiVersion: v1
+stringData:
+    ethereum_private_key.txt: '0xf65d4ce52c154d8c4f9857284e8ef68b3324b7f77948f35e8f1f3f4e088f238a'
+kind: Secret
+metadata:
+  annotations: {}
+  name: agent-validator-0-key
+type: Opaque

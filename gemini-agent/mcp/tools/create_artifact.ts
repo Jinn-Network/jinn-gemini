@@ -1,21 +1,5 @@
 import { z } from 'zod';
-
-type PushJsonToIpfsResult = readonly [string, string];
-
-type PushJsonToIpfs = (content: unknown) => Promise<PushJsonToIpfsResult>;
-
-type MechClientIpfs = {
-  pushJsonToIpfs: PushJsonToIpfs;
-};
-
-// Dynamic import helper for mech-client-ts; no silent fallback
-async function getMechClientIpfs(): Promise<MechClientIpfs> {
-  const mechClient = await import('mech-client-ts/dist/ipfs.js');
-  if (typeof (mechClient as any)?.pushJsonToIpfs !== 'function') {
-    throw new Error('mech-client-ts IPFS helper unavailable');
-  }
-  return mechClient as MechClientIpfs;
-}
+import { pushJsonToIpfs } from '../../../packages/mech-client-ts/dist/ipfs.js';
 
 export const createArtifactParams = z.object({
   name: z.string().min(1),
@@ -49,24 +33,13 @@ export async function createArtifact(args: unknown) {
     const contentPreview = content.slice(0, 100);
     const payload = { name, topic, content, mimeType: mimeType || 'text/plain' } as const;
 
-    // Get mech-client-ts functions dynamically
-    const mechClient = await getMechClientIpfs();
-    const [digestHex, cidHex] = await mechClient.pushJsonToIpfs(payload);
-    console.error('[create_artifact] pushJsonToIpfs result', {
-      digestHex,
-      cidHex,
-      cidHexType: typeof cidHex,
-      digestHexType: typeof digestHex,
-    });
-    if (typeof cidHex !== 'string' || cidHex.length === 0) {
-      throw new Error('IPFS upload failed: missing CID');
-    }
-    const cid = cidHex;
+    const [, cidHex] = await pushJsonToIpfs(payload);
+    const cid = cidHex; // gateway-compatible CIDv1 hex string already returned by helper
 
     const result = { cid, name, topic, contentPreview };
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: result, meta: { ok: true } }) }] };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'EXECUTION_ERROR', message } }) }] };
+  } catch (error: any) {
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'EXECUTION_ERROR', message: error?.message || String(error) } }) }] };
   }
 }
+

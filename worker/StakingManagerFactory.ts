@@ -1,9 +1,10 @@
 /**
  * Factory for creating and initializing OLAS staking manager
+ * Refactored for JINN-180: Use OlasOperateWrapper instead of SafeExecutor
  */
 
 import { OlasStakingManager } from "./OlasStakingManager.js";
-import { SafeExecutor } from "./SafeExecutor.js";
+import { OlasOperateWrapper } from "./OlasOperateWrapper.js";
 import { logger } from "./logger.js";
 
 const stakingLogger = logger.child({ component: "STAKING-FACTORY" });
@@ -15,19 +16,12 @@ export class StakingManagerFactory {
    */
   static async createStakingManager(): Promise<OlasStakingManager | null> {
     try {
-      // Create Base SafeExecutor (current configuration)
-      const baseExecutor = new SafeExecutor();
-
-      // Create Mainnet SafeExecutor (would need separate configuration for mainnet)
-      // For now, using the same executor as placeholder - should be configured for mainnet
-      const mainnetExecutor = new SafeExecutor();
+      // Create OlasOperateWrapper for CLI operations
+      const operateWrapper = await OlasOperateWrapper.create();
 
       // Initialize OlasStakingManager
-      const stakingManager = new OlasStakingManager(
-        baseExecutor,
-        mainnetExecutor,
-      );
-      stakingLogger.info("OLAS staking manager initialized successfully");
+      const stakingManager = new OlasStakingManager(operateWrapper);
+      stakingLogger.info("OLAS staking manager initialized successfully with operate wrapper");
 
       return stakingManager;
     } catch (error) {

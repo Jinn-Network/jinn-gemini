@@ -1,0 +1,11 @@
+{
+  "status": 3,
+  "nodes": {
+    "agent": [
+      "memeooorr8z53_abci_0"
+    ],
+    "tendermint": [
+      "memeooorr8z53_tm_0"
+    ]
+  }
+}

@@ -115,7 +115,7 @@ export class TenderlyClient {
   /**
    * Create a new Virtual TestNet
    */
-  async createVnet(chainId: number = 8453): Promise<VnetResult> {
+  async createVnet(chainId: number = 8453, blockNumber?: string): Promise<VnetResult> {
     this.validateConfig();
 
     // Generate a unique slug for this test run
@@ -127,8 +127,8 @@ export class TenderlyClient {
       slug,
       display_name: `E2E Test VNet ${timestamp}`,
       fork_config: {
-        network_id: chainId === 8453 ? 8453 : 1, // Base mainnet or Ethereum mainnet
-        block_number: "latest"
+        network_id: chainId, // Use the same chainId as the network_id to fork from the correct chain
+        block_number: blockNumber || "latest"
       },
       virtual_network_config: {
         chain_config: {
@@ -136,7 +136,7 @@ export class TenderlyClient {
         }
       },
       sync_state_config: {
-        enabled: false,
+        enabled: true,
         commitment_level: "latest"
       },
       explorer_page_config: {
