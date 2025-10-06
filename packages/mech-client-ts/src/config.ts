@@ -29,6 +29,10 @@ export interface MechConfig {
   service_registry_contract: string;
   complementary_metadata_hash_address: string;
   rpc_url: string;
+  /**
+   * @deprecated wss_endpoint is deprecated for marketplace interactions.
+   * Only used for legacy mech interactions. Marketplace now uses async RPC polling.
+   */
   wss_endpoint: string;
   ledger_config: LedgerConfig;
   gas_limit: number;
@@ -39,6 +43,11 @@ export interface MechConfig {
   priority_mech_address?: string;
 }
 
+/**
+ * @deprecated ConfirmationType is deprecated and only maintained for backward compatibility
+ * with legacy mech interactions. Marketplace interactions now use async delivery monitoring
+ * via RPC polling instead of WebSocket-based confirmation.
+ */
 export enum ConfirmationType {
   ON_CHAIN = 'on-chain',
   OFF_CHAIN = 'off-chain',

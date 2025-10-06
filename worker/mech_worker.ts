@@ -1,6 +1,6 @@
 import '../env/index.js';
 import { Agent } from '../gemini-agent/agent.js';
-import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
+import { deliverViaSafe } from 'mech-client-ts/dist/post_deliver.js';
 import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
 import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
 import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';

@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { interact } from './interact';
-import { deliverViaSafe } from './deliver';
+import { deliverViaSafe } from './post_deliver';
 import { getToolsForAgents, getToolDescription, getToolIoSchema } from './tool_management';
 import { 
   getToolsForMarketplaceMech, 
@@ -58,7 +58,6 @@ program
           tools: options.tools,
           ipfsJsonContents,
           privateKeyPath: options.key,
-          confirmationType: options.confirm,
           retries: options.retries,
           timeout: options.timeout,
           sleep: options.sleep,

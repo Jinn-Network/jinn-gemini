@@ -78,6 +78,7 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
   let mcpStarted = false;
   let jobDefForRepost: string | null = null;
   let controlUrl: string;
+  let gqlUrl: string;
   let vnetResult: VnetResult | null = null;
   let tenderlyClient: ReturnType<typeof createTenderlyClient> | null = null;
 
@@ -146,15 +147,19 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       // Ignore if directory doesn't exist
     }
 
-    // Start fresh Ponder instance
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    // Start fresh Ponder instance on test-specific port to avoid conflicts
+    const testPonderPort = 42070;
+    gqlUrl = `http://localhost:${testPonderPort}/graphql`;
     const ponderDir = path.join(process.cwd(), 'ponder');
+
+    // Update the environment variable so MCP tools use the correct Ponder URL
+    process.env.PONDER_GRAPHQL_URL = gqlUrl;
 
     // Ensure Ponder uses the correct environment - explicitly pass critical vars
     const ponderEnv = {
       ...process.env,
       PONDER_RPC_URL: process.env.PONDER_RPC_URL,
-      PONDER_GRAPHQL_URL: gqlUrl,
+      PORT: String(testPonderPort),
       PONDER_START_BLOCK: process.env.PONDER_START_BLOCK,
     };
 
@@ -233,9 +238,8 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     // Ensure env is loaded for mech client ts and tools
     loadEnvOnce();
     // Preflight env
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
     expect(process.env.MECH_PRIVATE_KEY, 'MECH_PRIVATE_KEY required').toBeTruthy();
-    expect(gqlUrl, 'PONDER_GRAPHQL_URL must be set or default to local').toBeTruthy();
+    expect(gqlUrl, 'gqlUrl must be initialized').toBeTruthy();
 
     // 1) Dispatch a new job
     const jobName = `e2e-job-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -330,12 +334,12 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     expect(foundJobByName?.name).toBe(jobName);
     
     // Test search-jobs tool can find the posted job by prompt content
-    const searchJobsByPromptRes = await searchJobs({ query: 'verify on-chain dispatch', include_requests: false });
+    const searchJobsByPromptRes = await searchJobs({ query: 'Verify on-chain dispatch', include_requests: false });
     const searchJobsByPromptParsed = parseToolText(searchJobsByPromptRes);
     expect(searchJobsByPromptParsed?.data?.length).toBeGreaterThan(0);
     const foundJobByPrompt = searchJobsByPromptParsed?.data?.find((j: any) => j.id === jobDefinitionId);
     expect(foundJobByPrompt).toBeTruthy();
-    expect(foundJobByPrompt?.promptContent).toContain('verify on-chain dispatch');
+    expect(foundJobByPrompt?.promptContent.toLowerCase()).toContain('verify on-chain dispatch');
 
     // 5) Verify get_details returns the same records with optional ipfs resolution
     const detailsRes = await getDetails({ ids: [requestIdHex, jobDefinitionId], resolve_ipfs: true });
@@ -355,7 +359,6 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
   it('propagates lineage env (sourceRequestId/sourceJobDefinitionId) into IPFS + subgraph', async () => {
     loadEnvOnce();
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
     expect(process.env.MECH_PRIVATE_KEY, 'MECH_PRIVATE_KEY required').toBeTruthy();
 
     // Inject lineage via env
@@ -434,7 +437,6 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
   it('reposts existing job: request lineage uses poster context while job definition lineage remains unchanged', async () => {
     loadEnvOnce();
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
     expect(jobDefForRepost, 'Need a jobDefinitionId from earlier test').toBeTruthy();
 
     const lineageRequest = process.env.TEST_LINEAGE_REQUEST_ID || '0x4ce84fa46e5aa543fd2703e06f2da9d42bfa808475e191e430326751ce709cc3';
@@ -490,7 +492,6 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
   it('end-to-end: worker processes request, creates artifact via MCP, delivers on-chain, and subgraph indexes delivery + artifact', async () => {
     loadEnvOnce();
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
     const mechWorker = process.env.MECH_WORKER_ADDRESS || process.env.MECH_ADDRESS;
     expect(mechWorker, 'MECH_WORKER_ADDRESS or MECH_ADDRESS required').toBeTruthy();
 
@@ -761,7 +762,6 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
   it('context envelope: dispatch existing job with hierarchical context from child jobs and artifacts', async () => {
     loadEnvOnce();
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
     expect(process.env.MECH_PRIVATE_KEY, 'MECH_PRIVATE_KEY required').toBeTruthy();
 
     // Test scenario: Create parent job → Dispatch 2 child jobs → Create artifacts → Redispatch parent with context
@@ -1032,7 +1032,6 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
 
   it('message system: dispatch job with message and verify indexing', async () => {
     loadEnvOnce();
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
     expect(process.env.MECH_PRIVATE_KEY, 'MECH_PRIVATE_KEY required').toBeTruthy();
 
     // Test scenario: Create job with message and verify it gets indexed

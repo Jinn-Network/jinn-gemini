@@ -48,7 +48,7 @@ export async function pushMetadataToIpfs(
   const mhBuf = extractMultihashBufferFromCid(lastHash);
   if (mhBuf[0] !== 0x12 || mhBuf[1] !== 32) throw new Error('Unexpected multihash, expected sha2-256 32 bytes');
   const digestHex = mhBuf.slice(2, 34).toString('hex');
-  return [`0x${digestHex}`, v1FileHashHex];
+  return [`0x${digestHex}`, lastHash];
 }
 
 export async function pushJsonToIpfs(content: any): Promise<[string, string]> {
@@ -77,7 +77,7 @@ export async function pushJsonToIpfs(content: any): Promise<[string, string]> {
   const mhBuf = extractMultihashBufferFromCid(lastHash);
   if (mhBuf[0] !== 0x12 || mhBuf[1] !== 32) throw new Error('Unexpected multihash, expected sha2-256 32 bytes');
   const digestHex = mhBuf.slice(2, 34).toString('hex');
-  return [`0x${digestHex}`, v1FileHashHex];
+  return [`0x${digestHex}`, lastHash];
 }
 
 export async function pushToIpfs(filePath: string): Promise<[string, string]> {

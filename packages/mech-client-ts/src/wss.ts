@@ -45,6 +45,11 @@ export interface TransactionReceipt {
 
 /**
  * Register event handlers for WebSocket subscriptions
+ *
+ * @deprecated This function is deprecated for marketplace interactions.
+ * Marketplace requests now use async delivery monitoring via RPC polling (see delivery.ts).
+ * This function is only maintained for backward compatibility with legacy mech interactions.
+ *
  * @param ws WebSocket connection
  * @param contractAddress Contract address to watch
  * @param userAddress User's Ethereum address
@@ -263,6 +268,11 @@ export async function watchForDataUrlFromWss(
 
 /**
  * Watch for marketplace data URL from WebSocket events
+ *
+ * @deprecated This function is deprecated for marketplace interactions.
+ * Use watchForMechDataUrl from delivery.ts instead, which uses async RPC polling
+ * instead of WebSocket subscriptions.
+ *
  * @param requestId Request ID to watch for
  * @param ws WebSocket connection
  * @param mechContract Mech contract instance
