@@ -583,7 +583,7 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
 
   // Initialize Web3 and WebSocket
   const web3 = new Web3(mechConfig.rpc_url);
-  const ws = createWebSocketConnection(mechConfig.wss_endpoint);
+  const ws = await createWebSocketConnection(mechConfig.wss_endpoint);
 
   // Load private key and add account
   const privateKey = readFileSync(keyPath, 'utf8').trim();

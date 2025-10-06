@@ -328,12 +328,30 @@ export async function watchForMarketplaceDataUrlFromWss(
 }
 
 /**
- * Create WebSocket connection
+ * Create WebSocket connection and wait for it to open
  * @param wssEndpoint WebSocket endpoint URL
- * @returns WebSocket connection
+ * @param timeoutMs Timeout in milliseconds (default: 10000)
+ * @returns Promise that resolves to WebSocket connection when open
  */
-export function createWebSocketConnection(wssEndpoint: string): WebSocket {
-  return new WebSocket(wssEndpoint);
+export async function createWebSocketConnection(wssEndpoint: string, timeoutMs: number = 10000): Promise<WebSocket> {
+  const ws = new WebSocket(wssEndpoint);
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error(`WebSocket connection timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    ws.on('open', () => {
+      clearTimeout(timeout);
+      resolve(ws);
+    });
+
+    ws.on('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
 }
 
 /**

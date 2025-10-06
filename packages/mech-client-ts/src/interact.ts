@@ -276,7 +276,7 @@ export async function interact(options: InteractOptions): Promise<InteractResult
 
   // Initialize Web3 and WebSocket
   const web3 = new Web3(mechConfig.rpc_url);
-  const ws = createWebSocketConnection(mechConfig.wss_endpoint);
+  const ws = await createWebSocketConnection(mechConfig.wss_endpoint);
 
   // Add account using private key
   const account = web3.eth.accounts.privateKeyToAccount(privateKey);

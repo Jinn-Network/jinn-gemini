@@ -7,9 +7,9 @@ import { getCurrentJobContext } from './shared/context.js';
 const dispatchNewJobParamsBase = z.object({
   objective: z.string().min(10).describe('Clear, specific statement of what needs to be accomplished'),
   context: z.string().min(20).describe('Why this work is needed and how it fits into the broader goal. Include relevant background from parent job.'),
+  deliverables: z.string().optional().describe('Expected outputs or artifacts to be created'),
   acceptanceCriteria: z.string().min(10).describe('Specific, measurable criteria for successful completion (what "done" looks like)'),
   constraints: z.string().optional().describe('Limitations, requirements, dependencies, or important considerations'),
-  deliverables: z.string().optional().describe('Expected outputs or artifacts to be created'),
   jobName: z.string().min(1),
   enabledTools: z.array(z.string()).optional(),
   updateExisting: z.boolean().optional().default(false),
@@ -21,12 +21,12 @@ export const dispatchNewJobParams = dispatchNewJobParamsBase;
 export const dispatchNewJobSchema = {
   description: `Create or update a job definition and dispatch a marketplace request using structured prompt fields for high-quality work delegation.
 
-STRUCTURED PROMPT FIELDS (all required except constraints/deliverables):
+STRUCTURED PROMPT FIELDS (all required except deliverables/constraints):
 - objective: Clear, specific statement of what needs to be accomplished (min 10 chars)
 - context: Why this work is needed and how it fits the broader goal. Include relevant background from parent job. (min 20 chars)
+- deliverables: (optional) Expected outputs or artifacts to be created
 - acceptanceCriteria: Specific, measurable criteria for successful completion - what "done" looks like (min 10 chars)
 - constraints: (optional) Limitations, requirements, dependencies, or important considerations
-- deliverables: (optional) Expected outputs or artifacts to be created
 
 These fields are assembled into a well-structured prompt that preserves context through delegation levels.`,
   inputSchema: dispatchNewJobParamsBase.shape,
@@ -43,22 +43,22 @@ function ensureUuid(): string {
 function constructPrompt(params: {
   objective: string;
   context: string;
+  deliverables?: string;
   acceptanceCriteria: string;
   constraints?: string;
-  deliverables?: string;
 }): string {
   let prompt = `# Objective
 ${params.objective}
 
 # Context
-${params.context}
-
-# Acceptance Criteria
-${params.acceptanceCriteria}`;
+${params.context}`;
 
   if (params.deliverables) {
     prompt += `\n\n# Deliverables\n${params.deliverables}`;
   }
+
+  prompt += `\n\n# Acceptance Criteria
+${params.acceptanceCriteria}`;
 
   if (params.constraints) {
     prompt += `\n\n# Constraints\n${params.constraints}`;
@@ -90,10 +90,10 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { objective, context: promptContext, acceptanceCriteria, constraints, deliverables, jobName, enabledTools, updateExisting, message } = parsed.data;
+    const { objective, context: promptContext, deliverables, acceptanceCriteria, constraints, jobName, enabledTools, updateExisting, message } = parsed.data;
 
     // Assemble structured fields into a single prompt string for IPFS storage
-    const prompt = constructPrompt({ objective, context: promptContext, acceptanceCriteria, constraints, deliverables });
+    const prompt = constructPrompt({ objective, context: promptContext, deliverables, acceptanceCriteria, constraints });
 
     const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
 
