@@ -25,7 +25,16 @@ export const createArtifactParams = z.object({
 });
 
 export const createArtifactSchema = {
-  description: 'Uploads content to IPFS and returns { cid, name, topic, contentPreview }.',
+  description: `Uploads content to IPFS and returns { cid, name, topic, contentPreview }.
+
+MANDATORY USE CASES:
+- Research findings and analysis results
+- Generated code, configurations, schemas
+- Multi-step process outputs and summaries
+- Data extractions or transformations
+- Any substantial deliverable for parent job review
+
+Execution summaries document process; artifacts persist deliverables. Use create_artifact liberally for all substantial work outputs to ensure discoverability via search_artifacts.`,
   inputSchema: createArtifactParams.shape,
 };
 

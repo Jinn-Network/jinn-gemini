@@ -7,8 +7,8 @@ import { getCurrentJobContext } from './shared/context.js';
 const dispatchNewJobParamsBase = z.object({
   objective: z.string().min(10).describe('Clear, specific statement of what needs to be accomplished'),
   context: z.string().min(20).describe('Why this work is needed and how it fits into the broader goal. Include relevant background from parent job.'),
-  deliverables: z.string().optional().describe('Expected outputs or artifacts to be created'),
-  acceptanceCriteria: z.string().min(10).describe('Specific, measurable criteria for successful completion (what "done" looks like)'),
+  deliverables: z.string().optional().describe('Expected outputs or artifacts to be created. Specify artifact topics and what should be persisted for parent job review.'),
+  acceptanceCriteria: z.string().min(10).describe('Specific, measurable criteria for successful completion (what "done" looks like). Include: (1) what outputs are complete, (2) what artifacts are created with topics, (3) how results are surfaced to parent.'),
   constraints: z.string().optional().describe('Limitations, requirements, dependencies, or important considerations'),
   jobName: z.string().min(1),
   enabledTools: z.array(z.string()).optional(),
@@ -24,8 +24,8 @@ export const dispatchNewJobSchema = {
 STRUCTURED PROMPT FIELDS (all required except deliverables/constraints):
 - objective: Clear, specific statement of what needs to be accomplished (min 10 chars)
 - context: Why this work is needed and how it fits the broader goal. Include relevant background from parent job. (min 20 chars)
-- deliverables: (optional) Expected outputs or artifacts to be created
-- acceptanceCriteria: Specific, measurable criteria for successful completion - what "done" looks like (min 10 chars)
+- deliverables: (optional) Expected outputs or artifacts to be created. Specify artifact topics and what should be persisted for parent job review.
+- acceptanceCriteria: Specific, measurable criteria for successful completion - what "done" looks like (min 10 chars). Include: (1) what outputs are complete, (2) what artifacts are created with topics, (3) how results are surfaced to parent.
 - constraints: (optional) Limitations, requirements, dependencies, or important considerations
 
 These fields are assembled into a well-structured prompt that preserves context through delegation levels.`,

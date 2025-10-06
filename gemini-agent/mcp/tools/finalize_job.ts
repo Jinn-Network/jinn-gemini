@@ -15,7 +15,22 @@ export const finalizeJobParams = z.object({
 });
 
 export const finalizeJobSchema = {
-  description: 'Signal the completion state of this job using the work protocol. Choose the appropriate status:\n\n- COMPLETED: This job has fully finished its work and produced final deliverables. Use when all objectives are met and you have nothing more to do.\n\n- DELEGATING: You have dispatched or re-dispatched child jobs and are awaiting their results. Use this immediately after calling dispatch_new_job or dispatch_existing_job, whether this is your first delegation or a subsequent round based on partial/inadequate child results.\n\n- WAITING: You have pending child jobs in progress, but you are not dispatching any new or re-dispatched jobs at this time. Use when you are passively waiting for existing child jobs to complete before you can proceed. Do not dispatch jobs and then use WAITING - use DELEGATING instead.\n\n- FAILED: This job encountered a critical error or blocker that prevents completion and requires supervisor intervention.\n\nThe worker automatically re-invokes parent jobs when children complete. The worker also dispatches your parent job when you signal COMPLETED or FAILED.',
+  description: `Signal the completion state of this job using the work protocol. Choose the appropriate status:
+
+- COMPLETED: This job has fully finished its work and produced final deliverables. Use when all objectives are met and you have nothing more to do.
+
+- DELEGATING: You have dispatched or re-dispatched child jobs and are awaiting their results. Use this immediately after calling dispatch_new_job or dispatch_existing_job, whether this is your first delegation or a subsequent round based on partial/inadequate child results.
+
+- WAITING: You have pending child jobs in progress, but you are not dispatching any new or re-dispatched jobs at this time. Use when you are passively waiting for existing child jobs to complete before you can proceed. Do not dispatch jobs and then use WAITING - use DELEGATING instead.
+
+- FAILED: This job encountered a critical error or blocker that prevents completion and requires supervisor intervention.
+
+BEFORE FINALIZING WITH COMPLETED:
+✓ Have I created artifacts for all substantial outputs?
+✓ Are my deliverables findable via search_artifacts?
+✓ Is my execution summary focused on process, not echoing artifact content?
+
+The worker automatically re-invokes parent jobs when children complete. The worker also dispatches your parent job when you signal COMPLETED or FAILED.`,
   inputSchema: finalizeJobParamsBase.shape,
 };
 
