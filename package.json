@@ -43,6 +43,8 @@
     "deliver:request": "tsx scripts/deliver_request.ts",
     "dev:vnet": "tsx scripts/dev-vnet.ts",
     "cleanup:vnet": "tsx scripts/cleanup-vnet.ts",
+    "review:vnet": "tsx scripts/review-vnet.ts",
+    "list:archives": "tsx scripts/list-archives.ts",
     "security:check": "snyk test --all-projects --severity-threshold=high",
     "security:monitor": "snyk monitor --all-projects",
     "security:fix": "snyk wizard",

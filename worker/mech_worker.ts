@@ -410,7 +410,7 @@ async function main() {
     } catch (e: any) {
       workerLogger.error({ error: e?.message || String(e) }, 'Error in mech loop');
     }
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise(r => setTimeout(r, 30000));
   }
 }
 

@@ -16,6 +16,19 @@ const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020'; // Bas
 // Log the mech address being used
 console.log(`[Ponder Config] Indexing mech: ${MECH_ADDRESS}`);
 
+// Optional startBlock and endBlock for review mode
+const startBlock = process.env.PONDER_START_BLOCK === "latest"
+  ? "latest"
+  : Number(process.env.PONDER_START_BLOCK || 36480000);
+
+const endBlock = process.env.PONDER_END_BLOCK ? Number(process.env.PONDER_END_BLOCK) : undefined;
+
+if (endBlock) {
+  console.log(`[ponder] ✓ endBlock set to ${endBlock} (review mode - will not sync beyond this block)`);
+} else {
+  console.log(`[ponder] No endBlock set - will sync to chain head`);
+}
+
 export default createConfig({
   networks: {
     base: {
@@ -32,20 +45,15 @@ export default createConfig({
       address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
       // Reuse ABI from mech-client-ts to avoid duplication during dev
       abi: MechMarketplaceAbi,
-      // Start from recent block to avoid 25-hour historical sync
-      // Set PONDER_START_BLOCK env var to override, or use "latest" to start from current block
-      startBlock: process.env.PONDER_START_BLOCK === "latest" 
-        ? "latest" 
-        : Number(process.env.PONDER_START_BLOCK || 36480000), // ~1 hour ago from block 36481259
+      startBlock,
+      endBlock,
     },
     OlasMech: {
       network: "base",
       address: process.env.PONDER_MECH_ADDRESS || MECH_ADDRESS, // Auto-loaded from service config
       abi: (AgentMechAbi as any)?.abi || (AgentMechAbi as any),
-      // Start from recent block to avoid 25-hour historical sync
-      startBlock: process.env.PONDER_START_BLOCK === "latest" 
-        ? "latest" 
-        : Number(process.env.PONDER_START_BLOCK || 36480000), // ~1 hour ago from block 36481259
+      startBlock,
+      endBlock,
     },
   },
 });
