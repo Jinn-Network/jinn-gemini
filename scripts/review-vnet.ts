@@ -27,6 +27,7 @@ interface ArchiveMetadata {
   vnetDashboard: string;
   quotaExhausted: boolean;
   startBlock: number;
+  forkBlock?: number;
   endBlock?: number | null;
   stats: {
     marketplaceRequests: number;
@@ -107,6 +108,11 @@ async function killServices(): Promise<void> {
   console.log('[cleanup] ✓ Services stopped');
 }
 
+async function cleanupDatabase(): Promise<void> {
+  // Clean up Ponder cache
+  await rm(PONDER_DB_ACTIVE, { recursive: true, force: true });
+}
+
 async function restoreArchive(runId: string): Promise<ArchiveMetadata> {
   const archiveDir = join(ARCHIVES_DIR, `run-${runId}`);
   const metadataPath = join(archiveDir, 'metadata.json');
@@ -122,25 +128,10 @@ async function restoreArchive(runId: string): Promise<ArchiveMetadata> {
   // Load metadata
   const metadata: ArchiveMetadata = JSON.parse(await readFile(metadataPath, 'utf-8'));
 
-  // Check if active DB exists and back it up
-  if (existsSync(PONDER_DB_ACTIVE)) {
-    console.log('[restore] Backing up current Ponder database...');
-    await rm(PONDER_DB_BACKUP, { recursive: true, force: true });
-    await execa('cp', ['-r', PONDER_DB_ACTIVE, PONDER_DB_BACKUP]);
-  }
-
-  // Restore archived DB to active location
-  console.log('[restore] Restoring archived database...');
+  // Clean Ponder cache to force fresh sync from VNet RPC
+  console.log('[restore] Cleaning Ponder cache for fresh VNet sync...');
   await rm(PONDER_DB_ACTIVE, { recursive: true, force: true });
-  await mkdir(PONDER_DB_ACTIVE, { recursive: true });
-  await execa('cp', ['-r', archivedDb, PONDER_DB_ACTIVE]);
-  // Fix nested sqlite directory (cp -r creates sqlite/sqlite)
-  const nestedSqlite = join(PONDER_DB_ACTIVE, 'sqlite');
-  if (existsSync(nestedSqlite)) {
-    await execa('bash', ['-c', `mv ${nestedSqlite}/* ${PONDER_DB_ACTIVE}/ && rmdir ${nestedSqlite}`]);
-  }
-
-  console.log('[restore] ✓ Database restored');
+  console.log('[restore] ✓ Ponder cache cleared (will re-index from VNet RPC)');
   return metadata;
 }
 
@@ -148,18 +139,21 @@ async function startServices(metadata: ArchiveMetadata): Promise<void> {
   console.log('[services] Starting Ponder...');
 
   // Start Ponder with archived VNet RPC and endBlock to prevent syncing beyond archived run
+  // IMPORTANT: Ponder will re-index from VNet RPC (database archiving doesn't work)
   const env: Record<string, string> = {
     ...process.env,
+    PONDER_REVIEW_MODE: '1',  // Enable review mode to preserve runtime env vars
     PONDER_RPC_URL: metadata.vnetRpc,
     RPC_URL: metadata.vnetRpc,  // Override RPC_URL to prevent fallback to .env VNet
     PONDER_START_BLOCK: metadata.startBlock.toString(),  // Use archived start block
   };
 
-  // Set endBlock if available to prevent syncing beyond archived run
-  if (metadata.endBlock) {
-    env.PONDER_END_BLOCK = metadata.endBlock.toString();
-    console.log(`[services] Setting endBlock to ${metadata.endBlock} (prevents syncing beyond archived run)`);
-  }
+  // ALWAYS set endBlock to prevent exhausting VNet quota
+  // Use endBlock from metadata if available, otherwise use forkBlock + 20 as safe upper bound
+  const endBlock = metadata.endBlock || (metadata.forkBlock ? metadata.forkBlock + 20 : metadata.startBlock + 120);
+  env.PONDER_END_BLOCK = endBlock.toString();
+  console.log(`[services] Setting endBlock to ${endBlock} (Ponder will re-index from VNet RPC)`);
+  console.log(`[services] Block range: ${metadata.startBlock} → ${endBlock}`);
 
   const ponderProc = execa('yarn', ['dev'], {
     cwd: join(process.cwd(), 'ponder'),
@@ -186,19 +180,29 @@ async function startServices(metadata: ArchiveMetadata): Promise<void> {
   await new Promise(r => setTimeout(r, 10000)); // Give Ponder time to start
   console.log('[services] ✓ Ponder started at http://localhost:42069/graphql');
 
-  // Start Frontend
+  // Start Frontend (optional, skip if Next.js not installed)
   console.log('[services] Starting Frontend...');
-  const frontendProc = execa('yarn', ['next', 'dev', '--turbopack', '--port', '3020'], {
-    cwd: join(process.cwd(), 'frontend/explorer'),
-    env: {
-      ...process.env,
-      NEXT_PUBLIC_SUBGRAPH_URL: 'http://localhost:42069/graphql',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  let frontendProc: any = null;
+  try {
+    frontendProc = execa('yarn', ['next', 'dev', '--turbopack', '--port', '3020'], {
+      cwd: join(process.cwd(), 'frontend/explorer'),
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_SUBGRAPH_URL: 'http://localhost:42069/graphql',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
-  await new Promise(r => setTimeout(r, 5000)); // Give Frontend time to start
-  console.log('[services] ✓ Frontend started at http://localhost:3020');
+    // Don't wait for frontend if it crashes
+    frontendProc.catch(() => {
+      console.log('[services] ⚠️  Frontend failed to start (this is optional)');
+    });
+
+    await new Promise(r => setTimeout(r, 2000)); // Give Frontend time to start
+    console.log('[services] ✓ Frontend started at http://localhost:3020');
+  } catch (error: any) {
+    console.log('[services] ⚠️  Could not start frontend (this is optional)');
+  }
 
   return new Promise(() => {
     // Keep alive until Ctrl+C
@@ -206,16 +210,12 @@ async function startServices(metadata: ArchiveMetadata): Promise<void> {
       console.log('');
       console.log('[shutdown] Stopping services...');
       ponderProc.kill();
-      frontendProc.kill();
-
-      // Restore backup if it exists
-      if (existsSync(PONDER_DB_BACKUP)) {
-        console.log('[shutdown] Restoring original database...');
-        await rm(PONDER_DB_ACTIVE, { recursive: true, force: true });
-        await execa('mv', [PONDER_DB_BACKUP, PONDER_DB_ACTIVE]);
-        console.log('[shutdown] ✓ Original database restored');
+      if (frontendProc) {
+        frontendProc.kill();
       }
 
+      // Clean up Ponder cache
+      await cleanupDatabase();
       console.log('[shutdown] ✓ Cleanup complete');
       process.exit(0);
     });

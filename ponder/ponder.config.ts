@@ -20,16 +20,19 @@ console.log(`[Ponder Config] Indexing mech: ${MECH_ADDRESS}`);
 const startBlock = process.env.PONDER_START_BLOCK ? Number(process.env.PONDER_START_BLOCK) : undefined;
 const endBlock = process.env.PONDER_END_BLOCK ? Number(process.env.PONDER_END_BLOCK) : undefined;
 
-if (startBlock) {
-  console.log(`[ponder] ✓ startBlock set to ${startBlock}`);
+// Log review mode status
+if (process.env.PONDER_REVIEW_MODE === '1') {
+  console.log('[Ponder Config] 🔍 REVIEW MODE ACTIVE');
+  console.log(`[Ponder Config]   Start Block: ${startBlock}`);
+  console.log(`[Ponder Config]   End Block: ${endBlock || 'none (will sync to chain head)'}`);
+  console.log(`[Ponder Config]   RPC URL: ${process.env.PONDER_RPC_URL || DEFAULT_BASE_RPC}`);
 } else {
-  console.log(`[ponder] No startBlock set - will sync from recent block`);
-}
-
-if (endBlock) {
-  console.log(`[ponder] ✓ endBlock set to ${endBlock} (review mode - will not sync beyond this block)`);
-} else {
-  console.log(`[ponder] No endBlock set - will sync to chain head`);
+  console.log(`[Ponder Config] Start Block: ${startBlock || 'none (will sync from recent block)'}`);
+  if (endBlock) {
+    console.log(`[Ponder Config] ✓ End Block set to ${endBlock}`);
+  } else {
+    console.log(`[Ponder Config] No endBlock set - will sync to chain head`);
+  }
 }
 
 export default createConfig({

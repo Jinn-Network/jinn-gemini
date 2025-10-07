@@ -49,11 +49,24 @@ if (process.env.__ENV_LOADED !== '1') {
       'ATTENDED',
     ]);
 
+    // Review mode: preserve runtime-provided values for specific Ponder config vars
+    const isReviewMode = process.env.PONDER_REVIEW_MODE === '1';
+    const reviewModePreservedKeys = new Set<string>([
+      'PONDER_START_BLOCK',
+      'PONDER_END_BLOCK',
+      'PONDER_RPC_URL',
+    ]);
+
     for (const key of Object.keys(process.env)) {
       const isEnforced = enforcedPrefixes.some((p) => key.startsWith(p)) || enforcedSingles.has(key);
       if (!isEnforced) continue;
-      
+
       if (key in parsed) {
+        // In review mode, preserve runtime values for specific Ponder config vars
+        if (isReviewMode && reviewModePreservedKeys.has(key)) {
+          // Keep the runtime value, don't overwrite from .env
+          continue;
+        }
         // If the key is present in .env, use that value (local development override)
         process.env[key] = parsed[key];
       } else {
