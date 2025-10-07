@@ -12,6 +12,7 @@ import {
 } from './wss';
 import { watchForDataUrlFromMech, isAcnAvailable, getAcnAvailabilityMessage } from './acn';
 import { readFileSync } from 'fs';
+import { join } from 'path';
 import axios from 'axios';
 
 // Constants
@@ -72,7 +73,14 @@ async function verifyOrRetrieveTool(
 function getAbi(abiPath: string): any[] {
   try {
     const abiContent = readFileSync(abiPath, 'utf8');
-    return JSON.parse(abiContent);
+    const data = JSON.parse(abiContent);
+    if (typeof data === 'object' && data !== null && 'abi' in data) {
+      return data.abi;
+    }
+    if (Array.isArray(data)) {
+      return data;
+    }
+    throw new Error(`Invalid ABI format in ${abiPath}`);
   } catch (error) {
     throw new Error(`Failed to load ABI from ${abiPath}: ${error}`);
   }
@@ -291,7 +299,7 @@ export async function interact(options: InteractOptions): Promise<InteractResult
   );
 
   // Load contract ABI and create contract instance
-  const abi = getAbi('./src/abis/AgentMech.json');
+  const abi = getAbi(join(__dirname, 'abis', 'AgentMech.json'));
   const mechContract = getContract(contractAddress, abi, web3);
   
   // Get event signatures

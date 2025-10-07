@@ -5,6 +5,7 @@
 .env.development
 .env.test
 .env.production
+.env.mainnet
 .env.*.local
 
 # Node dependencies
@@ -107,6 +108,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+*.diff
 
 # Database files
 *.db
