@@ -184,3 +184,6 @@ olas-operate-middleware/.operate/*.txt
 
 # Service backups (moved to ~/Documents)
 service-backups/
+
+# VNet session files
+.vnet-session-*.json
