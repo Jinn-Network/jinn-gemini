@@ -3,7 +3,7 @@ import { ConfirmationType } from './config';
 import { promptToIpfsMain, pushToIpfsMain, fetchIpfsHashMain } from './ipfs';
 import { interact } from './interact';
 import { marketplaceInteract } from './marketplace_interact';
-import { deliverViaSafe } from './deliver';
+import { deliverViaSafe } from './post_deliver';
 import { queryMmMechsInfo, queryMechRequests } from './subgraph';
 import { getToolsForAgents, getToolDescription, getToolIoSchema } from './tool_management';
 import { getToolsForMarketplaceMech, getToolDescription as getMarketplaceToolDescription, getToolIoSchema as getMarketplaceToolIoSchema } from './marketplace_tool_management';
@@ -320,14 +320,13 @@ program
           useOffchain: options.useOffchain,
           mechOffchainUrl: options.mechOffchainUrl || '',
           tools: options.tools,
-          extraAttributes: options.extraAttribute ? 
+          extraAttributes: options.extraAttribute ?
             options.extraAttribute.reduce((acc: any, attr: string) => {
               const [key, value] = attr.split('=');
               acc[key] = value;
               return acc;
             }, {}) : undefined,
           privateKeyPath: options.key,
-          confirmationType: options.confirm ? ConfirmationType[options.confirm.toUpperCase() as keyof typeof ConfirmationType] : ConfirmationType.WAIT_FOR_BOTH,
           retries: options.retries,
           timeout: options.timeout,
           sleep: options.sleep,

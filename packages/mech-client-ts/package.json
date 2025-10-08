@@ -1,7 +1,7 @@
 {
   "name": "mech-client-ts",
-  "version": "1.0.6",
-  "description": "TypeScript client for interacting with Mechs",
+  "version": "1.1.0",
+  "description": "TypeScript client for interacting with Mechs - Full feature parity with mech-client-python using async delivery monitoring",
   "main": "dist/index.js",
   "exports": {
     ".": "./dist/index.js",

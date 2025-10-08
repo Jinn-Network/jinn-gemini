@@ -145,8 +145,8 @@ async function sendRequest(
   sleep?: number
 ): Promise<string | null> {
   // Upload metadata to IPFS
-  const [truncatedHash, fullHash] = await pushMetadataToIpfs(prompt, tool, extraAttributes);
-  console.log(`  - Prompt uploaded: https://gateway.autonolas.tech/ipfs/${fullHash.slice(3)}`);
+  const [truncatedHash, cidString] = await pushMetadataToIpfs(prompt, tool, extraAttributes);
+  console.log(`  - Prompt uploaded: https://gateway.autonolas.tech/ipfs/${cidString}`);
   
   const methodName = 'request';
   const methodArgs = { data: truncatedHash };
