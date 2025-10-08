@@ -74,35 +74,28 @@ echo "📦 Installing dependencies..."
 yarn install --silent
 success "Root dependencies installed"
 
-# 4. Build the main project
-echo ""
-echo "🔨 Building main project..."
-yarn build > /dev/null
-success "Main project built"
-
-# 5. Build mech-client-ts package
+# 4. Build mech-client-ts package FIRST (main project depends on it)
 echo ""
 echo "🔧 Building mech-client-ts package..."
 cd packages/mech-client-ts
 yarn install --silent
 yarn build > /dev/null
 success "mech-client-ts built"
-
-# 6. Copy ABIs and configs to dist directory
-echo ""
-echo "📁 Copying ABIs and configs to dist..."
-cp -r src/abis dist/
-cp -r src/configs dist/
-success "ABIs and configs copied to dist"
 cd ../..
 
-# 7. Re-run yarn install to update symlinks
+# 5. Build the main project
+echo ""
+echo "🔨 Building main project..."
+yarn build > /dev/null
+success "Main project built"
+
+# 6. Re-run yarn install to update symlinks
 echo ""
 echo "🔗 Updating package symlinks..."
 yarn install --silent --force
 success "Package symlinks updated"
 
-# 8. Install ponder dependencies
+# 7. Install ponder dependencies
 echo ""
 echo "🗂️  Installing ponder dependencies..."
 cd ponder
@@ -110,7 +103,7 @@ yarn install --silent
 success "Ponder dependencies installed"
 cd ..
 
-# 9. Validate setup
+# 8. Validate setup
 echo ""
 echo "✅ Validating setup..."
 
