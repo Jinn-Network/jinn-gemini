@@ -66,7 +66,7 @@
     "ethers": "^6.15.0",
     "graphql-request": "^7.2.0",
     "graphql-yoga": "^5.15.2",
-    "mech-client-ts": "file:packages/mech-client-ts/mech-client-ts-ipfsjson.tgz",
+    "mech-client-ts": "file:packages/mech-client-ts",
     "openai": "^5.11.0",
     "pino": "^9.9.0",
     "pino-pretty": "^13.1.1",

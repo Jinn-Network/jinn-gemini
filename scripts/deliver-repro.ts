@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
+import { deliverViaSafe } from 'mech-client-ts/dist/post_deliver.js';
 
 function getArg(flag: string, fallback?: string) {
   const i = process.argv.indexOf(flag);
