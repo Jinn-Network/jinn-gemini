@@ -86,7 +86,7 @@ export interface MarketplaceInteractOptions {
 export interface MechInfo {
   paymentType: string;
   // Lowercased, without 0x prefix; used for enum comparisons
-  paymentTypeNormalized?: string;
+  paymentTypeNormalized: string;
   serviceId: number;
   maxDeliveryRate: number;
   mechPaymentBalanceTracker: string;
@@ -644,7 +644,7 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
   if (!usePrepaid) {
     price = mechInfo.maxDeliveryRate * numRequests;
     console.log(`   Debug: Calculated price: ${price} (maxDeliveryRate: ${mechInfo.maxDeliveryRate} * numRequests: ${numRequests})`);
-    const pt = normalizeHex32(mechInfo.paymentTypeNormalized || mechInfo.paymentType);
+    const pt = mechInfo.paymentTypeNormalized;
     if (pt === PaymentType.TOKEN) {
       console.log('Token Mech detected, approving wrapped token for price payment...');
       const priceToken = CHAIN_TO_PRICE_TOKEN[chainId];
@@ -678,13 +678,13 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     await checkPrepaidBalances(
       web3,
       mechInfo.mechPaymentBalanceTracker,
-      normalizeHex32(mechInfo.paymentTypeNormalized || mechInfo.paymentType),
+      mechInfo.paymentTypeNormalized,
       mechInfo.maxDeliveryRate
     );
   }
 
   // Handle NVM mechs
-  const pt = normalizeHex32(mechInfo.paymentTypeNormalized || mechInfo.paymentType);
+  const pt = mechInfo.paymentTypeNormalized;
   const isNvmMech = pt === PaymentType.NATIVE_NVM || pt === PaymentType.TOKEN_NVM;
   if (isNvmMech) {
     const nvmMechType = pt === PaymentType.NATIVE_NVM ? 'native' : 'token';
