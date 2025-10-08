@@ -583,7 +583,12 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
 
   // Initialize Web3 and WebSocket
   const web3 = new Web3(mechConfig.rpc_url);
-  const ws = await createWebSocketConnection(mechConfig.wss_endpoint);
+  let ws: WebSocket | null = null;
+
+  // Only create WebSocket connection if not in postOnly mode
+  if (!postOnly) {
+    ws = await createWebSocketConnection(mechConfig.wss_endpoint);
+  }
 
   // Load private key and add account
   const privateKey = readFileSync(keyPath, 'utf8').trim();
@@ -596,7 +601,7 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
 
   console.log('Fetching Mech Info...');
   const mechInfo = await fetchMechInfo(web3, mechMarketplaceContract, priorityMechAddress);
-  
+
   configValues.deliveryRate = mechInfo.maxDeliveryRate;
   configValues.paymentType = mechInfo.paymentType;
 
@@ -606,14 +611,17 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
   // Load mech contract and register event handlers
   const imechAbi = getAbi(IMECH_ABI_PATH);
   const { request: marketplaceRequestSignature, deliver: marketplaceDeliverSignature } = getEventSignatures(imechAbi);
-  
-  registerEventHandlers(
-    ws,
-    priorityMechAddress,
-    account.address,
-    marketplaceRequestSignature,
-    marketplaceDeliverSignature
-  );
+
+  // Only register event handlers if WebSocket is available
+  if (ws) {
+    registerEventHandlers(
+      ws,
+      priorityMechAddress,
+      account.address,
+      marketplaceRequestSignature,
+      marketplaceDeliverSignature
+    );
+  }
 
   console.log(`   Debug: Payment type detected: ${mechInfo.paymentType}`);
   console.log(`   Debug: Max delivery rate: ${mechInfo.maxDeliveryRate}`);
@@ -744,10 +752,12 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     console.log('');
 
     if (postOnly) {
-      try {
-        ws.close();
-      } catch (_) {
-        // ignore close errors
+      if (ws) {
+        try {
+          ws.close();
+        } catch (_) {
+          // ignore close errors
+        }
       }
       return {
         transaction_hash: transactionDigest,
@@ -794,10 +804,12 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
         }
       }
     }
-    try {
-      ws.close();
-    } catch (_) {
-      // ignore close errors
+    if (ws) {
+      try {
+        ws.close();
+      } catch (_) {
+        // ignore close errors
+      }
     }
     return null;
   }

@@ -156,6 +156,7 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
       PONDER_RPC_URL: process.env.PONDER_RPC_URL,
       PONDER_GRAPHQL_URL: gqlUrl,
       PONDER_START_BLOCK: process.env.PONDER_START_BLOCK,
+      PONDER_MECH_ADDRESS: process.env.MECH_ADDRESS, // Ensure Ponder indexes the correct mech
     };
 
     console.log('[test] Starting Ponder with PONDER_RPC_URL:', process.env.PONDER_RPC_URL);
@@ -335,7 +336,8 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     expect(searchJobsByPromptParsed?.data?.length).toBeGreaterThan(0);
     const foundJobByPrompt = searchJobsByPromptParsed?.data?.find((j: any) => j.id === jobDefinitionId);
     expect(foundJobByPrompt).toBeTruthy();
-    expect(foundJobByPrompt?.promptContent).toContain('verify on-chain dispatch');
+    // Prompt content now uses structured format with markdown headers, case-insensitive check
+    expect(foundJobByPrompt?.promptContent?.toLowerCase()).toContain('verify on-chain dispatch');
 
     // 5) Verify get_details returns the same records with optional ipfs resolution
     const detailsRes = await getDetails({ ids: [requestIdHex, jobDefinitionId], resolve_ipfs: true });

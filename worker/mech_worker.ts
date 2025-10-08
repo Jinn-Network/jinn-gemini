@@ -11,6 +11,7 @@ import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport,
 import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './artifacts.js';
 import { readServiceConfig } from './ServiceConfigReader.js';
 import { loadAgentPrivateKey } from './MechMarketplaceRequester.js';
+import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import { join } from 'path';
 
 type UnclaimedRequest = {
@@ -27,6 +28,11 @@ const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('
 const USE_CONTROL_API = (process.env.USE_CONTROL_API ?? 'true') !== 'false';
 const STALE_MINUTES = parseInt(process.env.MECH_RECLAIM_AFTER_MINUTES || '10', 10);
 
+type FinalStatus = {
+  status: 'COMPLETED' | 'FAILED' | 'DELEGATING' | 'WAITING';
+  message: string;
+};
+
 function safeParseToolResponse(response: any): { ok: boolean; data: any; message?: string } {
   try {
     const text = response?.content?.[0]?.text;
@@ -38,6 +44,59 @@ function safeParseToolResponse(response: any): { ok: boolean; data: any; message
     return { ok: true, data: parsed };
   } catch (e: any) {
     return { ok: false, data: null, message: e?.message || String(e) };
+  }
+}
+
+/**
+ * Dispatch parent job when child completes or fails (Work Protocol)
+ */
+async function dispatchParentIfNeeded(
+  finalStatus: FinalStatus | null,
+  metadata: any,
+  requestId: string,
+  output: string
+): Promise<void> {
+  // Only dispatch on terminal states
+  if (!finalStatus || (finalStatus.status !== 'COMPLETED' && finalStatus.status !== 'FAILED')) {
+    workerLogger.debug({ requestId, status: finalStatus?.status || 'none' }, 'Not dispatching parent - non-terminal status');
+    return;
+  }
+
+  // Get parent job ID from metadata
+  const parentJobDefId = metadata?.sourceJobDefinitionId;
+  if (!parentJobDefId) {
+    workerLogger.debug({ requestId }, 'No parent job to dispatch');
+    return;
+  }
+
+  try {
+    workerLogger.info({ requestId, parentJobDefId, childStatus: finalStatus.status }, 'Dispatching parent job after child completion');
+
+    // Create message with child results using standard format
+    const messageContent = `Child job ${finalStatus.status}: ${finalStatus.message}. Output: ${
+      output.length > 500 ? output.substring(0, 500) + '...' : output
+    }`;
+
+    const message = {
+      content: messageContent,
+      to: parentJobDefId,
+      from: requestId
+    };
+
+    // Dispatch parent job
+    const result = await dispatchExistingJob({
+      jobId: parentJobDefId,
+      message: JSON.stringify(message)
+    });
+
+    const dispatchResult = safeParseToolResponse(result);
+    if (dispatchResult.ok) {
+      workerLogger.info({ requestId, parentJobDefId }, 'Parent job dispatched successfully');
+    } else {
+      workerLogger.error({ requestId, parentJobDefId, error: dispatchResult.message }, 'Failed to dispatch parent job');
+    }
+  } catch (e: any) {
+    workerLogger.error({ requestId, parentJobDefId, error: e?.message || String(e) }, 'Error dispatching parent job');
   }
 }
 
@@ -146,52 +205,54 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
   }
 }
 
-async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; enabledTools?: string[]; parentRequestId?: string } | null> {
+async function fetchIpfsMetadata(ipfsHash?: string): Promise<{ prompt?: string; enabledTools?: string[]; parentRequestId?: string; sourceJobDefinitionId?: string; sourceRequestId?: string } | null> {
   if (!ipfsHash) return null;
   try {
     const hash = String(ipfsHash).replace(/^0x/, '');
     // Use configured IPFS gateway or fallback to Autonolas
     const gatewayBase = process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/';
     const url = gatewayBase.endsWith('/') ? `${gatewayBase}${hash}` : `${gatewayBase}/${hash}`;
-    
+
     workerLogger.info({ url, hash, timeout: process.env.IPFS_FETCH_TIMEOUT_MS || '7000' }, 'Fetching IPFS metadata');
-    
+
     // Add a timeout so we don't hang here
     const controller = new AbortController();
     const timeoutMs = parseInt(process.env.IPFS_FETCH_TIMEOUT_MS || '7000', 10);
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    
+
     const res = await fetch(url, { method: 'GET', signal: controller.signal });
     clearTimeout(timer);
-    
+
     workerLogger.info({ status: res.status, statusText: res.statusText }, 'IPFS fetch response');
-    
+
     if (!res.ok) {
       workerLogger.warn({ status: res.status, statusText: res.statusText, url }, 'IPFS fetch returned non-OK status');
       return null;
     }
-    
+
     const json = await res.json();
     const prompt = json?.prompt || json?.input || undefined;
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
     const parentRequestId = json?.parentRequestId ? String(json.parentRequestId) : undefined;
-    
-    workerLogger.info({ hasPrompt: !!prompt, hasTools: !!enabledTools }, 'IPFS metadata parsed');
-    
-    return { prompt, enabledTools, parentRequestId };
+    const sourceJobDefinitionId = json?.sourceJobDefinitionId ? String(json.sourceJobDefinitionId) : undefined;
+    const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
+
+    workerLogger.info({ hasPrompt: !!prompt, hasTools: !!enabledTools, hasSourceJobDef: !!sourceJobDefinitionId, hasSourceReq: !!sourceRequestId }, 'IPFS metadata parsed');
+
+    return { prompt, enabledTools, parentRequestId, sourceJobDefinitionId, sourceRequestId };
   } catch (e: any) {
-    workerLogger.error({ 
-      error: e?.message || String(e), 
+    workerLogger.error({
+      error: e?.message || String(e),
       errorName: e?.name,
       errorStack: e?.stack?.split('\n').slice(0, 3).join('\n'),
-      ipfsHash 
+      ipfsHash
     }, 'Failed to fetch IPFS metadata');
     return null;
   }
 }
 
 async function runAgentForRequest(request: UnclaimedRequest, metadata: any): Promise<{ output: string; telemetry: any }> {
-  const model = process.env.MECH_MODEL || 'gemini-2.5-flash-lite';
+  const model = process.env.MECH_MODEL || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const agent = new Agent(model, enabledTools, {
     jobId: request.id,
@@ -277,8 +338,9 @@ async function processOnce(): Promise<void> {
   }
   let result: any = { output: '', telemetry: {} };
   let error: any = null;
+  let metadata: any = null;
   try {
-    const metadata = await fetchIpfsMetadata(target.ipfsHash);
+    metadata = await fetchIpfsMetadata(target.ipfsHash);
     result = await runAgentForRequest(target, metadata);
     // Extract artifacts produced during the run (from tool outputs)
     const artifacts = [
@@ -295,6 +357,25 @@ async function processOnce(): Promise<void> {
     workerLogger.info({ requestId: target.id }, 'Execution completed');
   } catch (e: any) {
     error = e;
+    // Agent may throw { error, telemetry } on failure - preserve telemetry
+    if (e && typeof e === 'object' && 'telemetry' in e && e.telemetry) {
+      result.telemetry = e.telemetry;
+      // Also extract output from telemetry.raw.partialOutput if available
+      if (e.telemetry.raw?.partialOutput) {
+        result.output = e.telemetry.raw.partialOutput;
+      }
+      // Extract artifacts even on error
+      const artifacts = [
+        ...extractArtifactsFromOutput(result?.output || ''),
+        ...extractArtifactsFromTelemetry(result?.telemetry || {})
+      ];
+      if (artifacts.length > 0) {
+        (result as any).artifacts = artifacts;
+        for (const a of artifacts) {
+          try { await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null }, workerAddress); } catch {}
+        }
+      }
+    }
     workerLogger.error({ requestId: target.id, error: e?.message || String(e) }, 'Execution failed');
   }
   await storeOnchainReport(target, workerAddress, result, error);
@@ -368,7 +449,37 @@ async function processOnce(): Promise<void> {
       } as const;
       const delivery = await (deliverViaSafe as any)(payload);
       workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
-      
+
+      // Extract final status from finalize_job tool call (Work Protocol)
+      let finalStatus: FinalStatus | null = null;
+      if (result?.telemetry?.toolCalls) {
+        const finalizeCall = result.telemetry.toolCalls.find((tc: any) => tc.tool === 'finalize_job');
+        if (finalizeCall?.success && finalizeCall?.result) {
+          finalStatus = {
+            status: finalizeCall.result.status,
+            message: finalizeCall.result.message || ''
+          };
+          workerLogger.info({ requestId: target.id, status: finalStatus.status }, 'Extracted finalize_job status from telemetry');
+        }
+      }
+
+      workerLogger.info({
+        requestId: target.id,
+        hasMetadata: !!metadata,
+        sourceJobDefId: metadata?.sourceJobDefinitionId,
+        metadataKeys: metadata ? Object.keys(metadata) : [],
+        hasFinalStatus: !!finalStatus,
+        finalStatusValue: finalStatus?.status
+      }, 'Checking parent dispatch preconditions');
+
+      // Dispatch parent job if needed (Work Protocol auto-dispatch)
+      try {
+        const output = typeof result?.output === 'string' ? result.output : JSON.stringify(result?.output ?? '');
+        await dispatchParentIfNeeded(finalStatus, metadata, target.id, output);
+      } catch (dispatchErr: any) {
+        workerLogger.error({ requestId: target.id, error: dispatchErr?.message || String(dispatchErr) }, 'Parent dispatch failed (non-fatal)');
+      }
+
       // Cleanup temp env var
       if (process.env.MECH_PRIVATE_KEY_TEMP) {
         delete process.env.MECH_PRIVATE_KEY_TEMP;

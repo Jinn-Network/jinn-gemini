@@ -11,7 +11,7 @@
     "mechx": "./dist/index.js"
   },
   "scripts": {
-    "build": "yarn tsc && cp -r src/abis dist/",
+    "build": "yarn tsc && cp -r src/abis dist/ && cp -r src/configs dist/",
     "dev": "yarn ts-node src/index.ts",
     "start": "yarn node dist/index.js",
     "test": "jest -c jest.config.js"

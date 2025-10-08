@@ -31,6 +31,7 @@ export class ProcessManager {
   private processes = new Map<string, ResultPromise>();
   private onCrash?: (serviceName: string, code: number) => void;
   private onQuotaError?: () => void;
+  private isShuttingDown = false;
 
   constructor(options?: {
     onCrash?: (serviceName: string, code: number) => void;
@@ -94,9 +95,9 @@ export class ProcessManager {
       });
     }
 
-    // Monitor crashes
+    // Monitor crashes (but ignore exit events during shutdown)
     proc.on('exit', (code: number | null) => {
-      if (code !== 0 && code !== null && this.onCrash) {
+      if (code !== 0 && code !== null && this.onCrash && !this.isShuttingDown) {
         this.onCrash(config.name, code);
       }
     });
@@ -145,6 +146,7 @@ export class ProcessManager {
    * Kill all processes gracefully
    */
   async killAll(): Promise<void> {
+    this.isShuttingDown = true; // Set flag to prevent crash handler from triggering
     const killPromises: Promise<void>[] = [];
 
     Array.from(this.processes.entries()).forEach(([name, proc]) => {
