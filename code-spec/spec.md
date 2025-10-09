@@ -1,137 +1,199 @@
-# The Orthodoxy Principle
+# Code Spec
+
+## Overview
+
+This specification defines desired code patterns for an AI-generated codebase. It ensures consistency across multiple AI sessions and makes the codebase maintainable by both humans and future AI agents.
+
+**Inspired by:** [OpenAI Model Spec](https://github.com/openai/model_spec)
+
+**Philosophy:** In an AI-generated codebase, different prompts naturally produce different solutions to the same problem. Without explicit guidance, patterns drift and the codebase becomes inconsistent. This spec provides that guidance.
+
+## Structure
+
+This document is organized into three tiers, following the OpenAI Model Spec structure:
+
+1. **Objectives** - High-level goals and guiding philosophies
+2. **Rules** - Hard constraints that must never be violated
+3. **Default Behaviors** - Standard patterns for common operations
+
+Each clause includes footnote references to example files that demonstrate correct usage and common violations.
+
+---
+
+## Objectives
+
+Objectives are high-level goals that provide directional guidance for all code. They inform the rules and default behaviors.
+
+### Follow the principle of orthodoxy[^obj1]
 
 > "There should be one—and preferably only one—obvious way to do it."
 > — PEP 20 (The Zen of Python), Principle #13
 
-## The Rule
+**The principle:** For any given problem domain in this codebase, there must be one canonical approach. All code must follow the established approach, even if alternative approaches exist.
 
-For any given problem domain in this codebase, there must be **one canonical pattern**. All code must follow the established pattern, even if alternative approaches exist. Deviation requires explicit justification.
+**Why this matters for AI-generated code:**
+- Different prompts → different solutions
+- Different AI models → different idioms
+- Different sessions → stylistic drift
+- Result: Codebase becomes unlearnable
 
-## Why This Matters
+**Application:** When you encounter code that solves the same problem in multiple ways, this violates orthodoxy. Identify the canonical approach, document it as a default behavior, and migrate all code to follow it.
 
-### The Problem with AI-Generated Code
+[^obj1]: See examples/obj1.md
 
-AI-generated code compounds pattern inconsistency:
+### Maintain codebase consistency
 
-- **Different prompts** → different solutions
-- **Different AI models** → different idioms
-- **Different sessions** → stylistic drift
-- **Result:** The codebase becomes unlearnable—every file is a surprise
+Ensure AI-generated code follows predictable patterns across sessions, enabling both human developers and future AI agents to understand and maintain the code effectively.
 
-### The Solution: Explicit Orthodoxy
+### Support observability and debugging
 
-By documenting canonical patterns and enforcing them through code review (manual or automated), we ensure:
+Write code that is traceable, loggable, and debuggable. Structured data is preferred over unstructured strings. Silent failures are never acceptable.
 
-- **Consistency:** Same problems solved the same way
-- **Learnability:** New developers (human or AI) can predict patterns
-- **Maintainability:** Changes follow established conventions
-- **Observability:** Consistent patterns enable better tooling
+---
 
-## Philosophy: Specs Over Code
+## Rules
 
-As described in OpenAI's Model Spec approach and Sean's talk on specifications:
+Rules are hard constraints that must never be violated. Unlike objectives (which are directional) and default behaviors (which can have rare exceptions), rules are absolute.
 
-> "Code is a lossy projection of a spec. The spec is the source of truth."
+### (None defined yet)
 
-For an AI-generated codebase:
-- **The prompts were the true source code**
-- **The generated code is the binary artifact**
-- **The spec preserves intent across AI sessions**
+Future examples:
+- Never commit secrets or credentials
+- Never use deprecated dependencies
+- Always validate external input
 
-## Pattern Domains
+As the codebase evolves, critical constraints will be elevated to rules.
 
-Each problem domain has one canonical pattern. Current domains:
+---
 
-### v0 Patterns
+## Default Behaviors
 
-1. **Error Handling + Logging** ([`patterns/error-handling-logging.md`](./patterns/error-handling-logging.md))
-   - How we handle async errors
-   - How we log failures with context
-   - Established: 2025-01-09
+Default behaviors define the standard way to handle common operations. They are consistent with objectives and rules. In rare cases, deviations may be justified (e.g., third-party library constraints), but must be explicitly documented.
 
-### Future Patterns (Proposed)
+### Handle async errors with try/catch and structured logging[^db01]
 
-- Data access patterns
-- Configuration loading
-- Database operations
-- API client patterns
-- Testing conventions
+All asynchronous operations must use try/catch blocks with structured logging via `workerLogger`.
+
+**Standard approach:**
+
+```typescript
+async function operation(param: string): Promise<Result> {
+  try {
+    const result = await riskyOperation(param);
+    return result;
+  } catch (error) {
+    workerLogger.error('Operation failed', {
+      param,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error; // Re-throw for caller to handle
+  }
+}
+```
+
+**Key elements:**
+1. Use `try/catch` blocks, not `.catch()` promise chains[^db01][^db02]
+2. Use `workerLogger.*` methods, not `console.*`[^db02][^db03]
+3. Include structured context object with relevant debugging information[^db03][^db04]
+4. Serialize errors properly (check `instanceof Error`)[^db04]
+5. Re-throw errors or handle explicitly—never silent catch[^db05]
+6. Avoid multiple property fallbacks that indicate no canonical data structure[^db06]
+
+**Rationale:**
+- **try/catch** - Explicit, aligns with async/await, composable
+- **workerLogger** - Structured, observable, integrates with OpenTelemetry
+- **Context objects** - Enables debugging, querying, telemetry correlation
+- **Re-throw** - Lets caller decide if error is recoverable
+
+**Rare exceptions:**
+- Third-party callback APIs that don't support async/await
+- Fire-and-forget background operations (must still log errors)
+
+When deviating, document in PR:
+```markdown
+## ⚠️ Code Spec Exception: Error Handling
+**Reason:** Third-party library uses callbacks, not async/await
+**Alternative:** Callback with structured logging
+**File:** `worker/legacy-adapter.ts:42`
+```
+
+[^db01]: See examples/db01.md for correct implementation
+[^db02]: See examples/db02.md for .catch() violation
+[^db03]: See examples/db03.md for console.* violation
+[^db04]: See examples/db04.md for unstructured logging
+[^db05]: See examples/db05.md for silent catch violation
+[^db06]: See examples/db06.md for property fallbacks violation
+
+---
 
 ## Pattern Evolution
 
-Patterns are not immutable. They evolve through:
+Default behaviors are not immutable. They evolve as the codebase grows and we discover better approaches.
 
-### 1. Discovery
-During development, you find a better approach or discover the current pattern doesn't cover a use case.
+### Evolution process:
 
-### 2. Proposal
-Open a GitHub Discussion or PR proposing:
-- What the current pattern doesn't handle
-- The proposed new pattern
-- Rationale for the change
-- Examples of current violations
+1. **Discovery** - During development, you find a better approach or discover the current pattern doesn't cover a use case
+2. **Proposal** - Open GitHub Discussion proposing the change with rationale and examples
+3. **Amendment** - Update this spec with the new approach and migration plan
+4. **Migration** - Use AI-assisted migration to update existing code
+5. **Enforcement** - The updated pattern becomes canonical
 
-### 3. Amendment
-Update the pattern document with:
-```markdown
-## Changelog
+### When to create a new default behavior:
 
-### 2025-02-01: Added error serialization helper
-**Change:** Require use of `serializeError()` for Error objects
-**Reason:** Error objects don't JSON.stringify() cleanly
-**Migration PR:** #456
-```
+If you encounter code that:
+- Solves the same problem in multiple different ways (violates orthodoxy)
+- Is a common operation that lacks guidance
+- Has multiple "obvious" approaches and needs a canonical one
 
-### 4. Migration
-Plan AI-assisted migration:
-- Identify all affected files
-- Create migration task list
-- Use Claude Code to systematically update files
-- Submit as single "migration" PR
+Then:
+1. Identify the best approach based on observability, maintainability, consistency
+2. Add a new default behavior to this spec
+3. Create example files demonstrating correct and incorrect usage
+4. Plan migration of existing code
 
-### 5. Enforcement
-The updated pattern becomes canonical. Code spec reviews enforce it going forward.
+### Changelog format:
 
-## Exceptions
-
-Rare cases may require deviation from canonical patterns. Document exceptions in your PR:
+When updating default behaviors, add an entry:
 
 ```markdown
-## ⚠️ Code Spec Exception
-
-**Pattern:** Error Handling + Logging
-**Reason:** Third-party library callback doesn't support async/await
-**Alternative:** Using `.catch()` with Promise wrapper
-**Files affected:** `worker/legacy-adapter.ts:42-56`
+### 2025-01-15: Added error serialization requirement
+**Change:** Require `instanceof Error` check before accessing `.message`
+**Reason:** Error objects from third-party code may not have expected shape
+**Migration PR:** #123
+**Examples:** Updated db01.md, db04.md
 ```
 
-## Enforcement
+---
 
-### Manual Review (Current)
-```bash
-/review-code-spec path/to/changed-files
-```
+## Relationship to OpenAI Model Spec
 
-### Automated Review (Future)
-- Pre-commit hooks
-- GitHub Actions on PRs
-- IDE integration
-
-## Relationship to OpenAI's Model Spec
-
-This code spec is directly inspired by OpenAI's Model Spec and the concept of "deliberative alignment":
+This code spec is directly inspired by OpenAI's Model Spec and the concept of "deliberative alignment."
 
 | OpenAI Model Spec | Our Code Spec |
 |-------------------|---------------|
 | Defines desired model behavior | Defines desired code patterns |
-| Test cases: challenging prompts | Test cases: correct/incorrect examples |
-| Evaluator: Claude grades responses | Evaluator: Claude grades code |
-| Training loop: RLHF | Development loop: PR review |
-| Goal: Aligned AI behavior | Goal: Consistent codebase |
+| Objectives: "Assist users" | Objectives: "Follow orthodoxy" |
+| Rules: "Comply with laws" | Rules: (Future: "Never commit secrets") |
+| Default Behaviors: "Express uncertainty" | Default Behaviors: "Use try/catch + logger" |
+| Examples: 114 test case files | Examples: Test cases per behavior |
+| Enforcement: Grader model + RLHF | Enforcement: Claude review + git hooks |
+| Evolution: Public feedback | Evolution: Developer discovery |
+
+**Key insight from Sean's talk:**
+> "Code is a lossy projection of a spec. The spec is the source of truth."
+
+For an AI-generated codebase:
+- The prompts were the true source code
+- The generated code is the binary artifact
+- The spec preserves intent across AI sessions
+
+---
 
 ## References
 
 - [OpenAI Model Spec](https://github.com/openai/model_spec)
-- [PEP 20 - The Zen of Python](https://peps.python.org/pep-0020/)
-- Sean's Talk: "The New 'Code': Specifications" (attached file)
 - [OpenAI: Shaping Desired Model Behavior](https://openai.com/index/introducing-the-model-spec/)
+- [PEP 20 - The Zen of Python](https://peps.python.org/pep-0020/)
+- [OpenAI: Deliberative Alignment](https://openai.com/index/deliberative-alignment/)
+- Sean's Talk: "The New 'Code': Specifications" (see project files)

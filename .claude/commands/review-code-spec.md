@@ -12,11 +12,14 @@ You are reviewing code against the **Orthodoxy Principle** specification.
 
 ### Step 1: Read the Specification
 
-Read these files in order to understand the canonical patterns:
+Read these files in order to understand the code spec structure:
 
-1. **Read** `code-spec/spec.md` - The Orthodoxy Principle definition
-2. **Read** `code-spec/patterns/error-handling-logging.md` - The canonical error handling + logging pattern
-3. **Read all files** in `code-spec/examples/` - Study the pass/fail examples to understand what to look for
+1. **Read** `code-spec/spec.md` - The complete Code Spec (Objectives → Rules → Default Behaviors)
+2. **Read** `code-spec/examples/obj1.md` - Orthodoxy objective example
+3. **Read** `code-spec/examples/db01.md` - Correct async error handling
+4. **Read** `code-spec/examples/db02.md` through `db06.md` - Common violations to avoid
+
+**Note:** The spec.md file contains everything. Examples demonstrate specific violations and correct usage.
 
 ### Step 2: Identify Target Code
 
@@ -87,7 +90,7 @@ For each violation found, output this format:
 [Show the corrected code following canonical pattern]
 ```
 
-**Pattern reference:** `code-spec/patterns/error-handling-logging.md`
+**Pattern reference:** `code-spec/spec.md` (Default Behaviors section)
 ```
 
 ### Step 5: Provide Summary
@@ -109,10 +112,11 @@ At the end, provide a summary:
 
 ### Next steps:
 1. Address violations using the suggested fixes
-2. If you must deviate from the pattern, document the exception in your PR
-3. See `code-spec/patterns/error-handling-logging.md` for the full canonical pattern
+2. If you must deviate from the default behavior, document the exception in your PR
+3. See `code-spec/spec.md` "Default Behaviors" section for the full specification
 
 📚 **Full documentation:** `code-spec/README.md`
+📖 **Examples:** `code-spec/examples/db01.md` through `db06.md`
 ```
 
 ## Important Notes
