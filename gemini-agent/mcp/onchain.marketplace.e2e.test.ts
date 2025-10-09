@@ -155,6 +155,38 @@ describe.skipIf(!E2E_ENABLED)('On-chain: dispatch_new_job → subgraph → get_d
     // Update the environment variable so MCP tools use the correct Ponder URL
     process.env.PONDER_GRAPHQL_URL = gqlUrl;
 
+    // Run set-start-block.js script to set PONDER_START_BLOCK before starting Ponder
+    // This ensures Ponder only indexes from current block - 100 instead of entire chain history
+    // Clear PONDER_START_BLOCK first to force the script to recalculate for the VNet
+    console.log('[ponder] Running set-start-block.js script...');
+    try {
+      const result = await execa('node', ['scripts/set-start-block.js'], {
+        cwd: ponderDir,
+        env: {
+          ...process.env,
+          RPC_URL: process.env.PONDER_RPC_URL, // Script checks RPC_URL first
+          PONDER_RPC_URL: process.env.PONDER_RPC_URL,
+          PONDER_START_BLOCK: '', // Clear existing value to force recalculation
+        },
+      });
+      if (result.stdout) console.log('[ponder] Script output:', result.stdout);
+      if (result.stderr) console.log('[ponder] Script stderr:', result.stderr);
+      console.log('[ponder] ✓ set-start-block.js completed');
+
+      // Read the updated PONDER_START_BLOCK from .env since the script writes there
+      const envPath = path.join(process.cwd(), '.env');
+      const envContent = await import('fs').then(fs => fs.promises.readFile(envPath, 'utf8'));
+      const match = envContent.match(/^PONDER_START_BLOCK=(.+)$/m);
+      if (match) {
+        process.env.PONDER_START_BLOCK = match[1].trim();
+        console.log('[ponder] Read PONDER_START_BLOCK from .env:', process.env.PONDER_START_BLOCK);
+      }
+    } catch (error: any) {
+      console.error('[ponder] Warning: set-start-block.js failed:', error.message);
+      if (error.stdout) console.error('[ponder] stdout:', error.stdout);
+      if (error.stderr) console.error('[ponder] stderr:', error.stderr);
+    }
+
     // Ensure Ponder uses the correct environment - explicitly pass critical vars
     const ponderEnv = {
       ...process.env,
