@@ -51,7 +51,10 @@
     "setup:dev": "bash scripts/dev-setup.sh",
     "setup:python": "bash scripts/dev-setup.sh --python-only",
     "setup:service": "tsx scripts/interactive-service-setup.ts",
-    "qa:jinn-179": "bash scripts/qa-jinn-179.sh"
+    "qa:jinn-179": "bash scripts/qa-jinn-179.sh",
+    "lint:spec": "./scripts/review-code-spec.sh --diff",
+    "lint:spec:all": "./scripts/review-code-spec.sh worker/",
+    "setup:hooks": "./scripts/setup-git-hooks.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
