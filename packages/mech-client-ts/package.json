@@ -1,7 +1,7 @@
 {
-  "name": "mech-client-ts",
-  "version": "1.1.0",
-  "description": "TypeScript client for interacting with Mechs - Full feature parity with mech-client-python using async delivery monitoring",
+  "name": "@jinn-network/mech-client-ts",
+  "version": "0.0.1",
+  "description": "TypeScript client for Autonolas AI Mechs - Full feature parity with mech-client-python using async delivery monitoring",
   "main": "dist/index.js",
   "exports": {
     ".": "./dist/index.js",
@@ -18,12 +18,33 @@
   },
   "keywords": [
     "mech",
+    "autonolas",
+    "ai-mech",
     "blockchain",
     "ethereum",
-    "typescript"
+    "typescript",
+    "jinn-network"
   ],
-  "author": "",
+  "author": "Jinn Network",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jinn-Network/mech-client-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jinn-Network/mech-client-ts/issues"
+  },
+  "homepage": "https://github.com/Jinn-Network/mech-client-ts#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "MIGRATION.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@types/form-data": "^2.2.1",
     "@types/uuid": "^10.0.0",
