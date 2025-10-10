@@ -164,6 +164,13 @@ Claude must:
 
 This thoroughness is what makes the review valuable!
 
-## Pattern Reference
+## Specification Reference
 
-See [patterns/error-handling-logging.md](./patterns/error-handling-logging.md) for the full canonical error handling pattern.
+See [`spec.md`](./spec.md) for the full Code Spec, including:
+- **Objectives** - The Orthodoxy Principle and guiding philosophies
+- **Rules** - Hard constraints (future)
+- **Default Behaviors** - Canonical patterns like error handling + logging
+
+Examples demonstrating correct usage and violations are in [`examples/`](./examples/):
+- `db01.md` - Correct async error handling
+- `db02.md` through `db06.md` - Common violations to avoid
