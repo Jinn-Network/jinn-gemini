@@ -172,5 +172,6 @@ See [`spec.md`](./spec.md) for the full Code Spec, including:
 - **Default Behaviors** - Canonical patterns like error handling + logging
 
 Examples demonstrating correct usage and violations are in [`examples/`](./examples/):
-- `db01.md` - Correct async error handling
-- `db02.md` through `db06.md` - Common violations to avoid
+- `obj1.md` - Orthodoxy principle examples
+- `obj2.md` - Code for the next agent examples
+- `obj3.md` - Minimize harm (security) examples

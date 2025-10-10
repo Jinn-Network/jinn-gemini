@@ -14,12 +14,12 @@ You are reviewing code against the **Orthodoxy Principle** specification.
 
 Read these files in order to understand the code spec structure:
 
-1. **Read** `code-spec/spec.md` - The complete Code Spec (Objectives → Rules → Default Behaviors)
-2. **Read** `code-spec/examples/obj1.md` - Orthodoxy objective example
-3. **Read** `code-spec/examples/db01.md` - Correct async error handling
-4. **Read** `code-spec/examples/db02.md` through `db06.md` - Common violations to avoid
+1. **Read** `docs/spec/code-spec/spec.md` - The complete Code Spec (Objectives → Rules → Default Behaviors)
+2. **Read** `docs/spec/code-spec/examples/obj1.md` - Orthodoxy objective example
+3. **Read** `docs/spec/code-spec/examples/obj2.md` - Code for the next agent examples
+4. **Read** `docs/spec/code-spec/examples/obj3.md` - Minimize harm examples
 
-**Note:** The spec.md file contains everything. Examples demonstrate specific violations and correct usage.
+**Note:** The spec.md file contains everything. Examples demonstrate the objectives and correct usage.
 
 ### Step 2: Identify Target Code
 
@@ -90,7 +90,7 @@ For each violation found, output this format:
 [Show the corrected code following canonical pattern]
 ```
 
-**Pattern reference:** `code-spec/spec.md` (Default Behaviors section)
+**Pattern reference:** `docs/spec/code-spec/spec.md` (see Objectives and Default Behaviors)
 ```
 
 ### Step 5: Provide Summary
@@ -113,10 +113,10 @@ At the end, provide a summary:
 ### Next steps:
 1. Address violations using the suggested fixes
 2. If you must deviate from the default behavior, document the exception in your PR
-3. See `code-spec/spec.md` "Default Behaviors" section for the full specification
+3. See `docs/spec/code-spec/spec.md` for the full specification
 
-📚 **Full documentation:** `code-spec/README.md`
-📖 **Examples:** `code-spec/examples/db01.md` through `db06.md`
+📚 **Full documentation:** `docs/spec/code-spec/USAGE.md`
+📖 **Examples:** `docs/spec/code-spec/examples/`
 ```
 
 ## Important Notes

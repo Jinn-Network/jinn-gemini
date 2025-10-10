@@ -49,6 +49,16 @@ const sidebars: SidebarsConfig = {
       ],
     },
     'roadmap',
+    {
+      type: 'category',
+      label: 'Code Spec',
+      collapsed: false,
+      items: [
+        'code-spec/spec',
+        'code-spec/VIOLATIONS',
+        'code-spec/USAGE',
+      ],
+    },
   ],
 };
 
