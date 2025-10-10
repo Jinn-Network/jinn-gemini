@@ -78,7 +78,7 @@ export async function getDetails(params: GetDetailsParams) {
         const jobDefRecords: any[] = [];
         const errors: string[] = [];
 
-        const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+        const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
 
         // Fetch requests (and also fetch delivery for each to expose delivery provenance)
         if (requestIds.length > 0) {

@@ -15,7 +15,7 @@ type UnclaimedRequest = {
   delivered?: boolean;
 };
 
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
 
 async function fetchRecentRequests(limit: number = 20): Promise<UnclaimedRequest[]> {
   try {

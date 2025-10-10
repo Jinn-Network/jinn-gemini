@@ -56,22 +56,6 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
           </Button>
         </div>
         
-        {/* Search Link */}
-        <div className="mb-4">
-          <Link 
-            href="/search"
-            className="block w-full px-3 py-2 text-sm font-medium text-sidebar-foreground bg-sidebar-accent hover:bg-sidebar-primary border border-sidebar-border rounded-md transition-colors"
-            onClick={() => {
-              // Close sidebar on mobile when clicking links
-              if (window.innerWidth < 768) {
-                onToggle();
-              }
-            }}
-          >
-            🔍 Search Events
-          </Link>
-        </div>
-        
         <nav>
           <ul className="space-y-1">
             {navigationItems.map((item) => (

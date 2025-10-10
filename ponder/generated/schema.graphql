@@ -391,6 +391,7 @@ type artifact {
   cid: String!
   topic: String!
   contentPreview: String
+  blockTimestamp: BigInt!
 }
 
 type artifactPage {
@@ -481,6 +482,14 @@ input artifactFilter {
   contentPreview_ends_with: String
   contentPreview_not_starts_with: String
   contentPreview_not_ends_with: String
+  blockTimestamp: BigInt
+  blockTimestamp_not: BigInt
+  blockTimestamp_in: [BigInt]
+  blockTimestamp_not_in: [BigInt]
+  blockTimestamp_gt: BigInt
+  blockTimestamp_lt: BigInt
+  blockTimestamp_gte: BigInt
+  blockTimestamp_lte: BigInt
 }
 
 type message {

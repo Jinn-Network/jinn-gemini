@@ -3,43 +3,11 @@ import Link from 'next/link'
 import { CollectionName } from '@/lib/types'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { IdLink } from '@/components/id-link'
+import { formatDate } from '@/lib/utils'
 
 interface RecordListProps {
   records: SubgraphRecord[]
   collectionName: CollectionName
-}
-
-// Helper function to format timestamps (handles both ISO strings and bigint timestamps)
-function formatDate(dateString: string | number): string {
-  try {
-    let date: Date
-    if (typeof dateString === 'string') {
-      // Try parsing as number first if it looks like a timestamp
-      const asNumber = Number(dateString)
-      if (!isNaN(asNumber) && asNumber > 0) {
-        date = new Date(asNumber * 1000)
-      } else {
-        date = new Date(dateString)
-      }
-    } else {
-      // Handle bigint timestamps (convert from seconds to milliseconds)
-      date = new Date(Number(dateString) * 1000)
-    }
-
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-      return dateString.toString()
-    }
-
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  } catch {
-    return dateString.toString()
-  }
 }
 
 // Helper function to get the primary identifier for a record

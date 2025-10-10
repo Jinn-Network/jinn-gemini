@@ -3,6 +3,7 @@ import fetch from 'cross-fetch';
 import { marketplaceInteract } from '../../../packages/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
+import { getMechAddress } from '../../../env/operate-profile.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
@@ -39,7 +40,7 @@ export async function dispatchExistingJob(args: unknown) {
   }
   const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message } = parse.data;
 
-  const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+  const gqlUrl = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
 
   // Find job definition by id or name
   let jobDef: any | null = null;
@@ -143,7 +144,7 @@ export async function dispatchExistingJob(args: unknown) {
   try {
     const result = await (marketplaceInteract as any)({
       prompts: [finalPrompt],
-      priorityMech: '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7',
+      priorityMech: getMechAddress(),
       tools: finalTools,
       ipfsJsonContents,
       chainConfig: 'base',

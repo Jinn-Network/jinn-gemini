@@ -27,7 +27,7 @@ export interface Request {
   delivered: boolean
   jobName?: string
   enabledTools: string[]
-  additionalContext?: any
+  additionalContext?: Record<string, unknown>
 }
 
 export interface Delivery {
@@ -728,7 +728,7 @@ export async function fetchIpfsContent(
           content: JSON.stringify(json, null, 2),
           contentType: 'application/json'
         }
-      } catch (jsonError) {
+      } catch {
         console.log(`[IPFS] Not JSON, treating as text`)
         // If JSON parsing fails, return as text
         return {

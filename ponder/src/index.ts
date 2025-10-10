@@ -66,18 +66,13 @@ ponder.on(
       let messageContent: any = undefined;
       if (ipfsHash) {
         try {
-          // Retry IPFS fetch with exponential backoff (IPFS propagation takes time)
+          // Minimal IPFS fetch with timeout to avoid blocking database writes during historical indexing
           let content: any = null;
-          for (let attempt = 0; attempt < 10; attempt++) {
-            if (attempt > 0) {
-              const delay = Math.min(3000, 1000 * Math.pow(1.5, attempt));
-              await new Promise(r => setTimeout(r, delay));
-            }
-            content = await resolveRequestIpfsContent(ipfsHash);
-            if (content && !content.error) {
-              break;
-            }
-          }
+          const fetchPromise = resolveRequestIpfsContent(ipfsHash);
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('IPFS timeout')), 5000)
+          );
+          content = await Promise.race([fetchPromise, timeoutPromise]).catch(() => null);
           if (content && !content.error) {
             jobName = content.jobName;
             enabledTools = content.tools || content.enabledTools;
@@ -348,6 +343,14 @@ ponder.on(
           }
 
           if (Array.isArray(res.data.artifacts) && artifactsRepo) {
+            // Fetch the request to get its sourceRequestId for proper workstream attribution
+            let requestSourceRequestId: string | undefined = undefined;
+            try {
+              const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
+              const maybeReq = (req as any) || {};
+              requestSourceRequestId = maybeReq && typeof maybeReq.sourceRequestId === 'string' ? maybeReq.sourceRequestId : undefined;
+            } catch {}
+            
             for (let idx = 0; idx < res.data.artifacts.length; idx++) {
               const a = res.data.artifacts[idx] || {};
               const id = `${requestId}:${idx}`;
@@ -356,7 +359,9 @@ ponder.on(
               const topic = String(a.topic || '');
               const contentPreview = typeof a.contentPreview === 'string' ? a.contentPreview : undefined;
               if (!cid || !topic) continue;
-              const artifactPayload: any = { requestId, name, cid, topic, contentPreview, sourceRequestId: requestId };
+              // Use the request's sourceRequestId if it exists (for child jobs), otherwise use requestId itself (for root jobs)
+              const artifactSourceRequestId = requestSourceRequestId || requestId;
+              const artifactPayload: any = { requestId, name, cid, topic, contentPreview, sourceRequestId: artifactSourceRequestId, blockTimestamp: event.block.timestamp };
               // Prefer delivery sourceJobDefinitionId; fallback to request.sourceJobDefinitionId if not present
               if (deliveryJobDefinitionId) {
                 artifactPayload.sourceJobDefinitionId = deliveryJobDefinitionId;

@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { getCurrentJobContext } from './shared/context.js';
 import { createJobReport as apiCreateJobReport } from '../../../worker/control_api_client.js';
+import { getMechAddress } from '../../../env/operate-profile.js';
 
 function getWorkerAddress(): string {
-  const addr = (process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '').trim();
-  if (!addr) throw new Error('MECH_ADDRESS is required for Control API calls');
+  const addr = getMechAddress();
+  if (!addr) throw new Error('Service mech address not found in .operate config or environment');
   return addr;
 }
 
@@ -40,37 +41,27 @@ The worker automatically re-invokes parent jobs when children complete. The work
   inputSchema: finalizeJobParamsBase.shape,
 };
 
+/**
+ * Tool handler for finalize_job
+ * 
+ * This tool signals the completion state of a job using the Work Protocol.
+ * It immediately records the status via Control API, enabling the worker to:
+ * - Trigger parent job dispatch for COMPLETED/FAILED statuses
+ * - Track job state for DELEGATING/WAITING statuses
+ * - Coordinate multi-agent workflows
+ */
 export async function finalizeJob(args: unknown) {
   try {
-    const parsed = finalizeJobParams.safeParse(args);
-    if (!parsed.success) {
-      // Extract the actual status value if provided for better error message
-      const providedStatus = (args as any)?.status;
-      const baseMessage = parsed.error.message;
-      const helpfulMessage = providedStatus
-        ? `Invalid status "${providedStatus}". The finalize_job tool accepts: "COMPLETED", "DELEGATING", "WAITING", or "FAILED". ${baseMessage}`
-        : baseMessage;
+    // Parse and validate params with permissive base schema for MCP
+    const parsed = finalizeJobParamsBase.parse(args);
+    
+    // Strict validation for handler logic
+    const validated = finalizeJobParams.parse(parsed);
+    const { status, message } = validated;
 
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: null,
-            meta: {
-              ok: false,
-              code: 'VALIDATION_ERROR',
-              message: helpfulMessage
-            }
-          })
-        }]
-      };
-    }
-
-    const { status, message } = parsed.data;
-
-    // Get current job context to obtain requestId
+    // Get job context
     const context = getCurrentJobContext();
-    const requestId = context.requestId || context.jobId;
+    const requestId = context.requestId;
 
     if (!requestId) {
       return {
@@ -80,8 +71,8 @@ export async function finalizeJob(args: unknown) {
             data: null,
             meta: {
               ok: false,
-              code: 'CONTEXT_ERROR',
-              message: 'No request ID or job ID available in job context. This tool requires an active on-chain job context.'
+              code: 'MISSING_CONTEXT',
+              message: 'No active job context found'
             }
           })
         }]
@@ -94,7 +85,7 @@ export async function finalizeJob(args: unknown) {
       await apiCreateJobReport(requestId, {
         status,
         duration_ms: 0, // Worker will update with actual duration
-        total_tokens: 0, // Worker will update with actual tokens
+        total_tokens: 0, // Worker will update with actual token count
         final_output: message,
         tools_called: '[]', // Worker will update with actual tool calls
         raw_telemetry: JSON.stringify({ finalized_at: new Date().toISOString() })
@@ -146,3 +137,13 @@ export async function finalizeJob(args: unknown) {
     };
   }
 }
+
+/**
+ * Tool configuration for MCP server registration
+ */
+export const finalizeJobTool = {
+  name: 'finalize_job',
+  schema: finalizeJobSchema,
+  handler: finalizeJob,
+};
+

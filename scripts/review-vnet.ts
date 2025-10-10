@@ -94,8 +94,9 @@ async function killServices(): Promise<void> {
   await execa('pkill', ['-f', 'next dev.*3020'], { reject: false });
 
   // Kill by port
+  const ponderPort = process.env.PONDER_PORT || '42069';
   try {
-    const { stdout } = await execa('lsof', ['-ti:42069,3020'], { reject: false });
+    const { stdout } = await execa('lsof', [`-ti:${ponderPort},3020`], { reject: false });
     if (stdout.trim()) {
       const pids = stdout.trim().split('\n');
       for (const pid of pids) {
@@ -178,7 +179,8 @@ async function startServices(metadata: ArchiveMetadata): Promise<void> {
   });
 
   await new Promise(r => setTimeout(r, 10000)); // Give Ponder time to start
-  console.log('[services] ✓ Ponder started at http://localhost:42069/graphql');
+  const ponderPort = process.env.PONDER_PORT || '42069';
+  console.log(`[services] ✓ Ponder started at http://localhost:${ponderPort}/graphql`);
 
   // Start Frontend (optional, skip if Next.js not installed)
   console.log('[services] Starting Frontend...');
@@ -188,7 +190,7 @@ async function startServices(metadata: ArchiveMetadata): Promise<void> {
       cwd: join(process.cwd(), 'frontend/explorer'),
       env: {
         ...process.env,
-        NEXT_PUBLIC_SUBGRAPH_URL: 'http://localhost:42069/graphql',
+        NEXT_PUBLIC_SUBGRAPH_URL: `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

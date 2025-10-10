@@ -60,16 +60,19 @@ export default async function RecordPage({ params }: RecordPageProps) {
     notFound()
   }
   
+  // Decode the ID parameter (e.g., %3A -> :)
+  const decodedId = decodeURIComponent(resolvedParams.id)
+  const collectionLabel = getCollectionLabel(resolvedParams.collection)
+  
   try {
     // Fetch data from subgraph
-    const record = await fetchRecord(resolvedParams.collection, resolvedParams.id)
+    const record = await fetchRecord(resolvedParams.collection, decodedId)
 
     if (!record) {
       notFound()
     }
 
     const recordTitle = getRecordTitle(record, resolvedParams.collection)
-    const collectionLabel = getCollectionLabel(resolvedParams.collection)
 
     return (
       <div>
@@ -82,7 +85,7 @@ export default async function RecordPage({ params }: RecordPageProps) {
           </Link>
         </div>
         
-        <h1 className="text-2xl font-bold mb-4" title={`Record ID: ${resolvedParams.id} in ${resolvedParams.collection}`}>
+        <h1 className="text-2xl font-bold mb-4" title={`Record ID: ${decodedId} in ${resolvedParams.collection}`}>
           {recordTitle}
         </h1>
         
@@ -103,7 +106,7 @@ export default async function RecordPage({ params }: RecordPageProps) {
             href={`/${resolvedParams.collection}`}
             className="text-blue-600 hover:text-blue-800 text-sm"
           >
-            ← Back to {getCollectionLabel(resolvedParams.collection)}
+            ← Back to {collectionLabel}
           </Link>
         </div>
         
@@ -111,7 +114,7 @@ export default async function RecordPage({ params }: RecordPageProps) {
           Error loading record
         </h1>
         <p className="text-gray-600">
-          Unable to fetch record {resolvedParams.id} from the {resolvedParams.collection} collection. 
+          Unable to fetch record {decodedId} from the {resolvedParams.collection} collection. 
           Please check the subgraph connection and try again.
         </p>
         <details className="mt-4">

@@ -18,7 +18,7 @@ export const searchJobsSchema = {
 };
 
 async function fetchRequestsForJob(jobId: string, maxRequests: number): Promise<any[]> {
-  const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+  const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
   const gql = `query GetJobRequests($jobId: String!, $limit: Int!) {
     requests(where: { sourceJobDefinitionId: $jobId }, 
             orderBy: "blockTimestamp", orderDirection: "desc", limit: $limit) {
@@ -53,7 +53,7 @@ export async function searchJobs(params: SearchJobsParams) {
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
     // Step 1: Search job definitions by name and promptContent
-    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
     const jobsGql = `query SearchJobs($q: String!, $limit: Int!) {
       jobDefinitions(where: { OR: [
         { name_contains: $q }, 

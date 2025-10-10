@@ -7,6 +7,7 @@ import { IdLink } from '@/components/id-link'
 import { useEffect, useState } from 'react'
 import { getJobName, fetchIpfsContent } from '@/lib/subgraph'
 import ReactMarkdown from 'react-markdown'
+import Link from 'next/link'
 
 // Custom field ordering configuration - fields appear in this order for each collection
 const FIELD_ORDER: Record<string, string[]> = {
@@ -125,7 +126,7 @@ function JobNameDisplay({ jobDefinitionId }: { jobDefinitionId: string }) {
 
 // Structured delivery content display
 function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: string }) {
-  const [parsed, setParsed] = useState<any>(null)
+  const [parsed, setParsed] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -135,7 +136,7 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
         try {
           const data = JSON.parse(result.content)
           setParsed(data)
-        } catch (e) {
+        } catch {
           setError('Failed to parse JSON content')
         }
       } else {
@@ -149,31 +150,36 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
   if (error) return <div className="text-sm text-red-600">{error}</div>
   if (!parsed) return null
 
-  const toolCalls = parsed.telemetry?.toolCalls || []
-  const dispatchedJobs = toolCalls.filter((tc: any) => tc.tool === 'dispatch_new_job' && tc.success)
-  const telemetry = parsed.telemetry || {}
-  const durationSec = telemetry.duration ? (telemetry.duration / 1000).toFixed(1) : '0'
+  const telemetry = (parsed.telemetry || {}) as Record<string, unknown>
+  const toolCalls = (telemetry.toolCalls as Array<Record<string, unknown>>) || []
+  const dispatchedJobs = toolCalls.filter((tc) => (tc.tool === 'dispatch_new_job' && tc.success))
+  const duration = telemetry.duration as number | undefined
+  const durationSec = duration ? (duration / 1000).toFixed(1) : '0'
 
   // Try to extract function calls from raw API request history
-  const rawRequests = telemetry.raw?.lastApiRequest || telemetry.raw?.requestText?.[0] || ''
-  let functionCallsMap = new Map()
+  const raw = telemetry.raw as Record<string, unknown> | undefined
+  const rawRequests = (raw?.lastApiRequest || (raw?.requestText as string[])?.[0] || '') as string
+  const functionCallsMap = new Map<string, unknown>()
 
   try {
     if (typeof rawRequests === 'string' && rawRequests.includes('functionCall')) {
-      const requestData = JSON.parse(rawRequests)
+      const requestData = JSON.parse(rawRequests) as unknown[]
       if (Array.isArray(requestData)) {
-        requestData.forEach((turn: any) => {
-          if (turn.parts) {
-            turn.parts.forEach((part: any) => {
-              if (part.functionCall) {
-                functionCallsMap.set(part.functionCall.name, part.functionCall.args)
+        requestData.forEach((turn: unknown) => {
+          const turnObj = turn as Record<string, unknown>
+          if (turnObj.parts && Array.isArray(turnObj.parts)) {
+            turnObj.parts.forEach((part: unknown) => {
+              const partObj = part as Record<string, unknown>
+              if (partObj.functionCall) {
+                const fc = partObj.functionCall as Record<string, unknown>
+                functionCallsMap.set(fc.name as string, fc.args)
               }
             })
           }
         })
       }
     }
-  } catch (e) {
+  } catch {
     // Silently ignore parsing errors
   }
 
@@ -183,7 +189,7 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
       {/* Execution Summary Field */}
       {parsed.output && (
         <div data-field="executionSummary" className="prose prose-sm max-w-none bg-white p-4 rounded border">
-          <ReactMarkdown>{parsed.output}</ReactMarkdown>
+          <ReactMarkdown>{parsed.output as string}</ReactMarkdown>
         </div>
       )}
 
@@ -197,10 +203,10 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
           <span className="text-gray-600">Duration:</span>
           <strong className="ml-1 text-gray-900">{durationSec}s</strong>
         </span>
-        {telemetry.raw?.model && (
+        {(typeof raw?.model === 'string') && (
           <span className="inline-flex items-center px-3 py-1 rounded-md bg-purple-50 border border-purple-200 text-sm">
             <span className="text-gray-600">Model:</span>
-            <strong className="ml-1 text-gray-900">{telemetry.raw.model}</strong>
+            <strong className="ml-1 text-gray-900">{raw.model}</strong>
           </span>
         )}
       </div>
@@ -209,13 +215,13 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
       {toolCalls.length > 0 && (
         <div data-field="actionsTaken" className="space-y-2">
           <div className="text-xs text-gray-500 mb-2">{toolCalls.length} action{toolCalls.length !== 1 ? 's' : ''} taken</div>
-          {toolCalls.map((tc: any, idx: number) => (
+          {toolCalls.map((tc, idx: number) => (
             <details key={idx} className="bg-muted p-3 rounded border">
               <summary className="cursor-pointer text-sm font-medium">
-                <span className={tc.success ? 'text-green-600' : 'text-red-600'}>
-                  {tc.success ? '✓' : '✗'}
+                <span className={(tc.success as boolean) ? 'text-green-600' : 'text-red-600'}>
+                  {(tc.success as boolean) ? '✓' : '✗'}
                 </span>
-                {' '}{tc.tool} <span className="text-gray-500">({tc.duration_ms}ms)</span>
+                {' '}{tc.tool as string} <span className="text-gray-500">({tc.duration_ms as number}ms)</span>
               </summary>
               <div className="mt-2 text-xs space-y-1">
                 <pre className="whitespace-pre-wrap overflow-auto max-h-48 bg-white p-2 rounded">
@@ -231,20 +237,23 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
       {dispatchedJobs.length > 0 && (
         <div data-field="jobsDispatched" className="space-y-2">
           <div className="text-xs text-gray-500 mb-2">{dispatchedJobs.length} job{dispatchedJobs.length !== 1 ? 's' : ''} dispatched</div>
-          {dispatchedJobs.map((job: any, idx: number) => {
-            const result = job.result || {}
-            const requestIds = result.request_ids || []
-            const jobDefinitionId = result.job_definition_id || result.jobDefinitionId
-            const txHash = result.transaction_hash
+          {dispatchedJobs.map((job, idx: number) => {
+            const result = (job.result || {}) as Record<string, unknown>
+            const requestIds = (result.request_ids || []) as string[]
+            const jobDefinitionId = (result.job_definition_id || result.jobDefinitionId) as string | undefined
+            const txHash = result.transaction_hash as string | undefined
             // Try to get job name from function call args in raw API history
-            const functionCallArgs = functionCallsMap.get('dispatch_new_job')
-            const jobName = functionCallArgs?.jobName ||
-                           job.input?.jobName ||
-                           job.params?.jobName ||
-                           job.args?.jobName ||
+            const functionCallArgs = functionCallsMap.get('dispatch_new_job') as Record<string, unknown> | undefined
+            const jobInput = (job.input || {}) as Record<string, unknown>
+            const jobParams = (job.params || {}) as Record<string, unknown>
+            const jobArgs = (job.args || {}) as Record<string, unknown>
+            const jobName = (functionCallArgs?.jobName ||
+                           jobInput?.jobName ||
+                           jobParams?.jobName ||
+                           jobArgs?.jobName ||
                            result.job_name ||
                            result.jobName ||
-                           'Unnamed Job'
+                           'Unnamed Job') as string
             return (
               <div key={idx} className="bg-white p-3 rounded border space-y-2">
                 <div className="font-medium text-sm text-gray-900">
@@ -265,7 +274,7 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
                 {txHash && (
                   <div className="text-xs">
                     <a
-                      href={result.transaction_url || `https://basescan.org/tx/${txHash}`}
+                      href={(result.transaction_url as string) || `https://basescan.org/tx/${txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:text-blue-800 underline"
@@ -295,7 +304,7 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
 
 // Structured request content display - shows only the prompt
 function RequestContentDisplay({ cid }: { cid: string }) {
-  const [parsed, setParsed] = useState<any>(null)
+  const [parsed, setParsed] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -305,7 +314,7 @@ function RequestContentDisplay({ cid }: { cid: string }) {
         try {
           const data = JSON.parse(result.content)
           setParsed(data)
-        } catch (e) {
+        } catch {
           setError('Failed to parse JSON content')
         }
       } else {
@@ -324,7 +333,7 @@ function RequestContentDisplay({ cid }: { cid: string }) {
       {/* Prompt Display - Only show the prompt field */}
       {parsed.prompt ? (
         <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
-          <ReactMarkdown>{parsed.prompt}</ReactMarkdown>
+          <ReactMarkdown>{parsed.prompt as string}</ReactMarkdown>
         </div>
       ) : (
         <p className="text-gray-500">No prompt found in request</p>
@@ -614,7 +623,7 @@ export function SubgraphDetailView({ record, collectionName }: SubgraphDetailVie
   ]
 
   // Create the fields array with [key, value] tuples
-  const fields = orderedFieldNames.map(key => [key, record[key]] as [string, unknown])
+  const fields = orderedFieldNames.map(key => [key, (record as unknown as Record<string, unknown>)[key]] as [string, unknown])
 
   // Get display title - use name or jobName if available
   const displayTitle = ('name' in record && record.name) ||
@@ -631,6 +640,21 @@ export function SubgraphDetailView({ record, collectionName }: SubgraphDetailVie
         <CardTitle>{displayTitle}</CardTitle>
       </CardHeader>
       <CardContent>
+        {/* View Graph Button */}
+        {(collectionName === 'jobDefinitions' || collectionName === 'requests') && (
+          <div className="mb-6">
+            <Link
+              href={`/graph/${collectionName === 'jobDefinitions' ? 'jobDefinition' : 'request'}/${record.id}`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              View Graph
+            </Link>
+          </div>
+        )}
+
         <div className="space-y-6">
           {fields.map(([key, value]) => (
             <div key={key} className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0">

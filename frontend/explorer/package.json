@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "predev": "lsof -ti:${PONDER_PORT:-42069} | xargs kill -9 2>/dev/null || true",
+    "dev": "export NEXT_PUBLIC_PONDER_PORT=${PONDER_PORT:-42069} && concurrently \"next dev --turbopack\" \"cd ../../ponder && yarn dev\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -15,6 +16,7 @@
     "@radix-ui/react-tabs": "^1.1.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "concurrently": "^9.2.1",
     "graphql": "^16.11.0",
     "graphql-request": "^7.2.0",
     "lucide-react": "^0.536.0",
@@ -22,6 +24,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "^10.1.0",
+    "reactflow": "^11.11.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1"
   },

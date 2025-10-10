@@ -1,19 +1,20 @@
 {
   "name": "jinn-ponder",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "predev": "node scripts/set-start-block.js && node -e \"try{require('better-sqlite3');console.log('better-sqlite3 ok')}catch(e){process.exitCode=0}\" || npm rebuild better-sqlite3",
-    "dev": "ponder dev",
+    "dev": "ponder dev --port ${PONDER_PORT:-42069}",
     "start": "ponder start",
     "build": "ponder build",
     "postinstall": "npm rebuild better-sqlite3 || true"
   },
   "dependencies": {
-    "@ponder/core": "^0.6.11",
-    "hono": "^4.9.7",
-    "viem": "^2.35.1"
+    "@ponder/core": "^0.6.1",
+    "better-sqlite3": "^11.1.2",
+    "mech-client-ts": "*",
+    "viem": "2.x"
   },
   "devDependencies": {
     "@types/node": "^20.12.8"

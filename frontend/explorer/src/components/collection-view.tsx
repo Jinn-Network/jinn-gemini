@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { CollectionName } from '@/lib/types'
 import { RecordList } from '@/components/record-list'
+import { RequestsTable } from '@/components/requests-table'
 import { AutoRefreshToggle } from '@/components/auto-refresh-toggle'
 import { Pagination } from '@/components/pagination'
 import { RecordListSkeleton } from '@/components/loading-skeleton'
@@ -20,7 +22,8 @@ function getSortingConfig(collectionName: CollectionName): { column: string; asc
     jobDefinitions: { column: 'name', ascending: true },
     requests: { column: 'blockTimestamp', ascending: false },
     deliveries: { column: 'blockTimestamp', ascending: false },
-    artifacts: { column: 'requestId', ascending: false },
+    artifacts: { column: 'blockTimestamp', ascending: false },
+    messages: { column: 'blockTimestamp', ascending: false },
   }
   
   return sortingConfigs[collectionName] || { column: 'id', ascending: false }
@@ -29,8 +32,22 @@ function getSortingConfig(collectionName: CollectionName): { column: string; asc
 
 
 export function CollectionView({ collectionName }: CollectionViewProps) {
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  // Initialize from URL search params
+  // Auto-refresh is enabled by default for requests
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(collectionName === 'requests')
+  const workstreamFilter = searchParams.get('workstream')
   const pageSize = 100
+
+  // Build where filter for workstream filtering - memoized to prevent infinite rerenders
+  const whereFilter = useMemo(() => {
+    if (collectionName === 'requests' && workstreamFilter) {
+      return { sourceRequestId: workstreamFilter }
+    }
+    return undefined
+  }, [collectionName, workstreamFilter])
 
   // Use the subgraph collection hook
   const sortConfig = getSortingConfig(collectionName)
@@ -50,6 +67,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     pollingInterval: 10000, // 10 seconds
     sortColumn: sortConfig.column,
     sortAscending: sortConfig.ascending,
+    whereFilter,
   })
 
   if (loading) {
@@ -82,6 +100,33 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
         {getCollectionLabel(collectionName)}
       </h1>
       
+      {/* Workstream filter badge */}
+      {workstreamFilter && (
+        <div className="mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-md text-sm">
+            <span className="text-blue-700">
+              Filtered by workstream
+            </span>
+            <a
+              href={`/workstreams/${workstreamFilter}`}
+              className="text-blue-600 hover:text-blue-800 underline font-mono text-xs"
+            >
+              {workstreamFilter.substring(0, 16)}...
+            </a>
+            <button
+              onClick={() => {
+                const params = new URLSearchParams(searchParams.toString())
+                params.delete('workstream')
+                router.push(`?${params.toString()}`)
+              }}
+              className="text-blue-600 hover:text-blue-800 ml-1"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="mb-4 flex items-center justify-between">
         <p className="text-gray-600">
           Showing {records.length} records (Page {currentPage})
@@ -103,7 +148,11 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
         </div>
       </div>
       
-      <RecordList records={records} collectionName={collectionName} />
+      {collectionName === 'requests' ? (
+        <RequestsTable records={records} />
+      ) : (
+        <RecordList records={records} collectionName={collectionName} />
+      )}
       
       <Pagination
         currentPage={currentPage}

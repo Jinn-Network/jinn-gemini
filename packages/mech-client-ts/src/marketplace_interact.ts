@@ -1,9 +1,14 @@
 import { Web3 } from 'web3';
 import { Contract } from 'web3-eth-contract';
-import { get_mech_config, getPrivateKeyPath, checkPrivateKeyFile } from './config';
+import WebSocket from 'ws';
+import { get_mech_config, getPrivateKeyPath, checkPrivateKeyFile, ConfirmationType } from './config';
 import { pushMetadataToIpfs, fetchIpfsHash, pushJsonToIpfs } from './ipfs';
-import { watchForMarketplaceRequestIds } from './wss';
-import { watchForMarketplaceData, watchForMechDataUrl } from './delivery';
+import { 
+  createWebSocketConnection, 
+  registerEventHandlers, 
+  watchForMarketplaceRequestIds, 
+  watchForMarketplaceDataUrlFromWss 
+} from './wss';
 import { readFileSync } from 'fs';
 import axios from 'axios';
 import { join } from 'path';
@@ -76,6 +81,7 @@ export interface MarketplaceInteractOptions {
   ipfsJsonContents?: Record<string, any>[];
   extraAttributes?: Record<string, any>;
   privateKeyPath?: string;
+  confirmationType?: ConfirmationType;
   retries?: number;
   timeout?: number;
   sleep?: number;
@@ -337,13 +343,11 @@ async function sendMarketplaceRequest(
   const ipfsHashes: string[] = [];
   for (let i = 0; i < prompts.length; i++) {
     if (ipfsJsonContents && ipfsJsonContents[i]) {
-      const [truncatedHash, cidString] = await pushJsonToIpfs(ipfsJsonContents[i]);
+      const [truncatedHash] = await pushJsonToIpfs(ipfsJsonContents[i]);
       ipfsHashes.push(truncatedHash);
-      console.log(`  - Prompt uploaded: https://gateway.autonolas.tech/ipfs/${cidString}`);
     } else {
-      const [truncatedHash, cidString] = await pushMetadataToIpfs(prompts[i], tools[i] || 'default-tool', extraAttributes);
+      const [truncatedHash] = await pushMetadataToIpfs(prompts[i], tools[i] || 'default-tool', extraAttributes);
       ipfsHashes.push(truncatedHash);
-      console.log(`  - Prompt uploaded: https://gateway.autonolas.tech/ipfs/${cidString}`);
     }
   }
   
@@ -485,64 +489,31 @@ async function sendOffchainMarketplaceRequest(
 }
 
 /**
- * Wait for marketplace data URL using async delivery monitoring
- *
- * This function implements the two-step delivery monitoring process:
- * 1. Poll marketplace contract for delivery mech assignment
- * 2. Poll delivery mech contract logs for Deliver event with IPFS hash
+ * Wait for marketplace data URL
  */
 async function waitForMarketplaceDataUrl(
-  requestIds: string[],
-  marketplaceContract: Contract<any>,
-  fromBlock: number,
+  requestId: string,
+  ws: WebSocket,
+  mechContract: Contract<any>,
+  subgraphUrl: string,
   deliverSignature: string,
   web3: Web3,
-  timeout?: number
-): Promise<Record<string, string>> {
+  confirmationType: ConfirmationType = ConfirmationType.WAIT_FOR_BOTH
+): Promise<string | null> {
+  // For now, implement a simple WebSocket-based approach
   try {
-    // Step 1: Watch for delivery mech addresses from marketplace
-    console.log('Watching for delivery mech assignments...');
-    const deliveryMechs = await watchForMarketplaceData(
-      requestIds,
-      marketplaceContract,
-      timeout
+    const dataUrl = await watchForMarketplaceDataUrlFromWss(
+      requestId,
+      ws,
+      mechContract,
+      deliverSignature,
+      web3
     );
-
-    if (Object.keys(deliveryMechs).length === 0) {
-      console.log('No delivery mechs found');
-      return {};
-    }
-
-    // Step 2: For each unique delivery mech, watch for data URLs
-    const results: Record<string, string> = {};
-    const mechToRequestIds: Record<string, string[]> = {};
-
-    // Group request IDs by delivery mech
-    for (const [requestId, deliveryMech] of Object.entries(deliveryMechs)) {
-      if (!mechToRequestIds[deliveryMech]) {
-        mechToRequestIds[deliveryMech] = [];
-      }
-      mechToRequestIds[deliveryMech].push(requestId);
-    }
-
-    // Watch for Deliver events from each delivery mech
-    for (const [deliveryMech, reqIds] of Object.entries(mechToRequestIds)) {
-      console.log(`Watching for Deliver events from mech ${deliveryMech}...`);
-      const dataUrls = await watchForMechDataUrl(
-        reqIds,
-        fromBlock,
-        deliveryMech,
-        deliverSignature,
-        web3,
-        timeout
-      );
-      Object.assign(results, dataUrls);
-    }
-
-    return results;
+    
+    return dataUrl;
   } catch (error) {
-    console.error('Error waiting for marketplace data URLs:', error);
-    return {};
+    console.error('Error waiting for marketplace data URL:', error);
+    return null;
   }
 }
 
@@ -575,6 +546,7 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     tools = [],
     extraAttributes,
     privateKeyPath,
+    confirmationType = ConfirmationType.WAIT_FOR_BOTH,
     retries,
     timeout,
     sleep,
@@ -609,8 +581,9 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
   const keyPath = getPrivateKeyPath(privateKeyPath);
   checkPrivateKeyFile(keyPath);
 
-  // Initialize Web3
+  // Initialize Web3 and WebSocket
   const web3 = new Web3(mechConfig.rpc_url);
+  const ws = postOnly ? null : await createWebSocketConnection(mechConfig.wss_endpoint);
 
   // Load private key and add account
   const privateKey = readFileSync(keyPath, 'utf8').trim();
@@ -630,9 +603,19 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
   // Verify tools
   await verifyTools(tools, mechInfo.serviceId, chainConfig);
 
-  // Load mech contract ABI and extract event signatures for delivery monitoring
+  // Load mech contract and register event handlers
   const imechAbi = getAbi(IMECH_ABI_PATH);
-  const { deliver: marketplaceDeliverSignature } = getEventSignatures(imechAbi);
+  const { request: marketplaceRequestSignature, deliver: marketplaceDeliverSignature } = getEventSignatures(imechAbi);
+  
+  if (!postOnly && ws) {
+    registerEventHandlers(
+      ws,
+      priorityMechAddress,
+      account.address,
+      marketplaceRequestSignature,
+      marketplaceDeliverSignature
+    );
+  }
 
   console.log(`   Debug: Payment type detected: ${mechInfo.paymentType}`);
   console.log(`   Debug: Max delivery rate: ${mechInfo.maxDeliveryRate}`);
@@ -746,24 +729,15 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     console.log(`  - Transaction sent: ${transactionUrlFormatted}`);
     console.log('  - Waiting for transaction receipt...');
 
-    // Get transaction receipt to extract block number
-    const txReceipt = await web3.eth.getTransactionReceipt(transactionDigest);
-    const fromBlock = Number(txReceipt.blockNumber);
-
     const requestIds = await watchForMarketplaceRequestIds(
       mechMarketplaceContract,
       web3,
       transactionDigest
     );
-
+    
     // Use full-precision decimal strings to avoid scientific notation / precision loss
     const requestIdInts = requestIds.map((id: string) => (BigInt(id)).toString(10));
-
-    // Normalize request IDs for delivery monitoring (remove 0x prefix)
-    const normalizedRequestIds = requestIds.map((id: string) =>
-      id.startsWith('0x') ? id.slice(2).toLowerCase() : id.toLowerCase()
-    );
-
+    
     if (requestIdInts.length === 1) {
       console.log(`  - Created on-chain request with ID ${requestIdInts[0]}`);
     } else {
@@ -772,6 +746,11 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     console.log('');
 
     if (postOnly) {
+      try {
+        ws?.close();
+      } catch (_) {
+        // ignore close errors
+      }
       return {
         transaction_hash: transactionDigest,
         transaction_url: transactionUrlFormatted,
@@ -780,23 +759,20 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
       };
     }
 
-    // Wait for data URLs for all requests (async polling-based)
-    const dataUrls = await waitForMarketplaceDataUrl(
-      normalizedRequestIds,
-      mechMarketplaceContract,
-      fromBlock,
-      marketplaceDeliverSignature,
-      web3,
-      timeout
-    );
-
-    // Process and display data for each request
+    // Wait for data for each request
     for (let i = 0; i < requestIds.length; i++) {
       const requestId = requestIds[i];
       const requestIdInt = requestIdInts[i];
-      const normalizedRequestId = normalizedRequestIds[i];
-
-      const dataUrl = dataUrls[normalizedRequestId];
+      
+      const dataUrl = await waitForMarketplaceDataUrl(
+        requestId,
+        ws!,
+        mechInfo.mechContract,
+        mechConfig.subgraph_url,
+        marketplaceDeliverSignature,
+        web3,
+        confirmationType
+      );
 
       if (dataUrl) {
         if (isNvmMech) {
@@ -818,11 +794,13 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
         } catch (error) {
           console.error('Error fetching data:', error);
         }
-      } else {
-        console.log(`  - No data received for request ${requestIdInt}`);
       }
     }
-
+    try {
+      ws?.close();
+    } catch (_) {
+      // ignore close errors
+    }
     return null;
   }
 
@@ -859,6 +837,11 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
   console.log('');
 
   if (postOnly) {
+    try {
+      ws?.close();
+    } catch (_) {
+      // ignore close errors
+    }
     return {
       responses,
       request_ids: requestIds,
@@ -886,6 +869,11 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
       }
     }
   }
-
+  
+  try {
+    ws?.close();
+  } catch (_) {
+    // ignore close errors
+  }
   return null;
 }

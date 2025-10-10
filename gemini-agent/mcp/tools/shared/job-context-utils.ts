@@ -133,7 +133,7 @@ export async function fetchJobHierarchy(rootJobId: string, maxDepth: number = 3)
     hierarchy: JobHierarchyItem[];
     errors: Array<{jobId: string, level: number, error: string}>;
 }> {
-    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
     const visited = new Set<string>();
     const hierarchy: JobHierarchyItem[] = [];
     const errors: Array<{jobId: string, level: number, error: string}> = [];

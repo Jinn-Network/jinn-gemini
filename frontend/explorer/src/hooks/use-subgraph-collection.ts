@@ -26,6 +26,7 @@ interface UseSubgraphCollectionOptions {
   pollingInterval?: number
   sortColumn?: string
   sortAscending?: boolean
+  whereFilter?: Record<string, unknown>
 }
 
 interface UseSubgraphCollectionReturn {
@@ -46,6 +47,7 @@ export function useSubgraphCollection({
   pollingInterval = 10000,
   sortColumn,
   sortAscending = false,
+  whereFilter,
 }: UseSubgraphCollectionOptions): UseSubgraphCollectionReturn {
   const [records, setRecords] = useState<SubgraphRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -103,6 +105,7 @@ export function useSubgraphCollection({
         limit: pageSize,
         orderBy: getDefaultSortColumn(),
         orderDirection: sortAscending ? 'asc' : 'desc',
+        where: whereFilter,
         // For pagination, we'll use simple offset-based pagination
         // Note: This is a simplification. Proper cursor-based pagination would be better
       }
@@ -120,11 +123,17 @@ export function useSubgraphCollection({
     } finally {
       if (showLoading) setLoading(false)
     }
-  }, [collectionName, pageSize, getQueryFunction, getDefaultSortColumn, sortAscending])
+  }, [collectionName, pageSize, getQueryFunction, getDefaultSortColumn, sortAscending, whereFilter])
 
   // Set up polling
-  const setupPolling = useCallback(() => {
-    if (!enablePolling) return
+  useEffect(() => {
+    if (!enablePolling) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      return
+    }
     
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current)
@@ -134,6 +143,13 @@ export function useSubgraphCollection({
       console.log(`Polling for ${collectionName} updates...`)
       fetchRecords(currentPage, false)
     }, pollingInterval)
+    
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+    }
   }, [enablePolling, pollingInterval, currentPage, fetchRecords, collectionName])
 
   // Manual refresh function
@@ -141,22 +157,11 @@ export function useSubgraphCollection({
     fetchRecords(currentPage, false)
   }, [fetchRecords, currentPage])
 
-  // Initial load and setup
+  // Initial load and refetch when filter changes
   useEffect(() => {
     fetchRecords(currentPage)
-    
-    if (enablePolling) {
-      setupPolling()
-    }
-    
-    return () => {
-      // Cleanup
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
-      }
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Only run on mount
+  }, [whereFilter]) // Refetch when filter changes
 
   // Update when page changes
   useEffect(() => {

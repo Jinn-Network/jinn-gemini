@@ -40,7 +40,7 @@ kill_if_running "worker/worker.ts"
 kill_if_running "gemini-agent/mcp/server.ts"
 
 # Also clean common dev ports if set/known
-# Control API default: 4001, Ponder default (env): 42069, Vite dev possible: 5173
+# Control API default: 4001, Ponder default (env PONDER_PORT): 42069, Vite dev possible: 5173
 kill_port() {
   PORT="$1"
   if [ -z "$PORT" ]; then

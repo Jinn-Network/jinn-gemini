@@ -10,9 +10,10 @@ export function cn(...inputs: ClassValue[]) {
 export function getCollectionLabel(collectionName: CollectionName): string {
   const labelMap: Record<CollectionName, string> = {
     jobDefinitions: 'Job Definitions',
-    requests: 'Job Executions',
-    deliveries: 'Job Executions',
+    requests: 'Jobs',
+    deliveries: 'Deliveries',
     artifacts: 'Artifacts',
+    messages: 'Messages',
   };
 
   return labelMap[collectionName] || collectionName;
@@ -20,12 +21,45 @@ export function getCollectionLabel(collectionName: CollectionName): string {
 
 // Navigation items for tabs
 export interface NavigationItem {
-  collection: CollectionName;
+  collection: CollectionName | string;
   label: string;
 }
 
 export const navigationItems: NavigationItem[] = [
-  { label: 'Job Definitions', collection: 'jobDefinitions' },
-  { label: 'Job Executions', collection: 'requests' },
+  // { label: 'Workstreams', collection: 'workstreams' },
+  { label: 'Jobs', collection: 'requests' },
   { label: 'Artifacts', collection: 'artifacts' },
 ];
+
+// Format timestamps for display
+export function formatDate(dateString: string | number): string {
+  try {
+    let date: Date
+    if (typeof dateString === 'string') {
+      // Try parsing as number first if it looks like a timestamp
+      const asNumber = Number(dateString)
+      if (!isNaN(asNumber) && asNumber > 0) {
+        date = new Date(asNumber * 1000)
+      } else {
+        date = new Date(dateString)
+      }
+    } else {
+      // Handle bigint timestamps (convert from seconds to milliseconds)
+      date = new Date(Number(dateString) * 1000)
+    }
+
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return dateString.toString()
+    }
+
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch {
+    return dateString.toString()
+  }
+}

@@ -1,45 +1,65 @@
 import '../env/index.js';
+import { getMechAddress } from '../env/operate-profile.js';
 import MechMarketplaceAbi from './abis/MechMarketplace.json';
-import AgentMechAbi from './abis/AgentMech.json';
+import AgentMechAbi from 'mech-client-ts/dist/abis/AgentMech.json';
 import { createConfig } from "@ponder/core";
 import { http } from "viem";
+import fetch from 'cross-fetch';
 
 // Base chain RPC; can be overridden via env PONDER_RPC_URL
 const DEFAULT_BASE_RPC = process.env.RPC_URL || "https://mainnet.base.org";
+const rpcUrl = process.env.PONDER_RPC_URL || DEFAULT_BASE_RPC;
 
-// JINN-209: Auto-load mech address from service config
-// Use env var override if provided, otherwise let Ponder use the default
-// (Service config will be read by indexer at runtime if needed)
-const MECH_ADDRESS = process.env.PONDER_MECH_ADDRESS || '0x8c083Dfe9bee719a05Ba3c75A9B16BE4ba52c299'; // Service 165 mech
-const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020'; // Base mainnet marketplace
+// Get start block: use env var if set, otherwise fetch current block and use recent history
+async function getStartBlock(): Promise<number> {
+  if (process.env.PONDER_START_BLOCK) {
+    return Number(process.env.PONDER_START_BLOCK);
+  }
 
-// Log the mech address being used
-console.log(`[Ponder Config] Indexing mech: ${MECH_ADDRESS}`);
+  try {
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'eth_blockNumber',
+        params: [],
+        id: 1,
+      }),
+    });
 
-// Optional startBlock and endBlock for review mode
-const startBlock = process.env.PONDER_START_BLOCK ? Number(process.env.PONDER_START_BLOCK) : undefined;
-const endBlock = process.env.PONDER_END_BLOCK ? Number(process.env.PONDER_END_BLOCK) : undefined;
+    const result = await response.json();
+    const currentBlock = parseInt(result.result, 16);
+    const recentStartBlock = Math.max(currentBlock - 100, 0);
 
-// Log review mode status
-if (process.env.PONDER_REVIEW_MODE === '1') {
-  console.log('[Ponder Config] 🔍 REVIEW MODE ACTIVE');
-  console.log(`[Ponder Config]   Start Block: ${startBlock}`);
-  console.log(`[Ponder Config]   End Block: ${endBlock || 'none (will sync to chain head)'}`);
-  console.log(`[Ponder Config]   RPC URL: ${process.env.PONDER_RPC_URL || DEFAULT_BASE_RPC}`);
-} else {
-  console.log(`[Ponder Config] Start Block: ${startBlock || 'none (will sync from recent block)'}`);
-  if (endBlock) {
-    console.log(`[Ponder Config] ✓ End Block set to ${endBlock}`);
-  } else {
-    console.log(`[Ponder Config] No endBlock set - will sync to chain head`);
+    console.log(`[ponder] Using recent start block: ${recentStartBlock} (current: ${currentBlock})`);
+    return recentStartBlock;
+  } catch (error) {
+    console.warn('[ponder] Failed to fetch current block, using contract deployment block:', error);
+    return 35577849; // Fallback to contract deployment block
   }
 }
+
+// Review mode configuration
+const endBlock = process.env.PONDER_END_BLOCK ? Number(process.env.PONDER_END_BLOCK) : undefined;
+
+if (process.env.PONDER_REVIEW_MODE === '1') {
+  console.log('[Ponder Config] 🔍 REVIEW MODE ACTIVE');
+  console.log(`[Ponder Config]   Start Block: ${process.env.PONDER_START_BLOCK || 'auto-detect'}`);
+  console.log(`[Ponder Config]   End Block: ${endBlock || 'none (will sync to chain head)'}`);
+}
+
+const startBlock = await getStartBlock();
+
+const MECH_ADDRESS = getMechAddress() || '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7';
+console.log('[Ponder Config] Indexing mech:', MECH_ADDRESS);
+console.log('[Ponder Config] Start block:', startBlock);
 
 export default createConfig({
   networks: {
     base: {
       chainId: 8453,
-      transport: http(process.env.PONDER_RPC_URL || DEFAULT_BASE_RPC),
+      transport: http(rpcUrl),
       pollingInterval: 4_000,
       maxRequestsPerSecond: 5,
       finalityBlockCount: 30,
@@ -51,15 +71,15 @@ export default createConfig({
       address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
       // Reuse ABI from mech-client-ts to avoid duplication during dev
       abi: MechMarketplaceAbi,
-      ...(startBlock !== undefined && { startBlock }),
-      ...(endBlock !== undefined && { endBlock }),
+      startBlock,
+      endBlock,
     },
     OlasMech: {
       network: "base",
-      address: process.env.PONDER_MECH_ADDRESS || MECH_ADDRESS, // Auto-loaded from service config
+      address: MECH_ADDRESS,
       abi: (AgentMechAbi as any)?.abi || (AgentMechAbi as any),
-      ...(startBlock !== undefined && { startBlock }),
-      ...(endBlock !== undefined && { endBlock }),
+      startBlock,
+      endBlock,
     },
   },
 });

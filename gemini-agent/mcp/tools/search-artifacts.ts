@@ -15,7 +15,7 @@ export const searchArtifactsSchema = {
 };
 
 async function fetchRequestForArtifact(requestId: string): Promise<any | null> {
-  const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+  const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
   const gql = `query GetRequest($requestId: String!) {
     requests(where: { id: $requestId }, limit: 1) {
       items { 
@@ -52,7 +52,7 @@ export async function searchArtifacts(params: SearchArtifactsParams) {
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
     // Query artifacts table directly
-    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
     const artifactsGql = `query SearchArtifacts($q: String!, $limit: Int!) {
       artifacts(where: { OR: [
         { name_contains: $q }, 

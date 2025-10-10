@@ -3,6 +3,7 @@ import fetch from 'cross-fetch';
 import { randomUUID } from 'node:crypto';
 import { marketplaceInteract } from '../../../packages/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
+import { getMechAddress } from '../../../env/operate-profile.js';
 
 const dispatchNewJobParamsBase = z.object({
   objective: z.string().min(10).describe('Clear, specific statement of what needs to be accomplished'),
@@ -95,7 +96,7 @@ export async function dispatchNewJob(args: unknown) {
     // Assemble structured fields into a single prompt string for IPFS storage
     const prompt = constructPrompt({ objective, context: promptContext, deliverables, acceptanceCriteria, constraints });
 
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+    const gqlUrl = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
 
     let existingJob: any | null = null;
     try {
@@ -175,7 +176,7 @@ export async function dispatchNewJob(args: unknown) {
     try {
       const result = await (marketplaceInteract as any)({
         prompts: [prompt],
-        priorityMech: '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7',
+        priorityMech: getMechAddress(),
         tools: enabledTools || [],
         ipfsJsonContents,
         chainConfig: 'base',

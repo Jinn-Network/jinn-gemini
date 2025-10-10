@@ -10,7 +10,7 @@ import axios from 'axios';
 import { setTimeout as delay } from 'timers/promises';
 import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
 
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
 const CONTROL_API_SERVICE_KEY = process.env.CONTROL_API_SERVICE_KEY || '';
 const TEST_WORKER_ADDRESS = process.env.TEST_WORKER_ADDRESS || process.env.MECH_WORKER_ADDRESS || '';

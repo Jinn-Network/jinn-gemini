@@ -82,7 +82,7 @@ cd ponder && yarn dev
 
 **Check Ponder health:**
 ```bash
-curl http://localhost:42069/graphql -X POST \
+curl http://localhost:${PONDER_PORT:-42069}/graphql -X POST \
   -H "Content-Type: application/json" \
   -d '{"query": "{ __typename }"}'
 ```

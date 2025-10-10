@@ -76,12 +76,14 @@ export default createSchema((p: any) => ({
       cid: p.string(),
       topic: p.string(),
       contentPreview: p.string().optional(),
+      blockTimestamp: p.bigint(),
     },
     {
       requestIdIdx: p.index("requestId"),
       sourceReqIdx: p.index("sourceRequestId"),
       sourceJobDefIdx: p.index("sourceJobDefinitionId"),
       topicIdx: p.index("topic"),
+      timestampIdx: p.index("blockTimestamp"),
     }
   ),
   message: p.createTable(

@@ -178,7 +178,7 @@ yarn test:safe-request
 
 1. **Ponder** (indexes blockchain events)
    - Start: `cd ponder && yarn dev`
-   - URL: `http://localhost:42069/graphql`
+   - URL: `http://localhost:${PONDER_PORT:-42069}/graphql`
    - Purpose: Indexes mech marketplace requests/deliveries
 
 2. **Control API** (optional, for job tracking)
@@ -201,7 +201,8 @@ MIDDLEWARE_PATH=./olas-operate-middleware
 MECH_WORKER_ADDRESS=0x62fb5FC6ab3206b3C817b503260B90075233f7dD
 
 # Ponder endpoint
-PONDER_GRAPHQL_URL=http://localhost:42069/graphql
+PONDER_PORT=42069
+PONDER_GRAPHQL_URL=http://localhost:${PONDER_PORT}/graphql
 ```
 
 ### Optional (Auto-detected)
@@ -260,7 +261,7 @@ curl http://localhost:3000/api/jobs
 # Start Ponder in separate terminal
 cd ponder && yarn dev
 
-# Wait for: "Server listening on http://localhost:42069"
+# Wait for: "Server listening on http://localhost:${PONDER_PORT:-42069}"
 ```
 
 ### "No service found"
@@ -289,7 +290,7 @@ This is normal if:
 
 ```bash
 # Check Ponder status
-curl http://localhost:42069/graphql -X POST \
+curl http://localhost:${PONDER_PORT:-42069}/graphql -X POST \
   -H "Content-Type: application/json" \
   -d '{"query": "{ requests(limit: 1) { items { id } } }"}'
 ```

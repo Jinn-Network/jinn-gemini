@@ -17,7 +17,8 @@ The automated job reposting system monitors decomposition chains for completion 
 
 - `ENABLE_AUTO_REPOST`: Enable/disable auto-reposting (default: `true`)
   - Set to `"false"` to disable the feature entirely
-- `PONDER_GRAPHQL_URL`: Subgraph endpoint (default: `http://localhost:42069/graphql`)
+- `PONDER_PORT`: Ponder GraphQL port (default: `42069`)
+- `PONDER_GRAPHQL_URL`: Subgraph endpoint (default: `http://localhost:${PONDER_PORT}/graphql`)
 
 ### Configuration Constants
 

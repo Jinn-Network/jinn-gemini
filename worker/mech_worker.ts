@@ -1,17 +1,17 @@
 import '../env/index.js';
 import { Agent } from '../gemini-agent/agent.js';
-import { deliverViaSafe } from 'mech-client-ts/dist/post_deliver.js';
-import { marketplaceInteract } from 'mech-client-ts/dist/marketplace_interact.js';
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
-import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
+import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
 import { Web3 } from 'web3';
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import agentMechArtifact from 'mech-client-ts/dist/abis/AgentMech.json';
+import agentMechArtifact from '../packages/mech-client-ts/dist/abis/AgentMech.json';
 import { workerLogger } from './logger.js';
 import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport, createArtifact as apiCreateArtifact } from './control_api_client.js';
 import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './artifacts.js';
+import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
+import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
+import { join } from 'path';
 
 type UnclaimedRequest = {
   id: string;           // on-chain requestId (decimal string or 0x)
@@ -23,7 +23,7 @@ type UnclaimedRequest = {
 };
 
 
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'http://localhost:42069/graphql';
+const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = (process.env.USE_CONTROL_API ?? 'true') !== 'false';
 const STALE_MINUTES = parseInt(process.env.MECH_RECLAIM_AFTER_MINUTES || '10', 10);
@@ -205,16 +205,47 @@ async function isUndeliveredOnChain(params: { mechAddress: string; requestIdHex:
 
 async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest[]> {
   try {
-    // Query our local Ponder GraphQL (custom schema)
-    const query = `query RecentRequests($limit: Int!) {\n  requests(orderBy: \"blockTimestamp\", orderDirection: \"desc\", limit: $limit) {\n    items {\n      id\n      mech\n      sender\n      ipfsHash\n      blockTimestamp\n      delivered\n    }\n  }\n}`;
+    const workerMech = getMechAddress();
+    if (!workerMech) {
+      workerLogger.warn('Cannot fetch requests without mech address');
+      return [];
+    }
+    
+    workerLogger.info({ ponderUrl: PONDER_GRAPHQL_URL, mech: workerMech }, 'Fetching requests from Ponder');
+    
+    // Query our local Ponder GraphQL (custom schema) - FILTER BY MECH AND UNDELIVERED
+    const query = `query RecentRequests($limit: Int!, $mech: String!) {
+  requests(
+    where: { mech: $mech, delivered: false }
+    orderBy: "blockTimestamp"
+    orderDirection: "asc"
+    limit: $limit
+  ) {
+    items {
+      id
+      mech
+      sender
+      ipfsHash
+      blockTimestamp
+      delivered
+    }
+  }
+}`;
     const res = await fetch(PONDER_GRAPHQL_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables: { limit } })
+      body: JSON.stringify({ 
+        query, 
+        variables: { 
+          limit,
+          mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
+        } 
+      })
     });
     if (!res.ok) throw new Error(`GraphQL HTTP ${res.status}`);
     const json = await res.json();
     const items: any[] = json?.data?.requests?.items || [];
+    workerLogger.info({ totalItems: items.length, items: items.map(r => ({ id: r.id, delivered: r.delivered })) }, 'Ponder GraphQL response');
     return items.map((r: any) => ({
       id: String(r.id),
       mech: String(r.mech),
@@ -275,6 +306,11 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
     // Control API is the only path for claiming
     try {
       const res = await apiClaimRequest(request.id);
+      // Skip if already claimed by another worker or stuck IN_PROGRESS
+      if (res?.alreadyClaimed) {
+        workerLogger.info({ requestId: request.id, status: res.status }, 'Already claimed - skipping');
+        return false;
+      }
       if (res && (res.status === 'IN_PROGRESS' || res.status === 'COMPLETED')) {
         const ok = res.status === 'IN_PROGRESS';
         workerLogger.info({ requestId: request.id, status: res.status }, ok ? 'Claimed via Control API' : 'Already handled via Control API');
@@ -304,26 +340,38 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
   if (!ipfsHash) return null;
   try {
     const hash = String(ipfsHash).replace(/^0x/, '');
-    // The marketplace stores truncated hash in some contexts; attempt direct fetch
-    const url = `https://gateway.autonolas.tech/ipfs/${hash}`;
+    // Use configured IPFS gateway or fallback to Autonolas
+    const gatewayBase = process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/';
+    const url = gatewayBase.endsWith('/') ? `${gatewayBase}${hash}` : `${gatewayBase}/${hash}`;
+    
+    workerLogger.info({ url, hash, timeout: process.env.IPFS_FETCH_TIMEOUT_MS || '7000' }, 'Fetching IPFS metadata');
+    
     // Add a timeout so we don't hang here
     const controller = new AbortController();
     const timeoutMs = parseInt(process.env.IPFS_FETCH_TIMEOUT_MS || '7000', 10);
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    
     const res = await fetch(url, { method: 'GET', signal: controller.signal });
     clearTimeout(timer);
-    if (!res.ok) return null;
+    
+    workerLogger.info({ status: res.status, statusText: res.statusText }, 'IPFS fetch response');
+    
+    if (!res.ok) {
+      workerLogger.warn({ status: res.status, statusText: res.statusText, url }, 'IPFS fetch returned non-OK status');
+      return null;
+    }
+    
     const json = await res.json();
     const prompt = json?.prompt || json?.input || undefined;
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
     const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
     const sourceJobDefinitionId = json?.sourceJobDefinitionId ? String(json.sourceJobDefinitionId) : undefined;
     const additionalContext = json?.additionalContext || undefined;
-    const jobName = json?.jobName || undefined;
-    const jobDefinitionId = json?.jobDefinitionId || undefined;
+    const jobName = json?.jobName ? String(json.jobName) : undefined;
+    const jobDefinitionId = json?.jobDefinitionId ? String(json.jobDefinitionId) : undefined;
     return { prompt, enabledTools, sourceRequestId, sourceJobDefinitionId, additionalContext, jobName, jobDefinitionId };
   } catch (e: any) {
-    workerLogger.warn({ error: serializeError(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
+    workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
     return null;
   }
 }
@@ -424,9 +472,7 @@ async function storeOnchainReport(
         sourceJobDefinitionId: metadata?.sourceJobDefinitionId  // Preserve parent reference
       })
     };
-    await apiCreateJobReport(request.id, payload);
-    
-    // Return finalStatus for parent dispatch logic
+    await apiCreateJobReport(request.id, payload, workerAddress);
     return finalStatus;
   } catch {
     return null;
@@ -547,12 +593,42 @@ function shouldRepost(rootJobDefinitionId: string): boolean {
  */
 async function repostExistingJob(jobDefinitionId: string): Promise<void> {
   try {
-    const result = await dispatchExistingJob({ jobId: jobDefinitionId });
+    // Query for the most recent request of this job to establish lineage
+  const res = await fetch(PONDER_GRAPHQL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `query { 
+          requests(
+            where: { jobDefinitionId: "${jobDefinitionId}" }, 
+            orderBy: "blockTimestamp", 
+            orderDirection: "desc", 
+            limit: 1
+          ) {
+            items { id }
+          }
+        }`,
+      }),
+    });
+    const json = await res.json();
+    const mostRecentRequest = json?.data?.requests?.items?.[0];
+    
+    // Build message indicating this is a repost after completion
+    const message = mostRecentRequest ? JSON.stringify({
+      content: "Reposting job after workstream completion",
+      from: mostRecentRequest.id,
+      to: jobDefinitionId
+    }) : undefined;
+
+    const result = await dispatchExistingJob({ 
+      jobId: jobDefinitionId,
+      message
+    });
 
     // Parse the result to check if it was successful
-    const { ok, data, message } = safeParseToolResponse(result);
+    const { ok, data, message: errMsg } = safeParseToolResponse(result);
     if (!ok) {
-      workerLogger.error(`Cannot repost job ${jobDefinitionId}: ${message || 'Unknown error'}`);
+      workerLogger.error(`Cannot repost job ${jobDefinitionId}: ${errMsg || 'Unknown error'}`);
       return;
     }
 
@@ -613,13 +689,13 @@ async function checkAndRepostCompletedChains(): Promise<void> {
 
 
 async function processOnce(): Promise<void> {
-  const workerAddress = process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '';
+  const workerAddress = getMechAddress();
   if (!workerAddress) {
-    workerLogger.error('Missing MECH_ADDRESS environment variable');
+    workerLogger.error('Missing service mech address in .operate config or environment');
     return;
   }
 
-  const recent = await fetchRecentRequests(10);
+  const recent = await fetchRecentRequests(50);
   const candidates = await filterUnclaimed(recent);
   if (candidates.length === 0) {
     workerLogger.info('No unclaimed on-chain requests found');
@@ -643,7 +719,7 @@ async function processOnce(): Promise<void> {
 
   // Iterate candidates until we claim one successfully
   let target: UnclaimedRequest | null = null;
-  for (const c of filtered) {
+  for (const c of candidates) {
     const ok = await tryClaim(c, workerAddress);
     if (ok) { target = c; break; }
   }
@@ -693,19 +769,41 @@ async function processOnce(): Promise<void> {
   // Attempt on-chain delivery via Safe when configured
   try {
     const chainConfig = process.env.MECH_CHAIN_CONFIG || 'base';
-    const safeAddress = process.env.MECH_SAFE_ADDRESS || '';
+    const safeAddress = getServiceSafeAddress();
     const targetMechAddress = target.mech;
-    const privateKeyEnv = (process.env.MECH_PRIVATE_KEY || '').trim();
-    const privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH || 'mech_private_key.txt';
-    const rpcHttpUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+    const privateKey = getServicePrivateKey();
+    const rpcHttpUrl = process.env.RPC_URL;
+    
+    if (!safeAddress || !privateKey) {
+      workerLogger.warn({ safeAddress: !!safeAddress, privateKey: !!privateKey }, 'Missing Safe delivery configuration; skipping on-chain delivery');
+      return;
+    }
+    
+    // Check if Safe is actually deployed
+    if (safeAddress && rpcHttpUrl) {
+      try {
+        const web3 = new Web3(rpcHttpUrl);
+        const code = await web3.eth.getCode(safeAddress);
+        if (!code || code === '0x' || code.length <= 2) {
+          workerLogger.warn({ safeAddress }, 'Safe address has no contract code; skipping Safe delivery (use direct EOA delivery or deploy Safe first)');
+          return;
+        }
+      } catch (e: any) {
+        workerLogger.warn({ safeAddress, error: e?.message }, 'Failed to check Safe deployment; skipping Safe delivery');
+        return;
+      }
+    }
+    
     if (safeAddress && targetMechAddress) {
       // Preflight: ensure request is still undelivered on-chain before constructing Safe tx
       const requestIdHex = String(target.id).startsWith('0x') ? String(target.id) : '0x' + BigInt(String(target.id)).toString(16);
+      workerLogger.info({ requestIdHex, targetMechAddress }, 'Checking if request is undelivered on-chain...');
       const ok = await isUndeliveredOnChain({ mechAddress: targetMechAddress, requestIdHex, rpcHttpUrl });
       if (!ok) {
-        workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Preflight: request already delivered or not eligible; skipping Safe delivery');
+        workerLogger.info({ jobName: metadata?.jobName, requestId: target.id, requestIdHex }, 'Preflight: request already delivered or not eligible; skipping Safe delivery');
         return;
       }
+      workerLogger.info({ requestIdHex }, 'Preflight passed - request is undelivered, proceeding with Safe delivery...');
 
       const payload = {
         chainConfig,
@@ -718,16 +816,24 @@ async function processOnce(): Promise<void> {
         },
         targetMechAddress,
         safeAddress,
-        // Prefer inline env private key when provided; otherwise fall back to path
-        ...(privateKeyEnv ? { privateKey: privateKeyEnv } : { privateKeyPath }),
+        privateKey,
         ...(rpcHttpUrl ? { rpcHttpUrl } : {}),
         wait: true
       } as const;
       const delivery = await (deliverViaSafe as any)(payload);
-      workerLogger.info({ jobName: metadata?.jobName, requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
+      workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
     }
   } catch (e: any) {
-    workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(e) }, 'Safe delivery failed');
+    // Log detailed error information for debugging
+    const errorDetails: any = {
+      message: e?.message || String(e),
+      code: e?.code,
+      reason: e?.reason,
+      data: e?.data,
+      stack: e?.stack?.split('\n').slice(0, 3).join('\n')
+    };
+    workerLogger.warn({ requestId: target.id, error: errorDetails }, 'Safe delivery failed');
+    
     // Record a FAILED status so the claim does not remain IN_PROGRESS
     try {
       await apiCreateJobReport(target.id, {
@@ -739,7 +845,7 @@ async function processOnce(): Promise<void> {
         error_message: e?.message || String(e),
         error_type: 'DELIVERY_ERROR',
         raw_telemetry: JSON.stringify(result?.telemetry ?? {}),
-      } as any);
+      } as any, workerAddress);
     } catch (reportErr: any) {
       workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: reportErr?.message || String(reportErr) }, 'Failed to record FAILED status');
     }

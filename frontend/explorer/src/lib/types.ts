@@ -56,13 +56,3 @@ export interface JobImpactReport {
   source_schedule: DbRecord | null;
   created_records: CreatedRecord[];
 }
-
-// Event search types
-export interface EventSearchFilters {
-  event_type?: 'ARTIFACT_CREATED' | 'JOB_CREATED' | 'THREAD_CREATED';
-  status?: string;
-  job_name?: string;
-  topic?: string;
-  thread_id?: string;
-  time_range_hours?: number;
-}
