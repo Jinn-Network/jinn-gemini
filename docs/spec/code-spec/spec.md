@@ -20,7 +20,7 @@ This specification is organized into three tiers:
 
 A **clause** is a single item within the spec—one objective, one rule, or one default behavior. For example:
 - "Follow the principle of orthodoxy" is an objective clause
-- "Never commit secrets" would be a rule clause (when we add it)
+- "Never commit secrets" is a rule clause
 - "Use environment variables for configuration" could be a default behavior clause (when we add one)
 
 Each clause has:
@@ -114,9 +114,66 @@ Objectives are high-level goals that provide directional guidance for all code. 
 
 Rules are hard constraints that must never be violated. Unlike objectives (which are directional) and default behaviors (which can have rare exceptions), rules are absolute.
 
-### (None defined yet)
+### Never commit secrets to the repository[^r1]
 
-As the codebase evolves, critical constraints will be elevated to rules with corresponding example files.
+**The rule:** Secrets (private keys, API keys, passwords, tokens) must never be committed to git. All sensitive configuration must be loaded from environment variables or secure secret management systems.
+
+**Why this matters for AI-generated code:**
+- Secrets in git history are permanently exposed
+- A single leaked agent key can drain all funds from its Safe
+- AI may generate example code with placeholder secrets
+- Git history is immutable—deletion doesn't remove committed secrets
+
+**What qualifies as a secret:**
+- **Private keys**: Agent keys, Safe signers, wallet mnemonics
+- **API keys**: Gemini, Supabase, RPC providers, service credentials
+- **Passwords**: OLAS middleware password, database credentials
+- **Tokens**: Authentication tokens, session tokens
+
+**Application:** All secrets must be read from environment variables at runtime. Use `.env.example` with placeholder values for documentation. Never hardcode credentials in source code, comments, or documentation.
+
+[^r1]: See examples/r1.md
+
+### Always validate on-chain state before financial operations[^r2]
+
+**The rule:** Before submitting any transaction that transfers tokens, executes a Safe transaction, or modifies on-chain state, verify that the operation is valid by querying current on-chain state.
+
+**Why this matters for AI-generated code:**
+- Blockchain transactions are immutable and irreversible
+- Failed transactions waste gas fees (non-recoverable)
+- Invalid operations can lock funds in contracts
+- Network delays can make local state stale
+
+**What requires preflight validation:**
+- **Mech deliveries**: Check if request is still undelivered
+- **Token transfers**: Verify sender has sufficient balance
+- **Safe transactions**: Validate Safe configuration and ownership
+- **Staking operations**: Confirm service state and eligibility
+
+**Application:** Use `view`/`pure` functions (zero gas cost) to query on-chain state before constructing transactions. If preflight check fails, log the reason and skip the operation. Best-effort: if RPC is unavailable, log warning and allow operation to proceed.
+
+[^r2]: See examples/r2.md
+
+### Never silently discard errors in financial or blockchain contexts[^r3]
+
+**The rule:** Errors in financial operations, blockchain transactions, or on-chain job processing must be logged with full context and propagated to the caller. Empty catch blocks and silent fallbacks are prohibited.
+
+**Why this matters for AI-generated code:**
+- Silent failures hide critical issues (lost funds, stuck jobs)
+- Debugging is impossible without error logs
+- AI may generate convenient but unsafe error handling patterns
+- Incident response requires clear audit trails
+
+**What contexts require explicit error handling:**
+- **Token transfers**: OLAS, ETH transfers
+- **Safe transactions**: Deliveries, mech operations
+- **RPC calls**: Blockchain state queries
+- **IPFS uploads**: Content storage for on-chain deliveries
+- **Database writes**: On-chain job tracking
+
+**Application:** Always log errors with structured context before handling. Use `logger.error()` with operation details, parameters, and error message. Re-throw errors unless there's a legitimate degraded mode (must be documented). Non-critical background tasks (telemetry) may degrade gracefully with warning logs.
+
+[^r3]: See examples/r3.md
 
 ---
 
@@ -265,7 +322,7 @@ This code spec is directly inspired by OpenAI's Model Spec and the concept of "d
 |-------------------|---------------|
 | Defines desired model behavior | Defines desired code patterns |
 | Objectives: "Assist users" | Objectives: "Follow orthodoxy" |
-| Rules: "Comply with laws" | Rules: (Future) |
+| Rules: "Comply with laws" (6 rules) | Rules: "Never commit secrets" (3 rules) |
 | Default Behaviors: "Express uncertainty" | Default Behaviors: (Future) |
 | Examples: 114 test case files | Examples: Test cases per clause |
 | Enforcement: Grader model + RLHF | Enforcement: Claude review + git hooks |

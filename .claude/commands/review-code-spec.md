@@ -1,147 +1,180 @@
 ---
 argument-hint: [file-path] or [directory] or --diff
-description: Review code against the Orthodoxy Principle (Code Spec)
-allowed-tools: Read, Glob, Bash(git diff:*)
+description: Review code against all Code Spec objectives (orchestrator)
+allowed-tools: Bash(/review-obj1:*, /review-obj2:*, /review-obj3:*, SlashCommand), Read
 ---
 
-# Code Spec Review
+# Code Spec Review (Orchestrator)
 
-You are reviewing code against the **Orthodoxy Principle** specification.
+You are orchestrating a comprehensive code review across all three Code Spec objectives.
+
+This command runs three specialized reviews in sequence and aggregates the results:
+- **obj1:** Orthodoxy (pattern consistency)
+- **obj2:** Code for the Next Agent (discoverability)
+- **obj3:** Minimize Harm (security)
 
 ## Your Task
 
-### Step 1: Read the Specification
+### Step 1: Read the Specification Overview
 
-Read these files in order to understand the code spec structure:
+**Read** `docs/spec/code-spec/spec.md` to understand the three objectives at a high level.
 
-1. **Read** `docs/spec/code-spec/spec.md` - The complete Code Spec (Objectives → Rules → Default Behaviors)
-2. **Read** `docs/spec/code-spec/examples/obj1.md` - Orthodoxy objective example
-3. **Read** `docs/spec/code-spec/examples/obj2.md` - Code for the next agent examples
-4. **Read** `docs/spec/code-spec/examples/obj3.md` - Minimize harm examples
+### Step 2: Identify Target
 
-**Note:** The spec.md file contains everything. Examples demonstrate the objectives and correct usage.
+Parse `$ARGUMENTS` to determine what to review:
+- `--diff` → staged changes (or unstaged if none staged)
+- File path → specific file
+- Directory → all `.ts` files in directory
+- Empty → default to `worker/` directory
 
-### Step 2: Identify Target Code
+### Step 3: Run All Three Objective Reviews
 
-Based on `$ARGUMENTS`:
+Execute the three specialized reviews **in sequence** (not parallel, to preserve output order):
 
-- If `$ARGUMENTS` is `--diff`:
-  - Run `git diff --cached` to get staged changes
-  - If no staged changes, run `git diff HEAD` for unstaged changes
-  - Analyze only the changed lines
+1. **Security Review (obj3) - Highest Priority**
+   ```bash
+   /review-obj3 $ARGUMENTS
+   ```
+   Reviews for: hardcoded secrets, SQL injection, fail-open patterns, missing validation
 
-- If `$ARGUMENTS` is a file path (e.g., `worker/mech_worker.ts`):
-  - Read that specific file
-  - Analyze the entire file
+2. **Orthodoxy Review (obj1)**
+   ```bash
+   /review-obj1 $ARGUMENTS
+   ```
+   Reviews for: multiple approaches to same problem, pattern inconsistencies
 
-- If `$ARGUMENTS` is a directory path (e.g., `worker/`):
-  - Use Glob to find all `.ts` files in that directory
-  - Read and analyze each file
+3. **Discoverability Review (obj2)**
+   ```bash
+   /review-obj2 $ARGUMENTS
+   ```
+   Reviews for: implicit code, magic globals, poor naming, clever one-liners
 
-- If no `$ARGUMENTS`:
-  - Default to analyzing all `.ts` files in the `worker/` directory
+### Step 4: Aggregate Results
 
-### Step 3: Analyze for Violations
+Collect the output from all three reviews and combine into a unified report.
 
-Look for these specific violations in the code:
-
-#### ❌ Error Handling Violations
-
-1. **Using `.catch()` instead of `try/catch`**
-   - Pattern: `.catch(err => ...)`
-   - Find: Promise chains with `.catch()`
-
-2. **Silent catch blocks**
-   - Pattern: `catch { }` or `catch (e) { }` with no logging
-   - Find: Empty catch blocks or catch with no logging
-
-3. **Using `console.*` instead of `workerLogger`**
-   - Pattern: `console.log()`, `console.error()`, `console.warn()`
-   - Find: Any console.* calls
-
-4. **Unstructured logging**
-   - Pattern: `workerLogger.error(stringOnly)` without context object
-   - Find: Logger calls with string interpolation or no context object
-
-5. **Multiple property fallbacks**
-   - Pattern: `a || b || c || d`
-   - Find: Chained fallback property access (indicates no canonical data structure)
-
-6. **No error propagation**
-   - Pattern: `catch (e) { log(e); /* no throw */ }`
-   - Find: Catch blocks that log but don't re-throw or return fallback
-
-### Step 4: Format Output
-
-For each violation found, output this format:
+### Step 5: Format Unified Output
 
 ```markdown
-### ❌ `<file-path>:<line-number>`
+# Code Spec Review: Complete Analysis
 
-**Issue:** [Brief description of the violation]
+**Target:** [file/directory/diff]
+**Objectives analyzed:** obj1 (Orthodoxy), obj2 (Discoverability), obj3 (Security)
 
-**Current code:**
-```typescript
-[Show the violating code snippet]
-```
+---
 
-**Suggested fix:**
-```typescript
-[Show the corrected code following canonical pattern]
-```
+## Executive Summary
 
-**Pattern reference:** `docs/spec/code-spec/spec.md` (see Objectives and Default Behaviors)
-```
+| Objective | Violations | Severity | Status |
+|-----------|-----------|----------|--------|
+| **obj3: Security** | [count] | 🔴 Critical | [Pass/Fail] |
+| **obj1: Orthodoxy** | [count] | 🟡 Warning | [Pass/Fail] |
+| **obj2: Discoverability** | [count] | 🟢 Info | [Pass/Fail] |
+| **Total** | [count] | - | [Pass/Fail] |
 
-### Step 5: Provide Summary
+---
 
-At the end, provide a summary:
+## 🔴 [obj3] Security Violations (Highest Priority)
 
-```markdown
-## Summary
+[Include all obj3 violations from /review-obj3 output]
 
-**Total violations found:** [count]
-**Files analyzed:** [count]
+**If no violations:**
+✅ No security violations detected.
 
-### Violations by type:
-- Using `.catch()` instead of try/catch: [count]
-- Console logging instead of workerLogger: [count]
-- Silent failures: [count]
-- Unstructured logging: [count]
-- Multiple property fallbacks: [count]
+---
 
-### Next steps:
-1. Address violations using the suggested fixes
-2. If you must deviate from the default behavior, document the exception in your PR
-3. See `docs/spec/code-spec/spec.md` for the full specification
+## 🟡 [obj1] Orthodoxy Violations
 
-📚 **Full documentation:** `docs/spec/code-spec/USAGE.md`
-📖 **Examples:** `docs/spec/code-spec/examples/`
+[Include all obj1 violations from /review-obj1 output]
+
+**If no violations:**
+✅ No orthodoxy violations detected. Code follows consistent patterns.
+
+---
+
+## 🟢 [obj2] Discoverability Violations
+
+[Include all obj2 violations from /review-obj2 output]
+
+**If no violations:**
+✅ No discoverability violations detected. Code is explicit and AI-friendly.
+
+---
+
+## Action Items
+
+### Immediate (Required for Commit):
+- [ ] Fix all 🔴 Critical security violations (obj3)
+- [ ] Verify no hardcoded secrets
+- [ ] Ensure input validation exists
+
+### Before Merge (Recommended):
+- [ ] Address 🟡 orthodoxy violations (obj1)
+- [ ] Migrate to canonical patterns
+- [ ] Update documentation if new patterns needed
+
+### Refactoring (Optional):
+- [ ] Improve 🟢 discoverability (obj2)
+- [ ] Make implicit code explicit
+- [ ] Add descriptive names and error messages
+
+---
+
+## Resources
+
+📚 **Documentation:**
+- Full specification: `docs/spec/code-spec/spec.md`
+- Usage guide: `docs/spec/code-spec/USAGE.md`
+- Known violations: `docs/spec/code-spec/VIOLATIONS.md`
+
+📖 **Examples:**
+- obj1 examples: `docs/spec/code-spec/examples/obj1.md`
+- obj2 examples: `docs/spec/code-spec/examples/obj2.md`
+- obj3 examples: `docs/spec/code-spec/examples/obj3.md`
+
+🔧 **Individual Reviews:**
+- Run security only: `/review-obj3 $ARGUMENTS`
+- Run orthodoxy only: `/review-obj1 $ARGUMENTS`
+- Run discoverability only: `/review-obj2 $ARGUMENTS`
+
+---
+
+**Review completed.** Use individual objective commands for focused analysis.
 ```
 
 ## Important Notes
 
-- **Be precise:** Include exact line numbers for each violation
-- **Be helpful:** Provide the exact fix, not just a description
-- **Be thorough:** Check every async function and error handling block
-- **Be fair:** If code follows the pattern correctly, acknowledge it
+- **Run reviews in sequence** (obj3 → obj1 → obj2) to prioritize security
+- **Preserve all violation details** from individual reviews
+- **Aggregate counts** for summary table
+- **Clear severity indicators**: 🔴 Critical (obj3), 🟡 Warning (obj1), 🟢 Info (obj2)
+- **Actionable next steps** organized by urgency
 
 ## Example Usage
 
 ```bash
-# Review a specific file
-/review-code-spec worker/mech_worker.ts
+# Review staged changes (pre-commit)
+/review-code-spec --diff
+
+# Review specific file
+/review-code-spec worker/config.ts
 
 # Review all worker files
 /review-code-spec worker/
 
-# Review staged changes
-/review-code-spec --diff
-
-# Review unstaged changes
-git add -A && /review-code-spec --diff
+# Review entire codebase (slow)
+/review-code-spec .
 ```
+
+## Performance Notes
+
+- Each objective review takes 30-120 seconds
+- Total time: 2-6 minutes for --diff
+- For faster feedback, run individual objectives:
+  - `/review-obj3 --diff` for pre-commit security check (fastest)
+  - `/review-obj1 file.ts` for pattern consistency
+  - `/review-obj2 file.ts` for code clarity
 
 ---
 
-**Now begin:** Read the spec files, then analyze the target code specified in `$ARGUMENTS`.
+**Now begin:** Run the three specialized reviews and aggregate results into unified report.
