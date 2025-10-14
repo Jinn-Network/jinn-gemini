@@ -169,6 +169,54 @@ Notes:
 - `post_marketplace_job` enriches with the IPFS gateway URL by querying Ponder (retrying briefly for indexing).
 - CLI tooling (e.g. `yarn tsx scripts/deliver_request.ts`) is still useful for manual debugging, but it bypasses the MCP dispatch path. Because it only triggers `MarketplaceDelivery`, those deliveries remain `delivered=false` in Ponder. For automated tests and production flows always go through the MCP toolchain (dispatch via `dispatch_new_job`, deliver via Safe).
 
+## IPFS Delivery System Architecture
+
+**Understanding Delivery IPFS Flow:**
+
+The delivery system uses a sophisticated IPFS architecture that can be confusing if tested incorrectly:
+
+1. **Upload Process**:
+   - Worker uploads delivery JSON to IPFS with `wrap-with-directory: true`
+   - IPFS returns a **directory CID** (e.g., `bafybeihkn34x77dtedc6idsdwvpze4ulcszonsluszjvsdwqycmlcyoidm`)
+   - The actual JSON file is stored **inside** this directory
+
+2. **On-Chain Storage**:
+   - Worker extracts SHA256 digest from the directory CID structure
+   - Worker posts the 32-byte digest to the `Deliver` event on-chain
+   - Only the digest is stored on-chain, not the full CID
+
+3. **Ponder Indexing**:
+   - Ponder reads the digest from the on-chain event
+   - Ponder reconstructs the directory CID using dag-pb codec (0x70) + base32 encoding
+   - Ponder fetches: `https://gateway.autonolas.tech/ipfs/{reconstructed-dir-CID}/{requestId}`
+
+**Common Testing Mistakes:**
+
+❌ **Wrong**: Testing `https://gateway.autonolas.tech/ipfs/f01551220{digest}` directly
+- This raw CID points to the **directory structure bytes**, not the JSON file
+- Will return binary data (expected behavior)
+
+✅ **Correct**: Testing `https://gateway.autonolas.tech/ipfs/{dir-CID}/{requestId}`
+- This fetches the actual JSON file from within the directory
+- Returns valid JSON with requestId, output, telemetry, artifacts array
+
+**Verification Commands:**
+```bash
+# Correct fetch (works):
+curl "https://gateway.autonolas.tech/ipfs/bafybeihkn34x77dtedc6idsdwvpze4ulcszonsluszjvsdwqycmlcyoidm/0x09d72fe9923227f8a7e9e2b3ef0dd38dc2d08f839614294252c4835ce36e9e2b"
+# Returns: Valid JSON with requestId, output, telemetry, artifacts array
+
+# Wrong fetch (binary):
+curl "https://gateway.autonolas.tech/ipfs/f01551220ea6ef97ffc7320c5e40e43b55f92728b14b2e6c9749653590ed0c098b161c81b"
+# Returns: Directory structure bytes (expected behavior)
+```
+
+**Key Points:**
+- The system is working correctly - no IPFS corruption exists
+- Manual testing must use the reconstructed directory CID + requestId path
+- Ponder successfully indexes artifacts from this architecture
+- All "Indexed OlasMech Deliver" logs show successful processing
+
 ---
 
 ## MCP tool references
@@ -195,6 +243,8 @@ Notes:
 - Params: `{ name: string, topic: string, content: string, mimeType?: string }`
 - Returns: `{ cid, name, topic, contentPreview }`
 
+**Important**: This tool does NOT write to Supabase. Artifacts are indexed by Ponder from the on-chain delivery payload. The flow is: tool → telemetry → delivery payload → Ponder indexing.
+
 ---
 
 ## Typical dev flows
@@ -218,6 +268,38 @@ Notes:
 2) Export it from `gemini-agent/mcp/tools/index.ts`.
 3) Register it in `gemini-agent/mcp/server.ts` (add to `serverTools`).
 4) Restart MCP: `yarn mcp:start`. Verify with `list_tools({ include_parameters: true })`.
+
+## Work Protocol Job Hierarchy
+
+**Understanding Job Context and Hierarchy:**
+
+The Work Protocol tracks job relationships through a sophisticated hierarchy system:
+
+1. **Job Definition IDs**: Each job has a unique `jobDefinitionId` that persists across re-runs
+2. **Source Relationships**: Child jobs reference their parent via `sourceJobDefinitionId` and `sourceRequestId`
+3. **Context Fetching**: `getJobContextForDispatch` retrieves the complete hierarchy for a job
+
+**Common Issues and Solutions:**
+
+❌ **Wrong**: Querying requests by `sourceJobDefinitionId_in` 
+- This only finds direct children, not the full hierarchy
+- Root job re-runs see empty context and re-delegate infinitely
+
+✅ **Correct**: Querying requests by `jobDefinitionId_in`
+- This finds all requests for the same job definition across re-runs
+- Root job re-runs can see completed children and synthesize results
+
+**Key Architecture Points:**
+- Root jobs delegate work to child jobs via `dispatch_new_job`
+- Child jobs complete and create artifacts
+- Root job re-runs should synthesize child artifacts into launcher briefings
+- Job context includes hierarchy, summary, and available artifacts
+- The system uses `jobDefinitionId` to track relationships, not `sourceJobDefinitionId`
+
+**Verification:**
+- Root job re-runs should show "Completed jobs: X" in Job Context
+- Root job re-runs should finalize with `WAITING` or `COMPLETED` status
+- Root job re-runs should NOT re-delegate if children already exist
 
 ---
 

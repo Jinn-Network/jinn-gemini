@@ -11,5 +11,8 @@ export { searchArtifacts, searchArtifactsParams, searchArtifactsSchema, type Sea
 export { finalizeJob, finalizeJobParams, finalizeJobSchema } from './finalize_job.js';
 export { loadMcpServer, stopMcpServer } from './shared/mcp-bootstrap.js';
 
+// GitHub tools
+export { getFileContents, getFileContentsParams, getFileContentsSchema, searchCode, searchCodeParams, searchCodeSchema, listCommits, listCommitsParams, listCommitsSchema } from './github_tools.js';
+
 // Export database functions
 export { readRecords, createRecord, type ReadRecordsParams, type CreateRecordParams } from './shared/database.js';

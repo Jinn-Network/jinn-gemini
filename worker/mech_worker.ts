@@ -688,6 +688,39 @@ async function checkAndRepostCompletedChains(): Promise<void> {
 }
 
 
+async function fetchSpecificRequest(requestId: string): Promise<UnclaimedRequest | null> {
+  try {
+    const query = `query GetRequest($id: String!) {
+  requests(where: { id: $id }) {
+    items {
+      id
+      mech
+      sender
+      ipfsHash
+      blockTimestamp
+      delivered
+    }
+  }
+}`;
+    const res = await fetch(PONDER_GRAPHQL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables: { id: requestId } }),
+    });
+    if (!res.ok) {
+      workerLogger.warn({ status: res.status }, 'Ponder request failed for specific request');
+      return null;
+    }
+    const json = await res.json();
+    const items = json?.data?.requests?.items || [];
+    if (items.length === 0) return null;
+    return items[0];
+  } catch (e: any) {
+    workerLogger.warn({ error: serializeError(e) }, 'Error fetching specific request');
+    return null;
+  }
+}
+
 async function processOnce(): Promise<void> {
   const workerAddress = getMechAddress();
   if (!workerAddress) {
@@ -695,24 +728,28 @@ async function processOnce(): Promise<void> {
     return;
   }
 
-  const recent = await fetchRecentRequests(50);
-  const candidates = await filterUnclaimed(recent);
-  if (candidates.length === 0) {
-    workerLogger.info('No unclaimed on-chain requests found');
-    return;
-  }
-
   // Optional: target a specific request id if provided (for deterministic tests)
   const targetIdEnv = (process.env.MECH_TARGET_REQUEST_ID || '').trim();
-  let filtered = candidates;
+  let candidates: UnclaimedRequest[];
+  
   if (targetIdEnv) {
     const targetHex = targetIdEnv.startsWith('0x') ? targetIdEnv.toLowerCase() : ('0x' + BigInt(targetIdEnv).toString(16)).toLowerCase();
-    filtered = candidates.filter(c => {
-      const idHex = String(c.id).startsWith('0x') ? String(c.id).toLowerCase() : ('0x' + BigInt(String(c.id)).toString(16)).toLowerCase();
-      return idHex === targetHex;
-    });
-    if (filtered.length === 0) {
-      workerLogger.info({ target: targetHex }, 'Target request not found among candidates');
+    const specificRequest = await fetchSpecificRequest(targetHex);
+    if (!specificRequest) {
+      workerLogger.info({ target: targetHex }, 'Target request not found in Ponder');
+      return;
+    }
+    if (specificRequest.delivered) {
+      workerLogger.info({ target: targetHex }, 'Target request already delivered');
+      return;
+    }
+    candidates = [specificRequest];
+    workerLogger.info({ target: targetHex }, 'Targeting specific request');
+  } else {
+    const recent = await fetchRecentRequests(50);
+    candidates = await filterUnclaimed(recent);
+    if (candidates.length === 0) {
+      workerLogger.info('No unclaimed on-chain requests found');
       return;
     }
   }

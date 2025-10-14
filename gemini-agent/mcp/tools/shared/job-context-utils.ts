@@ -33,7 +33,7 @@ interface BatchedJobData {
         id: string;
         delivered: boolean;
         blockTimestamp: string;
-        sourceJobDefinitionId?: string;
+        jobDefinitionId?: string;
     }>;
     artifacts: Array<{
         id: string;
@@ -67,12 +67,12 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
                     sourceJobDefinitionId
                 }
             }
-            requests(where: { sourceJobDefinitionId_in: $jobIds }, limit: 1000) {
+            requests(where: { jobDefinitionId_in: $jobIds }, limit: 1000) {
                 items {
                     id
                     delivered
                     blockTimestamp
-                    sourceJobDefinitionId
+                    jobDefinitionId
                 }
             }
             artifacts(where: { sourceJobDefinitionId_in: $jobIds }, limit: 1000) {
@@ -164,10 +164,10 @@ export async function fetchJobHierarchy(rootJobId: string, maxDepth: number = 3)
             
             // Group related data by job ID
             batchData.requests.forEach(req => {
-                if (req.sourceJobDefinitionId) {
-                    const existing = requestsByJob.get(req.sourceJobDefinitionId) || [];
+                if (req.jobDefinitionId) {
+                    const existing = requestsByJob.get(req.jobDefinitionId) || [];
                     existing.push(req);
-                    requestsByJob.set(req.sourceJobDefinitionId, existing);
+                    requestsByJob.set(req.jobDefinitionId, existing);
                 }
             });
             

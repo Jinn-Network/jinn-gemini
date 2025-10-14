@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { pushJsonToIpfs } from '../../../packages/mech-client-ts/dist/ipfs.js';
+import { pushJsonToIpfs } from 'mech-client-ts/dist/ipfs.js';
 
 export const createArtifactParams = z.object({
   name: z.string().min(1),
@@ -33,13 +33,15 @@ export async function createArtifact(args: unknown) {
     const contentPreview = content.slice(0, 100);
     const payload = { name, topic, content, mimeType: mimeType || 'text/plain' } as const;
 
+    // Upload to IPFS and return artifact metadata
+    // Worker will extract this from telemetry and include in delivery payload
     const [, cidHex] = await pushJsonToIpfs(payload);
-    const cid = cidHex; // gateway-compatible CIDv1 hex string already returned by helper
+    const cid = cidHex;
 
     const result = { cid, name, topic, contentPreview };
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: result, meta: { ok: true } }) }] };
-  } catch (error: any) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'EXECUTION_ERROR', message: error?.message || String(error) } }) }] };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'EXECUTION_ERROR', message } }) }] };
   }
 }
-

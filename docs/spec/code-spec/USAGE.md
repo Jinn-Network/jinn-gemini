@@ -171,7 +171,7 @@ See [`spec.md`](./spec.md) for the full Code Spec, including:
 - **Rules** - Hard constraints (future)
 - **Default Behaviors** - Canonical patterns like error handling + logging
 
-Examples demonstrating correct usage and violations are in [`examples/`](./examples/):
+Examples demonstrating correct usage and violations are in `examples/`:
 - `obj1.md` - Orthodoxy principle examples
 - `obj2.md` - Code for the next agent examples
 - `obj3.md` - Minimize harm (security) examples

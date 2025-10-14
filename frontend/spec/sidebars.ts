@@ -57,6 +57,15 @@ const sidebars: SidebarsConfig = {
         'code-spec/spec',
         'code-spec/VIOLATIONS',
         'code-spec/USAGE',
+        {
+          type: 'category',
+          label: 'Examples',
+          items: [
+            'code-spec/examples/obj1',
+            'code-spec/examples/obj2',
+            'code-spec/examples/obj3',
+          ],
+        },
       ],
     },
   ],

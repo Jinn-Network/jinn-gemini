@@ -53,6 +53,7 @@ export interface Artifact {
   cid: string
   topic: string
   contentPreview?: string
+  blockTimestamp?: string
 }
 
 export interface Message {
@@ -63,6 +64,15 @@ export interface Message {
   to?: string
   content: string
   blockTimestamp: string
+}
+
+export interface Workstream {
+  id: string  // The root request ID
+  jobName: string
+  blockTimestamp: string
+  mech: string
+  sender: string
+  jobDefinitionId?: string
 }
 
 export interface PageInfo {
@@ -103,6 +113,13 @@ export interface ArtifactsResponse {
 export interface MessagesResponse {
   messages: {
     items: Message[]
+    pageInfo: PageInfo
+  }
+}
+
+export interface WorkstreamsResponse {
+  requests: {
+    items: Workstream[]
     pageInfo: PageInfo
   }
 }
@@ -322,6 +339,7 @@ export async function queryArtifacts(options: QueryOptions = {}): Promise<Artifa
           cid
           topic
           contentPreview
+          blockTimestamp
         }
         pageInfo {
           hasNextPage
@@ -445,6 +463,7 @@ export async function getArtifact(id: string): Promise<Artifact | null> {
         cid
         topic
         contentPreview
+        blockTimestamp
       }
     }
   `
@@ -750,4 +769,183 @@ export async function fetchIpfsContent(
       contentType: 'text/plain'
     }
   }
+}
+
+// Workstream queries
+const queryWorkstreams = `
+  query Workstreams($limit: Int, $orderBy: String, $orderDirection: String) {
+    requests(
+      where: { 
+        AND: [
+          { sourceRequestId: null },
+          { sourceJobDefinitionId: null }
+        ]
+      }
+      orderBy: $orderBy
+      orderDirection: $orderDirection
+      limit: $limit
+    ) {
+      items {
+        id
+        jobName
+        blockTimestamp
+        mech
+        sender
+        jobDefinitionId
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+    }
+  }
+`
+
+export async function getWorkstreams(options: QueryOptions = {}): Promise<WorkstreamsResponse> {
+  const { limit = 50, orderBy = 'blockTimestamp', orderDirection = 'desc' } = options
+  
+  const data = await request<WorkstreamsResponse>(SUBGRAPH_URL, queryWorkstreams, {
+    limit,
+    orderBy,
+    orderDirection
+  })
+  
+  // Group requests by jobName and only keep the earliest (first) request
+  // This filters out:
+  // 1. Re-runs of the same root job (which are part of the original workstream)
+  // 2. Different job definition IDs for the same conceptual job
+  // The key insight: jobName is stable across re-runs, but jobDefinitionId can change
+  const jobNameToEarliestRequest = new Map<string, typeof data.requests.items[0]>()
+  
+  for (const item of data.requests.items) {
+    if (!item.jobName) continue
+    
+    const existing = jobNameToEarliestRequest.get(item.jobName)
+    if (!existing || Number(item.blockTimestamp) < Number(existing.blockTimestamp)) {
+      jobNameToEarliestRequest.set(item.jobName, item)
+    }
+  }
+  
+  // Convert map values back to array and sort by original order
+  const uniqueWorkstreams = Array.from(jobNameToEarliestRequest.values())
+    .sort((a, b) => {
+      if (orderDirection === 'desc') {
+        return Number(b.blockTimestamp) - Number(a.blockTimestamp)
+      }
+      return Number(a.blockTimestamp) - Number(b.blockTimestamp)
+    })
+  
+  return {
+    requests: {
+      items: uniqueWorkstreams,
+      pageInfo: data.requests.pageInfo
+    }
+  }
+}
+
+const queryWorkstreamRequests = `
+  query WorkstreamRequests($rootRequestId: String!, $limit: Int, $orderBy: String, $orderDirection: String) {
+    requests(
+      where: { sourceRequestId: $rootRequestId }
+      orderBy: $orderBy
+      orderDirection: $orderDirection
+      limit: $limit
+    ) {
+      items {
+        id
+        jobName
+        blockTimestamp
+        delivered
+        jobDefinitionId
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+    }
+  }
+`
+
+// Helper to recursively fetch all descendant requests
+async function fetchDescendants(requestId: string, visited: Set<string> = new Set()): Promise<Request[]> {
+  if (visited.has(requestId)) return []
+  visited.add(requestId)
+  
+  const data = await request<RequestsResponse>(SUBGRAPH_URL, queryWorkstreamRequests, {
+    rootRequestId: requestId,
+    limit: 100, // Fetch more per level
+    orderBy: 'blockTimestamp',
+    orderDirection: 'desc'
+  })
+  
+  const descendants: Request[] = data.requests.items
+  
+  // Recursively fetch children of each child
+  for (const child of data.requests.items) {
+    const grandchildren = await fetchDescendants(child.id, visited)
+    descendants.push(...grandchildren)
+  }
+  
+  return descendants
+}
+
+export async function getWorkstreamRequests(rootRequestId: string, limit: number = 10): Promise<RequestsResponse> {
+  // Fetch all descendants recursively
+  const allDescendants = await fetchDescendants(rootRequestId)
+  
+  // Sort by timestamp descending and limit
+  const sorted = allDescendants
+    .sort((a, b) => Number(b.blockTimestamp) - Number(a.blockTimestamp))
+    .slice(0, limit)
+  
+  return {
+    requests: {
+      items: sorted,
+      pageInfo: {
+        hasNextPage: allDescendants.length > limit,
+        hasPreviousPage: false,
+        startCursor: sorted[0]?.id,
+        endCursor: sorted[sorted.length - 1]?.id
+      }
+    }
+  }
+}
+
+const queryWorkstreamArtifacts = `
+  query WorkstreamArtifacts($rootRequestId: String!, $topic: String!) {
+    artifacts(
+      where: { 
+        AND: [
+          { sourceRequestId: $rootRequestId },
+          { topic: $topic }
+        ]
+      }
+      orderBy: "blockTimestamp"
+      orderDirection: "desc"
+      limit: 1
+    ) {
+      items {
+        id
+        requestId
+        name
+        cid
+        topic
+        contentPreview
+        blockTimestamp
+      }
+    }
+  }
+`
+
+export async function getWorkstreamArtifact(rootRequestId: string, topic: string = 'launcher_briefing'): Promise<Artifact | null> {
+  const data = await request<ArtifactsResponse>(SUBGRAPH_URL, queryWorkstreamArtifacts, {
+    rootRequestId,
+    topic
+  })
+  
+  return data.artifacts.items[0] || null
 }

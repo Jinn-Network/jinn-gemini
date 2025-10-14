@@ -26,7 +26,7 @@ export interface NavigationItem {
 }
 
 export const navigationItems: NavigationItem[] = [
-  // { label: 'Workstreams', collection: 'workstreams' },
+  { label: 'Workstreams', collection: 'workstreams' },
   { label: 'Jobs', collection: 'requests' },
   { label: 'Artifacts', collection: 'artifacts' },
 ];
