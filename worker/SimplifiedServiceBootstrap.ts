@@ -40,6 +40,15 @@ export interface SimplifiedBootstrapConfig {
   chain: 'base' | 'gnosis' | 'mode' | 'optimism';
   operatePassword: string;
   rpcUrl: string;
+  /**
+   * Absolute path to the middleware directory (for Python imports and venv)
+   */
+  middlewarePath?: string;
+  /**
+   * Absolute path to the working directory (where Python cwd will be set).
+   * For isolated tests, this should be a temp directory so `.operate` is created there.
+   */
+  workingDirectory?: string;
   deployMech?: boolean;
   mechMarketplaceAddress?: string;
   /**
@@ -74,6 +83,7 @@ export interface SimplifiedBootstrapResult {
 export class SimplifiedServiceBootstrap {
   private config: SimplifiedBootstrapConfig;
   private operateWrapper?: OlasOperateWrapper;
+  private outputBuffer: string = ''; // Buffer for E2E test auto-funding
 
   constructor(config: SimplifiedBootstrapConfig) {
     this.config = config;
@@ -125,21 +135,22 @@ export class SimplifiedServiceBootstrap {
    * Initialize OlasOperateWrapper with ATTENDED=true configuration
    */
   private async initializeWrapper(): Promise<void> {
-    const isTenderly = process.env.TENDERLY_ENABLED === 'true';
-    const effectiveRpcUrl = isTenderly ? process.env.TENDERLY_RPC_URL || this.config.rpcUrl : this.config.rpcUrl;
-    
+    const effectiveRpcUrl = this.config.tenderlyRpcUrl || this.config.rpcUrl;
+
     bootstrapLogger.info({
-      mode: isTenderly ? 'tenderly' : 'mainnet',
-      rpc: effectiveRpcUrl
+      rpc: effectiveRpcUrl,
+      workingDirectory: this.config.workingDirectory
     }, "Initializing operate wrapper with attended mode");
-    
+
     // Build RPC environment variables
     const chainLedgerRpc: Record<string, string> = {
       [this.config.chain]: effectiveRpcUrl
     };
-    
+
     // Respect ATTENDED and STAKING_PROGRAM from environment
     this.operateWrapper = await OlasOperateWrapper.create({
+      middlewarePath: this.config.middlewarePath, // For Python imports and Poetry venv resolution
+      workingDirectory: this.config.workingDirectory, // For Python cwd (where .operate is created)
       rpcUrl: effectiveRpcUrl,
       timeout: 30 * 60 * 1000, // 30 minutes
       defaultEnv: {
@@ -150,11 +161,11 @@ export class SimplifiedServiceBootstrap {
         attended: process.env.ATTENDED?.toLowerCase() === 'true'
       }
     });
-    
+
     bootstrapLogger.info({
-      mode: isTenderly ? 'tenderly' : 'mainnet',
       attended: process.env.ATTENDED?.toLowerCase() === 'true',
-      stakingProgram: this.config.stakingProgram || 'no_staking'
+      stakingProgram: this.config.stakingProgram || 'no_staking',
+      resolvedMiddlewarePath: this.operateWrapper?.getMiddlewarePath()
     }, "Wrapper initialized");
   }
 
@@ -163,21 +174,20 @@ export class SimplifiedServiceBootstrap {
    */
   private async createQuickstartConfig(): Promise<string> {
     bootstrapLogger.info("Creating quickstart config");
-    
-    // Determine effective RPC URL (Tenderly or mainnet)
-    const isTenderly = process.env.TENDERLY_ENABLED === 'true';
-    const effectiveRpcUrl = isTenderly ? process.env.TENDERLY_RPC_URL || this.config.rpcUrl : this.config.rpcUrl;
-    
+
+    // Determine effective RPC URL
+    const effectiveRpcUrl = this.config.tenderlyRpcUrl || this.config.rpcUrl;
+
     // Use unique service name to force new service creation (not reuse existing)
     const serviceName = `jinn-service-${Date.now()}`;
-    
+
     // Create base service config with home_chain set
     const serviceConfig = createDefaultServiceConfig({
       name: serviceName,
       home_chain: this.config.chain
     });
-    
-    // Override RPC URL (Tenderly or mainnet)
+
+    // Override RPC URL
     if (effectiveRpcUrl && serviceConfig.configurations[this.config.chain]) {
       serviceConfig.configurations[this.config.chain].rpc = effectiveRpcUrl;
     }
@@ -227,10 +237,9 @@ export class SimplifiedServiceBootstrap {
     // Write to temp file
     const configPath = join(tmpdir(), `jinn-simplified-bootstrap-${Date.now()}.json`);
     writeFileSync(configPath, JSON.stringify(serviceConfig, null, 2));
-    
-    bootstrapLogger.info({ 
+
+    bootstrapLogger.info({
       configPath,
-      mode: isTenderly ? 'tenderly' : 'mainnet',
       rpc: effectiveRpcUrl
     }, "Quickstart config created");
     return configPath;
@@ -293,35 +302,65 @@ export class SimplifiedServiceBootstrap {
     if (!this.operateWrapper) {
       throw new Error('Wrapper not initialized');
     }
-    
+
     bootstrapLogger.info({ configPath }, "Executing quickstart command");
-    
+
+    // Preflight guard: ensure middleware path is the isolated one when provided
+    if (this.config.workingDirectory) {
+      const resolved = this.operateWrapper.getMiddlewarePath();
+      if (resolved !== this.config.workingDirectory) {
+        throw new Error(`Isolated workingDirectory mismatch. Expected ${this.config.workingDirectory}, got ${resolved}`);
+      }
+      bootstrapLogger.info({ isolatedPath: resolved }, "✅ Running in isolated directory");
+    }
+
     const stakingProgram = this.config.stakingProgram || 'custom_staking';
     bootstrapLogger.info({ stakingProgram }, "Staking program configured");
-    
+
     // Use ATTENDED env var from wrapper (can be 'true', 'false', true, or false)
     const attendedEnvVar = this.operateWrapper?.env?.ATTENDED;
     const isAttended = attendedEnvVar === 'true' || attendedEnvVar === true;
-    
+
     bootstrapLogger.info({ attended: isAttended }, "Running quickstart");
-    
-    // Execute quickstart command with appropriate mode
-    const result = await this.operateWrapper.executeCommand(
-      'quickstart',
-      [configPath, `--attended=${isAttended}`],
-      {
-        stream: true, // Show all middleware output (no filtering)
-        timeoutMs: 30 * 60 * 1000, // 30 minutes
-        interactive: isAttended // Enable stdin only for attended mode
+
+    // Capture stdout for E2E test auto-funding by intercepting process.stdout.write
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: any, encoding?: any, callback?: any): boolean => {
+      // Capture to buffer
+      const text = chunk.toString();
+      this.outputBuffer += text;
+      // Keep buffer under 50KB
+      if (this.outputBuffer.length > 50000) {
+        this.outputBuffer = this.outputBuffer.slice(-50000);
       }
-    );
-    
-    if (!result.success) {
-      throw new Error(`Quickstart failed: ${result.stderr || result.stdout}`);
+      // Call original
+      return originalWrite(chunk, encoding, callback);
+    }) as any;
+
+    try {
+      // Execute quickstart command with appropriate mode
+      const result = await this.operateWrapper.executeCommand(
+        'quickstart',
+        [configPath, `--attended=${isAttended}`],
+        {
+          stream: true, // Show all middleware output (no filtering)
+          timeoutMs: 30 * 60 * 1000, // 30 minutes
+          interactive: isAttended, // Enable stdin only for attended mode
+          // Explicitly set cwd to the isolated middleware path if provided
+          cwd: this.config.workingDirectory || this.operateWrapper.getMiddlewarePath()
+        }
+      );
+
+      if (!result.success) {
+        throw new Error(`Quickstart failed: ${result.stderr || result.stdout}`);
+      }
+
+      bootstrapLogger.info("Quickstart completed successfully");
+      return result.stdout;
+    } finally {
+      // Always restore original stdout.write
+      process.stdout.write = originalWrite;
     }
-    
-    bootstrapLogger.info("Quickstart completed successfully");
-    return result.stdout;
   }
 
   /**
@@ -358,6 +397,14 @@ export class SimplifiedServiceBootstrap {
     }, "Bootstrap completed");
     
     return result;
+  }
+
+  /**
+   * Get recent output for E2E test monitoring (auto-funding)
+   * Returns the buffered stdout from the middleware process
+   */
+  getRecentOutput(): string {
+    return this.outputBuffer;
   }
 
   /**

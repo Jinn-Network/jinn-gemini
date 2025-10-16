@@ -5,7 +5,7 @@
 import { ethers } from 'ethers';
 
 const MECH_MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
-const RPC_URL = process.env.BASE_LEDGER_RPC || 'https://mainnet.base.org';
+const RPC_URL = process.env.RPC_URL || 'https://mainnet.base.org';
 
 // MechMarketplace ABI - only what we need
 const ABI = [

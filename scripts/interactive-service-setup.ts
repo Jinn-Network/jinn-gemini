@@ -1,14 +1,15 @@
 #!/usr/bin/env tsx
 /**
  * Interactive Service Setup CLI - JINN-202 Simplified Version
- * 
+ *
  * User-friendly command-line wizard for setting up an OLAS service.
  * Uses middleware's native attended mode with interactive prompts.
- * 
+ *
  * Usage:
- *   yarn setup:service              # Interactive wizard (default)
- *   yarn setup:service --chain=base # Specify chain
- *   yarn setup:service --with-mech  # Deploy with mech contract
+ *   yarn setup:service                    # Mainnet deployment (uses .env)
+ *   yarn setup:service --testnet          # Testnet deployment (uses .env.test)
+ *   yarn setup:service --chain=base       # Specify chain
+ *   yarn setup:service --no-mech          # Deploy without mech contract
  */
 
 import 'dotenv/config';
@@ -18,19 +19,29 @@ import { resolve } from 'path';
 import { SimplifiedServiceBootstrap, SimplifiedBootstrapConfig } from '../worker/SimplifiedServiceBootstrap.js';
 import { logger } from '../worker/logger.js';
 
-// Load mainnet env if TENDERLY_ENABLED is false
-if (process.env.TENDERLY_ENABLED !== 'true') {
-  const mainnetEnvPath = resolve(process.cwd(), '.env.mainnet');
-  if (existsSync(mainnetEnvPath)) {
-    dotenvConfig({ path: mainnetEnvPath, override: true });
-    logger.info('Loaded .env.mainnet for mainnet deployment');
+const setupLogger = logger.child({ component: "SETUP-CLI" });
+
+// Parse args early to determine environment
+const earlyArgs = process.argv.slice(2);
+const isTestnet = earlyArgs.includes('--testnet');
+
+// Load appropriate env file based on --testnet flag
+if (isTestnet) {
+  const testEnvPath = resolve(process.cwd(), '.env.test');
+  if (existsSync(testEnvPath)) {
+    dotenvConfig({ path: testEnvPath, override: true });
+    setupLogger.info('Loaded .env.test for testnet deployment');
+  } else {
+    console.error('\n❌ Error: .env.test not found');
+    console.error('Create .env.test with testnet/Tenderly VNet configuration\n');
+    process.exit(1);
   }
 }
-
-const setupLogger = logger.child({ component: "SETUP-CLI" });
+// Otherwise, .env is already loaded by 'dotenv/config' at line 14
 
 interface CLIArgs {
   chain?: 'base' | 'gnosis' | 'mode' | 'optimism';
+  testnet?: boolean;
   noMech?: boolean;
   noStaking?: boolean;
   stakingContract?: string;
@@ -39,12 +50,14 @@ interface CLIArgs {
 
 function parseArgs(): CLIArgs {
   const args: CLIArgs = {};
-  
+
   for (const arg of process.argv.slice(2)) {
     if (arg === '--help' || arg === '-h') {
       args.help = true;
     } else if (arg.startsWith('--chain=')) {
       args.chain = arg.split('=')[1] as any;
+    } else if (arg === '--testnet') {
+      args.testnet = true;
     } else if (arg === '--no-mech') {
       args.noMech = true;
     } else if (arg === '--no-staking') {
@@ -53,7 +66,7 @@ function parseArgs(): CLIArgs {
       args.stakingContract = arg.split('=')[1];
     }
   }
-  
+
   return args;
 }
 
@@ -70,6 +83,9 @@ USAGE:
   yarn setup:service [OPTIONS]
 
 OPTIONS:
+  --testnet           Use .env.test for testnet/Tenderly VNet deployment
+                      Default: use .env for mainnet deployment
+
   --chain=NETWORK     Network to deploy on (base, gnosis, mode, optimism)
                       Default: base
 
@@ -78,31 +94,26 @@ OPTIONS:
   --staking-contract  Custom staking contract address (default: AgentsFun1)
   --help, -h          Show this help message
 
-ENVIRONMENT VARIABLES:
-  OPERATE_PASSWORD    Password for wallet encryption (required)
-  BASE_LEDGER_RPC     RPC URL for Base network (required if using Base)
-  GNOSIS_LEDGER_RPC   RPC URL for Gnosis network (required if using Gnosis)
-  MODE_LEDGER_RPC     RPC URL for Mode network (required if using Mode)
-  OPTIMISM_LEDGER_RPC RPC URL for Optimism network (required if using Optimism)
+ENVIRONMENT FILES:
+  .env                Production/mainnet configuration (default)
+  .env.test           Testnet/Tenderly VNet configuration (use with --testnet)
 
-TENDERLY VIRTUAL TESTNET (Optional):
-  TENDERLY_ENABLED=true     Switches from mainnet to Tenderly Virtual TestNet
-  TENDERLY_RPC_URL          RPC URL for your Virtual TestNet
-  
-  See: yarn tsx scripts/setup-tenderly-vnet.ts
+REQUIRED ENVIRONMENT VARIABLES:
+  OPERATE_PASSWORD    Password for wallet encryption
+  RPC_URL             RPC URL for the target network
 
 EXAMPLES:
-  # Deploy service on Base mainnet (with staking + mech by default)
+  # Deploy on mainnet using .env
   yarn setup:service --chain=base
 
-  # Deploy service without mech
+  # Deploy on testnet using .env.test (Tenderly VNet)
+  yarn setup:service --testnet --chain=base
+
+  # Deploy without mech
   yarn setup:service --chain=base --no-mech
 
   # Deploy on Gnosis network
   yarn setup:service --chain=gnosis
-  
-  # Deploy on Tenderly Virtual TestNet (cost-free testing)
-  TENDERLY_ENABLED=true yarn setup:service --chain=base
 
 WHAT HAPPENS:
   The middleware will:
@@ -135,41 +146,24 @@ async function main() {
     process.exit(0);
   }
 
-  // Check if Tenderly mode is enabled
-  const isTenderly = process.env.TENDERLY_ENABLED === 'true';
-
   // Validate environment
   const operatePassword = process.env.OPERATE_PASSWORD;
   if (!operatePassword) {
     console.error(`\n❌ Error: OPERATE_PASSWORD environment variable is required\n`);
-    console.error(`Set it in your .env file or export it:\n`);
+    console.error(`Set it in your .env or .env.test file or export it:\n`);
     console.error(`  export OPERATE_PASSWORD="your-password"\n`);
     process.exit(1);
   }
 
   // Determine chain and RPC URL
   const chain = args.chain || 'base';
-  let rpcUrl: string;
+  const rpcUrl = process.env.RPC_URL || '';
 
-  if (isTenderly) {
-    // Tenderly mode: use TENDERLY_RPC_URL
-    rpcUrl = process.env.TENDERLY_RPC_URL || '';
-    if (!rpcUrl) {
-      console.error(`\n❌ Error: TENDERLY_RPC_URL required when TENDERLY_ENABLED=true\n`);
-      console.error(`Run: yarn tsx scripts/setup-tenderly-vnet.ts\n`);
-      process.exit(1);
-    }
-  } else {
-    // Mainnet mode: use chain-specific RPC
-    const rpcEnvVar = `${chain.toUpperCase()}_LEDGER_RPC`;
-    rpcUrl = process.env[rpcEnvVar] || process.env.BASE_LEDGER_RPC || process.env.RPC_URL || '';
-
-    if (!rpcUrl) {
-      console.error(`\n❌ Error: ${rpcEnvVar} environment variable is required\n`);
-      console.error(`Set it in your .env file or export it:\n`);
-      console.error(`  export ${rpcEnvVar}="https://your-rpc-url"\n`);
-      process.exit(1);
-    }
+  if (!rpcUrl) {
+    console.error(`\n❌ Error: RPC_URL environment variable is required\n`);
+    console.error(`Set it in your ${args.testnet ? '.env.test' : '.env'} file or export it:\n`);
+    console.error(`  export RPC_URL="https://your-rpc-url"\n`);
+    process.exit(1);
   }
 
   // Mech marketplace addresses (Base mainnet is the primary target)
@@ -201,13 +195,13 @@ async function main() {
   };
 
   // Show mode banner
-  if (isTenderly) {
+  if (args.testnet) {
     console.log('\n╔════════════════════════════════════════════════════════════╗');
-    console.log('║         🧪 TENDERLY VIRTUAL TESTNET MODE ENABLED          ║');
+    console.log('║              🧪 TESTNET DEPLOYMENT MODE                   ║');
     console.log('╚════════════════════════════════════════════════════════════╝');
     console.log('');
-    console.log('⚡ Using simulated Base mainnet fork');
-    console.log('💰 Unlimited ETH (no real funds needed)');
+    console.log('⚡ Using Tenderly Virtual TestNet');
+    console.log('💰 Simulated funds (no real funds needed)');
     console.log('🔍 Instant transactions');
     console.log('📊 Full visibility in Tenderly Dashboard');
     console.log('');
@@ -234,7 +228,7 @@ async function main() {
   setupLogger.info({
     chain,
     withMech: config.deployMech,
-    mode: isTenderly ? 'tenderly' : 'mainnet',
+    mode: args.testnet ? 'testnet' : 'mainnet',
     rpcUrl: rpcUrl.substring(0, 30) + '...',
   }, 'Starting simplified interactive service setup (JINN-202)');
 

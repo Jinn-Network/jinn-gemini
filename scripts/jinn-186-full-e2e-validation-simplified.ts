@@ -81,7 +81,7 @@ const DEFAULT_SERVICE_CONFIG = {
     base: {
       staking_program_id: "agents_fun_1",
       nft: "bafybeig64atqaladigoc3ds4arltdu63wkdrk3gesjfvnfdmz35amv7faq",
-      rpc: process.env.BASE_LEDGER_RPC || "https://mainnet.base.org",
+      rpc: process.env.RPC_URL || "https://mainnet.base.org",
       agent_id: 43,
       cost_of_bond: 50000000000000000000, // 50 OLAS
       monthly_gas_estimate: 10000000000000000000, // 10 ETH

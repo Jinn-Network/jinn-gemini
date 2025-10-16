@@ -12,11 +12,11 @@ const AMOUNT = '0.001'; // 0.001 ETH for gas
 async function fundAgentKey() {
   console.log('Funding agent key for mech deployment...\n');
   
-  const rpcUrl = process.env.BASE_LEDGER_RPC;
+  const rpcUrl = process.env.RPC_URL;
   const fundingPrivateKey = process.env.FUNDING_PRIVATE_KEY || process.env.WORKER_PRIVATE_KEY;
-  
+
   if (!rpcUrl) {
-    throw new Error('BASE_LEDGER_RPC environment variable required');
+    throw new Error('RPC_URL environment variable required');
   }
   
   if (!fundingPrivateKey) {

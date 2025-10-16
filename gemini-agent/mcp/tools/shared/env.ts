@@ -16,6 +16,9 @@ export function loadEnvOnce(): void {
 
   const candidates: string[] = [];
 
+  // Detect if running in test environment (Vitest automatically sets this)
+  const isTestEnv = process.env.VITEST === 'true';
+
   // 1) Explicit path override
   const explicit = process.env.JINN_ENV_PATH;
   if (explicit) {
@@ -26,6 +29,10 @@ export function loadEnvOnce(): void {
   const cwd = process.cwd();
   let cur = cwd;
   for (let i = 0; i < 4; i++) {
+    // In test mode, prefer .env.test over .env if present
+    if (isTestEnv) {
+      candidates.push(path.join(cur, '.env.test'));
+    }
     candidates.push(path.join(cur, '.env'));
     const parent = path.dirname(cur);
     if (parent === cur) break;
@@ -37,6 +44,10 @@ export function loadEnvOnce(): void {
   const here = path.dirname(fileURLToPath(import.meta.url));
   cur = here;
   for (let i = 0; i < 7; i++) {
+    // In test mode, prefer .env.test over .env if present
+    if (isTestEnv) {
+      candidates.push(path.join(cur, '.env.test'));
+    }
     candidates.push(path.join(cur, '.env'));
     const parent = path.dirname(cur);
     if (parent === cur) break;

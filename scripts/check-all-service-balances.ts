@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 
-const RPC = process.env.BASE_LEDGER_RPC || 'https://mainnet.base.org';
+const RPC = process.env.RPC_URL || 'https://mainnet.base.org';
 const OLAS = '0x54330d28ca3357F294334BDC454a032e7f353416';
 const abi = ['function balanceOf(address) view returns (uint256)'];
 

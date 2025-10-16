@@ -91,8 +91,8 @@ CHAIN_ID=8453                       # 8453 = Base mainnet, 84532 = Base Sepolia
 RPC_URL=https://mainnet.base.org    # Base RPC endpoint
 
 # === Ponder (On-chain Event Indexer) ===
-PONDER_RPC_URL=https://mainnet.base.org
-MECH_MARKETPLACE_ADDRESS_BASE=0x...  # MechMarketplace contract address
+# Use RPC_URL for Ponder chain access; optionally set PONDER_START_BLOCK
+PONDER_PORT=42069
 
 # === Control API (GraphQL Gateway) ===
 CONTROL_API_URL=http://localhost:4001/graphql  # ⚠️ Must include /graphql path
@@ -175,15 +175,7 @@ This submits a test request to the on-chain MechMarketplace. The worker will:
 
 ### Testing with Tenderly Virtual TestNet (Optional)
 
-For cost-free testing without using real funds, you can use Tenderly's Virtual TestNet:
-
-```bash
-# Copy the Tenderly configuration template
-cp env.tenderly.template env.tenderly
-
-# Edit env.tenderly with your Tenderly credentials
-# Get credentials from: https://dashboard.tenderly.co/account/authorization
-```
+For cost-free testing without using real funds, use `.env.test` with Tenderly's Virtual TestNet:
 
 **Key benefits**:
 - Unlimited ETH (no real funds needed)
@@ -191,14 +183,16 @@ cp env.tenderly.template env.tenderly
 - Fork of Base mainnet with all contracts
 - Full transaction debugging in Tenderly dashboard
 
-**To use Tenderly instead of mainnet**:
+**Setup**:
+1. Configure `.env.test` with your Tenderly VNet RPC URL
+2. Run service setup with `--testnet` flag:
+
 ```bash
-# Load Tenderly config instead of .env
-source env.tenderly
-yarn dev:stack
+# Deploy on testnet using .env.test
+yarn setup:service --testnet --chain=base
 ```
 
-See `env.tenderly.template` for detailed configuration instructions.
+See `.env.test` (or `.env.test.template`) for configuration details.
 
 ### Common Setup Issues
 
@@ -320,21 +314,20 @@ To run the Jinn worker and its associated services, you'll need to configure sev
 
 #### Required for OLAS Service Staking
 
--   `OPERATE_PASSWORD`: Password for the olas-operate-middleware (used for unattended operations).
--   `OLAS_STAKING_CONTRACT_ADDRESS_BASE`: The address of the OLAS staking contract on Base.
--   `OLAS_AGENT_REGISTRY_ADDRESS_BASE`: The address of the OLAS Agent Registry on Base.
--   `OLAS_SERVICE_REGISTRY_ADDRESS_BASE`: The address of the OLAS Service Registry on Base.
--   `MECH_MARKETPLACE_ADDRESS_BASE`: The address of the MechMarketplace contract on Base (required for mech deployment).
+-   `OPERATE_PASSWORD`: Password for the olas-operate-middleware.
+
+Notes:
+- Contract addresses (staking, agent registry, service registry, marketplace) are auto-detected by the middleware. No env vars are required.
+- Staking mode can be controlled via env (`ATTENDED=true/false`, `STAKING_PROGRAM=no_staking|custom_staking`) or interactively via the setup CLI.
 
 #### Required for E2E Testing
 
-Running the end-to-end test suite requires additional variables to interact with Tenderly, which is used to create ephemeral test environments.
+Running the end-to-end test suite uses `.env.test` and Tenderly Virtual TestNets. Place the following in `.env.test` (see `.env.test.template` for placeholders):
 
 -   `TENDERLY_ACCESS_KEY`: Your Tenderly access key.
--   `TENDERLY_ACCOUNT_SLUG`: Your Tenderly account slug (the name of your organization).
--   `TENDERLY_PROJECT_SLUG`: The slug of your project within Tenderly.
--   `TEST_RPC_URL`: (Optional) An RPC URL to use specifically for testing, overriding the main `RPC_URL`.
--   `DISABLE_STS_CHECKS`: (Optional) Set to `true` to bypass Safe Transaction Service checks, which is often necessary in test environments.
+-   `TENDERLY_ACCOUNT_SLUG`: Your Tenderly account slug (organization name).
+-   `TENDERLY_PROJECT_SLUG`: Your Tenderly project slug.
+-   `DISABLE_STS_CHECKS`: (Optional) Set to `true` to bypass Safe Transaction Service checks.
 
 ### Gemini Configuration
 

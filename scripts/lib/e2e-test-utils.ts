@@ -28,7 +28,7 @@ export function setupOlasEnvironment(config: ServiceTestConfig): void {
   
   process.env.RPC_URL = config.vnetResult.adminRpcUrl;
   process.env.CHAIN_ID = BASE_MAINNET_CHAIN_ID.toString();
-  process.env.BASE_LEDGER_RPC = config.vnetResult.adminRpcUrl;
+  process.env.RPC_URL = config.vnetResult.adminRpcUrl;
   process.env.STAKING_PROGRAM = OLAS_STAKING_PROGRAM_ENVIRONMENT;
 }
 

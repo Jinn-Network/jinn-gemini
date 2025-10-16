@@ -59,7 +59,7 @@ async function main() {
     });
 
     // Update RPC URL to Base mainnet
-    const baseRpcUrl = process.env.BASE_LEDGER_RPC || 'https://mainnet.base.org';
+    const baseRpcUrl = process.env.RPC_URL || 'https://mainnet.base.org';
     serviceConfig.configurations.base.rpc = baseRpcUrl;
 
     const serviceConfigPath = path.join(tempDir, 'service-config.json');

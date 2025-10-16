@@ -6,7 +6,7 @@
 
 import { ethers } from 'ethers';
 
-const RPC_URL = process.env.BASE_LEDGER_RPC || 'https://mainnet.base.org';
+const RPC_URL = process.env.RPC_URL || 'https://mainnet.base.org';
 const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
 

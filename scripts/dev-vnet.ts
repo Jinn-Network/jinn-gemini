@@ -177,7 +177,6 @@ async function main() {
     args: ['dev'],
     cwd: join(process.cwd(), 'ponder'),
     env: {
-      PONDER_RPC_URL: vnetResult.adminRpcUrl,
       PORT: '4071',
       PONDER_GRAPHQL_URL: 'http://localhost:4071/graphql',
       PONDER_START_BLOCK: process.env.PONDER_START_BLOCK!,

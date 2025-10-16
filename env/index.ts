@@ -49,12 +49,14 @@ if (process.env.__ENV_LOADED !== '1') {
       'ATTENDED',
     ]);
 
-    // Review mode: preserve runtime-provided values for specific Ponder config vars
+    // Review mode: preserve runtime-provided values for specific config vars
+    // Used in tests and VNet review sessions to prevent .env from overriding runtime values
     const isReviewMode = process.env.PONDER_REVIEW_MODE === '1';
     const reviewModePreservedKeys = new Set<string>([
+      'RPC_URL',
+      'PONDER_GRAPHQL_URL',
       'PONDER_START_BLOCK',
       'PONDER_END_BLOCK',
-      'PONDER_RPC_URL',
     ]);
 
     for (const key of Object.keys(process.env)) {
@@ -84,26 +86,6 @@ if (process.env.__ENV_LOADED !== '1') {
       }
       if (!parsed.MECHX_CHAIN_RPC) {
         process.env.MECHX_CHAIN_RPC = parsed.RPC_URL;
-      }
-      if (!parsed.PONDER_RPC_URL) {
-        process.env.PONDER_RPC_URL = parsed.RPC_URL;
-      }
-      if (!parsed.BASE_RPC_URL) {
-        process.env.BASE_RPC_URL = parsed.RPC_URL;
-      }
-    }
-    
-    // RPC Consolidation: Map all RPC variables to use the single RPC_URL
-    if (parsed.RPC_URL) {
-      // Set fallback RPC variables to use the main RPC_URL if they're not explicitly set
-      if (!parsed.MECH_RPC_HTTP_URL) {
-        process.env.MECH_RPC_HTTP_URL = parsed.RPC_URL;
-      }
-      if (!parsed.MECHX_CHAIN_RPC) {
-        process.env.MECHX_CHAIN_RPC = parsed.RPC_URL;
-      }
-      if (!parsed.PONDER_RPC_URL) {
-        process.env.PONDER_RPC_URL = parsed.RPC_URL;
       }
       if (!parsed.BASE_RPC_URL) {
         process.env.BASE_RPC_URL = parsed.RPC_URL;

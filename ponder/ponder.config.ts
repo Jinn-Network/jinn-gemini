@@ -6,12 +6,10 @@ import { createConfig } from "@ponder/core";
 import { http } from "viem";
 import fetch from 'cross-fetch';
 
-// Base chain RPC; can be overridden via env PONDER_RPC_URL
-const DEFAULT_BASE_RPC = process.env.RPC_URL || "https://mainnet.base.org";
-const rpcUrl = process.env.PONDER_RPC_URL || DEFAULT_BASE_RPC;
-
 // Get start block: use env var if set, otherwise fetch current block and use recent history
 async function getStartBlock(): Promise<number> {
+  const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
+
   if (process.env.PONDER_START_BLOCK) {
     return Number(process.env.PONDER_START_BLOCK);
   }
@@ -54,6 +52,9 @@ const startBlock = await getStartBlock();
 const MECH_ADDRESS = getMechAddress() || '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7';
 console.log('[Ponder Config] Indexing mech:', MECH_ADDRESS);
 console.log('[Ponder Config] Start block:', startBlock);
+
+// Read RPC_URL here (after env/index.js has run) to respect review mode overrides
+const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
 
 export default createConfig({
   networks: {

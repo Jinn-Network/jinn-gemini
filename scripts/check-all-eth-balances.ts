@@ -8,7 +8,7 @@ import { ethers } from 'ethers';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const RPC_URL = process.env.BASE_LEDGER_RPC || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+const RPC_URL = process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
 
 // Known addresses
 const ADDRESSES = {

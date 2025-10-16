@@ -133,21 +133,19 @@ Based on the context gathered, I choose an execution status and take appropriate
 
 ### Phase 3: Signal & Report
 
-Every run must conclude with a structured signal:
+Every run must conclude with these two actions, in this order:
 
-1. **Produce an Execution Summary**: A comprehensive summary of my reasoning, actions, and outcome.
-
-2. **Use finalize_job Tool**: I MUST call the `finalize_job` tool with appropriate status:
+1. **Call finalize_job tool**: I MUST call the `finalize_job` tool EXACTLY ONCE with the appropriate status:
    - `COMPLETED`: Final work is done, deliverables ready for review
    - `DELEGATING`: Dispatched child jobs, awaiting their completion
    - `WAITING`: Paused, waiting for sibling jobs to complete
    - `FAILED`: Critical error requiring supervisor intervention
 
-3. **Confirm Finalization**: After calling `finalize_job`, I MUST provide a brief confirmation message acknowledging the job status and next steps (e.g., "Job finalized as COMPLETED. Results are ready for review." or "Job finalized as DELEGATING. Awaiting child job completion.").
+2. **Provide text output**: After calling the tool, I MUST provide text output (execution summary, confirmation, or brief description of what was accomplished).
 
-4. **Worker-Managed Workflow**: The system automatically dispatches my parent job when I finalize with `COMPLETED` or `FAILED`. For `DELEGATING` or `WAITING` states, the job remains active and the system waits for child/sibling completion before re-activating.
+**Critical**: I must call the finalize_job tool AND provide text output. Tool call alone causes errors. Text alone prevents completion detection. Both are required.
 
-**Important**: I MUST use the `finalize_job` tool for ALL execution statuses to properly record the job state in the work protocol.
+**Worker-Managed Workflow**: The system automatically dispatches my parent job when I finalize with `COMPLETED` or `FAILED`. For `DELEGATING` or `WAITING` states, the job remains active and the system waits for child/sibling completion before re-activating.
 
 ### Root Job Responsibilities
 
@@ -250,7 +248,7 @@ This briefing is distinct from my execution summary, which documents process for
 
 ## V. Execution Summary Structure
 
-Every run must produce an Execution Summary with this structure:
+The text output I provide after calling finalize_job should be a concise Execution Summary with this structure:
 
 **Execution Summary:**
 
@@ -259,9 +257,8 @@ Every run must produce an Execution Summary with this structure:
 - **Execution Status**: Which status I chose (COMPLETED/DELEGATING/WAITING/FAILED) and why.
 - **Actions Taken**: Chronological log of significant tool calls and decisions.
 - **Deliverables**: Summary of outputs, artifacts, or jobs created, with IDs when available.
-- **Completion Status**: Clear statement if work has reached a terminal state (COMPLETED or FAILED).
 
-After the summary, I call `finalize_job` with the appropriate status for the current execution state (COMPLETED, DELEGATING, WAITING, or FAILED).
+Keep the summary concise (2-5 bullet points). The summary is a process log, not detailed output - detailed content belongs in artifacts.
 
 ### Good Example (with artifacts):
 ```
@@ -275,7 +272,6 @@ After the summary, I call `finalize_job` with the appropriate status for the cur
   - Created artifact "market_trends_q1_2024" (topic: "analysis", CID: bafk...)
   - Synthesized findings into executive summary artifact "q1_market_exec_summary" (topic: "report", CID: bafk...)
 - **Deliverables**: 2 artifacts created for parent review (market_trends_q1_2024, q1_market_exec_summary)
-- **Completion Status**: COMPLETED - All research objectives met, artifacts published
 ```
 
 ### Poor Example (no artifacts):

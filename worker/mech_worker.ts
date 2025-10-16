@@ -810,12 +810,12 @@ async function processOnce(): Promise<void> {
     const targetMechAddress = target.mech;
     const privateKey = getServicePrivateKey();
     const rpcHttpUrl = process.env.RPC_URL;
-    
+
     if (!safeAddress || !privateKey) {
       workerLogger.warn({ safeAddress: !!safeAddress, privateKey: !!privateKey }, 'Missing Safe delivery configuration; skipping on-chain delivery');
       return;
     }
-    
+
     // Check if Safe is actually deployed
     if (safeAddress && rpcHttpUrl) {
       try {

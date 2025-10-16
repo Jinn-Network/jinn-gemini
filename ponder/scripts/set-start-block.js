@@ -9,7 +9,7 @@ const envPath = resolve(repoRoot, '.env');
 
 async function setStartBlock() {
   // Read RPC_URL and PONDER_START_BLOCK from root .env file
-  let rpcUrl = process.env.RPC_URL || process.env.PONDER_RPC_URL;
+  let rpcUrl = process.env.RPC_URL;
   let existingStartBlock = process.env.PONDER_START_BLOCK;
 
   if (existsSync(envPath)) {

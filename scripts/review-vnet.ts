@@ -144,8 +144,7 @@ async function startServices(metadata: ArchiveMetadata): Promise<void> {
   const env: Record<string, string> = {
     ...process.env,
     PONDER_REVIEW_MODE: '1',  // Enable review mode to preserve runtime env vars
-    PONDER_RPC_URL: metadata.vnetRpc,
-    RPC_URL: metadata.vnetRpc,  // Override RPC_URL to prevent fallback to .env VNet
+    RPC_URL: metadata.vnetRpc,  // Override RPC_URL to use archived VNet
     PONDER_START_BLOCK: metadata.startBlock.toString(),  // Use archived start block
   };
 

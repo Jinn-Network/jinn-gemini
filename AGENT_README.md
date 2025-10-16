@@ -37,9 +37,9 @@ SUPABASE_URL=https://<your-project-ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 
 # Optional; defaults shown
-PONDER_GRAPHQL_URL=http://localhost:42069/graphql
+PONDER_PORT=42069
 CONTROL_API_PORT=4001
-PONDER_RPC_URL=https://mainnet.base.org
+# Ponder uses RPC_URL; optionally set PONDER_START_BLOCK for a shorter sync window
 PONDER_START_BLOCK=35577849
 PONDER_MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
 
@@ -76,7 +76,13 @@ yarn mcp:start
 ## Environment variables (confirmed)
 
 - Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required by `control-api/server.ts`).
-- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `PONDER_RPC_URL` or `RPC_URL`, `PONDER_START_BLOCK`, `PONDER_MECH_ADDRESS` (`ponder/ponder.config.ts`).
+- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `RPC_URL`, `PONDER_START_BLOCK`, `PONDER_MECH_ADDRESS` (`ponder/ponder.config.ts`).
+
+Testing with .env.test
+
+- For e2e/local tests, you can place a `.env.test` at the repo root containing test-only values (e.g., `MECH_SAFE_ADDRESS`, `MECH_ADDRESS`).
+- Vitest automatically loads `.env.test` when running tests.
+- Alternatively, set `JINN_ENV_PATH=/absolute/path/to/.env.test` to force a specific file.
 - Control API: `CONTROL_API_PORT` (default `4001`). Requires `X-Worker-Address` on requests.
 - Agent loop protection (optional, `gemini-agent/agent.ts`):
   - `AGENT_MAX_STDOUT_SIZE` (bytes, default 5MB)
@@ -90,7 +96,7 @@ yarn mcp:start
 
 ## Ponder (indexer) – reads
 
-- Network: Base (8453). RPC: `PONDER_RPC_URL` or `RPC_URL`. Start block: `PONDER_START_BLOCK`.
+- Network: Base (8453). RPC: `RPC_URL`. Start block: `PONDER_START_BLOCK`.
 - Contracts watched: `MechMarketplace` (request events) and `OlasMech` (deliver events).
 - Schema (`ponder/ponder.schema.ts`):
   - `request(id, mech, sender, requestData?, ipfsHash?, deliveryIpfsHash?, blockNumber, blockTimestamp, delivered, jobName?, enabledTools?[])`
@@ -520,9 +526,9 @@ source env.tenderly
 yarn tsx scripts/setup-tenderly-vnet.ts
 
 # 3. Export VNet RPC URL (shown in script output)
-export TENDERLY_ENABLED=true
+# For test deployments, use `.env.test` and the `--testnet` flag with the setup CLI.
 export TENDERLY_RPC_URL="<vnet-rpc-url>"
-export BASE_LEDGER_RPC="$TENDERLY_RPC_URL"
+export RPC_URL="$TENDERLY_RPC_URL"
 
 # 4. Run service setup
 yarn setup:service --chain=base --with-mech
@@ -1316,7 +1322,7 @@ rm -rf olas-operate-middleware/.operate
 **Environment Setup**: Ensure these variables are set:
 ```bash
 OPERATE_PASSWORD=12345678
-BASE_LEDGER_RPC="https://your-base-rpc-url"
+RPC_URL="https://your-base-rpc-url"
 ```
 
 #### Issue 2: "User not logged in" during API calls (JINN-198)
@@ -1353,7 +1359,7 @@ if (this.password && endpoint !== '/api/account/login') {
 For unattended mode (`--attended=false`), the quickstart command requires:
 ```bash
 OPERATE_PASSWORD=12345678
-BASE_LEDGER_RPC="https://mainnet.base.org"
+RPC_URL="https://mainnet.base.org"
 STAKING_PROGRAM="custom_staking"  # or "no_staking"
 CUSTOM_STAKING_ADDRESS="0x2585e63df7BD9De8e058884D496658a030b5c6ce"  # AgentsFun1 staking
 ```

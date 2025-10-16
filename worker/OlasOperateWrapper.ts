@@ -23,6 +23,11 @@ export interface OperateCommandResult {
 
 export interface OperateConfig {
   middlewarePath?: string;
+  /**
+   * Working directory for Python process (where cwd is set).
+   * For E2E tests, this should be different from middlewarePath to create .operate in isolation.
+   */
+  workingDirectory?: string;
   timeout?: number;
   pythonBinary?: string;
   rpcUrl?: string;
@@ -30,6 +35,7 @@ export interface OperateConfig {
   defaultEnv?: {
     operatePassword?: string;
     stakingProgram?: 'no_staking' | 'custom_staking';
+    customStakingAddress?: string;
     chainLedgerRpc?: Record<string, string>; // e.g., { gnosis: "https://...", mode: "https://..." }
     // JINN-202: Add attended mode support
     attended?: boolean; // If true, middleware shows interactive prompts
@@ -52,6 +58,7 @@ export interface SafeResult extends OperateResult {
 
 export class OlasOperateWrapper {
   private middlewarePath: string;
+  private workingDirectory: string | null;
   private timeout: number;
   private pythonBinary: string;
   private serverProcess: ChildProcess | null = null;
@@ -65,6 +72,7 @@ export class OlasOperateWrapper {
 
   private constructor(middlewarePath: string, pythonBinary: string, timeout: number, rpcUrl: string | null, config: OperateConfig) {
     this.middlewarePath = middlewarePath;
+    this.workingDirectory = config.workingDirectory || null;
     this.pythonBinary = pythonBinary;
     this.timeout = timeout;
     this.rpcUrl = rpcUrl;
@@ -91,7 +99,29 @@ export class OlasOperateWrapper {
     const timeout = config.timeout || 300000; // 5 minutes for wallet/safe operations
     const rpcUrl = config.rpcUrl || null;
 
-    return new OlasOperateWrapper(middlewarePath, pythonBinary, timeout, rpcUrl, config);
+    const wrapper = new OlasOperateWrapper(middlewarePath, pythonBinary, timeout, rpcUrl, config);
+
+    // If using poetry mode (E2E tests with copied middleware), install dependencies first
+    if (pythonBinary === 'poetry') {
+      operateLogger.info({ middlewarePath }, "Poetry mode detected - installing dependencies...");
+      const installResult = await OlasOperateWrapper._spawnChildProcess('poetry', ['install'], {
+        cwd: middlewarePath,
+        timeout: 120000, // 2 minutes for dependency installation
+        stream: true
+      });
+
+      if (!installResult.success) {
+        operateLogger.error({
+          stderr: installResult.stderr,
+          stdout: installResult.stdout
+        }, "Failed to install Poetry dependencies");
+        throw new Error(`Poetry install failed: ${installResult.stderr}`);
+      }
+
+      operateLogger.info("Poetry dependencies installed successfully");
+    }
+
+    return wrapper;
   }
 
   /**
@@ -120,25 +150,44 @@ export class OlasOperateWrapper {
 
   /**
    * Resolve Python binary, preferring Poetry virtual environment
+   *
+   * For E2E tests with copied middleware, we use 'poetry run python' to ensure
+   * Poetry correctly resolves the venv even from a different directory context.
    */
   private static async _resolvePythonBinary(middlewarePath: string, configBinary?: string): Promise<string> {
     try {
-      // Try to get Poetry virtual environment path
+      // Check if Poetry is available and can resolve the venv
       const poetryResult = await OlasOperateWrapper._executePoetryEnvInfo(middlewarePath);
-      
+
       if (poetryResult.success && poetryResult.stdout.trim()) {
         const venvPath = poetryResult.stdout.trim();
         const venvPython = join(venvPath, 'bin', 'python');
-        
+
         operateLogger.info({
           venvPath,
           venvPython
         }, "Resolved Poetry virtual environment Python");
-        
+
         return venvPython;
       }
     } catch (error) {
       operateLogger.warn({ error }, "Failed to resolve Poetry virtual environment");
+    }
+
+    // If Poetry resolution failed but pyproject.toml exists, use 'poetry run python'
+    // This handles E2E tests with copied middleware where Poetry can't resolve the venv by absolute path
+    try {
+      const fs = await import('fs');
+      const pyprojectPath = join(middlewarePath, 'pyproject.toml');
+      if (fs.existsSync(pyprojectPath)) {
+        operateLogger.info({
+          middlewarePath,
+          pyprojectPath
+        }, "Found pyproject.toml but Poetry venv resolution failed - will use 'poetry run python'");
+        return 'poetry';
+      }
+    } catch (error) {
+      operateLogger.warn({ error }, "Failed to check for pyproject.toml");
     }
 
     // Fall back to configured or default Python
@@ -146,7 +195,7 @@ export class OlasOperateWrapper {
     operateLogger.info({
       fallbackPython
     }, "Using fallback Python binary");
-    
+
     return fallbackPython;
   }
 
@@ -286,8 +335,8 @@ export class OlasOperateWrapper {
     args: string[] = [],
     options: { cwd?: string; env?: Record<string, string>; stream?: boolean; timeoutMs?: number; interactive?: boolean } = {}
   ): Promise<OperateCommandResult> {
-    const fullArgs = ['-m', 'operate.cli', command, ...args];
-    const cwd = options.cwd || this.middlewarePath;
+    // Use workingDirectory if set (for E2E isolation), otherwise use middlewarePath
+    const cwd = options.cwd || this.workingDirectory || this.middlewarePath;
 
     // JINN-194: Merge default environment variables with options
     const env = {
@@ -295,11 +344,30 @@ export class OlasOperateWrapper {
       ...options.env,
     };
 
+    // For E2E tests with copied middleware, use 'poetry run python' instead of direct Python
+    // This works because Poetry detects pyproject.toml and handles venv automatically
+    let actualCommand: string;
+    let actualArgs: string[];
+
+    if (this.pythonBinary === 'poetry') {
+      // Use poetry run python for copied middleware
+      actualCommand = 'poetry';
+      actualArgs = ['run', 'python', '-m', 'operate.cli', command, ...args];
+      operateLogger.info("Using 'poetry run python' for copied middleware");
+    } else {
+      // Use resolved Python binary directly
+      actualCommand = this.pythonBinary;
+      actualArgs = ['-m', 'operate.cli', command, ...args];
+    }
+
     operateLogger.info({
       command,
       args,
-      fullArgs,
+      actualCommand,
+      actualArgs,
       cwd,
+      middlewarePath: this.middlewarePath,
+      workingDirectory: this.workingDirectory,
       envVars: {
         ATTENDED: env.ATTENDED,
         STAKING_PROGRAM: env.STAKING_PROGRAM,
@@ -307,7 +375,7 @@ export class OlasOperateWrapper {
       }
     }, "Executing operate command with environment");
 
-    const result = await OlasOperateWrapper._spawnChildProcess(this.pythonBinary, fullArgs, {
+    const result = await OlasOperateWrapper._spawnChildProcess(actualCommand, actualArgs, {
       cwd,
       env,
       timeout: options.timeoutMs ?? this.timeout,

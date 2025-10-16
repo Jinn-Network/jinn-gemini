@@ -5,7 +5,7 @@
 
 import { ethers } from 'ethers';
 
-const RPC_URL = process.env.BASE_LEDGER_RPC || 'https://mainnet.base.org';
+const RPC_URL = process.env.RPC_URL || 'https://mainnet.base.org';
 const STAKING_CONTRACT = '0x2585e63df7BD9De8e058884D496658a030b5c6ce'; // AgentsFun1
 const SERVICE_REGISTRY = '0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE';
 const SERVICE_REGISTRY_TOKEN_UTILITY = '0x3d77596beb0f130a4415df3D2D8232B3d3D31e44';

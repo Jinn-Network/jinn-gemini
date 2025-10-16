@@ -16,7 +16,7 @@ import { submitMarketplaceRequest, loadAgentPrivateKey } from '../worker/MechMar
 import { join } from 'path';
 
 const MIDDLEWARE_PATH = process.env.MIDDLEWARE_PATH || join(process.cwd(), 'olas-operate-middleware');
-const RPC_URL = process.env.BASE_LEDGER_RPC || process.env.BASE_RPC_URL || 'https://base.llamarpc.com';
+const RPC_URL = process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://base.llamarpc.com';
 const MECH_MARKETPLACE_ADDRESS = process.env.MECH_MARKETPLACE_ADDRESS_BASE || '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
 
 async function main() {

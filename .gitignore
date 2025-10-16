@@ -130,6 +130,7 @@ settings.local.json
 # Gemini CLI specific
 .gemini/settings.json
 .gemini/settings.json.orig
+**/.gemini/settings.json.orig
 .gemini/config.json
 .gemini/credentials.json
 gemini-agent/.gemini/last-prompt.txt
@@ -184,8 +185,22 @@ olas-operate-middleware/.operate/services/
 olas-operate-middleware/.operate/*.json
 olas-operate-middleware/.operate/*.txt
 
+# Test-generated operate data (ephemeral test artifacts)
+.operate-test/
+
 # Service backups (moved to ~/Documents)
 service-backups/
 
 # VNet session files
 .vnet-session-*.json
+
+# Test credentials and scripts
+scripts/verify-git-credentials.sh
+scripts/get-credentials.sh
+
+# Tenderly environment files
+env.tenderly
+**/env.tenderly
+
+# OLAS middleware submodule (tracked separately)
+olas-operate-middleware

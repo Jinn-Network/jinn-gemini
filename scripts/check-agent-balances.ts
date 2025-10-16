@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
-const RPC_URL = process.env.BASE_RPC_URL || process.env.BASE_LEDGER_RPC || 'https://mainnet.base.org';
+const RPC_URL = process.env.BASE_RPC_URL || process.env.RPC_URL || 'https://mainnet.base.org';
 const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
 const KEYS_DIR = 'olas-operate-middleware/.operate/keys';
 

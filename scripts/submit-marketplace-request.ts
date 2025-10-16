@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Use public RPC with better rate limits or fallback to Alchemy demo endpoint
-const RPC_URL = process.env.BASE_LEDGER_RPC || process.env.BASE_RPC_URL || 'https://base.llamarpc.com';
+const RPC_URL = process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://base.llamarpc.com';
 
 // Service #164 addresses
 const SERVICE_SAFE = '0xdB225C794218b1f5054dffF3462c84A30349B182';

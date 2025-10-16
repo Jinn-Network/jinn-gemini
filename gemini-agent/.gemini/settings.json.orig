@@ -17,11 +17,7 @@
         "search_jobs",
         "search_artifacts",
         "google_web_search",
-        "web_fetch",
-        "get_file_contents",
-        "search_code",
-        "search_repositories",
-        "list_commits"
+        "web_fetch"
       ]
     }
   },

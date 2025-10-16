@@ -5,7 +5,7 @@
 import { ethers } from 'ethers';
 
 const TX_HASH = '0x76f71c4dec2627443231598bb794a3858192eca5998683b923e5077bc0736874';
-const RPC_URL = process.env.BASE_LEDGER_RPC || 'https://mainnet.base.org';
+const RPC_URL = process.env.RPC_URL || 'https://mainnet.base.org';
 
 async function checkReceipt() {
   const provider = new ethers.JsonRpcProvider(RPC_URL);

@@ -1,6 +1,6 @@
 {
   "scripts": {
     "setup": "./conductor-setup.sh",
-    "run": "E2E_ONCHAIN=1 yarn test gemini-agent/mcp/onchain.marketplace.e2e.test.ts"
+    "run": "yarn test gemini-agent/mcp/onchain.marketplace.e2e.test.ts"
   }
 }

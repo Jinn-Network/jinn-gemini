@@ -9,32 +9,24 @@ Object.assign(process.env, testEnv)
 export default defineConfig({
   resolve: {
     alias: {
-      'mech-client-ts': path.resolve(__dirname, './packages/mech-client-ts'),
+      'mech-client-ts': path.resolve(__dirname, '../../packages/mech-client-ts'),
     },
   },
   test: {
     globals: true,
     env: testEnv,
-    // Run test files sequentially to prevent port conflicts
+    include: [path.resolve(__dirname, '*.test.ts')],
+    globalSetup: path.resolve(__dirname, '../helpers/setup.ts'),
     fileParallelism: false,
     poolOptions: {
       threads: {
         singleThread: true,
       }
     },
-    // Ensure tests run in order
     sequence: {
       shuffle: false,
       concurrent: false,
     },
-    // Prevent collecting tests from ephemeral Conductor worktrees
-    exclude: [
-      '**/.conductor/**',
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/.next/**',
-      '**/.tmp/**',
-      '**/temp-build/**',
-    ],
+    reporters: ['default', 'hanging-process'],
   },
 })

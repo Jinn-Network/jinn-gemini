@@ -1,39 +1,14 @@
 # Gotchas & Issues to Fix
 
-## 1. Service Setup with Tenderly - Missing TENDERLY_RPC_URL
+## 1. ~~Service Setup with Tenderly~~ [RESOLVED]
 
-**Issue**: `setup:service` script requires `TENDERLY_RPC_URL` env var when `TENDERLY_ENABLED=true`, but doesn't clearly document this.
+**Previous Issue**: Required `TENDERLY_ENABLED` flag and separate environment files.
 
-**Symptoms**:
-```
-❌ Error: TENDERLY_RPC_URL required when TENDERLY_ENABLED=true
-```
+**Resolution**: Now using `--testnet` flag with explicit env file loading:
+- Mainnet: `yarn setup:service --chain=base` (uses `.env`)
+- Testnet: `yarn setup:service --testnet --chain=base` (uses `.env.test`)
 
-**Root Cause**:
-- Script loads `.env.mainnet` which overrides main `.env`
-- When `TENDERLY_ENABLED=true`, it expects `TENDERLY_RPC_URL` (not `RPC_URL` or `BASE_LEDGER_RPC`)
-- The variable name mismatch is confusing
-
-**Solution**:
-In `.env.mainnet`, set:
-```bash
-TENDERLY_ENABLED=true
-TENDERLY_RPC_URL=<your-tenderly-rpc>
-BASE_LEDGER_RPC=<your-tenderly-rpc>
-```
-
-**To Fix**:
-1. Update [scripts/interactive-service-setup.ts](scripts/interactive-service-setup.ts#L154-161) to:
-   - Fall back to `RPC_URL` if `TENDERLY_RPC_URL` not set
-   - Provide clearer error message showing which env vars are checked
-   - Document the precedence order in help text
-
-2. Consider consolidating to single `RPC_URL` env var across all modes
-
-**Related Files**:
-- `scripts/interactive-service-setup.ts` - Setup CLI
-- `.env.mainnet` - Mainnet mode config
-- `env.tenderly` - Tenderly mode template
+No more `TENDERLY_ENABLED` environment variable or `.env.mainnet` file.
 
 ---
 
