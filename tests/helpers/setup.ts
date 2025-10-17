@@ -111,7 +111,7 @@ export async function setup() {
     PONDER_MECH_ADDRESS: process.env.MECH_ADDRESS,
   };
 
-  ponderProc = execa('yarn', ['dev'], { cwd: ponderDir, stdio: 'pipe', env: ponderEnv });
+  ponderProc = execa('yarn', ['ponder:dev'], { stdio: 'pipe', env: ponderEnv });
   const ponderLogs: string[] = [];
   if (ponderProc.stdout) ponderProc.stdout.on('data', (d: any) => { ponderLogs.push(d.toString()); });
   if (ponderProc.stderr) ponderProc.stderr.on('data', (d: any) => {

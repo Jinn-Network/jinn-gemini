@@ -1,11 +1,11 @@
 import '../env/index.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { deliverViaSafe } from 'mech-client-ts/dist/post_deliver.js';
+import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { Web3 } from 'web3';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import agentMechArtifact from 'mech-client-ts/dist/abis/AgentMech.json';
+import agentMechArtifact from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
 
 type UnclaimedRequest = {
   id: string;

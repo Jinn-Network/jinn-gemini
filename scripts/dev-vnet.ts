@@ -273,7 +273,7 @@ async function main() {
   await new Promise(r => setTimeout(r, 5000));
 
   try {
-    const { marketplaceInteract } = await import('mech-client-ts/dist/marketplace_interact.js');
+    const { marketplaceInteract } = await import('@jinn-network/mech-client-ts/dist/marketplace_interact.js');
     const { randomUUID } = await import('crypto');
 
     const jobName = 'Chief Orchestrator - Crypto Alpha Hunter';

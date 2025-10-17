@@ -1,11 +1,11 @@
 import '../env/index.js';
 import { Agent } from '../gemini-agent/agent.js';
-import { deliverViaSafe } from 'mech-client-ts/dist/deliver.js';
+import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { Web3 } from 'web3';
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import agentMechArtifact from '../packages/mech-client-ts/dist/abis/AgentMech.json';
+import agentMechArtifact from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
 import { workerLogger } from './logger.js';
 import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport, createArtifact as apiCreateArtifact } from './control_api_client.js';
 import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './artifacts.js';

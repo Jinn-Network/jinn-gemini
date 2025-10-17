@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
-import { marketplaceInteract } from '../../../packages/mech-client-ts/dist/marketplace_interact.js';
+import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
 import { getMechAddress } from '../../../env/operate-profile.js';

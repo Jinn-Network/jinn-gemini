@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
 import { randomUUID } from 'node:crypto';
-import { marketplaceInteract } from '../../../packages/mech-client-ts/dist/marketplace_interact.js';
+import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { pushJsonToIpfs } from 'mech-client-ts/dist/ipfs.js';
+import { pushJsonToIpfs } from '@jinn-network/mech-client-ts/dist/ipfs.js';
 
 export const createArtifactParams = z.object({
   name: z.string().min(1),
