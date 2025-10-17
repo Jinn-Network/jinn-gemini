@@ -4,10 +4,10 @@ set -euo pipefail
 # Code Spec Review: obj2 - Code for the Next Agent
 # Reviews code for discoverability violations (implicit, non-discoverable code)
 # Usage:
-#   ./scripts/review-obj2.sh worker/config.ts    # Review specific file
-#   ./scripts/review-obj2.sh worker/             # Review directory
-#   ./scripts/review-obj2.sh --diff              # Review staged changes
-#   TIMEOUT=60 ./scripts/review-obj2.sh <target> # Custom timeout
+#   ./codespec/scripts/review-obj2.sh worker/config.ts    # Review specific file
+#   ./codespec/scripts/review-obj2.sh worker/             # Review directory
+#   ./codespec/scripts/review-obj2.sh --diff              # Review staged changes
+#   TIMEOUT=60 ./codespec/scripts/review-obj2.sh <target> # Custom timeout
 
 # Colors for output
 RED='\033[0;31m'

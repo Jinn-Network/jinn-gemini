@@ -79,13 +79,11 @@ yarn workspace @jinn/metacog-mcp build
 
 # Step 6: Set up git hooks
 print_status "Setting up git hooks..."
-if [ -f "scripts/pre-commit.sh" ]; then
-    mkdir -p .git/hooks
-    cp scripts/pre-commit.sh .git/hooks/pre-commit
-    chmod +x .git/hooks/pre-commit
+if [ -f "codespec/scripts/setup-git-hooks.sh" ]; then
+    ./codespec/scripts/setup-git-hooks.sh
     print_success "Installed pre-commit hook"
 else
-    print_warning "pre-commit.sh not found. Git hooks not installed"
+    print_warning "setup-git-hooks.sh not found. Git hooks not installed"
 fi
 
 # Step 7: Verify sensitive files are ignored

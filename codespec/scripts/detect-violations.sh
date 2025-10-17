@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Code Spec Review Script (Orchestrator)
+# Code Spec Violations Detection Script (Orchestrator)
 # Runs all three objective-specific reviews in parallel and aggregates results
 # Usage:
-#   ./scripts/review-code-spec.sh worker/mech_worker.ts    # Review specific file
-#   ./scripts/review-code-spec.sh worker/                  # Review directory
-#   ./scripts/review-code-spec.sh --diff                   # Review staged changes
-#   TIMEOUT=60 ./scripts/review-code-spec.sh <target>      # Custom timeout
-#   ./scripts/review-code-spec.sh --obj3-only --diff       # Security only (fast)
+#   ./codespec/scripts/detect-violations.sh worker/mech_worker.ts    # Review specific file
+#   ./codespec/scripts/detect-violations.sh worker/                  # Review directory
+#   ./codespec/scripts/detect-violations.sh --diff                   # Review staged changes
+#   TIMEOUT=60 ./codespec/scripts/detect-violations.sh <target>      # Custom timeout
+#   ./codespec/scripts/detect-violations.sh --obj3-only --diff       # Security only (fast)
 
 # Colors for output
 RED='\033[0;31m'
@@ -27,7 +27,7 @@ if [ "$TARGET" = "--obj3-only" ]; then
   shift
   TARGET="${1:---diff}"
   echo "🔒 Running Security Review Only (obj3)"
-  exec "$(dirname "$0")/review-obj3.sh" "$TARGET"
+  exec "$SCRIPT_DIR/review-obj3.sh" "$TARGET"
 fi
 
 echo -e "${BOLD}🔍 Running Complete Code Spec Review${NC}"
@@ -83,7 +83,7 @@ while true; do
     echo "You can:"
     echo "  1. Increase timeout: TIMEOUT=900 $0 $TARGET"
     echo "  2. Review a smaller target (specific file instead of directory)"
-    echo "  3. Run individual objectives: ./scripts/review-obj3.sh $TARGET"
+    echo "  3. Run individual objectives: ./codespec/scripts/review-obj3.sh $TARGET"
     exit 2
   fi
 
@@ -101,6 +101,13 @@ wait "$PID_OBJ2"
 EXIT_OBJ2=$?
 wait "$PID_OBJ3"
 EXIT_OBJ3=$?
+
+# Update ledger with violations (in background, don't block)
+if command -v tsx >/dev/null 2>&1; then
+  tsx "$SCRIPT_DIR/../lib/update-ledger.ts" obj1 "$TEMP_OBJ1" >/dev/null 2>&1 &
+  tsx "$SCRIPT_DIR/../lib/update-ledger.ts" obj2 "$TEMP_OBJ2" >/dev/null 2>&1 &
+  tsx "$SCRIPT_DIR/../lib/update-ledger.ts" obj3 "$TEMP_OBJ3" >/dev/null 2>&1 &
+fi
 
 # Extract violation counts from each output
 extract_violation_count() {
@@ -215,9 +222,9 @@ echo "   - Usage guide: docs/spec/code-spec/USAGE.md"
 echo "   - Known issues: docs/spec/code-spec/VIOLATIONS.md"
 echo ""
 echo "🔧 Individual reviews:"
-echo "   - Security only: ./scripts/review-obj3.sh $TARGET"
-echo "   - Orthodoxy only: ./scripts/review-obj1.sh $TARGET"
-echo "   - Discoverability only: ./scripts/review-obj2.sh $TARGET"
+echo "   - Security only: ./codespec/scripts/review-obj3.sh $TARGET"
+echo "   - Orthodoxy only: ./codespec/scripts/review-obj1.sh $TARGET"
+echo "   - Discoverability only: ./codespec/scripts/review-obj2.sh $TARGET"
 echo ""
 
 # Exit with failure if any critical (obj3) violations found

@@ -4,10 +4,10 @@ set -euo pipefail
 # Code Spec Review: obj1 - Follow the Principle of Orthodoxy
 # Reviews code for pattern inconsistencies (multiple approaches to same problem)
 # Usage:
-#   ./scripts/review-obj1.sh worker/config.ts    # Review specific file
-#   ./scripts/review-obj1.sh worker/             # Review directory
-#   ./scripts/review-obj1.sh --diff              # Review staged changes
-#   TIMEOUT=60 ./scripts/review-obj1.sh <target> # Custom timeout
+#   ./codespec/scripts/review-obj1.sh worker/config.ts    # Review specific file
+#   ./codespec/scripts/review-obj1.sh worker/             # Review directory
+#   ./codespec/scripts/review-obj1.sh --diff              # Review staged changes
+#   TIMEOUT=60 ./codespec/scripts/review-obj1.sh <target> # Custom timeout
 
 # Colors for output
 RED='\033[0;31m'
