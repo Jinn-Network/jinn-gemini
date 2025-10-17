@@ -9,7 +9,7 @@
  */
 
 import { ethers } from 'ethers';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 
 const predictorLogger = logger.child({ component: "SAFE-ADDRESS-PREDICTOR" });
 

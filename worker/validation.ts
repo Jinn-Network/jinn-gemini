@@ -14,7 +14,7 @@ import { resolve } from 'path';
 import { URL } from 'url';
 import { z } from 'zod';
 import { TransactionRequest, ExecutionStrategy } from './types.js';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 
 /**
  * Validation result structure

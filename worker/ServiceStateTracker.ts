@@ -14,7 +14,7 @@
 import { writeFile, readFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 
 const stateLogger = logger.child({ component: "SERVICE-STATE-TRACKER" });
 

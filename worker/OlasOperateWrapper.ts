@@ -10,7 +10,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { resolve, join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 
 const operateLogger = logger.child({ component: "OLAS-OPERATE-WRAPPER" });
 

@@ -13,7 +13,7 @@ import { promisify } from "util";
 import { execFile } from "child_process";
 const asyncExecFile = promisify(execFile);
 import { IJob, IJobResult, IJobReport, IJobSuccess } from "./types.js";
-import { logger } from "./logger.js";
+import { logger } from "../logging/index.js";
 import { createClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 import { deliverRequest } from "../../scripts/lib/deliverRequest.js";

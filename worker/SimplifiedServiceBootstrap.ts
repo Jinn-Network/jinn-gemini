@@ -27,7 +27,7 @@
 
 import { OlasOperateWrapper } from './OlasOperateWrapper.js';
 import { OlasServiceManager } from './OlasServiceManager.js';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 import { writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

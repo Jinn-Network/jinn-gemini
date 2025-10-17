@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
+import { configLogger } from '../logging/index.js';
 
 // Load env vars from root .env file (if it exists)
 try {
@@ -44,11 +45,11 @@ export function parseWorkerConfig(): WorkerConfig {
         const field = issue.path.join('.');
         return `${field}: ${issue.message}`;
       }).join(', ');
-      
-      console.error(`[FATAL] Configuration validation failed: ${issues}`);
+
+      configLogger.fatal({ issues }, 'Configuration validation failed');
       process.exit(2);
     }
-    console.error(`[FATAL] Unknown configuration error: ${error}`);
+    configLogger.fatal({ error: String(error) }, 'Unknown configuration error');
     process.exit(2);
   }
 }
