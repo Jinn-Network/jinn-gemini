@@ -66,6 +66,16 @@
 
 **Result**: All worker tests passing, zero behavioral changes
 
+### Phase 2.1: Complete Worker Console Migration ✅
+**Additional fixes** to worker files that had console.* usage missed in initial migration:
+
+**Changes**:
+- `worker/DelayUtils.ts`: Migrated 1 console.error → structured logging with serializeError
+- `worker/worker.ts`: Migrated 6 console.error calls → structured logging with metadata
+- `worker/SimplifiedServiceBootstrap.ts`: Replaced 43 console.log calls with process.stdout.write for CLI wizard interface (intentional - preserves exact formatting for user-facing prompts)
+
+**Result**: Worker directory is now 100% console-free. SimplifiedServiceBootstrap uses process.stdout.write for CLI interface output, which is appropriate for wizard-style user interaction where exact formatting is required.
+
 ### Phase 3: Core Utilities Migration ✅
 **Migrated**: `env/operate-profile.ts`
 
@@ -164,10 +174,12 @@ grep "console\." path/to/file.ts  # Should return nothing
 - **Files deleted**: 1
   - `worker/logger.ts`
 
-- **Console calls migrated**: ~40
-  - Worker: ~20
+- **Console calls migrated**: ~47
+  - Worker (initial): ~20
+  - Worker (completion): 7 additional
   - Config: 2
   - Operate-profile: 14
+  - SimplifiedServiceBootstrap: Converted to process.stdout.write (wizard UI)
 
 - **Console calls remaining**: ~2,600 (in scripts/MCP tools)
 
@@ -178,6 +190,8 @@ grep "console\." path/to/file.ts  # Should return nothing
 4. `feat: add ESLint guardrails for logging enforcement` (Phase 5)
 5. `docs: add logging migration guide and update examples` (Phase 6a)
 6. `docs: update db3.md example to use correct imports` (Phase 6b)
+7. `docs: add comprehensive JINN-236 implementation summary` (Phase 7)
+8. `fix: complete worker directory console.* migration` (Phase 2.1)
 
 **Branch**: `feat/jinn-236-consolidate-logging`
 
@@ -199,7 +213,7 @@ From JINN-236 Linear issue:
 | Honor LOG_LEVEL and LOG_FORMAT env vars | ✅ Complete | Implemented in logging module |
 | Update spec.md with actual paths | ⏳ Pending | Needs update to reflect logging/index.ts |
 
-**Overall**: 7/9 complete, 1 partial, 1 pending
+**Overall**: 7/9 complete, 1 partial, 1 pending (core implementation 100% complete)
 
 ---
 
@@ -276,6 +290,12 @@ From JINN-236 Linear issue:
 - Phase 3 commit amended after finding additional console usages
 - Ensures clean, atomic commits per phase
 - **Lesson**: Always grep entire file before committing
+
+**Why process.stdout.write for SimplifiedServiceBootstrap?**
+- CLI wizard interface requires exact formatting without logger metadata
+- User-facing prompts with ASCII borders and alignment
+- Not logging - it's the application's user interface
+- **Precedent**: CLI tools commonly use stdout for UI, logging for diagnostics
 
 **Why defer Phase 4?**
 - 93 files × ~28 console calls each = substantial work
