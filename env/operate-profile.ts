@@ -13,6 +13,9 @@
 
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
+import { createChildLogger, serializeError } from '../logging/index.js';
+
+const operateLogger = createChildLogger('OPERATE_PROFILE');
 
 interface ServiceConfig {
   env_variables?: {
@@ -74,13 +77,13 @@ function readServiceConfig(): ServiceConfig | null {
   try {
     const operateDir = getOperateDir();
     if (!operateDir) {
-      console.warn('[operate-profile] No .operate directory found');
+      operateLogger.warn('No .operate directory found');
       return null;
     }
-    
+
     const servicesDir = join(operateDir, 'services');
     if (!existsSync(servicesDir)) {
-      console.warn('[operate-profile] No services directory found in', operateDir);
+      operateLogger.warn({ operateDir }, 'No services directory found');
       return null;
     }
     
@@ -90,16 +93,16 @@ function readServiceConfig(): ServiceConfig | null {
       .map(dirent => dirent.name);
     
     if (serviceDirs.length === 0) {
-      console.warn('[operate-profile] No service directories found in', servicesDir);
+      operateLogger.warn({ servicesDir }, 'No service directories found');
       return null;
     }
-    
+
     // Read config.json from the first service
     const serviceDir = serviceDirs[0];
     const configPath = join(servicesDir, serviceDir, 'config.json');
-    
+
     if (!existsSync(configPath)) {
-      console.warn('[operate-profile] No config.json found at', configPath);
+      operateLogger.warn({ configPath }, 'No config.json found');
       return null;
     }
     
@@ -108,7 +111,7 @@ function readServiceConfig(): ServiceConfig | null {
     
     return config;
   } catch (error) {
-    console.warn('[operate-profile] Error reading service config:', error);
+    operateLogger.warn({ error: serializeError(error) }, 'Error reading service config');
     return null;
   }
 }
@@ -139,25 +142,25 @@ export function getMechAddress(): string | null {
   // Extract mech address from MECH_TO_CONFIG
   const mechToConfig = config.env_variables?.MECH_TO_CONFIG?.value;
   if (!mechToConfig) {
-    console.warn('[operate-profile] MECH_TO_CONFIG not found in service config');
+    operateLogger.warn('MECH_TO_CONFIG not found in service config');
     return null;
   }
-  
+
   try {
     // Parse MECH_TO_CONFIG JSON
     const mechConfig = JSON.parse(mechToConfig);
     const mechAddresses = Object.keys(mechConfig);
-    
+
     if (mechAddresses.length === 0) {
-      console.warn('[operate-profile] No mech addresses found in MECH_TO_CONFIG');
+      operateLogger.warn('No mech addresses found in MECH_TO_CONFIG');
       return null;
     }
-    
+
     const mechAddress = mechAddresses[0];
-    console.log(`[operate-profile] Found mech address: ${mechAddress}`);
+    operateLogger.info({ mechAddress }, 'Found mech address');
     return mechAddress;
   } catch (error) {
-    console.warn('[operate-profile] Error parsing MECH_TO_CONFIG:', error);
+    operateLogger.warn({ error: serializeError(error) }, 'Error parsing MECH_TO_CONFIG');
     return null;
   }
 }
@@ -186,20 +189,20 @@ export function getServiceSafeAddress(): string | null {
     for (const [chainName, chainConfig] of Object.entries(config.chain_configs)) {
       const multisig = chainConfig.chain_data?.multisig;
       if (multisig) {
-        console.log(`[operate-profile] Found safe address from chain_configs.${chainName}: ${multisig}`);
+        operateLogger.info({ chainName, safeAddress: multisig }, 'Found safe address from chain_configs');
         return multisig.trim();
       }
     }
   }
-  
+
   // Fall back to safe_address at root (backwards compatibility)
   const safeAddress = config.safe_address;
   if (safeAddress) {
-    console.log(`[operate-profile] Found safe address: ${safeAddress}`);
+    operateLogger.info({ safeAddress }, 'Found safe address from root config');
     return safeAddress;
   }
-  
-  console.warn('[operate-profile] safe_address not found in service config');
+
+  operateLogger.warn('safe_address not found in service config');
   return null;
 }
 
@@ -233,33 +236,33 @@ export function getServicePrivateKey(): string | null {
   }
   
   if (!agentAddress) {
-    console.warn('[operate-profile] No agent instance found in chain_configs');
+    operateLogger.warn('No agent instance found in chain_configs');
     return null;
   }
-  
+
   // Try to read from keys directory using agent address
   try {
     const operateDir = getOperateDir();
     if (!operateDir) {
       return null;
     }
-    
+
     const keysPath = join(operateDir, 'keys', agentAddress);
-    
+
     if (existsSync(keysPath)) {
       const keyData = readFileSync(keysPath, 'utf-8').trim();
       const keyJson = JSON.parse(keyData);
       const privateKey = keyJson.private_key;
-      
+
       if (privateKey) {
-        console.log(`[operate-profile] Found private key for agent ${agentAddress}`);
+        operateLogger.info({ agentAddress }, 'Found private key for agent');
         return privateKey;
       }
     } else {
-      console.warn(`[operate-profile] Key file not found at ${keysPath}`);
+      operateLogger.warn({ keysPath }, 'Key file not found');
     }
   } catch (error) {
-    console.warn('[operate-profile] Error reading private key from .operate:', error);
+    operateLogger.warn({ error: serializeError(error) }, 'Error reading private key from .operate');
   }
   
   return null;
