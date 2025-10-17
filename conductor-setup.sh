@@ -154,6 +154,18 @@ init_submodules() {
     else
         error "Failed to initialize olas-operate-middleware submodule"
     fi
+
+    # Copy .operate directory from main repo (contains service config, keys, etc.)
+    # This is gitignored but essential for production/dev operation
+    if [ -n "$main_repo_root" ] && [ -d "$main_repo_root/olas-operate-middleware/.operate" ]; then
+        info "Copying .operate directory from main repo..."
+        cp -r "$main_repo_root/olas-operate-middleware/.operate" olas-operate-middleware/.operate
+        success ".operate directory copied"
+    elif [ -d "olas-operate-middleware/.operate" ]; then
+        success ".operate directory already present"
+    else
+        warning ".operate directory not found - run service setup or tests will use test credentials"
+    fi
 }
 
 # =============================================================================

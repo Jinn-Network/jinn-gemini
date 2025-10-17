@@ -1,6 +1,6 @@
 {
   "scripts": {
     "setup": "./conductor-setup.sh",
-    "run": "yarn test:marketplace"
+    "run": "yarn test:all"
   }
 }
