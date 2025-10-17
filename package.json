@@ -65,7 +65,8 @@
     "qa:jinn-179": "bash scripts/qa-jinn-179.sh",
     "lint:spec": "./scripts/review-code-spec.sh --diff",
     "lint:spec:all": "./scripts/review-code-spec.sh worker/",
-    "setup:hooks": "./scripts/setup-git-hooks.sh"
+    "setup:hooks": "./scripts/setup-git-hooks.sh",
+    "lint:console": "eslint '**/*.ts' --ignore-pattern '**/*.test.ts' --ignore-pattern '**/*.spec.ts'"
   },
   "dependencies": {
     "@jinn-network/mech-client-ts": "^0.0.1",
