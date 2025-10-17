@@ -2,7 +2,7 @@
  * Utility functions for handling delays in the worker loop
  */
 
-import { logger } from "../logging/index.js";
+import { logger, serializeError } from "../logging/index.js";
 
 const delayLogger = logger.child({ component: "DELAY" });
 
@@ -38,9 +38,9 @@ export class DelayUtils {
    */
   static async handleCriticalErrorDelay(error: unknown): Promise<void> {
     const delay = 30000; // 30 seconds
-    console.error(
-      "Critical error in main loop. Waiting 30 seconds before retrying.",
-      error,
+    delayLogger.error(
+      { error: serializeError(error), delayMs: delay },
+      "Critical error in main loop. Waiting 30 seconds before retrying."
     );
     await this.sleep(delay);
   }
