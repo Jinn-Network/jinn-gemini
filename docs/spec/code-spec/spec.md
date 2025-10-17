@@ -181,15 +181,82 @@ Rules are hard constraints that must never be violated. Unlike objectives (which
 
 Default behaviors define the standard way to handle common operations. They are consistent with objectives and rules. In rare cases, deviations may be justified (e.g., third-party library constraints), but must be explicitly documented.
 
-### (None defined yet)
+### Centralize configuration access
 
-When a default behavior is added, it will include:
+**Behavior:** All runtime code reads configuration through a single, validated config module. That module loads environment variables once, validates them (e.g., with Zod or another schema library), and exports explicit getters (`getRequiredRpcUrl()`, `getOptionalChainId()`, etc.). Runtime code never touches `process.env` directly.
+
+**Why this matters:**
+- Orthodoxy (obj1): There is one obvious way to access configuration, so readers don’t have to understand multiple fallback chains or hidden defaults.
+- Code for the next agent (obj2): Named getters make configuration discoverable by search; validation errors explain what is missing.
+- Minimize harm (obj3): Schema validation catches missing or malformed secrets before deployment; secrets stay out of logs and source.
+
+**How to follow it:**
+1. Use the shared configuration module (`config/index.ts`) to access environment variables via its exported helpers (e.g., `getRequiredRpcUrl()`, `getSupabaseUrl()`).
+2. When you introduce a new variable, extend the schema inside `config/index.ts` so validation and documentation stay centralized.
+3. Keep any legacy aliases or fallbacks inside the config module; callers always consume the canonical getter.
+4. Never access `process.env` directly in runtime code—import the helper you need from `config/index.ts` (or its domain-specific re-export).
+
+**Allowed exceptions:**
+- One-off scripts or tests may read `process.env` directly if they document the deviation and do not introduce new canonical configuration.
+- Transitional compatibility layers may live only inside the config module (e.g., honoring legacy env names) so that callers still see a single getter.
+
+**Examples:**
+- ✅ `const rpcUrl = getRequiredRpcUrl();`
+- ❌ `const rpcUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC;`
+
+### Canonical HTTP client with timeout & retry
+
+**Behavior:** All runtime HTTP calls (REST, GraphQL, IPFS, RPC over HTTP) use a shared client module that enforces timeouts, structured errors, and retry/backoff semantics. Callers import typed helpers (e.g., `postJson`, `graphQLRequest`) instead of calling `fetch` directly.
+
+**Why this matters:**
+- Orthodoxy (obj1): One obvious pattern for HTTP keeps headers, logging, and error handling consistent.
+- Code for the next agent (obj2): Named helpers are discoverable; behavior lives in one module.
+- Minimize harm (obj3): Timeouts prevent hangs, retries smooth transient failures, and centralized logging prevents secrets from leaking.
+
+**How to follow it:**
+1. Use the shared HTTP client in `http/client.ts` (`postJson`, `getJson`, `graphQLRequest`, etc.), which wraps `fetch` with a 10 s default timeout and exponential backoff (3 attempts).
+2. Let the client handle structured logging and normalized errors; surface additional context through the helper’s options (`requestId`, `headers`, `timeoutMs`, `retries`).
+3. When you need new behavior (e.g., streaming), extend `http/client.ts` so the canonical protections apply everywhere instead of re-implementing them.
+4. Avoid calling `fetch` directly in runtime code. If you must, document the exception and add the missing capability to the shared client promptly.
+
+**Allowed exceptions:**
+- Browser-only code may keep using browser APIs if it provides equivalent safeguards.
+- Unit tests and simple mocks can call `fetch` directly when running in controlled environments and the deviation is documented.
+- One-off scripts may bypass the client if they explain why (e.g., interactive streaming) and do not introduce new canonical patterns.
+
+**Examples:**
+- ✅ `const data = await graphQLRequest<ClaimResponse>({ query, variables, context: { requestId } });`
+- ❌ `const res = await fetch(url, { method: 'POST', body: JSON.stringify(query) }); // no timeout`
+
+### Structured logging only
+
+**Behavior:** All runtime code logs through the shared Pino logger (`logging/index.ts`). Components create child loggers with a `component` tag and record structured metadata for every message. Direct `console.*` usage is reserved for exceptional, documented cases (e.g., human-facing CLI prompts).
+
+**Why this matters:**
+- Orthodoxy (obj1): One logging pipeline keeps formatting, redaction, and routing consistent.
+- Code for the next agent (obj2): Structured fields (`requestId`, `jobId`, etc.) make it easy to search and correlate logs.
+- Minimize harm (obj3): Centralized logging prevents accidental leakage of secrets or stack traces at the wrong level.
+
+**How to follow it:**
+1. Import the shared logger from `logging/index.ts` and create a child logger for your component (`const workerLogger = logger.child({ component: 'WORKER' });`).
+2. Log structured objects (`workerLogger.info({ requestId, status }, 'Delivering job');`) instead of concatenated strings.
+3. Keep sensitive values (private keys, tokens) out of log fields; rely on the logger’s redaction config where appropriate.
+4. Avoid `console.*` in runtime paths. For CLI tools that need human-readable output, use the provided `cliLogger` adapter, which wraps the shared logger while pretty-printing to stdout.
+
+**Allowed exceptions:**
+- Tests asserting specific console output may continue using `console.*`, but production code should not.
+- Browser-facing code (when applicable) can use browser devtools logging, provided the output never reaches production telemetry.
+- Third-party libraries that emit directly to stdout/stderr may remain unchanged, but wrap them when feasible.
+
+**Examples:**
+- ✅ `workerLogger.warn({ requestId, error: serializeError(err) }, 'Safe delivery failed');`
+- ❌ `console.error('Safe delivery failed', err); // unstructured, misses metadata`
+
+When we define additional default behaviors, include:
 - The canonical approach with code examples
 - Rationale for why this approach is preferred
 - Links to example files demonstrating correct usage and violations
 - Guidance on rare exceptions
-
-The first default behaviors will likely address universal patterns like configuration management, data access conventions, or API client structure.
 
 ---
 
@@ -216,7 +283,7 @@ git commit --no-verify             # Bypassed (emergency)
 ```
 
 **How it works:**
-- Runs `claude -p "/review-code-spec --diff"` via `scripts/review-code-spec.sh`
+- Runs `claude -p "/review-code-spec --diff"` via `codespec/scripts/detect-violations.sh`
 - Analyzes only staged changes (fast, focused)
 - Blocks commit if violations found (strict enforcement)
 - WIP commits (`wip:` prefix) skip review for developer flow
@@ -239,7 +306,7 @@ Developers can manually trigger reviews at any time:
 # Headless mode (anywhere, via scripts)
 yarn lint:spec              # Review staged changes
 yarn lint:spec:all          # Review all worker files
-./scripts/review-code-spec.sh worker/file.ts
+./codespec/scripts/detect-violations.sh worker/file.ts
 ```
 
 **Use cases:**

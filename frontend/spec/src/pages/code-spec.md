@@ -159,7 +159,7 @@ git commit --no-verify             # Bypassed (emergency)
 ```
 
 **How it works:**
-- Runs `claude -p "/review-code-spec --diff"` via `scripts/review-code-spec.sh`
+- Runs `claude -p "/review-code-spec --diff"` via `codespec/scripts/detect-violations.sh`
 - Analyzes only staged changes (fast, focused)
 - Blocks commit if violations found (strict enforcement)
 - WIP commits (`wip:` prefix) skip review for developer flow
@@ -182,7 +182,7 @@ Developers can manually trigger reviews at any time:
 # Headless mode (anywhere, via scripts)
 yarn lint:spec              # Review staged changes
 yarn lint:spec:all          # Review all worker files
-./scripts/review-code-spec.sh worker/file.ts
+./codespec/scripts/detect-violations.sh worker/file.ts
 ```
 
 **Use cases:**

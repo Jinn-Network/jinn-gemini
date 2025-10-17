@@ -53,10 +53,10 @@ yarn lint:spec
 
 ```bash
 # Single file
-./scripts/review-code-spec.sh worker/mech_worker.ts
+./codespec/scripts/detect-violations.sh worker/mech_worker.ts
 
 # Directory
-./scripts/review-code-spec.sh worker/
+./codespec/scripts/detect-violations.sh worker/
 
 # All worker files
 yarn lint:spec:all
@@ -149,7 +149,7 @@ Code spec reviews typically take **30-120 seconds** depending on:
 **If it times out:**
 ```bash
 # Increase timeout (default is 300 seconds / 5 minutes)
-TIMEOUT=600 ./scripts/review-code-spec.sh worker/large_file.ts
+TIMEOUT=600 ./codespec/scripts/detect-violations.sh worker/large_file.ts
 
 # Or use yarn with timeout
 TIMEOUT=600 yarn lint:spec
