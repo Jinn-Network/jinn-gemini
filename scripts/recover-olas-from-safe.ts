@@ -7,7 +7,7 @@
  */
 
 import { OlasOperateWrapper } from "../worker/OlasOperateWrapper.js";
-import { logger } from "../worker/logger.js";
+import { logger } from "../logging/index.js";
 
 const recoveryLogger = logger.child({ component: "OLAS-RECOVERY" });
 

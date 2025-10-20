@@ -5,7 +5,7 @@ import { isControlApiEnabled } from './shared/control_api.js';
 import { getAllowlist } from './shared/allowlist.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { TransactionInput } from '../../../worker/queue/index.js';
-import { workerLogger } from '../../../worker/logger.js';
+import { workerLogger } from '../../../logging/index.js';
 import fetch from 'cross-fetch';
 
 // Input schema for enqueuing transactions
