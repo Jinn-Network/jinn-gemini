@@ -1,8 +1,7 @@
 // This file contains deliberate violations for testing the autofix workflow
 
-// Fixed: Load API key from environment variable
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) throw new Error('API_KEY environment variable is required');
+// VIOLATION: Hardcoded API key (obj3 - Minimize Harm)
+const API_KEY = "sk_test_4eC39HqLyjWDarjtT1zdp7dc";
 
 export async function fetchData() {
   const response = await fetch("https://api.example.com/data", {
