@@ -29,7 +29,7 @@ import { OlasStakingManager } from "../worker/OlasStakingManager.js";
 import { OlasServiceManager } from "../worker/OlasServiceManager.js";
 import { OlasOperateWrapper } from "../worker/OlasOperateWrapper.js";
 import { createTenderlyClient, ethToWei } from "./lib/tenderly.js";
-import { logger } from "../logging/index.js";
+import { logger } from "../worker/logger.js";
 import { readFile, writeFile, mkdir, access } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";

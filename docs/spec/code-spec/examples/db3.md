@@ -3,7 +3,8 @@
 ## Follows the default behavior
 
 ```ts
-import { logger, serializeError } from '../../logging/index';
+import { logger } from '../../logging/index';
+import { serializeError } from '../../worker/utils/serializeError';
 
 const workerLogger = logger.child({ component: 'WORKER' });
 

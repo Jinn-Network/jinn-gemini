@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { scriptLogger } from '../../logging/index.js';
 
 /**
  * Isolated environment for middleware testing
@@ -30,26 +31,24 @@ export async function createIsolatedMiddlewareEnvironment(): Promise<IsolatedEnv
   const sourceMiddleware = path.resolve(__dirname, '../../olas-operate-middleware');
   const tempMiddleware = path.join('/tmp', `jinn-e2e-middleware-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`);
 
-  console.log('[test-isolation] Creating isolated middleware copy for E2E test...');
-  console.log(`[test-isolation] Source: ${sourceMiddleware}`);
-  console.log(`[test-isolation] Isolated copy: ${tempMiddleware}`);
+  scriptLogger.info({ sourceMiddleware, tempMiddleware }, 'Creating isolated middleware copy for E2E test');
 
   // Copy entire middleware (source files + Poetry .venv symlink)
   await copyDirectory(sourceMiddleware, tempMiddleware);
 
-  console.log('[test-isolation] ✅ Middleware copied (including Poetry venv)');
-  console.log('[test-isolation] ✅ Tests will create .operate in isolated copy');
+  scriptLogger.info('Middleware copied (including Poetry venv)');
+  scriptLogger.info('Tests will create .operate in isolated copy');
 
   return {
     tempDir: tempMiddleware,
     middlewareDir: tempMiddleware, // Use the copy for everything
     async cleanup() {
-      console.log('[test-isolation] 🧹 Cleaning up isolated middleware copy...');
+      scriptLogger.info('Cleaning up isolated middleware copy');
       try {
         await fs.rm(tempMiddleware, { recursive: true, force: true });
-        console.log('[test-isolation] ✅ Cleaned up isolated copy');
+        scriptLogger.info('Cleaned up isolated copy');
       } catch (error) {
-        console.warn(`[test-isolation] ⚠️ Failed to cleanup: ${error}`);
+        scriptLogger.warn({ error }, 'Failed to cleanup isolated middleware');
       }
     }
   };

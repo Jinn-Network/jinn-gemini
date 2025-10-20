@@ -2,6 +2,8 @@
  * Query Ponder GraphQL for run statistics
  */
 
+import { scriptLogger } from '../../logging/index.js';
+
 export interface PonderStats {
   marketplaceRequests: number;
   deliveries: number;
@@ -39,7 +41,7 @@ export async function queryPonderStats(graphqlUrl: string): Promise<PonderStats>
       artifacts: data.data?.artifacts?.items?.length || 0,
     };
   } catch (error: any) {
-    console.warn('[stats] Failed to query Ponder stats:', error.message);
+    scriptLogger.warn({ graphqlUrl, error: error.message }, 'Failed to query Ponder stats');
     // Return zeros if query fails (e.g., Ponder not responding)
     return {
       marketplaceRequests: 0,

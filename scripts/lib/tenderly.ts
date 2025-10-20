@@ -1,9 +1,9 @@
 /**
  * Tenderly API client for managing Virtual TestNets (vnets) during E2E testing
- * 
+ *
  * This module provides functionality to programmatically create, manage, and fund
  * Virtual TestNets using Tenderly's API for testing wallet bootstrap scenarios.
- * 
+ *
  * Key features:
  * - Creates ephemeral Virtual TestNets for isolated testing
  * - Funds EOA addresses via Admin RPC
@@ -12,6 +12,7 @@
 
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
+import { scriptLogger } from '../../logging/index.js';
 
 /**
  * Tenderly API configuration
@@ -146,8 +147,8 @@ export class TenderlyClient {
     };
 
     const url = `${this.baseUrl}/api/v1/account/${this.config.accountSlug}/project/${this.config.projectSlug}/vnets`;
-    
-    console.log(`[TENDERLY] Creating Virtual TestNet: ${slug}`);
+
+    scriptLogger.info({ slug, chainId, blockNumber }, 'Creating Virtual TestNet');
     
     try {
       const response = await fetch(url, {
@@ -184,12 +185,15 @@ export class TenderlyClient {
         blockExplorerUrl: `https://dashboard.tenderly.co/explorer/vnet/${vnetData.id}`
       };
 
-      console.log(`[TENDERLY] Created Virtual TestNet: ${result.id}`);
-      console.log(`[TENDERLY] Admin RPC: ${result.adminRpcUrl}`);
-      
+      scriptLogger.info({
+        vnetId: result.id,
+        adminRpcUrl: result.adminRpcUrl,
+        blockExplorerUrl: result.blockExplorerUrl
+      }, 'Created Virtual TestNet');
+
       return result;
     } catch (error: any) {
-      console.error(`[TENDERLY] Failed to create Virtual TestNet: ${error.message}`);
+      scriptLogger.error({ error: error.message, slug }, 'Failed to create Virtual TestNet');
       throw error;
     }
   }
@@ -229,9 +233,9 @@ export class TenderlyClient {
         throw new Error(`RPC Error: ${result.error.message}`);
       }
 
-      console.log(`[TENDERLY] Successfully funded ${address} with ${amountWei} wei`);
+      scriptLogger.info({ address, amountWei }, 'Successfully funded address on Virtual TestNet');
     } catch (error: any) {
-      console.error(`[TENDERLY] Failed to fund ${address}: ${error.message}`);
+      scriptLogger.error({ address, error: error.message }, 'Failed to fund address on Virtual TestNet');
       throw error; // Re-throw instead of failing silently for test reliability
     }
   }
@@ -241,20 +245,20 @@ export class TenderlyClient {
    */
   async deleteVnet(vnetId: string): Promise<void> {
     if (!this.isConfigured()) {
-      console.warn('[TENDERLY] Not configured, skipping vnet deletion');
+      scriptLogger.warn('Tenderly not configured, skipping vnet deletion');
       return;
     }
 
     if (!vnetId) {
-      console.warn('[TENDERLY] No vnet ID provided, skipping deletion');
+      scriptLogger.warn('No vnet ID provided, skipping deletion');
       return;
     }
 
     const url = `${this.baseUrl}/api/v1/account/${this.config.accountSlug}/project/${this.config.projectSlug}/vnets/${vnetId}`;
-    
+
     try {
-      console.log(`[TENDERLY] Deleting Virtual TestNet: ${vnetId}`);
-      
+      scriptLogger.info({ vnetId }, 'Deleting Virtual TestNet');
+
       const response = await fetch(url, {
         method: 'DELETE',
         headers: {
@@ -263,12 +267,12 @@ export class TenderlyClient {
       });
 
       if (!response.ok) {
-        console.warn(`[TENDERLY] Failed to delete Virtual TestNet ${vnetId}: ${response.status} ${response.statusText}`);
+        scriptLogger.warn({ vnetId, status: response.status, statusText: response.statusText }, 'Failed to delete Virtual TestNet');
       } else {
-        console.log(`[TENDERLY] Successfully deleted Virtual TestNet: ${vnetId}`);
+        scriptLogger.info({ vnetId }, 'Successfully deleted Virtual TestNet');
       }
     } catch (error: any) {
-      console.warn(`[TENDERLY] Failed to delete Virtual TestNet ${vnetId}:`, error.message);
+      scriptLogger.warn({ vnetId, error: error.message }, 'Failed to delete Virtual TestNet');
     }
   }
 }
@@ -286,7 +290,7 @@ export class MockTenderlyClient extends TenderlyClient {
   }
 
   async createVnet(): Promise<VnetResult> {
-    console.log('[MOCK] Created Tenderly Virtual TestNet:', this.mockVnetId);
+    scriptLogger.info({ vnetId: this.mockVnetId }, '[MOCK] Created Tenderly Virtual TestNet');
     return {
       id: this.mockVnetId,
       container_name: this.mockVnetId,
@@ -299,14 +303,14 @@ export class MockTenderlyClient extends TenderlyClient {
 
   async fundAddress(address: string, amountWei: string, adminRpcUrl: string): Promise<void> {
     this.mockedBalances.set(address.toLowerCase(), amountWei);
-    console.log(`[MOCK] Funded ${address} with ${amountWei} wei via ${adminRpcUrl}`);
-    
+    scriptLogger.info({ address, amountWei, adminRpcUrl }, '[MOCK] Funded address');
+
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 200));
   }
 
   async deleteVnet(vnetId: string): Promise<void> {
-    console.log('[MOCK] Deleted Tenderly Virtual TestNet:', vnetId);
+    scriptLogger.info({ vnetId }, '[MOCK] Deleted Tenderly Virtual TestNet');
     this.mockedBalances.clear();
   }
 
@@ -330,12 +334,12 @@ export class MockTenderlyClient extends TenderlyClient {
  */
 export function createTenderlyClient(): TenderlyClient {
   const realClient = new TenderlyClient();
-  
+
   if (realClient.isConfigured()) {
-    console.log('[TENDERLY] Using real Tenderly API client');
+    scriptLogger.info('Using real Tenderly API client');
     return realClient;
   } else {
-    console.log('[TENDERLY] Not configured, using mock client');
+    scriptLogger.info('Tenderly not configured, using mock client');
     return new MockTenderlyClient();
   }
 }

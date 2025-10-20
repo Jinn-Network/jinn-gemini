@@ -246,6 +246,19 @@ export const mcpLogger = {
   toolError: (toolName: string, error: string) => baseMcpLogger.error({ toolName, error }, 'Tool call failed'),
 };
 
+/**
+ * Create a child logger for script operations.
+ * Automatically adds the 'SCRIPT' component tag.
+ */
+const baseScriptLogger = logger.child({ component: 'SCRIPT' });
+export const scriptLogger = {
+  debug: baseScriptLogger.debug.bind(baseScriptLogger),
+  info: baseScriptLogger.info.bind(baseScriptLogger),
+  warn: baseScriptLogger.warn.bind(baseScriptLogger),
+  error: baseScriptLogger.error.bind(baseScriptLogger),
+  fatal: baseScriptLogger.fatal.bind(baseScriptLogger),
+};
+
 // ============================================================================
 // Logging utility functions
 // ============================================================================

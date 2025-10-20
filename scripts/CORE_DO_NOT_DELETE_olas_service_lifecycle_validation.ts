@@ -66,7 +66,7 @@
 
 import "dotenv/config";
 import { spawn, ChildProcess } from "child_process";
-import { logger } from "../logging/index.js";
+import { logger } from "../worker/logger.js";
 import { TenderlyClient } from "./lib/tenderly.js";
 import path from "path";
 import fs from "fs/promises";

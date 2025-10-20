@@ -17,7 +17,7 @@ import {
   ServiceState,
   StakingState 
 } from './OlasContractInterfaces.js';
-import { logger } from '../../logging/index.js';
+import { logger } from '../logger.js';
 
 const contractLogger = logger.child({ component: 'OLAS-CONTRACTS' });
 
