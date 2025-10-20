@@ -13,6 +13,7 @@ import path from 'node:path';
 import { loadEnvOnce } from '../../gemini-agent/mcp/tools/shared/env.js';
 import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
 import { getMcpClient } from './shared.js';
+import { findAvailablePort } from './port-utils.js';
 
 let vnetResult: VnetResult | null = null;
 let ponderProc: ExecaChildProcess | null = null;
@@ -49,8 +50,9 @@ export async function setup() {
   process.env.MECHX_CHAIN_RPC = vnetResult.adminRpcUrl;
   process.env.BASE_RPC_URL = vnetResult.adminRpcUrl;
 
-  // Set Ponder GraphQL URL
-  const testPonderPort = 42070;
+  // Find available port for Ponder (allows parallel test execution)
+  const testPonderPort = await findAvailablePort(42070);
+  console.log(`[global-setup] Using Ponder port: ${testPonderPort}`);
   const gqlUrl = `http://localhost:${testPonderPort}/graphql`;
   process.env.PONDER_GRAPHQL_URL = gqlUrl;
   process.env.E2E_GQL_URL = gqlUrl; // For tests to read
