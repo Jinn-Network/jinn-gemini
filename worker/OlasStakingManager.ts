@@ -9,7 +9,7 @@
 
 import "dotenv/config";
 import { OlasOperateWrapper } from "./OlasOperateWrapper.js";
-import { logger } from "../logging/index.js";
+import { logger } from '../logging/index.js';
 import {
   OlasServiceManager,
   ServiceLifecycleTransition,

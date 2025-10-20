@@ -13,7 +13,7 @@ import { promisify } from "util";
 import { execFile } from "child_process";
 const asyncExecFile = promisify(execFile);
 import { IJob, IJobResult, IJobReport, IJobSuccess } from "./types.js";
-import { logger, serializeError } from "../logging/index.js";
+import { logger } from '../logging/index.js';
 import { createClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 import { deliverRequest } from "../../scripts/lib/deliverRequest.js";
@@ -368,7 +368,7 @@ async function collectAndStoreJobReport(context: {
     }
   } catch (error) {
     workerLogger.error(
-      { jobId: context.job.id, error: serializeError(error) },
+      { jobId: context.job.id, error },
       `Critical error storing job report for ${context.job.id}`
     );
     // Don't throw - we don't want report storage failures to break job processing
@@ -1102,10 +1102,7 @@ async function processPendingJobs(): Promise<boolean> {
       }
       workerLogger.completed(job.id);
     } catch (err: any) {
-      workerLogger.error(
-        { jobId: job.id, error: serializeError(err) },
-        `Job ${job.id} failed`
-      );
+      workerLogger.error({ jobId: job.id, error: err }, `Job ${job.id} failed`);
 
       // Check if this is a quota error or 500/INTERNAL error and set cooldown
       // Handle the special error format from Agent.run() which includes telemetry
@@ -1234,7 +1231,7 @@ async function processPendingJobs(): Promise<boolean> {
         const resetParseResult = parseToolResponse(resetResult);
         if (!resetParseResult.success) {
           workerLogger.error(
-            { jobId: job.id, error: resetParseResult.error },
+            { error: resetParseResult.error },
             `Failed to reset job status to PENDING`
           );
         }
@@ -1313,7 +1310,7 @@ async function processPendingJobs(): Promise<boolean> {
     workerLogger.info(`Job report collection completed for ${job.id}`);
   } catch (reportError) {
     workerLogger.error(
-      { jobId: job.id, error: serializeError(reportError) },
+      { jobId: job.id, error: reportError },
       `Failed to collect job report for ${job.id}`
     );
   }

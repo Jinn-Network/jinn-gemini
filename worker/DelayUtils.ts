@@ -2,7 +2,7 @@
  * Utility functions for handling delays in the worker loop
  */
 
-import { logger, serializeError } from "../logging/index.js";
+import { logger, serializeError } from '../logging/index.js';
 
 const delayLogger = logger.child({ component: "DELAY" });
 

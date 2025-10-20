@@ -46,10 +46,10 @@ export function parseWorkerConfig(): WorkerConfig {
         return `${field}: ${issue.message}`;
       }).join(', ');
 
-      configLogger.fatal({ issues }, 'Configuration validation failed');
+      configLogger.fatal({ issues }, `Configuration validation failed: ${issues}`);
       process.exit(2);
     }
-    configLogger.fatal({ error: String(error) }, 'Unknown configuration error');
+    configLogger.fatal({ error }, `Unknown configuration error: ${error}`);
     process.exit(2);
   }
 }

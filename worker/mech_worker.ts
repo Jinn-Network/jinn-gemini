@@ -6,7 +6,7 @@ import { Web3 } from 'web3';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import agentMechArtifact from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
-import { workerLogger, serializeError } from '../logging/index.js';
+import { workerLogger } from '../logging/index.js';
 import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport, createArtifact as apiCreateArtifact } from './control_api_client.js';
 import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './artifacts.js';
 import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
@@ -34,6 +34,19 @@ const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
 
 // Track recent reposts to prevent loops
 const recentReposts = new Map<string, number>();
+
+// Error serialization helper
+function serializeError(e: any): string {
+  if (!e) return 'Unknown error';
+  if (typeof e === 'string') return e;
+  if (e?.message) return e.message;
+  if (e instanceof Error) return e.toString();
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
 
 // Work Protocol types and parser
 interface FinalStatus {

@@ -291,11 +291,11 @@ Mech Deployment: ${this.config.deployMech ? 'YES' : 'NO'}
 ${'='.repeat(80)}
 
 🚀 Starting quickstart in attended mode...
-`;
 
+`;
     // Use process.stdout.write to preserve exact formatting without logger metadata
     // This is intentional for CLI wizard output - it's the user interface, not logging
-    process.stdout.write(intro + '\n');
+    process.stdout.write(intro);
   }
 
   /**
