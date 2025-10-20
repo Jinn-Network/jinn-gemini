@@ -239,7 +239,7 @@ export class Ledger {
   }
 
   /**
-   * Gets ledger statistics
+   * Returns aggregate statistics for the current (latest) violations
    */
   async getStats(): Promise<{
     total: number;
@@ -248,7 +248,6 @@ export class Ledger {
     by_clause: Record<string, number>;
   }> {
     const all = await this.getAll();
-
     const by_status: Record<string, number> = {};
     const by_severity: Record<string, number> = {};
     const by_clause: Record<string, number> = {};
@@ -256,9 +255,8 @@ export class Ledger {
     for (const v of all) {
       by_status[v.status] = (by_status[v.status] || 0) + 1;
       by_severity[v.severity] = (by_severity[v.severity] || 0) + 1;
-
-      for (const clause of v.clauses) {
-        by_clause[clause] = (by_clause[clause] || 0) + 1;
+      for (const c of v.clauses) {
+        by_clause[c] = (by_clause[c] || 0) + 1;
       }
     }
 
@@ -269,4 +267,5 @@ export class Ledger {
       by_clause,
     };
   }
+
 }

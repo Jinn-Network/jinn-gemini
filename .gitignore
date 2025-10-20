@@ -136,7 +136,8 @@ settings.local.json
 gemini-agent/.gemini/last-prompt.txt
 
 # Claude specific
-.claude/
+.claude/*
+!.claude/commands/
 
 # Test files that might contain sensitive data
 **/*.test.local.js

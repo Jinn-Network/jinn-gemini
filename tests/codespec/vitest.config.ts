@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     // CodeSpec tests don't need VNet/Ponder infrastructure
     // They test the review/ledger/autofix workflow in isolation
-    include: ['**/*.e2e.test.ts'],
+    include: ['tests/codespec/**/*.e2e.test.ts'],
 
     // Sequential execution (git operations might conflict)
     pool: 'forks',

@@ -146,19 +146,14 @@ export async function getOpenViolations(cwd: string) {
 
 /**
  * Waits for ledger to be updated (polls for changes)
+ * @deprecated No longer needed with synchronous ledger updates.
+ * Kept for backwards compatibility but immediately returns ledger state.
  */
 export async function waitForLedgerUpdate(
   cwd: string,
   timeout = 10000
 ): Promise<boolean> {
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < timeout) {
-    if (await checkLedgerUpdated(cwd)) {
-      return true;
-    }
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-
-  return false;
+  // With synchronous ledger updates, no need to wait/poll
+  // Just check if ledger exists immediately
+  return await checkLedgerUpdated(cwd);
 }

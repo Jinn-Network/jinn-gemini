@@ -22,6 +22,9 @@ NC='\033[0m' # No Color
 TIMEOUT=${TIMEOUT:-600}  # Default 10 minutes (3 reviews in parallel)
 TARGET="${1:---diff}"
 
+# Get script directory (needed before handling --obj3-only branch)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Check for obj3-only mode (fast security check for pre-commit)
 if [ "$TARGET" = "--obj3-only" ]; then
   shift
@@ -50,9 +53,6 @@ cleanup() {
   exit $exit_code
 }
 trap cleanup EXIT INT TERM
-
-# Get script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Run all three reviews in parallel
 echo "Starting parallel reviews..."
@@ -95,137 +95,65 @@ echo " done! (${ELAPSED}s)"
 echo ""
 
 # Wait for all processes and collect exit codes
-wait "$PID_OBJ1"
-EXIT_OBJ1=$?
-wait "$PID_OBJ2"
-EXIT_OBJ2=$?
-wait "$PID_OBJ3"
-EXIT_OBJ3=$?
+EXIT_OBJ1=0
+EXIT_OBJ2=0
+EXIT_OBJ3=0
 
-# Update ledger with violations (in background, don't block)
-if command -v tsx >/dev/null 2>&1; then
-  tsx "$SCRIPT_DIR/../lib/update-ledger.ts" obj1 "$TEMP_OBJ1" >/dev/null 2>&1 &
-  tsx "$SCRIPT_DIR/../lib/update-ledger.ts" obj2 "$TEMP_OBJ2" >/dev/null 2>&1 &
-  tsx "$SCRIPT_DIR/../lib/update-ledger.ts" obj3 "$TEMP_OBJ3" >/dev/null 2>&1 &
+if wait "$PID_OBJ1"; then
+  EXIT_OBJ1=0
+else
+  EXIT_OBJ1=$?
 fi
 
-# Extract violation counts from each output
-extract_violation_count() {
-  local output="$1"
-  # Look for "Total violations found: N" or "Found N violation(s)"
-  local count=$(echo "$output" | grep -o -E '(Total violations found|Found): [0-9]+' | grep -o '[0-9]\+' | head -1)
-  if [ -z "$count" ]; then
-    # Try alternative format
-    count=$(echo "$output" | grep -o -E 'Found [0-9]+ .* violation' | grep -o '[0-9]\+' | head -1)
-  fi
-  echo "${count:-0}"
-}
+if wait "$PID_OBJ2"; then
+  EXIT_OBJ2=0
+else
+  EXIT_OBJ2=$?
+fi
 
-OBJ1_VIOLATIONS=$(extract_violation_count "$(cat "$TEMP_OBJ1")")
-OBJ2_VIOLATIONS=$(extract_violation_count "$(cat "$TEMP_OBJ2")")
-OBJ3_VIOLATIONS=$(extract_violation_count "$(cat "$TEMP_OBJ3")")
-TOTAL_VIOLATIONS=$((OBJ1_VIOLATIONS + OBJ2_VIOLATIONS + OBJ3_VIOLATIONS))
+if wait "$PID_OBJ3"; then
+  EXIT_OBJ3=0
+else
+  EXIT_OBJ3=$?
+fi
 
-# Print aggregated header
-echo "════════════════════════════════════════════════════════════════════"
-echo -e "${BOLD}Code Spec Review: Complete Analysis${NC}"
-echo "════════════════════════════════════════════════════════════════════"
+# Update ledger with violations (synchronous for reliability)
+# This ensures ledger is updated before script exits, making tests deterministic
+# and errors visible to users. Performance overhead: ~200-500ms (negligible).
 echo ""
-echo -e "${BOLD}Executive Summary${NC}"
-echo ""
-printf "%-30s %-15s %-10s %-10s\n" "Objective" "Violations" "Severity" "Status"
-echo "────────────────────────────────────────────────────────────────────"
-
-# obj3 status
-if [ $EXIT_OBJ3 -eq 0 ]; then
-  printf "%-30s %-15s %-10s %-10s\n" "obj3: Security" "$OBJ3_VIOLATIONS" "🔴 Critical" "✅ PASS"
+echo "📝 Updating violations ledger..."
+if yarn tsx "$SCRIPT_DIR/../lib/update-all-reviews.ts" \
+  "obj1:$TEMP_OBJ1" \
+  "obj2:$TEMP_OBJ2" \
+  "obj3:$TEMP_OBJ3" 2>&1 | tee /tmp/codespec-ledger-update.log; then
+  echo "✅ Ledger updated successfully"
 else
-  printf "%-30s %-15s %-10s %-10s\n" "obj3: Security" "$OBJ3_VIOLATIONS" "🔴 Critical" "❌ FAIL"
+  echo "⚠️  Ledger update failed (see /tmp/codespec-ledger-update.log)"
+  echo "   Reviews completed but violations not saved to ledger"
 fi
-
-# obj1 status
-if [ $EXIT_OBJ1 -eq 0 ]; then
-  printf "%-30s %-15s %-10s %-10s\n" "obj1: Orthodoxy" "$OBJ1_VIOLATIONS" "🟡 Warning" "✅ PASS"
-else
-  printf "%-30s %-15s %-10s %-10s\n" "obj1: Orthodoxy" "$OBJ1_VIOLATIONS" "🟡 Warning" "⚠️  WARN"
-fi
-
-# obj2 status
-if [ $EXIT_OBJ2 -eq 0 ]; then
-  printf "%-30s %-15s %-10s %-10s\n" "obj2: Discoverability" "$OBJ2_VIOLATIONS" "🟢 Info" "✅ PASS"
-else
-  printf "%-30s %-15s %-10s %-10s\n" "obj2: Discoverability" "$OBJ2_VIOLATIONS" "🟢 Info" "ℹ️  INFO"
-fi
-
-echo "────────────────────────────────────────────────────────────────────"
-printf "%-30s %-15s\n" "TOTAL" "$TOTAL_VIOLATIONS violations"
-echo "════════════════════════════════════════════════════════════════════"
 echo ""
 
 # Print detailed results for each objective
-if [ $OBJ3_VIOLATIONS -gt 0 ] || [ $EXIT_OBJ3 -ne 0 ]; then
+if [ $EXIT_OBJ3 -ne 0 ]; then
   echo -e "${RED}${BOLD}🔴 [obj3] Security Violations (Highest Priority)${NC}"
   echo "────────────────────────────────────────────────────────────────────"
   cat "$TEMP_OBJ3"
   echo ""
-else
-  echo -e "${GREEN}🔴 [obj3] Security: No violations detected ✅${NC}"
-  echo ""
 fi
 
-if [ $OBJ1_VIOLATIONS -gt 0 ] || [ $EXIT_OBJ1 -ne 0 ]; then
+if [ $EXIT_OBJ1 -ne 0 ]; then
   echo -e "${YELLOW}${BOLD}🟡 [obj1] Orthodoxy Violations${NC}"
   echo "────────────────────────────────────────────────────────────────────"
   cat "$TEMP_OBJ1"
   echo ""
-else
-  echo -e "${GREEN}🟡 [obj1] Orthodoxy: No violations detected ✅${NC}"
-  echo ""
 fi
 
-if [ $OBJ2_VIOLATIONS -gt 0 ] || [ $EXIT_OBJ2 -ne 0 ]; then
+if [ $EXIT_OBJ2 -ne 0 ]; then
   echo -e "${BLUE}${BOLD}🟢 [obj2] Discoverability Violations${NC}"
   echo "────────────────────────────────────────────────────────────────────"
   cat "$TEMP_OBJ2"
   echo ""
-else
-  echo -e "${GREEN}🟢 [obj2] Discoverability: No violations detected ✅${NC}"
-  echo ""
 fi
-
-# Final action items
-echo "════════════════════════════════════════════════════════════════════"
-echo -e "${BOLD}Action Items${NC}"
-echo "════════════════════════════════════════════════════════════════════"
-echo ""
-
-if [ $OBJ3_VIOLATIONS -gt 0 ]; then
-  echo -e "${RED}⚠️  CRITICAL: Fix $OBJ3_VIOLATIONS security violation(s) before commit${NC}"
-fi
-
-if [ $OBJ1_VIOLATIONS -gt 0 ]; then
-  echo -e "${YELLOW}⚠️  WARNING: Address $OBJ1_VIOLATIONS orthodoxy violation(s) before merge${NC}"
-fi
-
-if [ $OBJ2_VIOLATIONS -gt 0 ]; then
-  echo -e "${BLUE}ℹ️  INFO: Consider improving $OBJ2_VIOLATIONS discoverability issue(s)${NC}"
-fi
-
-if [ $TOTAL_VIOLATIONS -eq 0 ]; then
-  echo -e "${GREEN}✅ All checks passed! Code follows spec guidelines.${NC}"
-fi
-
-echo ""
-echo "📚 Resources:"
-echo "   - Full spec: docs/spec/code-spec/spec.md"
-echo "   - Usage guide: docs/spec/code-spec/USAGE.md"
-echo "   - Known issues: docs/spec/code-spec/VIOLATIONS.md"
-echo ""
-echo "🔧 Individual reviews:"
-echo "   - Security only: ./codespec/scripts/review-obj3.sh $TARGET"
-echo "   - Orthodoxy only: ./codespec/scripts/review-obj1.sh $TARGET"
-echo "   - Discoverability only: ./codespec/scripts/review-obj2.sh $TARGET"
-echo ""
 
 # Exit with failure if any critical (obj3) violations found
 if [ $EXIT_OBJ3 -ne 0 ]; then

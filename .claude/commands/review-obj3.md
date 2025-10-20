@@ -125,70 +125,54 @@ For each potential violation found:
 
 ### Step 5: Format Output
 
-For each violation, use this format:
+Output MUST be in this exact format for parsing:
 
-```markdown
-### 🔴 [obj3] `<file-path>:<line-number>`
-
-**Violation:** [Brief description]
-**Severity:** 🔴 Critical | 🟡 High | 🟢 Medium
-**Pattern:** [Which security pattern was violated]
-
-**Current code:**
-```typescript
-[Show the violating code snippet]
+```
+File: <path-to-file>
+Line: <number>
+Issue: <one-line description>
+Pattern reference: <pattern-id>
+Current code:
+<the bad code>
+Suggested fix:
+<the good code>
+---
 ```
 
-**Security Risk:**
-[Explain the specific security risk - SQL injection, credential leak, etc.]
+**Rules:**
+- Use EXACT field names: `File:`, `Line:`, `Issue:`, `Pattern reference:`, `Current code:`, `Suggested fix:`
+- Each field starts on a new line
+- No markdown formatting (no **, no `, no emojis)
+- No code fences (no ```)
+- Separate each violation with `---` on its own line
+- Keep it simple
 
-**Suggested fix:**
-```typescript
-[Show the secure version with proper validation/parameterization]
+**Example:**
+
+```
+File: worker/mech_worker.ts
+Line: 45
+Issue: Hardcoded API key in source code
+Pattern reference: r1, obj3
+Current code:
+const API_KEY = "sk_test_secret";
+Suggested fix:
+const API_KEY = process.env.API_KEY;
+if (!API_KEY) throw new Error('API_KEY required');
+---
+File: worker/mech_worker.ts
+Line: 102
+Issue: SQL injection via string concatenation
+Pattern reference: obj3
+Current code:
+const query = "SELECT * FROM users WHERE id = " + userId;
+Suggested fix:
+const query = "SELECT * FROM users WHERE id = $1";
+const result = await db.query(query, [userId]);
+---
 ```
 
-**Reference:** `docs/spec/code-spec/spec.md` (obj3: Minimize Harm)
-```
-
-### Step 6: Provide Summary
-
-At the end:
-
-```markdown
-## [obj3] Security Review Summary
-
-**Files analyzed:** [count]
-**Total violations found:** [count]
-
-### By Severity:
-- 🔴 Critical: [count] (immediate action required)
-- 🟡 High: [count] (fix before merge)
-- 🟢 Medium: [count] (address in refactoring)
-
-### By Type:
-- Hardcoded secrets: [count]
-- SQL injection risks: [count]
-- Fail-open patterns: [count]
-- Missing input validation: [count]
-- Sensitive data logging: [count]
-- Unsafe code execution: [count]
-
-### Action Required:
-1. 🔴 **Critical violations MUST be fixed before commit**
-2. 🟡 High severity violations should be fixed before merge
-3. 🟢 Medium severity violations should be addressed in next refactor
-
-### Next Steps:
-- Review each violation above
-- Apply suggested fixes
-- Re-run `/review-obj3 --diff` to verify fixes
-- Never commit secrets (use environment variables)
-- Always validate external input (use Zod schemas)
-- Always fail securely (deny on error, not grant)
-
-📚 **Full documentation:** `docs/spec/code-spec/USAGE.md`
-📖 **Security examples:** `docs/spec/code-spec/examples/obj3.md`
-```
+That's the entire output. No summaries, no extra markdown, just this format.
 
 ## Detection Strategy
 

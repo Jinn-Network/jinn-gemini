@@ -368,67 +368,57 @@ For each pattern found:
 
 ### Step 5: Format Output
 
-For each violation:
+Output MUST be in this exact format for parsing:
 
-```markdown
-### ⚠️ [obj2] `<file-path>:<line-number>`
-
-**Violation:** [What makes this code implicit/non-discoverable]
-**Category:** [Inline env access | Magic globals | Fallback chains | Missing errors | Abbreviations | Clever code]
-
-**Current code:**
-```typescript
-[Show the implicit/non-discoverable code]
+```
+File: <path-to-file>
+Line: <number>
+Issue: <one-line description>
+Pattern reference: <pattern-id>
+Current code:
+<the implicit/non-discoverable code>
+Suggested fix:
+<the explicit/discoverable alternative>
+---
 ```
 
-**Why this violates obj2:**
-- [Explain discoverability issue]
-- [Explain how it confuses AI agents]
+**Rules:**
+- Use EXACT field names: `File:`, `Line:`, `Issue:`, `Pattern reference:`, `Current code:`, `Suggested fix:`
+- Each field starts on a new line
+- No markdown formatting (no **, no `, no emojis)
+- No code fences (no ```)
+- Separate each violation with `---` on its own line
+- Keep it simple
 
-**Suggested fix:**
-```typescript
-[Show explicit, discoverable alternative]
+**Example:**
+
+```
+File: worker/config.ts
+Line: 23
+Issue: Inline process.env access without helper function
+Pattern reference: obj2
+Current code:
+const rpcUrl = process.env.RPC_URL || 'http://localhost:8545';
+Suggested fix:
+function getRpcUrl(): string {
+  const rpcUrl = process.env.RPC_URL;
+  if (!rpcUrl) return 'http://localhost:8545';
+  return rpcUrl;
+}
+const rpcUrl = getRpcUrl();
+---
+File: utils/helpers.ts
+Line: 45
+Issue: Single-letter variable name makes code non-greppable
+Pattern reference: obj2
+Current code:
+const e = await fetchData();
+Suggested fix:
+const event = await fetchData();
+---
 ```
 
-**Reference:** `docs/spec/code-spec/spec.md` (obj2: Code for the Next Agent)
-```
-
-### Step 6: Provide Summary
-
-```markdown
-## [obj2] Discoverability Review Summary
-
-**Files analyzed:** [count]
-**Total violations found:** [count]
-
-### Violation Categories:
-
-| Category | Count | Severity |
-|----------|-------|----------|
-| Inline env var access | [count] | 🟡 |
-| Magic globals | [count] | 🟡 |
-| Multiple fallback chains | [count] | 🟡 |
-| Missing error messages | [count] | 🟢 |
-| Abbreviated names | [count] | 🟢 |
-| Clever one-liners | [count] | 🟢 |
-
-### Discoverability Principle:
-
-> AI agents read code through search, types, names, and locality.
-> Implicit behavior, clever tricks, and hidden context confuse AI.
-> Write code the next agent can understand.
-
-### Action Required:
-
-1. Make implicit code explicit
-2. Add descriptive variable names
-3. Provide clear error messages
-4. Centralize configuration access
-5. Avoid clever code - prefer clarity
-
-📚 **Full documentation:** `docs/spec/code-spec/USAGE.md`
-📖 **Discoverability examples:** `docs/spec/code-spec/examples/obj2.md`
-```
+That's the entire output. No summaries, no extra markdown, just this format.
 
 ## Detection Strategy
 
