@@ -42,8 +42,16 @@ function getLogLevel(): pino.Level {
  * - 'json': Structured JSON output (production default)
  *
  * If not set, defaults to 'pretty' in development, 'json' in production.
+ *
+ * IMPORTANT: Always uses JSON in test environments (VITEST=true) to avoid
+ * pino-pretty worker thread issues that can interfere with process lifecycle.
  */
 function getLogFormat(): 'pretty' | 'json' {
+  // Force JSON logging in test environments to avoid pino-pretty worker thread issues
+  if (process.env.VITEST === 'true') {
+    return 'json';
+  }
+
   const format = process.env.LOG_FORMAT?.toLowerCase();
 
   if (format === 'pretty' || format === 'json') {
