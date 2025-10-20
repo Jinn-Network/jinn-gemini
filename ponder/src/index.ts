@@ -1,6 +1,7 @@
 import { ponder } from "@/generated";
 import { resolveRequestIpfsContent } from "../../gemini-agent/mcp/tools/shared/ipfs";
 import axios from "axios";
+import { logger, serializeError } from "../../logging/index.js";
 
 // Minimal local types to avoid implicit any in handler params
 type Repository = {
@@ -46,7 +47,7 @@ ponder.on(
     const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
     const messageRepo = (context as any).db?.message || (context as any).entities?.message;
     if (!repo) {
-      console.error("No repository for 'request' (neither context.db nor context.entities). Skipping upsert.");
+      logger.error("No repository for 'request' (neither context.db nor context.entities). Skipping upsert.");
       return;
     }
 
@@ -87,7 +88,7 @@ ponder.on(
             }
           }
         } catch (e: any) {
-          console.error(`Failed to resolve IPFS content for hash ${ipfsHash}: ${e.message}`);
+          logger.error(`Failed to resolve IPFS content for hash ${ipfsHash}: ${e.message}`);
         }
       }
 
@@ -198,9 +199,9 @@ ponder.on(
       }
     }
 
-    console.log({ mech, sender, requestIds }, "Indexed MarketplaceRequest");
+    logger.info({ mech, sender, requestIds }, "Indexed MarketplaceRequest");
   } catch (e: any) {
-    console.error({ err: e?.message || String(e) }, "Failed to index MarketplaceRequest");
+    logger.error({ err: e?.message || String(e) }, "Failed to index MarketplaceRequest");
   }
 });
 
@@ -223,7 +224,7 @@ ponder.on(
     const artifactsRepo = (context as any).db?.artifact || (context as any).entities?.artifact;
     const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
     if (!deliveryRepo || !requestRepo) {
-      console.error("No repository for 'delivery' or 'request'. Skipping OlasMech Deliver handler.");
+      logger.error("No repository for 'delivery' or 'request'. Skipping OlasMech Deliver handler.");
       return;
     }
 
@@ -380,11 +381,11 @@ ponder.on(
         }
       }
     } catch (e: any) {
-      console.error({ requestId, err: e?.message || String(e) }, 'Failed to resolve delivery artifacts (OlasMech)');
+      logger.error({ requestId, err: e?.message || String(e) }, 'Failed to resolve delivery artifacts (OlasMech)');
     }
 
-    console.log({ requestId, ipfsHash }, "Indexed OlasMech Deliver (delivery ipfs)");
+    logger.info({ requestId, ipfsHash }, "Indexed OlasMech Deliver (delivery ipfs)");
   } catch (e: any) {
-    console.error({ err: e?.message || String(e) }, "Failed to index OlasMech Deliver");
+    logger.error({ err: e?.message || String(e) }, "Failed to index OlasMech Deliver");
   }
 });
