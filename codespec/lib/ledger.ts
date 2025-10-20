@@ -58,13 +58,46 @@ export interface StatusUpdate {
 }
 
 /**
- * Manages the violations ledger (append-only JSONL database)
+ * Manages the violations ledger (in-memory state store, persisted to JSONL)
  */
 export class Ledger {
   private ledgerPath: string;
 
   constructor(ledgerPath = '.codespec/ledger.jsonl') {
     this.ledgerPath = ledgerPath;
+  }
+
+  /**
+   * Loads all violations from disk into a map (one record per fingerprint)
+   */
+  private async loadAll(): Promise<Map<string, Violation>> {
+    if (!existsSync(this.ledgerPath)) {
+      return new Map();
+    }
+
+    const content = await readFile(this.ledgerPath, 'utf-8');
+    const lines = content.trim().split('\n').filter(l => l);
+
+    const violations = new Map<string, Violation>();
+    for (const line of lines) {
+      const v = JSON.parse(line) as Violation;
+      violations.set(v.fingerprint, v);
+    }
+
+    return violations;
+  }
+
+  /**
+   * Saves all violations to disk (overwrites file)
+   */
+  private async saveAll(violations: Map<string, Violation>): Promise<void> {
+    await mkdir(dirname(this.ledgerPath), { recursive: true });
+
+    const lines = Array.from(violations.values())
+      .map(v => JSON.stringify(v))
+      .join('\n');
+
+    await writeFile(this.ledgerPath, lines + '\n', 'utf-8');
   }
 
   /**
@@ -83,15 +116,14 @@ export class Ledger {
    * If a violation with the same fingerprint exists, updates last_seen instead
    */
   async addViolation(v: NewViolation): Promise<Violation> {
-    // Ensure ledger directory exists
-    await mkdir(dirname(this.ledgerPath), { recursive: true });
+    const violations = await this.loadAll();
 
     // Generate fingerprint
     const fingerprint = this.generateFingerprint(v);
     const id = `V-${fingerprint.slice(0, 6)}`;
 
     // Check if violation already exists
-    const existing = await this.getByFingerprint(fingerprint);
+    const existing = violations.get(fingerprint);
 
     const now = new Date().toISOString();
 
@@ -105,7 +137,8 @@ export class Ledger {
         suggested_fix: v.suggested_fix,
       };
 
-      await this.appendToLedger(updated);
+      violations.set(fingerprint, updated);
+      await this.saveAll(violations);
       return updated;
     }
 
@@ -118,7 +151,8 @@ export class Ledger {
       last_seen: v.last_seen || now,
     };
 
-    await this.appendToLedger(violation);
+    violations.set(fingerprint, violation);
+    await this.saveAll(violations);
     return violation;
   }
 
@@ -126,7 +160,8 @@ export class Ledger {
    * Updates the status of a violation
    */
   async updateStatus(fingerprint: string, update: StatusUpdate): Promise<void> {
-    const existing = await this.getByFingerprint(fingerprint);
+    const violations = await this.loadAll();
+    const existing = violations.get(fingerprint);
 
     if (!existing) {
       throw new Error(`Violation with fingerprint ${fingerprint} not found`);
@@ -141,32 +176,15 @@ export class Ledger {
       ...(update.pr_url !== undefined && { pr_url: update.pr_url }),
     };
 
-    await this.appendToLedger(updated);
+    violations.set(fingerprint, updated);
+    await this.saveAll(violations);
   }
 
   /**
-   * Gets a violation by fingerprint (returns latest version)
+   * Gets a violation by fingerprint
    */
   async getByFingerprint(fingerprint: string): Promise<Violation | null> {
-    if (!existsSync(this.ledgerPath)) {
-      return null;
-    }
-
-    const content = await readFile(this.ledgerPath, 'utf-8');
-    const lines = content.trim().split('\n').filter(l => l);
-
-    // Build map of fingerprint -> latest violation
-    const violations = new Map<string, Violation>();
-
-    for (const line of lines) {
-      const v = JSON.parse(line) as Violation;
-      const existing = violations.get(v.fingerprint);
-
-      if (!existing || new Date(v.last_seen) >= new Date(existing.last_seen)) {
-        violations.set(v.fingerprint, v);
-      }
-    }
-
+    const violations = await this.loadAll();
     return violations.get(fingerprint) || null;
   }
 
@@ -174,34 +192,15 @@ export class Ledger {
    * Gets all violations with status 'open'
    */
   async getAllOpen(): Promise<Violation[]> {
-    return this.getAll().then(violations =>
-      violations.filter(v => v.status === 'open')
-    );
+    const violations = await this.loadAll();
+    return Array.from(violations.values()).filter(v => v.status === 'open');
   }
 
   /**
-   * Gets all violations (returns latest version of each)
+   * Gets all violations
    */
   async getAll(): Promise<Violation[]> {
-    if (!existsSync(this.ledgerPath)) {
-      return [];
-    }
-
-    const content = await readFile(this.ledgerPath, 'utf-8');
-    const lines = content.trim().split('\n').filter(l => l);
-
-    // Build map of fingerprint -> latest violation
-    const violations = new Map<string, Violation>();
-
-    for (const line of lines) {
-      const v = JSON.parse(line) as Violation;
-      const existing = violations.get(v.fingerprint);
-
-      if (!existing || new Date(v.last_seen) >= new Date(existing.last_seen)) {
-        violations.set(v.fingerprint, v);
-      }
-    }
-
+    const violations = await this.loadAll();
     return Array.from(violations.values());
   }
 
@@ -222,20 +221,6 @@ export class Ledger {
     const normalized = path.replace(/\\/g, '/');
     const all = await this.getAll();
     return all.filter(v => v.path === normalized);
-  }
-
-  /**
-   * Appends a violation to the ledger (internal helper)
-   */
-  private async appendToLedger(violation: Violation): Promise<void> {
-    const line = JSON.stringify(violation) + '\n';
-
-    if (existsSync(this.ledgerPath)) {
-      const existing = await readFile(this.ledgerPath, 'utf-8');
-      await writeFile(this.ledgerPath, existing + line, 'utf-8');
-    } else {
-      await writeFile(this.ledgerPath, line, 'utf-8');
-    }
   }
 
   /**
