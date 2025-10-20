@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { mcpLogger, serializeError } from '../../../../logging/index.js';
 
 // Define a simple type for the allowlist structure
 type Allowlist = { [chainId: string]: { contracts: { [address: string]: { allowedSelectors: string[] } } } };
@@ -20,7 +21,7 @@ export async function getAllowlist(): Promise<Allowlist> {
     allowlist = JSON.parse(fileContent);
     return allowlist!;
   } catch (error) {
-    console.error(`Failed to load or parse allowlist from ${configPath}:`, error);
+    mcpLogger.error({ error: serializeError(error), configPath }, 'Failed to load or parse allowlist');
     throw new Error('Could not load or parse allowlist configuration.');
   }
 }

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
+import { mcpLogger } from '../../../logging/index.js';
 
 const dispatchNewJobParamsBase = z.object({
   objective: z.string().min(10).describe('Clear, specific statement of what needs to be accomplished'),
@@ -112,7 +113,7 @@ export async function dispatchNewJob(args: unknown) {
       existingJob = json?.data?.jobDefinitions?.items?.[0] || null;
     } catch (error) {
       // Duplicate detection is best-effort; ignore lookup failures
-      console.warn('dispatch_new_job: subgraph lookup failed', error);
+      mcpLogger.warn({ error, jobName }, 'dispatch_new_job: subgraph lookup failed');
     }
 
     if (existingJob && !updateExisting) {
@@ -223,7 +224,7 @@ export async function dispatchNewJob(args: unknown) {
           }
         }
       } catch (lookupError) {
-        console.warn('dispatch_new_job: ipfs enrichment failed', lookupError);
+        mcpLogger.warn({ lookupError }, 'dispatch_new_job: ipfs enrichment failed');
       }
 
       const enriched = {

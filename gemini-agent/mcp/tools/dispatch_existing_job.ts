@@ -4,6 +4,7 @@ import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketpla
 import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
+import { mcpLogger } from '../../../logging/index.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
