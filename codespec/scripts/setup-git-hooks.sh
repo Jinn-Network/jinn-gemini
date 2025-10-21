@@ -51,7 +51,7 @@ echo "📋 Running code spec review on staged changes..."
 echo ""
 
 # Run the review script
-if ./scripts/review-code-spec.sh --diff; then
+if ./codespec/scripts/detect-violations.sh --diff; then
   echo ""
   echo "✅ Code spec review passed!"
   exit 0

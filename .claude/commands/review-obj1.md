@@ -224,71 +224,57 @@ For each pattern found:
 
 ### Step 5: Format Output
 
-For each violation:
+Output MUST be in this exact format for parsing:
 
-```markdown
-### ⚠️ [obj1] `<file-path>:<line-number>`
-
-**Violation:** [Which pattern is inconsistent]
-**Problem:** Multiple approaches to [problem] violate orthodoxy principle
-
-**Current code:**
-```typescript
-[Show the non-canonical pattern]
+```
+File: <path-to-file>
+Line: <number>
+Issue: <one-line description>
+Pattern reference: <pattern-id>
+Current code:
+<the non-canonical code>
+Suggested fix:
+<the canonical pattern>
+---
 ```
 
-**Canonical pattern:**
-```typescript
-[Show the preferred approach used elsewhere]
+**Rules:**
+- Use EXACT field names: `File:`, `Line:`, `Issue:`, `Pattern reference:`, `Current code:`, `Suggested fix:`
+- Each field starts on a new line
+- No markdown formatting (no **, no `, no emojis)
+- No code fences (no ```)
+- Separate each violation with `---` on its own line
+- Keep it simple
+
+**Example:**
+
+```
+File: worker/mech_worker.ts
+Line: 78
+Issue: Using .then() instead of async/await (mixed Promise handling)
+Pattern reference: obj1
+Current code:
+return fetchData().then(data => processData(data)).catch(handleError);
+Suggested fix:
+try {
+  const data = await fetchData();
+  return processData(data);
+} catch (error) {
+  handleError(error);
+}
+---
+File: utils/logger.ts
+Line: 12
+Issue: Using console.log instead of structured logger (mixed logging)
+Pattern reference: obj1
+Current code:
+console.log('Processing request:', requestId);
+Suggested fix:
+workerLogger.info('Processing request', { requestId });
+---
 ```
 
-**Context:**
-- **Canonical approach:** [Describe the established pattern]
-- **Files following canonical:** [Count or examples]
-- **Files deviating:** [Count or examples]
-
-**Suggested action:**
-- Migrate this code to follow canonical pattern
-- If this pattern is better, propose updating spec and migrating all code
-
-**Reference:** `docs/spec/code-spec/spec.md` (obj1: Orthodoxy)
-```
-
-### Step 6: Provide Summary
-
-```markdown
-## [obj1] Orthodoxy Review Summary
-
-**Files analyzed:** [count]
-**Total violations found:** [count]
-
-### Pattern Inconsistencies Detected:
-
-| Pattern Domain | Canonical Approach | Violations Found | Status |
-|----------------|-------------------|------------------|--------|
-| Error Handling | `try/catch` | [count] files using `.catch()` | 🔴 |
-| Logging | `workerLogger` | [count] files using `console.*` | 🟡 |
-| Config Access | [TBD/Mixed] | [count] different patterns | 🔴 |
-| Null Checking | [TBD/Mixed] | [count] different patterns | 🟡 |
-| Promise Handling | `async/await` | [count] files using `.then()` | 🟢 |
-| Type Definitions | [TBD/Mixed] | [count] inconsistencies | 🟡 |
-
-### Action Required:
-
-1. **For established canonical patterns:** Migrate violating code to match
-2. **For unclear patterns:** Propose canonical approach, document in spec
-3. **For all violations:** Ensure ONE obvious way exists
-
-### Orthodoxy Principle:
-
-> When AI generates code, different prompts produce different solutions.
-> Without a canonical approach, the codebase becomes unlearnable.
-> Choose ONE way, document it, enforce it.
-
-📚 **Full documentation:** `docs/spec/code-spec/USAGE.md`
-📖 **Orthodoxy examples:** `docs/spec/code-spec/examples/obj1.md`
-📋 **Known violations:** `docs/spec/code-spec/VIOLATIONS.md`
-```
+That's the entire output. No summaries, no extra markdown, just this format.
 
 ## Detection Strategy
 
