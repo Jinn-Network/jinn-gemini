@@ -9,9 +9,12 @@ if (process.env.__ENV_LOADED !== '1') {
     // Resolve repo root based on this file's location
     const here = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.resolve(here, '..');
-    const rootEnvPath = path.join(repoRoot, '.env');
 
-    // Parse .env explicitly and enforce values strictly from this file
+    // Detect test environment (Vitest sets VITEST='true')
+    const isTestEnv = process.env.VITEST === 'true';
+
+    // Load base .env first
+    const rootEnvPath = path.join(repoRoot, '.env');
     let parsed: Record<string, string> = {};
     try {
       const raw = readFileSync(rootEnvPath, 'utf8');
@@ -23,6 +26,21 @@ if (process.env.__ENV_LOADED !== '1') {
 
     // Load .env into process.env, overriding any existing values
     dotenv.config({ path: rootEnvPath, override: true });
+
+    // In test mode, load .env.test after .env (test values override production values)
+    if (isTestEnv) {
+      const testEnvPath = path.join(repoRoot, '.env.test');
+      try {
+        const testRaw = readFileSync(testEnvPath, 'utf8');
+        const testParsed = dotenv.parse(testRaw);
+        // Merge test config into parsed (for enforcement logic below)
+        parsed = { ...parsed, ...testParsed };
+        // Load .env.test, overriding .env values
+        dotenv.config({ path: testEnvPath, override: true });
+      } catch {
+        // .env.test missing is OK - just use .env
+      }
+    }
 
     // Enforce that only variables defined in project's .env are honored for our namespaces
     const enforcedPrefixes = [

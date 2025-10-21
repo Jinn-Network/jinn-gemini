@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
+import { getPonderGraphqlUrl } from './shared/env.js';
 
 const dispatchNewJobParamsBase = z.object({
   objective: z.string().min(10).describe('Clear, specific statement of what needs to be accomplished'),
@@ -96,7 +97,7 @@ export async function dispatchNewJob(args: unknown) {
     // Assemble structured fields into a single prompt string for IPFS storage
     const prompt = constructPrompt({ objective, context: promptContext, deliverables, acceptanceCriteria, constraints });
 
-    const gqlUrl = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+    const gqlUrl = getPonderGraphqlUrl();
 
     let existingJob: any | null = null;
     try {

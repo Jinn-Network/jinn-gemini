@@ -1,0 +1,854 @@
+/**
+ * Canonical configuration module for Jinn Mech Worker
+ *
+ * This module provides the single source of truth for all environment variable access.
+ * All runtime code should import configuration through the typed getters exported here.
+ *
+ * Design principles:
+ * - Fail fast: Invalid configuration throws clear errors at startup
+ * - Centralized validation: All env vars validated with Zod schemas
+ * - Legacy alias support: Old env var names mapped to canonical names internally
+ * - Typed getters: Explicit functions (getRequiredRpcUrl, getOptionalGeminiApiKey, etc.)
+ *
+ * Note: Calling code is responsible for loading .env files (via env/index.ts or loadEnvOnce())
+ * BEFORE importing from this module. This ensures test env var overrides work correctly.
+ *
+ * See: docs/spec/code-spec/spec.md "Centralize configuration access"
+ */
+
+import { z } from 'zod';
+import {
+  getMechAddress as getOperateMechAddress,
+  getServiceSafeAddress,
+  getServicePrivateKey as getOperatePrivateKey,
+} from '../env/operate-profile.js';
+
+// ============================================================================
+// Configuration Schema
+// ============================================================================
+
+/**
+ * Core blockchain configuration schema
+ * Required for all blockchain interactions
+ */
+const coreBlockchainSchema = z.object({
+  // RPC_URL: Canonical HTTP(S) RPC endpoint
+  // Legacy aliases: MECHX_CHAIN_RPC, MECH_RPC_HTTP_URL, BASE_RPC_URL
+  RPC_URL: z.string().url('RPC_URL must be a valid HTTP/HTTPS URL'),
+
+  // CHAIN_ID: Network identifier (8453 = Base mainnet, 84532 = Base Sepolia)
+  CHAIN_ID: z.coerce.number().int().positive('CHAIN_ID must be a positive integer'),
+
+  // WORKER_PRIVATE_KEY: EOA private key for the agent's on-chain identity
+  WORKER_PRIVATE_KEY: z.string()
+    .regex(/^0x[a-fA-F0-9]{64}$/, 'WORKER_PRIVATE_KEY must be a 66-character hex string with 0x prefix')
+    .optional(),
+});
+
+/**
+ * Mech service configuration schema
+ * Addresses and identifiers for mech operations
+ */
+const mechServiceSchema = z.object({
+  // MECH_ADDRESS: Address of the mech contract to interact with
+  // Legacy aliases: MECH_WORKER_ADDRESS
+  // Also reads from .operate profile if not set
+  MECH_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+
+  // MECH_SAFE_ADDRESS: Gnosis Safe address for the service
+  // Reads from .operate profile if not set
+  MECH_SAFE_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+
+  // MECH_MARKETPLACE_ADDRESS_BASE: Marketplace contract address
+  MECH_MARKETPLACE_ADDRESS_BASE: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+
+  // MECH_MODEL: Default AI model for mech operations
+  MECH_MODEL: z.string().optional(),
+
+  // MECH_RECLAIM_AFTER_MINUTES: When to reclaim undelivered requests
+  MECH_RECLAIM_AFTER_MINUTES: z.coerce.number().int().positive().optional(),
+});
+
+/**
+ * Ponder indexer configuration schema
+ * For on-chain event indexing and GraphQL API
+ */
+const ponderSchema = z.object({
+  // PONDER_PORT: GraphQL server port (default: 42069)
+  PONDER_PORT: z.coerce.number().int().positive().default(42069),
+
+  // PONDER_GRAPHQL_URL: Explicit GraphQL URL (derived from PONDER_PORT if not set)
+  PONDER_GRAPHQL_URL: z.string().url().optional(),
+
+  // PONDER_START_BLOCK: Start indexing from this block
+  PONDER_START_BLOCK: z.coerce.number().int().positive().optional(),
+
+  // PONDER_END_BLOCK: Stop indexing at this block (for deterministic testing)
+  PONDER_END_BLOCK: z.coerce.number().int().positive().optional(),
+
+  // PONDER_REVIEW_MODE: Preserve runtime overrides for Ponder config
+  PONDER_REVIEW_MODE: z.coerce.boolean().optional(),
+
+  // NEXT_PUBLIC_PONDER_PORT: Frontend convenience (mirrors PONDER_PORT)
+  NEXT_PUBLIC_PONDER_PORT: z.coerce.number().int().positive().optional(),
+});
+
+/**
+ * Control API configuration schema
+ * For job management and coordination
+ */
+const controlApiSchema = z.object({
+  // CONTROL_API_URL: GraphQL endpoint for Control API
+  CONTROL_API_URL: z.string().url().optional(),
+
+  // CONTROL_API_PORT: Server port when running Control API locally
+  CONTROL_API_PORT: z.coerce.number().int().positive().optional(),
+
+  // CONTROL_API_SERVICE_KEY: Authentication key for Control API
+  CONTROL_API_SERVICE_KEY: z.string().optional(),
+
+  // USE_CONTROL_API: Feature flag to enable Control API usage
+  USE_CONTROL_API: z.coerce.boolean().optional(),
+});
+
+/**
+ * Supabase configuration schema
+ * For Control API backend storage
+ */
+const supabaseSchema = z.object({
+  // SUPABASE_URL: Supabase project URL
+  SUPABASE_URL: z.string().url().optional(),
+
+  // SUPABASE_SERVICE_ROLE_KEY: Service role key (full access)
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+
+  // SUPABASE_SERVICE_ANON_KEY: Anonymous key (limited access)
+  SUPABASE_SERVICE_ANON_KEY: z.string().optional(),
+});
+
+/**
+ * OLAS Operate middleware configuration schema
+ * For service deployment and management
+ */
+const olasOperateSchema = z.object({
+  // OPERATE_PASSWORD: Password for olas-operate-middleware (encrypts keystore)
+  OPERATE_PASSWORD: z.string().optional(),
+
+  // OPERATE_HOME: Path to .operate directory
+  OPERATE_HOME: z.string().optional(),
+
+  // ATTENDED: Interactive mode vs automated
+  ATTENDED: z.coerce.boolean().optional(),
+
+  // STAKING_PROGRAM: Staking configuration (no_staking, custom_staking)
+  STAKING_PROGRAM: z.string().optional(),
+
+  // STAKING_INTERVAL_MS_OVERRIDE: Override staking check interval
+  STAKING_INTERVAL_MS_OVERRIDE: z.coerce.number().int().positive().optional(),
+
+  // OLAS_SERVICE_CONFIG_PATH: Path to service config
+  OLAS_SERVICE_CONFIG_PATH: z.string().optional(),
+
+  // OLAS_MIDDLEWARE_PATH: Path to middleware installation
+  OLAS_MIDDLEWARE_PATH: z.string().optional(),
+
+  // MIDDLEWARE_PATH: Alternative middleware path
+  MIDDLEWARE_PATH: z.string().optional(),
+});
+
+/**
+ * IPFS configuration schema
+ * For request/delivery data storage
+ */
+const ipfsSchema = z.object({
+  // IPFS_GATEWAY_URL: IPFS gateway for fetching and uploading
+  IPFS_GATEWAY_URL: z.string().url().optional(),
+
+  // IPFS_FETCH_TIMEOUT_MS: Timeout for IPFS fetch operations
+  IPFS_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+});
+
+/**
+ * LLM API configuration schema
+ * For AI-powered job execution
+ */
+const llmApiSchema = z.object({
+  // GEMINI_API_KEY: Google Gemini API key
+  GEMINI_API_KEY: z.string().optional(),
+
+  // OPENAI_API_KEY: OpenAI API key
+  OPENAI_API_KEY: z.string().optional(),
+});
+
+/**
+ * External service API keys schema
+ */
+const externalApisSchema = z.object({
+  // GITHUB_TOKEN: GitHub Personal Access Token for MCP server
+  GITHUB_TOKEN: z.string().optional(),
+
+  // CIVITAI_API_KEY: Civitai API key
+  CIVITAI_API_KEY: z.string().optional(),
+
+  // CIVITAI_API_TOKEN: Alternative Civitai token
+  CIVITAI_API_TOKEN: z.string().optional(),
+
+  // CIVITAI_AIR_WAIT: Wait time for AIR generation
+  CIVITAI_AIR_WAIT: z.coerce.number().int().positive().optional(),
+
+  // ZORA_API_KEY: Zora API key
+  ZORA_API_KEY: z.string().optional(),
+
+  // TENDERLY_ACCESS_KEY: Tenderly access key for VNet testing
+  TENDERLY_ACCESS_KEY: z.string().optional(),
+
+  // TENDERLY_ACCOUNT_SLUG: Tenderly account identifier
+  TENDERLY_ACCOUNT_SLUG: z.string().optional(),
+
+  // TENDERLY_PROJECT_SLUG: Tenderly project identifier
+  TENDERLY_PROJECT_SLUG: z.string().optional(),
+
+  // SNYK_TOKEN: Snyk security scanning token
+  SNYK_TOKEN: z.string().optional(),
+});
+
+/**
+ * Job context configuration schema
+ * Runtime values set by job execution system
+ */
+const jobContextSchema = z.object({
+  // JINN_JOB_ID: Current job identifier
+  JINN_JOB_ID: z.string().optional(),
+
+  // JINN_JOB_NAME: Current job name
+  JINN_JOB_NAME: z.string().optional(),
+
+  // JINN_JOB_DEFINITION_ID: Job definition identifier
+  JINN_JOB_DEFINITION_ID: z.string().optional(),
+
+  // JINN_PROJECT_RUN_ID: Project run identifier
+  JINN_PROJECT_RUN_ID: z.string().optional(),
+
+  // JINN_PROJECT_DEFINITION_ID: Project definition identifier
+  JINN_PROJECT_DEFINITION_ID: z.string().optional(),
+
+  // JINN_REQUEST_ID: Mech request identifier
+  JINN_REQUEST_ID: z.string().optional(),
+
+  // JINN_SOURCE_EVENT_ID: Source event identifier
+  JINN_SOURCE_EVENT_ID: z.string().optional(),
+
+  // JINN_THREAD_ID: Thread identifier for conversations
+  JINN_THREAD_ID: z.string().optional(),
+
+  // JINN_MECH_ADDRESS: Mech address for current job
+  JINN_MECH_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+
+  // JINN_WALLET_STORAGE_PATH: Override wallet storage for testing
+  JINN_WALLET_STORAGE_PATH: z.string().optional(),
+
+  // JINN_ENV_PATH: Override .env file path
+  JINN_ENV_PATH: z.string().optional(),
+});
+
+/**
+ * Development and testing configuration schema
+ */
+const devTestingSchema = z.object({
+  // NODE_ENV: Node environment (development, production, test)
+  NODE_ENV: z.enum(['development', 'production', 'test']).optional(),
+
+  // VITEST: Set by Vitest test runner
+  VITEST: z.coerce.boolean().optional(),
+
+  // DRY_RUN: Skip actual execution, log only
+  DRY_RUN: z.coerce.boolean().optional(),
+
+  // DISABLE_STS_CHECKS: Disable Safe Transaction Service checks (for Tenderly)
+  DISABLE_STS_CHECKS: z.coerce.boolean().optional(),
+
+  // TEST_RPC_URL: Override RPC URL for testing
+  TEST_RPC_URL: z.string().url().optional(),
+
+  // MCP_LOG_LEVEL: MCP server log level
+  MCP_LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).optional(),
+
+  // MCP_DEBUG_MECH_CLIENT: Debug flag for mech client
+  MCP_DEBUG_MECH_CLIENT: z.coerce.boolean().optional(),
+
+  // USE_TSX_MCP: Enable TSX mode for MCP development
+  USE_TSX_MCP: z.coerce.boolean().optional(),
+
+  // LOCAL_QUEUE_DB_PATH: Local transaction queue database
+  LOCAL_QUEUE_DB_PATH: z.string().optional(),
+
+  // ENABLE_TRANSACTION_EXECUTOR: Feature flag for transaction executor
+  ENABLE_TRANSACTION_EXECUTOR: z.coerce.boolean().optional(),
+
+  // WORKER_ID: Worker identifier for multi-worker setups
+  WORKER_ID: z.string().optional(),
+
+  // WORKER_TX_CONFIRMATIONS: Number of confirmations to wait for
+  WORKER_TX_CONFIRMATIONS: z.coerce.number().int().positive().default(3),
+
+  // Playwright configuration
+  PLAYWRIGHT_CHANNEL: z.string().optional(),
+  PLAYWRIGHT_FAST: z.coerce.boolean().optional(),
+  PLAYWRIGHT_HEADLESS: z.coerce.boolean().optional(),
+  PLAYWRIGHT_KEEP_OPEN: z.coerce.boolean().optional(),
+  PLAYWRIGHT_PROFILE_DIR: z.string().optional(),
+
+  // Frontend configuration
+  NEXT_PUBLIC_SUBGRAPH_URL: z.string().url().optional(),
+
+  // Additional testing flags
+  ENABLE_AUTO_REPOST: z.coerce.boolean().optional(),
+  BUZZ_ONLY: z.coerce.boolean().optional(),
+  PRIORITY_MECH: z.string().optional(),
+  MECH_TARGET_REQUEST_ID: z.string().optional(),
+  ALLOWLIST_CONFIG_PATH: z.string().optional(),
+  FUNDING_PRIVATE_KEY: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  SERVICE_CONFIG_ID: z.string().optional(),
+  MECHX_WSS_ENDPOINT: z.string().optional(),
+  MECH_CHAIN_CONFIG: z.string().optional(),
+  MECH_PRIVATE_KEY_PATH: z.string().optional(),
+});
+
+/**
+ * Complete configuration schema
+ * Combines all domain schemas
+ */
+const configSchema = z.object({
+  ...coreBlockchainSchema.shape,
+  ...mechServiceSchema.shape,
+  ...ponderSchema.shape,
+  ...controlApiSchema.shape,
+  ...supabaseSchema.shape,
+  ...olasOperateSchema.shape,
+  ...ipfsSchema.shape,
+  ...llmApiSchema.shape,
+  ...externalApisSchema.shape,
+  ...jobContextSchema.shape,
+  ...devTestingSchema.shape,
+});
+
+type ConfigType = z.infer<typeof configSchema>;
+
+// ============================================================================
+// Internal Configuration Loading
+// ============================================================================
+
+/**
+ * Cached configuration (lazy loaded on first getter call)
+ */
+let _config: ConfigType | null = null;
+
+/**
+ * Load and validate environment variables
+ * Handles legacy alias mapping internally
+ */
+function loadConfig(): ConfigType {
+  // Build environment with legacy alias resolution
+  const env = {
+    ...process.env,
+
+    // RPC_URL: Check canonical name, then legacy aliases
+    RPC_URL: process.env.RPC_URL ||
+             process.env.MECHX_CHAIN_RPC ||
+             process.env.MECH_RPC_HTTP_URL ||
+             process.env.BASE_RPC_URL,
+
+    // MECH_ADDRESS: Check canonical name, then legacy alias, then .operate profile
+    MECH_ADDRESS: process.env.MECH_ADDRESS ||
+                  process.env.MECH_WORKER_ADDRESS ||
+                  getOperateMechAddress() ||
+                  undefined,
+
+    // MECH_SAFE_ADDRESS: Check env, then .operate profile
+    MECH_SAFE_ADDRESS: process.env.MECH_SAFE_ADDRESS ||
+                       getServiceSafeAddress() ||
+                       undefined,
+
+    // WORKER_PRIVATE_KEY: Check env, then .operate profile (for agent key)
+    WORKER_PRIVATE_KEY: process.env.WORKER_PRIVATE_KEY ||
+                        process.env.MECH_PRIVATE_KEY ||
+                        getOperatePrivateKey() ||
+                        undefined,
+  };
+
+  // Validate against schema
+  try {
+    return configSchema.parse(env);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const issues = error.issues.map(issue => {
+        const field = issue.path.join('.');
+        return `  - ${field}: ${issue.message}`;
+      }).join('\n');
+
+      throw new Error(
+        `Configuration validation failed:\n${issues}\n\n` +
+        `See .env.template for required environment variables.`
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get validated configuration (loads and caches on first call)
+ * In test mode (VITEST=true), always re-read to pick up dynamic env var changes
+ */
+function getConfig(): ConfigType {
+  const isTestMode = process.env.VITEST === 'true';
+  if (!_config || isTestMode) {
+    _config = loadConfig();
+  }
+  return _config;
+}
+
+/**
+ * Reset configuration cache (for testing only)
+ *
+ * Tests that override environment variables after initial load must call this
+ * to ensure config getters re-read from process.env.
+ *
+ * @internal
+ */
+export function resetConfigForTests(): void {
+  _config = null;
+}
+
+// ============================================================================
+// Public API: Core Blockchain Configuration
+// ============================================================================
+
+export function getRequiredRpcUrl(): string {
+  const value = getConfig().RPC_URL;
+  if (!value) {
+    throw new Error('RPC_URL is required but not configured');
+  }
+  return value;
+}
+
+export function getRequiredChainId(): number {
+  const value = getConfig().CHAIN_ID;
+  if (!value) {
+    throw new Error('CHAIN_ID is required but not configured');
+  }
+  return value;
+}
+
+export function getOptionalWorkerPrivateKey(): string | undefined {
+  return getConfig().WORKER_PRIVATE_KEY;
+}
+
+export function getRequiredWorkerPrivateKey(): string {
+  const value = getOptionalWorkerPrivateKey();
+  if (!value) {
+    throw new Error('WORKER_PRIVATE_KEY is required but not configured');
+  }
+  return value;
+}
+
+// ============================================================================
+// Public API: Mech Service Configuration
+// ============================================================================
+
+export function getOptionalMechAddress(): string | undefined {
+  return getConfig().MECH_ADDRESS;
+}
+
+export function getRequiredMechAddress(): string {
+  const value = getOptionalMechAddress();
+  if (!value) {
+    throw new Error('MECH_ADDRESS is required but not configured (check env vars or .operate profile)');
+  }
+  return value;
+}
+
+export function getOptionalMechSafeAddress(): string | undefined {
+  return getConfig().MECH_SAFE_ADDRESS;
+}
+
+export function getRequiredMechSafeAddress(): string {
+  const value = getOptionalMechSafeAddress();
+  if (!value) {
+    throw new Error('MECH_SAFE_ADDRESS is required but not configured (check env vars or .operate profile)');
+  }
+  return value;
+}
+
+export function getOptionalMechMarketplaceAddress(): string | undefined {
+  return getConfig().MECH_MARKETPLACE_ADDRESS_BASE;
+}
+
+export function getOptionalMechModel(): string | undefined {
+  return getConfig().MECH_MODEL;
+}
+
+export function getOptionalMechReclaimAfterMinutes(): number | undefined {
+  return getConfig().MECH_RECLAIM_AFTER_MINUTES;
+}
+
+// ============================================================================
+// Public API: Ponder Configuration
+// ============================================================================
+
+export function getPonderPort(): number {
+  return getConfig().PONDER_PORT;
+}
+
+export function getPonderGraphqlUrl(): string {
+  const explicit = getConfig().PONDER_GRAPHQL_URL;
+  if (explicit) return explicit;
+
+  // Derive from port
+  const port = getPonderPort();
+  return `http://localhost:${port}/graphql`;
+}
+
+export function getOptionalPonderStartBlock(): number | undefined {
+  return getConfig().PONDER_START_BLOCK;
+}
+
+export function getOptionalPonderEndBlock(): number | undefined {
+  return getConfig().PONDER_END_BLOCK;
+}
+
+export function getPonderReviewMode(): boolean {
+  return getConfig().PONDER_REVIEW_MODE ?? false;
+}
+
+// ============================================================================
+// Public API: Control API Configuration
+// ============================================================================
+
+export function getOptionalControlApiUrl(): string | undefined {
+  return getConfig().CONTROL_API_URL;
+}
+
+export function getOptionalControlApiPort(): number | undefined {
+  return getConfig().CONTROL_API_PORT;
+}
+
+export function getOptionalControlApiServiceKey(): string | undefined {
+  return getConfig().CONTROL_API_SERVICE_KEY;
+}
+
+export function getUseControlApi(): boolean {
+  return getConfig().USE_CONTROL_API ?? false;
+}
+
+// ============================================================================
+// Public API: Supabase Configuration
+// ============================================================================
+
+export function getOptionalSupabaseUrl(): string | undefined {
+  return getConfig().SUPABASE_URL;
+}
+
+export function getRequiredSupabaseUrl(): string {
+  const value = getOptionalSupabaseUrl();
+  if (!value) {
+    throw new Error('SUPABASE_URL is required but not configured');
+  }
+  return value;
+}
+
+export function getOptionalSupabaseServiceRoleKey(): string | undefined {
+  return getConfig().SUPABASE_SERVICE_ROLE_KEY;
+}
+
+export function getRequiredSupabaseServiceRoleKey(): string {
+  const value = getOptionalSupabaseServiceRoleKey();
+  if (!value) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required but not configured');
+  }
+  return value;
+}
+
+export function getOptionalSupabaseServiceAnonKey(): string | undefined {
+  return getConfig().SUPABASE_SERVICE_ANON_KEY;
+}
+
+// ============================================================================
+// Public API: OLAS Operate Configuration
+// ============================================================================
+
+export function getOptionalOperatePassword(): string | undefined {
+  return getConfig().OPERATE_PASSWORD;
+}
+
+export function getOptionalOperateHome(): string | undefined {
+  return getConfig().OPERATE_HOME;
+}
+
+export function getAttended(): boolean {
+  return getConfig().ATTENDED ?? true;
+}
+
+export function getOptionalStakingProgram(): string | undefined {
+  return getConfig().STAKING_PROGRAM;
+}
+
+export function getOptionalStakingIntervalMs(): number | undefined {
+  return getConfig().STAKING_INTERVAL_MS_OVERRIDE;
+}
+
+export function getOptionalOlasServiceConfigPath(): string | undefined {
+  return getConfig().OLAS_SERVICE_CONFIG_PATH;
+}
+
+export function getOptionalOlasMiddlewarePath(): string | undefined {
+  return getConfig().OLAS_MIDDLEWARE_PATH || getConfig().MIDDLEWARE_PATH;
+}
+
+// ============================================================================
+// Public API: IPFS Configuration
+// ============================================================================
+
+export function getOptionalIpfsGatewayUrl(): string | undefined {
+  return getConfig().IPFS_GATEWAY_URL;
+}
+
+export function getIpfsGatewayUrl(): string {
+  return getOptionalIpfsGatewayUrl() ?? 'https://gateway.autonolas.tech/ipfs/';
+}
+
+export function getOptionalIpfsFetchTimeoutMs(): number | undefined {
+  return getConfig().IPFS_FETCH_TIMEOUT_MS;
+}
+
+export function getIpfsFetchTimeoutMs(): number {
+  return getOptionalIpfsFetchTimeoutMs() ?? 30000;
+}
+
+// ============================================================================
+// Public API: LLM API Configuration
+// ============================================================================
+
+export function getOptionalGeminiApiKey(): string | undefined {
+  return getConfig().GEMINI_API_KEY;
+}
+
+export function getRequiredGeminiApiKey(): string {
+  const value = getOptionalGeminiApiKey();
+  if (!value) {
+    throw new Error('GEMINI_API_KEY is required but not configured');
+  }
+  return value;
+}
+
+export function getOptionalOpenAiApiKey(): string | undefined {
+  return getConfig().OPENAI_API_KEY;
+}
+
+export function getRequiredOpenAiApiKey(): string {
+  const value = getOptionalOpenAiApiKey();
+  if (!value) {
+    throw new Error('OPENAI_API_KEY is required but not configured');
+  }
+  return value;
+}
+
+// ============================================================================
+// Public API: External Service APIs
+// ============================================================================
+
+export function getOptionalGithubToken(): string | undefined {
+  return getConfig().GITHUB_TOKEN;
+}
+
+export function getOptionalCivitaiApiKey(): string | undefined {
+  return getConfig().CIVITAI_API_KEY || getConfig().CIVITAI_API_TOKEN;
+}
+
+export function getOptionalCivitaiAirWait(): number | undefined {
+  return getConfig().CIVITAI_AIR_WAIT;
+}
+
+export function getOptionalZoraApiKey(): string | undefined {
+  return getConfig().ZORA_API_KEY;
+}
+
+export function getOptionalTenderlyAccessKey(): string | undefined {
+  return getConfig().TENDERLY_ACCESS_KEY;
+}
+
+export function getOptionalTenderlyAccountSlug(): string | undefined {
+  return getConfig().TENDERLY_ACCOUNT_SLUG;
+}
+
+export function getOptionalTenderlyProjectSlug(): string | undefined {
+  return getConfig().TENDERLY_PROJECT_SLUG;
+}
+
+export function getOptionalSnykToken(): string | undefined {
+  return getConfig().SNYK_TOKEN;
+}
+
+// ============================================================================
+// Public API: Job Context Configuration
+// ============================================================================
+
+export function getOptionalJobId(): string | undefined {
+  return getConfig().JINN_JOB_ID;
+}
+
+export function getOptionalJobName(): string | undefined {
+  return getConfig().JINN_JOB_NAME;
+}
+
+export function getOptionalJobDefinitionId(): string | undefined {
+  return getConfig().JINN_JOB_DEFINITION_ID;
+}
+
+export function getOptionalProjectRunId(): string | undefined {
+  return getConfig().JINN_PROJECT_RUN_ID;
+}
+
+export function getOptionalProjectDefinitionId(): string | undefined {
+  return getConfig().JINN_PROJECT_DEFINITION_ID;
+}
+
+export function getOptionalRequestId(): string | undefined {
+  return getConfig().JINN_REQUEST_ID;
+}
+
+export function getOptionalSourceEventId(): string | undefined {
+  return getConfig().JINN_SOURCE_EVENT_ID;
+}
+
+export function getOptionalThreadId(): string | undefined {
+  return getConfig().JINN_THREAD_ID;
+}
+
+export function getOptionalJobMechAddress(): string | undefined {
+  return getConfig().JINN_MECH_ADDRESS;
+}
+
+export function getOptionalWalletStoragePath(): string | undefined {
+  return getConfig().JINN_WALLET_STORAGE_PATH;
+}
+
+export function getOptionalEnvPath(): string | undefined {
+  return getConfig().JINN_ENV_PATH;
+}
+
+// ============================================================================
+// Public API: Development & Testing Configuration
+// ============================================================================
+
+export function getNodeEnv(): string {
+  return getConfig().NODE_ENV ?? 'development';
+}
+
+export function isTestEnv(): boolean {
+  return getConfig().VITEST ?? false;
+}
+
+export function isDryRun(): boolean {
+  return getConfig().DRY_RUN ?? false;
+}
+
+export function getDisableStsChecks(): boolean {
+  return getConfig().DISABLE_STS_CHECKS ?? false;
+}
+
+export function getOptionalTestRpcUrl(): string | undefined {
+  return getConfig().TEST_RPC_URL;
+}
+
+export function getOptionalMcpLogLevel(): string | undefined {
+  return getConfig().MCP_LOG_LEVEL;
+}
+
+export function getMcpDebugMechClient(): boolean {
+  return getConfig().MCP_DEBUG_MECH_CLIENT ?? false;
+}
+
+export function getUseTsxMcp(): boolean {
+  return getConfig().USE_TSX_MCP ?? false;
+}
+
+export function getOptionalLocalQueueDbPath(): string | undefined {
+  return getConfig().LOCAL_QUEUE_DB_PATH;
+}
+
+export function getEnableTransactionExecutor(): boolean {
+  return getConfig().ENABLE_TRANSACTION_EXECUTOR ?? false;
+}
+
+export function getOptionalWorkerId(): string | undefined {
+  return getConfig().WORKER_ID;
+}
+
+export function getWorkerTxConfirmations(): number {
+  return getConfig().WORKER_TX_CONFIRMATIONS;
+}
+
+export function getOptionalPlaywrightChannel(): string | undefined {
+  return getConfig().PLAYWRIGHT_CHANNEL;
+}
+
+export function getPlaywrightFast(): boolean {
+  return getConfig().PLAYWRIGHT_FAST ?? false;
+}
+
+export function getPlaywrightHeadless(): boolean {
+  return getConfig().PLAYWRIGHT_HEADLESS ?? true;
+}
+
+export function getPlaywrightKeepOpen(): boolean {
+  return getConfig().PLAYWRIGHT_KEEP_OPEN ?? false;
+}
+
+export function getOptionalPlaywrightProfileDir(): string | undefined {
+  return getConfig().PLAYWRIGHT_PROFILE_DIR;
+}
+
+export function getOptionalNextPublicSubgraphUrl(): string | undefined {
+  return getConfig().NEXT_PUBLIC_SUBGRAPH_URL;
+}
+
+// Additional testing flags
+export function getEnableAutoRepost(): boolean {
+  return getConfig().ENABLE_AUTO_REPOST ?? false;
+}
+
+export function getBuzzOnly(): boolean {
+  return getConfig().BUZZ_ONLY ?? false;
+}
+
+export function getOptionalPriorityMech(): string | undefined {
+  return getConfig().PRIORITY_MECH;
+}
+
+export function getOptionalMechTargetRequestId(): string | undefined {
+  return getConfig().MECH_TARGET_REQUEST_ID;
+}
+
+export function getOptionalAllowlistConfigPath(): string | undefined {
+  return getConfig().ALLOWLIST_CONFIG_PATH;
+}
+
+export function getOptionalFundingPrivateKey(): string | undefined {
+  return getConfig().FUNDING_PRIVATE_KEY;
+}
+
+export function getOptionalServiceConfigId(): string | undefined {
+  return getConfig().SERVICE_CONFIG_ID;
+}
+
+export function getOptionalMechxWssEndpoint(): string | undefined {
+  return getConfig().MECHX_WSS_ENDPOINT;
+}
+
+export function getOptionalMechChainConfig(): string | undefined {
+  return getConfig().MECH_CHAIN_CONFIG;
+}
+
+export function getOptionalMechPrivateKeyPath(): string | undefined {
+  return getConfig().MECH_PRIVATE_KEY_PATH;
+}
