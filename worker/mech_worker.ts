@@ -2,6 +2,7 @@ import '../env/index.js';
 import { Agent } from '../gemini-agent/agent.js';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { Web3 } from 'web3';
+import { graphQLRequest } from '../http/client.js';
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -231,20 +232,16 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     }
   }
 }`;
-    const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        query, 
-        variables: { 
-          limit,
-          mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
-        } 
-      })
+    const data = await graphQLRequest<{ requests: { items: any[] } }>({
+      url: PONDER_GRAPHQL_URL,
+      query,
+      variables: {
+        limit,
+        mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
+      },
+      context: { operation: 'fetchRecentRequests', mech: workerMech }
     });
-    if (!res.ok) throw new Error(`GraphQL HTTP ${res.status}`);
-    const json = await res.json();
-    const items: any[] = json?.data?.requests?.items || [];
+    const items: any[] = data?.requests?.items || [];
     workerLogger.info({ totalItems: items.length, items: items.map(r => ({ id: r.id, delivered: r.delivered })) }, 'Ponder GraphQL response');
     return items.map((r: any) => ({
       id: String(r.id),
@@ -345,22 +342,24 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
     const url = gatewayBase.endsWith('/') ? `${gatewayBase}${hash}` : `${gatewayBase}/${hash}`;
     
     workerLogger.info({ url, hash, timeout: process.env.IPFS_FETCH_TIMEOUT_MS || '7000' }, 'Fetching IPFS metadata');
-    
-    // Add a timeout so we don't hang here
+
+    // NOTE: Using bare fetch here (not shared client) for IPFS gateway calls
+    // IPFS gateways have specific timeout and error handling requirements
+    // that work better with manual AbortController management
     const controller = new AbortController();
     const timeoutMs = parseInt(process.env.IPFS_FETCH_TIMEOUT_MS || '7000', 10);
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    
+
     const res = await fetch(url, { method: 'GET', signal: controller.signal });
     clearTimeout(timer);
-    
+
     workerLogger.info({ status: res.status, statusText: res.statusText }, 'IPFS fetch response');
-    
+
     if (!res.ok) {
       workerLogger.warn({ status: res.status, statusText: res.statusText, url }, 'IPFS fetch returned non-OK status');
       return null;
     }
-    
+
     const json = await res.json();
     const prompt = json?.prompt || json?.input || undefined;
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
@@ -544,23 +543,20 @@ async function dispatchParentIfNeeded(
  */
 async function isChainComplete(rootJobDefinitionId: string): Promise<boolean> {
   try {
-    const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query($rootId: String!) { 
-          requests(where: { sourceJobDefinitionId: { equals: $rootId } }) {
-            items {
-              id
-              delivered
-            }
+      const data = await graphQLRequest<{ requests: { items: Array<{ id: string; delivered: boolean }> } }>({
+      url: PONDER_GRAPHQL_URL,
+        query: `query($rootId: String!) {
+        requests(where: { sourceJobDefinitionId: $rootId }) {
+          items {
+            id
+            delivered
           }
-        }`,
-        variables: { rootId: rootJobDefinitionId },
-      }),
+        }
+      }`,
+      variables: { rootId: rootJobDefinitionId },
+      context: { operation: 'isChainComplete', rootJobDefinitionId }
     });
-    const json = await res.json();
-    const requests = json?.data?.requests?.items || [];
+    const requests = data?.requests?.items || [];
     
     if (requests.length === 0) {
       return false; // No requests in chain
@@ -594,24 +590,21 @@ function shouldRepost(rootJobDefinitionId: string): boolean {
 async function repostExistingJob(jobDefinitionId: string): Promise<void> {
   try {
     // Query for the most recent request of this job to establish lineage
-  const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query { 
-          requests(
-            where: { jobDefinitionId: "${jobDefinitionId}" }, 
-            orderBy: "blockTimestamp", 
-            orderDirection: "desc", 
-            limit: 1
-          ) {
-            items { id }
-          }
-        }`,
-      }),
+    const queryData = await graphQLRequest<{ requests: { items: Array<{ id: string }> } }>({
+      url: PONDER_GRAPHQL_URL,
+      query: `query {
+        requests(
+          where: { jobDefinitionId: "${jobDefinitionId}" },
+          orderBy: "blockTimestamp",
+          orderDirection: "desc",
+          limit: 1
+        ) {
+          items { id }
+        }
+      }`,
+      context: { operation: 'repostExistingJob', jobDefinitionId }
     });
-    const json = await res.json();
-    const mostRecentRequest = json?.data?.requests?.items?.[0];
+    const mostRecentRequest = queryData?.requests?.items?.[0];
     
     // Build message indicating this is a repost after completion
     const message = mostRecentRequest ? JSON.stringify({
@@ -653,22 +646,19 @@ async function checkAndRepostCompletedChains(): Promise<void> {
 
   try {
     // Find all root job definitions (no sourceJobDefinitionId)
-    const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query { 
-          jobDefinitions(where: { sourceJobDefinitionId: { equals: null } }, limit: 100) {
-            items {
-              id
-              name
-            }
+    const data = await graphQLRequest<{ jobDefinitions: { items: Array<{ id: string; name: string }> } }>({
+      url: PONDER_GRAPHQL_URL,
+      query: `query {
+        jobDefinitions(where: { sourceJobDefinitionId: { equals: null } }, limit: 100) {
+          items {
+            id
+            name
           }
-        }`,
-      }),
+        }
+      }`,
+      context: { operation: 'checkAndRepostCompletedChains' }
     });
-    const json = await res.json();
-    const rootJobDefs = json?.data?.jobDefinitions?.items || [];
+    const rootJobDefs = data?.jobDefinitions?.items || [];
     
     for (const rootJobDef of rootJobDefs) {
       // Skip if recently reposted
@@ -702,17 +692,13 @@ async function fetchSpecificRequest(requestId: string): Promise<UnclaimedRequest
     }
   }
 }`;
-    const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables: { id: requestId } }),
+    const data = await graphQLRequest<{ requests: { items: any[] } }>({
+      url: PONDER_GRAPHQL_URL,
+      query,
+      variables: { id: requestId },
+      context: { operation: 'fetchSpecificRequest', requestId }
     });
-    if (!res.ok) {
-      workerLogger.warn({ status: res.status }, 'Ponder request failed for specific request');
-      return null;
-    }
-    const json = await res.json();
-    const items = json?.data?.requests?.items || [];
+    const items = data?.requests?.items || [];
     if (items.length === 0) return null;
     return items[0];
   } catch (e: any) {

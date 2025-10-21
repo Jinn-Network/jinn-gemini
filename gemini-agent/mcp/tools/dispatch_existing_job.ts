@@ -1,11 +1,10 @@
 import { z } from 'zod';
-import fetch from 'cross-fetch';
+import { graphQLRequest } from '../../../http/client.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
-import { mcpLogger } from '../../../logging/index.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
@@ -48,37 +47,42 @@ export async function dispatchExistingJob(args: unknown) {
   let jobDef: any | null = null;
   try {
     if (jobId) {
-      const res = await fetch(gqlUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools promptContent } }`,
-          variables: { id: jobId },
-        }),
+      const result = await graphQLRequest<{
+        jobDefinition: {
+          id: string;
+          name: string;
+          enabledTools?: string;
+          promptContent?: string;
+        } | null;
+      }>({
+        url: gqlUrl,
+        query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools promptContent } }`,
+        variables: { id: jobId },
+        maxRetries: 1,
+        context: { operation: 'getJobById', jobId }
       });
-      const json = await res.json();
-      if (json?.errors?.length) {
-        mcpLogger.error({ errors: json.errors, jobId }, 'dispatch_existing_job: GraphQL errors');
-      }
-      jobDef = json?.data?.jobDefinition || null;
+      jobDef = result?.jobDefinition || null;
     } else if (jobName) {
-      const res = await fetch(gqlUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `query($name: String!) { jobDefinitions(where: { name: { equals: $name } }, limit: 1) { items { id name enabledTools promptContent } } }`,
-          variables: { name: jobName },
-        }),
+      const result = await graphQLRequest<{
+        jobDefinitions: {
+          items: Array<{
+            id: string;
+            name: string;
+            enabledTools?: string;
+            promptContent?: string;
+          }>;
+        };
+      }>({
+        url: gqlUrl,
+        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools promptContent } } }`,
+        variables: { name: jobName },
+        maxRetries: 1,
+        context: { operation: 'getJobByName', jobName }
       });
-      const json = await res.json();
-      if (json?.errors?.length) {
-        mcpLogger.error({ errors: json.errors, jobName }, 'dispatch_existing_job: GraphQL errors');
-      }
-      jobDef = json?.data?.jobDefinitions?.items?.[0] || null;
+      jobDef = result?.jobDefinitions?.items?.[0] || null;
     }
-  } catch (error: any) {
-    const message = error?.message || String(error);
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'SUBGRAPH_ERROR', message } }) }] };
+  } catch (e: any) {
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'SUBGRAPH_ERROR', message: e?.message || String(e) } }) }] };
   }
 
   if (!jobDef) {

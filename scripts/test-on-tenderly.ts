@@ -18,7 +18,7 @@
 import { spawn } from 'child_process';
 import { writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { logger } from '../worker/logger.js';
+import { logger } from '../logging/index.js';
 
 const testLogger = logger.child({ component: 'TENDERLY-TEST' });
 

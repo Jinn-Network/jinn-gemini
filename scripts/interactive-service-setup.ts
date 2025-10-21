@@ -17,7 +17,7 @@ import { config as dotenvConfig } from 'dotenv';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { SimplifiedServiceBootstrap, SimplifiedBootstrapConfig } from '../worker/SimplifiedServiceBootstrap.js';
-import { logger } from '../worker/logger.js';
+import { logger } from '../logging/index.js';
 
 const setupLogger = logger.child({ component: "SETUP-CLI" });
 

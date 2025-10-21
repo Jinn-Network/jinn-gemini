@@ -1,11 +1,10 @@
 import { z } from 'zod';
-import fetch from 'cross-fetch';
+import { graphQLRequest } from '../../../http/client.js';
 import { randomUUID } from 'node:crypto';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
-import { mcpLogger } from '../../../logging/index.js';
 
 const dispatchNewJobParamsBase = z.object({
   objective: z.string().min(10).describe('Clear, specific statement of what needs to be accomplished'),
@@ -102,22 +101,26 @@ export async function dispatchNewJob(args: unknown) {
 
     let existingJob: any | null = null;
     try {
-      const resp = await fetch(gqlUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `query($name: String!) { jobDefinitions(where: { name: { equals: $name } }, limit: 1) { items { id name enabledTools promptContent } } }`,
-          variables: { name: jobName },
-        }),
+      const result = await graphQLRequest<{
+        jobDefinitions: {
+          items: Array<{
+            id: string;
+            name: string;
+            enabledTools?: string;
+            promptContent?: string;
+          }>;
+        };
+      }>({
+        url: gqlUrl,
+        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools promptContent } } }`,
+        variables: { name: jobName },
+        maxRetries: 0,
+        context: { operation: 'checkExistingJob', jobName }
       });
-      const json = await resp.json();
-      if (json?.errors?.length) {
-        mcpLogger.error({ errors: json.errors, jobName }, 'dispatch_new_job: GraphQL errors');
-      }
-      existingJob = json?.data?.jobDefinitions?.items?.[0] || null;
+      existingJob = result?.jobDefinitions?.items?.[0] || null;
     } catch (error) {
       // Duplicate detection is best-effort; ignore lookup failures
-      mcpLogger.warn({ error, jobName }, 'dispatch_new_job: subgraph lookup failed');
+      console.warn('dispatch_new_job: subgraph lookup failed', error);
     }
 
     if (existingJob && !updateExisting) {
@@ -213,22 +216,28 @@ export async function dispatchNewJob(args: unknown) {
             if (attempt > 0) {
               await new Promise((resolve) => setTimeout(resolve, 2000));
             }
-            const lookup = await fetch(gqlUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query, variables: { id: firstRequestId } }),
-            });
-            if (!lookup.ok) continue;
-            const json = await lookup.json();
-            const ipfsHash = json?.data?.request?.ipfsHash as string | undefined;
-            if (ipfsHash) {
-              ipfsGatewayUrl = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`;
-              break;
+            try {
+              const lookupResult = await graphQLRequest<{
+                request: { ipfsHash?: string } | null;
+              }>({
+                url: gqlUrl,
+                query,
+                variables: { id: firstRequestId },
+                maxRetries: 0,
+                context: { operation: 'pollIpfsHash', requestId: firstRequestId, attempt }
+              });
+              const ipfsHash = lookupResult?.request?.ipfsHash;
+              if (ipfsHash) {
+                ipfsGatewayUrl = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`;
+                break;
+              }
+            } catch {
+              continue;
             }
           }
         }
       } catch (lookupError) {
-        mcpLogger.warn({ lookupError }, 'dispatch_new_job: ipfs enrichment failed');
+        console.warn('dispatch_new_job: ipfs enrichment failed', lookupError);
       }
 
       const enriched = {
