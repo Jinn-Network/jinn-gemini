@@ -2,7 +2,7 @@ import fetch from 'cross-fetch';
 import { z } from 'zod';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 import { getCurrentJobContext } from './shared/context.js';
-import { mcpLogger } from '../../../worker/logger.js';
+import { mcpLogger } from '../../../logging/index.js';
 
 // MCP registration schema (permissive) to avoid -32602 pre-validation failures
 const getJobContextBase = z.object({

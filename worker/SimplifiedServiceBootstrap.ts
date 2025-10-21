@@ -27,7 +27,7 @@
 
 import { OlasOperateWrapper } from './OlasOperateWrapper.js';
 import { OlasServiceManager } from './OlasServiceManager.js';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 import { writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -249,50 +249,53 @@ export class SimplifiedServiceBootstrap {
    * Print intro explaining what user will see
    */
   private printIntro(): void {
-    console.log('\n' + '='.repeat(80));
-    console.log('  🚀 OLAS Service Setup - Simplified Bootstrap (JINN-202)');
-    console.log('='.repeat(80));
-    console.log('');
-    console.log(`Network: ${this.config.chain.toUpperCase()}`);
-    console.log(`RPC: ${this.config.rpcUrl}`);
-    console.log(`Mech Deployment: ${this.config.deployMech ? 'YES' : 'NO'}`);
-    console.log('');
-    console.log('📋 The middleware will handle the complete setup process:');
-    console.log('');
-    console.log('   1. Detect or create Master EOA');
-    console.log('   2. Detect or create Master Safe');
-    console.log('   3. Prompt for staking configuration choice');
-    console.log('   4. Create Agent Key');
-    console.log('   5. Prompt you to fund Agent Key (~0.001 ETH)');
-    console.log('   6. Deploy Service Safe on-chain');
-    console.log('   7. Prompt you to fund Service Safe (~0.001 ETH + 100 OLAS)');
-    console.log('   8. Stake service in staking contract');
-    if (this.config.deployMech) {
-      console.log('   9. Deploy mech contract');
-    }
-    console.log('');
-    console.log('⚠️  IMPORTANT (Staking Configuration):');
-    console.log('   • You will be prompted to select a staking option:');
-    console.log('     [1] No staking');
-    console.log('     [2] Custom staking contract');
-    console.log('   • For AgentsFun1, select option 2');
-    console.log('   • Paste contract address: 0x2585e63df7BD9De8e058884D496658a030b5c6ce');
-    console.log('');
-    console.log('⚠️  IMPORTANT (Funding):');
-    console.log('   • The middleware will pause and show funding instructions');
-    console.log('   • Fund the exact addresses shown when prompted');
-    console.log('   • Wait for transaction confirmation before continuing');
-    console.log('   • The process auto-continues when funding is detected');
-    console.log('   • Total time: 5-10 minutes (depending on funding speed)');
-    console.log('');
-    console.log('🔄 If you interrupt (Ctrl+C):');
-    console.log('   • Partial state is automatically cleaned on next run');
-    console.log('   • You can safely retry from the beginning');
-    console.log('');
-    console.log('='.repeat(80));
-    console.log('');
-    console.log('🚀 Starting quickstart in attended mode...');
-    console.log('');
+    const mechDeploymentLine = this.config.deployMech ? '\n   9. Deploy mech contract' : '';
+    const intro = `
+${'='.repeat(80)}
+  🚀 OLAS Service Setup - Simplified Bootstrap (JINN-202)
+${'='.repeat(80)}
+
+Network: ${this.config.chain.toUpperCase()}
+RPC: ${this.config.rpcUrl}
+Mech Deployment: ${this.config.deployMech ? 'YES' : 'NO'}
+
+📋 The middleware will handle the complete setup process:
+
+   1. Detect or create Master EOA
+   2. Detect or create Master Safe
+   3. Prompt for staking configuration choice
+   4. Create Agent Key
+   5. Prompt you to fund Agent Key (~0.001 ETH)
+   6. Deploy Service Safe on-chain
+   7. Prompt you to fund Service Safe (~0.001 ETH + 100 OLAS)
+   8. Stake service in staking contract${mechDeploymentLine}
+
+⚠️  IMPORTANT (Staking Configuration):
+   • You will be prompted to select a staking option:
+     [1] No staking
+     [2] Custom staking contract
+   • For AgentsFun1, select option 2
+   • Paste contract address: 0x2585e63df7BD9De8e058884D496658a030b5c6ce
+
+⚠️  IMPORTANT (Funding):
+   • The middleware will pause and show funding instructions
+   • Fund the exact addresses shown when prompted
+   • Wait for transaction confirmation before continuing
+   • The process auto-continues when funding is detected
+   • Total time: 5-10 minutes (depending on funding speed)
+
+🔄 If you interrupt (Ctrl+C):
+   • Partial state is automatically cleaned on next run
+   • You can safely retry from the beginning
+
+${'='.repeat(80)}
+
+🚀 Starting quickstart in attended mode...
+
+`;
+    // Use process.stdout.write to preserve exact formatting without logger metadata
+    // This is intentional for CLI wizard output - it's the user interface, not logging
+    process.stdout.write(intro);
   }
 
   /**

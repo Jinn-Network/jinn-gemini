@@ -5,7 +5,7 @@
 
 import { OlasStakingManager } from "./OlasStakingManager.js";
 import { OlasOperateWrapper } from "./OlasOperateWrapper.js";
-import { logger } from "./logger.js";
+import { logger } from '../logging/index.js';
 
 const stakingLogger = logger.child({ component: "STAKING-FACTORY" });
 

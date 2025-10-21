@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { setToolRegistry, getRegisteredToolNames } from './tools/shared/tool-registry.js';
 import { loadEnvOnce } from './tools/shared/env.js';
+import { mcpLogger, serializeError } from '../../logging/index.js';
 
 // Built at runtime after env is loaded and tools are imported
 export let serverTools: { name: string; schema: any; handler: (params: any) => any }[] = [];
@@ -59,7 +60,7 @@ async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
   } catch (e) {
-    console.error('Error starting MCP server:', e);
+    mcpLogger.fatal({ error: serializeError(e) }, 'Error starting MCP server');
     process.exit(1);
   }
 }

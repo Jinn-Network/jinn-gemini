@@ -24,7 +24,7 @@
  */
 
 import { ethers } from 'ethers';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 import { ITransactionExecutor } from './IExecutor.js';
 import { TransactionRequest, ExecutionResult } from './types.js';
 import { validateTransaction } from './validation.js';

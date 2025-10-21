@@ -1,5 +1,5 @@
 import fetch from 'cross-fetch';
-import { mcpLogger } from '../../../../worker/logger.js';
+import { mcpLogger } from '../../../../logging/index.js';
 
 export interface JobHierarchyItem {
     jobId: string;

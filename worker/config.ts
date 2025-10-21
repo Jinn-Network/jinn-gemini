@@ -1,11 +1,6 @@
-/**
- * Worker-specific configuration module
- *
- * This module re-exports configuration getters from the shared config module.
- * It provides backward compatibility for existing worker code during migration.
- *
- * New code should import directly from '../config/index.js' instead.
- */
+import { z } from 'zod';
+import dotenv from 'dotenv';
+import { configLogger } from '../logging/index.js';
 
 import {
   getRequiredRpcUrl,
@@ -86,7 +81,33 @@ export const config: WorkerConfig = {
  * @deprecated Configuration is now loaded automatically via getters
  */
 export function parseWorkerConfig(): WorkerConfig {
-  return config;
+  try {
+    const parsed = workerConfigSchema.parse(process.env);
+    return {
+      WORKER_PRIVATE_KEY: parsed.WORKER_PRIVATE_KEY,
+      CHAIN_ID: parsed.CHAIN_ID,
+      RPC_URL: parsed.RPC_URL,
+      JINN_WALLET_STORAGE_PATH: parsed.JINN_WALLET_STORAGE_PATH,
+      TEST_RPC_URL: parsed.TEST_RPC_URL,
+      DISABLE_STS_CHECKS: parsed.DISABLE_STS_CHECKS,
+      SUPABASE_URL: parsed.SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: parsed.SUPABASE_SERVICE_ROLE_KEY,
+      ENABLE_TRANSACTION_EXECUTOR: parsed.ENABLE_TRANSACTION_EXECUTOR,
+      WORKER_ID: parsed.WORKER_ID,
+      WORKER_TX_CONFIRMATIONS: parsed.WORKER_TX_CONFIRMATIONS,
+    } satisfies WorkerConfig;
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const issues = error.issues.map(issue => {
+        const field = issue.path.join('.');
+        return `${field}: ${issue.message}`;
+      }).join(', ');
+      configLogger.fatal({ issues }, `Configuration validation failed: ${issues}`);
+    } else {
+      configLogger.fatal({ error }, `Unknown configuration error: ${error}`);
+    }
+    process.exit(2);
+  }
 }
 
 /**

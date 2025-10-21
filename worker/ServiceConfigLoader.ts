@@ -9,7 +9,7 @@
 
 import { join } from 'path';
 import { readServiceConfig, type ServiceInfo } from './ServiceConfigReader.js';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 
 const loaderLogger = logger.child({ component: 'SERVICE-CONFIG-LOADER' });
 

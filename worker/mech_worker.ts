@@ -6,7 +6,7 @@ import { Web3 } from 'web3';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import agentMechArtifact from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
-import { workerLogger } from './logger.js';
+import { workerLogger } from '../logging/index.js';
 import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport, createArtifact as apiCreateArtifact } from './control_api_client.js';
 import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './artifacts.js';
 import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';

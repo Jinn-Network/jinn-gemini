@@ -2,6 +2,7 @@ import { createYoga, createSchema } from 'graphql-yoga';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'cross-fetch';
 import dotenv from 'dotenv';
+import { logger, serializeError } from '../logging/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -126,7 +127,7 @@ async function assertRequestExists(ctx: Context, requestId: string) {
       throw new Error(`Unknown request_id: ${requestId}`);
     }
   } catch (error) {
-    console.error('Ponder validation failed:', error);
+    logger.error({ error: serializeError(error) }, 'Ponder validation failed');
     throw new Error(`Request validation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -219,7 +220,7 @@ const resolvers = {
         .from('onchain_request_claims')
         .update(patch)
         .eq('request_id', args.requestId);
-      if (updErr) console.error('Failed to update claim status:', updErr.message);
+      if (updErr) logger.error({ error: updErr.message, requestId: args.requestId }, 'Failed to update claim status');
 
       return report;
     },
@@ -392,7 +393,7 @@ const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:$
 const PORT = parseInt(process.env.CONTROL_API_PORT || '4001', 10);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  logger.fatal('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   process.exit(1);
 }
 

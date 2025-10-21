@@ -10,7 +10,7 @@
 import { ethers } from 'ethers';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 import { pushMetadataToIpfs } from '@jinn-network/mech-client-ts/dist/ipfs.js';
 
 const requestLogger = logger.child({ component: 'MECH-MARKETPLACE-REQUESTER' });

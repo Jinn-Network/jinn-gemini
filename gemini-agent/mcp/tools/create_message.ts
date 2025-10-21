@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { getCurrentJobContext } from './shared/context.js';
 import { createMessage as apiCreateMessage } from './shared/control_api.js';
-import { workerLogger } from '../../../worker/logger.js'; // Reusing worker logger for consistency
+import { workerLogger } from '../../../logging/index.js'; // Reusing worker logger for consistency
 
 export const createMessageParams = z.object({
   content: z.string().describe('The content of the message.'),

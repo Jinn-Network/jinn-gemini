@@ -9,7 +9,7 @@
 
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 
 const configLogger = logger.child({ component: 'SERVICE-CONFIG-READER' });
 

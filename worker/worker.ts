@@ -13,7 +13,7 @@ import { promisify } from "util";
 import { execFile } from "child_process";
 const asyncExecFile = promisify(execFile);
 import { IJob, IJobResult, IJobReport, IJobSuccess } from "./types.js";
-import { logger } from "./logger.js";
+import { logger } from '../logging/index.js';
 import { createClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 import { deliverRequest } from "../../scripts/lib/deliverRequest.js";
@@ -333,8 +333,9 @@ async function collectAndStoreJobReport(context: {
       // New standardized tool response handling
       const parsed = parseToolResponse(reportResult);
       if (!parsed.success) {
-        console.error(
-          `Failed to store job report for ${context.job.id}: ${parsed.error || "Unknown error"}`,
+        workerLogger.error(
+          { jobId: context.job.id, error: parsed.error || "Unknown error" },
+          `Failed to store job report for ${context.job.id}`
         );
       } else {
         const newId = parsed.data?.id ?? parsed.data?.data?.id;
@@ -366,9 +367,9 @@ async function collectAndStoreJobReport(context: {
       else delete process.env.JINN_PROJECT_DEFINITION_ID;
     }
   } catch (error) {
-    console.error(
-      `Critical error storing job report for ${context.job.id}:`,
-      error,
+    workerLogger.error(
+      { jobId: context.job.id, error },
+      `Critical error storing job report for ${context.job.id}`
     );
     // Don't throw - we don't want report storage failures to break job processing
   }
@@ -1101,7 +1102,7 @@ async function processPendingJobs(): Promise<boolean> {
       }
       workerLogger.completed(job.id);
     } catch (err: any) {
-      console.error(`Job ${job.id} failed:`, err);
+      workerLogger.error({ jobId: job.id, error: err }, `Job ${job.id} failed`);
 
       // Check if this is a quota error or 500/INTERNAL error and set cooldown
       // Handle the special error format from Agent.run() which includes telemetry
@@ -1229,8 +1230,9 @@ async function processPendingJobs(): Promise<boolean> {
 
         const resetParseResult = parseToolResponse(resetResult);
         if (!resetParseResult.success) {
-          console.error(
-            `Failed to reset job status to PENDING: ${resetParseResult.error}`,
+          workerLogger.error(
+            { error: resetParseResult.error },
+            `Failed to reset job status to PENDING`
           );
         }
 
@@ -1281,8 +1283,9 @@ async function processPendingJobs(): Promise<boolean> {
 
       const finalUpdateParseResult = parseToolResponse(finalUpdate);
       if (!finalUpdateParseResult.success) {
-        console.error(
-          `CRITICAL: Failed to even update the job to FAILED status. Job ID: ${job.id}. Error: ${finalUpdateParseResult.error}`,
+        workerLogger.error(
+          { jobId: job.id, error: finalUpdateParseResult.error },
+          `CRITICAL: Failed to even update the job to FAILED status`
         );
       }
       break; // Exit retry loop on failure
@@ -1306,7 +1309,10 @@ async function processPendingJobs(): Promise<boolean> {
     });
     workerLogger.info(`Job report collection completed for ${job.id}`);
   } catch (reportError) {
-    console.error(`Failed to collect job report for ${job.id}:`, reportError);
+    workerLogger.error(
+      { jobId: job.id, error: reportError },
+      `Failed to collect job report for ${job.id}`
+    );
   }
   return true; // A job was processed
 }

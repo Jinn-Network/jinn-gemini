@@ -5,6 +5,7 @@ import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
+import { mcpLogger } from '../../../logging/index.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
@@ -56,6 +57,9 @@ export async function dispatchExistingJob(args: unknown) {
         }),
       });
       const json = await res.json();
+      if (json?.errors?.length) {
+        mcpLogger.error({ errors: json.errors, jobId }, 'dispatch_existing_job: GraphQL errors');
+      }
       jobDef = json?.data?.jobDefinition || null;
     } else if (jobName) {
       const res = await fetch(gqlUrl, {
@@ -67,10 +71,14 @@ export async function dispatchExistingJob(args: unknown) {
         }),
       });
       const json = await res.json();
+      if (json?.errors?.length) {
+        mcpLogger.error({ errors: json.errors, jobName }, 'dispatch_existing_job: GraphQL errors');
+      }
       jobDef = json?.data?.jobDefinitions?.items?.[0] || null;
     }
-  } catch (e: any) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'SUBGRAPH_ERROR', message: e?.message || String(e) } }) }] };
+  } catch (error: any) {
+    const message = error?.message || String(error);
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'SUBGRAPH_ERROR', message } }) }] };
   }
 
   if (!jobDef) {

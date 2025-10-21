@@ -1,6 +1,6 @@
 import { EoaExecutor } from './EoaExecutor.js';
 import { TransactionRequest } from './types.js';
-import { logger } from './logger.js';
+import { logger } from '../logging/index.js';
 import { claimTransactionRequest, updateTransactionStatus } from './control_api_client.js';
 
 const txLogger = logger.child({ component: 'TransactionProcessor' });

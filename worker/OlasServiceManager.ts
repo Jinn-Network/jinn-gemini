@@ -9,7 +9,7 @@
  */
 
 import { OlasOperateWrapper, OperateCommandResult } from "./OlasOperateWrapper.js";
-import { logger } from "./logger.js";
+import { logger } from '../logging/index.js';
 import { writeFileSync } from "fs";
 import { promises as fs } from "fs";
 import { tmpdir } from "os";

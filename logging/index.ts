@@ -1,43 +1,168 @@
+/**
+ * @fileoverview Shared logging utility using Pino for structured logging.
+ *
+ * This module provides a centralized logging configuration for the entire codebase.
+ * It supports both development (pretty-printed) and production (JSON) output formats,
+ * and includes specialized child loggers for different components.
+ *
+ * @module logging
+ */
+
 import pino from 'pino';
 import { formatEther } from 'viem';
 
 /**
- * Create the main logger instance with appropriate formatting for the worker.
- * In development, uses pino-pretty for human-readable output.
- * In production, outputs structured JSON logs.
+ * Check if we're in development mode based on NODE_ENV.
+ * @returns {boolean} True if NODE_ENV is not 'production'
  */
-function createLogger() {
-  const isDevelopment = process.env.NODE_ENV !== 'production';
-  
-  if (isDevelopment) {
+function isDevelopmentMode(): boolean {
+  return process.env.NODE_ENV !== 'production';
+}
+
+/**
+ * Get the log level from environment or default to 'info'.
+ * Supports: trace, debug, info, warn, error, fatal
+ */
+function getLogLevel(): pino.Level {
+  const level = process.env.LOG_LEVEL?.toLowerCase();
+  const validLevels: pino.Level[] = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'];
+
+  if (level && validLevels.includes(level as pino.Level)) {
+    return level as pino.Level;
+  }
+
+  return 'info';
+}
+
+/**
+ * Get the log format preference from environment.
+ * Can override automatic development/production detection.
+ *
+ * - 'pretty': Human-readable colored output (uses pino-pretty)
+ * - 'json': Structured JSON output (production default)
+ *
+ * If not set, defaults to 'pretty' in development, 'json' in production.
+ *
+ * IMPORTANT: Always uses JSON in test environments (VITEST=true) to avoid
+ * pino-pretty worker thread issues that can interfere with process lifecycle.
+ */
+function getLogFormat(): 'pretty' | 'json' {
+  // Force JSON logging in test environments to avoid pino-pretty worker thread issues
+  if (process.env.VITEST === 'true') {
+    return 'json';
+  }
+
+  const format = process.env.LOG_FORMAT?.toLowerCase();
+
+  if (format === 'pretty' || format === 'json') {
+    return format;
+  }
+
+  // Default based on environment
+  return isDevelopmentMode() ? 'pretty' : 'json';
+}
+
+/**
+ * Create the main logger instance with appropriate formatting.
+ *
+ * Configuration via environment variables:
+ * - NODE_ENV: 'production' for JSON logs, anything else for pretty logs
+ * - LOG_LEVEL: trace, debug, info, warn, error, fatal (default: info)
+ * - LOG_FORMAT: 'pretty' or 'json' (overrides NODE_ENV detection)
+ */
+function createLogger(): pino.Logger {
+  const level = getLogLevel();
+  const format = getLogFormat();
+
+  if (format === 'pretty') {
     return pino({
-      level: 'info',
+      level,
       transport: {
         target: 'pino-pretty',
         options: {
           colorize: true,
           translateTime: 'SYS:standard',
           ignore: 'pid,hostname',
+          // Custom colors for specific log types
+          customColors: 'info:blue,warn:yellow,error:red',
         }
       }
     });
   }
-  
+
   // Production: structured JSON logging
   return pino({
-    level: 'info',
+    level,
     formatters: {
       level: (label) => ({ level: label }),
     },
     timestamp: pino.stdTimeFunctions.isoTime,
+    // In production, only include stack traces at debug level
+    serializers: {
+      error: (err: Error) => {
+        if (level === 'debug' || level === 'trace') {
+          return pino.stdSerializers.err(err);
+        }
+        // In production, exclude stack traces unless debug is enabled
+        return {
+          type: err.name,
+          message: err.message,
+        };
+      },
+    },
   });
 }
 
+/**
+ * Base logger instance.
+ * Use this directly or create child loggers with component metadata.
+ */
 export const logger = createLogger();
 
 /**
+ * Create a child logger with component metadata.
+ *
+ * Child loggers inherit the configuration from the base logger
+ * and automatically add component tags to all log entries.
+ *
+ * @param component - Component identifier (e.g., 'WORKER', 'MCP_TOOL', 'HTTP_CLIENT')
+ * @returns Pino child logger instance
+ *
+ * @example
+ * ```typescript
+ * const httpLogger = logger.child({ component: 'HTTP_CLIENT' });
+ * httpLogger.info({ url, status }, 'HTTP request completed');
+ * ```
+ */
+export function createChildLogger(component: string): pino.Logger {
+  return logger.child({ component });
+}
+
+/**
+ * Utility to serialize Error objects for structured logging.
+ * Ensures consistent error representation across all loggers.
+ *
+ * @param err - Error object to serialize
+ * @returns Serialized error object
+ */
+export function serializeError(err: Error | unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    return {
+      type: err.name,
+      message: err.message,
+      stack: err.stack,
+    };
+  }
+  return { message: String(err) };
+}
+
+// ============================================================================
+// Pre-configured component loggers
+// ============================================================================
+
+/**
  * Create a child logger for wallet-specific operations.
- * Automatically adds the 'wallet' component tag.
+ * Automatically adds the 'WALLET' component tag.
  */
 const baseWalletLogger = logger.child({ component: 'WALLET' });
 export const walletLogger = {
@@ -51,7 +176,7 @@ export const walletLogger = {
 
 /**
  * Create a child logger for general worker operations.
- * Automatically adds the 'worker' component tag.
+ * Automatically adds the 'WORKER' component tag.
  */
 const baseWorkerLogger = logger.child({ component: 'WORKER' });
 export const workerLogger = {
@@ -65,7 +190,7 @@ export const workerLogger = {
 
 /**
  * Create a child logger for configuration operations.
- * Automatically adds the 'config' component tag.
+ * Automatically adds the 'CONFIG' component tag.
  */
 export const configLogger = logger.child({ component: 'CONFIG' });
 
@@ -102,7 +227,7 @@ export const jobLogger = {
   started: (jobId: string, model: string) => baseJobLogger.info({ jobId, model }, 'Job execution started'),
   completed: (jobId: string) => baseJobLogger.info({ jobId }, 'Job completed successfully'),
   failed: (jobId: string, reason: string) => baseJobLogger.error({ jobId, reason }, 'Job failed'),
-  retry: (jobId: string, attempt: number, maxRetries: number) => 
+  retry: (jobId: string, attempt: number, maxRetries: number) =>
     baseJobLogger.warn({ jobId, attempt, maxRetries }, `Job retry attempt ${attempt}/${maxRetries}`),
 };
 
@@ -120,6 +245,23 @@ export const mcpLogger = {
   toolCall: (toolName: string, params?: any) => baseMcpLogger.debug({ toolName, params }, 'Tool call executed'),
   toolError: (toolName: string, error: string) => baseMcpLogger.error({ toolName, error }, 'Tool call failed'),
 };
+
+/**
+ * Create a child logger for script operations.
+ * Automatically adds the 'SCRIPT' component tag.
+ */
+const baseScriptLogger = logger.child({ component: 'SCRIPT' });
+export const scriptLogger = {
+  debug: baseScriptLogger.debug.bind(baseScriptLogger),
+  info: baseScriptLogger.info.bind(baseScriptLogger),
+  warn: baseScriptLogger.warn.bind(baseScriptLogger),
+  error: baseScriptLogger.error.bind(baseScriptLogger),
+  fatal: baseScriptLogger.fatal.bind(baseScriptLogger),
+};
+
+// ============================================================================
+// Logging utility functions
+// ============================================================================
 
 /**
  * Utility function to format addresses consistently in logs.
@@ -182,6 +324,6 @@ export function exitWithCode(
       logger.fatal({ exitCode: code, error }, `RPC/Network Error: ${message}`);
       break;
   }
-  
+
   process.exit(code);
 }

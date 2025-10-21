@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import dotenv from 'dotenv';
-import { agentLogger } from '../worker/logger.js';
+import { agentLogger } from '../logging/index.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 

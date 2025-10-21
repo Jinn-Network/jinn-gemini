@@ -10,6 +10,7 @@
 
 import { execa, type ResultPromise } from 'execa';
 import fetch from 'cross-fetch';
+import { scriptLogger } from '../../logging/index.js';
 
 export interface ServiceConfig {
   name: string;
@@ -150,7 +151,7 @@ export class ProcessManager {
     const killPromises: Promise<void>[] = [];
 
     Array.from(this.processes.entries()).forEach(([name, proc]) => {
-      console.log(`[shutdown] Stopping ${name}...`);
+      scriptLogger.info({ serviceName: name }, 'Stopping service');
       killPromises.push(
         new Promise<void>((resolve) => {
           try {
