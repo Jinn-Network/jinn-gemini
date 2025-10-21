@@ -22,6 +22,11 @@ let tenderlyClient: ReturnType<typeof createTenderlyClient> | null = null;
 export async function setup() {
   console.log('\n[global-setup] 🚀 Setting up shared E2E test infrastructure...\n');
 
+  // Set test-specific Ponder port
+  const testPonderPort = 42070;
+  process.env.PONDER_PORT = String(testPonderPort);
+  process.env.PONDER_GRAPHQL_URL = `http://localhost:${testPonderPort}/graphql`;
+
   // Load env early and set flag to prevent child processes from reloading
   loadEnvOnce();
 
@@ -43,17 +48,17 @@ export async function setup() {
   await tenderlyClient.fundAddress(testWallet, ethToWei('10'), vnetResult.adminRpcUrl);
   console.log('[global-setup] ✓ Wallet funded');
 
-  // Override RPC URLs
+  // IMPORTANT: Set all test env vars BEFORE spawning MCP server
+  // The MCP server will inherit these and cache them in its config module
+
+  // Override RPC URLs for test environment
   process.env.RPC_URL = vnetResult.adminRpcUrl;
   process.env.MECH_RPC_HTTP_URL = vnetResult.adminRpcUrl;
   process.env.MECHX_CHAIN_RPC = vnetResult.adminRpcUrl;
   process.env.BASE_RPC_URL = vnetResult.adminRpcUrl;
 
-  // Set Ponder GraphQL URL
-  const testPonderPort = 42070;
-  const gqlUrl = `http://localhost:${testPonderPort}/graphql`;
-  process.env.PONDER_GRAPHQL_URL = gqlUrl;
-  process.env.E2E_GQL_URL = gqlUrl; // For tests to read
+  // Set E2E_GQL_URL for tests to read (PONDER_PORT already set at top of setup())
+  process.env.E2E_GQL_URL = process.env.PONDER_GRAPHQL_URL;
 
   // Set Control API URL
   const controlUrl = 'http://localhost:4001/graphql';
@@ -63,7 +68,11 @@ export async function setup() {
   // Store VNet ID for tests
   process.env.E2E_VNET_ID = vnetResult.id;
 
-  // Connect MCP client
+  // Reset config cache in test process so getters re-read overridden env vars
+  const { resetConfigForTests } = await import('../../config/index.js');
+  resetConfigForTests();
+
+  // NOW connect MCP client (spawns MCP server with overridden env vars)
   console.log('[global-setup] Connecting MCP client...');
   const client = getMcpClient();
   await client.connect();
@@ -128,7 +137,7 @@ export async function setup() {
   });
 
   console.log('[global-setup] Ponder dev server spawned');
-  await waitForGraphql(gqlUrl, 120_000);
+  await waitForGraphql(process.env.PONDER_GRAPHQL_URL!, 120_000);
   console.log('[global-setup] ✓ Ponder GraphQL ready');
 
   // Start Control API if needed

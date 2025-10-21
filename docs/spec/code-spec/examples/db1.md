@@ -3,16 +3,16 @@
 ## Follows the default behavior
 
 ```ts
-import { getRequiredRpcUrl, getOptionalChainId } from '../config';
+import { getRequiredRpcUrl, getRequiredChainId } from '../config/index.js';
 
 export async function connect(): Promise<Web3> {
   const rpcUrl = getRequiredRpcUrl();
-  const chainId = getOptionalChainId() ?? 8453;
+  const chainId = getRequiredChainId();
 
   const web3 = new Web3(rpcUrl);
   const currentChainId = await web3.eth.getChainId();
 
-  if (chainId !== undefined && currentChainId !== chainId) {
+  if (currentChainId !== chainId) {
     throw new Error(`Unexpected chain id ${currentChainId}; expected ${chainId}`);
   }
 
@@ -20,7 +20,9 @@ export async function connect(): Promise<Web3> {
 }
 ```
 
-**Why this follows the behavior:** All configuration comes from named helpers defined in the shared config module. The module owns validation and canonical naming, so runtime code never touches `process.env` directly.
+**Why this follows the behavior:** All configuration comes from named helpers defined in the shared config module (`config/index.ts`). The module owns validation and canonical naming, so runtime code never touches `process.env` directly.
+
+**Real example from codebase:** See `config/index.ts` for the canonical implementation with Zod validation and legacy alias mapping.
 
 ---
 

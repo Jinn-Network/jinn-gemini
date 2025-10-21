@@ -14,7 +14,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    env: testEnv,
+    // Don't pass testEnv here - it would override dynamic values set by global setup
     include: [path.resolve(__dirname, '*.test.ts')],
     globalSetup: path.resolve(__dirname, '../helpers/setup.ts'),
     fileParallelism: false,

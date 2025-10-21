@@ -4,6 +4,7 @@ import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketpla
 import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
+import { getPonderGraphqlUrl } from './shared/env.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
@@ -40,7 +41,7 @@ export async function dispatchExistingJob(args: unknown) {
   }
   const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message } = parse.data;
 
-  const gqlUrl = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+  const gqlUrl = getPonderGraphqlUrl();
 
   // Find job definition by id or name
   let jobDef: any | null = null;
