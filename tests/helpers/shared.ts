@@ -203,7 +203,7 @@ export async function waitForJobIndexed(
   jobDefinitionId: string,
   options?: { maxAttempts?: number; delayMs?: number }
 ): Promise<any> {
-  const query = 'query($id:String!){ jobDefinition(id:$id){ id name enabledTools promptContent sourceRequestId sourceJobDefinitionId codeMetadata } }';
+  const query = 'query($id:String!){ jobDefinition(id:$id){ id name enabledTools promptContent sourceRequestId sourceJobDefinitionId } }';
   return pollGraphQL(
     gqlUrl,
     query,
@@ -221,7 +221,7 @@ export async function waitForRequestIndexed(
   requestId: string,
   options?: { maxAttempts?: number; delayMs?: number }
 ): Promise<any> {
-  const query = 'query($id:String!){ request(id:$id){ id jobDefinitionId ipfsHash sourceRequestId sourceJobDefinitionId codeMetadata } }';
+  const query = 'query($id:String!){ request(id:$id){ id jobDefinitionId ipfsHash sourceRequestId sourceJobDefinitionId } }';
   return pollGraphQL(
     gqlUrl,
     query,

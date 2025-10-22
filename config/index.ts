@@ -537,7 +537,7 @@ export function getOptionalControlApiServiceKey(): string | undefined {
 }
 
 export function getUseControlApi(): boolean {
-  return getConfig().USE_CONTROL_API ?? false;
+  return getConfig().USE_CONTROL_API ?? true;
 }
 
 // ============================================================================
