@@ -3,6 +3,18 @@ import { Agent } from '../gemini-agent/agent.js';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { Web3 } from 'web3';
 import { graphQLRequest } from '../http/client.js';
+import {
+  getPonderGraphqlUrl,
+  getUseControlApi,
+  getOptionalMechReclaimAfterMinutes,
+  getEnableAutoRepost,
+  getOptionalMechModel,
+  getRequiredRpcUrl,
+  getOptionalIpfsGatewayUrl,
+  getIpfsFetchTimeoutMs,
+  getOptionalMechTargetRequestId,
+  getOptionalMechChainConfig,
+} from '../gemini-agent/mcp/tools/shared/env.js';
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -24,13 +36,13 @@ type UnclaimedRequest = {
 };
 
 
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
-const USE_CONTROL_API = (process.env.USE_CONTROL_API ?? 'true') !== 'false';
-const STALE_MINUTES = parseInt(process.env.MECH_RECLAIM_AFTER_MINUTES || '10', 10);
+const USE_CONTROL_API = getUseControlApi();
+const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 10;
 
 // Auto-reposting configuration
-const ENABLE_AUTO_REPOST = (process.env.ENABLE_AUTO_REPOST ?? 'true') !== 'false';
+const ENABLE_AUTO_REPOST = getEnableAutoRepost();
 const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
 
 // Track recent reposts to prevent loops
@@ -278,7 +290,7 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
   if (notDelivered.length === 0) return [];
   // Intersect with on-chain undelivered for additional safety (Control API will enforce atomic claim)
   try {
-    const rpcHttpUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
+    const rpcHttpUrl = getRequiredRpcUrl();
     const mechToSet = new Map<string, Set<string>>();
     for (const r of notDelivered) {
       const key = r.mech.toLowerCase();
@@ -338,16 +350,13 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
   try {
     const hash = String(ipfsHash).replace(/^0x/, '');
     // Use configured IPFS gateway or fallback to Autonolas
-    const gatewayBase = process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/';
+    const gatewayBase = getOptionalIpfsGatewayUrl() || 'https://gateway.autonolas.tech/ipfs/';
     const url = gatewayBase.endsWith('/') ? `${gatewayBase}${hash}` : `${gatewayBase}/${hash}`;
     
-    workerLogger.info({ url, hash, timeout: process.env.IPFS_FETCH_TIMEOUT_MS || '7000' }, 'Fetching IPFS metadata');
+    const timeoutMs = getIpfsFetchTimeoutMs() ?? 7000;
+    workerLogger.info({ url, hash, timeout: timeoutMs }, 'Fetching IPFS metadata');
 
-    // NOTE: Using bare fetch here (not shared client) for IPFS gateway calls
-    // IPFS gateways have specific timeout and error handling requirements
-    // that work better with manual AbortController management
     const controller = new AbortController();
-    const timeoutMs = parseInt(process.env.IPFS_FETCH_TIMEOUT_MS || '7000', 10);
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     const res = await fetch(url, { method: 'GET', signal: controller.signal });
@@ -376,7 +385,7 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
 }
 
 async function runAgentForRequest(request: UnclaimedRequest, metadata: any): Promise<{ output: string; telemetry: any }> {
-  const model = process.env.MECH_MODEL || 'gemini-2.5-flash';
+  const model = getOptionalMechModel() || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const agent = new Agent(model, enabledTools, {
     jobId: request.id,
@@ -715,7 +724,7 @@ async function processOnce(): Promise<void> {
   }
 
   // Optional: target a specific request id if provided (for deterministic tests)
-  const targetIdEnv = (process.env.MECH_TARGET_REQUEST_ID || '').trim();
+  const targetIdEnv = (getOptionalMechTargetRequestId() || '').trim();
   let candidates: UnclaimedRequest[];
   
   if (targetIdEnv) {
@@ -791,11 +800,11 @@ async function processOnce(): Promise<void> {
 
   // Attempt on-chain delivery via Safe when configured
   try {
-    const chainConfig = process.env.MECH_CHAIN_CONFIG || 'base';
+    const chainConfig = getOptionalMechChainConfig() || 'base';
     const safeAddress = getServiceSafeAddress();
     const targetMechAddress = target.mech;
     const privateKey = getServicePrivateKey();
-    const rpcHttpUrl = process.env.RPC_URL;
+    const rpcHttpUrl = getRequiredRpcUrl();
 
     if (!safeAddress || !privateKey) {
       workerLogger.warn({ safeAddress: !!safeAddress, privateKey: !!privateKey }, 'Missing Safe delivery configuration; skipping on-chain delivery');

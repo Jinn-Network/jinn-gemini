@@ -30,6 +30,8 @@ export {
   getRequiredMechSafeAddress,
   getOptionalMechMarketplaceAddress,
   getOptionalMechModel,
+  getOptionalMechReclaimAfterMinutes,
+  getEnableAutoRepost,
 
   // Ponder
   getPonderPort,
@@ -49,7 +51,9 @@ export {
   getRequiredSupabaseServiceRoleKey,
 
   // IPFS
+  getOptionalIpfsGatewayUrl,
   getIpfsGatewayUrl,
+  getOptionalIpfsFetchTimeoutMs,
   getIpfsFetchTimeoutMs,
 
   // LLM APIs

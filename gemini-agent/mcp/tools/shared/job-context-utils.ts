@@ -1,5 +1,6 @@
-import fetch from 'cross-fetch';
+import { graphQLRequest } from '../../../../http/client.js';
 import { mcpLogger } from '../../../../logging/index.js';
+import { getPonderGraphqlUrl } from './env.js';
 
 export interface JobHierarchyItem {
     jobId: string;
@@ -102,30 +103,51 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
         }
     `;
 
-    const res = await fetch(PONDER_GRAPHQL_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            query: batchQuery,
-            variables: { jobIds }
-        })
+    const result = await graphQLRequest<{
+        jobDefinitions: { items: Array<{
+            id: string;
+            name: string;
+            promptContent?: string;
+            sourceJobDefinitionId?: string;
+        }> };
+        requests: { items: Array<{
+            id: string;
+            delivered: boolean;
+            blockTimestamp: string;
+            jobDefinitionId?: string;
+        }> };
+        artifacts: { items: Array<{
+            id: string;
+            name: string;
+            topic: string;
+            cid: string;
+            sourceJobDefinitionId?: string;
+        }> };
+        childJobs: { items: Array<{
+            id: string;
+            sourceJobDefinitionId?: string;
+        }> };
+        messages: { items: Array<{
+            id: string;
+            content: string;
+            sourceJobDefinitionId?: string;
+            to?: string;
+            blockTimestamp: string;
+        }> };
+    }>({
+        url: PONDER_GRAPHQL_URL,
+        query: batchQuery,
+        variables: { jobIds },
+        maxRetries: 1,
+        context: { operation: 'fetchBatchedJobData', jobCount: jobIds.length }
     });
 
-    if (!res.ok) {
-        throw new Error(`GraphQL request failed: HTTP ${res.status}`);
-    }
-
-    const json = await res.json();
-    if (json.errors) {
-        throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
-    }
-
     return {
-        jobDefinitions: json.data?.jobDefinitions?.items || [],
-        requests: json.data?.requests?.items || [],
-        artifacts: json.data?.artifacts?.items || [],
-        childJobs: json.data?.childJobs?.items || [],
-        messages: json.data?.messages?.items || []
+        jobDefinitions: result.jobDefinitions?.items || [],
+        requests: result.requests?.items || [],
+        artifacts: result.artifacts?.items || [],
+        childJobs: result.childJobs?.items || [],
+        messages: result.messages?.items || []
     };
 }
 
@@ -133,7 +155,7 @@ export async function fetchJobHierarchy(rootJobId: string, maxDepth: number = 3)
     hierarchy: JobHierarchyItem[];
     errors: Array<{jobId: string, level: number, error: string}>;
 }> {
-    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+    const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
     const visited = new Set<string>();
     const hierarchy: JobHierarchyItem[] = [];
     const errors: Array<{jobId: string, level: number, error: string}> = [];

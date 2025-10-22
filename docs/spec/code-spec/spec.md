@@ -241,7 +241,7 @@ Default behaviors define the standard way to handle common operations. They are 
 1. Import the shared logger from `logging/index.ts` and create a child logger for your component (`const workerLogger = logger.child({ component: 'WORKER' });`).
 2. Log structured objects (`workerLogger.info({ requestId, status }, 'Delivering job');`) instead of concatenated strings.
 3. Keep sensitive values (private keys, tokens) out of log fields; rely on the logger’s redaction config where appropriate.
-4. Avoid `console.*` in runtime paths. For CLI tools that need human-readable output, use the provided `cliLogger` adapter, which wraps the shared logger while pretty-printing to stdout.
+4. Avoid `console.*` in runtime paths. For CLI tools that need human-readable output, use the provided `scriptLogger` adapter, which wraps the shared logger while pretty-printing to stdout.
 
 **Allowed exceptions:**
 - Tests asserting specific console output may continue using `console.*`, but production code should not.
@@ -251,6 +251,42 @@ Default behaviors define the standard way to handle common operations. They are 
 **Examples:**
 - ✅ `workerLogger.warn({ requestId, error: serializeError(err) }, 'Safe delivery failed');`
 - ❌ `console.error('Safe delivery failed', err); // unstructured, misses metadata`
+
+### No silent catch
+
+**Behavior:** Every `catch` block surfaces the error. Optional flows log a warning with structured context; critical flows log and rethrow. Empty `catch {}` blocks and `.catch(() => …)` patterns that suppress errors are prohibited.
+
+**Why this matters:**
+- Orthodoxy (obj1): Establishes a single, discoverable error-handling idiom.
+- Code for the next agent (obj2): Logs provide the breadcrumbs future agents need to diagnose issues.
+- Minimize harm (obj3): Prevents silent data loss or hidden operational failures.
+
+**How to follow it:**
+1. Log errors with the appropriate child logger (`workerLogger`, `mcpLogger`, etc.) and include relevant identifiers (request ID, job ID, CID, etc.).
+2. For non-critical paths, log at `warn` and continue. For critical paths, log at `error` (or higher) and rethrow or return a structured failure.
+3. Use `serializeError()` (or equivalent) so the log carries readable error details without leaking sensitive data.
+4. Avoid `.catch(() => …)` helpers that hide the cause. If suppressing an error is intentional, include a comment explaining why and what alternative signal is being emitted.
+
+**Allowed exceptions:**
+- Test helpers that deliberately swallow errors while resetting environment or cleaning up child processes. These must stay confined to test utilities and document the intent.
+- Temporary suppressions in third-party integrations when logging would leak secrets; redact instead of silencing.
+- Inline parse guards where the fallback is explicit (e.g., `try { JSON.parse(...) } catch { return null; }`) may be tolerated if documented, but logging is still encouraged.
+
+**Examples:**
+- ✅
+  ```ts
+  try {
+    await apiCreateArtifact(requestId, payload);
+  } catch (error) {
+    workerLogger.warn({ requestId, cid, error: serializeError(error) }, 'Failed to persist artifact; continuing');
+  }
+  ```
+- ❌
+  ```ts
+  try {
+    await apiCreateArtifact(requestId, payload);
+  } catch {}
+  ```
 
 When we define additional default behaviors, include:
 - The canonical approach with code examples

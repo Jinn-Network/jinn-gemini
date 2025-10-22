@@ -19,6 +19,7 @@ import { spawn } from 'child_process';
 import { writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { logger } from '../logging/index.js';
+import { getOptionalTenderlyAccountSlug, getOptionalTenderlyProjectSlug } from '../gemini-agent/mcp/tools/shared/env.js';
 
 const testLogger = logger.child({ component: 'TENDERLY-TEST' });
 
@@ -298,7 +299,11 @@ async function main() {
     console.log('╚════════════════════════════════════════════════════════════╝\n');
 
     console.log('🔍 View transactions in Tenderly Dashboard:');
-    console.log(`   https://dashboard.tenderly.co/${process.env.TENDERLY_ACCOUNT_SLUG}/${process.env.TENDERLY_PROJECT_SLUG}/virtual-testnets/${vnetInfo.id}`);
+    const accountSlug = getOptionalTenderlyAccountSlug();
+    const projectSlug = getOptionalTenderlyProjectSlug();
+    if (accountSlug && projectSlug) {
+      console.log(`   https://dashboard.tenderly.co/${accountSlug}/${projectSlug}/virtual-testnets/${vnetInfo.id}`);
+    }
     console.log('\n💡 Tip: Tenderly test services are automatically cleaned up after each run');
     console.log('   Only mainnet services are preserved in .operate/services/\n');
 

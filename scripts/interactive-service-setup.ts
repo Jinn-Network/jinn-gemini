@@ -18,6 +18,7 @@ import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { SimplifiedServiceBootstrap, SimplifiedBootstrapConfig } from '../worker/SimplifiedServiceBootstrap.js';
 import { logger } from '../logging/index.js';
+import { getRequiredRpcUrl, getOptionalMechChainConfig, getOptionalOperatePassword } from '../gemini-agent/mcp/tools/shared/env.js';
 
 const setupLogger = logger.child({ component: "SETUP-CLI" });
 
@@ -147,7 +148,7 @@ async function main() {
   }
 
   // Validate environment
-  const operatePassword = process.env.OPERATE_PASSWORD;
+  const operatePassword = getOptionalOperatePassword();
   if (!operatePassword) {
     console.error(`\n❌ Error: OPERATE_PASSWORD environment variable is required\n`);
     console.error(`Set it in your .env or .env.test file or export it:\n`);
@@ -156,8 +157,8 @@ async function main() {
   }
 
   // Determine chain and RPC URL
-  const chain = args.chain || 'base';
-  const rpcUrl = process.env.RPC_URL || '';
+  const chain = args.chain || getOptionalMechChainConfig() || 'base';
+  const rpcUrl = getRequiredRpcUrl();
 
   if (!rpcUrl) {
     console.error(`\n❌ Error: RPC_URL environment variable is required\n`);

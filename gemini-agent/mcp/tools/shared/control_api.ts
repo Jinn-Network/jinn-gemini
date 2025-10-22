@@ -1,6 +1,7 @@
-import fetch from 'cross-fetch';
 import { getCurrentJobContext } from './context.js';
 import { mcpLogger } from '../../../../logging/index.js';
+import { postJson } from '../../../../http/client.js';
+import { getOptionalControlApiUrl, getUseControlApi } from './env.js';
 
 type RequestClaim = {
   request_id: string;
@@ -32,7 +33,7 @@ type MessageInput = {
   status?: string;
 };
 
-const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
+const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/graphql';
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000; // 1 second
 
@@ -64,31 +65,31 @@ async function fetchWithRetry(
 ): Promise<any> {
   let lastError: any;
   const startTime = Date.now();
-  
+
   for (let i = 0; i < attempts; i++) {
+    const operation = body.query.split('(')[0].split(' ')[1] || 'unknown';
     try {
-      const operation = body.query.split('(')[0].split(' ')[1] || 'unknown';
       mcpLogger.debug({ attempt: i + 1, totalAttempts: attempts, operation }, 'Control API request attempt');
 
-      const response = await fetch(CONTROL_API_URL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(10000), // 10 second timeout
-      });
+      const json = await postJson<any>(
+        CONTROL_API_URL,
+        body,
+        {
+          headers,
+          timeoutMs: 10_000,
+          maxRetries: 0,
+          context: {
+            operation,
+            attempt: i + 1,
+          },
+        },
+      );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Control API HTTP error: ${response.status} - ${errorText}`);
-      }
-
-      const json = await response.json();
       if (json.errors) {
         throw new Error(`Control API GraphQL error: ${JSON.stringify(json.errors)}`);
       }
 
       const duration = Date.now() - startTime;
-      const operation = body.query.split('(')[0].split(' ')[1] || 'unknown';
       mcpLogger.info({ duration, operation }, 'Control API request successful');
       return json;
     } catch (e: any) {
@@ -96,11 +97,11 @@ async function fetchWithRetry(
       const duration = Date.now() - startTime;
       mcpLogger.warn({ attempt: i + 1, totalAttempts: attempts, duration, error: e?.message || String(e) }, 'Control API request failed');
       if (i < attempts - 1) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (i + 1))); // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (i + 1)));
       }
     }
   }
-  
+
   const totalDuration = Date.now() - startTime;
   throw new Error(`Failed to call Control API after ${attempts} attempts (${totalDuration}ms): ${lastError?.message || String(lastError)}`);
 }
@@ -142,7 +143,7 @@ export async function createMessage(requestId: string, message: MessageInput): P
 }
 
 export function isControlApiEnabled(): boolean {
-  return (process.env.USE_CONTROL_API ?? 'true') !== 'false';
+  return getUseControlApi();
 }
 
 export function shouldUseControlApi(tableName: string): boolean {

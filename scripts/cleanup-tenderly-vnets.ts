@@ -6,6 +6,7 @@
 
 import 'dotenv/config';
 import { createTenderlyClient } from './lib/tenderly.js';
+import { getOptionalTenderlyAccountSlug, getOptionalTenderlyProjectSlug, getOptionalTenderlyAccessKey } from '../gemini-agent/mcp/tools/shared/env.js';
 
 interface VnetListItem {
   id: string;
@@ -21,9 +22,9 @@ async function listAllVnets(): Promise<VnetListItem[]> {
     throw new Error('Tenderly not configured. Set TENDERLY_ACCESS_KEY, TENDERLY_ACCOUNT_SLUG, and TENDERLY_PROJECT_SLUG');
   }
 
-  const accountSlug = process.env.TENDERLY_ACCOUNT_SLUG;
-  const projectSlug = process.env.TENDERLY_PROJECT_SLUG;
-  const accessKey = process.env.TENDERLY_ACCESS_KEY;
+  const accountSlug = getOptionalTenderlyAccountSlug();
+  const projectSlug = getOptionalTenderlyProjectSlug();
+  const accessKey = getOptionalTenderlyAccessKey();
 
   console.log('📋 Fetching all Virtual TestNets (across all pages)...\n');
   
@@ -33,19 +34,17 @@ async function listAllVnets(): Promise<VnetListItem[]> {
   
   while (true) {
     const url = `https://api.tenderly.co/api/v1/account/${accountSlug}/project/${projectSlug}/vnets?page=${page}&per_page=${perPage}`;
-    
-    const response = await fetch(url, {
+
+    const data = await fetchWithRetry(url, {
+      method: 'GET',
       headers: {
         'X-Access-Key': accessKey!,
       },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to list VNets (page ${page}): ${response.status} ${response.statusText}\n${errorText}`);
-    }
-
-    const data = await response.json();
+    }, {
+      timeoutMs: 10_000,
+      maxRetries: 2,
+      context: { operation: 'listVnets', page }
+    }).then(res => res.json());
     
     // The API returns an array of VNets directly, not wrapped in an object
     const pageVnets = Array.isArray(data) ? data : (data.vnets || data.virtual_testnets || data.containers || data.data || []);

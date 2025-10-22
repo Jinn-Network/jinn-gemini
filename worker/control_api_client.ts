@@ -1,5 +1,9 @@
 import 'dotenv/config';
 import { getMechAddress } from '../env/operate-profile.js';
+import { getOptionalControlApiUrl } from '../gemini-agent/mcp/tools/shared/env.js';
+import { postJson } from '../http/client.js';
+import { getOptionalControlApiUrl } from '../gemini-agent/mcp/tools/shared/env.js';
+import { postJson } from '../http/client.js';
 
 type Json = Record<string, any> | any[] | string | number | boolean | null;
 
@@ -25,7 +29,7 @@ export type MessageInput = {
   status?: string;
 };
 
-const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
+const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/graphql';
 
 function getWorkerAddress(): string {
   const addr = getMechAddress();
@@ -44,22 +48,26 @@ function buildHeaders(requestId: string, phase: string, workerAddress?: string):
 }
 
 async function fetchWithRetry(body: any, headers: Record<string, string>, attempt = 0): Promise<any> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const res = await fetch(CONTROL_API_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    } as any);
-    const text = await res.text();
-    let json: any = null;
-    try { json = JSON.parse(text); } catch {}
-    if (!res.ok || !json || json.errors) {
-      const msg = json?.errors?.map((e: any) => e?.message).join('; ') || `HTTP ${res.status}`;
+    const json = await postJson<any>(
+      CONTROL_API_URL,
+      body,
+      {
+        headers,
+        timeoutMs: 10_000,
+        maxRetries: 0,
+        context: {
+          operation: 'controlApiRequest',
+          attempt: attempt + 1,
+        },
+      },
+    );
+
+    if (!json || json.errors) {
+      const msg = json?.errors?.map((e: any) => e?.message).join('; ') || 'GraphQL error';
       throw new Error(msg);
     }
+
     return json;
   } catch (err) {
     if (attempt < 3) {
@@ -68,8 +76,6 @@ async function fetchWithRetry(body: any, headers: Record<string, string>, attemp
       return fetchWithRetry(body, headers, attempt + 1);
     }
     throw err;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
