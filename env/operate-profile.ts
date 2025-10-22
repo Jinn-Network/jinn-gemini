@@ -75,13 +75,13 @@ function readServiceConfig(): ServiceConfig | null {
   try {
     const operateDir = getOperateDir();
     if (!operateDir) {
-      configLogger.warn(' No .operate directory found');
+      configLogger.warn('No .operate directory found');
       return null;
     }
     
     const servicesDir = join(operateDir, 'services');
     if (!existsSync(servicesDir)) {
-      configLogger.warn(' No services directory found in', operateDir);
+      configLogger.warn({ operateDir }, 'No services directory found');
       return null;
     }
     
@@ -91,7 +91,7 @@ function readServiceConfig(): ServiceConfig | null {
       .map(dirent => dirent.name);
     
     if (serviceDirs.length === 0) {
-      configLogger.warn(' No service directories found in', servicesDir);
+      configLogger.warn({ servicesDir }, 'No service directories found');
       return null;
     }
     
@@ -100,7 +100,7 @@ function readServiceConfig(): ServiceConfig | null {
     const configPath = join(servicesDir, serviceDir, 'config.json');
     
     if (!existsSync(configPath)) {
-      configLogger.warn(' No config.json found at', configPath);
+      configLogger.warn({ configPath }, 'No config.json found');
       return null;
     }
     
@@ -109,7 +109,7 @@ function readServiceConfig(): ServiceConfig | null {
     
     return config;
   } catch (error) {
-    configLogger.warn(' Error reading service config:', error);
+    configLogger.warn({ err: error }, 'Error reading service config');
     return null;
   }
 }
@@ -140,7 +140,7 @@ export function getMechAddress(): string | null {
   // Extract mech address from MECH_TO_CONFIG
   const mechToConfig = config.env_variables?.MECH_TO_CONFIG?.value;
   if (!mechToConfig) {
-    configLogger.warn(' MECH_TO_CONFIG not found in service config');
+    configLogger.warn('MECH_TO_CONFIG not found in service config');
     return null;
   }
   
@@ -150,7 +150,7 @@ export function getMechAddress(): string | null {
     const mechAddresses = Object.keys(mechConfig);
     
     if (mechAddresses.length === 0) {
-      configLogger.warn(' No mech addresses found in MECH_TO_CONFIG');
+      configLogger.warn('No mech addresses found in MECH_TO_CONFIG');
       return null;
     }
     
@@ -158,7 +158,7 @@ export function getMechAddress(): string | null {
     configLogger.info(` Found mech address: ${mechAddress}`);
     return mechAddress;
   } catch (error) {
-    configLogger.warn(' Error parsing MECH_TO_CONFIG:', error);
+    configLogger.warn({ err: error }, 'Error parsing MECH_TO_CONFIG');
     return null;
   }
 }
@@ -200,7 +200,7 @@ export function getServiceSafeAddress(): string | null {
     return safeAddress;
   }
   
-  configLogger.warn(' safe_address not found in service config');
+  configLogger.warn('safe_address not found in service config');
   return null;
 }
 
@@ -234,7 +234,7 @@ export function getServicePrivateKey(): string | null {
   }
   
   if (!agentAddress) {
-    configLogger.warn(' No agent instance found in chain_configs');
+    configLogger.warn('No agent instance found in chain_configs');
     return null;
   }
   
@@ -260,7 +260,7 @@ export function getServicePrivateKey(): string | null {
       configLogger.warn({ keysPath }, 'Key file not found');
     }
   } catch (error) {
-    configLogger.warn(' Error reading private key from .operate:', error);
+    configLogger.warn({ err: error }, 'Error reading private key from .operate');
   }
   
   return null;
@@ -277,4 +277,3 @@ export function getServiceProfile() {
     privateKey: getServicePrivateKey(),
   };
 }
-

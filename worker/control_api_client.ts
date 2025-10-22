@@ -2,8 +2,6 @@ import 'dotenv/config';
 import { getMechAddress } from '../env/operate-profile.js';
 import { getOptionalControlApiUrl } from '../gemini-agent/mcp/tools/shared/env.js';
 import { postJson } from '../http/client.js';
-import { getOptionalControlApiUrl } from '../gemini-agent/mcp/tools/shared/env.js';
-import { postJson } from '../http/client.js';
 
 type Json = Record<string, any> | any[] | string | number | boolean | null;
 
@@ -143,5 +141,4 @@ export async function updateTransactionStatus(args: { id: string; status: string
   const json = await fetchWithRetry({ query, variables }, headers);
   return json.data.updateTransactionStatus;
 }
-
 
