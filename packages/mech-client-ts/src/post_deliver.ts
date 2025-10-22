@@ -407,20 +407,7 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
   txPayload.nonce = await web3.eth.getTransactionCount(checksumSender);
 
   // Estimate gas
-  let gasEstimate: bigint;
-  try {
-    gasEstimate = await web3.eth.estimateGas(txPayload);
-  } catch (gasError: any) {
-    console.error('Gas estimation failed - transaction would revert:');
-    console.error('Error:', gasError.message);
-    if (gasError.innerError) {
-      console.error('Inner error:', JSON.stringify(gasError.innerError, null, 2));
-    }
-    if (gasError.data) {
-      console.error('Error data:', gasError.data);
-    }
-    throw new Error(`Gas estimation failed: ${gasError.message}`);
-  }
+  const gasEstimate = await web3.eth.estimateGas(txPayload);
   txPayload.gas = gasEstimate;
 
   // EIP-1559 fees

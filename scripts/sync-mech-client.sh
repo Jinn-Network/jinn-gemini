@@ -20,6 +20,7 @@ rsync -av --delete \
   --exclude 'yarn.lock' \
   --exclude '*.tgz' \
   --exclude '.DS_Store' \
+  --exclude '.git' \
   "$PACKAGE_DIR/" "$STANDALONE_DIR/"
 
 echo "✅ Files synced successfully!"
