@@ -189,6 +189,10 @@ olas-operate-middleware/.operate/*.txt
 # Test-generated operate data (ephemeral test artifacts)
 .operate-test/
 
+# Test git repositories (ephemeral test fixtures)
+tests/fixtures/test-repo/
+tests/fixtures/test-repo-remote/
+
 # Service backups (moved to ~/Documents)
 service-backups/
 

@@ -5,6 +5,8 @@ import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
+import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
+import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
@@ -145,14 +147,50 @@ export async function dispatchExistingJob(args: unknown) {
     }
   }
 
-  const ipfsJsonContents = [{
+  const baseBranch =
+    (context as any)?.baseBranch ||
+    getCodeMetadataDefaultBaseBranch();
+
+  const branchResult = await ensureJobBranch({
+    jobDefinitionId,
+    jobName: name,
+    baseBranch,
+  });
+
+  const metadataHints = {
+    jobDefinitionId,
+    parent:
+      context.jobDefinitionId || context.requestId
+        ? {
+            jobDefinitionId: context.jobDefinitionId || undefined,
+            requestId: context.requestId || undefined,
+          }
+        : undefined,
+    baseBranch,
+  };
+
+  const codeMetadata = await collectLocalCodeMetadata(metadataHints);
+
+  const ipfsJsonContents: any[] = [{
     prompt: finalPrompt,
     jobName: name,
     enabledTools: finalTools,
     jobDefinitionId,
     additionalContext,
+    branchName: branchResult.branchName,
+    baseBranch,
     ...lineageContext,
   }];
+
+  if (codeMetadata) {
+    ipfsJsonContents[0].codeMetadata = codeMetadata;
+  }
+
+  ipfsJsonContents[0].executionPolicy = {
+    branch: branchResult.branchName,
+    ensureTestsPass: true,
+    description: 'Agent must execute work on the provided branch and pass required validations before finalizing.',
+  };
 
   try {
     const result = await (marketplaceInteract as any)({

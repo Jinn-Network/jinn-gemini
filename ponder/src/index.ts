@@ -65,6 +65,7 @@ ponder.on(
       let sourceJobDefinitionIdFromContent: string | undefined;
       let additionalContext: any = undefined;
       let messageContent: any = undefined;
+      let codeMetadata: any = undefined;
       if (ipfsHash) {
         try {
           // Minimal IPFS fetch with timeout to avoid blocking database writes during historical indexing
@@ -86,6 +87,13 @@ ponder.on(
             if (additionalContext?.message) {
               messageContent = additionalContext.message;
             }
+            if (content.codeMetadata && typeof content.codeMetadata === 'object') {
+              try {
+                codeMetadata = JSON.parse(JSON.stringify(content.codeMetadata));
+              } catch (err) {
+                codeMetadata = content.codeMetadata;
+              }
+            }
           }
         } catch (e: any) {
           logger.error(`Failed to resolve IPFS content for hash ${ipfsHash}: ${e.message}`);
@@ -106,11 +114,13 @@ ponder.on(
             promptContent,
             sourceJobDefinitionId: parentJobDefinitionId,
             sourceRequestId: sourceRequestId,
+            codeMetadata,
           },
           update: {
             name: jobName || 'Unnamed Job',
             enabledTools,
             promptContent,
+            codeMetadata: codeMetadata || undefined,
             // Do NOT re-attribute lineage on updates; preserve original creator
           },
         });

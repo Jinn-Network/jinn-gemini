@@ -8,6 +8,7 @@ export interface JobContext {
   projectDefinitionId: string | null;
   requestId?: string | null;
   mechAddress?: string | null;
+  baseBranch?: string | null;
 }
 
 // Canonical: read from environment only
@@ -22,11 +23,12 @@ export function getCurrentJobContext(): JobContext {
     projectDefinitionId: process.env.JINN_PROJECT_DEFINITION_ID || null,
     requestId: process.env.JINN_REQUEST_ID || null,
     mechAddress: process.env.JINN_MECH_ADDRESS || null,
+    baseBranch: process.env.JINN_BASE_BRANCH || null,
   };
 }
 
 // Back-compat helpers for tests: set/clear via env (still canonical path)
-export function setJobContext(jobId: string | null, jobName: string | null, threadId?: string | null, projectRunId?: string | null, projectDefinitionId?: string | null, jobDefinitionId?: string | null) {
+export function setJobContext(jobId: string | null, jobName: string | null, threadId?: string | null, projectRunId?: string | null, projectDefinitionId?: string | null, jobDefinitionId?: string | null, baseBranch?: string | null) {
   if (jobId) process.env.JINN_JOB_ID = jobId; else delete process.env.JINN_JOB_ID;
   if (jobName) process.env.JINN_JOB_NAME = jobName; else delete process.env.JINN_JOB_NAME;
   if (threadId !== undefined) {
@@ -41,6 +43,9 @@ export function setJobContext(jobId: string | null, jobName: string | null, thre
   if (jobDefinitionId !== undefined) {
     if (jobDefinitionId) process.env.JINN_JOB_DEFINITION_ID = jobDefinitionId; else delete process.env.JINN_JOB_DEFINITION_ID;
   }
+  if (baseBranch !== undefined) {
+    if (baseBranch) process.env.JINN_BASE_BRANCH = baseBranch; else delete process.env.JINN_BASE_BRANCH;
+  }
 }
 
 export function clearJobContext() {
@@ -51,6 +56,7 @@ export function clearJobContext() {
   delete process.env.JINN_PROJECT_RUN_ID;
   delete process.env.JINN_SOURCE_EVENT_ID;
   delete process.env.JINN_PROJECT_DEFINITION_ID;
+  delete process.env.JINN_BASE_BRANCH;
 }
 
 

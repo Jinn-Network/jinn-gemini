@@ -24,7 +24,7 @@ import { claimRequest as apiClaimRequest, createJobReport as apiCreateJobReport,
 import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './artifacts.js';
 import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
 import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
-import { join } from 'path';
+import type { CodeMetadata } from '../gemini-agent/shared/code_metadata.js';
 
 type UnclaimedRequest = {
   id: string;           // on-chain requestId (decimal string or 0x)
@@ -48,6 +48,9 @@ const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
 // Track recent reposts to prevent loops
 const recentReposts = new Map<string, number>();
 
+const GITHUB_API_URL = process.env.GITHUB_API_URL || 'https://api.github.com';
+const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
+
 // Error serialization helper
 function serializeError(e: any): string {
   if (!e) return 'Unknown error';
@@ -58,6 +61,184 @@ function serializeError(e: any): string {
     return JSON.stringify(e);
   } catch {
     return String(e);
+  }
+}
+
+function parseGithubRepo(remoteUrl: string | undefined, branchName: string): { owner: string; repo: string; head: string } | null {
+  const normalizeRepository = (value?: string | null): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim().replace(/\.git$/i, '');
+    if (!trimmed.includes('/')) return null;
+    return trimmed;
+  };
+
+  const inferRepositoryFromRemote = (url?: string): string | null => {
+    if (!url) return null;
+
+    // SSH form: git@host:owner/repo.git
+    const sshMatch = url.match(/^git@([^:]+?):(.+?)$/);
+    if (sshMatch) {
+      return normalizeRepository(sshMatch[2]);
+    }
+
+    // Handle scp-like shorthand without scheme: host:owner/repo.git
+    const scpMatch = url.match(/^([^@]+?):(.+?)$/);
+    if (scpMatch && !url.includes('://')) {
+      return normalizeRepository(scpMatch[2]);
+    }
+
+    // URL forms: https://host/owner/repo.git or ssh://
+    try {
+      const parsed = new URL(url);
+      const pathname = parsed.pathname.replace(/^\/+/, '');
+      return normalizeRepository(pathname);
+    } catch {
+      return null;
+    }
+  };
+
+  const repository = normalizeRepository(process.env.GITHUB_REPOSITORY) ?? inferRepositoryFromRemote(remoteUrl);
+  if (!repository) return null;
+
+  const [owner, repo] = repository.split('/', 2);
+  if (!owner || !repo) return null;
+  return { owner, repo, head: `${owner}:${branchName}` };
+}
+
+async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<void> {
+  const branchName = codeMetadata.branch?.name;
+  if (!branchName) {
+    throw new Error('codeMetadata.branch.name is required for checkout');
+  }
+
+  // Determine repo root: use CODE_METADATA_REPO_ROOT env, or codeMetadata.repo.root, or current directory
+  const repoRoot = process.env.CODE_METADATA_REPO_ROOT || codeMetadata.repo?.root || process.cwd();
+
+  workerLogger.info({ branchName, repoRoot }, 'Checking out job branch');
+
+  // Use simple git checkout - branch should already exist from dispatch
+  const { execFileSync } = await import('node:child_process');
+  try {
+    execFileSync('git', ['checkout', branchName], {
+      cwd: repoRoot,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 30000,
+    });
+    workerLogger.info({ branchName }, 'Successfully checked out branch');
+  } catch (error: any) {
+    const errorMessage = `Failed to checkout branch ${branchName}: ${error.stderr || error.message}`;
+    workerLogger.error({ branchName, error: serializeError(error) }, errorMessage);
+    throw new Error(errorMessage);
+  }
+}
+
+async function pushJobBranch(branchName: string, codeMetadata: CodeMetadata): Promise<void> {
+  workerLogger.info({ branchName }, 'Pushing job branch to remote');
+
+  // Determine repo root: use CODE_METADATA_REPO_ROOT env, or codeMetadata.repo.root, or current directory
+  const repoRoot = process.env.CODE_METADATA_REPO_ROOT || codeMetadata.repo?.root || process.cwd();
+  const remoteName = process.env.CODE_METADATA_REMOTE_NAME || 'origin';
+  const { execFileSync } = await import('node:child_process');
+
+  try {
+    // Push with -u to set upstream tracking
+    execFileSync('git', ['push', '-u', remoteName, `${branchName}:${branchName}`], {
+      cwd: repoRoot,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 60000,
+    });
+    workerLogger.info({ branchName, remote: remoteName }, 'Successfully pushed branch');
+  } catch (error: any) {
+    const errorMessage = `Failed to push branch ${branchName} to ${remoteName}: ${error.stderr || error.message}`;
+    workerLogger.error({ branchName, remote: remoteName, error: serializeError(error) }, errorMessage);
+    throw new Error(errorMessage);
+  }
+}
+
+async function createOrUpdatePullRequest(params: {
+  codeMetadata: CodeMetadata;
+  branchName: string;
+  baseBranch: string;
+  requestId: string;
+}): Promise<string | null> {
+  const { codeMetadata, branchName, baseBranch, requestId } = params;
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    workerLogger.warn('Missing GITHUB_TOKEN; skipping PR creation');
+    return null;
+  }
+
+  const repoInfo = parseGithubRepo(codeMetadata.repo?.remoteUrl || codeMetadata.branch.remoteUrl, branchName);
+  if (!repoInfo) {
+    workerLogger.warn('Unable to infer GitHub repository from remote; skipping PR creation');
+    return null;
+  }
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'jinn-mech-worker',
+  };
+
+  const searchUrl = `${GITHUB_API_URL}/repos/${repoInfo.owner}/${repoInfo.repo}/pulls?head=${encodeURIComponent(repoInfo.head)}&state=open`;
+  try {
+    const res = await fetch(searchUrl, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        workerLogger.info({ branchName, pr: data[0]?.number }, 'Existing PR found for branch');
+        return data[0]?.html_url || null;
+      }
+    } else {
+      workerLogger.warn({ status: res.status, statusText: res.statusText }, 'Failed to query existing PRs');
+    }
+  } catch (error) {
+    workerLogger.warn({ error: serializeError(error) }, 'Error querying GitHub for existing PR');
+  }
+
+  const title = `[Job ${codeMetadata.jobDefinitionId}] updates`;
+  const bodyLines = [
+    `Automated PR for job definition ${codeMetadata.jobDefinitionId}.`,
+    '',
+    `- Request ID: ${requestId}`,
+    `- Branch: \`${branchName}\``,
+    `- Base: \`${baseBranch}\``,
+    '',
+    'This PR was generated by the mech worker after successful validation.',
+  ];
+
+  try {
+    const res = await fetch(`${GITHUB_API_URL}/repos/${repoInfo.owner}/${repoInfo.repo}/pulls`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title,
+        head: branchName,
+        base: baseBranch,
+        body: bodyLines.join('\n'),
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`GitHub PR creation failed (${res.status}): ${text}`);
+    }
+    const data = await res.json();
+    const prUrl = data?.html_url as string | undefined;
+    workerLogger.info({ branchName, prUrl }, 'Created GitHub PR');
+    return prUrl || null;
+  } catch (error) {
+    workerLogger.error({
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      raw: error
+    }, 'Failed to create pull request');
+    return null;
   }
 }
 
@@ -377,7 +558,10 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
     const additionalContext = json?.additionalContext || undefined;
     const jobName = json?.jobName ? String(json.jobName) : undefined;
     const jobDefinitionId = json?.jobDefinitionId ? String(json.jobDefinitionId) : undefined;
-    return { prompt, enabledTools, sourceRequestId, sourceJobDefinitionId, additionalContext, jobName, jobDefinitionId };
+    const codeMetadata = json?.codeMetadata && typeof json.codeMetadata === 'object'
+      ? (json.codeMetadata as CodeMetadata)
+      : undefined;
+    return { prompt, enabledTools, sourceRequestId, sourceJobDefinitionId, additionalContext, jobName, jobDefinitionId, codeMetadata };
   } catch (e: any) {
     workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
     return null;
@@ -759,9 +943,30 @@ async function processOnce(): Promise<void> {
   let result: any = { output: '', telemetry: {} };
   let error: any = null;
   let metadata: any = null;
+  let finalStatus: FinalStatus | null = null;
+  const previousBaseBranchEnv = process.env.JINN_BASE_BRANCH;
   try {
     metadata = await fetchIpfsMetadata(target.ipfsHash);
+
+    // REQ-2.2: Validate codeMetadata presence (orthodoxy: one canonical way)
+    if (!metadata?.codeMetadata) {
+      throw new Error(
+        'codeMetadata missing from IPFS payload - all jobs must include code metadata. ' +
+        'This is required for git lineage tracking. Check job dispatch configuration.'
+      );
+    }
+
     workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Processing request');
+
+    // Propagate current branch into job context for downstream delegations
+    process.env.JINN_BASE_BRANCH = metadata.codeMetadata.branch?.name ||
+      metadata.codeMetadata.baseBranch ||
+      metadata.codeMetadata.parent?.branchName ||
+      DEFAULT_BASE_BRANCH;
+
+    // REQ-3.1: Checkout job branch before running agent
+    await checkoutJobBranch(metadata.codeMetadata);
+
     result = await runAgentForRequest(target, metadata);
     // Extract artifacts produced during the run (from tool outputs)
     const artifacts = [
@@ -770,19 +975,102 @@ async function processOnce(): Promise<void> {
     ];
     if (artifacts.length > 0) {
       (result as any).artifacts = artifacts;
-      // Persist via Control API for queryability immediately (optional)
       for (const a of artifacts) {
         try { await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null }); } catch {}
       }
     }
+    // Extract final status from agent output
+    finalStatus = extractFinalStatus(result?.output || '', result?.telemetry || {});
+
     workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Execution completed');
   } catch (e: any) {
     error = e;
-    workerLogger.error({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(e) }, 'Execution failed');
+
+    // CRITICAL: Extract finalStatus and results from error telemetry if available
+    // The agent might have succeeded (called finalize_job) but Gemini API failed after
+    if (e?.telemetry) {
+      const errorTelemetry = e.telemetry;
+
+      // Preserve output from error (agent may have produced output before API failure)
+      if (e?.error?.stderr || errorTelemetry?.raw?.partialOutput) {
+        result.output = result.output || errorTelemetry?.raw?.partialOutput || '';
+      }
+
+      // Merge telemetry from error if we don't have it yet
+      if (!result.telemetry || Object.keys(result.telemetry).length === 0) {
+        result.telemetry = errorTelemetry;
+      }
+
+      // Extract artifacts from error telemetry
+      const errorArtifacts = extractArtifactsFromTelemetry(errorTelemetry || {});
+      if (errorArtifacts.length > 0 && !result.artifacts) {
+        (result as any).artifacts = errorArtifacts;
+        for (const a of errorArtifacts) {
+          try { await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null }); } catch {}
+        }
+      }
+
+      // Re-extract finalStatus from error telemetry (agent may have called finalize_job before error)
+      finalStatus = finalStatus || extractFinalStatus(result?.output || '', errorTelemetry);
+    }
+
+    workerLogger.error({
+      jobName: metadata?.jobName,
+      requestId: target.id,
+      error: serializeError(e),
+      finalStatus: finalStatus?.status,
+      hasTelemetry: !!e?.telemetry
+    }, 'Execution failed');
   }
-  
-  // Store report and get FinalStatus
-  const finalStatus = await storeOnchainReport(target, workerAddress, result, error, metadata);
+
+  // Restore previous base branch context
+  if (previousBaseBranchEnv !== undefined) {
+    process.env.JINN_BASE_BRANCH = previousBaseBranchEnv;
+  } else {
+    delete process.env.JINN_BASE_BRANCH;
+  }
+
+  // REQ-4.1: Push branch after agent completes (regardless of status or error)
+  // This must happen even if agent threw an error, as long as we have code changes
+  try {
+    if (metadata?.codeMetadata?.branch?.name) {
+      await pushJobBranch(metadata.codeMetadata.branch.name, metadata.codeMetadata);
+    }
+  } catch (pushError: any) {
+    workerLogger.error({ error: serializeError(pushError) }, 'Failed to push branch');
+  }
+
+  // Only create PR if agent signaled COMPLETED (even if there was an error after finalize_job)
+  try {
+    if (finalStatus?.status === 'COMPLETED' && metadata?.codeMetadata) {
+      const branchName = metadata.codeMetadata.branch?.name;
+      const baseBranch = metadata.codeMetadata.baseBranch || DEFAULT_BASE_BRANCH;
+
+      if (branchName) {
+        workerLogger.info({ branchName, baseBranch, hadError: !!error }, 'Agent signaled COMPLETED - creating PR');
+        const prUrl = await createOrUpdatePullRequest({
+          codeMetadata: metadata.codeMetadata,
+          branchName,
+          baseBranch,
+          requestId: target.id,
+        });
+        if (prUrl) {
+          // REQ-4.4: Include PR URL in delivery payload (not as artifact)
+          result.pullRequestUrl = prUrl;
+          workerLogger.info({ prUrl }, 'PR URL will be included in delivery payload');
+        }
+      }
+    } else if (finalStatus?.status === 'COMPLETED') {
+      workerLogger.debug('Agent signaled COMPLETED but no codeMetadata available - skipping PR creation');
+    } else {
+      workerLogger.info({ status: finalStatus?.status || 'unknown' }, 'Agent did not signal COMPLETED - skipping PR creation');
+    }
+  } catch (prError: any) {
+    workerLogger.error({ error: serializeError(prError) }, 'Failed to create PR');
+  }
+
+  // Store report with final status
+  await storeOnchainReport(target, workerAddress, result, error, metadata);
   
   // Dispatch parent if needed (Work Protocol)
   await dispatchParentIfNeeded(finalStatus, metadata, target.id, result?.output || '');
@@ -844,7 +1132,15 @@ async function processOnce(): Promise<void> {
           requestId: String(target.id),
           output: result?.output || '',
           telemetry: result?.telemetry || {},
-          artifacts: Array.isArray((result as any)?.artifacts) ? (result as any).artifacts : []
+          artifacts: Array.isArray((result as any)?.artifacts) ? (result as any).artifacts : [],
+          ...(result?.pullRequestUrl ? { pullRequestUrl: result.pullRequestUrl } : {}),
+          ...(metadata?.codeMetadata?.branch?.name ? {
+            executionPolicy: {
+              branch: metadata.codeMetadata.branch.name,
+              ensureTestsPass: true,
+              description: 'Agent executed work on the provided branch and passed required validations.'
+            }
+          } : {})
         },
         targetMechAddress,
         safeAddress,

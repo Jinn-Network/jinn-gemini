@@ -9,6 +9,7 @@ export default createSchema((p: any) => ({
       promptContent: p.string().optional(),
       sourceJobDefinitionId: p.string().optional(),
       sourceRequestId: p.string().optional(),
+      codeMetadata: p.json().optional(),
     },
     {
       nameIdx: p.index("name"),

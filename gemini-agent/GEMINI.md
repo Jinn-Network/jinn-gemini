@@ -59,6 +59,10 @@ Based on the context gathered, I choose an execution status and take appropriate
 **Action:**
 - Synthesize results from child jobs (if any)
 - Create artifacts for all substantial findings, analyses, or outputs that parent jobs or future agents may need to reference
+- **For code changes: commit your work before finalizing**
+  - Stage changes: `git add .` (or specific files modified)
+  - Commit with descriptive message: `git commit -m "feat: [description]"`
+  - The worker will automatically push your commits after you finalize
 - Produce clean deliverable output
 - Document what was accomplished
 
@@ -223,7 +227,78 @@ On every run, I maintain a living status document by creating an artifact:
 **Implementation Note:**
 This briefing is distinct from my execution summary, which documents process for the protocol. The briefing communicates outcomes to humans. Multiple briefing artifacts will exist (one per run) - the launcher can view the most recent by sorting.
 
-## IV. Job Dispatch Strategy
+## IV. Code Workflow
+
+When my job involves code changes (indicated by `codeMetadata` in the job context), I follow specific practices for managing git operations and deliverables.
+
+### Branch Management
+
+**Branch Setup:**
+- The dispatcher has already created and checked out my job branch before I execute
+- Branch name follows pattern: `job/[jobDefinitionId]-[slug]`
+- Base branch is specified in `codeMetadata.baseBranch` (typically `main`)
+- The branch exists both locally and remotely
+
+**Working on the Branch:**
+- I make changes to files as needed to complete my objective
+- I use `git status` to review what I've changed
+- I use `git diff` to review specific changes if needed
+
+### Committing My Work
+
+**IMPORTANT**: Before calling `finalize_job(status: "COMPLETED")`, I MUST commit my changes.
+
+**Standard Git Workflow:**
+1. **Review changes**: `git status` to see modified files
+2. **Stage changes**: `git add .` to stage all changes, or `git add <file>` for specific files
+3. **Commit with message**: Use conventional commit format:
+   - `feat: [description]` for new features
+   - `fix: [description]` for bug fixes
+   - `refactor: [description]` for refactoring
+   - `docs: [description]` for documentation
+   - `test: [description]` for tests
+   - `chore: [description]` for maintenance tasks
+
+**Example:**
+```bash
+git add .
+git commit -m "feat: implement user authentication with JWT tokens"
+```
+
+**Note:** The worker will automatically push my commits to the remote after I finalize with COMPLETED status.
+
+**After Finalizing:**
+- After `finalize_job`, I always send a short execution summary as plain text.
+- The summary confirms the status, highlights the key actions, and points to artifacts so downstream agents and humans can reference the outcome without digging into telemetry.
+- Stopping immediately after the tool call is a protocol violation—the system treats the run as incomplete if no textual summary follows.
+
+**Commit Message Guidelines:**
+- Be specific about what changed and why
+- Reference the job objective when relevant
+- Keep messages concise but informative (1-2 lines)
+- Use imperative mood ("add feature" not "added feature")
+
+### Pull Requests
+
+- The worker automatically creates a GitHub Pull Request when I signal `COMPLETED`
+- I do NOT create PRs myself - this is infrastructure handled by the worker
+- My responsibility is to produce quality code changes and commit them
+- The PR will reference my job definition ID and request ID
+
+### Validation and Testing
+
+- I should run appropriate tests and validations before committing
+- Use project-specific test commands (e.g., `npm test`, `yarn test`, `pytest`)
+- Only commit code that passes basic validation
+- If tests fail, I either fix the issues or signal `FAILED` with explanation
+
+### When NOT to Commit
+
+- If my status is `DELEGATING`, `WAITING`, or `FAILED` - do not commit incomplete work
+- If I haven't made any file changes - no commit needed
+- If changes are exploratory/temporary - clean them up first
+
+## V. Job Dispatch Strategy
 
 ### Reuse-First Approach
 - I prefer to continue work inside existing job containers using existing job dispatch tools.
@@ -292,6 +367,7 @@ Keep the summary concise (2-5 bullet points). The summary is a process log, not 
 - No artifacts created - findings are buried in execution output and hard to find
 - Parent job must parse unstructured text instead of referencing well-organized artifacts
 - No searchable artifacts for future agents to discover via `search_artifacts`
+- If no textual summary follows `finalize_job`, the run is treated as unfinished even if the tool call succeeded.
 
 ## VI. Resource Efficiency
 

@@ -26,10 +26,34 @@ class McpClientWrapper {
   async connect(): Promise<void> {
     if (this.client) return; // Already connected
 
+    const repoRoot = process.env.JINN_REPO_ROOT || process.env.INIT_CWD || process.cwd();
+    const resolvedCommand = process.env.JINN_MCP_COMMAND || 'yarn';
+    let resolvedArgs: string[] | null = null;
+
+    if (resolvedCommand === 'yarn') {
+      resolvedArgs = ['tsx', 'gemini-agent/mcp/server.ts'];
+    } else {
+      try {
+        if (process.env.JINN_MCP_ARGS) {
+          const parsed = JSON.parse(process.env.JINN_MCP_ARGS);
+          if (Array.isArray(parsed) && parsed.every(arg => typeof arg === 'string')) {
+            resolvedArgs = parsed;
+          }
+        }
+      } catch (error) {
+        console.warn('[MCP] Failed to parse JINN_MCP_ARGS, falling back to defaults:', error);
+      }
+
+      if (!resolvedArgs || resolvedArgs.length === 0) {
+        resolvedArgs = ['tsx', 'gemini-agent/mcp/server.ts'];
+      }
+    }
+
     this.transport = new StdioClientTransport({
-      command: 'yarn',
-      args: ['tsx', 'gemini-agent/mcp/server.ts'],
-      env: { ...process.env } as Record<string, string>
+      command: resolvedCommand,
+      args: resolvedArgs,
+      cwd: repoRoot,
+      env: { ...process.env, JINN_REPO_ROOT: repoRoot } as Record<string, string>
     });
 
     this.client = new Client(
@@ -203,7 +227,7 @@ export async function waitForJobIndexed(
   jobDefinitionId: string,
   options?: { maxAttempts?: number; delayMs?: number }
 ): Promise<any> {
-  const query = 'query($id:String!){ jobDefinition(id:$id){ id name enabledTools promptContent sourceRequestId sourceJobDefinitionId } }';
+  const query = 'query($id:String!){ jobDefinition(id:$id){ id name enabledTools promptContent sourceRequestId sourceJobDefinitionId codeMetadata } }';
   return pollGraphQL(
     gqlUrl,
     query,

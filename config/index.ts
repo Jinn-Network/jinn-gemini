@@ -252,6 +252,36 @@ const jobContextSchema = z.object({
 });
 
 /**
+ * Git workflow configuration schema
+ * For code-based job execution with git lineage
+ */
+const gitWorkflowSchema = z.object({
+  // CODE_METADATA_REPO_ROOT: Repository root for code metadata operations
+  CODE_METADATA_REPO_ROOT: z.string().optional(),
+
+  // CODE_METADATA_DEFAULT_BASE_BRANCH: Default base branch for new job definitions
+  CODE_METADATA_DEFAULT_BASE_BRANCH: z.string().default('main'),
+
+  // CODE_METADATA_DEBUG: Enable debug logging for code metadata operations
+  CODE_METADATA_DEBUG: z.coerce.boolean().optional(),
+
+  // CODE_METADATA_REMOTE_NAME: Git remote name for push operations
+  CODE_METADATA_REMOTE_NAME: z.string().default('origin'),
+
+  // GITHUB_API_URL: GitHub API base URL
+  GITHUB_API_URL: z.string().url().default('https://api.github.com'),
+
+  // GITHUB_REPOSITORY: GitHub repository in format "owner/repo"
+  GITHUB_REPOSITORY: z.string().optional(),
+
+  // JINN_BASE_BRANCH: Base branch for current job (runtime context)
+  JINN_BASE_BRANCH: z.string().optional(),
+
+  // JINN_REPO_ROOT: Repository root override for test scenarios
+  JINN_REPO_ROOT: z.string().optional(),
+});
+
+/**
  * Development and testing configuration schema
  */
 const devTestingSchema = z.object({
@@ -329,6 +359,7 @@ const configSchema = z.object({
   ...llmApiSchema.shape,
   ...externalApisSchema.shape,
   ...jobContextSchema.shape,
+  ...gitWorkflowSchema.shape,
   ...devTestingSchema.shape,
 });
 
@@ -851,4 +882,44 @@ export function getOptionalMechChainConfig(): string | undefined {
 
 export function getOptionalMechPrivateKeyPath(): string | undefined {
   return getConfig().MECH_PRIVATE_KEY_PATH;
+}
+
+// ============================================================================
+// Public API: Git Workflow Configuration
+// ============================================================================
+
+export function getCodeMetadataRepoRoot(): string {
+  return getConfig().CODE_METADATA_REPO_ROOT || process.cwd();
+}
+
+export function getOptionalCodeMetadataRepoRoot(): string | undefined {
+  return getConfig().CODE_METADATA_REPO_ROOT;
+}
+
+export function getCodeMetadataDefaultBaseBranch(): string {
+  return getConfig().CODE_METADATA_DEFAULT_BASE_BRANCH;
+}
+
+export function isCodeMetadataDebugEnabled(): boolean {
+  return getConfig().CODE_METADATA_DEBUG ?? false;
+}
+
+export function getCodeMetadataRemoteName(): string {
+  return getConfig().CODE_METADATA_REMOTE_NAME;
+}
+
+export function getGithubApiUrl(): string {
+  return getConfig().GITHUB_API_URL;
+}
+
+export function getOptionalGithubRepository(): string | undefined {
+  return getConfig().GITHUB_REPOSITORY;
+}
+
+export function getOptionalBaseBranch(): string | undefined {
+  return getConfig().JINN_BASE_BRANCH;
+}
+
+export function getOptionalRepoRoot(): string | undefined {
+  return getConfig().JINN_REPO_ROOT;
 }

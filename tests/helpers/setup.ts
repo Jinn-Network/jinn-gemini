@@ -14,17 +14,27 @@ import { loadEnvOnce } from '../../gemini-agent/mcp/tools/shared/env.js';
 import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
 import { getMcpClient } from './shared.js';
 import { findAvailablePort } from './port-utils.js';
+import { getTestGitRepo, type TestGitRepo } from './test-git-repo.js';
 
 let vnetResult: VnetResult | null = null;
 let ponderProc: ExecaChildProcess | null = null;
 let controlApiProc: ExecaChildProcess | null = null;
 let tenderlyClient: ReturnType<typeof createTenderlyClient> | null = null;
+let testGitRepo: TestGitRepo | null = null;
 
 export async function setup() {
   console.log('\n[global-setup] 🚀 Setting up shared E2E test infrastructure...\n');
 
   // Load env early and set flag to prevent child processes from reloading
   loadEnvOnce();
+
+  // Set up test git repository
+  console.log('[global-setup] Setting up test git repository...');
+  testGitRepo = getTestGitRepo();  // Reuses if exists
+
+  // Set CODE_METADATA_REPO_ROOT to use test repo instead of real repo
+  process.env.CODE_METADATA_REPO_ROOT = testGitRepo.repoPath;
+  console.log(`[global-setup] ✓ Test git repo at: ${testGitRepo.repoPath}`);
 
   // Log which Tenderly account is being used
   const tenderlyAccount = process.env.TENDERLY_ACCOUNT_SLUG || 'NOT SET';
@@ -72,6 +82,7 @@ export async function setup() {
 
   // NOW connect MCP client (spawns MCP server with overridden env vars)
   console.log('[global-setup] Connecting MCP client...');
+  process.env.JINN_REPO_ROOT = process.cwd();
   const client = getMcpClient();
   await client.connect();
   console.log('[global-setup] ✓ MCP client connected');
@@ -186,6 +197,15 @@ export async function setup() {
   // Return teardown function
   return async () => {
     console.log('\n[global-setup] 🧹 Tearing down shared infrastructure...\n');
+
+    // Clean up test git repo branches
+    if (testGitRepo) {
+      try {
+        testGitRepo.cleanup();
+      } catch (e: any) {
+        console.warn('[global-setup] Test repo cleanup warning:', e.message);
+      }
+    }
 
     if (ponderProc) {
       try {

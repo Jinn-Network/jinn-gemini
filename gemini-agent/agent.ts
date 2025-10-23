@@ -1,8 +1,11 @@
+// This is a test comment added by the agent to validate the PR creation workflow.
+// This is a test comment added by the agent to validate the PR creation workflow.
 import { spawn } from 'child_process';
-import { writeFileSync, readFileSync, unlinkSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
+import { join, dirname, resolve, isAbsolute } from 'path';
 import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
+import { getOptionalCodeMetadataRepoRoot } from '../config/index.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
@@ -53,6 +56,7 @@ export class Agent {
   private enabledTools: string[];
   private settingsPath: string;
   private agentRoot: string;
+  private codeWorkspace: string;
   private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
   
   // Stdout protection limits (configurable via environment variables)
@@ -81,8 +85,33 @@ export class Agent {
     this.model = model;
     this.enabledTools = enabledTools || [];
     this.jobContext = jobContext;
-    this.agentRoot = join(process.cwd(), 'gemini-agent');
+    // agentRoot must point to the actual gemini-agent directory containing config files
+    // If running in test mode with CODE_METADATA_REPO_ROOT set, find the worktree root
+    let worktreeRoot: string;
+    const codeMetadataRepoRoot = getOptionalCodeMetadataRepoRoot();
+    if (codeMetadataRepoRoot) {
+      // CODE_METADATA_REPO_ROOT is tests/fixtures/test-repo, extract base by removing that suffix
+      const testRepoPath = codeMetadataRepoRoot;
+      const testsIndex = testRepoPath.indexOf('/tests/fixtures/test-repo');
+      worktreeRoot = testsIndex >= 0 ? testRepoPath.substring(0, testsIndex) : dirname(dirname(dirname(testRepoPath)));
+    } else {
+      worktreeRoot = process.cwd();
+    }
+    this.agentRoot = join(worktreeRoot, 'gemini-agent');
     this.settingsPath = join(this.agentRoot, '.gemini', 'settings.json');
+
+    const overrideWorkspace = codeMetadataRepoRoot?.trim();
+    if (overrideWorkspace) {
+      const resolvedWorkspace = resolve(overrideWorkspace);
+      if (existsSync(resolvedWorkspace)) {
+        this.codeWorkspace = resolvedWorkspace;
+      } else {
+        agentLogger.warn({ path: resolvedWorkspace, fallback: this.agentRoot }, 'CODE_METADATA_REPO_ROOT path does not exist, falling back to agent root');
+        this.codeWorkspace = this.agentRoot;
+      }
+    } else {
+      this.codeWorkspace = this.agentRoot;
+    }
     
     // Log protection limits
     console.log(`[AGENT] Loop protection enabled - Max stdout: ${(this.MAX_STDOUT_SIZE / 1024 / 1024).toFixed(1)}MB, Repetition threshold: ${this.REPETITION_THRESHOLD} lines`);
@@ -109,7 +138,7 @@ export class Agent {
           : undefined;
         telemetry.raw = telemetry.raw || {};
         if (lastReq) telemetry.raw.lastApiRequest = lastReq;
-      } catch {}
+      } catch {} // Ignore errors here
 
       // Capture stderr warnings without failing the job
       if (result.stderr && result.stderr.trim()) {
@@ -125,7 +154,7 @@ export class Agent {
           const partialOutput = this.extractFinalOutput(result.output);
           telemetry.raw = telemetry.raw || {};
           (telemetry.raw as any).partialOutput = partialOutput;
-        } catch {}
+        } catch {} // Ignore errors here
         const err = new Error(`Gemini process exited with code ${result.exitCode}`);
         // Preserve stderr in error message context
         (err as any).stderr = result.stderr;
@@ -199,9 +228,9 @@ export class Agent {
 
       // Persist the last prompt locally for debugging/repro and send via stdin + --prompt for non-interactive mode
       const promptDir = dirname(this.settingsPath);
-      try { mkdirSync(promptDir, { recursive: true }); } catch {}
+      try { mkdirSync(promptDir, { recursive: true }); } catch {} // Ignore errors here
       const lastPromptPath = join(promptDir, 'last-prompt.txt');
-      try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch {}
+      try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch {} // Ignore errors here
 
       console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
       console.log(`Spawning Gemini CLI with model: ${this.model} (prompt provided via stdin + --prompt flag for non-interactive mode)`);
@@ -218,10 +247,17 @@ export class Agent {
           envWithJob.JINN_SOURCE_EVENT_ID = this.jobContext.sourceEventId || '';
           envWithJob.JINN_PROJECT_DEFINITION_ID = this.jobContext.projectDefinitionId || '';
         }
-      } catch {}
+      } catch {} // Ignore errors here
+
+      if (!envWithJob.GEMINI_CLI_SYSTEM_SETTINGS_PATH) {
+        envWithJob.GEMINI_CLI_SYSTEM_SETTINGS_PATH = this.settingsPath;
+      }
+      if (!envWithJob.GEMINI_CLI_SYSTEM_DEFAULTS_PATH) {
+        envWithJob.GEMINI_CLI_SYSTEM_DEFAULTS_PATH = this.settingsPath;
+      }
 
       const geminiProcess = spawn('npx', ['@google/gemini-cli@0.7.0', ...args], {
-        cwd: this.agentRoot,
+        cwd: this.codeWorkspace,
         env: envWithJob
       });
 
@@ -244,7 +280,7 @@ export class Agent {
       try {
         geminiProcess.stdin.write(prompt);
         geminiProcess.stdin.end();
-      } catch {}
+      } catch {} // Ignore errors here
 
       geminiProcess.stdout.on('data', (data) => {
         if (terminated) return;
@@ -304,7 +340,7 @@ export class Agent {
                 consecutiveRepeatCount = 1;
               }
               if (consecutiveRepeatCount >= this.REPETITION_THRESHOLD) {
-                console.warn(`[LOOP DETECTION] Terminating process due to consecutive repetitive output: "${line.substring(0, 100)}..."`);
+                console.warn(`[LOOP DETECTION] Terminating process due to consecutive repetitive output: "${line.substring(0, 100)}"...`);
                 terminated = true;
                 terminationReason = `Consecutive repetitive line detected ${consecutiveRepeatCount} times`;
                 geminiProcess.kill('SIGTERM');
@@ -399,6 +435,30 @@ export class Agent {
       const mcpServer = templateSettings.mcpServers[serverName];
       if (!mcpServer) throw new Error(`MCP server '${serverName}' not found in template configuration`);
 
+      // Resolve MCP command to absolute path so it works even when running outside repo root
+      try {
+        const tsxBinaryName = process.platform === 'win32' ? 'tsx.cmd' : 'tsx';
+        const tsxCandidates = [
+          resolve(this.agentRoot, '..', 'node_modules', '.bin', tsxBinaryName),
+          resolve(this.agentRoot, 'node_modules', '.bin', tsxBinaryName)
+        ];
+        const tsxExecutable = tsxCandidates.find(candidate => existsSync(candidate));
+        if (tsxExecutable) {
+          mcpServer.command = tsxExecutable;
+        }
+      } catch (error) {
+        agentLogger.warn({ error: error instanceof Error ? error.message : String(error) }, 'Failed to resolve tsx binary for MCP server');
+      }
+
+      if (Array.isArray(mcpServer.args)) {
+        mcpServer.args = mcpServer.args.map(arg => {
+          if (typeof arg === 'string' && !arg.startsWith('-') && !isAbsolute(arg)) {
+            return resolve(this.agentRoot, arg);
+          }
+          return arg;
+        });
+      }
+
       // UNIVERSAL TOOLS: Every agent automatically gets these core capabilities
       // regardless of what's specified in their job definition. This ensures
       // all agents can plan projects, create jobs, manage artifacts, etc.
@@ -428,8 +488,10 @@ export class Agent {
       // Always-enabled native tools
       const alwaysEnabledNativeTools = ['web_fetch', 'google_web_search'];
 
-      // Compute native tools to exclude (never exclude always-enabled web tools)
-      const nativeToolsToExclude = allNativeTools.filter(tool => !alwaysEnabledNativeTools.includes(tool));
+      // Compute native tools to exclude: only exclude tools that are NOT in uniqueTools and NOT always-enabled
+      const nativeToolsToExclude = allNativeTools.filter(tool =>
+        !uniqueTools.includes(tool) && !alwaysEnabledNativeTools.includes(tool)
+      );
       templateSettings.excludeTools = nativeToolsToExclude;
 
       // Ensure directory exists

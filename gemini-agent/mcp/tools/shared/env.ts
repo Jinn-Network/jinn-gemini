@@ -32,6 +32,8 @@ export {
   getOptionalMechModel,
   getOptionalMechReclaimAfterMinutes,
   getEnableAutoRepost,
+  getOptionalMechChainConfig,
+  getOptionalMechTargetRequestId,
 
   // Ponder
   getPonderPort,

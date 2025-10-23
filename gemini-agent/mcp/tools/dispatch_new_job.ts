@@ -5,6 +5,8 @@ import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketpla
 import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
+import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
+import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
 
 const dispatchNewJobParamsBase = z.object({
   objective: z.string().min(10).describe('Clear, specific statement of what needs to be accomplished'),
@@ -171,15 +173,52 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const ipfsJsonContents = [{
+    const baseBranch =
+      (context as any)?.baseBranch ||
+      getCodeMetadataDefaultBaseBranch();
+
+    const branchResult = await ensureJobBranch({
+      jobDefinitionId,
+      jobName,
+      baseBranch,
+    });
+
+    const metadataHints = {
+      jobDefinitionId,
+      parent:
+        context.jobDefinitionId || context.requestId
+          ? {
+              jobDefinitionId: context.jobDefinitionId || undefined,
+              requestId: context.requestId || undefined,
+            }
+          : undefined,
+      baseBranch,
+      branchName: branchResult.branchName,
+    };
+
+    const codeMetadata = await collectLocalCodeMetadata(metadataHints);
+
+    const ipfsJsonContents: any[] = [{
       prompt,
       jobName,
       enabledTools,
       jobDefinitionId,
       nonce: ensureUuid(),
       additionalContext,
+      branchName: branchResult.branchName,
+      baseBranch,
       ...lineageContext,
     }];
+
+    if (codeMetadata) {
+      ipfsJsonContents[0].codeMetadata = codeMetadata;
+    }
+
+    ipfsJsonContents[0].executionPolicy = {
+      branch: branchResult.branchName,
+      ensureTestsPass: true,
+      description: 'Agent must work on the provided branch and pass required validations before finalizing.',
+    };
 
     try {
       const result = await (marketplaceInteract as any)({

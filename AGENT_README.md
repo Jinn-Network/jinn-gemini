@@ -90,7 +90,8 @@ Testing with .env.test
   - `AGENT_REPETITION_WINDOW` (lines, default 20)
   - `AGENT_REPETITION_THRESHOLD` (lines, default 10)
   - `AGENT_MAX_IDENTICAL_CHUNKS` (default 10)
-- MCP: `USE_TSX_MCP=1` to run MCP server via tsx in dev (`settings.template.dev.json`).
+- Code workflow: `CODE_METADATA_DEFAULT_BASE_BRANCH` (default `main`) sets the parent branch for new job definitions.
+- GitHub automation: provide `GITHUB_TOKEN` (and optionally `GITHUB_REPOSITORY`, `GITHUB_API_URL`) so the worker can create PRs for completed jobs.
 
 ---
 

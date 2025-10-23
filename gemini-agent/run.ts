@@ -1,3 +1,4 @@
+// This is a test comment added by the agent to validate the PR creation workflow.
 // Disabled broken import; keep file compiling
 // import { planProject } from './mcp/tools/plan-project.js';
 
