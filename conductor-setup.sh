@@ -14,6 +14,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+MAIN_REPO_ROOT=""
+WORKTREE_GITDIR=""
+WORKTREE_NAME=""
+REPO_CONTEXT=""
+
 error() {
     echo -e "${RED}❌ ERROR: $1${NC}"
     exit 1
@@ -34,6 +39,29 @@ info() {
 step() {
     echo ""
     echo -e "${BLUE}🔧 $1${NC}"
+}
+
+detect_repo_context() {
+    if [ -n "$MAIN_REPO_ROOT" ]; then
+        return
+    fi
+
+    if [ -f .git ]; then
+        WORKTREE_GITDIR=$(sed 's/gitdir:[[:space:]]*//;q' .git | tr -d '\r')
+        if [ -z "$WORKTREE_GITDIR" ] || [ ! -d "$WORKTREE_GITDIR" ]; then
+            error "Worktree gitdir not found: $WORKTREE_GITDIR"
+        fi
+        MAIN_REPO_ROOT=$(dirname "$(dirname "$(dirname "$WORKTREE_GITDIR")")")
+        WORKTREE_NAME=$(basename "$WORKTREE_GITDIR")
+        REPO_CONTEXT="worktree"
+    elif [ -d .git ]; then
+        MAIN_REPO_ROOT="$(pwd)"
+        WORKTREE_GITDIR="$MAIN_REPO_ROOT/.git"
+        WORKTREE_NAME=""
+        REPO_CONTEXT="main"
+    else
+        error "Not in a git repository"
+    fi
 }
 
 # =============================================================================
@@ -79,6 +107,15 @@ check_prerequisites() {
 setup_environment_files() {
     step "Setting up environment files..."
 
+    detect_repo_context
+
+    if [ "$REPO_CONTEXT" = "worktree" ]; then
+        info "Detected git worktree setup"
+        info "Main repo root: $MAIN_REPO_ROOT"
+    else
+        info "Already in main repository"
+    fi
+
     # Check if .env already exists
     if [ -f .env ]; then
         success ".env already exists"
@@ -88,38 +125,17 @@ setup_environment_files() {
         return
     fi
 
-    # Detect if we're in a git worktree
-    local main_repo_root=""
-
-    if [ -f .git ]; then
-        # We're in a worktree - .git is a file, not a directory
-        info "Detected git worktree setup"
-
-        # Parse .git file to find the main repository
-        local git_dir=$(cat .git | sed 's/gitdir: //')
-        # Remove the worktrees path to get main repo (.git/worktrees/name -> main repo)
-        main_repo_root=$(dirname $(dirname $(dirname "$git_dir")))
-
-        info "Main repo root: $main_repo_root"
-    elif [ -d .git ]; then
-        # We're in the main repository
-        main_repo_root="$(pwd)"
-        info "Already in main repository"
-    else
-        error "Not in a git repository"
-    fi
-
     # Copy .env from main repo
-    if [ -f "$main_repo_root/.env" ]; then
-        cp "$main_repo_root/.env" .env
+    if [ -f "$MAIN_REPO_ROOT/.env" ]; then
+        cp "$MAIN_REPO_ROOT/.env" .env
         success "Copied .env from main repo"
     else
-        error ".env file not found at $main_repo_root/.env"
+        error ".env file not found at $MAIN_REPO_ROOT/.env"
     fi
 
     # Copy .env.test from main repo
-    if [ -f "$main_repo_root/.env.test" ]; then
-        cp "$main_repo_root/.env.test" .env.test
+    if [ -f "$MAIN_REPO_ROOT/.env.test" ]; then
+        cp "$MAIN_REPO_ROOT/.env.test" .env.test
         success "Copied .env.test from main repo"
     else
         warning ".env.test not found - tests may use production config"
@@ -133,9 +149,21 @@ setup_environment_files() {
 init_submodules() {
     step "Initializing git submodules..."
 
+    detect_repo_context
+
     if [ ! -f .gitmodules ]; then
         warning "No .gitmodules file found"
         return
+    fi
+
+    if [ -n "$MAIN_REPO_ROOT" ] && [ ! -d "$MAIN_REPO_ROOT/.git/modules/olas-operate-middleware" ]; then
+        info "Priming olas-operate-middleware submodule in main repository..."
+        git -C "$MAIN_REPO_ROOT" submodule update --init --recursive olas-operate-middleware 2>/dev/null || true
+    fi
+
+    if [ -n "$WORKTREE_NAME" ]; then
+        local worktree_module_dir="$MAIN_REPO_ROOT/.git/worktrees/$WORKTREE_NAME/modules/olas-operate-middleware"
+        mkdir -p "$worktree_module_dir/objects/pack" 2>/dev/null || true
     fi
 
     # Only initialize the specific submodule we need (olas-operate-middleware)
@@ -157,9 +185,9 @@ init_submodules() {
 
     # Copy .operate directory from main repo (contains service config, keys, etc.)
     # This is gitignored but essential for production/dev operation
-    if [ -n "$main_repo_root" ] && [ -d "$main_repo_root/olas-operate-middleware/.operate" ]; then
+    if [ -n "$MAIN_REPO_ROOT" ] && [ -d "$MAIN_REPO_ROOT/olas-operate-middleware/.operate" ]; then
         info "Copying .operate directory from main repo..."
-        cp -r "$main_repo_root/olas-operate-middleware/.operate" olas-operate-middleware/.operate
+        cp -r "$MAIN_REPO_ROOT/olas-operate-middleware/.operate" olas-operate-middleware/.operate
         success ".operate directory copied"
     elif [ -d "olas-operate-middleware/.operate" ]; then
         success ".operate directory already present"
