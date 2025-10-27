@@ -47,6 +47,7 @@ interface CLIArgs {
   noStaking?: boolean;
   stakingContract?: string;
   help?: boolean;
+  unattended?: boolean;
 }
 
 function parseArgs(): CLIArgs {
@@ -65,6 +66,8 @@ function parseArgs(): CLIArgs {
       args.noStaking = true;
     } else if (arg.startsWith('--staking-contract=')) {
       args.stakingContract = arg.split('=')[1];
+    } else if (arg === '--unattended') {
+      args.unattended = true;
     }
   }
 
@@ -93,6 +96,7 @@ OPTIONS:
   --no-mech           Disable mech deployment (mech enabled by default, JINN-186)
   --no-staking        Disable staking (staking enabled by default, JINN-204)
   --staking-contract  Custom staking contract address (default: AgentsFun1)
+  --unattended        Run middleware in unattended mode (requires env vars)
   --help, -h          Show this help message
 
 ENVIRONMENT FILES:
@@ -178,6 +182,10 @@ async function main() {
   // JINN-204: Support staking configuration (enabled by default)
   const disableStaking = args.noStaking === true;
   const stakingContract = args.stakingContract as string | undefined;
+  const envAttended = typeof process.env.ATTENDED === 'string'
+    ? process.env.ATTENDED.toLowerCase() === 'true'
+    : undefined;
+  const attendedMode = args.unattended ? false : envAttended ?? true;
 
   // JINN-207: Set mech request price to 0.000005 ETH (5000000000000 wei) for cost-effective marketplace requests
   const mechRequestPrice = '5000000000000'; // 0.000005 ETH in wei
@@ -186,6 +194,7 @@ async function main() {
     chain: chain as any,
     operatePassword,
     rpcUrl,
+    attended: attendedMode,
     // JINN-186: Mech deployment enabled by default for full integration (use --no-mech to disable)
     deployMech: !args.noMech,
     mechMarketplaceAddress: mechMarketplaceAddresses[chain],
@@ -206,6 +215,7 @@ async function main() {
     console.log('🔍 Instant transactions');
     console.log('📊 Full visibility in Tenderly Dashboard');
     console.log('');
+    console.log(`🎛️ Attended mode: ${attendedMode ? 'ENABLED (interactive prompts)' : 'DISABLED (env-driven)'}`);
   } else {
     console.log('\n╔════════════════════════════════════════════════════════════╗');
     console.log('║              🌐 MAINNET DEPLOYMENT MODE                   ║');
@@ -224,12 +234,14 @@ async function main() {
       console.log(`   Marketplace: ${config.mechMarketplaceAddress}`);
     }
     console.log('');
+    console.log(`🎛️ Attended mode: ${attendedMode ? 'ENABLED (interactive prompts)' : 'DISABLED (env-driven)'}`);
   }
 
   setupLogger.info({
     chain,
     withMech: config.deployMech,
     mode: args.testnet ? 'testnet' : 'mainnet',
+    attended: attendedMode,
     rpcUrl: rpcUrl.substring(0, 30) + '...',
   }, 'Starting simplified interactive service setup (JINN-202)');
 
@@ -275,4 +287,3 @@ main().catch((error) => {
   setupLogger.error({ error }, 'Fatal error in setup CLI');
   process.exit(1);
 });
-

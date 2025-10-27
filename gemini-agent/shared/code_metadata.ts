@@ -34,7 +34,8 @@ export interface BranchSnapshot {
 }
 
 export interface RepoMetadata {
-  root?: string;
+  // Note: root field removed for security reasons (prevents leaking local paths on-chain)
+  // Use JINN_WORKSPACE_DIR env var or CODE_METADATA_REPO_ROOT instead
   remoteUrl?: string;
 }
 
@@ -187,10 +188,37 @@ async function remoteBranchExists(remote: string, branchName: string): Promise<b
 }
 
 async function createBranchLocal(branchName: string, baseBranch: string): Promise<void> {
-  await runGit(['branch', branchName, baseBranch], { throwOnError: true });
-  if (!(await branchExists(branchName))) {
-    throw new Error(`Failed to create branch ${branchName} from ${baseBranch}`);
+  // When running inside a job (parent branch hasn't been pushed yet),
+  // use HEAD commit instead of branch name to avoid "not a valid object name" error
+  let baseRef = baseBranch;
+
+  // Check if baseBranch looks like a job branch (job/uuid-slug pattern)
+  const isJobBranch = /^job\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/.test(baseBranch);
+
+  if (isJobBranch) {
+    // Verify if the branch exists as a git reference
+    const branchRefExists = await runGit(['rev-parse', '--verify', baseBranch]);
+
+    if (!branchRefExists) {
+      // Branch doesn't exist yet (parent hasn't been pushed) - use current HEAD commit
+      const headCommit = await runGit(['rev-parse', 'HEAD']);
+      if (headCommit) {
+        debugLog(`Parent branch ${baseBranch} not found, using HEAD commit ${headCommit.substring(0, 7)}`);
+        baseRef = headCommit;
+      } else {
+        throw new Error(`Cannot create branch ${branchName}: neither ${baseBranch} nor HEAD could be resolved`);
+      }
+    } else {
+      debugLog(`Using existing parent branch ${baseBranch} as base`);
+    }
   }
+
+  await runGit(['branch', branchName, baseRef], { throwOnError: true });
+  if (!(await branchExists(branchName))) {
+    throw new Error(`Failed to create branch ${branchName} from ${baseRef}`);
+  }
+
+  debugLog(`Created branch ${branchName} from ${baseRef}`);
 }
 
 async function pushBranch(remote: string, branchName: string): Promise<boolean> {
@@ -250,7 +278,6 @@ export async function collectLocalCodeMetadata(
   }
 
   const upstream = await runGit(['rev-parse', '--abbrev-ref', '@{u}']);
-  const repoRoot = await runGit(['rev-parse', '--show-toplevel']);
 
   const remoteCandidate =
     (await runGit([
@@ -282,7 +309,7 @@ export async function collectLocalCodeMetadata(
   const metadata: CodeMetadata = {
     branch: branchSnapshot,
     repo: {
-      root: repoRoot,
+      // Note: root field removed for security (prevents leaking local paths on-chain)
       remoteUrl: remoteCandidate,
     },
     baseBranch: hints.baseBranch || getCodeMetadataDefaultBaseBranch(),

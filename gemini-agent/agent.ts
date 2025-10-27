@@ -6,6 +6,7 @@ import { join, dirname, resolve, isAbsolute } from 'path';
 import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
 import { getOptionalCodeMetadataRepoRoot } from '../config/index.js';
+import { getRepoRoot } from '../shared/repo_utils.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
@@ -100,16 +101,14 @@ export class Agent {
     this.agentRoot = join(worktreeRoot, 'gemini-agent');
     this.settingsPath = join(this.agentRoot, '.gemini', 'settings.json');
 
-    const overrideWorkspace = codeMetadataRepoRoot?.trim();
-    if (overrideWorkspace) {
-      const resolvedWorkspace = resolve(overrideWorkspace);
-      if (existsSync(resolvedWorkspace)) {
-        this.codeWorkspace = resolvedWorkspace;
-      } else {
-        agentLogger.warn({ path: resolvedWorkspace, fallback: this.agentRoot }, 'CODE_METADATA_REPO_ROOT path does not exist, falling back to agent root');
-        this.codeWorkspace = this.agentRoot;
-      }
+    // Use shared getRepoRoot logic for codeWorkspace
+    // This supports JINN_WORKSPACE_DIR (for ventures) and CODE_METADATA_REPO_ROOT (legacy)
+    // Note: We don't have codeMetadata here, so it will fallback to env vars or cwd
+    const repoRoot = getRepoRoot();
+    if (existsSync(repoRoot)) {
+      this.codeWorkspace = repoRoot;
     } else {
+      agentLogger.warn({ path: repoRoot, fallback: this.agentRoot }, 'Repo root does not exist, falling back to agent root');
       this.codeWorkspace = this.agentRoot;
     }
     

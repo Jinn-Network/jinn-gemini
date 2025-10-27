@@ -68,15 +68,63 @@ validate_system_dependencies() {
 is_env_var_set() {
     local var_name="$1"
     local file_path="${2:-.env}"
-    
+
     if [ ! -f "$file_path" ]; then
         return 1
     fi
-    
+
     if ! grep -q "${var_name}=" "$file_path"; then
         return 1
     fi
-    
+
     local value=$(grep "${var_name}=" "$file_path" | cut -d= -f2)
     [ -n "$value" ]
+}
+
+# Validate repository path exists and has .git directory
+validate_repo_path() {
+    local repo_path="$1"
+
+    # Expand tilde
+    repo_path="${repo_path/#\~/$HOME}"
+
+    if [ ! -d "$repo_path" ]; then
+        log_error "Repository not found: $repo_path"
+        return 1
+    fi
+
+    if [ ! -d "$repo_path/.git" ]; then
+        log_error "Not a git repository: $repo_path"
+        return 1
+    fi
+
+    return 0
+}
+
+# Load environment file (.env or .env.test)
+load_env_file() {
+    local env_file="${1:-.env}"
+
+    if [ ! -f "$env_file" ]; then
+        log_error "Environment file not found: $env_file"
+        return 1
+    fi
+
+    log_info "Loading environment from $env_file"
+    set -a  # automatically export all variables
+    source "$env_file"
+    set +a
+
+    return 0
+}
+
+# Export CODE_METADATA_REPO_ROOT environment variable
+export_repo_root() {
+    local repo_path="$1"
+
+    # Expand tilde
+    repo_path="${repo_path/#\~/$HOME}"
+
+    export CODE_METADATA_REPO_ROOT="$repo_path"
+    log_info "CODE_METADATA_REPO_ROOT set to: $CODE_METADATA_REPO_ROOT"
 }

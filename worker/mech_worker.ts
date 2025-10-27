@@ -25,6 +25,8 @@ import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from './art
 import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
 import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import type { CodeMetadata } from '../gemini-agent/shared/code_metadata.js';
+import { getRepoRoot, extractRepoName, getJinnWorkspaceDir } from '../shared/repo_utils.js';
+import { existsSync } from 'node:fs';
 
 type UnclaimedRequest = {
   id: string;           // on-chain requestId (decimal string or 0x)
@@ -105,14 +107,56 @@ function parseGithubRepo(remoteUrl: string | undefined, branchName: string): { o
   return { owner, repo, head: `${owner}:${branchName}` };
 }
 
+/**
+ * Ensure repository is cloned to the workspace directory
+ * Clones if it doesn't exist, otherwise does nothing
+ */
+async function ensureRepoCloned(remoteUrl: string, targetPath: string): Promise<void> {
+  if (existsSync(targetPath)) {
+    workerLogger.info({ targetPath }, 'Repository already cloned');
+    return;
+  }
+
+  workerLogger.info({ remoteUrl, targetPath }, 'Cloning repository');
+
+  const { execFileSync } = await import('node:child_process');
+  try {
+    execFileSync('git', ['clone', remoteUrl, targetPath], {
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 120000, // 2 minutes for clone
+      env: process.env as Record<string, string>,
+    });
+    workerLogger.info({ targetPath }, 'Successfully cloned repository');
+  } catch (error: any) {
+    const errorMessage = `Failed to clone repository: ${error.stderr || error.message}`;
+    workerLogger.error({ remoteUrl, targetPath, error: serializeError(error) }, errorMessage);
+    throw new Error(errorMessage);
+  }
+
+  // Fetch all branches
+  try {
+    execFileSync('git', ['fetch', '--all'], {
+      cwd: targetPath,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 60000,
+      env: process.env as Record<string, string>,
+    });
+    workerLogger.info({ targetPath }, 'Fetched all branches');
+  } catch (error: any) {
+    workerLogger.warn({ targetPath, error: serializeError(error) }, 'Failed to fetch all branches (non-fatal)');
+  }
+}
+
 async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<void> {
   const branchName = codeMetadata.branch?.name;
   if (!branchName) {
     throw new Error('codeMetadata.branch.name is required for checkout');
   }
 
-  // Determine repo root: use CODE_METADATA_REPO_ROOT env, or codeMetadata.repo.root, or current directory
-  const repoRoot = process.env.CODE_METADATA_REPO_ROOT || codeMetadata.repo?.root || process.cwd();
+  // Determine repo root using shared logic
+  const repoRoot = getRepoRoot(codeMetadata);
 
   workerLogger.info({ branchName, repoRoot }, 'Checking out job branch');
 
@@ -124,6 +168,7 @@ async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<void> {
       stdio: 'pipe',
       encoding: 'utf-8',
       timeout: 30000,
+      env: process.env as Record<string, string>,
     });
     workerLogger.info({ branchName }, 'Successfully checked out branch');
   } catch (error: any) {
@@ -136,8 +181,8 @@ async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<void> {
 async function pushJobBranch(branchName: string, codeMetadata: CodeMetadata): Promise<void> {
   workerLogger.info({ branchName }, 'Pushing job branch to remote');
 
-  // Determine repo root: use CODE_METADATA_REPO_ROOT env, or codeMetadata.repo.root, or current directory
-  const repoRoot = process.env.CODE_METADATA_REPO_ROOT || codeMetadata.repo?.root || process.cwd();
+  // Determine repo root using shared logic
+  const repoRoot = getRepoRoot(codeMetadata);
   const remoteName = process.env.CODE_METADATA_REMOTE_NAME || 'origin';
   const { execFileSync } = await import('node:child_process');
 
@@ -148,6 +193,7 @@ async function pushJobBranch(branchName: string, codeMetadata: CodeMetadata): Pr
       stdio: 'pipe',
       encoding: 'utf-8',
       timeout: 60000,
+      env: process.env as Record<string, string>,
     });
     workerLogger.info({ branchName, remote: remoteName }, 'Successfully pushed branch');
   } catch (error: any) {
@@ -964,6 +1010,22 @@ async function processOnce(): Promise<void> {
       metadata.codeMetadata.parent?.branchName ||
       DEFAULT_BASE_BRANCH;
 
+    // Set CODE_METADATA_REPO_ROOT from job metadata to ensure correct repo is used
+    // This allows child jobs to inherit the correct venture repo, not the conductor repo
+    const previousRepoRoot = process.env.CODE_METADATA_REPO_ROOT;
+    if (metadata.codeMetadata?.repo?.remoteUrl) {
+      const repoName = extractRepoName(metadata.codeMetadata.repo.remoteUrl);
+      if (repoName) {
+        const workspaceDir = getJinnWorkspaceDir();
+        const repoRoot = `${workspaceDir}/${repoName}`;
+        process.env.CODE_METADATA_REPO_ROOT = repoRoot;
+        workerLogger.info({ repoRoot, remoteUrl: metadata.codeMetadata.repo.remoteUrl }, 'Set CODE_METADATA_REPO_ROOT for job');
+
+        // Ensure repo is cloned before checkout
+        await ensureRepoCloned(metadata.codeMetadata.repo.remoteUrl, repoRoot);
+      }
+    }
+
     // REQ-3.1: Checkout job branch before running agent
     await checkoutJobBranch(metadata.codeMetadata);
 
@@ -1028,6 +1090,13 @@ async function processOnce(): Promise<void> {
     process.env.JINN_BASE_BRANCH = previousBaseBranchEnv;
   } else {
     delete process.env.JINN_BASE_BRANCH;
+  }
+
+  // Restore previous CODE_METADATA_REPO_ROOT
+  if (previousRepoRoot !== undefined) {
+    process.env.CODE_METADATA_REPO_ROOT = previousRepoRoot;
+  } else {
+    delete process.env.CODE_METADATA_REPO_ROOT;
   }
 
   // REQ-4.1: Push branch after agent completes (regardless of status or error)

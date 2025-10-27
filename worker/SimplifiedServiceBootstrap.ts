@@ -41,6 +41,11 @@ export interface SimplifiedBootstrapConfig {
   operatePassword: string;
   rpcUrl: string;
   /**
+   * When true, run middleware in attended (interactive) mode.
+   * Defaults to true unless explicitly overridden.
+   */
+  attended?: boolean;
+  /**
    * Absolute path to the middleware directory (for Python imports and venv)
    */
   middlewarePath?: string;
@@ -84,9 +89,15 @@ export class SimplifiedServiceBootstrap {
   private config: SimplifiedBootstrapConfig;
   private operateWrapper?: OlasOperateWrapper;
   private outputBuffer: string = ''; // Buffer for E2E test auto-funding
+  private isAttended: boolean;
 
   constructor(config: SimplifiedBootstrapConfig) {
     this.config = config;
+    
+    const envAttended = typeof process.env.ATTENDED === 'string'
+      ? process.env.ATTENDED.toLowerCase() === 'true'
+      : undefined;
+    this.isAttended = config.attended ?? envAttended ?? true;
     
     // Validate required config
     if (!config.operatePassword) {
@@ -148,6 +159,13 @@ export class SimplifiedServiceBootstrap {
     };
 
     // Respect ATTENDED and STAKING_PROGRAM from environment
+    bootstrapLogger.info({
+      operatePasswordSet: !!this.config.operatePassword,
+      operatePasswordLength: this.config.operatePassword?.length,
+      stakingProgram: this.config.stakingProgram,
+      chain: this.config.chain
+    }, "Creating OlasOperateWrapper with config");
+
     this.operateWrapper = await OlasOperateWrapper.create({
       middlewarePath: this.config.middlewarePath, // For Python imports and Poetry venv resolution
       workingDirectory: this.config.workingDirectory, // For Python cwd (where .operate is created)
@@ -158,12 +176,12 @@ export class SimplifiedServiceBootstrap {
         stakingProgram: this.config.stakingProgram || 'no_staking', // Default to no_staking for safety
         customStakingAddress: this.config.customStakingAddress,
         chainLedgerRpc,
-        attended: process.env.ATTENDED?.toLowerCase() === 'true'
+        attended: this.isAttended
       }
     });
 
     bootstrapLogger.info({
-      attended: process.env.ATTENDED?.toLowerCase() === 'true',
+      attended: this.isAttended,
       stakingProgram: this.config.stakingProgram || 'no_staking',
       resolvedMiddlewarePath: this.operateWrapper?.getMiddlewarePath()
     }, "Wrapper initialized");
@@ -195,9 +213,7 @@ export class SimplifiedServiceBootstrap {
     // JINN-204: Staking configuration handling
     // For ATTENDED mode: Leave staking_program_id unset so middleware prompts user
     // For UNATTENDED mode: Set explicitly to avoid prompts
-    // Check the ATTENDED env var that will be passed to the middleware command
-    const attendedEnvVar = this.operateWrapper?.env?.ATTENDED;
-    const isAttended = attendedEnvVar === 'true' || attendedEnvVar === true;
+    const isAttended = this.isAttended;
     
     if (serviceConfig.configurations[this.config.chain]) {
       if (isAttended) {
@@ -320,9 +336,7 @@ ${'='.repeat(80)}
     const stakingProgram = this.config.stakingProgram || 'custom_staking';
     bootstrapLogger.info({ stakingProgram }, "Staking program configured");
 
-    // Use ATTENDED env var from wrapper (can be 'true', 'false', true, or false)
-    const attendedEnvVar = this.operateWrapper?.env?.ATTENDED;
-    const isAttended = attendedEnvVar === 'true' || attendedEnvVar === true;
+    const isAttended = this.isAttended;
 
     bootstrapLogger.info({ attended: isAttended }, "Running quickstart");
 
@@ -419,4 +433,3 @@ ${'='.repeat(80)}
     }
   }
 }
-

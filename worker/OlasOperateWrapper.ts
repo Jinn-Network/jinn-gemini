@@ -306,6 +306,12 @@ export class OlasOperateWrapper {
     // Add OPERATE_PASSWORD if configured
     if (this.config.defaultEnv?.operatePassword) {
       env.OPERATE_PASSWORD = this.config.defaultEnv.operatePassword;
+      operateLogger.info({
+        passwordSet: true,
+        passwordLength: this.config.defaultEnv.operatePassword.length
+      }, "OPERATE_PASSWORD configured in env");
+    } else {
+      operateLogger.warn("OPERATE_PASSWORD not set in config.defaultEnv");
     }
     
     // Add STAKING_PROGRAM if configured
@@ -371,6 +377,8 @@ export class OlasOperateWrapper {
       envVars: {
         ATTENDED: env.ATTENDED,
         STAKING_PROGRAM: env.STAKING_PROGRAM,
+        hasOperatePassword: typeof env.OPERATE_PASSWORD === 'string' && env.OPERATE_PASSWORD.length > 0,
+        operatePasswordLength: env.OPERATE_PASSWORD?.length,
         LEDGER_RPCs: Object.keys(env).filter(k => k.endsWith('_LEDGER_RPC')).reduce((acc, k) => ({ ...acc, [k]: env[k]?.substring(0, 50) + '...' }), {})
       }
     }, "Executing operate command with environment");

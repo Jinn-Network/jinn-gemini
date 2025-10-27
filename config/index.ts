@@ -256,7 +256,12 @@ const jobContextSchema = z.object({
  * For code-based job execution with git lineage
  */
 const gitWorkflowSchema = z.object({
+  // JINN_WORKSPACE_DIR: Directory where venture repositories are cloned
+  // Defaults to ~/jinn-repos if not set
+  JINN_WORKSPACE_DIR: z.string().optional(),
+
   // CODE_METADATA_REPO_ROOT: Repository root for code metadata operations
+  // Legacy: Use JINN_WORKSPACE_DIR for ventures instead
   CODE_METADATA_REPO_ROOT: z.string().optional(),
 
   // CODE_METADATA_DEFAULT_BASE_BRANCH: Default base branch for new job definitions
@@ -888,8 +893,16 @@ export function getOptionalMechPrivateKeyPath(): string | undefined {
 // Public API: Git Workflow Configuration
 // ============================================================================
 
+export function getJinnWorkspaceDir(): string | undefined {
+  return getConfig().JINN_WORKSPACE_DIR;
+}
+
 export function getCodeMetadataRepoRoot(): string {
-  return getConfig().CODE_METADATA_REPO_ROOT || process.cwd();
+  const root = getConfig().CODE_METADATA_REPO_ROOT;
+  if (!root) {
+    throw new Error('CODE_METADATA_REPO_ROOT environment variable must be set');
+  }
+  return root;
 }
 
 export function getOptionalCodeMetadataRepoRoot(): string | undefined {

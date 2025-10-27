@@ -81,6 +81,9 @@ export {
   getOptionalThreadId,
   getOptionalJobMechAddress,
 
+  // OLAS operate
+  getOptionalOperatePassword,
+
   // Dev/testing
   getNodeEnv,
   isTestEnv,

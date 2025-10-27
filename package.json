@@ -13,6 +13,7 @@
     "dev:job": "USE_TSX_MCP=1 tsx worker/worker.ts -- --job-id",
     "start:job": "node dist/worker/worker.js -- --job-id",
     "dev:mech": "USE_TSX_MCP=1 tsx worker/mech_worker.ts -- --single-job",
+    "dev:mech:pretty": "USE_TSX_MCP=1 tsx worker/mech_worker.ts -- --single-job | tsx logging/dev-pretty-cli.ts",
     "dev:mech:continuous": "USE_TSX_MCP=1 tsx worker/mech_worker.ts",
     "ponder:predev": "node ponder/scripts/set-start-block.js && node -e \"try{require('better-sqlite3');console.log('better-sqlite3 ok')}catch(e){process.exitCode=0}\" || npm rebuild better-sqlite3",
     "ponder:dev": "yarn ponder:predev && cd ponder && ponder dev --port ${PONDER_PORT:-42069}",
