@@ -79,7 +79,13 @@ export class Agent {
     'search_jobs',
     'search_artifacts',
     'google_web_search',
-    'web_fetch'
+    'web_fetch',
+    // Read-only native file tools (always available)
+    'list_directory',
+    'read_file',
+    'search_file_content',
+    'glob',
+    'read_many_files'
   ];
 
   constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {
