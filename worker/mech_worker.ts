@@ -1076,6 +1076,46 @@ async function processOnce(): Promise<void> {
       finalStatus = finalStatus || extractFinalStatus(result?.output || '', errorTelemetry);
     }
 
+    // Some Gemini CLI failures occur after a successful finalize_job call.
+    // When the model finished the job (COMPLETED) but the CLI transport failed, mark the run as
+    // successful while preserving a warning in telemetry so future investigations see the anomaly.
+    try {
+      const telemetryFromError =
+        e?.telemetry && typeof e.telemetry === 'object' ? e.telemetry : undefined;
+      const errorMessage = String(e?.message || e?.error || '');
+      const stderr = String(e?.error?.stderr || e?.stderr || '');
+      const combined = `${errorMessage}\n${stderr}`.toLowerCase();
+      const processExitError =
+        combined.includes('process exited with code') ||
+        (telemetryFromError?.errorType === 'PROCESS_ERROR');
+
+      if (processExitError && finalStatus?.status === 'COMPLETED') {
+        workerLogger.warn(
+          { jobName: metadata?.jobName, requestId: target.id },
+          'Gemini CLI transport failed after finalize_job; accepting completed result',
+        );
+
+        const telemetry = result.telemetry && Object.keys(result.telemetry).length > 0
+          ? result.telemetry
+          : (telemetryFromError ? { ...telemetryFromError } : {});
+        if (!telemetry.errorType) {
+          telemetry.errorType = 'PROCESS_ERROR';
+        }
+        const raw = (telemetry.raw =
+          typeof telemetry.raw === 'object' && telemetry.raw !== null ? telemetry.raw : {});
+        const warningLines = raw.stderrWarnings ? [raw.stderrWarnings] : [];
+        warningLines.push('Gemini CLI: transport failed after finalize_job (process exited).');
+        raw.stderrWarnings = warningLines.join('\n');
+        result.telemetry = telemetry;
+
+        if (!result.output && typeof telemetryFromError?.raw?.partialOutput === 'string') {
+          result.output = telemetryFromError.raw.partialOutput;
+        }
+
+        error = null;
+      }
+    } catch {}
+
     workerLogger.error({
       jobName: metadata?.jobName,
       requestId: target.id,
