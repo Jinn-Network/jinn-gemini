@@ -1,7 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { setToolRegistry } from './tools/shared/tool-registry.js';
-import { loadEnvOnce } from './tools/shared/env.js';
+
 type LoggingModule = typeof import('../../logging/index.js');
 
 // Built at runtime after env is loaded and tools are imported
@@ -26,7 +25,8 @@ async function main() {
     }
 
     // Ensure .env variables are available to all tools before they are imported/registered
-    loadEnvOnce();
+    const envModule = await import('./tools/shared/env.js');
+    envModule.loadEnvOnce();
 
     // Suppress noisy stdout loggers to protect MCP stdio JSON stream
     // Only allow warnings/errors to reach stderr (Cursor will show those as errors)
@@ -62,7 +62,8 @@ async function main() {
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums
-    setToolRegistry(serverTools);
+    const toolRegistryModule = await import('./tools/shared/tool-registry.js');
+    toolRegistryModule.setToolRegistry(serverTools);
 
     // Register all tools
     for (const tool of serverTools) {
