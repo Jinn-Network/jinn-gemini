@@ -2,10 +2,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { setToolRegistry } from './tools/shared/tool-registry.js';
 import { loadEnvOnce } from './tools/shared/env.js';
-<<<<<<< HEAD
-
-=======
->>>>>>> main
 type LoggingModule = typeof import('../../logging/index.js');
 
 // Built at runtime after env is loaded and tools are imported
@@ -90,7 +86,3 @@ async function main() {
 }
 
 main();
-<<<<<<< HEAD
-
-=======
->>>>>>> main
