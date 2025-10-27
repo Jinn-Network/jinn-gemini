@@ -1116,13 +1116,15 @@ async function processOnce(): Promise<void> {
       }
     } catch {}
 
-    workerLogger.error({
-      jobName: metadata?.jobName,
-      requestId: target.id,
-      error: serializeError(e),
-      finalStatus: finalStatus?.status,
-      hasTelemetry: !!e?.telemetry
-    }, 'Execution failed');
+    if (error) {
+      workerLogger.error({
+        jobName: metadata?.jobName,
+        requestId: target.id,
+        error: serializeError(error),
+        finalStatus: finalStatus?.status,
+        hasTelemetry: !!e?.telemetry
+      }, 'Execution failed');
+    }
   }
 
   // Restore previous base branch context
