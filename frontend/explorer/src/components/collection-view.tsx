@@ -1,15 +1,18 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { CollectionName } from '@/lib/types'
 import { RecordList } from '@/components/record-list'
 import { RequestsTable } from '@/components/requests-table'
+import { ArtifactsTable } from '@/components/artifacts-table'
+import { JobDefinitionsTable } from '@/components/job-definitions-table'
 import { AutoRefreshToggle } from '@/components/auto-refresh-toggle'
 import { Pagination } from '@/components/pagination'
-import { RecordListSkeleton } from '@/components/loading-skeleton'
+import { RecordListSkeleton, RequestsTableSkeleton, ArtifactsTableSkeleton, JobDefinitionsTableSkeleton } from '@/components/loading-skeleton'
 import { getCollectionLabel } from '@/lib/utils'
 import { useSubgraphCollection } from '@/hooks/use-subgraph-collection'
+import { getRequest, Request } from '@/lib/subgraph'
 
 interface CollectionViewProps {
   collectionName: CollectionName
@@ -39,7 +42,17 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   // Auto-refresh is enabled by default for requests
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(collectionName === 'requests')
   const workstreamFilter = searchParams.get('workstream')
+  const [rootRequest, setRootRequest] = useState<Request | null>(null)
   const pageSize = 100
+
+  // Fetch root request when filtering by workstream
+  useEffect(() => {
+    if (collectionName === 'requests' && workstreamFilter) {
+      getRequest(workstreamFilter).then(setRootRequest).catch(console.error)
+    } else {
+      setRootRequest(null)
+    }
+  }, [collectionName, workstreamFilter])
 
   // Build where filter for workstream filtering - memoized to prevent infinite rerenders
   const whereFilter = useMemo(() => {
@@ -70,13 +83,34 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     whereFilter,
   })
 
+  // When filtering by workstream, prepend the root request to the list
+  const displayRecords = useMemo(() => {
+    if (rootRequest && collectionName === 'requests' && workstreamFilter) {
+      return [rootRequest, ...records]
+    }
+    return records
+  }, [rootRequest, records, collectionName, workstreamFilter])
+
   if (loading) {
+    const getSkeletonForCollection = () => {
+      switch (collectionName) {
+        case 'requests':
+          return <RequestsTableSkeleton />
+        case 'artifacts':
+          return <ArtifactsTableSkeleton />
+        case 'jobDefinitions':
+          return <JobDefinitionsTableSkeleton />
+        default:
+          return <RecordListSkeleton />
+      }
+    }
+    
     return (
       <div>
         <div className="mb-6">
           <h1 className="text-2xl font-bold mb-2">{getCollectionLabel(collectionName)}</h1>
         </div>
-        <RecordListSkeleton />
+        {getSkeletonForCollection()}
       </div>
     )
   }
@@ -129,7 +163,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
       
       <div className="mb-4 flex items-center justify-between">
         <p className="text-gray-600">
-          Showing {records.length} records (Page {currentPage})
+          Showing {displayRecords.length} records (Page {currentPage})
         </p>
         
         <div className="flex items-center gap-4">
@@ -149,9 +183,13 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
       </div>
       
       {collectionName === 'requests' ? (
-        <RequestsTable records={records} />
+        <RequestsTable records={displayRecords} />
+      ) : collectionName === 'artifacts' ? (
+        <ArtifactsTable records={displayRecords} />
+      ) : collectionName === 'jobDefinitions' ? (
+        <JobDefinitionsTable records={displayRecords} />
       ) : (
-        <RecordList records={records} collectionName={collectionName} />
+        <RecordList records={displayRecords} collectionName={collectionName} />
       )}
       
       <Pagination

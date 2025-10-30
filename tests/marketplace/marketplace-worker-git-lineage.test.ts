@@ -465,6 +465,48 @@ The test will verify the child branch is based on YOUR branch (with your changes
     console.log(`[test] Child job: ${childJob.id}`);
     console.log(`[test] Child branch: ${childBranchName}`);
 
+    expect(childBranchName).not.toBe(parentBranchName);
+
+    const childRequestQuery = `
+      query($jobDefinitionId:String!) {
+        requests(
+          where: {
+            jobDefinitionId: $jobDefinitionId
+          },
+          orderBy: "blockTimestamp",
+          orderDirection: "desc",
+          limit: 1
+        ) {
+          items {
+            id
+            ipfsHash
+          }
+        }
+      }
+    `;
+
+    const childRequestResp = await fetch(gqlUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: childRequestQuery,
+        variables: { jobDefinitionId: childJob.id }
+      })
+    });
+
+    const childRequestData = await childRequestResp.json();
+    const childRequest = childRequestData?.data?.requests?.items?.[0];
+
+    expect(childRequest, 'Child auto-dispatch request should exist').toBeTruthy();
+    expect(childRequest?.ipfsHash, 'Child request must have IPFS hash').toBeTruthy();
+
+    const childRequestIpfsUrl = `https://gateway.autonolas.tech/ipfs/${childRequest.ipfsHash}`;
+    const childRequestPayload = await fetchJsonWithRetry(childRequestIpfsUrl, 6, 2000);
+
+    expect(childRequestPayload?.branchName).toBe(childBranchName);
+    expect(childRequestPayload?.codeMetadata?.branch?.name).toBe(childBranchName);
+    expect(childRequestPayload?.codeMetadata?.baseBranch).toBe(parentBranchName);
+
     // 6) Verify child branch ancestry
     // Get merge-base between child and parent
     const mergeBaseParent = execSync(`git merge-base ${childBranchName} ${parentBranchName}`, {

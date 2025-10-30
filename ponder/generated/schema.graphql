@@ -393,6 +393,10 @@ type artifact {
   topic: String!
   contentPreview: String
   blockTimestamp: BigInt!
+  type: String
+  tags: [String!]
+  utilityScore: Int
+  accessCount: Int
 }
 
 type artifactPage {
@@ -491,6 +495,36 @@ input artifactFilter {
   blockTimestamp_lt: BigInt
   blockTimestamp_gte: BigInt
   blockTimestamp_lte: BigInt
+  type: String
+  type_not: String
+  type_in: [String]
+  type_not_in: [String]
+  type_contains: String
+  type_not_contains: String
+  type_starts_with: String
+  type_ends_with: String
+  type_not_starts_with: String
+  type_not_ends_with: String
+  tags: [String]
+  tags_not: [String]
+  tags_has: String
+  tags_not_has: String
+  utilityScore: Int
+  utilityScore_not: Int
+  utilityScore_in: [Int]
+  utilityScore_not_in: [Int]
+  utilityScore_gt: Int
+  utilityScore_lt: Int
+  utilityScore_gte: Int
+  utilityScore_lte: Int
+  accessCount: Int
+  accessCount_not: Int
+  accessCount_in: [Int]
+  accessCount_not_in: [Int]
+  accessCount_gt: Int
+  accessCount_lt: Int
+  accessCount_gte: Int
+  accessCount_lte: Int
 }
 
 type message {

@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { navigationItems } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -11,6 +13,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isOpen, onToggle }: SidebarProps) {
+  const pathname = usePathname();
+  const [jobsExpanded, setJobsExpanded] = useState(true);
+
   // Close sidebar on route change (mobile)
   useEffect(() => {
     const handleResize = () => {
@@ -58,22 +63,80 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
         
         <nav>
           <ul className="space-y-1">
-            {navigationItems.map((item) => (
-              <li key={item.collection}>
-                <Link
-                  href={`/${item.collection}`}
-                  className="block px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent rounded-md transition-colors"
-                  onClick={() => {
-                    // Close sidebar on mobile when clicking links
-                    if (window.innerWidth < 768) {
-                      onToggle();
-                    }
-                  }}
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
+            {navigationItems.map((item) => {
+              const isActive = pathname === `/${item.collection}` || 
+                (item.subItems?.some(subItem => pathname === `/${subItem.collection}`));
+              
+              return (
+                <li key={item.collection}>
+                  {item.subItems ? (
+                    // Jobs item with collapsible sub-items
+                    <>
+                      <button
+                        onClick={() => setJobsExpanded(!jobsExpanded)}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors ${
+                          isActive 
+                            ? 'bg-sidebar-accent text-sidebar-foreground font-medium border-l-2 border-blue-600' 
+                            : 'text-sidebar-foreground hover:bg-sidebar-accent'
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                        {jobsExpanded ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                      </button>
+                      {jobsExpanded && (
+                        <ul className="ml-4 mt-1 space-y-1">
+                          {item.subItems.map((subItem) => {
+                            const isSubItemActive = pathname === `/${subItem.collection}`;
+                            return (
+                              <li key={subItem.collection}>
+                                <Link
+                                  href={`/${subItem.collection}`}
+                                  className={`block px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                    isSubItemActive
+                                      ? 'bg-sidebar-accent text-sidebar-foreground font-medium border-l-2 border-blue-600'
+                                      : 'text-sidebar-foreground/80 hover:bg-sidebar-accent'
+                                  }`}
+                                  onClick={() => {
+                                    // Close sidebar on mobile when clicking links
+                                    if (window.innerWidth < 768) {
+                                      onToggle();
+                                    }
+                                  }}
+                                >
+                                  {subItem.label}
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </>
+                  ) : (
+                    // Regular items without sub-items
+                    <Link
+                      href={`/${item.collection}`}
+                      className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                        isActive
+                          ? 'bg-sidebar-accent text-sidebar-foreground font-medium border-l-2 border-blue-600'
+                          : 'text-sidebar-foreground hover:bg-sidebar-accent'
+                      }`}
+                      onClick={() => {
+                        // Close sidebar on mobile when clicking links
+                        if (window.innerWidth < 768) {
+                          onToggle();
+                        }
+                      }}
+                    >
+                      {item.label}
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </nav>
       </aside>

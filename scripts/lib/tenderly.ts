@@ -219,18 +219,19 @@ export class TenderlyClient {
         body: JSON.stringify({
           jsonrpc: '2.0',
           method: 'tenderly_setBalance',
-          params: [address, `0x${BigInt(amountWei).toString(16)}`],
+          params: [[address], `0x${BigInt(amountWei).toString(16)}`], // Address must be in array
           id: 1,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${response.statusText}. Response: ${errorText}`);
       }
 
       const result = await response.json();
       if (result.error) {
-        throw new Error(`RPC Error: ${result.error.message}`);
+        throw new Error(`RPC Error: ${JSON.stringify(result.error)}`);
       }
 
       scriptLogger.info({ address, amountWei }, 'Successfully funded address on Virtual TestNet');

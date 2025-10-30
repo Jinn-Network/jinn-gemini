@@ -117,6 +117,18 @@ export async function getDetails(params: GetDetailsParams) {
                         if (shouldResolveIpfs && record.ipfsHash) {
                             record.ipfsContent = await resolveRequestIpfsContent(record.ipfsHash, 10000);
                         }
+                        // Fetch IPFS content for SITUATION artifacts (for recognition analysis)
+                        if (shouldResolveIpfs && record.artifacts?.items?.length > 0) {
+                            for (const artifact of record.artifacts.items) {
+                                if (artifact.type === 'SITUATION' && artifact.cid) {
+                                    try {
+                                        artifact.ipfsContent = await resolveRequestIpfsContent(artifact.cid, 10000);
+                                    } catch (err: any) {
+                                        // Silently skip if IPFS fetch fails
+                                    }
+                                }
+                            }
+                        }
                         requestRecords.push(record);
                     }
                 } catch (error: any) {

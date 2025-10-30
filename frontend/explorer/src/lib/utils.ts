@@ -10,7 +10,7 @@ export function cn(...inputs: ClassValue[]) {
 export function getCollectionLabel(collectionName: CollectionName): string {
   const labelMap: Record<CollectionName, string> = {
     jobDefinitions: 'Job Definitions',
-    requests: 'Jobs',
+    requests: 'Job Runs',
     deliveries: 'Deliveries',
     artifacts: 'Artifacts',
     messages: 'Messages',
@@ -23,11 +23,19 @@ export function getCollectionLabel(collectionName: CollectionName): string {
 export interface NavigationItem {
   collection: CollectionName | string;
   label: string;
+  subItems?: NavigationItem[];
 }
 
 export const navigationItems: NavigationItem[] = [
   { label: 'Workstreams', collection: 'workstreams' },
-  { label: 'Jobs', collection: 'requests' },
+  { 
+    label: 'Jobs', 
+    collection: 'requests',
+    subItems: [
+      { label: 'Definitions', collection: 'jobDefinitions' },
+      { label: 'Runs', collection: 'requests' },
+    ]
+  },
   { label: 'Artifacts', collection: 'artifacts' },
 ];
 

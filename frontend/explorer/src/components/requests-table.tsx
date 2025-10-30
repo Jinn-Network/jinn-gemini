@@ -17,11 +17,13 @@ export function RequestsTable({ records }: RequestsTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto border border-gray-200 rounded-lg">
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Name</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Def ID</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Request ID</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Status</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Workstream</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Mech</th>
@@ -58,6 +60,12 @@ export function RequestsTable({ records }: RequestsTableProps) {
               ? formatDate(record.blockTimestamp) 
               : '-'
 
+            const jobDefId = 'jobDefinitionId' in record && record.jobDefinitionId
+              ? record.jobDefinitionId.toString().substring(0, 12) + '...'
+              : '-'
+
+            const requestId = record.id.toString().substring(0, 12) + '...'
+
             return (
               <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3">
@@ -67,6 +75,21 @@ export function RequestsTable({ records }: RequestsTableProps) {
                   >
                     {jobName}
                   </Link>
+                </td>
+                <td className="px-4 py-3">
+                  {'jobDefinitionId' in record && record.jobDefinitionId ? (
+                    <Link
+                      href={`/jobDefinitions/${record.jobDefinitionId}`}
+                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono"
+                    >
+                      {jobDefId}
+                    </Link>
+                  ) : (
+                    <span className="text-gray-400 text-sm">-</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-sm text-gray-600 font-mono">{requestId}</span>
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${statusClass}`}>

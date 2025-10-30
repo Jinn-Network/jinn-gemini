@@ -9,6 +9,10 @@
     "forceConsistentCasingInFileNames": true,
     "strict": false,
     "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@jinn/types": ["packages/jinn-types/src"]
+    },
     
     "declaration": true,
     "declarationMap": true,
@@ -18,7 +22,9 @@
     "noImplicitAny": false
   },
   "include": [
-    "gemini-agent/**/*.ts"
+    "gemini-agent/**/*.ts",
+    "worker/**/*.ts",
+    "packages/jinn-types/src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
@@ -26,8 +32,8 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "scripts/**",
-    "worker/**",
-    "worker/JobProcessor.ts",
-    "scripts/**.ts"
+    "worker/SimplifiedServiceBootstrap.ts",
+    "worker/TransactionProcessor.ts",
+    "worker/contracts/OlasContractManager.ts"
   ]
 }

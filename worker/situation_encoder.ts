@@ -1,0 +1,450 @@
+import fetch from 'cross-fetch';
+import type { Situation, SituationArtifactReference, SituationContext, SituationExecution } from '../packages/jinn-types/src/situation.js';
+export const SITUATION_ARTIFACT_VERSION = "sit-enc-v1.1";
+import { ExtractedArtifact } from './artifacts.js';
+import { workerLogger } from '../logging/index.js';
+
+const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+
+interface SituationEncoderInput {
+  requestId: string;
+  jobName?: string;
+  jobDefinitionId?: string;
+  output: string;
+  telemetry: any;
+  finalStatus: string;
+  additionalContext?: any;
+  artifacts: ExtractedArtifact[];
+}
+
+interface SituationEncoderResult {
+  situation: Omit<Situation, 'embedding'>;
+  summaryText: string;
+}
+
+interface InitialSituationInput {
+  requestId: string;
+  jobName?: string;
+  jobDefinitionId?: string;
+  model?: string;
+  additionalContext?: any;
+}
+
+interface InitialSituationResult {
+  situation: Omit<Situation, 'embedding' | 'execution' | 'artifacts'>;
+  summaryText: string;
+}
+
+interface EnrichSituationInput {
+  initialSituation: Omit<Situation, 'embedding' | 'execution' | 'artifacts'>;
+  output: string;
+  telemetry: any;
+  finalStatus: string;
+  artifacts: ExtractedArtifact[];
+}
+
+interface RequestRecord {
+  id: string;
+  jobDefinitionId?: string | null;
+  sourceRequestId?: string | null;
+  sourceJobDefinitionId?: string | null;
+  jobName?: string | null;
+  additionalContext?: any;
+}
+
+interface JobDefinitionRecord {
+  id: string;
+  promptContent?: string | null;
+  enabledTools?: string[] | null;
+}
+
+async function fetchGraphQL<T>(query: string, variables: Record<string, unknown>): Promise<T | null> {
+  try {
+    const res = await fetch(PONDER_GRAPHQL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+
+    if (!res.ok) {
+      workerLogger.warn({ status: res.status }, 'SituationEncoder GraphQL request failed');
+      return null;
+    }
+    const json = await res.json();
+    if (json.errors) {
+      workerLogger.warn({ errors: json.errors }, 'SituationEncoder GraphQL returned errors');
+      return null;
+    }
+    return json.data as T;
+  } catch (error: any) {
+    workerLogger.warn({ message: error?.message || String(error) }, 'SituationEncoder GraphQL error');
+    return null;
+  }
+}
+
+function parseAdditionalContext(value: unknown): any {
+  if (!value) return undefined;
+  if (typeof value === 'object') return value;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function truncate(text: unknown, max = 400): string {
+  if (!text) return '';
+  const str = typeof text === 'string' ? text : JSON.stringify(text);
+  return str.length > max ? `${str.slice(0, max)}…` : str;
+}
+
+function buildExecutionTrace(telemetry: any): SituationExecution['trace'] {
+  if (!telemetry || !Array.isArray(telemetry.toolCalls)) return [];
+
+  return telemetry.toolCalls.slice(0, 15).map((call: any) => {
+    const tool = typeof call?.tool === 'string' ? call.tool : 'unknown_tool';
+    const args = truncate(call?.args ?? '', 350);
+
+    let summary: string;
+    if (call?.result) {
+      summary = truncate(call.result, 350);
+    } else if (call?.success === false) {
+      summary = 'Tool call failed';
+    } else {
+      summary = call?.success ? 'Tool call succeeded' : 'Tool call executed';
+    }
+
+    return {
+      tool,
+      args,
+      result_summary: summary,
+    };
+  });
+}
+
+function mapArtifacts(artifacts: ExtractedArtifact[]): SituationArtifactReference[] {
+  return artifacts.slice(0, 10).map((artifact, index) => ({
+    topic: artifact.topic,
+    name: artifact.name || `artifact-${index + 1}`,
+    contentPreview: truncate(artifact.contentPreview ?? '', 200) || undefined,
+  }));
+}
+
+function extractObjective(additionalContext: any): string | undefined {
+  if (!additionalContext) return undefined;
+  const candidates = [
+    additionalContext?.objective,
+    additionalContext?.job?.objective,
+    additionalContext?.summary?.objective,
+    additionalContext?.project?.objective,
+  ].filter((v) => typeof v === 'string' && v.trim().length > 0);
+  return candidates.length > 0 ? String(candidates[0]) : undefined;
+}
+
+function extractAcceptanceCriteria(additionalContext: any): string | undefined {
+  if (!additionalContext) return undefined;
+  const candidates = [
+    additionalContext?.acceptanceCriteria,
+    additionalContext?.job?.acceptanceCriteria,
+    additionalContext?.summary?.acceptanceCriteria,
+  ].filter((v) => typeof v === 'string' && v.trim().length > 0);
+  return candidates.length > 0 ? String(candidates[0]) : undefined;
+}
+
+function deriveSummaryText(params: {
+  requestId: string;
+  jobName?: string;
+  objective?: string;
+  acceptanceCriteria?: string;
+  status: SituationExecution['status'];
+  parentRequestId?: string;
+  childRequestIds: string[];
+  siblingRequestIds: string[];
+  trace: SituationExecution['trace'];
+  finalOutputSummary: string;
+  artifacts: SituationArtifactReference[];
+}): string {
+  const lines: string[] = [];
+  lines.push(`Job ${params.requestId}${params.jobName ? `: ${params.jobName}` : ''}`);
+  lines.push(`Status: ${params.status}`);
+  if (params.objective) {
+    lines.push(`Objective: ${truncate(params.objective, 400)}`);
+  }
+  if (params.acceptanceCriteria) {
+    lines.push(`Acceptance Criteria: ${truncate(params.acceptanceCriteria, 400)}`);
+  }
+  lines.push(`Parent: ${params.parentRequestId || 'none'}`);
+  lines.push(`Children: ${params.childRequestIds.length > 0 ? params.childRequestIds.join(', ') : 'none'}`);
+  lines.push(`Siblings: ${params.siblingRequestIds.length > 0 ? params.siblingRequestIds.join(', ') : 'none'}`);
+  if (params.trace.length > 0) {
+    const toolSummaries = params.trace.slice(0, 8).map((step) => `${step.tool} -> ${truncate(step.result_summary, 120)}`);
+    lines.push(`Key Actions: ${toolSummaries.join(' | ')}`);
+  }
+  if (params.artifacts.length > 0) {
+    const artifactSummaries = params.artifacts.map((a) => `${a.topic}:${a.name}`);
+    lines.push(`Artifacts: ${artifactSummaries.join(', ')}`);
+  }
+  if (params.finalOutputSummary) {
+    lines.push(`Final Output: ${truncate(params.finalOutputSummary, 500)}`);
+  }
+  return lines.join('\n');
+}
+
+async function fetchRequestRecord(requestId: string): Promise<RequestRecord | null> {
+  const query = `
+    query ($id: String!) {
+      request(id: $id) {
+        id
+        jobDefinitionId
+        sourceRequestId
+        sourceJobDefinitionId
+        jobName
+        additionalContext
+      }
+    }
+  `;
+  const data = await fetchGraphQL<{ request: RequestRecord | null }>(query, { id: requestId });
+  if (!data?.request) return null;
+  const additionalContext = parseAdditionalContext(data.request.additionalContext);
+  return {
+    ...data.request,
+    additionalContext,
+  };
+}
+
+async function fetchJobDefinition(jobDefinitionId: string): Promise<JobDefinitionRecord | null> {
+  const query = `
+    query ($id: String!) {
+      jobDefinition(id: $id) {
+        id
+        promptContent
+        enabledTools
+      }
+    }
+  `;
+  const data = await fetchGraphQL<{ jobDefinition: JobDefinitionRecord | null }>(query, { id: jobDefinitionId });
+  return data?.jobDefinition || null;
+}
+
+async function fetchRelatedRequestIds(sourceRequestId: string, excludeId?: string): Promise<string[]> {
+  const query = `
+    query ($sourceRequestId: String!) {
+      requests(where: { sourceRequestId: $sourceRequestId }, limit: 50) {
+        items { id }
+      }
+    }
+  `;
+  const data = await fetchGraphQL<{ requests: { items: Array<{ id: string }> } | null }>(query, { sourceRequestId });
+  const items = data?.requests?.items || [];
+  return items
+    .map((item) => String(item.id))
+    .filter((id) => !excludeId || id !== excludeId);
+}
+
+function deriveInitialSummaryText(params: {
+  requestId: string;
+  jobName?: string;
+  objective?: string;
+  acceptanceCriteria?: string;
+  parentRequestId?: string;
+  siblingRequestIds: string[];
+  prompt?: string;
+  enabledTools?: string[];
+}): string {
+  const lines: string[] = [];
+  lines.push(`Job ${params.requestId}${params.jobName ? `: ${params.jobName}` : ''}`);
+  if (params.objective) {
+    lines.push(`Objective: ${truncate(params.objective, 400)}`);
+  }
+  if (params.acceptanceCriteria) {
+    lines.push(`Acceptance Criteria: ${truncate(params.acceptanceCriteria, 400)}`);
+  }
+  if (params.prompt) {
+    lines.push(`Prompt: ${truncate(params.prompt, 600)}`);
+  }
+  if (params.enabledTools && params.enabledTools.length > 0) {
+    lines.push(`Tools: ${params.enabledTools.join(', ')}`);
+  }
+  lines.push(`Parent: ${params.parentRequestId || 'none'}`);
+  lines.push(`Siblings: ${params.siblingRequestIds.length > 0 ? params.siblingRequestIds.join(', ') : 'none'}`);
+  return lines.join('\n');
+}
+
+export async function createInitialSituation(input: InitialSituationInput): Promise<InitialSituationResult> {
+  const requestRecord = await fetchRequestRecord(input.requestId);
+
+  const parentRequestId = requestRecord?.sourceRequestId || undefined;
+  const siblingRequestIds = parentRequestId
+    ? await fetchRelatedRequestIds(parentRequestId, input.requestId).catch(() => [])
+    : [];
+
+  const additionalContext = input.additionalContext ?? requestRecord?.additionalContext;
+  const objective = extractObjective(additionalContext);
+  const acceptanceCriteria = extractAcceptanceCriteria(additionalContext);
+
+  const situationContext: SituationContext = {
+    parentRequestId,
+    childRequestIds: [], // Empty initially, will be populated post-execution
+    siblingRequestIds,
+  };
+
+  const jobName = input.jobName || requestRecord?.jobName || undefined;
+  const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
+
+  // Fetch job definition to enrich with prompt and enabled tools
+  let prompt: string | undefined;
+  let enabledTools: string[] | undefined;
+  if (jobDefinitionId) {
+    const jobDef = await fetchJobDefinition(jobDefinitionId);
+    if (jobDef) {
+      prompt = jobDef.promptContent || undefined;
+      enabledTools = jobDef.enabledTools || undefined;
+    }
+  }
+
+  const summaryText = deriveInitialSummaryText({
+    requestId: input.requestId,
+    jobName,
+    objective,
+    acceptanceCriteria,
+    parentRequestId,
+    siblingRequestIds,
+    prompt,
+    enabledTools,
+  });
+
+  const situation: Omit<Situation, 'embedding' | 'execution' | 'artifacts'> = {
+    version: SITUATION_ARTIFACT_VERSION,
+    job: {
+      requestId: input.requestId,
+      jobDefinitionId,
+      jobName,
+      objective,
+      acceptanceCriteria,
+      prompt,
+      model: input.model,
+      enabledTools,
+    },
+    context: situationContext,
+  };
+
+  return { situation, summaryText };
+}
+
+export async function enrichSituation(input: EnrichSituationInput): Promise<SituationEncoderResult> {
+  // Fetch child requests that may have been spawned during execution
+  const childRequestIds = await fetchRelatedRequestIds(input.initialSituation.job.requestId).catch(() => []) || [];
+
+  const executionTrace = buildExecutionTrace(input.telemetry);
+  const status: SituationExecution['status'] =
+    input.finalStatus === 'COMPLETED' ? 'COMPLETED' :
+    input.finalStatus === 'DELEGATING' ? 'DELEGATING' :
+    input.finalStatus === 'WAITING' ? 'WAITING' : 'FAILED';
+
+  const finalOutputSummary = truncate(input.output, 1200);
+
+  const artifacts = mapArtifacts(input.artifacts);
+
+  // Enrich the context with child requests discovered post-execution
+  const enrichedContext: SituationContext = {
+    ...input.initialSituation.context,
+    childRequestIds,
+  };
+
+  const summaryText = deriveSummaryText({
+    requestId: input.initialSituation.job.requestId,
+    jobName: input.initialSituation.job.jobName,
+    objective: input.initialSituation.job.objective,
+    acceptanceCriteria: input.initialSituation.job.acceptanceCriteria,
+    status,
+    parentRequestId: input.initialSituation.context.parentRequestId,
+    childRequestIds,
+    siblingRequestIds: input.initialSituation.context.siblingRequestIds || [],
+    trace: executionTrace,
+    finalOutputSummary,
+    artifacts,
+  });
+
+  const situation: Omit<Situation, 'embedding'> = {
+    ...input.initialSituation,
+    execution: {
+      status,
+      trace: executionTrace,
+      finalOutputSummary,
+    },
+    context: enrichedContext,
+    artifacts,
+  };
+
+  return { situation, summaryText };
+}
+
+export async function encodeSituation(input: SituationEncoderInput): Promise<SituationEncoderResult> {
+  const requestRecord = await fetchRequestRecord(input.requestId);
+
+  const parentRequestId = requestRecord?.sourceRequestId || undefined;
+  const childRequestIds = await fetchRelatedRequestIds(input.requestId).catch(() => []) || [];
+  const siblingRequestIds = parentRequestId
+    ? await fetchRelatedRequestIds(parentRequestId, input.requestId).catch(() => [])
+    : [];
+
+  const additionalContext = input.additionalContext ?? requestRecord?.additionalContext;
+  const objective = extractObjective(additionalContext);
+  const acceptanceCriteria = extractAcceptanceCriteria(additionalContext);
+
+  const executionTrace = buildExecutionTrace(input.telemetry);
+  const status: SituationExecution['status'] =
+    input.finalStatus === 'COMPLETED' ? 'COMPLETED' :
+    input.finalStatus === 'DELEGATING' ? 'DELEGATING' :
+    input.finalStatus === 'WAITING' ? 'WAITING' : 'FAILED';
+
+  const finalOutputSummary = typeof input.output === 'string' ? input.output : JSON.stringify(input.output);
+
+  const artifacts = mapArtifacts(input.artifacts);
+
+  const situationContext: SituationContext = {
+    parentRequestId,
+    childRequestIds,
+    siblingRequestIds,
+  };
+
+  const jobName = input.jobName || requestRecord?.jobName || undefined;
+  const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
+
+  const summaryText = deriveSummaryText({
+    requestId: input.requestId,
+    jobName,
+    objective,
+    acceptanceCriteria,
+    status,
+    parentRequestId,
+    childRequestIds,
+    siblingRequestIds,
+    trace: executionTrace,
+    finalOutputSummary,
+    artifacts,
+  });
+
+  const situation: Omit<Situation, 'embedding'> = {
+    version: SITUATION_ARTIFACT_VERSION,
+    job: {
+      requestId: input.requestId,
+      jobDefinitionId,
+      jobName,
+      objective,
+      acceptanceCriteria,
+    },
+    execution: {
+      status,
+      trace: executionTrace,
+      finalOutputSummary,
+    },
+    context: situationContext,
+    artifacts,
+  };
+
+  return { situation, summaryText };
+}

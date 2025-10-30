@@ -28,7 +28,10 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
   }
 
   // Fetch recent jobs in workstream
-  const { requests: recentJobs } = await getWorkstreamRequests(workstreamId, 10)
+  const { requests: recentJobs } = await getWorkstreamRequests(workstreamId, 9)
+  
+  // Add root request to the list (it's the top-level job)
+  const allJobs = [rootRequest, ...recentJobs.items]
 
   // Fetch launcher briefing
   const briefing = await getWorkstreamArtifact(workstreamId, 'launcher_briefing')
@@ -62,36 +65,15 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
     <div className="space-y-6">
       {/* Header */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Link href="/workstreams" className="hover:text-blue-600">
-            Workstreams
-          </Link>
-          <span>→</span>
-          <span className="text-gray-900">{rootRequest.jobName || 'Unnamed Workstream'}</span>
-        </div>
+        <Link href="/workstreams" className="text-blue-600 hover:text-blue-800 text-sm">
+          ← Back to Workstreams
+        </Link>
         <h1 className="text-3xl font-bold">
           {rootRequest.jobName || 'Unnamed Workstream'}
         </h1>
         <p className="text-gray-600">
           Started {formatTimestamp(rootRequest.blockTimestamp)}
         </p>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="flex gap-3">
-        <Link href={`/graph/job/${workstreamId}`}>
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-            </svg>
-            View Job Graph
-          </button>
-        </Link>
-        <Link href={`/requests?workstream=${workstreamId}`}>
-          <button className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors">
-            View All Jobs
-          </button>
-        </Link>
       </div>
 
       {/* Launcher Briefing */}
@@ -107,68 +89,74 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
         </CardContent>
       </Card>
 
-      {/* Job Graph */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Workstream Graph</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="h-[600px]">
-            <JobGraphView rootId={workstreamId} />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Job Graph */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Workstream Graph</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 border-t">
+              <div className="h-[600px] overflow-hidden">
+                <JobGraphView rootId={workstreamId} />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* Recent Jobs */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Recent Jobs</CardTitle>
-            <Link 
-              href={`/requests?workstream=${workstreamId}`}
-              className="text-sm text-blue-600 hover:text-blue-800"
-            >
-              See all →
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {recentJobs.items.length === 0 ? (
-            <p className="text-gray-500 text-sm">No jobs found in this workstream yet</p>
-          ) : (
-            <div className="space-y-3">
-              {recentJobs.items.map((job) => (
+        {/* Recent Jobs */}
+        <div className="lg:col-span-1">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Recent Jobs</CardTitle>
                 <Link 
-                  key={job.id} 
-                  href={`/requests/${job.id}`}
-                  className="block p-3 border rounded-md hover:bg-gray-50 transition-colors"
+                  href={`/requests?workstream=${workstreamId}`}
+                  className="text-sm text-blue-600 hover:text-blue-800"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">
-                          {job.jobName || 'Unnamed Job'}
-                        </span>
-                        {job.delivered && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">
-                            ✓ Delivered
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {formatRelativeTime(job.blockTimestamp)}
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-400 font-mono">
-                      {job.id.substring(0, 8)}...
-                    </div>
-                  </div>
+                  See all →
                 </Link>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {allJobs.length === 0 ? (
+                <p className="text-gray-500 text-sm">No jobs found in this workstream yet</p>
+              ) : (
+                <div className="space-y-3">
+                  {allJobs.map((job) => (
+                    <Link 
+                      key={job.id} 
+                      href={`/requests/${job.id}`}
+                      className="block p-3 border rounded-md hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-sm">
+                              {job.jobName || 'Unnamed Job'}
+                            </span>
+                            {job.delivered && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">
+                                ✓ Delivered
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {formatRelativeTime(job.blockTimestamp)}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-400 font-mono">
+                          {job.id.substring(0, 8)}...
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

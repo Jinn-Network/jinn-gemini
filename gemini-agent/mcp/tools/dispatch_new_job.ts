@@ -15,6 +15,7 @@ const dispatchNewJobParamsBase = z.object({
   acceptanceCriteria: z.string().min(10).describe('Specific, measurable criteria for successful completion (what "done" looks like). Include: (1) what outputs are complete, (2) what artifacts are created with topics, (3) how results are surfaced to parent.'),
   constraints: z.string().optional().describe('Limitations, requirements, dependencies, or important considerations'),
   jobName: z.string().min(1),
+  model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-2.5-flash", "gemini-2.5-pro"). Defaults to "gemini-2.5-flash" if not specified.'),
   enabledTools: z.array(z.string()).optional(),
   updateExisting: z.boolean().optional().default(false),
   message: z.string().optional(),
@@ -94,7 +95,7 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { objective, context: promptContext, deliverables, acceptanceCriteria, constraints, jobName, enabledTools, updateExisting, message } = parsed.data;
+    const { objective, context: promptContext, deliverables, acceptanceCriteria, constraints, jobName, model, enabledTools, updateExisting, message } = parsed.data;
 
     // Assemble structured fields into a single prompt string for IPFS storage
     const prompt = constructPrompt({ objective, context: promptContext, deliverables, acceptanceCriteria, constraints });
@@ -201,6 +202,7 @@ export async function dispatchNewJob(args: unknown) {
     const ipfsJsonContents: any[] = [{
       prompt,
       jobName,
+      model: model || 'gemini-2.5-flash',
       enabledTools,
       jobDefinitionId,
       nonce: ensureUuid(),
@@ -221,7 +223,7 @@ export async function dispatchNewJob(args: unknown) {
     };
 
     try {
-      const result = await (marketplaceInteract as any)({
+      const result = await marketplaceInteract({
         prompts: [prompt],
         priorityMech: getMechAddress(),
         tools: enabledTools || [],

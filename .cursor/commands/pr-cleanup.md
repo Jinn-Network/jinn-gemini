@@ -8,7 +8,7 @@ Review the changes made in the context of this branch in the following way:
 	7.	Apply SRP (Single Responsibility) — one class/function/module per concern.
 	8.	Encapsulate hard-to-understand logic — isolate complexity behind clear interfaces.
 	9.	Use standard patterns/libraries — replace hand-rolled hacks with well-tested solutions.
-	10.	Add minimal tests around critical paths — sanity checks to prevent regressions.
+	10.	Esnure/add minimal tests around critical paths — sanity checks to prevent regressions.
 
 - be sure to run any relevant unit and integration tests. if there are issues, fix them
 - if there's a Linear issue, update it with details of the implementation.

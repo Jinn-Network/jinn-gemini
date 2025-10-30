@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "metacog": {
-      "command": "tsx",
+      "command": "/Users/adrianobradley/jinn-gemini/node_modules/.bin/tsx",
       "args": [
-        "/Users/adrianobradley/git-lineage-worktree/gemini-agent/mcp/server.ts"
+        "/Users/adrianobradley/jinn-gemini/gemini-agent/mcp/server.ts"
       ],
       "trust": true,
       "includeTools": [
@@ -20,15 +20,16 @@
         "web_fetch",
         "list_directory",
         "read_file",
-        "write_file",
         "search_file_content",
         "glob",
-        "replace",
-        "read_many_files",
-        "run_shell_command",
-        "save_memory"
+        "read_many_files"
       ]
     }
   },
-  "excludeTools": []
+  "excludeTools": [
+    "write_file",
+    "replace",
+    "run_shell_command",
+    "save_memory"
+  ]
 }

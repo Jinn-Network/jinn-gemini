@@ -10,11 +10,14 @@ export default defineConfig({
   resolve: {
     alias: {
       'mech-client-ts': path.resolve(__dirname, './packages/mech-client-ts'),
+      '@jinn/types': path.resolve(__dirname, './packages/jinn-types/src'),
     },
   },
   test: {
     globals: true,
+    environment: 'node',
     env: testEnv,
+    include: ['tests/unit/**/*.test.ts'],
     // Run test files sequentially to prevent port conflicts
     fileParallelism: false,
     poolOptions: {

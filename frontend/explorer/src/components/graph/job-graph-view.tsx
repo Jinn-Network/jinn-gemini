@@ -111,7 +111,7 @@ function JobGraphViewInner({ rootId }: JobGraphViewInnerProps) {
   }
 
   return (
-    <div className="w-full h-[700px] border rounded-lg bg-gray-50 relative">
+    <div className="w-full h-full bg-gray-50 relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}

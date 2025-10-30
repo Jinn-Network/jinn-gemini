@@ -82,3 +82,128 @@ export function RecordListSkeleton() {
     </div>
   )
 }
+
+export function RequestsTableSkeleton() {
+  return (
+    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Name</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Status</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Workstream</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Mech</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Sender</th>
+            <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700">Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: 10 }).map((_, i) => (
+            <tr key={i} className="border-b border-gray-100">
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-48" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-6 w-20" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-24" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-20" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-20" />
+              </td>
+              <td className="px-4 py-3 text-right">
+                <Skeleton className="h-4 w-32 ml-auto" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+export function ArtifactsTableSkeleton() {
+  return (
+    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Name</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Preview</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Timestamp</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">CID</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Topic</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Request</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: 10 }).map((_, i) => (
+            <tr key={i} className="border-b border-gray-100">
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-40" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-64" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-32" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-28" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-32" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-24" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+export function JobDefinitionsTableSkeleton() {
+  return (
+    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Name</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Description</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Created</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Source Job</th>
+            <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700">ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: 10 }).map((_, i) => (
+            <tr key={i} className="border-b border-gray-100">
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-48" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-64" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-32" />
+              </td>
+              <td className="px-4 py-3">
+                <Skeleton className="h-4 w-24" />
+              </td>
+              <td className="px-4 py-3 text-right">
+                <Skeleton className="h-4 w-24 ml-auto" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

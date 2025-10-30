@@ -167,6 +167,7 @@ export async function dispatchExistingJob(args: unknown) {
           }
         : undefined,
     baseBranch,
+    branchName: branchResult.branchName,
   };
 
   const codeMetadata = await collectLocalCodeMetadata(metadataHints);
@@ -192,8 +193,8 @@ export async function dispatchExistingJob(args: unknown) {
     description: 'Agent must execute work on the provided branch and pass required validations before finalizing.',
   };
 
-  try {
-    const result = await (marketplaceInteract as any)({
+    try {
+      const result = await marketplaceInteract({
       prompts: [finalPrompt],
       priorityMech: getMechAddress(),
       tools: finalTools,
@@ -228,4 +229,3 @@ export async function dispatchExistingJob(args: unknown) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'EXECUTION_ERROR', message: e?.message || String(e) } }) }] };
   }
 }
-

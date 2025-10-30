@@ -1,6 +1,6 @@
 import { request } from 'graphql-request'
 
-const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'http://localhost:42069/graphql'
+const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://jinn-gemini-production.up.railway.app/graphql'
 
 export interface JobDefinition {
   id: string
@@ -587,8 +587,8 @@ function buildCidV1HexCandidates(hexBytes: string): string[] {
 }
 
 function isFullCidString(value: string): boolean {
-  // Accept base32/base58 CIDs and hex-base16 CIDs (f01...)
-  return /^bafy|^Qm|^f01/i.test(value)
+  // Accept base32/base58 CIDs (baf*, Qm*) and hex-base16 CIDs (f01...)
+  return /^baf|^Qm|^f01/i.test(value)
 }
 
 function extractDigestHexFromHexCid(hexCid: string): string | null {

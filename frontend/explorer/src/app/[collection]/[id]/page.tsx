@@ -85,17 +85,11 @@ export default async function RecordPage({ params }: RecordPageProps) {
           </Link>
         </div>
         
-        <h1 className="text-2xl font-bold mb-4" title={`Record ID: ${decodedId} in ${resolvedParams.collection}`}>
+        <h1 className="text-2xl font-bold mb-6" title={`Record ID: ${decodedId} in ${resolvedParams.collection}`}>
           {recordTitle}
         </h1>
         
-        <>
-          <p className="text-gray-600 text-sm mb-6">
-            {collectionLabel}
-          </p>
-          
-          <SubgraphDetailView record={record} collectionName={resolvedParams.collection} />
-        </>
+        <SubgraphDetailView record={record} collectionName={resolvedParams.collection} />
       </div>
     )
   } catch (error) {

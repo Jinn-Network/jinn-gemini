@@ -15,14 +15,18 @@ yarn tsx scripts/post-spec-verification-job.ts
 
 ### Model Selection
 
-The job will use whatever model is configured in the worker environment:
+The job's model is specified in the dispatch script and stored in the job definition:
 
-```bash
-# In worker .env file
-MECH_MODEL=gemini-2.5-pro
+```typescript
+// In scripts/dispatch-code-spec-verification.ts
+const jobSpec = {
+  // ...
+  model: 'gemini-2.5-flash', // or 'gemini-2.5-pro'
+  // ...
+};
 ```
 
-To use Gemini 2.5 Pro specifically for this workstream, ensure the worker has this environment variable set before the job executes.
+Each job can use a different model. The model is stored in IPFS metadata and read by the worker at execution time.
 
 ## How It Works
 

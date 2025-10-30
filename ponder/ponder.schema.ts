@@ -78,6 +78,10 @@ export default createSchema((p: any) => ({
       topic: p.string(),
       contentPreview: p.string().optional(),
       blockTimestamp: p.bigint(),
+      type: p.string().optional(),           // NEW: 'MEMORY', 'RESEARCH_REPORT', etc.
+      tags: p.string().list().optional(),    // NEW: ['staking', 'bug-fix', 'optimization']
+      utilityScore: p.int().optional(),      // NEW: cumulative rating score
+      accessCount: p.int().optional(),       // NEW: how many times accessed
     },
     {
       requestIdIdx: p.index("requestId"),
@@ -85,6 +89,8 @@ export default createSchema((p: any) => ({
       sourceJobDefIdx: p.index("sourceJobDefinitionId"),
       topicIdx: p.index("topic"),
       timestampIdx: p.index("blockTimestamp"),
+      typeIdx: p.index("type"),              // NEW: filter by type
+      utilityIdx: p.index("utilityScore"),   // NEW: rank by utility
     }
   ),
   message: p.createTable(

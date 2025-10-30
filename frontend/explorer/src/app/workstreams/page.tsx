@@ -1,6 +1,5 @@
 import { getWorkstreams } from '@/lib/subgraph'
 import Link from 'next/link'
-import { Card, CardContent } from '@/components/ui/card'
 
 // Force dynamic rendering to avoid build-time data fetching
 export const dynamic = 'force-dynamic'
@@ -29,34 +28,40 @@ export default async function WorkstreamsPage() {
       </div>
 
       {requests.items.length === 0 ? (
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-gray-500 text-center">No workstreams found</p>
-          </CardContent>
-        </Card>
+        <div className="text-center py-12 text-gray-500">
+          No workstreams found
+        </div>
       ) : (
-        <div className="space-y-4">
-          {requests.items.map((workstream) => (
-            <Link key={workstream.id} href={`/workstreams/${workstream.id}`}>
-              <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold mb-2">
-                        {workstream.jobName || 'Unnamed Workstream'}
-                      </h3>
-                      <div className="text-sm text-gray-600">
-                        Started: {formatTimestamp(workstream.blockTimestamp)}
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-400 font-mono ml-4">
-                      {workstream.id.substring(0, 12)}...
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Name</th>
+                <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Started</th>
+                <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700">ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.items.map((workstream) => (
+                <tr key={workstream.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <Link 
+                      href={`/workstreams/${workstream.id}`}
+                      className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                    >
+                      {workstream.jobName || 'Unnamed Workstream'}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {formatTimestamp(workstream.blockTimestamp)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm text-gray-600 font-mono">
+                    {workstream.id.substring(0, 12)}...
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

@@ -18,7 +18,7 @@ import { OlasServiceManager } from "../worker/OlasServiceManager.js";
 import { OlasOperateWrapper } from "../worker/OlasOperateWrapper.js";
 import { ServiceStateTracker } from "../worker/ServiceStateTracker.js";
 import { createTenderlyClient, ethToWei } from "./lib/tenderly.js";
-import { logger } from "../worker/logger.js";
+import { logger } from "../logging/index.js";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";

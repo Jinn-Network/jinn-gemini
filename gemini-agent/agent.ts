@@ -3,6 +3,7 @@
 import { spawn } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname, resolve, isAbsolute } from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
 import { getOptionalCodeMetadataRepoRoot } from '../config/index.js';
@@ -93,19 +94,28 @@ export class Agent {
     this.enabledTools = enabledTools || [];
     this.jobContext = jobContext;
     // agentRoot must point to the actual gemini-agent directory containing config files
-    // If running in test mode with CODE_METADATA_REPO_ROOT set, find the worktree root
-    let worktreeRoot: string;
-    const codeMetadataRepoRoot = getOptionalCodeMetadataRepoRoot();
-    if (codeMetadataRepoRoot) {
-      // CODE_METADATA_REPO_ROOT is tests/fixtures/test-repo, extract base by removing that suffix
-      const testRepoPath = codeMetadataRepoRoot;
-      const testsIndex = testRepoPath.indexOf('/tests/fixtures/test-repo');
-      worktreeRoot = testsIndex >= 0 ? testRepoPath.substring(0, testsIndex) : dirname(dirname(dirname(testRepoPath)));
-    } else {
-      worktreeRoot = process.cwd();
-    }
-    this.agentRoot = join(worktreeRoot, 'gemini-agent');
+    // Resolve relative to this file's location for reliable path resolution
+    // This ensures agentRoot is correct regardless of CODE_METADATA_REPO_ROOT or process.cwd()
+    const currentFile = fileURLToPath(import.meta.url);
+    const agentDir = dirname(currentFile);
+    this.agentRoot = agentDir; // This file is already in gemini-agent directory
     this.settingsPath = join(this.agentRoot, '.gemini', 'settings.json');
+    
+    // Verify agentRoot exists and contains expected files
+    if (!existsSync(this.agentRoot)) {
+      throw new Error(`Agent root directory does not exist: ${this.agentRoot}`);
+    }
+    const templatePath = join(this.agentRoot, 'settings.template.dev.json');
+    const fallbackTemplatePath = join(this.agentRoot, 'settings.template.json');
+    if (!existsSync(templatePath) && !existsSync(fallbackTemplatePath)) {
+      agentLogger.warn({ 
+        agentRoot: this.agentRoot, 
+        templatePath, 
+        fallbackTemplatePath,
+        currentFile,
+        agentDir 
+      }, 'Settings template files not found in agentRoot - path resolution may be incorrect');
+    }
 
     // Use shared getRepoRoot logic for codeWorkspace
     // This supports JINN_WORKSPACE_DIR (for ventures) and CODE_METADATA_REPO_ROOT (legacy)
@@ -261,9 +271,22 @@ export class Agent {
         envWithJob.GEMINI_CLI_SYSTEM_DEFAULTS_PATH = this.settingsPath;
       }
 
+      // Use /tmp for Gemini CLI to avoid macOS com.apple.provenance protection
+      // macOS automatically applies this extended attribute to ~/.gemini which prevents writes
+      const geminiHome = join('/tmp', '.gemini-worker');
+      try {
+        mkdirSync(geminiHome, { recursive: true });
+      } catch (err: any) {
+        agentLogger.debug({ error: err.message }, 'Failed to create gemini home directory');
+      }
+
       const geminiProcess = spawn('npx', ['@google/gemini-cli@0.7.0', ...args], {
         cwd: this.codeWorkspace,
-        env: envWithJob
+        env: {
+          ...envWithJob,
+          // Set GEMINI_HOME to a writable directory within the project to avoid EPERM errors
+          GEMINI_HOME: geminiHome
+        }
       });
 
       let stdout = '';
@@ -428,6 +451,24 @@ export class Agent {
         ? 'settings.template.dev.json'
         : 'settings.template.json';
       const templatePath = join(this.agentRoot, templateFileName);
+      
+      // Verify template file exists before reading
+      if (!existsSync(templatePath)) {
+        const fallbackPath = join(this.agentRoot, templateFileName === 'settings.template.dev.json' 
+          ? 'settings.template.json' 
+          : 'settings.template.dev.json');
+        const attemptedPaths = [templatePath];
+        if (existsSync(fallbackPath)) {
+          attemptedPaths.push(`(fallback exists: ${fallbackPath})`);
+        }
+        throw new Error(
+          `Settings template file not found: ${templatePath}\n` +
+          `Agent root: ${this.agentRoot}\n` +
+          `Attempted paths: ${attemptedPaths.join(', ')}\n` +
+          `Current working directory: ${process.cwd()}`
+        );
+      }
+      
       const templateSettings: GeminiSettings = JSON.parse(readFileSync(templatePath, 'utf8'));
 
       if (!templateSettings.mcpServers) {

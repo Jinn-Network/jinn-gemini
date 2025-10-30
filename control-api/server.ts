@@ -54,6 +54,15 @@ const typeDefs = /* GraphQL */ `
     created_at: String!
   }
 
+  type UtilityScore {
+    id: String!
+    artifact_id: String!
+    score: Int!
+    access_count: Int!
+    created_at: String!
+    updated_at: String!
+  }
+
   type TransactionRequest {
     id: String!
     request_id: String
@@ -99,6 +108,7 @@ const typeDefs = /* GraphQL */ `
     createJobReport(requestId: String!, reportData: JobReportInput!): JobReport!
     createArtifact(requestId: String!, artifactData: ArtifactInput!): Artifact!
     createMessage(requestId: String!, messageData: MessageInput!): Message!
+    rateMemory(artifactId: String!, rating: Int!): UtilityScore!
     enqueueTransaction(requestId: String, chain_id: Int!, execution_strategy: String!, payload: String!, idempotency_key: String): TransactionRequest!
     getTransactionStatus(id: String!): TransactionRequest!
     claimTransactionRequest: TransactionRequest
@@ -272,6 +282,61 @@ const resolvers = {
         .limit(1);
       if (error) throw new Error(error.message);
       return data![0];
+    },
+
+    rateMemory: async (
+      _: any,
+      args: { artifactId: string; rating: number },
+      ctx: Context
+    ) => {
+      // Validate rating is either +1 or -1
+      if (args.rating !== 1 && args.rating !== -1) {
+        throw new Error('Rating must be either +1 (useful) or -1 (not useful)');
+      }
+
+      // Check if record exists
+      const { data: existing, error: exErr } = await ctx.supabase
+        .from('utility_scores')
+        .select('*')
+        .eq('artifact_id', args.artifactId)
+        .limit(1);
+
+      if (exErr) throw new Error(exErr.message);
+
+      if (existing && existing.length > 0) {
+        // Update existing score
+        const current = existing[0];
+        const newScore = (current.score || 0) + args.rating;
+        const newAccessCount = (current.access_count || 0) + 1;
+
+        const { data, error } = await ctx.supabase
+          .from('utility_scores')
+          .update({
+            score: newScore,
+            access_count: newAccessCount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('artifact_id', args.artifactId)
+          .select()
+          .limit(1);
+
+        if (error) throw new Error(error.message);
+        return data![0];
+      } else {
+        // Create new score record
+        const { data, error } = await ctx.supabase
+          .from('utility_scores')
+          .insert({
+            artifact_id: args.artifactId,
+            score: args.rating,
+            access_count: 1,
+          })
+          .select()
+          .limit(1);
+
+        if (error) throw new Error(error.message);
+        return data![0];
+      }
     },
 
     enqueueTransaction: async (

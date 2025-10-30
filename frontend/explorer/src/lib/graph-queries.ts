@@ -428,13 +428,15 @@ async function traverseUpstream(
     }
 
     // ==================================================================
-    // Request: Find target job definition, parent request, and parent job
+    // Request: Find parent request and parent job (skip jobDefinitionId for level 0)
     // ==================================================================
     if (current.type === 'request') {
       const req = currentRecord as Request
 
-      // Target job definition being executed
-      if (req.jobDefinitionId) {
+      // Skip jobDefinitionId relationship for root nodes (level 0)
+      // This prevents duplicate nodes in workstream views where the request IS the top-level node
+      // We only traverse to job definition if we're already traversing upstream from a child
+      if (req.jobDefinitionId && current.level > 0) {
         const targetJobDef = await getJobDefinition(req.jobDefinitionId)
         if (targetJobDef) {
           const targetNode = createGraphNode(targetJobDef, 'jobDefinition', current.level + 1)

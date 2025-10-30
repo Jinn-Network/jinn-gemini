@@ -4,8 +4,9 @@
 
 The current codebase is wired for an on-chain, event-driven loop on Base:
 
-- Post jobs on-chain with MCP (`post_marketplace_job`) → Ponder indexes them → the mech worker claims via the Control API → the Agent runs with MCP tools → result is delivered on-chain and indexed back by Ponder.
+- Post jobs on-chain with MCP (`dispatch_new_job`) → Ponder indexes them → the mech worker claims via the Control API → the Agent runs with MCP tools → result is delivered on-chain and indexed back by Ponder.
 - Reads come from the Ponder GraphQL API. Writes to off-chain tables go through the Control API with a required `X-Worker-Address` header.
+- **Memory system**: Jobs generate SITUATION artifacts with embeddings, indexed by Ponder into `node_embeddings` table. Use `inspect_situation` MCP tool or CLI script to observe what the system remembers.
 
 Use this guide to run the stack locally, understand the available tools/endpoints, and extend the Agent or MCP.
 
@@ -93,6 +94,8 @@ Testing with .env.test
 - Code workflow: `CODE_METADATA_DEFAULT_BASE_BRANCH` (default `main`) sets the parent branch for new job definitions.
 - GitHub automation: provide `GITHUB_TOKEN` (and optionally `GITHUB_REPOSITORY`, `GITHUB_API_URL`) so the worker can create PRs for completed jobs.
 
+**IMPORTANT**: All wallet addresses, Safe addresses, and private keys are read from `.operate` profile via `env/operate-profile.ts`. Never hardcode addresses in scripts or configuration - always use `getMechAddress()`, `getServiceSafeAddress()`, or `getServiceProfile()` from `env/operate-profile.ts` to ensure consistency across the codebase.
+
 ---
 
 ## Ponder (indexer) – reads
@@ -107,7 +110,12 @@ Testing with .env.test
   - On `MarketplaceRequest`: upserts `request`, resolves `ipfsHash` → fetches `jobName` and `enabledTools` from IPFS.
   - On `OlasMech:Deliver`: upserts `delivery`, marks `request.delivered`, resolves delivery JSON and upserts `artifact` rows.
 
-GraphQL endpoint: `http://localhost:42069/graphql`
+**Deployment:**
+- Production: Hosted on Railway at `https://jinn-gemini-production.up.railway.app/` (GraphQL endpoint)
+- Local development: `http://localhost:42069/graphql` (when running `yarn ponder:dev`)
+- Frontend defaults to Railway endpoint for production data
+- Set `PONDER_GRAPHQL_URL` (worker) or `NEXT_PUBLIC_SUBGRAPH_URL` (frontend) to override
+- To use local Ponder with frontend: `NEXT_PUBLIC_SUBGRAPH_URL=http://localhost:42069/graphql yarn frontend-explorer`
 
 Example queries:
 ```graphql
@@ -157,24 +165,265 @@ mutation Report($id: String!) {
 ## Agent & MCP
 
 - Agent (`gemini-agent/agent.ts`) spawns the Gemini CLI and loads the MCP server.
-- Universal tools always available: `list_tools`, `get_details`, `post_marketplace_job`.
+- Universal tools always available: `list_tools`, `get_details`, `dispatch_new_job`, `dispatch_existing_job`.
 - Effective toolset = universal tools + job `enabledTools`. Native Gemini CLI tools are excluded unless explicitly enabled.
 - Per-job MCP settings are generated at `gemini-agent/.gemini/settings.json` from templates:
   - Dev (`settings.template.dev.json`): runs MCP via `tsx`.
   - Prod (`settings.template.json`): runs built `server.js`.
 - Loop protection terminates runs on excessive output size, large chunks, or repetitive lines.
 
+### Per-Job Model Selection
+
+Each job specifies its own Gemini model in the job definition. Model selection is per-job, not worker-level.
+
+**When Creating Jobs:**
+```typescript
+// Option 1: Via dispatch_new_job tool
+dispatchNewJob({
+  objective: '...',
+  context: '...',
+  acceptanceCriteria: '...',
+  jobName: '...',
+  model: 'gemini-2.5-pro',  // or 'gemini-2.5-flash'
+  enabledTools: [...]
+})
+
+// Option 2: In dispatch scripts
+const jobSpec = {
+  objective: '...',
+  model: 'gemini-2.5-flash',
+  // ...
+};
+await dispatchNewJob(jobSpec);
+```
+
+**Model Storage & Execution:**
+1. Model is stored in IPFS metadata with the job definition
+2. Worker reads model from IPFS at execution time
+3. All phases (recognition, execution, reflection) use the job-specified model
+4. Defaults to `gemini-2.5-flash` if not specified
+
+**Available Models:**
+- `gemini-2.5-flash`: Fast, cost-effective for most tasks (default)
+- `gemini-2.5-pro`: High-quality reasoning for complex tasks
+
+**Benefits:**
+- Each job uses the optimal model for its task
+- No worker restart needed to change models
+- Model choice is auditable (stored on-chain via IPFS)
+- Enables A/B testing across different job types
+
 MCP server (`gemini-agent/mcp/server.ts`) registers tools from `gemini-agent/mcp/tools/index.ts`:
 - `list_tools` – catalogs both core CLI tools and MCP tools.
 - `get_details` – reads on-chain data via Ponder; supports IPFS resolution.
-- `post_marketplace_job` – uploads flattened JSON to IPFS and posts a marketplace request on Base.
-- `create_artifact` – uploads content to IPFS and returns `{ cid, name, topic, contentPreview }`.
-- `dispatch_new_job` – preferred path for dispatching because it routes through the MCP server. When the Safe delivers, the AgentMech contract emits the `Deliver` event that Ponder listens for. CLI-only delivery shortcuts (for example `scripts/deliver_request.ts`) emit only `MarketplaceDelivery` with `delivered=false`, so the subgraph will never flip the `request.delivered` flag.
+- `dispatch_new_job` – creates a new job definition and posts a marketplace request on Base. Uploads structured prompt to IPFS.
+- `dispatch_existing_job` – dispatches a new request for an existing job definition by ID or name.
+- `create_artifact` – uploads content to IPFS and returns `{ cid, name, topic, contentPreview }`. The tool's output is captured in telemetry; the worker is responsible for persisting it via the Control API.
 
 Notes:
-- `create_artifact` does not write to Supabase. To persist artifacts/messages/reports off-chain, call the Control API mutations.
-- `post_marketplace_job` enriches with the IPFS gateway URL by querying Ponder (retrying briefly for indexing).
-- CLI tooling (e.g. `yarn tsx scripts/deliver_request.ts`) is still useful for manual debugging, but it bypasses the MCP dispatch path. Because it only triggers `MarketplaceDelivery`, those deliveries remain `delivered=false` in Ponder. For automated tests and production flows always go through the MCP toolchain (dispatch via `dispatch_new_job`, deliver via Safe).
+- Agent tools like `create_artifact` **do not write directly to the database**. Their structured output is captured in execution telemetry. After the job is finished, the **worker** is responsible for calling the Control API to persist artifacts, messages, and reports off-chain.
+- `dispatch_new_job` enriches with the IPFS gateway URL by querying Ponder (retrying briefly for indexing).
+- When the Safe delivers, the AgentMech contract emits the `Deliver` event that Ponder listens for. CLI-only delivery shortcuts (for example `scripts/deliver_request.ts`) emit only `MarketplaceDelivery` with `delivered=false`, so the subgraph will never flip the `request.delivered` flag.
+- For automated tests and production flows always go through the MCP toolchain (dispatch via `dispatch_new_job`, deliver via Safe).
+
+---
+
+## Worker Telemetry System
+
+The worker includes a comprehensive telemetry system that captures operational data for each job run, separate from the agent's execution telemetry. This provides visibility into worker-level operations and enables debugging and performance analysis.
+
+### Architecture
+
+1. **Telemetry Collection**: `WorkerTelemetryService` class in `worker/worker_telemetry.ts` captures events and metrics during job processing.
+2. **Instrumentation**: The worker logs checkpoints at critical stages:
+   - Initialization (metadata fetching)
+   - Recognition phase (situational learning)
+   - Agent execution (model inference, artifact extraction)
+   - Reporting (job report creation)
+   - Reflection (memory artifact creation)
+   - Situation creation (SITUATION artifact generation)
+   - Telemetry persistence (IPFS upload)
+   - Delivery (on-chain transaction submission)
+
+3. **Persistence**: Worker telemetry is:
+   - Uploaded to IPFS as a `WORKER_TELEMETRY` artifact
+   - Persisted to Supabase via Control API for queryability
+   - Included in the delivery payload's `workerTelemetry` field
+
+4. **Frontend Display**: The explorer UI displays worker telemetry on completed request detail pages, showing:
+   - Summary stats (total duration, events count, phases, errors)
+   - Execution timeline with expandable phase details
+   - Event-level metadata and error messages
+   - Raw JSON for deep inspection
+
+### Implementation Files
+
+- `worker/worker_telemetry.ts` - Telemetry service class
+- `worker/mech_worker.ts` - Worker instrumentation
+- `frontend/explorer/src/components/worker-telemetry-card.tsx` - UI component
+- `frontend/explorer/src/components/job-phases/job-detail-layout.tsx` - Integration into job detail view
+
+### Usage
+
+Worker telemetry is automatically collected for all jobs. To inspect:
+- Navigate to any delivered request in the explorer UI at `/requests/{requestId}`
+- Scroll to the "Worker Telemetry" card
+- Expand phases to see individual events and metadata
+- View raw JSON for programmatic analysis
+
+## Semantic Graph Search (JINN-233)
+
+The agent features a situation-centric learning system that performs semantic similarity search over entire job execution contexts rather than isolated memory artifacts. This enables the agent to find and learn from past situations that are contextually similar to the current job.
+
+### Architecture
+
+1.  **SITUATION Artifact Creation (Write Path)**: After successful job completion, the worker creates a SITUATION artifact containing:
+    - Job metadata (requestId, jobName, objective, acceptanceCriteria)
+    - Execution trace (tool calls with args and result summaries, up to 15 steps)
+    - Final output summary (up to 1200 chars)
+    - Context (parent/child/sibling job relationships)
+    - Artifacts created during execution
+    - Pre-computed embedding vector (256-dim via `text-embedding-3-small`)
+
+2.  **Indexing**: Ponder's `OlasMech:Deliver` handler detects SITUATION artifacts, fetches them from IPFS, extracts embeddings and metadata, and upserts into PostgreSQL `node_embeddings` table with `pgvector` extension for efficient similarity search.
+
+3.  **Recognition Phase (Read Path)**: Before job execution, the worker can optionally run a recognition phase that:
+    - Generates an embedding for the current job objective
+    - Queries `node_embeddings` for top-k similar past situations via cosine similarity
+    - Fetches full SITUATION artifacts from IPFS for analysis
+    - Synthesizes actionable learnings from similar job execution patterns
+
+4.  **Graceful Failure**: If recognition or embedding fails, the system logs the error and proceeds with job execution, ensuring core functionality is never blocked.
+
+### Database Schema
+
+```sql
+CREATE TABLE node_embeddings (
+  node_id TEXT PRIMARY KEY,      -- Request ID
+  model TEXT NOT NULL,            -- "text-embedding-3-small"
+  dim INT NOT NULL,               -- 256
+  vec VECTOR(256) NOT NULL,       -- Embedding vector
+  summary TEXT,                   -- Text summary for search
+  meta JSONB,                     -- Full situation metadata
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX node_embeddings_vec_idx
+  ON node_embeddings USING ivfflat (vec vector_cosine_ops) WITH (lists = 100);
+```
+
+### MCP Tools
+
+- `search_similar_situations(query_text: string, k?: number)` – Performs semantic search over stored situations and returns top-k matches with similarity scores and full metadata.
+- `inspect_situation(request_id: string, include_similar?: boolean, similar_k?: number)` – Inspects the memory system for a given request, returning the SITUATION artifact, database record, and optionally similar situations.
+
+### Observability
+
+**CLI Scripts:**
+
+**Comprehensive Job Inspection:**
+```bash
+yarn inspect-job-run <requestId>
+```
+Fetches complete job run data from Ponder, resolves all IPFS references (request, delivery, artifacts), and outputs a fully-resolved JSON snapshot to stdout. This is the primary debugging tool for inspecting job execution data.
+
+**Default Endpoint:** Production Railway instance (`https://jinn-gemini-production.up.railway.app/graphql`)  
+**Local Override:** Set `PONDER_GRAPHQL_URL=http://localhost:42069/graphql` to use local Ponder
+
+**Situation Memory Inspection:**
+```bash
+tsx scripts/memory/inspect-situation.ts <requestId>
+```
+Rich CLI output showing SITUATION details, job info, execution trace, context, artifacts, embeddings, recognition data, database record, and similar situations with similarity scores.
+
+**MCP Tool:**
+The `inspect_situation` tool provides programmatic access to the same data in JSON format, enabling both agent and external system inspection of the memory system.
+
+**Frontend Explorer:**
+The explorer UI shows a memory visualization section on completed request detail pages with instructions for CLI inspection. Navigate to any delivered request at `https://jinn-gemini-production.up.railway.app/` (or local explorer) to see the visualization.
+
+### Implementation Files
+
+- `worker/situation_encoder.ts` – Builds SITUATION artifact structure from job telemetry
+- `worker/situation_artifact.ts` – Generates embeddings and uploads to IPFS
+- `ponder/src/index.ts` – Indexes SITUATION artifacts into `node_embeddings`
+- `gemini-agent/mcp/tools/search_similar_situations.ts` – Vector search tool
+- `gemini-agent/mcp/tools/inspect_situation.ts` – Memory inspection tool
+- `gemini-agent/mcp/tools/embed_text.ts` – Text embedding tool
+- `scripts/memory/inspect-situation.ts` – CLI inspection script
+- `frontend/explorer/src/components/memory-visualization.tsx` – UI component
+- `packages/jinn-types/src/situation.ts` – TypeScript types for SITUATION artifacts
+
+---
+
+## Agent Memory Management System (JINN-231)
+
+The agent features a tag-based memory system for creating and reusing insights from past jobs. This system works alongside the semantic graph search to provide multiple pathways for learning retrieval.
+
+### Core Learning Loop: Reflect → Create → Find → Use
+
+1.  **Reflection (After Job)**: After a job completes successfully, a separate "reflection agent" reviews the job's output and telemetry.
+2.  **Creation**: If the reflection agent identifies valuable insights, it calls the `create_artifact` tool with `type: "MEMORY"` and relevant `tags` to create a memory artifact.
+3.  **Discovery (Before Job)**: Before a new job starts, the worker extracts keywords from the `jobName`.
+4.  **Injection**: The worker uses these keywords to search Ponder for `MEMORY` artifacts with matching tags. The content of the most relevant memories is fetched from IPFS and injected into the agent's prompt.
+
+### Validation Status: ✅ VALIDATED
+
+The core loop for memory creation and reuse has been validated end-to-end.
+
+-   **Memory Creation**: Confirmed that the reflection step creates `MEMORY` artifacts with correct `type` and `tags`, which are then successfully indexed by Ponder.
+-   **Memory Reuse**: Confirmed that subsequent jobs with similar `jobName`s discover the relevant memory via tag-based search and inject it into the agent's prompt.
+-   **Intelligent Use**: Confirmed that the agent can make an intelligent decision *not* to use an injected memory if it's semantically related but not directly applicable to the current task, opting for other tools like web search instead.
+
+### How to Test the Memory System
+
+You can validate the entire loop using targeted worker runs with `MECH_TARGET_REQUEST_ID`.
+
+**Step 1: Create a Memory**
+
+1.  **Dispatch a job** designed to generate a memory. Use the `scripts/dispatch-memory-test.ts` script as a template.
+    ```bash
+    # Example job dispatch
+    yarn tsx scripts/dispatch-memory-test.ts
+    # Note the Request ID from the output
+    ```
+2.  **Run the worker** on that specific request.
+    ```bash
+    MECH_TARGET_REQUEST_ID=<request-id-from-step-1> yarn mech --single
+    ```
+3.  **Verify artifact creation** by querying Ponder. Look for an artifact with `type: "MEMORY"` and a `tags` array.
+    ```bash
+    # Query Ponder's GraphQL endpoint
+    curl -s http://localhost:42069/graphql -H "Content-Type: application/json" -d '{"query": "{ artifacts(where: {requestId: \\"<request-id-from-step-1>\\"}) { items { id name topic type tags cid } } }"}' | jq
+    ```
+
+**Step 2: Reuse the Memory**
+
+1.  **Dispatch a similar job**. Modify `scripts/dispatch-memory-test.ts` to have a `jobName` with overlapping keywords.
+    ```bash
+    # Example: change jobName from "OLAS Token Contract..." to "OLAS Staking Contract..."
+    yarn tsx scripts/dispatch-memory-test.ts
+    # Note the new Request ID
+    ```
+2.  **Run the worker** on the new request.
+    ```bash
+    MECH_TARGET_REQUEST_ID=<new-request-id> yarn mech --single
+    ```
+3.  **Check worker logs for memory injection**.
+    ```
+    # Look for these lines in the worker output
+    [INFO] Searching for relevant memories
+      extractedKeywords: ["olas", "staking", "contract"]
+    [INFO] Found relevant memories
+      memoriesFound: 1
+    ```
+4.  **(Optional) Check telemetry** to see if the agent used the injected memory or defaulted to other tools.
+
+### Key Implementation Details & Fixes
+
+-   **Reflection Artifact Extraction**: The worker now correctly extracts artifacts created by the reflection agent and merges them into the final delivery payload, ensuring they are indexed by Ponder (`worker/mech_worker.ts`).
+-   **Explicit Reflection Prompt**: The prompt given to the reflection agent is highly explicit, with mandatory `type` and `tags` fields and JSON examples to ensure reliable `MEMORY` artifact creation.
+-   **Robust MCP Imports**: The dynamic import logic in `dispatch_new_job.ts` and `dispatch_existing_job.ts` was fixed to robustly detect the project root, allowing the tools to be called from both compiled code (`dist/`) and `tsx` scripts.
 
 ## IPFS Delivery System Architecture
 
@@ -224,6 +473,33 @@ curl "https://gateway.autonolas.tech/ipfs/f01551220ea6ef97ffc7320c5e40e43b55f927
 - Ponder successfully indexes artifacts from this architecture
 - All "Indexed OlasMech Deliver" logs show successful processing
 
+**Frontend API Considerations:**
+When fetching delivery data in the frontend API (`frontend/explorer/src/app/api/memory-inspection/route.ts`), the same CID reconstruction logic must be applied:
+
+```typescript
+// Frontend API must reconstruct directory CID from f01551220 hash
+async function fetchIpfsContent(cid: string, requestIdForDelivery?: string) {
+  let url = `${gatewayUrl}${cid}`
+  
+  // Special handling for delivery IPFS hashes
+  if (requestIdForDelivery && cid.startsWith('f01551220')) {
+    // Convert hex digest to CIDv1 base32 directory CID
+    const dirCid = reconstructDirectoryCid(cid)
+    url = `${gatewayUrl}${dirCid}/${requestIdForDelivery}`
+  }
+  
+  const response = await fetch(url)
+  return response.json()
+}
+```
+
+Without this reconstruction, the frontend will fetch binary directory structure bytes instead of the JSON file, causing recognition/reflection data to fail to load.
+
+**Implementation Files:**
+- `scripts/inspect-job-run.ts` - Reference implementation of CID reconstruction
+- `frontend/explorer/src/app/api/memory-inspection/route.ts` - Frontend API with reconstruction logic
+- Both use identical base32 encoding algorithm for directory CID reconstruction
+
 ---
 
 ## MCP tool references
@@ -240,9 +516,15 @@ curl "https://gateway.autonolas.tech/ipfs/f01551220ea6ef97ffc7320c5e40e43b55f927
   - Artifact IDs: `<requestId>:<index>`
 - Returns: Single-page response with `data` in requested order and `meta` (cursor, token estimates).
 
-### post_marketplace_job
-- Purpose: Post a job on Base by uploading JSON to IPFS and submitting a marketplace request.
-- Params: `{ prompt: string, jobName: string, enabledTools?: string[] }`
+### dispatch_new_job
+- Purpose: Create a new job definition and post a marketplace request on Base.
+- Params: `{ objective: string, context: string, acceptanceCriteria: string, jobName: string, model?: string, enabledTools?: string[], deliverables?: string, constraints?: string }`
+  - `model`: Gemini model to use (e.g., `'gemini-2.5-flash'`, `'gemini-2.5-pro'`). Defaults to `'gemini-2.5-flash'` if not specified.
+- Returns: Mech client result plus `ipfs_gateway_url` when indexed.
+
+### dispatch_existing_job
+- Purpose: Dispatch a new request for an existing job definition.
+- Params: `{ jobId?: string, jobName?: string, enabledTools?: string[], prompt?: string, message?: string }`
 - Returns: Mech client result plus `ipfs_gateway_url` when indexed.
 
 ### create_artifact
@@ -264,7 +546,7 @@ curl "https://gateway.autonolas.tech/ipfs/f01551220ea6ef97ffc7320c5e40e43b55f927
   2) In Gemini CLI, call:
      - `list_tools({ include_parameters: true })`
      - `get_details({ ids: ["0x..."], resolve_ipfs: true })`
-     - `post_marketplace_job({ prompt: "...", jobName: "...", enabledTools: ["web_fetch"] })`
+     - `dispatch_new_job({ objective: "...", context: "...", acceptanceCriteria: "...", jobName: "...", enabledTools: ["web_fetch"] })`
      - `create_artifact({ name: "report", topic: "analysis", content: "..." })`
 
 ---
@@ -927,12 +1209,14 @@ The E2E test suite serves as both validation and documentation of the OLAS integ
 
 The entire system operates on a continuous, on-chain, event-driven cycle:
 
-1.  **Job Creation**: An agent calls the `post_marketplace_job` tool, which posts a `Request` event to the Mech Marketplace contract on the Base blockchain. The request's metadata (prompt, tools) is stored on IPFS.
+1.  **Job Creation**: An agent calls the `dispatch_new_job` tool, which posts a `Request` event to the Mech Marketplace contract on the Base blockchain. The request's metadata (prompt, tools) is stored on IPFS.
 2.  **Indexing**: The `Ponder` service indexes the new `Request` event and makes it available via its GraphQL API.
 3.  **Discovery & Claim**: The `mech_worker` polls the Ponder API, discovers the new `Request`, and calls the **Jinn Control API** to atomically claim it. The Control API creates a record in the `onchain_request_claims` table, preventing other workers from processing the same job.
 4.  **Execution**: The worker invokes the `Agent`, passing the on-chain `requestId` and `mechAddress` as environment variables (`JINN_REQUEST_ID`, `JINN_MECH_ADDRESS`). The agent fetches the prompt from IPFS and begins execution using its enabled tools.
-5.  **Reporting**: During execution, the agent's tools (like `create_artifact`) call the **Jinn Control API** to write their outputs (reports, artifacts, messages) to the `onchain_*` tables in Supabase. The Control API ensures all data is correctly linked to the `request_id`.
-8.  **Delivery**: The worker calls `deliverViaSafe` to submit the IPFS hash of the result to the Mech Marketplace contract on-chain. This creates a `Deliver` event.
+5.  **Telemetry Collection**: During execution, when an agent uses a tool (e.g., `create_artifact`), the tool's output (like an IPFS CID) is captured in the agent's structured telemetry log. The tools themselves do not have credentials to write to any database or API.
+6.  **Off-Chain Reporting (by Worker)**: After the agent run is complete, the **worker** parses the execution telemetry. It is the worker's responsibility to call the **Jinn Control API** to persist records like artifacts and job reports. The Control API validates and links this data to the on-chain `request_id`. This ensures that all off-chain writes are securely orchestrated by the trusted worker, not the agent.
+7.  **Delivery**: The worker calls `deliverViaSafe` to submit the IPFS hash of the final result to the Mech Marketplace contract on-chain. This creates a `Deliver` event.
+8.  **Completion Indexing**: Ponder indexes the `Deliver` event, marking the job as complete on-chain and indexing any artifacts included in the delivery payload.
 9.  **Completion**: Ponder indexes the `Deliver` event, marking the job as complete on-chain.
 
 ---
@@ -1060,6 +1344,40 @@ yarn frontend:build
 yarn start:all
 ```
 
+#### Running a Single Job (Testing/Debugging)
+
+For testing or debugging specific requests, the worker supports processing individual jobs by request ID:
+
+```bash
+# Process a specific on-chain request
+MECH_TARGET_REQUEST_ID=0x1234... yarn mech
+
+# Single-shot mode (exit after one job)
+yarn dev:mech --single
+# or
+yarn dev:mech --single-job
+```
+
+**Environment Variables:**
+- `MECH_TARGET_REQUEST_ID`: Specify exact request ID to process (bypasses polling)
+- `--single` or `--single-job`: Exit after processing one job instead of continuous polling
+
+**Use Cases:**
+- Testing memory system with specific jobs
+- Debugging failed requests
+- Replaying completed jobs (useful for development)
+- Integration testing without waiting for new on-chain requests
+
+**Example: Test Memory System Integration**
+```bash
+# 1. Find a completed request ID from Ponder
+# 2. Run worker in single-shot mode with that request
+MECH_TARGET_REQUEST_ID=0xabcd1234... yarn dev:mech --single
+
+# 3. Check logs for memory injection and reflection
+tail -f /tmp/mech.log | grep -E "reflection|memory|MEMORY"
+```
+
 ### 5. Viewing Logs and Monitoring
 - **Worker logs**: Displayed in the console where you run the command
 - **Frontend**: Access at http://localhost:3000 to explore data and job reports
@@ -1104,14 +1422,14 @@ yarn clean          # Clean build artifacts
 
 #### Development Commands
 ```bash
-yarn dev            # Start worker only
+yarn dev:mech       # Start mech worker only
 yarn frontend:dev   # Start frontend only
 yarn dev:all        # Start both worker and frontend (recommended)
 ```
 
 #### Production Commands
 ```bash
-yarn start          # Start worker only
+yarn mech           # Start mech worker only
 yarn frontend:start # Start frontend only
 yarn start:all      # Start both worker and frontend
 ```
@@ -1125,8 +1443,7 @@ For easier development, you can run the MCP server or the worker directly on you
     ```
 -   **Run the Worker**:
     ```bash
-    yarn build
-    node dist/worker.js
+    yarn mech
     ```
 -   **Run the Frontend**:
     ```bash
@@ -1408,3 +1725,44 @@ Proper service configurations are available in `code-resources/olas-operate-app/
 - **Kill Stuck Processes**: `pkill -f "poetry run operate"`
 - **Reset State**: Remove `.operate` directory if authentication fails
 - **Validate RPC**: Ensure Base RPC URL is accessible and supports required methods
+- **Check Balances**: Always use `yarn tsx scripts/check-balances.ts` to verify wallet/Safe ETH balances before transactions
+
+---
+
+## Situation Recognition Learning Loop
+
+The legacy tag-based memory system has been replaced with a situation-centric learning loop that embeds entire job executions, stores them as `SITUATION` artifacts, and performs semantic retrieval before every new run.
+
+### Core Learning Loop: Reflect → Encode → Index → Recognize → Inject
+
+1. **Reflection & Encoding (post-job)**: After a successful execution, the worker assembles a structured `situation.json` containing the job context, execution trace, artifacts, and a templated summary. The summary is embedded via the MCP `embed_text` tool.
+2. **Artifact Creation**: The fully populated situation (including the embedding vector) is uploaded to IPFS as a `SITUATION` artifact and persisted on-chain in the delivery payload.
+3. **Indexing**: `ponder/src/index.ts` watches for `SITUATION` artifacts during delivery processing. When detected, it fetches the artifact, validates the vector payload, and upserts it into the local `node_embeddings` table (pgvector) keyed by `requestId`.
+4. **Recognition (pre-job)**: Before executing a new job, the worker spawns a lightweight recognition agent. It calls `search_similar_situations` to query pgvector for the most relevant past situations and inspects them via `get_details`.
+5. **Prompt Injection**: The recognition agent synthesizes actionable learnings (strategies, pitfalls, tool patterns) into a dedicated Markdown block that is prepended to the main execution prompt, ensuring the agent starts with context-aware guidance.
+
+### Key Components
+
+- **`worker/situation_encoder.ts`**: Builds canonical `situation.json` payloads and generates embedding summaries.
+- **`worker/mech_worker.ts`**: Orchestrates recognition, prompt injection, reflection, and `SITUATION` artifact creation.
+- **`gemini-agent/mcp/tools/embed_text.ts`**: Standard embedding interface (OpenAI `text-embedding-3-small`, 256-D default).
+- **`gemini-agent/mcp/tools/search_similar_situations.ts`**: Vector search over the `node_embeddings` table.
+- **`ponder/src/index.ts`**: Detects `SITUATION` artifacts on delivery, fetches artifact content from IPFS, and upserts embeddings into Postgres.
+- **`migrations/create_node_embeddings.sql`**: Enables pgvector and defines the `node_embeddings` table used for semantic search.
+
+### Testing the Situation Loop
+
+1. **Generate a situation**  
+   Run a job to completion (`yarn mech --single`). After delivery, confirm that a `SITUATION` artifact exists in the delivery payload and that Ponder logs show `Indexed situation embedding`.
+2. **Verify indexing**  
+   Connect to the local Postgres instance and query `SELECT node_id, summary FROM node_embeddings LIMIT 5;` to ensure the new situation was ingested.
+3. **Trigger recognition**  
+   Dispatch a similar job. Worker logs should show recognition activity:  
+   `Starting recognition phase` → `Recognition phase produced learnings`. The injected Markdown block appears at the top of the execution prompt.
+
+### Troubleshooting
+
+**Gemini CLI EPERM Error:**
+- **Issue**: `Error: EPERM: operation not permitted` when writing chat history
+- **Fix**: Run `./scripts/clear-gemini-chat-cache.sh` or `rm -rf ~/.gemini/tmp/*/chats/*`
+- **Cause**: macOS file protection on existing chat files

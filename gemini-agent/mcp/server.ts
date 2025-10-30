@@ -55,6 +55,8 @@ async function main() {
       { name: 'dispatch_existing_job', schema: tools.dispatchExistingJobSchema, handler: tools.dispatchExistingJob },
       { name: 'search_jobs', schema: tools.searchJobsSchema, handler: tools.searchJobs },
       { name: 'search_artifacts', schema: tools.searchArtifactsSchema, handler: tools.searchArtifacts },
+      { name: 'search_similar_situations', schema: tools.searchSimilarSituationsSchema, handler: tools.searchSimilarSituations },
+      { name: 'inspect_situation', schema: tools.inspectSituationSchema, handler: tools.inspectSituation },
       { name: 'finalize_job', schema: tools.finalizeJobSchema, handler: tools.finalizeJob },
       { name: 'get_file_contents', schema: tools.getFileContentsSchema, handler: tools.getFileContents },
       { name: 'search_code', schema: tools.searchCodeSchema, handler: tools.searchCode },

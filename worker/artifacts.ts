@@ -3,6 +3,8 @@ export type ExtractedArtifact = {
   name?: string;
   topic: string;
   contentPreview?: string;
+  type?: string;
+  tags?: string[];
 };
 
 function tryParseJson(text: string): any | null {
@@ -62,6 +64,8 @@ export function extractArtifactsFromOutput(output: string): ExtractedArtifact[] 
       };
       if (typeof maybe.name === 'string') item.name = maybe.name;
       if (typeof maybe.contentPreview === 'string') item.contentPreview = maybe.contentPreview;
+      if (typeof maybe.type === 'string') item.type = maybe.type;
+      if (Array.isArray(maybe.tags)) item.tags = maybe.tags.map((t: any) => String(t));
       artifacts.push(item);
     }
   }
@@ -84,6 +88,8 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
           };
           if (result.name) artifact.name = String(result.name);
           if (result.contentPreview) artifact.contentPreview = String(result.contentPreview);
+          if (result.type) artifact.type = String(result.type);
+          if (Array.isArray(result.tags)) artifact.tags = result.tags.map((t: any) => String(t));
           
           artifacts.push(artifact);
         }
@@ -160,6 +166,8 @@ function extractArtifactsFromNestedStructure(text: string): ExtractedArtifact[] 
                   };
                   if (typeof maybe.name === 'string') item.name = maybe.name;
                   if (typeof maybe.contentPreview === 'string') item.contentPreview = maybe.contentPreview;
+                  if (typeof maybe.type === 'string') item.type = maybe.type;
+                  if (Array.isArray(maybe.tags)) item.tags = maybe.tags.map((t: any) => String(t));
                   artifacts.push(item);
                 }
               } catch (outputParseError) {

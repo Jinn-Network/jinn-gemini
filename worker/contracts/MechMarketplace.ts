@@ -8,7 +8,7 @@
  */
 
 import { Contract, Interface, JsonRpcProvider, Wallet, parseUnits, zeroPadValue, toBeHex } from 'ethers';
-import { logger } from '../logger.js';
+import { logger } from '../../logging/index.js';
 
 const mechLogger = logger.child({ component: 'MECH-MARKETPLACE' });
 

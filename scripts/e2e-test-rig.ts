@@ -36,8 +36,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Test configuration
-const COMPILED_WORKER_PATH = path.resolve(__dirname, '../dist/worker.js');
-const SOURCE_WORKER_PATH = path.resolve(__dirname, '../worker/worker.ts');
+const WORKER_PATH = path.resolve(__dirname, '../worker/mech_worker.ts');
 const TEMP_DIR_BASE = '/tmp/jinn-e2e-tests';
 const TEST_TIMEOUT_MS = 120000; // 2 minutes per test
 
@@ -169,20 +168,9 @@ async function runWorker(
   const startTime = Date.now();
   
   try {
-    // Try compiled worker first, fall back to tsx execution
-    let workerPath = COMPILED_WORKER_PATH;
-    let command = 'node';
-    let execArgs = [workerPath, ...args];
-    
-    try {
-      await fs.access(COMPILED_WORKER_PATH);
-      console.log(`[${ctx.testId}] Using compiled worker: ${COMPILED_WORKER_PATH}`);
-    } catch {
-      workerPath = SOURCE_WORKER_PATH;
-      command = 'yarn';
-      execArgs = ['tsx', workerPath, ...args];
-      console.log(`[${ctx.testId}] Compiled worker not found, using tsx: ${SOURCE_WORKER_PATH}`);
-    }
+    // Always use tsx to run the worker (avoids build/module issues)
+    const command = 'yarn';
+    const execArgs = ['tsx', WORKER_PATH, ...args];
     
     console.log(`[${ctx.testId}] Running ${command} with args: ${execArgs.join(' ')}`);
     console.log(`[${ctx.testId}] Environment: ${JSON.stringify(ctx.env, null, 2)}`);
@@ -274,7 +262,14 @@ const testCases: TestCase[] = [
       
       const ownerAddress = await getOwnerAddressFromKey(ctx.env.WORKER_PRIVATE_KEY);
       // Fund the EOA with 0.1 ETH
-      await ctx.tenderlyClient.fundAddress(ownerAddress, ethToWei('0.1'), ctx.vnetResult.adminRpcUrl);
+      try {
+        await ctx.tenderlyClient.fundAddress(ownerAddress, ethToWei('0.1'), ctx.vnetResult.adminRpcUrl);
+      } catch (error: any) {
+        if (error.message.includes('quota limit')) {
+          throw new Error('SKIP: Tenderly quota limit reached');
+        }
+        throw error;
+      }
     },
     execute: async (ctx) => {
       return await runWorker(ctx, []);
@@ -691,30 +686,19 @@ async function runTestCase(
 async function runAllTests(): Promise<void> {
   console.log('🚀 Starting Jinn E2E Test Suite');
   console.log(`📁 Test workspace: ${TEMP_DIR_BASE}`);
-  console.log(`🔧 Compiled worker: ${COMPILED_WORKER_PATH}`);
-  console.log(`🔧 Source worker: ${SOURCE_WORKER_PATH}`);
+  console.log(`🔧 Worker path: ${WORKER_PATH}`);
   
   // Ensure temp directory exists and is clean
   await fs.rm(TEMP_DIR_BASE, { recursive: true, force: true });
   await fs.mkdir(TEMP_DIR_BASE, { recursive: true });
   
-  // Check worker availability (compiled or source)
-  let workerAvailable = false;
+  // Check worker availability
   try {
-    await fs.access(COMPILED_WORKER_PATH);
-    console.log('✅ Compiled worker found');
-    workerAvailable = true;
+    await fs.access(WORKER_PATH);
+    console.log('✅ Worker found - will use tsx');
   } catch {
-    try {
-      await fs.access(SOURCE_WORKER_PATH);
-      console.log('✅ Source worker found - will use tsx');
-      workerAvailable = true;
-    } catch {
-      console.error(`❌ Neither compiled nor source worker found`);
-      console.error(`   Compiled: ${COMPILED_WORKER_PATH}`);
-      console.error(`   Source: ${SOURCE_WORKER_PATH}`);
-      process.exit(1);
-    }
+    console.error(`❌ Worker not found: ${WORKER_PATH}`);
+    process.exit(1);
   }
   
   // Initialize Tenderly client

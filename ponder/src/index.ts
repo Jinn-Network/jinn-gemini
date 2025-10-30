@@ -2,6 +2,7 @@ import { ponder } from "@/generated";
 import { resolveRequestIpfsContent } from "../../gemini-agent/mcp/tools/shared/ipfs";
 import axios from "axios";
 import { logger, serializeError } from "../../logging/index.js";
+import { Pool } from "pg";
 
 // Minimal local types to avoid implicit any in handler params
 type Repository = {
@@ -30,6 +31,36 @@ const toBigIntCoercible = (value: unknown): string | number | bigint => {
   }
   return 0;
 };
+
+const NODE_EMBEDDINGS_DB_URL =
+  process.env.NODE_EMBEDDINGS_DB_URL ||
+  process.env.SITUATION_DB_URL ||
+  process.env.DATABASE_URL ||
+  process.env.SUPABASE_DB_URL ||
+  process.env.SUPABASE_POSTGRES_URL ||
+  null;
+
+let vectorDbPool: Pool | null = null;
+const IPFS_GATEWAY_BASE = (process.env.IPFS_GATEWAY_URL || "https://gateway.autonolas.tech/ipfs/").replace(/\/+$/, "/");
+
+function getVectorDbPool(): Pool | null {
+  if (!NODE_EMBEDDINGS_DB_URL) return null;
+  if (!vectorDbPool) {
+    vectorDbPool = new Pool({ connectionString: NODE_EMBEDDINGS_DB_URL });
+  }
+  return vectorDbPool;
+}
+
+function truncate(text: unknown, max = 800): string | null {
+  if (text === undefined || text === null) return null;
+  const str = String(text).trim();
+  if (!str) return null;
+  return str.length > max ? str.slice(0, max) + "…" : str;
+}
+
+function formatVectorLiteral(vector: number[]): string {
+  return `[${vector.join(",")}]`;
+}
 
 ponder.on(
   "MechMarketplace:MarketplaceRequest",
@@ -369,10 +400,12 @@ ponder.on(
               const cid = String(a.cid || '');
               const topic = String(a.topic || '');
               const contentPreview = typeof a.contentPreview === 'string' ? a.contentPreview : undefined;
+              const type = typeof a.type === 'string' ? a.type : undefined;
+              const tags = Array.isArray(a.tags) ? a.tags.map((t: any) => String(t)) : undefined;
               if (!cid || !topic) continue;
               // Use the request's sourceRequestId if it exists (for child jobs), otherwise use requestId itself (for root jobs)
               const artifactSourceRequestId = requestSourceRequestId || requestId;
-              const artifactPayload: any = { requestId, name, cid, topic, contentPreview, sourceRequestId: artifactSourceRequestId, blockTimestamp: event.block.timestamp };
+              const artifactPayload: any = { requestId, name, cid, topic, contentPreview, type, tags, sourceRequestId: artifactSourceRequestId, blockTimestamp: event.block.timestamp };
               // Prefer delivery sourceJobDefinitionId; fallback to request.sourceJobDefinitionId if not present
               if (deliveryJobDefinitionId) {
                 artifactPayload.sourceJobDefinitionId = deliveryJobDefinitionId;
@@ -386,6 +419,83 @@ ponder.on(
                 } catch {}
               }
               await artifactsRepo.upsert({ id, create: artifactPayload, update: artifactPayload });
+
+              if (type === 'SITUATION') {
+                const pool = getVectorDbPool();
+                if (!pool) {
+                  logger.warn('node_embeddings database not configured; skipping situation indexing');
+                  continue;
+                }
+
+                try {
+                  const situationUrl = `${IPFS_GATEWAY_BASE}${cid}`;
+                  const situationRes = await axios.get(situationUrl, { timeout: 8000 });
+                  let situationData = situationRes?.data || {};
+                  
+                  // IPFS artifact may be wrapped with metadata (name, topic, content fields)
+                  // If so, parse the content field which contains the actual situation JSON
+                  if (situationData.content && typeof situationData.content === 'string') {
+                    try {
+                      situationData = JSON.parse(situationData.content);
+                    } catch (parseError) {
+                      logger.warn({ requestId, cid }, 'Failed to parse artifact content field');
+                    }
+                  }
+                  
+                  const situation = situationData;
+                  const embedding = situation?.embedding;
+                  const vector: number[] | undefined = Array.isArray(embedding?.vector) ? embedding.vector : undefined;
+                  const model: string | undefined = typeof embedding?.model === 'string' ? embedding.model : undefined;
+                  const dim: number | undefined = typeof embedding?.dim === 'number' ? embedding.dim : Array.isArray(embedding?.vector) ? embedding.vector.length : undefined;
+                  const nodeId = typeof situation?.job?.requestId === 'string' ? situation.job.requestId : requestId;
+
+                  if (!vector || vector.length === 0 || !model || !dim) {
+                    logger.warn({ requestId, cid }, 'Situation artifact missing embedding payload');
+                    continue;
+                  }
+
+                  const summary =
+                    truncate(situation?.meta?.summaryText) ||
+                    truncate(situation?.execution?.finalOutputSummary) ||
+                    truncate(situation?.job?.objective) ||
+                    truncate(situation?.job?.jobName);
+
+                  const metaPayload = {
+                    version: situation?.version,
+                    artifactCid: cid,
+                    artifactId: id,
+                    job: situation?.job,
+                    context: situation?.context,
+                    artifacts: situation?.artifacts,
+                    recognition: situation?.meta?.recognition,
+                  };
+
+                  const sql = `
+                    INSERT INTO node_embeddings (node_id, model, dim, vec, summary, meta)
+                    VALUES ($1, $2, $3, $4::vector, $5, $6)
+                    ON CONFLICT (node_id)
+                    DO UPDATE SET
+                      model = EXCLUDED.model,
+                      dim = EXCLUDED.dim,
+                      vec = EXCLUDED.vec,
+                      summary = EXCLUDED.summary,
+                      meta = EXCLUDED.meta,
+                      updated_at = NOW();
+                  `;
+
+                  await pool.query(sql, [
+                    nodeId,
+                    model,
+                    dim,
+                    formatVectorLiteral(vector),
+                    summary,
+                    metaPayload,
+                  ]);
+                  logger.info({ requestId: nodeId, cid }, 'Indexed situation embedding');
+                } catch (indexError: any) {
+                  logger.error({ requestId, cid, error: serializeError(indexError) }, 'Failed to index situation embedding');
+                }
+              }
             }
           }
         }

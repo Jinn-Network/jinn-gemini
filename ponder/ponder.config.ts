@@ -56,14 +56,25 @@ console.log('[Ponder Config] Start block:', startBlock);
 // Read RPC_URL here (after env/index.js has run) to respect review mode overrides
 const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
 
+// Tenderly virtual networks don't mine new blocks, so finality checks fail
+// when Ponder tries to look ahead. Set finalityBlockCount to 0 for virtual networks.
+const isTenderlyVirtualNetwork = rpcUrl.includes('virtual') && rpcUrl.includes('tenderly.co');
+const finalityBlockCount = isTenderlyVirtualNetwork ? 0 : 30;
+
 export default createConfig({
+  // Production mode: Use PostgreSQL for all storage (not SQLite)
+  // This ensures artifacts table persists across restarts
+  database: process.env.PONDER_DATABASE_URL
+    ? { kind: 'postgres', connectionString: process.env.PONDER_DATABASE_URL }
+    : undefined,
+
   networks: {
     base: {
       chainId: 8453,
       transport: http(rpcUrl),
       pollingInterval: 4_000,
       maxRequestsPerSecond: 5,
-      finalityBlockCount: 30,
+      finalityBlockCount,
     },
   },
   contracts: {

@@ -2,6 +2,6 @@
 alwaysApply: true
 ---
 
-- never create .md docs for summarising progress of learnings
+- NEVER create .md docs for summarising progress of learnings
     - incorporate learnings into AGENT_README.md
     - write progress summaries to corresponding Linear issues

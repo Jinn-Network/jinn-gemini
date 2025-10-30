@@ -4,7 +4,7 @@
  * JINN-197: E2E Worker Test That Actually Runs The Worker
  * 
  * This test validates the production worker entrypoint by:
- * 1. Spawning the actual worker process (yarn start)
+ * 1. Spawning the actual worker process (yarn mech)
  * 2. Monitoring logs for OLAS staking execution in the main loop
  * 3. Verifying service deployment/staking via middleware status
  * 4. Confirming worker continues processing after OLAS operations
@@ -258,9 +258,9 @@ async function runWorkerE2ETest(ctx: WorkerE2ETestContext): Promise<WorkerE2ETes
       "Start worker process",
       ctx.testId,
       async () => {
-        console.log(`[${ctx.testId}] Spawning worker with yarn start...`);
+        console.log(`[${ctx.testId}] Spawning worker with yarn mech...`);
         
-        workerProcess = execa('yarn', ['start'], {
+        workerProcess = execa('yarn', ['mech'], {
           cwd: process.cwd(),
           env: {
             ...process.env,

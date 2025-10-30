@@ -1,9 +1,11 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { extractRepoName, getJinnWorkspaceDir } from '../../shared/repo_utils.js';
 
 export interface TestGitRepo {
   repoPath: string;
+  workspacePath: string;
   cleanup: () => void;
 }
 
@@ -49,10 +51,13 @@ export function setupTestGitRepo(): TestGitRepo {
   execSync('git config user.email "test@jinn.local"', { cwd: repoPath, stdio: 'ignore' });
   execSync('git config user.name "Jinn Test"', { cwd: repoPath, stdio: 'ignore' });
 
+  const workspacePath = ensureWorkspaceWorktree(repoPath, githubRemote);
+
   console.log('[test-repo] ✓ Test git repository ready');
 
   return {
     repoPath,
+    workspacePath,
     cleanup: () => {
       // Clean up test branches (but keep main)
       try {
@@ -76,6 +81,8 @@ export function setupTestGitRepo(): TestGitRepo {
       } catch (e: any) {
         console.warn('[test-repo] Cleanup warning:', e.message);
       }
+
+      removeWorkspaceWorktree(repoPath, workspacePath);
     }
   };
 }
@@ -86,6 +93,7 @@ export function setupTestGitRepo(): TestGitRepo {
 export function getTestGitRepo(): TestGitRepo {
   const fixturesDir = path.join(process.cwd(), 'tests', 'fixtures');
   const repoPath = path.join(fixturesDir, 'test-repo');
+  const remoteHint = process.env.TEST_GITHUB_REPO;
 
   // If repo exists and is valid, return it
   if (fs.existsSync(repoPath) && fs.existsSync(path.join(repoPath, '.git'))) {
@@ -94,8 +102,11 @@ export function getTestGitRepo(): TestGitRepo {
       execSync('git status', { cwd: repoPath, stdio: 'ignore' });
       console.log('[test-repo] Using existing test repository');
 
+      const workspacePath = ensureWorkspaceWorktree(repoPath, remoteHint);
+
       return {
         repoPath,
+        workspacePath,
         cleanup: () => {
           // Same cleanup logic
           try {
@@ -116,6 +127,8 @@ export function getTestGitRepo(): TestGitRepo {
           } catch (e: any) {
             console.warn('[test-repo] Cleanup warning:', e.message);
           }
+
+          removeWorkspaceWorktree(repoPath, workspacePath);
         }
       };
     } catch {
@@ -126,4 +139,80 @@ export function getTestGitRepo(): TestGitRepo {
 
   // Create fresh repo
   return setupTestGitRepo();
+}
+
+function ensureWorkspaceWorktree(repoPath: string, remoteHint?: string | null): string {
+  const repoName = deriveRepoName(repoPath, remoteHint);
+  const workspaceDir = getJinnWorkspaceDir();
+  const workspacePath = path.join(workspaceDir, repoName);
+
+  try {
+    const list = execSync('git worktree list --porcelain', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    });
+    const hasWorktree = list
+      .split('\n')
+      .some(line => line.startsWith('worktree ') && line.slice('worktree '.length).trim() === workspacePath);
+
+    if (!hasWorktree) {
+      if (fs.existsSync(workspacePath)) {
+        fs.rmSync(workspacePath, { recursive: true, force: true });
+      }
+      execSync(`git worktree add --force --detach ${workspacePath}`, {
+        cwd: repoPath,
+        stdio: 'ignore'
+      });
+    }
+  } catch (error) {
+    console.warn('[test-repo] Failed to ensure workspace worktree:', error instanceof Error ? error.message : error);
+  }
+
+  return workspacePath;
+}
+
+function removeWorkspaceWorktree(repoPath: string, workspacePath: string): void {
+  try {
+    const list = execSync('git worktree list --porcelain', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    });
+    const hasWorktree = list
+      .split('\n')
+      .some(line => line.startsWith('worktree ') && line.slice('worktree '.length).trim() === workspacePath);
+
+    if (hasWorktree) {
+      execSync(`git worktree remove --force ${workspacePath}`, {
+        cwd: repoPath,
+        stdio: 'ignore'
+      });
+    }
+  } catch (error) {
+    console.warn('[test-repo] Failed to remove workspace worktree:', error instanceof Error ? error.message : error);
+  }
+
+  try {
+    if (fs.existsSync(workspacePath)) {
+      fs.rmSync(workspacePath, { recursive: true, force: true });
+    }
+  } catch (error) {
+    console.warn('[test-repo] Failed to delete workspace mirror path:', error instanceof Error ? error.message : error);
+  }
+}
+
+function deriveRepoName(repoPath: string, remoteHint?: string | null): string {
+  const remoteUrl = remoteHint ?? detectRemoteUrl(repoPath);
+  return extractRepoName(remoteUrl || '') ?? path.basename(repoPath);
+}
+
+function detectRemoteUrl(repoPath: string): string | null {
+  try {
+    const remote = execSync('git remote get-url origin', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim();
+    return remote || null;
+  } catch {
+    return null;
+  }
 }

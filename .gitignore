@@ -209,3 +209,4 @@ env.tenderly
 
 # OLAS middleware submodule (tracked separately)
 olas-operate-middleware
+.cursor/screenshots/

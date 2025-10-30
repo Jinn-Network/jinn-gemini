@@ -37,7 +37,7 @@ export const walletLogger = withHelpers(baseWalletLogger, {
 });
 
 const baseWorkerLogger = createChildLogger('WORKER');
-export const workerLogger = withHelpers(baseWorkerLogger, {
+export const workerLogger: pino.Logger & { success: (message: string) => void } = withHelpers(baseWorkerLogger, {
   success(message: string) {
     baseWorkerLogger.info(message);
   },

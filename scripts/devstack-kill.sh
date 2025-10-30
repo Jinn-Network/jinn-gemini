@@ -35,8 +35,6 @@ kill_if_running "tsx control-api/server.ts"
 kill_if_running "control-api/server.ts"
 kill_if_running "tsx worker/mech_worker.ts"
 kill_if_running "worker/mech_worker.ts"
-kill_if_running "tsx worker/worker.ts"
-kill_if_running "worker/worker.ts"
 kill_if_running "gemini-agent/mcp/server.ts"
 
 # Also clean common dev ports if set/known

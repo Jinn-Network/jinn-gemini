@@ -7,7 +7,108 @@ import { IdLink } from '@/components/id-link'
 import { useEffect, useState } from 'react'
 import { getJobName, fetchIpfsContent } from '@/lib/subgraph'
 import ReactMarkdown from 'react-markdown'
-import Link from 'next/link'
+import { JobDetailLayout } from './job-phases/job-detail-layout'
+import { JobDefinitionDetailLayout } from './job-definition-detail-layout'
+
+interface Request {
+  id: string
+  mech: string
+  sender: string
+  jobDefinitionId?: string
+  sourceRequestId?: string
+  sourceJobDefinitionId?: string
+  requestData?: string
+  ipfsHash?: string
+  deliveryIpfsHash?: string
+  transactionHash?: string
+  blockNumber: string
+  blockTimestamp: string
+  delivered: boolean
+  jobName?: string
+  enabledTools: string[]
+  additionalContext?: Record<string, unknown>
+}
+
+interface JobDefinition {
+  id: string
+  name: string
+  enabledTools?: string[]
+  promptContent?: string
+  sourceJobDefinitionId?: string
+  sourceRequestId?: string
+}
+
+// Artifact detail layout component
+function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fields: [string, unknown][] }) {
+  const [artifactContent, setArtifactContent] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Fetch IPFS content if CID is available
+    // For artifacts, DON'T pass requestId - the CID is a direct reference to the content
+    if ('cid' in record && record.cid) {
+      fetchIpfsContent(record.cid as string).then(result => {
+        if (result) {
+          setArtifactContent(result.content)
+        }
+        setLoading(false)
+      })
+    } else {
+      setLoading(false)
+    }
+  }, [record])
+
+  // Fields to exclude from metadata (shown in main content, redundant, or not needed)
+  const metadataExcludeFields = ['content', 'contentPreview', 'name', 'sourceRequestId']
+  const metadataFields = fields.filter(([key]) => !metadataExcludeFields.includes(key))
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Main Content Area - 8/12 columns */}
+      <div className="lg:col-span-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Content</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-gray-500">Loading content...</div>
+            ) : artifactContent ? (
+              <pre className="whitespace-pre-wrap break-words text-sm font-mono bg-gray-50 p-4 rounded overflow-auto max-h-[800px]">
+                {artifactContent}
+              </pre>
+            ) : (
+              <div className="text-gray-500">No content available</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Metadata Sidebar - 4/12 columns */}
+      <div className="lg:col-span-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Metadata</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {metadataFields.map(([key, value]) => (
+                <div key={key} className="border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
+                  <div className="text-sm font-medium text-gray-700 mb-1">
+                    {getFieldLabel(key, 'artifacts')}
+                  </div>
+                  <div className="text-sm break-words overflow-hidden">
+                    <ValueDisplay value={value} fieldName={key} record={record} collectionName="artifacts" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
 
 // Custom field ordering configuration - fields appear in this order for each collection
 const FIELD_ORDER: Record<string, string[]> = {
@@ -381,7 +482,7 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
       return (
         <div className="space-y-1">
           <div className="text-sm">{formatBlockTimestamp(value)}</div>
-          <div className="text-xs text-gray-500 font-mono">Raw: {value}</div>
+          <div className="text-xs text-gray-500 font-mono">Block: {value}</div>
         </div>
       )
     }
@@ -427,18 +528,18 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
       return <RequestContentDisplay cid={value} />
     }
 
-    // For artifact CIDs, keep the old simple display
+    // For artifact CIDs, show truncated with link
     if (fieldName === 'cid') {
       return (
-        <div className="space-y-2">
-          <div className="font-mono text-sm break-all text-gray-700">{value}</div>
+        <div className="space-y-1">
+          <div className="font-mono text-sm text-gray-700" title={value}>{value.slice(0, 20)}...{value.slice(-8)}</div>
           <a
             href={`https://gateway.autonolas.tech/ipfs/${value}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:text-blue-800 underline text-xs inline-block"
           >
-            View on IPFS Gateway
+            View on Gateway
           </a>
         </div>
       )
@@ -634,42 +735,46 @@ export function SubgraphDetailView({ record, collectionName }: SubgraphDetailVie
                         collectionName === 'artifacts' ? 'Artifact' :
                         collectionName.slice(0, -1))
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{displayTitle}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* View Graph Button */}
-        {(collectionName === 'jobDefinitions' || collectionName === 'requests') && (
-          <div className="mb-6">
-            <Link
-              href={`/graph/${collectionName === 'jobDefinitions' ? 'jobDefinition' : 'request'}/${record.id}`}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
-              View Graph
-            </Link>
-          </div>
-        )}
+  // Use the new 4-phase layout for requests
+  if (collectionName === 'requests') {
+    return <JobDetailLayout record={record as unknown as Request} />
+  }
 
-        <div className="space-y-6">
-          {fields.map(([key, value]) => (
-            <div key={key} className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0">
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                <div className="lg:col-span-1">
-                  <span className="text-sm font-medium text-gray-900">{getFieldLabel(key, collectionName)}</span>
-                </div>
-                <div className="lg:col-span-3">
-                  <ValueDisplay value={value} fieldName={key} record={record} collectionName={collectionName} />
+  // Use Pretty/Raw tabs layout for job definitions
+  if (collectionName === 'jobDefinitions') {
+    return <JobDefinitionDetailLayout record={record as unknown as JobDefinition} />
+  }
+
+  // Special layout for artifacts: 8/12 content + 4/12 metadata
+  if (collectionName === 'artifacts') {
+    return <ArtifactDetailLayout record={record} fields={fields} />
+  }
+
+  // For other collections (deliveries, messages), use the original card-based layout
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>{displayTitle}</CardTitle>
+        </CardHeader>
+        <CardContent>
+
+          <div className="space-y-6">
+            {fields.map(([key, value]) => (
+              <div key={key} className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                  <div className="lg:col-span-1">
+                    <span className="text-sm font-medium text-gray-900">{getFieldLabel(key, collectionName)}</span>
+                  </div>
+                  <div className="lg:col-span-3">
+                    <ValueDisplay value={value} fieldName={key} record={record} collectionName={collectionName} />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </>
   )
 }

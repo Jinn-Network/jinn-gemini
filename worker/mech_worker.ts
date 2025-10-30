@@ -1,6 +1,7 @@
 import '../env/index.js';
 import { Agent } from '../gemini-agent/agent.js';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
+import { pushJsonToIpfs } from '@jinn-network/mech-client-ts/dist/ipfs.js';
 import { Web3 } from 'web3';
 import { graphQLRequest } from '../http/client.js';
 import {
@@ -27,6 +28,18 @@ import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing
 import type { CodeMetadata } from '../gemini-agent/shared/code_metadata.js';
 import { getRepoRoot, extractRepoName, getJinnWorkspaceDir } from '../shared/repo_utils.js';
 import { existsSync } from 'node:fs';
+import type { RecognitionPhaseResult } from './recognition_helpers.js';
+import {
+  buildRecognitionPromptWithArtifacts,
+  extractPromptSections,
+  formatRecognitionMarkdown,
+  normalizeLearnings,
+  parseRecognitionJson,
+  sanitizeMarkdownText,
+} from './recognition_helpers.js';
+import { safeParseToolResponse } from './tool_utils.js';
+import { WorkerTelemetryService } from './worker_telemetry.js';
+import { createSituationArtifactForRequest } from './situation_artifact.js';
 
 type UnclaimedRequest = {
   id: string;           // on-chain requestId (decimal string or 0x)
@@ -112,14 +125,28 @@ function parseGithubRepo(remoteUrl: string | undefined, branchName: string): { o
  * Clones if it doesn't exist, otherwise does nothing
  */
 async function ensureRepoCloned(remoteUrl: string, targetPath: string): Promise<void> {
+  const { execFileSync } = await import('node:child_process');
+  
   if (existsSync(targetPath)) {
     workerLogger.info({ targetPath }, 'Repository already cloned');
+    // Always fetch branches to ensure we have latest remote refs
+    try {
+      execFileSync('git', ['fetch', '--all'], {
+        cwd: targetPath,
+        stdio: 'pipe',
+        encoding: 'utf-8',
+        timeout: 60000,
+        env: process.env as Record<string, string>,
+      });
+      workerLogger.info({ targetPath }, 'Fetched all branches');
+    } catch (error: any) {
+      workerLogger.warn({ targetPath, error: serializeError(error) }, 'Failed to fetch all branches (non-fatal)');
+    }
     return;
   }
 
   workerLogger.info({ remoteUrl, targetPath }, 'Cloning repository');
 
-  const { execFileSync } = await import('node:child_process');
   try {
     execFileSync('git', ['clone', remoteUrl, targetPath], {
       stdio: 'pipe',
@@ -157,11 +184,13 @@ async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<void> {
 
   // Determine repo root using shared logic
   const repoRoot = getRepoRoot(codeMetadata);
+  const baseBranch = codeMetadata.baseBranch || DEFAULT_BASE_BRANCH;
 
   workerLogger.info({ branchName, repoRoot }, 'Checking out job branch');
 
-  // Use simple git checkout - branch should already exist from dispatch
   const { execFileSync } = await import('node:child_process');
+  
+  // First, try to checkout existing local branch
   try {
     execFileSync('git', ['checkout', branchName], {
       cwd: repoRoot,
@@ -170,11 +199,42 @@ async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<void> {
       timeout: 30000,
       env: process.env as Record<string, string>,
     });
-    workerLogger.info({ branchName }, 'Successfully checked out branch');
-  } catch (error: any) {
-    const errorMessage = `Failed to checkout branch ${branchName}: ${error.stderr || error.message}`;
-    workerLogger.error({ branchName, error: serializeError(error) }, errorMessage);
-    throw new Error(errorMessage);
+    workerLogger.info({ branchName }, 'Successfully checked out existing local branch');
+    return;
+  } catch (localCheckoutError: any) {
+    // Branch doesn't exist locally, try to create tracking branch from origin
+    workerLogger.debug({ branchName }, 'Local branch not found, checking for remote branch');
+  }
+
+  // Check if remote branch exists and create local tracking branch
+  try {
+    execFileSync('git', ['checkout', '-b', branchName, `origin/${branchName}`], {
+      cwd: repoRoot,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 30000,
+      env: process.env as Record<string, string>,
+    });
+    workerLogger.info({ branchName }, 'Successfully created local tracking branch from origin');
+    return;
+  } catch (remoteCheckoutError: any) {
+    // Remote branch doesn't exist, create from baseBranch as fallback
+    workerLogger.warn({ branchName, baseBranch }, 'Remote branch not found, creating from baseBranch');
+    try {
+      execFileSync('git', ['checkout', '-b', branchName, baseBranch], {
+        cwd: repoRoot,
+        stdio: 'pipe',
+        encoding: 'utf-8',
+        timeout: 30000,
+        env: process.env as Record<string, string>,
+      });
+      workerLogger.info({ branchName, baseBranch }, 'Successfully created branch from baseBranch');
+      return;
+    } catch (fallbackError: any) {
+      const errorMessage = `Failed to checkout branch ${branchName}: ${fallbackError.stderr || fallbackError.message}`;
+      workerLogger.error({ branchName, baseBranch, error: serializeError(fallbackError) }, errorMessage);
+      throw new Error(errorMessage);
+    }
   }
 }
 
@@ -302,11 +362,11 @@ function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
   // Support both camelCase (toolCalls) and snake_case (tool_calls)
   const toolCalls = telemetry?.toolCalls || telemetry?.tool_calls;
 
-  workerLogger.debug(`[SIGNAL_DEBUG] Checking telemetry for finalize_job`, {
+  workerLogger.debug({
     has_tool_calls: !!toolCalls,
     tool_call_count: toolCalls?.length || 0,
     tool_names: toolCalls?.map((c: any) => c.tool || c.name) || []
-  });
+  }, `[SIGNAL_DEBUG] Checking telemetry for finalize_job`);
 
   if (!toolCalls) return null;
 
@@ -315,7 +375,7 @@ function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
     call.name === 'finalize_job' || call.tool === 'finalize_job'
   );
 
-  workerLogger.debug(`[SIGNAL_DEBUG] Found finalize_job call:`, signalCall ? 'YES' : 'NO');
+  workerLogger.debug({ found: signalCall ? 'YES' : 'NO' }, `[SIGNAL_DEBUG] Found finalize_job call`);
 
   if (!signalCall) return null;
 
@@ -323,13 +383,13 @@ function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
     // Tool call arguments can be in input, arguments, args, or result fields
     const input = signalCall.input || signalCall.arguments || signalCall.args || signalCall.result;
 
-    workerLogger.debug(`[SIGNAL_DEBUG] finalize_job call structure:`, {
+    workerLogger.debug({
       has_input: !!signalCall.input,
       has_arguments: !!signalCall.arguments,
       has_args: !!signalCall.args,
       has_result: !!signalCall.result,
       input_value: input
-    });
+    }, `[SIGNAL_DEBUG] finalize_job call structure`);
 
     if (!input) return null;
 
@@ -337,7 +397,7 @@ function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
     const message = input.message;
 
     if (!status || !message) {
-      workerLogger.warn('finalize_job missing status or message', input);
+      workerLogger.warn({ input }, 'finalize_job missing status or message');
       return null;
     }
 
@@ -350,7 +410,7 @@ function extractSignalFromTelemetry(telemetry: any): FinalStatus | null {
     workerLogger.info(`✅ Detected finalize_job from telemetry: ${status}`);
     return { status, message };
   } catch (e) {
-    workerLogger.warn('Failed to extract finalize_job from telemetry', e);
+    workerLogger.warn({ error: e }, 'Failed to extract finalize_job from telemetry');
     return null;
   }
 }
@@ -375,7 +435,7 @@ function parseFinalStatusFromText(output: string): FinalStatus | null {
 
     // Validate structure
     if (!parsed.status || !parsed.message) {
-      workerLogger.warn('Invalid FinalStatus structure', parsed);
+      workerLogger.warn({ parsed }, 'Invalid FinalStatus structure');
       return null;
     }
 
@@ -392,7 +452,7 @@ function parseFinalStatusFromText(output: string): FinalStatus | null {
       message: parsed.message
     };
   } catch (e) {
-    workerLogger.warn('Failed to parse FinalStatus', e);
+    workerLogger.warn({ error: e }, 'Failed to parse FinalStatus');
     return null;
   }
 }
@@ -413,17 +473,231 @@ function extractFinalStatus(output: string, telemetry: any): FinalStatus | null 
   return null;
 }
 
-function safeParseToolResponse(response: any): { ok: boolean; data: any; message?: string } {
+type RemoteSituationArtifact = {
+  id: string;
+  requestId: string;
+  cid: string;
+  topic: string;
+  name?: string | null;
+};
+
+async function runRecognitionPhase(requestId: string, metadata: any): Promise<RecognitionPhaseResult> {
+  const sections = extractPromptSections(metadata?.prompt);
+  const parentMessage = metadata?.additionalContext?.message?.content || metadata?.additionalContext?.message;
+
+  const jobOverviewLines = [
+    `Request ID: ${requestId}`,
+    metadata?.jobName ? `Job Name: ${metadata.jobName}` : null,
+    sections['Objective'] ? `Objective: ${sections['Objective']}` : null,
+    sections['Acceptance Criteria'] ? `Acceptance Criteria: ${sections['Acceptance Criteria']}` : null,
+    sections['Context'] ? `Context: ${sections['Context']}` : null,
+    parentMessage ? `Parent Message: ${sanitizeMarkdownText(parentMessage, 280)}` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  let initialSituation: any = null;
+  let embeddingStatus: 'success' | 'failed' = 'failed';
+
   try {
-    const text = response?.content?.[0]?.text;
-    if (!text) return { ok: false, data: null, message: 'No content' };
-    const parsed = JSON.parse(text);
-    if (parsed?.meta && typeof parsed.meta.ok === 'boolean') {
-      return { ok: parsed.meta.ok, data: parsed.data, message: parsed.meta.message };
+    const { createInitialSituation } = await import('./situation_encoder.js');
+    const { situation, summaryText } = await createInitialSituation({
+      requestId,
+      jobName: metadata?.jobName,
+      jobDefinitionId: metadata?.jobDefinitionId,
+      model: metadata?.model,
+      additionalContext: metadata?.additionalContext,
+    });
+    initialSituation = situation;
+    workerLogger.info({ requestId, summaryLength: summaryText.length }, 'Created initial situation for recognition');
+
+    const { searchSimilarSituations } = await import('../gemini-agent/mcp/tools/search_similar_situations.js');
+    const vectorResults = await searchSimilarSituations({ query_text: summaryText, k: 5 });
+    const vectorPayload = JSON.parse(vectorResults?.content?.[0]?.text || '{}');
+
+    if (!vectorPayload?.meta?.ok || !Array.isArray(vectorPayload?.data) || vectorPayload.data.length === 0) {
+      workerLogger.info({ requestId }, 'No similar situations found for recognition');
+      return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus: 'failed' };
     }
-    return { ok: true, data: parsed };
-  } catch (e: any) {
-    return { ok: false, data: null, message: e?.message || String(e) };
+
+    embeddingStatus = 'success';
+    const matches = vectorPayload.data;
+    workerLogger.info({ requestId, matchCount: matches.length }, 'Found similar situations');
+
+    const similarJobs = matches.slice(0, 3).map((match: any) => ({
+      requestId: match.nodeId,
+      score: typeof match.score === 'number' ? match.score : Number(match.score || 0),
+      jobName: match.jobName || undefined,
+    }));
+
+    const situationArtifacts: Array<{ sourceRequestId: string; score: number; situation: any }> = [];
+
+    for (const match of matches.slice(0, 3)) {
+      try {
+        const artifactData = await graphQLRequest<{
+          artifacts: { items: RemoteSituationArtifact[] };
+        }>({
+          url: PONDER_GRAPHQL_URL,
+          query: `
+            query RecognitionSituationArtifacts($requestId: String!) {
+              artifacts(where: { requestId: $requestId, topic: "SITUATION" }, limit: 1) {
+                items {
+                  id
+                  requestId
+                  cid
+                  topic
+                  name
+                }
+              }
+            }
+          `,
+          variables: { requestId: match.nodeId },
+          context: {
+            operation: 'recognitionFetchSituationArtifacts',
+            matchRequestId: match.nodeId,
+            parentRequestId: requestId,
+          },
+        });
+
+        const artifacts = artifactData?.artifacts?.items || [];
+        if (artifacts.length === 0) {
+          workerLogger.debug({ requestId, matchNodeId: match.nodeId }, 'No SITUATION artifact found for similar job');
+          continue;
+        }
+
+        const situationArtifact = artifacts[0];
+        const gatewayBase = (getOptionalIpfsGatewayUrl() || 'https://gateway.autonolas.tech/ipfs/').replace(/\/+$/, '');
+        const ipfsUrl = `${gatewayBase}/${situationArtifact.cid}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        try {
+          const ipfsResponse = await fetch(ipfsUrl, { signal: controller.signal });
+          if (!ipfsResponse.ok) {
+            workerLogger.warn({ requestId, cid: situationArtifact.cid, status: ipfsResponse.status }, 'Failed to fetch SITUATION artifact from IPFS');
+            continue;
+          }
+
+          let situationData: any = await ipfsResponse.json();
+          if (situationData?.content && typeof situationData.content === 'string') {
+            try {
+              situationData = JSON.parse(situationData.content);
+            } catch (parseError: any) {
+              workerLogger.warn({ requestId, cid: situationArtifact.cid, error: serializeError(parseError) }, 'Failed to parse wrapped SITUATION content');
+            }
+          }
+
+          situationArtifacts.push({
+            sourceRequestId: match.nodeId,
+            score: typeof match.score === 'number' ? match.score : Number(match.score || 0),
+            situation: situationData,
+          });
+
+          workerLogger.info({ requestId, sourceRequestId: match.nodeId, cid: situationArtifact.cid }, 'Fetched SITUATION artifact for recognition');
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch (fetchError: any) {
+        workerLogger.warn({ requestId, matchNodeId: match.nodeId, error: serializeError(fetchError) }, 'Failed to fetch SITUATION artifact for match');
+      }
+    }
+
+    if (situationArtifacts.length === 0) {
+      workerLogger.info({ requestId }, 'Recognition phase: no SITUATION artifacts available for similar jobs');
+      return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus };
+    }
+
+    workerLogger.info({ requestId, artifactCount: situationArtifacts.length }, 'Fetched SITUATION artifacts for recognition');
+
+    const recognitionPrompt = buildRecognitionPromptWithArtifacts(
+      jobOverviewLines,
+      summaryText,
+      situationArtifacts,
+    );
+
+    const recognitionAgent = new Agent(
+      metadata?.model || 'gemini-2.5-flash',
+      [],
+      {
+        jobId: `${requestId}-recognition`,
+        jobDefinitionId: metadata?.jobDefinitionId || null,
+        jobName: metadata?.jobName ? `${metadata.jobName} (Recognition)` : 'Recognition Scout',
+        projectRunId: null,
+        sourceEventId: null,
+        projectDefinitionId: null,
+      },
+    );
+
+    const agentResult = await recognitionAgent.run(recognitionPrompt);
+    const parsed = parseRecognitionJson(agentResult?.output || '');
+    const learnings = normalizeLearnings(parsed);
+
+    if (!learnings || learnings.length === 0) {
+      workerLogger.info({ requestId }, 'Recognition phase completed with no actionable learnings');
+      return {
+        promptPrefix: '',
+        learningsMarkdown: undefined,
+        rawLearnings: parsed,
+        searchQuery: summaryText,
+        similarJobs,
+        initialSituation,
+        embeddingStatus,
+      };
+    }
+
+    const markdown = formatRecognitionMarkdown(learnings);
+    workerLogger.info({ requestId, learningsCount: learnings.length }, 'Recognition phase produced learnings');
+
+    const recognitionResult = {
+      promptPrefix: markdown,
+      learningsMarkdown: markdown,
+      rawLearnings: learnings,
+      searchQuery: summaryText,
+      similarJobs,
+      initialSituation,
+      embeddingStatus,
+    };
+
+    try {
+      const recognitionArtifactPayload = {
+        initialSituation,
+        embeddingStatus,
+        similarJobs,
+        learnings: markdown,
+        searchQuery: summaryText,
+        timestamp: new Date().toISOString(),
+      };
+      const [, recognitionCid] = await pushJsonToIpfs(recognitionArtifactPayload);
+      await apiCreateArtifact(requestId, {
+        cid: recognitionCid,
+        topic: 'RECOGNITION_RESULT',
+        content: null,
+      });
+      workerLogger.info({ requestId, cid: recognitionCid }, 'Persisted RECOGNITION_RESULT artifact');
+    } catch (artifactError: any) {
+      workerLogger.warn({ requestId, error: serializeError(artifactError) }, 'Failed to persist RECOGNITION_RESULT artifact');
+    }
+
+    return recognitionResult;
+  } catch (recognitionError: any) {
+    workerLogger.error({ requestId, error: serializeError(recognitionError) }, 'Recognition phase failed');
+
+    try {
+      const fallbackPayload = {
+        initialSituation,
+        embeddingStatus,
+        error: recognitionError?.message || String(recognitionError),
+        timestamp: new Date().toISOString(),
+      };
+      const [, fallbackCid] = await pushJsonToIpfs(fallbackPayload);
+      await apiCreateArtifact(requestId, {
+        cid: fallbackCid,
+        topic: 'RECOGNITION_RESULT',
+        content: null,
+      });
+      workerLogger.info({ requestId, cid: fallbackCid }, 'Persisted fallback RECOGNITION_RESULT artifact');
+    } catch (fallbackError: any) {
+      workerLogger.warn({ requestId, error: serializeError(fallbackError) }, 'Failed to persist fallback RECOGNITION_RESULT artifact');
+    }
+
+    return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus };
   }
 }
 
@@ -572,6 +846,7 @@ async function fetchIpfsMetadata(ipfsHash?: string): Promise<{
   additionalContext?: any;
   jobName?: string;
   jobDefinitionId?: string;
+  codeMetadata?: CodeMetadata;
 } | null> {
   if (!ipfsHash) return null;
   try {
@@ -773,7 +1048,7 @@ async function dispatchParentIfNeeded(
       workerLogger.error(`Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult.message}`);
     }
   } catch (e) {
-    workerLogger.error(`Error dispatching parent job ${parentJobDefId}:`, e);
+    workerLogger.error({ error: e, parentJobDefId }, `Error dispatching parent job ${parentJobDefId}`);
   }
 }
 
@@ -804,7 +1079,7 @@ async function isChainComplete(rootJobDefinitionId: string): Promise<boolean> {
     // Check if all requests are delivered
     return requests.every((req: any) => req.delivered);
   } catch (e) {
-    workerLogger.error(`Error checking chain completion for ${rootJobDefinitionId}:`, e);
+    workerLogger.error({ error: e, rootJobDefinitionId }, `Error checking chain completion for ${rootJobDefinitionId}`);
     return false;
   }
 }
@@ -868,10 +1143,10 @@ async function repostExistingJob(jobDefinitionId: string): Promise<void> {
     recentReposts.set(jobDefinitionId, Date.now());
 
     workerLogger.info(`Successfully reposted job (${jobDefinitionId}) after chain completion`);
-    workerLogger.info(`Repost result:`, data);
+    workerLogger.info({ data }, 'Repost result');
 
   } catch (e) {
-    workerLogger.error(`Error reposting job ${jobDefinitionId}:`, e);
+    workerLogger.error({ error: e, jobDefinitionId }, `Error reposting job ${jobDefinitionId}`);
   }
 }
 
@@ -912,7 +1187,7 @@ async function checkAndRepostCompletedChains(): Promise<void> {
       }
     }
   } catch (e) {
-    workerLogger.error(`Error checking for completed chains:`, e);
+    workerLogger.error({ error: e }, 'Error checking for completed chains');
   }
 }
 
@@ -989,62 +1264,116 @@ async function processOnce(): Promise<void> {
   let result: any = { output: '', telemetry: {} };
   let error: any = null;
   let metadata: any = null;
+  let recognition: RecognitionPhaseResult | null = null;
+  let reflection: any = null;
   let finalStatus: FinalStatus | null = null;
   const previousBaseBranchEnv = process.env.JINN_BASE_BRANCH;
+  const previousRepoRoot = process.env.CODE_METADATA_REPO_ROOT;
+  const telemetry = new WorkerTelemetryService(target.id);
   try {
-    metadata = await fetchIpfsMetadata(target.ipfsHash);
+    telemetry.startPhase('initialization', {
+      targetRequestId: target.id,
+      workerAddress,
+    });
+    try {
+      metadata = await fetchIpfsMetadata(target.ipfsHash);
 
-    // REQ-2.2: Validate codeMetadata presence (orthodoxy: one canonical way)
-    if (!metadata?.codeMetadata) {
-      throw new Error(
-        'codeMetadata missing from IPFS payload - all jobs must include code metadata. ' +
-        'This is required for git lineage tracking. Check job dispatch configuration.'
-      );
-    }
+      telemetry.logCheckpoint('initialization', 'metadata_fetched', {
+        hasJobName: !!metadata?.jobName,
+        hasPrompt: !!metadata?.prompt,
+        hasCodeMetadata: !!metadata?.codeMetadata,
+      });
 
-    workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Processing request');
-
-    // Propagate current branch into job context for downstream delegations
-    process.env.JINN_BASE_BRANCH = metadata.codeMetadata.branch?.name ||
-      metadata.codeMetadata.baseBranch ||
-      metadata.codeMetadata.parent?.branchName ||
-      DEFAULT_BASE_BRANCH;
-
-    // Set CODE_METADATA_REPO_ROOT from job metadata to ensure correct repo is used
-    // This allows child jobs to inherit the correct venture repo, not the conductor repo
-    const previousRepoRoot = process.env.CODE_METADATA_REPO_ROOT;
-    if (metadata.codeMetadata?.repo?.remoteUrl) {
-      const repoName = extractRepoName(metadata.codeMetadata.repo.remoteUrl);
-      if (repoName) {
-        const workspaceDir = getJinnWorkspaceDir();
-        const repoRoot = `${workspaceDir}/${repoName}`;
-        process.env.CODE_METADATA_REPO_ROOT = repoRoot;
-        workerLogger.info({ repoRoot, remoteUrl: metadata.codeMetadata.repo.remoteUrl }, 'Set CODE_METADATA_REPO_ROOT for job');
-
-        // Ensure repo is cloned before checkout
-        await ensureRepoCloned(metadata.codeMetadata.repo.remoteUrl, repoRoot);
+      if (!metadata?.codeMetadata) {
+        throw new Error(
+          'codeMetadata missing from IPFS payload - all jobs must include code metadata. ' +
+          'This is required for git lineage tracking. Check job dispatch configuration.',
+        );
       }
-    }
 
-    // REQ-3.1: Checkout job branch before running agent
-    await checkoutJobBranch(metadata.codeMetadata);
+      workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Processing request');
 
-    result = await runAgentForRequest(target, metadata);
-    // Extract artifacts produced during the run (from tool outputs)
-    const artifacts = [
-      ...extractArtifactsFromOutput(result?.output || ''),
-      ...extractArtifactsFromTelemetry(result?.telemetry || {})
-    ];
-    if (artifacts.length > 0) {
-      (result as any).artifacts = artifacts;
-      for (const a of artifacts) {
-        try { await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null }); } catch {}
+      process.env.JINN_BASE_BRANCH = metadata.codeMetadata.branch?.name ||
+        metadata.codeMetadata.baseBranch ||
+        metadata.codeMetadata.parent?.branchName ||
+        DEFAULT_BASE_BRANCH;
+
+      if (metadata.codeMetadata?.repo?.remoteUrl) {
+        const repoName = extractRepoName(metadata.codeMetadata.repo.remoteUrl);
+        if (repoName) {
+          const workspaceDir = getJinnWorkspaceDir();
+          const repoRoot = `${workspaceDir}/${repoName}`;
+          process.env.CODE_METADATA_REPO_ROOT = repoRoot;
+          workerLogger.info({ repoRoot, remoteUrl: metadata.codeMetadata.repo.remoteUrl }, 'Set CODE_METADATA_REPO_ROOT for job');
+
+          await ensureRepoCloned(metadata.codeMetadata.repo.remoteUrl, repoRoot);
+        }
       }
-    }
-    // Extract final status from agent output
-    finalStatus = extractFinalStatus(result?.output || '', result?.telemetry || {});
 
-    workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Execution completed');
+      await checkoutJobBranch(metadata.codeMetadata);
+      telemetry.logCheckpoint('initialization', 'checkout_complete', {
+        branch: metadata.codeMetadata.branch?.name,
+      });
+    } catch (initializationError: any) {
+      telemetry.logError('initialization', initializationError);
+      throw initializationError;
+    } finally {
+      telemetry.endPhase('initialization');
+    }
+
+    telemetry.startPhase('recognition');
+    try {
+      recognition = await runRecognitionPhase(target.id, metadata);
+      if (recognition?.promptPrefix) {
+        const prefix = recognition.promptPrefix.trim();
+        if (prefix.length > 0) {
+          const originalPrompt = metadata?.prompt || `Process request ${target.id}`;
+          metadata.prompt = `${prefix}\n\n${originalPrompt}`;
+          workerLogger.info({ requestId: target.id, prefixLength: prefix.length }, 'Augmented prompt with recognition learnings');
+          telemetry.logCheckpoint('recognition', 'prompt_augmented', {
+            prefixLength: prefix.length,
+            hasLearnings: !!recognition.learningsMarkdown,
+          });
+        }
+      }
+      metadata.recognition = recognition;
+    } catch (recognitionError: any) {
+      telemetry.logError('recognition', recognitionError);
+      workerLogger.warn({ requestId: target.id, error: serializeError(recognitionError) }, 'Recognition phase failed (continuing without learnings)');
+    } finally {
+      telemetry.endPhase('recognition');
+    }
+
+    telemetry.startPhase('agent_execution', {
+      model: metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash',
+    });
+    try {
+      result = await runAgentForRequest(target, metadata);
+      const artifacts = [
+        ...extractArtifactsFromOutput(result?.output || ''),
+        ...extractArtifactsFromTelemetry(result?.telemetry || {}),
+      ];
+      if (artifacts.length > 0) {
+        (result as any).artifacts = artifacts;
+        for (const a of artifacts) {
+          try {
+            await apiCreateArtifact(target.id, { cid: a.cid, topic: a.topic, content: null });
+          } catch {}
+        }
+      }
+      finalStatus = extractFinalStatus(result?.output || '', result?.telemetry || {});
+      workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Execution completed');
+      telemetry.logCheckpoint('agent_execution', 'completed', {
+        outputLength: result?.output?.length || 0,
+        totalTokens: result?.telemetry?.totalTokens,
+        toolCalls: result?.telemetry?.toolCalls?.length || 0,
+      });
+    } catch (agentError: any) {
+      telemetry.logError('agent_execution', agentError);
+      throw agentError;
+    } finally {
+      telemetry.endPhase('agent_execution');
+    }
   } catch (e: any) {
     error = e;
 
@@ -1095,18 +1424,18 @@ async function processOnce(): Promise<void> {
           'Gemini CLI transport failed after finalize_job; accepting completed result',
         );
 
-        const telemetry = result.telemetry && Object.keys(result.telemetry).length > 0
+        const mergedTelemetry = result.telemetry && Object.keys(result.telemetry).length > 0
           ? result.telemetry
           : (telemetryFromError ? { ...telemetryFromError } : {});
-        if (!telemetry.errorType) {
-          telemetry.errorType = 'PROCESS_ERROR';
+        if (!mergedTelemetry.errorType) {
+          mergedTelemetry.errorType = 'PROCESS_ERROR';
         }
-        const raw = (telemetry.raw =
-          typeof telemetry.raw === 'object' && telemetry.raw !== null ? telemetry.raw : {});
+        const raw = (mergedTelemetry.raw =
+          typeof mergedTelemetry.raw === 'object' && mergedTelemetry.raw !== null ? mergedTelemetry.raw : {});
         const warningLines = raw.stderrWarnings ? [raw.stderrWarnings] : [];
         warningLines.push('Gemini CLI: transport failed after finalize_job (process exited).');
         raw.stderrWarnings = warningLines.join('\n');
-        result.telemetry = telemetry;
+        result.telemetry = mergedTelemetry;
 
         if (!result.output && typeof telemetryFromError?.raw?.partialOutput === 'string') {
           result.output = telemetryFromError.raw.partialOutput;
@@ -1126,6 +1455,81 @@ async function processOnce(): Promise<void> {
       }, 'Execution failed');
     }
   }
+
+  telemetry.startPhase('reflection');
+  if (finalStatus) {
+    try {
+      const outputPreview = typeof result.output === 'string' ? result.output : JSON.stringify(result.output ?? '');
+      const successPrompt = `You have just completed a job. Here is a summary:
+
+**Job:** ${metadata?.jobName || target.id}
+**Status:** ${finalStatus.status}
+**Output:** ${outputPreview.substring(0, 500)}${outputPreview.length > 500 ? '...' : ''}
+**Telemetry:**
+- Duration: ${result.telemetry?.duration || 0}ms
+- Tokens: ${result.telemetry?.totalTokens || 0}
+- Tools Called: ${result.telemetry?.toolCalls?.length || 0}
+
+**Reflection Task:**
+Review the execution. Did you discover any strategies, solutions, workarounds, or insights that would be valuable for future jobs? If yes, use the \`create_artifact\` tool with \`type: 'MEMORY'\` to save it. Include descriptive tags.
+
+If nothing notable was learned, simply respond "No significant learnings."`;
+
+      const failurePrompt = `A job has failed. Here is a summary:
+
+**Job:** ${metadata?.jobName || target.id}
+**Status:** ${finalStatus.status}
+**Error:** ${error?.message || 'Unknown error'}
+**Output (if any):** ${outputPreview ? outputPreview.substring(0, 500) : 'No output'}${outputPreview && outputPreview.length > 500 ? '...' : ''}
+**Telemetry:**
+- Duration: ${result.telemetry?.duration || 0}ms
+- Tokens: ${result.telemetry?.totalTokens || 0}
+- Tools Called: ${result.telemetry?.toolCalls?.length || 0}
+
+**Reflection Task:**
+Review the failure. Were there any lessons learned, edge cases discovered, or patterns that future jobs should avoid? If yes, use the \`create_artifact\` tool with \`type: 'MEMORY'\` and include 'failure' in the tags to help future jobs avoid similar issues.
+
+If nothing notable was learned, simply respond "No significant learnings."`;
+
+      const reflectionAgent = new Agent(
+        metadata?.model || 'gemini-2.5-flash',
+        ['create_artifact'],
+        {
+          jobId: `${target.id}-reflection`,
+          jobDefinitionId: metadata?.jobDefinitionId,
+          jobName: 'Reflection',
+          projectRunId: null,
+          sourceEventId: null,
+          projectDefinitionId: null,
+        },
+      );
+
+      const prompt = finalStatus.status === 'COMPLETED' ? successPrompt : failurePrompt;
+      reflection = await reflectionAgent.run(prompt);
+      telemetry.logCheckpoint('reflection', 'reflection_complete');
+      workerLogger.info({ requestId: target.id }, 'Reflection step completed');
+    } catch (reflectionError: any) {
+      telemetry.logError('reflection', reflectionError);
+      workerLogger.warn({ requestId: target.id, error: serializeError(reflectionError) }, 'Reflection step failed (non-critical)');
+    }
+  }
+  telemetry.endPhase('reflection');
+
+  telemetry.startPhase('situation_creation');
+  try {
+    await createSituationArtifactForRequest({
+      target,
+      metadata,
+      result,
+      finalStatus,
+      recognition,
+    });
+    telemetry.logCheckpoint('situation_creation', 'situation_artifact_created');
+  } catch (situationError: any) {
+    telemetry.logError('situation_creation', situationError);
+    workerLogger.warn({ requestId: target.id, error: serializeError(situationError) }, 'Failed to create situation artifact');
+  }
+  telemetry.endPhase('situation_creation');
 
   // Restore previous base branch context
   if (previousBaseBranchEnv !== undefined) {
@@ -1180,8 +1584,16 @@ async function processOnce(): Promise<void> {
     workerLogger.error({ error: serializeError(prError) }, 'Failed to create PR');
   }
 
-  // Store report with final status
-  await storeOnchainReport(target, workerAddress, result, error, metadata);
+  telemetry.startPhase('reporting');
+  try {
+    const reportedFinalStatus = await storeOnchainReport(target, workerAddress, result, error, metadata);
+    if (reportedFinalStatus) {
+      finalStatus = reportedFinalStatus;
+    }
+    telemetry.logCheckpoint('reporting', 'report_stored', { status: finalStatus?.status || 'unknown' });
+  } finally {
+    telemetry.endPhase('reporting');
+  }
   
   // Dispatch parent if needed (Work Protocol)
   await dispatchParentIfNeeded(finalStatus, metadata, target.id, result?.output || '');
@@ -1198,6 +1610,7 @@ async function processOnce(): Promise<void> {
   // Marking claim completed is handled by Control API upon report creation
 
   // Attempt on-chain delivery via Safe when configured
+  telemetry.startPhase('delivery');
   try {
     const chainConfig = getOptionalMechChainConfig() || 'base';
     const safeAddress = getServiceSafeAddress();
@@ -1210,7 +1623,6 @@ async function processOnce(): Promise<void> {
       return;
     }
 
-    // Check if Safe is actually deployed
     if (safeAddress && rpcHttpUrl) {
       try {
         const web3 = new Web3(rpcHttpUrl);
@@ -1219,14 +1631,13 @@ async function processOnce(): Promise<void> {
           workerLogger.warn({ safeAddress }, 'Safe address has no contract code; skipping Safe delivery (use direct EOA delivery or deploy Safe first)');
           return;
         }
-      } catch (e: any) {
-        workerLogger.warn({ safeAddress, error: e?.message }, 'Failed to check Safe deployment; skipping Safe delivery');
+      } catch (deploymentCheckError: any) {
+        workerLogger.warn({ safeAddress, error: deploymentCheckError?.message }, 'Failed to check Safe deployment; skipping Safe delivery');
         return;
       }
     }
-    
+
     if (safeAddress && targetMechAddress) {
-      // Preflight: ensure request is still undelivered on-chain before constructing Safe tx
       const requestIdHex = String(target.id).startsWith('0x') ? String(target.id) : '0x' + BigInt(String(target.id)).toString(16);
       workerLogger.info({ requestIdHex, targetMechAddress }, 'Checking if request is undelivered on-chain...');
       const ok = await isUndeliveredOnChain({ mechAddress: targetMechAddress, requestIdHex, rpcHttpUrl });
@@ -1236,6 +1647,45 @@ async function processOnce(): Promise<void> {
       }
       workerLogger.info({ requestIdHex }, 'Preflight passed - request is undelivered, proceeding with Safe delivery...');
 
+      const artifactsForDelivery = Array.isArray((result as any)?.artifacts) ? [...(result as any).artifacts] : [];
+
+      telemetry.startPhase('telemetry_persistence');
+      const workerTelemetryLog = telemetry.getLog();
+      telemetry.logCheckpoint('telemetry_persistence', 'telemetry_prepared', {
+        eventsCount: workerTelemetryLog.events.length,
+        totalDuration: workerTelemetryLog.totalDuration_ms,
+      });
+      try {
+        const { createArtifact: mcpCreateArtifact } = await import('../gemini-agent/mcp/tools/create_artifact.js');
+        const telemetryArtifactResponse = await mcpCreateArtifact({
+          name: `worker-telemetry-${target.id}`,
+          topic: 'WORKER_TELEMETRY',
+          content: JSON.stringify(workerTelemetryLog, null, 2),
+          type: 'WORKER_TELEMETRY',
+        });
+        const telemetryArtifactParsed = safeParseToolResponse(telemetryArtifactResponse);
+        if (telemetryArtifactParsed.ok && telemetryArtifactParsed.data) {
+          artifactsForDelivery.push({
+            cid: telemetryArtifactParsed.data.cid,
+            name: `worker-telemetry-${target.id}`,
+            topic: 'WORKER_TELEMETRY',
+            type: 'WORKER_TELEMETRY',
+            contentPreview: `Worker telemetry with ${workerTelemetryLog.events.length} events`,
+          });
+          telemetry.logCheckpoint('telemetry_persistence', 'telemetry_uploaded', { cid: telemetryArtifactParsed.data.cid });
+          workerLogger.info({
+            requestId: target.id,
+            cid: telemetryArtifactParsed.data.cid,
+            eventsCount: workerTelemetryLog.events.length,
+          }, 'Worker telemetry artifact uploaded and added to delivery');
+        }
+      } catch (telemetryArtifactError: any) {
+        telemetry.logError('telemetry_persistence', telemetryArtifactError);
+        workerLogger.warn({ error: serializeError(telemetryArtifactError) }, 'Failed to add worker telemetry to delivery artifacts (non-critical)');
+      } finally {
+        telemetry.endPhase('telemetry_persistence');
+      }
+
       const payload = {
         chainConfig,
         requestId: String(target.id),
@@ -1243,37 +1693,60 @@ async function processOnce(): Promise<void> {
           requestId: String(target.id),
           output: result?.output || '',
           telemetry: result?.telemetry || {},
-          artifacts: Array.isArray((result as any)?.artifacts) ? (result as any).artifacts : [],
+          artifacts: artifactsForDelivery,
+          workerTelemetry: workerTelemetryLog,
+          recognition: recognition
+            ? {
+                initialSituation: recognition.initialSituation,
+                embeddingStatus: recognition.embeddingStatus,
+                similarJobs: recognition.similarJobs,
+                learnings: recognition.rawLearnings,
+                learningsMarkdown: recognition.learningsMarkdown,
+                searchQuery: recognition.searchQuery,
+              }
+            : undefined,
+          reflection: reflection
+            ? {
+                output: reflection.output,
+                telemetry: reflection.telemetry,
+              }
+            : undefined,
           ...(result?.pullRequestUrl ? { pullRequestUrl: result.pullRequestUrl } : {}),
-          ...(metadata?.codeMetadata?.branch?.name ? {
-            executionPolicy: {
-              branch: metadata.codeMetadata.branch.name,
-              ensureTestsPass: true,
-              description: 'Agent executed work on the provided branch and passed required validations.'
-            }
-          } : {})
+          ...(metadata?.codeMetadata?.branch?.name
+            ? {
+                executionPolicy: {
+                  branch: metadata.codeMetadata.branch.name,
+                  ensureTestsPass: true,
+                  description: 'Agent executed work on the provided branch and passed required validations.',
+                },
+              }
+            : {}),
         },
         targetMechAddress,
         safeAddress,
         privateKey,
         ...(rpcHttpUrl ? { rpcHttpUrl } : {}),
-        wait: true
+        wait: true,
       } as const;
+
       const delivery = await (deliverViaSafe as any)(payload);
+      telemetry.logCheckpoint('delivery', 'delivered', {
+        txHash: delivery?.tx_hash,
+        status: delivery?.status,
+      });
       workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
     }
   } catch (e: any) {
-    // Log detailed error information for debugging
+    telemetry.logError('delivery', e);
     const errorDetails: any = {
       message: e?.message || String(e),
       code: e?.code,
       reason: e?.reason,
       data: e?.data,
-      stack: e?.stack?.split('\n').slice(0, 3).join('\n')
+      stack: e?.stack?.split('\n').slice(0, 3).join('\n'),
     };
     workerLogger.warn({ requestId: target.id, error: errorDetails }, 'Safe delivery failed');
-    
-    // Record a FAILED status so the claim does not remain IN_PROGRESS
+
     try {
       await apiCreateJobReport(target.id, {
         status: 'FAILED',
@@ -1288,6 +1761,8 @@ async function processOnce(): Promise<void> {
     } catch (reportErr: any) {
       workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: reportErr?.message || String(reportErr) }, 'Failed to record FAILED status');
     }
+  } finally {
+    telemetry.endPhase('delivery');
   }
 }
 
