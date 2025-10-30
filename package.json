@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/worker.js",
   "scripts": {
-    "build": "tsc -p . && find dist -name '*.js' -exec sed -i \"s|from '\\./shared/\\([^']*\\)'|from './shared/\\1.js'|g\" {} \\; && find dist -name '*.js' -exec sed -i \"s|\\.js\\.js|\\.js|g\" {} \\;",
+    "build": "tsc -p . && find dist -name '*.js' -exec sed -i '' \"s|from '\\./shared/\\([^']*\\)'|from './shared/\\1.js'|g\" {} \\; && find dist -name '*.js' -exec sed -i '' \"s|\\.js\\.js|\\.js|g\" {} \\;",
     "dev:mech": "USE_TSX_MCP=1 tsx worker/mech_worker.ts -- --single-job",
     "dev:mech:pretty": "USE_TSX_MCP=1 tsx worker/mech_worker.ts -- --single-job | tsx logging/dev-pretty-cli.ts",
     "dev:mech:continuous": "USE_TSX_MCP=1 tsx worker/mech_worker.ts",

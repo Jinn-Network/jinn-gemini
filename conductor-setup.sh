@@ -156,44 +156,13 @@ init_submodules() {
         return
     fi
 
-    if [ -n "$MAIN_REPO_ROOT" ] && [ ! -d "$MAIN_REPO_ROOT/.git/modules/olas-operate-middleware" ]; then
-        info "Priming olas-operate-middleware submodule in main repository..."
-        git -C "$MAIN_REPO_ROOT" submodule update --init --recursive olas-operate-middleware 2>/dev/null || true
-    fi
+    # Skip submodule initialization in worktrees
+    # The olas-operate-middleware submodule is optional - worker falls back to environment variables
+    # If needed, manually run: git submodule update --init olas-operate-middleware
+    info "Skipping submodule initialization (optional - worker uses env vars as fallback)"
 
-    if [ -n "$WORKTREE_NAME" ]; then
-        local worktree_module_dir="$MAIN_REPO_ROOT/.git/worktrees/$WORKTREE_NAME/modules/olas-operate-middleware"
-        mkdir -p "$worktree_module_dir/objects/pack" 2>/dev/null || true
-    fi
-
-    # Only initialize the specific submodule we need (olas-operate-middleware)
-    # This avoids issues with stale submodule references in git config
-    if git submodule update --init --recursive olas-operate-middleware 2>&1; then
-        success "Git submodules initialized"
-    else
-        warning "Submodule initialization had issues, trying alternative approach..."
-        # Fallback: try updating all submodules but don't fail if some are broken
-        git submodule update --init --recursive 2>/dev/null || true
-    fi
-
-    # Verify olas-operate-middleware submodule
-    if [ -d "olas-operate-middleware" ]; then
-        success "olas-operate-middleware submodule ready"
-    else
-        error "Failed to initialize olas-operate-middleware submodule"
-    fi
-
-    # Copy .operate directory from main repo (contains service config, keys, etc.)
-    # This is gitignored but essential for production/dev operation
-    if [ -n "$MAIN_REPO_ROOT" ] && [ -d "$MAIN_REPO_ROOT/olas-operate-middleware/.operate" ]; then
-        info "Copying .operate directory from main repo..."
-        cp -r "$MAIN_REPO_ROOT/olas-operate-middleware/.operate" olas-operate-middleware/.operate
-        success ".operate directory copied"
-    elif [ -d "olas-operate-middleware/.operate" ]; then
-        success ".operate directory already present"
-    else
-        warning ".operate directory not found - run service setup or tests will use test credentials"
-    fi
+    # Note: .operate directory copying skipped since submodule is not initialized
+    # Tests use test credentials, production needs manual service setup
 }
 
 # =============================================================================
