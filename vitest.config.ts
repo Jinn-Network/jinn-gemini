@@ -2,42 +2,132 @@ import { defineConfig } from 'vitest/config'
 import { loadEnv } from 'vite'
 import path from 'path'
 
-// Load .env.test and merge into process.env so tests have access
+// Load .env.test but DON'T merge into process.env at module level for marketplace/worker
+// (prevents stale RPC_URL from overriding fresh VNet created by global setup)
 const testEnv = loadEnv('test', process.cwd(), '')
-Object.assign(process.env, testEnv)
+
+// Shared alias configuration - preserves main's @jinn/types + adds our aliases
+const sharedResolve = {
+  alias: {
+    'mech-client-ts': path.resolve(__dirname, './packages/mech-client-ts'),
+    '@jinn/types': path.resolve(__dirname, './packages/jinn-types/src'),
+    '@codespec': path.resolve(__dirname, './codespec'),
+    '@tests': path.resolve(__dirname, './tests'),
+  },
+}
+
+// Shared test defaults
+const sharedTestDefaults = {
+  globals: true,
+  fileParallelism: false,
+  sequence: {
+    shuffle: false,
+    concurrent: false,
+  },
+  exclude: [
+    '**/.conductor/**',
+    '**/node_modules/**',
+    '**/dist/**',
+    '**/.next/**',
+    '**/.tmp/**',
+    '**/temp-build/**',
+  ],
+}
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      'mech-client-ts': path.resolve(__dirname, './packages/mech-client-ts'),
-      '@jinn/types': path.resolve(__dirname, './packages/jinn-types/src'),
-    },
-  },
+  resolve: sharedResolve,
   test: {
-    globals: true,
-    environment: 'node',
-    env: testEnv,
-    include: ['tests/unit/**/*.test.ts'],
-    // Run test files sequentially to prevent port conflicts
-    fileParallelism: false,
-    poolOptions: {
-      threads: {
-        singleThread: true,
-      }
-    },
-    // Ensure tests run in order
-    sequence: {
-      shuffle: false,
-      concurrent: false,
-    },
-    // Prevent collecting tests from ephemeral Conductor worktrees
-    exclude: [
-      '**/.conductor/**',
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/.next/**',
-      '**/.tmp/**',
-      '**/temp-build/**',
+    ...sharedTestDefaults,
+    // Define all test suites as projects for auto-detection
+    projects: [
+      {
+        resolve: sharedResolve,
+        test: {
+          ...sharedTestDefaults,
+          name: 'marketplace',
+          // Don't pass testEnv here - it would override dynamic values set by global setup
+          include: ['tests/marketplace/*.test.ts'],
+          globalSetup: path.resolve(__dirname, './tests/helpers/setup.ts'),
+          poolOptions: {
+            threads: {
+              singleThread: true,
+            }
+          },
+          reporters: ['default', 'hanging-process'],
+        },
+      },
+      {
+        resolve: sharedResolve,
+        test: {
+          ...sharedTestDefaults,
+          name: 'worker',
+          // Don't use 'env: testEnv' here - it overrides runtime values set by globalSetup
+          include: ['tests/worker/*.test.ts'],
+          globalSetup: path.resolve(__dirname, './tests/helpers/setup.ts'),
+          bail: 1, // Stop after first test failure (e.g., quota errors)
+          poolOptions: {
+            threads: {
+              singleThread: true,
+            }
+          },
+          reporters: ['default', 'hanging-process'],
+        },
+      },
+      {
+        resolve: sharedResolve,
+        test: {
+          ...sharedTestDefaults,
+          name: 'service',
+          env: testEnv,
+          include: ['tests/service-deployment/*.test.ts'],
+          globalSetup: path.resolve(__dirname, './tests/helpers/setup.ts'),
+          poolOptions: {
+            threads: {
+              singleThread: true,
+            }
+          },
+          reporters: ['default', 'hanging-process'],
+        },
+      },
+      {
+        resolve: sharedResolve,
+        test: {
+          ...sharedTestDefaults,
+          name: 'codespec',
+          // CodeSpec tests don't need VNet/Ponder infrastructure
+          include: ['tests/codespec/**/*.e2e.test.ts'],
+          // Sequential execution (git operations might conflict)
+          pool: 'forks',
+          poolOptions: {
+            forks: {
+              singleFork: true,
+            },
+          },
+          // Longer timeout for review operations (can take 30-120s each)
+          testTimeout: 300000, // 5 minutes per test
+        },
+      },
+      {
+        resolve: sharedResolve,
+        test: {
+          ...sharedTestDefaults,
+          name: 'e2e',
+          // Pattern-based matching for e2e tests (from main's config)
+          include: ['tests/e2e/**/*.e2e.test.ts'],
+          environment: 'node',
+          timeout: 120000, // 2 minutes per test (from main's config)
+        },
+      },
+      {
+        resolve: sharedResolve,
+        test: {
+          ...sharedTestDefaults,
+          name: 'integration',
+          // Pattern-based matching for integration tests (from main's config)
+          include: ['tests/integration/**/*.integration.test.ts'],
+          environment: 'node',
+        },
+      },
     ],
   },
 })

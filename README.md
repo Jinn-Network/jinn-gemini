@@ -337,6 +337,67 @@ The system uses Gemini CLI for job execution. Configuration is stored in `.gemin
 - Tool permissions
 - Authentication settings
 
+## Testing
+
+The project uses Vitest with a consolidated configuration that defines multiple test suites as projects. This allows for easier single-file test runs and better organization across 6 test types.
+
+### Test Suite Types
+
+- **marketplace**: Job dispatch, lineage, code metadata, and marketplace protocol tests
+- **worker**: Worker execution, artifacts, work protocol, and delegation tests
+- **service**: Service deployment and infrastructure tests
+- **codespec**: Code review, specification validation, and ledger tests
+- **e2e**: End-to-end integration tests (120s timeout)
+- **integration**: Component integration tests
+
+### Running Test Suites
+
+Run full test suites using the project-based commands:
+
+```bash
+# Run individual test suites
+yarn test:marketplace
+yarn test:worker
+yarn test:service
+yarn test:codespec
+yarn test:e2e
+yarn test:integration
+
+# Run all core suites
+yarn test:all
+```
+
+### Running Single Test Files
+
+With the consolidated configuration, you can run individual test files without specifying a config:
+
+```bash
+# Run a single test file (automatically detects the right project)
+yarn vitest run tests/marketplace/marketplace-worker-git-lineage.test.ts
+
+# Or be explicit with the project flag (optional)
+yarn vitest run --project marketplace tests/marketplace/marketplace-worker-git-lineage.test.ts
+
+# Works for any test suite
+yarn vitest run tests/e2e/memory-system.e2e.test.ts
+yarn vitest run tests/integration/situation-encoder.integration.test.ts
+```
+
+### Test Configuration
+
+All test projects are defined in `vitest.config.ts` with shared defaults for:
+- Sequential execution (prevents port conflicts)
+- Global setup for VNet/Ponder infrastructure (marketplace, worker, service)
+- Proper handling of environment variables (VNet-aware for marketplace/worker)
+- Shared resolve aliases (@jinn/types, @codespec, @tests, mech-client-ts)
+
+Each project maintains its specific configuration:
+- **marketplace/worker**: Dynamic environment (no testEnv merge to allow VNet override)
+- **service**: Static environment (testEnv merge for predictable config)
+- **codespec**: Forked pool for git operation isolation, 5min timeout
+- **e2e**: 120s timeout for long-running integration scenarios
+- **integration**: Standard timeout for component tests
+
 ## Security
 
 This project implements comprehensive security measures to protect against vulnerabilities and ensure safe development practices.
