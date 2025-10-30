@@ -129,20 +129,12 @@ export async function setup() {
     PONDER_MECH_ADDRESS: process.env.MECH_ADDRESS,
   };
 
-  ponderProc = execa('yarn', ['ponder:dev'], { stdio: 'pipe', env: ponderEnv });
-  const ponderLogs: string[] = [];
-  if (ponderProc.stdout) ponderProc.stdout.on('data', (d: any) => { ponderLogs.push(d.toString()); });
-  if (ponderProc.stderr) ponderProc.stderr.on('data', (d: any) => {
-    const msg = d.toString();
-    ponderLogs.push(msg);
-    process.stderr.write(`[ponder stderr] ${msg}`);
-  });
-
-  ponderProc.on('exit', (code: number | null) => {
-    if (code !== 0 && code !== null) {
-      console.error(`[global-setup] Ponder process exited with code ${code}`);
-      console.error(`[global-setup] Last 50 lines:\n${ponderLogs.slice(-50).join('')}`);
-    }
+  // Use stdio: 'inherit' to avoid creating pipe handles that prevent clean teardown
+  ponderProc = execa('yarn', ['ponder:dev'], {
+    stdio: 'inherit',
+    env: ponderEnv,
+    cleanup: true,
+    forceKillAfterTimeout: 2000, // Force-kill after 2s if SIGTERM doesn't work
   });
 
   console.log('[global-setup] Ponder dev server spawned');
@@ -164,12 +156,13 @@ export async function setup() {
 
   if (!controlReady) {
     console.log('[global-setup] Starting Control API...');
-    controlApiProc = execa('yarn', ['control:dev'], { cwd: process.cwd(), stdio: 'pipe', env: { ...process.env } });
-    if (controlApiProc.stdout) controlApiProc.stdout.on('data', (d: any) => {
-      try { process.stderr.write(`[control] ${d}`); } catch {}
-    });
-    if (controlApiProc.stderr) controlApiProc.stderr.on('data', (d: any) => {
-      try { process.stderr.write(`[control] ${d}`); } catch {}
+    // Use stdio: 'inherit' to avoid creating pipe handles that prevent clean teardown
+    controlApiProc = execa('yarn', ['control:dev'], {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+      env: { ...process.env },
+      cleanup: true,
+      forceKillAfterTimeout: 2000, // Force-kill after 2s if SIGTERM doesn't work
     });
 
     const start = Date.now();
@@ -209,22 +202,51 @@ export async function setup() {
 
     if (ponderProc) {
       try {
-        ponderProc.kill('SIGTERM', { forceKillAfterTimeout: 5000 });
+        // Send SIGTERM (forceKillAfterTimeout in execa options will SIGKILL if needed)
+        ponderProc.kill('SIGTERM');
+        // Wait for process to exit
+        await ponderProc.catch((err: any) => {
+          // Test cleanup exception: Process rejection on kill is expected
+          if (err.isCanceled || err.isTerminated || err.signal === 'SIGTERM') {
+            // Normal termination
+          } else {
+            console.warn('[global-setup] Ponder exit error:', err.message || err);
+          }
+        });
         console.log('[global-setup] ✓ Ponder stopped');
-      } catch {}
+      } catch (err: any) {
+        // Test cleanup exception: Process kill errors during teardown are non-critical
+        console.warn('[global-setup] Warning stopping Ponder:', err.message || err);
+      }
     }
 
     const client = getMcpClient();
     try {
       await client.disconnect();
       console.log('[global-setup] ✓ MCP client disconnected');
-    } catch {}
+    } catch (err: any) {
+      // Test cleanup exception: MCP disconnect errors are non-critical during teardown
+      console.warn('[global-setup] Warning disconnecting MCP client:', err.message || err);
+    }
 
     if (controlApiProc) {
       try {
-        controlApiProc.kill('SIGTERM', { forceKillAfterTimeout: 5000 });
+        // Send SIGTERM (forceKillAfterTimeout in execa options will SIGKILL if needed)
+        controlApiProc.kill('SIGTERM');
+        // Wait for process to exit
+        await controlApiProc.catch((err: any) => {
+          // Test cleanup exception: Process rejection on kill is expected
+          if (err.isCanceled || err.isTerminated || err.signal === 'SIGTERM') {
+            // Normal termination
+          } else {
+            console.warn('[global-setup] Control API exit error:', err.message || err);
+          }
+        });
         console.log('[global-setup] ✓ Control API stopped');
-      } catch {}
+      } catch (err: any) {
+        // Test cleanup exception: Process kill errors during teardown are non-critical
+        console.warn('[global-setup] Warning stopping Control API:', err.message || err);
+      }
     }
 
     if (vnetResult && tenderlyClient) {
