@@ -61,12 +61,17 @@ const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
 const isTenderlyVirtualNetwork = rpcUrl.includes('virtual') && rpcUrl.includes('tenderly.co');
 const finalityBlockCount = isTenderlyVirtualNetwork ? 0 : 30;
 
+// Support suite-specific database directory for parallel test execution (SQLite only)
+const databaseDir = process.env.PONDER_DATABASE_DIR || '.ponder';
+
 export default createConfig({
   // Production mode: Use PostgreSQL for all storage (not SQLite)
-  // This ensures artifacts table persists across restarts
+  // Test mode: Use suite-specific SQLite directory for parallel test isolation
+  // This ensures artifacts table persists across restarts in production,
+  // and enables parallel test execution without database conflicts
   database: process.env.PONDER_DATABASE_URL
     ? { kind: 'postgres', connectionString: process.env.PONDER_DATABASE_URL }
-    : undefined,
+    : { kind: 'sqlite', directory: databaseDir },
 
   networks: {
     base: {

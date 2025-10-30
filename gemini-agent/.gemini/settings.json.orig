@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "metacog": {
-      "command": "/Users/adrianobradley/jinn-gemini/node_modules/.bin/tsx",
+      "command": "/Users/adrianobradley/jinn-gemini/.conductor/sacramento/node_modules/.bin/tsx",
       "args": [
-        "/Users/adrianobradley/jinn-gemini/gemini-agent/mcp/server.ts"
+        "/Users/adrianobradley/jinn-gemini/.conductor/sacramento/gemini-agent/mcp/server.ts"
       ],
       "trust": true,
       "includeTools": [

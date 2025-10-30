@@ -16,9 +16,9 @@ export interface TestGitRepo {
  *
  * Structure:
  * tests/fixtures/
- *   test-repo/          # Working directory cloned from GitHub
+ *   test-repo-${suiteId}/          # Working directory cloned from GitHub
  */
-export function setupTestGitRepo(): TestGitRepo {
+export function setupTestGitRepo(repoPath: string): TestGitRepo {
   const githubRemote = process.env.TEST_GITHUB_REPO;
 
   if (!githubRemote) {
@@ -28,16 +28,14 @@ export function setupTestGitRepo(): TestGitRepo {
     );
   }
 
-  const fixturesDir = path.join(process.cwd(), 'tests', 'fixtures');
-  const repoPath = path.join(fixturesDir, 'test-repo');
-
   // Clean up existing repo if present
   if (fs.existsSync(repoPath)) {
     fs.rmSync(repoPath, { recursive: true, force: true });
   }
 
-  // Ensure fixtures directory exists
-  fs.mkdirSync(fixturesDir, { recursive: true });
+  // Ensure parent directory exists
+  const parentDir = path.dirname(repoPath);
+  fs.mkdirSync(parentDir, { recursive: true });
 
   console.log(`[test-repo] Cloning from GitHub: ${githubRemote}`);
 
@@ -89,18 +87,37 @@ export function setupTestGitRepo(): TestGitRepo {
 
 /**
  * Get or create persistent test repo (reuses existing if present)
+ *
+ * Requires TEST_GITHUB_REPO environment variable to be set.
+ *
+ * @param suiteId - Unique suite identifier for parallel test isolation
  */
-export function getTestGitRepo(): TestGitRepo {
-  const fixturesDir = path.join(process.cwd(), 'tests', 'fixtures');
-  const repoPath = path.join(fixturesDir, 'test-repo');
+export function getTestGitRepo(suiteId: string): TestGitRepo {
   const remoteHint = process.env.TEST_GITHUB_REPO;
+
+  if (!remoteHint) {
+    throw new Error(
+      'TEST_GITHUB_REPO environment variable is required. ' +
+      'Set it to your test repository URL (e.g., git@github.com:user/test-repo.git)'
+    );
+  }
+
+  return getOrCreateGitHubTestRepo(remoteHint, suiteId);
+}
+
+/**
+ * Get or create a full GitHub test repo (for tests that need push/PR)
+ */
+function getOrCreateGitHubTestRepo(remoteHint: string, suiteId: string): TestGitRepo {
+  const fixturesDir = path.join(process.cwd(), 'tests', 'fixtures');
+  const repoPath = path.join(fixturesDir, `test-repo-${suiteId}`);
 
   // If repo exists and is valid, return it
   if (fs.existsSync(repoPath) && fs.existsSync(path.join(repoPath, '.git'))) {
     try {
       // Verify it's a valid repo
       execSync('git status', { cwd: repoPath, stdio: 'ignore' });
-      console.log('[test-repo] Using existing test repository');
+      console.log('[test-repo] Using existing GitHub test repository');
 
       const workspacePath = ensureWorkspaceWorktree(repoPath, remoteHint);
 
@@ -138,7 +155,7 @@ export function getTestGitRepo(): TestGitRepo {
   }
 
   // Create fresh repo
-  return setupTestGitRepo();
+  return setupTestGitRepo(repoPath);
 }
 
 function ensureWorkspaceWorktree(repoPath: string, remoteHint?: string | null): string {

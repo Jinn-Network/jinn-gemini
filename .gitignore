@@ -190,8 +190,7 @@ olas-operate-middleware/.operate/*.txt
 .operate-test/
 
 # Test git repositories (ephemeral test fixtures)
-tests/fixtures/test-repo/
-tests/fixtures/test-repo-remote/
+tests/fixtures/test-repo-*/
 
 # Service backups (moved to ~/Documents)
 service-backups/
@@ -210,3 +209,7 @@ env.tenderly
 # OLAS middleware submodule (tracked separately)
 olas-operate-middleware
 .cursor/screenshots/
+
+# Parallel test suite cache directories
+.ponder-test-*/
+ponder/.ponder-test-*/

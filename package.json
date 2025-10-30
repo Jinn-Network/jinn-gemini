@@ -29,6 +29,7 @@
     "test:service": "vitest run --project service",
     "test:codespec": "vitest run --project codespec",
     "test:integration": "vitest run --project integration",
+    "test:parallel": "vitest run --project marketplace & vitest run --project worker & wait",
     "test:all": "yarn test:marketplace && yarn test:worker && yarn test:service",
     "test:e2e": "yarn test:e2e:legacy && yarn test:e2e:vitest",
     "test:e2e:legacy": "tsx scripts/e2e-test-rig.ts",
