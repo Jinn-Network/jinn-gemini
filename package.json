@@ -77,7 +77,7 @@
     "codespec:worktree:cleanup": "tsx -e \"import {WorktreeManager} from './codespec/lib/worktree-manager.js'; const wm = new WorktreeManager(); wm.cleanup().then(n => console.log('Cleaned up', n, 'worktrees'))\""
   },
   "dependencies": {
-    "@jinn-network/mech-client-ts": "^0.0.1",
+    "@jinn-network/mech-client-ts": "^0.0.4",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "@ponder/core": "^0.6.1",
     "@safe-global/protocol-kit": "^6.1.0",
@@ -100,7 +100,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@google/gemini-cli": "0.7.0",
+    "@google/gemini-cli": "0.11.2",
     "@types/node": "^20.0.0",
     "@types/yargs": "^17.0.33",
     "better-sqlite3": "^12.4.1",

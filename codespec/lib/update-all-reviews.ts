@@ -8,7 +8,7 @@ import { Ledger, NewViolation } from './ledger.js';
  * with a single synchronous call for reliability and testability.
  *
  * Usage:
- *   tsx update-all-reviews.ts obj1:/path/to/file.txt obj2:/path/to/file.txt obj3:/path/to/file.txt
+ *   tsx update-all-reviews.ts guard:/path/to/guard.txt obj1:/path/to/obj1.txt obj2:/path/to/obj2.txt obj3:/path/to/obj3.txt
  *
  * Design rationale:
  * - Synchronous operation ensures ledger is updated before script exits
@@ -42,6 +42,7 @@ interface ReviewViolation {
  * Maps objective to clauses
  */
 const OBJECTIVE_TO_CLAUSES: Record<string, string[]> = {
+  guard: ['r4', 'db7', 'db8'],
   obj1: ['obj1'],
   obj2: ['obj2'],
   obj3: ['obj3'],
@@ -51,6 +52,7 @@ const OBJECTIVE_TO_CLAUSES: Record<string, string[]> = {
  * Maps objective to default severity
  */
 const OBJECTIVE_TO_SEVERITY: Record<string, NewViolation['severity']> = {
+  guard: 'critical',
   obj1: 'medium',
   obj2: 'info',
   obj3: 'critical',
@@ -136,16 +138,16 @@ function convertToLedgerViolations(
 
 /**
  * Parses command-line arguments
- * Expected format: obj1:/path/to/file.txt obj2:/path/to/file.txt ...
+ * Expected format: guard:/path/to/file.txt obj1:/path/to/file.txt obj2:/path/to/file.txt obj3:/path/to/file.txt
  */
 function parseArgs(args: string[]): ReviewInput[] {
   return args.map(arg => {
     const [objective, file] = arg.split(':');
     if (!objective || !file) {
-      throw new Error(`Invalid argument: ${arg} (expected format: obj1:/path/to/file.txt)`);
+      throw new Error(`Invalid argument: ${arg} (expected format: objective:/path/to/file.txt)`);
     }
-    if (!['obj1', 'obj2', 'obj3'].includes(objective)) {
-      throw new Error(`Invalid objective: ${objective} (must be obj1, obj2, or obj3)`);
+    if (!['guard', 'obj1', 'obj2', 'obj3'].includes(objective)) {
+      throw new Error(`Invalid objective: ${objective} (must be guard, obj1, obj2, or obj3)`);
     }
     return { objective, file };
   });
@@ -196,10 +198,10 @@ async function main() {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
-    console.error('Usage: update-all-reviews.ts obj1:/path/to/file.txt obj2:/path/to/file.txt ...');
+    console.error('Usage: update-all-reviews.ts guard:/path/to/file.txt obj1:/path/to/file.txt obj2:/path/to/file.txt obj3:/path/to/file.txt');
     console.error('');
     console.error('Example:');
-    console.error('  tsx update-all-reviews.ts obj1:/tmp/obj1.txt obj2:/tmp/obj2.txt obj3:/tmp/obj3.txt');
+    console.error('  tsx update-all-reviews.ts guard:/tmp/guard.txt obj1:/tmp/obj1.txt obj2:/tmp/obj2.txt obj3:/tmp/obj3.txt');
     console.error('');
     console.error('This script replaces the old approach of spawning 3 separate background');
     console.error('processes with a single synchronous call for improved reliability.');

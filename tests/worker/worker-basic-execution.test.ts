@@ -36,8 +36,12 @@ describe('Worker: Basic Execution Flow', () => {
     const { requestId } = await createTestJob({
       objective: 'Simple task for worker execution test',
       context: 'Basic worker execution test - no artifacts required',
-      instructions: 'Acknowledge the task completion and call finalize_job with status=COMPLETED',
-      acceptanceCriteria: 'Task is completed and delivered on-chain',
+      instructions: [
+        'Acknowledge the task completion.',
+        'Provide a brief execution summary describing what was done.',
+        'Do not call any additional workflow tools.'
+      ].join(' '),
+      acceptanceCriteria: 'Task is acknowledged, summarized, and delivered on-chain',
       enabledTools: []
     });
 
@@ -86,5 +90,8 @@ describe('Worker: Basic Execution Flow', () => {
     expect(deliveryJson.output, 'Delivery output should exist').toBeTruthy();
     expect(typeof deliveryJson.output).toBe('string');
     expect(deliveryJson.output.length, 'Delivery output should not be empty').toBeGreaterThan(0);
+    if (deliveryJson.telemetry?.finalStatus) {
+      expect(deliveryJson.telemetry.finalStatus.status).toBe('COMPLETED');
+    }
   }, 600_000);
 });

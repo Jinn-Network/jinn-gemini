@@ -1,6 +1,6 @@
 /**
  * Worker Work Protocol Test
- * Tests finalize_job(COMPLETED) triggering automatic parent job dispatch
+ * Verifies worker-inferred statuses trigger the appropriate parent dispatch behaviour
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -15,7 +15,7 @@ import {
   waitForRequestIndexed,
   runWorkerOnce,
   pollGraphQL,
-  getMcpClient,
+  withJobContext,
 } from '../helpers/shared.js';
 
 describe('Worker: Work Protocol', () => {
@@ -40,7 +40,7 @@ describe('Worker: Work Protocol', () => {
     // but tests do this inline when needed (see disconnect/connect within test body)
   });
 
-  it('child calls finalize_job(COMPLETED) → parent auto-dispatched with message', async () => {
+  it('completed child run triggers parent auto-dispatch with inferred status', async () => {
     const { gqlUrl, controlUrl } = getSharedInfrastructure();
 
     // 1) Create parent job
@@ -53,21 +53,19 @@ describe('Worker: Work Protocol', () => {
     await waitForJobIndexed(gqlUrl, parentJobId);
 
     // 2) Create child job with lineage via env (production-like)
-    // Ensure MCP process inherits updated env by reconnecting
-    await getMcpClient().disconnect();
-    process.env.JINN_REQUEST_ID = parentRequestId;
-    process.env.JINN_JOB_DEFINITION_ID = parentJobId;
-    await getMcpClient().connect();
-    const { requestId: childRequestId } = await createTestJob({
-      objective: 'Create a test artifact and finalize with COMPLETED status',
-      context: 'Child job testing Work Protocol auto-dispatch behavior',
-      instructions: 'Call create_artifact with name="test_artifact", topic="test", content="Test data". Then call finalize_job tool with status=COMPLETED. Then provide brief text output.',
-      acceptanceCriteria: 'Artifact created and finalize_job called with COMPLETED status'
-    });
-
-    // Clear env variables after child job creation
-    delete process.env.JINN_REQUEST_ID;
-    delete process.env.JINN_JOB_DEFINITION_ID;
+    const { requestId: childRequestId } = await withJobContext(
+      { requestId: parentRequestId, jobDefinitionId: parentJobId },
+      () => createTestJob({
+        objective: 'Create a test artifact and deliver a completed execution summary',
+        context: 'Child job testing Work Protocol auto-dispatch behavior',
+        instructions: [
+          'Call create_artifact with name="test_artifact", topic="test", content="Test data".',
+          'Provide an `Execution Summary` section whose first bullet is "- Completed analysis for parent".',
+          'Do not call any finalize or workflow tools; conclude after the execution summary.'
+        ].join(' '),
+        acceptanceCriteria: 'Artifact created and execution summary states the work is complete'
+      })
+    );
 
     // 3) Wait for child request to be indexed
     await waitForRequestIndexed(gqlUrl, childRequestId);
@@ -174,7 +172,7 @@ describe('Worker: Work Protocol', () => {
     });
   }, 600_000);
 
-  it('child with WAITING status does NOT trigger parent dispatch', async () => {
+  it('child in WAITING state does NOT trigger parent dispatch', async () => {
     const { gqlUrl, controlUrl } = getSharedInfrastructure();
 
     // 1) Create parent job
@@ -187,24 +185,36 @@ describe('Worker: Work Protocol', () => {
     await waitForJobIndexed(gqlUrl, parentJobId);
 
     // 2) Create child that will finalize with WAITING status (non-terminal)
-    // Ensure MCP process inherits updated env by reconnecting
-    await getMcpClient().disconnect();
-    process.env.JINN_REQUEST_ID = parentRequestId;
-    process.env.JINN_JOB_DEFINITION_ID = parentJobId;
-    await getMcpClient().connect();
-    const { requestId: childRequestId } = await createTestJob({
-      objective: 'Analyze data and wait for additional inputs',
-      context: 'Child job testing non-terminal finalization status',
-      instructions: 'Call create_artifact with simple analysis data. Then call finalize_job tool with status=WAITING and message="Waiting for additional data". Then provide brief text output.',
-      acceptanceCriteria: 'Finalize with WAITING status to signal you need more data',
-      enabledTools: ['create_artifact']
-    });
-
-    // Clear env variables after child job creation
-    delete process.env.JINN_REQUEST_ID;
-    delete process.env.JINN_JOB_DEFINITION_ID;
+    const { jobDefId: childJobId, requestId: childRequestId } = await withJobContext(
+      { requestId: parentRequestId, jobDefinitionId: parentJobId },
+      () => createTestJob({
+        objective: 'Analyze data and document outstanding dependencies',
+        context: 'Child job testing non-terminal finalization status',
+        instructions: [
+          'Call create_artifact with simple analysis data.',
+          'Provide an `Execution Summary` that clearly states you are waiting on existing child jobs to finish.',
+          'Do not create new jobs or signal completion.'
+        ].join(' '),
+        acceptanceCriteria: 'Execution summary indicates the job is waiting for child results',
+        enabledTools: ['create_artifact']
+      })
+    );
 
     await waitForRequestIndexed(gqlUrl, childRequestId);
+
+    // Seed an undelivered grandchild so the child remains in WAITING state
+    const { requestId: grandchildRequestId } = await withJobContext(
+      { requestId: childRequestId, jobDefinitionId: childJobId },
+      () => createTestJob({
+        objective: 'Placeholder work pending parent instructions',
+        context: 'This grandchild job intentionally remains undelivered to keep the parent in WAITING state',
+        instructions: 'Acknowledge the request and stop — this job will not be executed during the test run.',
+        acceptanceCriteria: 'Grandchild job is created but not executed',
+        enabledTools: []
+      })
+    );
+
+    await waitForRequestIndexed(gqlUrl, grandchildRequestId);
 
     // 3) Run worker
     const workerProc = await runWorkerOnce(childRequestId, {

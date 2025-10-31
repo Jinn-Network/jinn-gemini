@@ -163,6 +163,7 @@ echo "---"
 `;
 
   await repo.writeFile('codespec/scripts/detect-violations.sh', scriptsContent);
+  await repo.writeFile('codespec/scripts/review-guardrails.sh', scriptsContent);
   await repo.writeFile('codespec/scripts/review-obj1.sh', scriptsContent);
   await repo.writeFile('codespec/scripts/review-obj2.sh', scriptsContent);
   await repo.writeFile('codespec/scripts/review-obj3.sh', scriptsContent);

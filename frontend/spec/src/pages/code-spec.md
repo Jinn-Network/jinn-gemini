@@ -112,27 +112,91 @@ Objectives are high-level goals that provide directional guidance for all code. 
 
 ## Rules
 
-Rules are hard constraints that must never be violated. Unlike objectives (which are directional) and default behaviors (which can have rare exceptions), rules are absolute.
+Rules are hard constraints that must never be violated. Unlike objectives (which are directional) and default behaviors (which allow rare exceptions), rules are absolute.
 
-### (None defined yet)
+### Never commit secrets to the repository
 
-As the codebase evolves, critical constraints will be elevated to rules with corresponding example files.
+**The rule:** Secrets (private keys, API keys, passwords, tokens) must never be committed to git. All sensitive configuration is sourced from environment variables or secret managers.
+
+**Why this matters:**
+- Git history is immutable—once committed, secrets are permanently exposed.
+- A single leaked agent key can drain all funds from its Safe.
+- Generated examples sometimes include placeholder secrets unless the rule is explicit.
+
+**What counts as a secret:**
+- Private keys, mnemonics, wallet dumps
+- API keys for Gemini, Tenderly, RPC providers
+- Service passwords such as OLAS middleware credentials
+- Access tokens, session tokens, refresh tokens
+
+**How to comply:**
+- Load secrets from environment variables or secure stores at runtime.
+- Provide `.env.example` files with obvious placeholders for documentation.
+- Never hardcode credentials in code, comments, or docs.
+
+See `docs/spec/code-spec/examples/r1.md` for canonical samples.
+
+### Enforce automated secret guardrails
+
+**The rule:** Every automated git workflow—workers, bots, CI jobs, test harnesses—must invoke the canonical secret guard before staging, committing, or pushing code. The guard enforces a shared denylist for secret-bearing paths (e.g., `.operate/`, `.operate-test/`, `*private_key*`) and fails closed if any appear in the staged tree.
+
+**Why this matters:**
+- Automation is trusted to keep history clean; skipping the guard makes leaks permanent.
+- AI agents reuse commit helpers; an insecure helper propagates everywhere.
+- Preventing secret commits is far cheaper than rotating wallets and remediating public leaks.
+
+**How to comply:**
+- Call the guard immediately before `git commit` / `git push` / `git add --all` in automation flows.
+- Abort the workflow when the guard flags a violation; never auto-skip or partially commit.
+- Keep denylist updates centralized inside the guard helper.
+
+See `docs/spec/code-spec/examples/r4.md` for compliant and violating examples.
 
 ---
 
 ## Default Behaviors
 
-Default behaviors define the standard way to handle common operations. They are consistent with objectives and rules. In rare cases, deviations may be justified (e.g., third-party library constraints), but must be explicitly documented.
+Default behaviors define the standard way to handle common operations. They keep implementation patterns consistent and discoverable. Deviations must be documented.
 
-### (None defined yet)
+### Centralize configuration access
 
-When a default behavior is added, it will include:
-- The canonical approach with code examples
-- Rationale for why this approach is preferred
-- Links to example files demonstrating correct usage and violations
-- Guidance on rare exceptions
+- Runtime code reads configuration exclusively through `config/index.ts` helpers.
+- The config module loads environment variables once, validates them, and exposes getters like `getRequiredRpcUrl()`.
+- Callers never access `process.env` directly; legacy aliases live only inside the config module.
 
-The first default behaviors will likely address universal patterns like configuration management, data access conventions, or API client structure.
+### Keep ephemeral secret fixtures out of tracked repos
+
+- Tests and tooling must write generated wallets/keys to the canonical temp workspace (outside git worktrees) and clean it up afterward.
+- Directories such as `.operate-test/` must never be created under a tracked repository.
+- Pass the absolute temp path via env vars (e.g., `OPERATE_HOME`) instead of relying on `process.cwd()`.
+
+See `docs/spec/code-spec/examples/db7.md` for the canonical pattern.
+
+### Canonical HTTP client with timeout & retry
+
+- All runtime HTTP calls use the shared client in `http/client.ts`, which applies timeouts, retries, and structured errors.
+- Callers import helpers like `postJson`, `getJson`, or `graphQLRequest` instead of using `fetch` directly.
+- Extend the shared client when new behavior (e.g., streaming) is required so protections apply everywhere.
+
+### Validate staged content before auto-commit
+
+- Auto-commit helpers must invoke the staged-tree validator immediately after staging changes.
+- If forbidden paths are staged, the helper throws a descriptive error and stops the workflow.
+- Guard updates stay centralized; callers do not maintain private allowlists.
+
+See `docs/spec/code-spec/examples/db8.md` for a reference implementation.
+
+### Structured logging only
+
+- Runtime code logs through `logging/index.ts`, creating child loggers with a `component` tag.
+- Logs include structured metadata (request ID, job ID, etc.) and avoid leaking sensitive values.
+- Direct `console.*` usage is reserved for documented exceptions (e.g., human-facing CLI prompts).
+
+### No silent catch
+
+- Every `catch` block logs the error (with context) and either rethrows or returns an explicit degraded-mode result.
+- Empty `catch {}` blocks and `.catch(() => …)` patterns that suppress errors are prohibited.
+- Use `serializeError()` to provide readable details without exposing secrets.
 
 ---
 
@@ -591,4 +655,3 @@ For an AI-generated codebase:
 - [OpenAI: Shaping Desired Model Behavior](https://openai.com/index/introducing-the-model-spec/)
 - [PEP 20 - The Zen of Python](https://peps.python.org/pep-0020/)
 - [OpenAI: Deliberative Alignment](https://openai.com/index/deliberative-alignment/)
-

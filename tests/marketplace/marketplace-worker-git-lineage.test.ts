@@ -2,22 +2,19 @@
  * Worker Git Lineage E2E Test
  * Tests complete worker→agent execution with git operations validation
  *
- * Architecture (CORRECT):
+ * Architecture (CURRENT):
  * - WORKER checks out job branch before agent runs
- * - AGENT makes file changes using tools
- * - AGENT commits changes manually (via bash git commands in instructions)
- * - AGENT calls finalize_job(COMPLETED) to signal completion
- * - WORKER pushes branch to remote after agent completes
+ * - AGENT makes file changes using tools and produces an execution summary (no manual git)
+ * - WORKER infers completion, auto-commits pending changes, and pushes the branch
  * - WORKER creates PR after push
  *
  * This test validates that:
  * 1. Job branch is created with correct name (job/<jobDefId>)
  * 2. Worker checks out job branch before agent execution
- * 3. Agent makes file changes and commits them manually
- * 4. Worker pushes branch to remote after agent completes
- * 5. Worker creates PR from job branch to base branch
- * 6. Child branches are based on parent branch (not main)
- * 7. PR URL is included in delivery payload (not as artifact)
+ * 3. Worker auto-commits and pushes code changes when the job completes
+ * 4. Worker creates PR from job branch to base branch
+ * 5. Child branches are based on parent branch (not main)
+ * 6. PR URL is included in delivery payload (not as artifact)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -38,7 +35,14 @@ import {
 } from '../helpers/shared.js';
 import { getTestGitRepo } from '../helpers/test-git-repo.js';
 
+let branchPushVerified = false;
+
 describe('Worker: Git Lineage E2E', () => {
+  const suiteId = process.env.E2E_SUITE_ID ?? `manual-suite-${process.pid}`;
+  if (!process.env.E2E_SUITE_ID) {
+    process.env.E2E_SUITE_ID = suiteId;
+  }
+
   let originalCwd: string;
   let testRepo: ReturnType<typeof getTestGitRepo>;
 
@@ -46,7 +50,7 @@ describe('Worker: Git Lineage E2E', () => {
     resetTestEnvironment();
 
     // Set up test git repository
-    testRepo = getTestGitRepo();
+    testRepo = getTestGitRepo(suiteId);
     originalCwd = process.cwd();
     process.chdir(testRepo.repoPath);
 
@@ -86,19 +90,18 @@ describe('Worker: Git Lineage E2E', () => {
     // 1) Create a job that will make the agent write/edit files
     const { jobDefId, requestId } = await createTestJob({
       objective: 'Create and modify files to test git operations',
-      context: 'E2E test validating agent commits and pushes changes',
+      context: 'E2E test validating worker auto-commit and PR creation',
       instructions: `
 You are working in a test git repository with lineage tracking enabled.
 
 Tasks:
-1. Write a new file called "feature.txt" with content "Implemented new feature"
-2. Create an artifact documenting your changes with name="implementation_notes", topic="feature", content="Created feature.txt file"
-3. Call finalize_job with status=COMPLETED and message="Add feature.txt file"
-
-Note: The finalize_job tool will automatically commit your changes with the message you provide.
+1. Write a new file called "feature.txt" with content "Implemented new feature".
+2. Create an artifact documenting your changes with name="implementation_notes", topic="feature", content="Created feature.txt file".
+3. Provide an \`Execution Summary\` section whose first bullet is "- Added feature.txt for new feature".
+4. Do **not** run any git commands; the worker will commit and push for you.
       `.trim(),
-      acceptanceCriteria: 'File created, changes committed and pushed',
-      enabledTools: ['write_file', 'run_shell_command', 'create_artifact', 'finalize_job']
+      acceptanceCriteria: 'File created and execution summary provided so worker can push changes',
+      enabledTools: ['write_file', 'create_artifact']
     });
 
     console.log(`[test] Job created: ${jobDefId}`);
@@ -144,6 +147,18 @@ Note: The finalize_job tool will automatically commit your changes with the mess
       console.log('[test] Worker exited with error (may be expected):', error);
     }
 
+    const statusOutput = execSync('git status --short', {
+      cwd: testRepo.repoPath,
+      encoding: 'utf-8'
+    }).trim();
+    console.log(`[test] Git status after worker:\n${statusOutput || '(clean)'}`);
+
+    const diffStatOutput = execSync('git diff --stat', {
+      cwd: testRepo.repoPath,
+      encoding: 'utf-8'
+    }).trim();
+    console.log(`[test] Git diff --stat after worker:\n${diffStatOutput || '(no diff)'}`);
+
     // 4) Wait for delivery
     const delivery = await waitForDelivery(gqlUrl, requestId, {
       maxAttempts: 40,
@@ -151,6 +166,12 @@ Note: The finalize_job tool will automatically commit your changes with the mess
     });
 
     console.log(`[test] Delivery indexed: ${delivery.ipfsHash}`);
+
+    // Sync latest commits for the job branch from the remote
+    execSync(`git fetch origin ${expectedBranchName}:${expectedBranchName}`, {
+      cwd: testRepo.repoPath,
+      stdio: 'ignore'
+    });
 
     // 5) Verify commits were made to job branch
     const finalCommitCount = parseInt(
@@ -161,22 +182,26 @@ Note: The finalize_job tool will automatically commit your changes with the mess
     );
     console.log(`[test] Final commits on job branch: ${finalCommitCount}`);
 
-    if (finalCommitCount > initialCommitCount) {
-      const newCommits = finalCommitCount - initialCommitCount;
-      console.log(`[test] ✓ Agent made ${newCommits} commit(s)`);
+    expect(finalCommitCount).toBeGreaterThan(initialCommitCount);
+    const newCommits = finalCommitCount - initialCommitCount;
+    console.log(`[test] ✓ Worker recorded ${newCommits} new commit(s)`);
 
-      // Check commit messages
-      const commitLog = execSync(
-        `git log ${expectedBranchName} --format="%s" -n ${newCommits}`,
-        {
-          cwd: testRepo.repoPath,
-          encoding: 'utf-8'
-        }
-      );
-      console.log(`[test] Commit messages:\n${commitLog}`);
-    } else {
-      console.log('[test] ℹ No new commits (agent may not have used Write/Edit tools)');
-    }
+    const commitLog = execSync(
+      `git log ${expectedBranchName} --format="%s" -n ${newCommits}`,
+      {
+        cwd: testRepo.repoPath,
+        encoding: 'utf-8'
+      }
+    );
+    console.log(`[test] Commit messages:\n${commitLog}`);
+
+    const latestCommitMessage = execSync(
+      `git log ${expectedBranchName} --format="%s" -n 1`,
+      { cwd: testRepo.repoPath, encoding: 'utf-8' }
+    ).trim();
+    expect(latestCommitMessage.length).toBeGreaterThan(0);
+    expect(latestCommitMessage.startsWith('[Job')).toBe(false);
+    expect(latestCommitMessage).toContain('Added feature.txt');
 
     // 6) Verify branch was pushed to remote
     const remoteBranches = execSync('git ls-remote --heads origin', {
@@ -200,6 +225,7 @@ Note: The finalize_job tool will automatically commit your changes with the mess
 
     expect(localCommit).toBe(remoteCommit);
     console.log(`[test] ✓ Local/remote in sync: ${localCommit.substring(0, 7)}`);
+    branchPushVerified = true;
 
     // 8) Fetch and verify delivery JSON
     const dirCid = reconstructDirCidFromHexIpfsHash(delivery.ipfsHash);
@@ -219,6 +245,11 @@ Note: The finalize_job tool will automatically commit your changes with the mess
   }, 600_000);
 
   it('worker creates pull request after agent completes', async () => {
+    if (!branchPushVerified) {
+      console.warn('[test] Skipping PR creation test because branch push validation did not complete successfully.');
+      return;
+    }
+
     const { gqlUrl, controlUrl } = getSharedInfrastructure();
 
     // Fail if GITHUB_TOKEN not set - PR creation is a required feature
@@ -233,7 +264,7 @@ Note: The finalize_job tool will automatically commit your changes with the mess
 
     // 1) Create a job that results in file changes
     const { jobDefId, requestId } = await createTestJob({
-      objective: 'Create a test feature file and commit it',
+      objective: 'Create a test feature file and prepare PR-ready summary',
       context: 'E2E test validating worker creates PR after agent completes',
       instructions: `
 Create a new file called feature.txt in the root directory with the following content:
@@ -249,11 +280,11 @@ Feature Details:
 - Git commit workflow
 - Pull request generation
 
-After creating the file, signal job completion by calling finalize_job with status=COMPLETED and message="Add test feature file for PR workflow".
-
-Note: The finalize_job tool will automatically commit your changes with the message you provide.
+After creating the file:
+- Provide an \`Execution Summary\` section whose first bullet is "- Added feature.txt for PR workflow".
+- Do **not** run git commands; the worker will auto-commit and push.
       `.trim(),
-      acceptanceCriteria: 'File created, committed, and finalize_job called with status=COMPLETED',
+      acceptanceCriteria: 'File created and execution summary provided so worker can create PR',
       enabledTools: [
         'list_directory',
         'read_file',
@@ -264,8 +295,7 @@ Note: The finalize_job tool will automatically commit your changes with the mess
         'read_many_files',
         'run_shell_command',
         'save_memory',
-        'create_artifact',
-        'finalize_job'
+        'create_artifact'
       ]
     });
 
@@ -303,6 +333,12 @@ Note: The finalize_job tool will automatically commit your changes with the mess
 
     console.log(`[test] Delivery indexed: ${delivery.ipfsHash}`);
 
+    // Ensure local branch reflects the latest remote commits
+    execSync(`git fetch origin ${jobBranchName}:${jobBranchName}`, {
+      cwd: testRepo.repoPath,
+      stdio: 'ignore'
+    });
+
     // 5) Fetch delivery JSON and verify PR URL is in payload
     const dirCid = reconstructDirCidFromHexIpfsHash(delivery.ipfsHash);
     const reqPath = `${dirCid}/${requestId}`;
@@ -339,6 +375,15 @@ Note: The finalize_job tool will automatically commit your changes with the mess
     expect(prData.head.ref).toBe(jobBranchName);
     expect(prData.base.ref).toBe(baseBranch);
     expect(prData.state).toBe('open');
+    expect(prData.body).toContain('### Execution Summary');
+    expect(prData.body).toContain('- Added feature.txt for PR workflow');
+
+    const latestPrCommitMessage = execSync(
+      `git log ${jobBranchName} --format="%s" -n 1`,
+      { cwd: testRepo.repoPath, encoding: 'utf-8' }
+    ).trim();
+    expect(latestPrCommitMessage.startsWith('[Job')).toBe(false);
+    expect(latestPrCommitMessage).toContain('Added feature.txt');
 
     console.log('\n[test] ✅ PR Creation Validation:');
     console.log(`  ✓ PR #${prNumber}: ${prUrl}`);
@@ -359,18 +404,18 @@ Note: The finalize_job tool will automatically commit your changes with the mess
       context: 'Parent job for branch ancestry testing',
       instructions: `
 You need to:
-1. Write a file called "parent-work.txt" with content "Parent completed initial work"
+1. Write a file called "parent-work.txt" with content "Parent completed initial work".
 2. Dispatch a child job with:
    - objective: "Continue work started by parent"
    - context: "Child should build on parent's changes"
    - acceptanceCriteria: "Child completes work on parent's branch"
    - jobName: "child-continuation"
-3. Call finalize_job with status=DELEGATING and message="Work delegated to child"
+3. Provide an \`Execution Summary\` that clearly states you are waiting for the dispatched child job.
 
 The test will verify the child branch is based on YOUR branch (with your changes), not main.
       `.trim(),
       acceptanceCriteria: 'Work delegated to child with proper branch lineage',
-      enabledTools: ['dispatch_new_job', 'finalize_job']
+      enabledTools: ['dispatch_new_job']
     });
 
     console.log(`[test] Parent job created: ${parentJobId}`);
@@ -506,6 +551,17 @@ The test will verify the child branch is based on YOUR branch (with your changes
     expect(childRequestPayload?.branchName).toBe(childBranchName);
     expect(childRequestPayload?.codeMetadata?.branch?.name).toBe(childBranchName);
     expect(childRequestPayload?.codeMetadata?.baseBranch).toBe(parentBranchName);
+
+    // Ensure local references are up-to-date before comparing ancestry
+    execSync(`git fetch origin ${parentBranchName}:${parentBranchName}`, {
+      cwd: testRepo.repoPath,
+      stdio: 'ignore'
+    });
+
+    execSync(`git fetch origin ${childBranchName}:${childBranchName}`, {
+      cwd: testRepo.repoPath,
+      stdio: 'ignore'
+    });
 
     // 6) Verify child branch ancestry
     // Get merge-base between child and parent

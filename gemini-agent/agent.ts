@@ -76,7 +76,6 @@ export class Agent {
     'dispatch_new_job',
     'dispatch_existing_job',
     'create_artifact',
-    'finalize_job',
     'search_jobs',
     'search_artifacts',
     'google_web_search',

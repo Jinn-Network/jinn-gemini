@@ -8,6 +8,7 @@ import fetch from 'cross-fetch';
 import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { loadEnvOnce } from './tools/shared/env.js';
@@ -102,6 +103,47 @@ export function parseToolText(result: any): any {
     return text ? JSON.parse(text) : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Temporarily set the active job context for MCP tool calls.
+ * Ensures the MCP client reloads environment variables so dispatch tools
+ * record proper lineage (sourceRequestId/sourceJobDefinitionId).
+ */
+export async function withJobContext<T>(
+  context: { requestId?: string | null; jobDefinitionId?: string | null },
+  fn: () => Promise<T>
+): Promise<T> {
+  const client = getMcpClient();
+
+  await client.disconnect();
+
+  if (context.requestId) {
+    process.env.JINN_REQUEST_ID = context.requestId;
+  } else {
+    delete process.env.JINN_REQUEST_ID;
+  }
+
+  if (context.jobDefinitionId) {
+    process.env.JINN_JOB_DEFINITION_ID = context.jobDefinitionId;
+  } else {
+    delete process.env.JINN_JOB_DEFINITION_ID;
+  }
+
+  await client.connect();
+
+  try {
+    return await fn();
+  } finally {
+    if (context.requestId) {
+      delete process.env.JINN_REQUEST_ID;
+    }
+    if (context.jobDefinitionId) {
+      delete process.env.JINN_JOB_DEFINITION_ID;
+    }
+    await client.disconnect();
+    await client.connect();
   }
 }
 
@@ -372,7 +414,8 @@ export async function createTestJob(params: {
  * Create a temporary .operate directory with test configuration
  */
 function createTestOperateDir(): string {
-  const testOperateDir = path.join(process.cwd(), '.operate-test');
+  const suiteIdentifier = process.env.E2E_SUITE_ID || `pid-${process.pid}`;
+  const testOperateDir = path.join(tmpdir(), `jinn-operate-test-${suiteIdentifier}`);
 
   // Clean up any existing test directory
   if (fs.existsSync(testOperateDir)) {

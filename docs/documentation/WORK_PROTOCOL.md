@@ -53,29 +53,18 @@ Based on the context gathered, the agent must choose one of the following execut
 
 ### Phase 3: Conclude, Signal & Report
 
-This is the final and mandatory phase of every agent run. The agent must conclude its work by producing a structured final output that unambiguously signals its status to the worker system.
+This is the final and mandatory phase of every agent run. The agent must conclude its work by producing a structured final output that allows the worker to infer status accurately and continue orchestration.
 
-1.  **Produce an Execution Summary:** The agent's final output for every run **must** be a comprehensive **Execution Summary**. This summary details the agent's reasoning, actions, and outcome for the run.
+1.  **Produce an Execution Summary:** The agent's final output for every run **must** be a comprehensive **Execution Summary**. This summary details the agent's reasoning, actions, and outcome for the run. The worker uses this text to brief parents and (when needed) to describe commits and PRs, so clarity here is essential.
 
-2.  **Signal Status Using `finalize_job` Tool (Preferred Method):** The agent **must** call the `finalize_job` tool to declare its final status. This immediately records the job state and is the formal mechanism for handing off workflow control to the worker.
+2.  **Status Is Inferred Automatically:** The worker inspects tool calls, error signals, and the current state of child jobs to determine whether the run ended in `COMPLETED`, `DELEGATING`, `WAITING`, or `FAILED`. The agent does not call a separate signaling tool anymore—its behavior is the signal. Keep your actions consistent with the intended status (e.g., dispatch children before expecting `DELEGATING`, throw errors when blocked so the worker records `FAILED`).
 
-    **Tool Call:**
-    ```
-    finalize_job(status: "STATUS_CODE", message: "A brief, human-readable summary of the outcome.")
-    ```
-
-    **Status Codes:**
-    *   `COMPLETED`: The agent has finished its final task (Path A). Its deliverables are ready for review.
-    *   `DELEGATING`: The agent has dispatched child jobs and is awaiting their completion (Paths B, C).
-    *   `WAITING`: The agent is paused, awaiting completion of other sibling jobs before it can proceed (Path D).
-    *   `FAILED`: The agent has encountered an error and requires supervisor intervention (Path E).
-
-    **Legacy Fallback:** For backwards compatibility, agents may also embed a text-based `FinalStatus:` JSON block in their execution summary, which the worker will parse if the tool was not used.
-
-3.  **Worker-Managed Workflow (The Primary Mechanism):** The `mech_worker` uses the agent's signal to manage the workflow reliably. After every job run, the worker will:
-    *   Extract the final status from the `finalize_job` tool call in telemetry (or parse text-based `FinalStatus` as fallback).
-    *   **If the status is `COMPLETED` or `FAILED`**, the worker will **automatically dispatch the parent job.** This guarantees the supervisor is notified of finished work or critical issues.
-    *   **If the status is `DELEGATING` or `WAITING`** (or if the status is missing/malformed), the worker will **not** dispatch the parent job. This prevents the supervisor from being activated unnecessarily.
+3.  **Worker-Managed Git & PR Workflow:** When the worker infers `COMPLETED`, it:
+    * Auto-commits any pending file changes (using the execution summary as the commit message fallback) before pushing the branch.
+    * Pushes the job branch to the remote.
+    * Creates or updates the GitHub Pull Request, appending the execution summary so reviewers understand the outcome.
+    
+    Agents are still encouraged to make their own meaningful commits; the worker's auto-commit is a safety net that keeps lineage intact even if the run forgets to commit.
 
 4.  **Agent-Managed Dispatch (The Optional Override):** While the worker manages the primary workflow, the agent retains the ability to dispatch jobs itself. It *can*, at its discretion, use `dispatch_existing_job` to immediately activate its parent. This is a secondary mechanism, useful for:
     *   Escalating a `FAILED` status with high priority.

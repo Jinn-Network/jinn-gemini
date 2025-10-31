@@ -18,6 +18,11 @@ import {
 import { getTestGitRepo } from '../helpers/test-git-repo.js';
 
 describe('Marketplace: Code Metadata', () => {
+  const suiteId = process.env.E2E_SUITE_ID ?? `manual-suite-${process.pid}`;
+  if (!process.env.E2E_SUITE_ID) {
+    process.env.E2E_SUITE_ID = suiteId;
+  }
+
   let originalCwd: string;
   let testRepo: ReturnType<typeof getTestGitRepo>;
 
@@ -25,7 +30,7 @@ describe('Marketplace: Code Metadata', () => {
     resetTestEnvironment();
 
     // Get test repo and switch to it
-    testRepo = getTestGitRepo();
+    testRepo = getTestGitRepo(suiteId);
     originalCwd = process.cwd();
     process.chdir(testRepo.repoPath);
 

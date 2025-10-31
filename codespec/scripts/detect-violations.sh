@@ -29,17 +29,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "$TARGET" = "--obj3-only" ]; then
   shift
   TARGET="${1:---diff}"
-  echo "🔒 Running Security Review Only (obj3)"
-  exec "$SCRIPT_DIR/review-obj3.sh" "$TARGET"
+  echo "🔒 Running Security Review Only (guardrails + obj3)"
+  "$SCRIPT_DIR/review-guardrails.sh" "$TARGET"
+  GUARD_EXIT=$?
+  "$SCRIPT_DIR/review-obj3.sh" "$TARGET"
+  OBJ3_EXIT=$?
+  if [ $GUARD_EXIT -ne 0 ] || [ $OBJ3_EXIT -ne 0 ]; then
+    exit 1
+  else
+    exit 0
+  fi
 fi
 
 echo -e "${BOLD}🔍 Running Complete Code Spec Review${NC}"
 echo "   Target: $TARGET"
-echo "   Objectives: obj3 (Security), obj1 (Orthodoxy), obj2 (Discoverability)"
+echo "   Objectives: guardrails (r4/db7/db8), obj3 (Security), obj1 (Orthodoxy), obj2 (Discoverability)"
 echo "⏳ Running reviews in parallel (2-6 minutes)..."
 echo ""
 
 # Create temp files for each objective's output
+TEMP_GUARD=$(mktemp)
 TEMP_OBJ1=$(mktemp)
 TEMP_OBJ2=$(mktemp)
 TEMP_OBJ3=$(mktemp)
@@ -47,7 +56,7 @@ TEMP_OBJ3=$(mktemp)
 # Cleanup function
 cleanup() {
   local exit_code=$?
-  rm -f "$TEMP_OBJ1" "$TEMP_OBJ2" "$TEMP_OBJ3"
+  rm -f "$TEMP_GUARD" "$TEMP_OBJ1" "$TEMP_OBJ2" "$TEMP_OBJ3"
   # Kill background processes if still running
   jobs -p | xargs -r kill 2>/dev/null || true
   exit $exit_code
@@ -56,6 +65,8 @@ trap cleanup EXIT INT TERM
 
 # Run all three reviews in parallel
 echo "Starting parallel reviews..."
+"$SCRIPT_DIR/review-guardrails.sh" "$TARGET" > "$TEMP_GUARD" 2>&1 &
+PID_GUARD=$!
 "$SCRIPT_DIR/review-obj3.sh" "$TARGET" > "$TEMP_OBJ3" 2>&1 &
 PID_OBJ3=$!
 "$SCRIPT_DIR/review-obj1.sh" "$TARGET" > "$TEMP_OBJ1" 2>&1 &
@@ -68,7 +79,8 @@ ELAPSED=0
 echo -n "Progress: "
 while true; do
   # Check if all processes are done
-  if ! kill -0 "$PID_OBJ1" 2>/dev/null && \
+  if ! kill -0 "$PID_GUARD" 2>/dev/null && \
+     ! kill -0 "$PID_OBJ1" 2>/dev/null && \
      ! kill -0 "$PID_OBJ2" 2>/dev/null && \
      ! kill -0 "$PID_OBJ3" 2>/dev/null; then
     break
@@ -95,9 +107,16 @@ echo " done! (${ELAPSED}s)"
 echo ""
 
 # Wait for all processes and collect exit codes
+EXIT_GUARD=0
 EXIT_OBJ1=0
 EXIT_OBJ2=0
 EXIT_OBJ3=0
+
+if wait "$PID_GUARD"; then
+  EXIT_GUARD=0
+else
+  EXIT_GUARD=$?
+fi
 
 if wait "$PID_OBJ1"; then
   EXIT_OBJ1=0
@@ -123,6 +142,7 @@ fi
 echo ""
 echo "📝 Updating violations ledger..."
 if yarn tsx "$SCRIPT_DIR/../lib/update-all-reviews.ts" \
+  "guard:$TEMP_GUARD" \
   "obj1:$TEMP_OBJ1" \
   "obj2:$TEMP_OBJ2" \
   "obj3:$TEMP_OBJ3" 2>&1 | tee /tmp/codespec-ledger-update.log; then
@@ -134,6 +154,13 @@ fi
 echo ""
 
 # Print detailed results for each objective
+if [ $EXIT_GUARD -ne 0 ]; then
+  echo -e "${RED}${BOLD}🔴 [guardrails] Secret Automation Violations${NC}"
+  echo "────────────────────────────────────────────────────────────────────"
+  cat "$TEMP_GUARD"
+  echo ""
+fi
+
 if [ $EXIT_OBJ3 -ne 0 ]; then
   echo -e "${RED}${BOLD}🔴 [obj3] Security Violations (Highest Priority)${NC}"
   echo "────────────────────────────────────────────────────────────────────"
@@ -156,7 +183,7 @@ if [ $EXIT_OBJ2 -ne 0 ]; then
 fi
 
 # Exit with failure if any critical (obj3) violations found
-if [ $EXIT_OBJ3 -ne 0 ]; then
+if [ $EXIT_GUARD -ne 0 ] || [ $EXIT_OBJ3 -ne 0 ]; then
   exit 1
 fi
 

@@ -60,6 +60,9 @@ yarn lint:spec
 
 # All worker files
 yarn lint:spec:all
+
+# Guardrails only (secrets automation)
+./codespec/scripts/review-guardrails.sh --diff
 ```
 
 ## Understanding Violations

@@ -134,6 +134,19 @@ Rules are hard constraints that must never be violated. Unlike objectives (which
 
 [^r1]: See examples/r1.md
 
+### Enforce automated secret guardrails[^r4]
+
+**The rule:** Every automated git workflow—workers, bots, CI jobs, and test harnesses—must invoke the canonical secret guard before staging, committing, or pushing code. The guard enforces a shared denylist for secret-bearing paths (e.g., `.operate/`, `.operate-test/`, `*private_key*`, wallet exports) and fails closed if any appear in the staged tree.
+
+**Why this matters for AI-generated code:**
+- Automation is trusted to keep history clean; if the guard is skipped, leaked credentials become permanent.
+- AI agents reuse commit helpers; one insecure path propagates to every call site.
+- Preventing secret commits at the source is cheaper than rotating wallets and remediating public leaks.
+
+**Application:** Any flow that runs `git commit` or `git push` must call the guard immediately beforehand. If the guard flags a violation, surface the error and abort rather than attempting a partial commit or silent skip.
+
+[^r4]: See examples/r4.md
+
 ### Always validate on-chain state before financial operations[^r2]
 
 **The rule:** Before submitting any transaction that transfers tokens, executes a Safe transaction, or modifies on-chain state, verify that the operation is valid by querying current on-chain state.
@@ -204,6 +217,24 @@ Default behaviors define the standard way to handle common operations. They are 
 - ✅ `const rpcUrl = getRequiredRpcUrl();`
 - ❌ `const rpcUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC;`
 
+### Keep ephemeral secret fixtures out of tracked repos[^db7]
+
+**Behavior:** Tests, fixtures, and local tooling write generated wallets or other secrets only to the canonical temp secret workspace (outside git worktrees) and clean it up afterward. Directories such as `.operate-test/` must never be created beneath a tracked repository.
+
+**Why this matters:**
+- Automation that stages "everything" cannot accidentally pick up secret fixtures.
+- IDEs and commit UIs never surface sensitive files inside tracked trees.
+- Reusable patterns keep every suite aligned with the rule without rediscovering it.
+
+**How to follow it:**
+1. Allocate the secret workspace via the shared helper so the path lands under the OS temp directory (or another untracked location).
+2. Inject that absolute path through environment variables (e.g., `OPERATE_HOME`) instead of deriving it from `process.cwd()`.
+3. Use the helper's cleanup to remove residual secrets once the test completes.
+
+**Examples:** See examples/db7.md.
+
+[^db7]: See examples/db7.md
+
 ### Canonical HTTP client with timeout & retry
 
 **Behavior:** All runtime HTTP calls (REST, GraphQL, IPFS, RPC over HTTP) use a shared client module that enforces timeouts, structured errors, and retry/backoff semantics. Callers import typed helpers (e.g., `postJson`, `graphQLRequest`) instead of calling `fetch` directly.
@@ -227,6 +258,24 @@ Default behaviors define the standard way to handle common operations. They are 
 **Examples:**
 - ✅ `const data = await graphQLRequest<ClaimResponse>({ query, variables, context: { requestId } });`
 - ❌ `const res = await fetch(url, { method: 'POST', body: JSON.stringify(query) }); // no timeout`
+
+### Validate staged content before auto-commit[^db8]
+
+**Behavior:** Auto-commit or auto-push helpers must call the canonical staged-tree validator immediately before committing, ensuring the denylist is enforced uniformly. If forbidden paths are staged, the helper throws a descriptive error and halts the workflow.
+
+**Why this matters:**
+- Auto-commit paths bypass human review; the guard is the only line of defense.
+- Centralized checks keep denylist updates synchronized across workers, bots, and scripts.
+- Failures clearly identify the offending path, making mitigation straightforward.
+
+**How to follow it:**
+1. Invoke the staged-tree validator right after staging changes and before committing.
+2. Propagate the guard's error to abort the workflow with context when violations occur.
+3. Update the shared denylist through the guard when new secret patterns emerge; callers never maintain private overrides.
+
+**Examples:** See examples/db8.md.
+
+[^db8]: See examples/db8.md
 
 ### Structured logging only
 

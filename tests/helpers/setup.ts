@@ -145,12 +145,38 @@ export async function setup() {
     PONDER_DATABASE_DIR: ponderCacheDir,  // Suite-specific cache directory
   };
 
-  // Use stdio: 'inherit' to avoid creating pipe handles that prevent clean teardown
+  // Suppress stdout to reduce test noise, but keep stderr for errors
+  // Using explicit array form avoids pipe handles that prevent clean teardown
   ponderProc = execa('yarn', ['ponder:dev'], {
-    stdio: 'inherit',
+    stdio: ['inherit', 'ignore', 'pipe'], // stdin/stdout/stderr
     env: ponderEnv,
     cleanup: true,
     forceKillAfterTimeout: 2000, // Force-kill after 2s if SIGTERM doesn't work
+  });
+
+  const ansiControlRegex = /\u001b\[[0-9;]*[A-Za-z]/g;
+  const ponderAlertRegex = /(warn|error|fail|httprequesterror)/i;
+  const seenPonderAlerts = new Set<string>();
+  const bufferedAlerts: string[] = [];
+
+  ponderProc.stderr?.setEncoding('utf8');
+  ponderProc.stderr?.on('data', (chunk: string) => {
+    const sanitized = chunk.replace(ansiControlRegex, '').replace(/\r/g, '\n');
+    for (const rawLine of sanitized.split('\n')) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (!ponderAlertRegex.test(line)) continue;
+      bufferedAlerts.push(line);
+      if (seenPonderAlerts.has(line)) continue;
+      seenPonderAlerts.add(line);
+      console.error(`[ponder] ${line}`);
+    }
+  });
+
+  ponderProc.on('exit', (code, signal) => {
+    if ((code ?? 0) === 0 || signal === 'SIGTERM') return;
+    if (bufferedAlerts.length === 0) return;
+    console.error(`[global-setup:${SUITE_ID}] Ponder stderr before exit:\n${bufferedAlerts.join('\n')}`);
   });
 
   console.log(`[global-setup:${SUITE_ID}] Ponder dev server spawned (PID: ${ponderProc.pid})`);

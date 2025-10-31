@@ -6,6 +6,9 @@ import { createConfig } from "@ponder/core";
 import { http } from "viem";
 import fetch from 'cross-fetch';
 
+// Suppress config logs in test mode to reduce noise
+const isTestMode = process.env.PONDER_REVIEW_MODE === '1';
+
 // Get start block: use env var if set, otherwise fetch current block and use recent history
 async function getStartBlock(): Promise<number> {
   const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
@@ -30,10 +33,14 @@ async function getStartBlock(): Promise<number> {
     const currentBlock = parseInt(result.result, 16);
     const recentStartBlock = Math.max(currentBlock - 100, 0);
 
-    console.log(`[ponder] Using recent start block: ${recentStartBlock} (current: ${currentBlock})`);
+    if (!isTestMode) {
+      console.log(`[ponder] Using recent start block: ${recentStartBlock} (current: ${currentBlock})`);
+    }
     return recentStartBlock;
   } catch (error) {
-    console.warn('[ponder] Failed to fetch current block, using contract deployment block:', error);
+    if (!isTestMode) {
+      console.warn('[ponder] Failed to fetch current block, using contract deployment block:', error);
+    }
     return 35577849; // Fallback to contract deployment block
   }
 }
@@ -41,7 +48,7 @@ async function getStartBlock(): Promise<number> {
 // Review mode configuration
 const endBlock = process.env.PONDER_END_BLOCK ? Number(process.env.PONDER_END_BLOCK) : undefined;
 
-if (process.env.PONDER_REVIEW_MODE === '1') {
+if (!isTestMode && process.env.PONDER_REVIEW_MODE === '1') {
   console.log('[Ponder Config] 🔍 REVIEW MODE ACTIVE');
   console.log(`[Ponder Config]   Start Block: ${process.env.PONDER_START_BLOCK || 'auto-detect'}`);
   console.log(`[Ponder Config]   End Block: ${endBlock || 'none (will sync to chain head)'}`);
@@ -50,8 +57,10 @@ if (process.env.PONDER_REVIEW_MODE === '1') {
 const startBlock = await getStartBlock();
 
 const MECH_ADDRESS = getMechAddress() || '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7';
-console.log('[Ponder Config] Indexing mech:', MECH_ADDRESS);
-console.log('[Ponder Config] Start block:', startBlock);
+if (!isTestMode) {
+  console.log('[Ponder Config] Indexing mech:', MECH_ADDRESS);
+  console.log('[Ponder Config] Start block:', startBlock);
+}
 
 // Read RPC_URL here (after env/index.js has run) to respect review mode overrides
 const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";

@@ -93,6 +93,15 @@ export default defineConfig({
         resolve: sharedResolve,
         test: {
           ...sharedTestDefaults,
+          name: 'unit',
+          include: ['tests/unit/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      {
+        resolve: sharedResolve,
+        test: {
+          ...sharedTestDefaults,
           name: 'codespec',
           // CodeSpec tests don't need VNet/Ponder infrastructure
           include: ['tests/codespec/**/*.e2e.test.ts'],
