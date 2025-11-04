@@ -71,6 +71,31 @@ The Control API serves as a mandatory security and integrity layer for all datab
 
 This pattern emerged from JINN-195 after observing inconsistent lineage data in production. The Control API centralizes validation logic that was previously scattered across tools, reducing the attack surface and preventing malformed writes.
 
+## Document Organization
+
+### Multi-File Requirements
+
+Requirements should be organized into thematic files within a dedicated `requirements/` directory:
+
+- Each file addresses a distinct architectural concern or system component
+- Files should be appropriately sized for comprehension (typically 5-20 assertions per file)
+- An `index.md` file must be present to serve as a navigable entry point
+- Cross-references between files should use relative links
+
+**Example Structure:**
+```
+requirements/
+  ├── index.md              # Table of contents
+  ├── architecture.md       # Core architecture assertions
+  ├── lifecycle.md          # Job lifecycle assertions
+  ├── execution.md          # Agent execution assertions
+  └── ...                   # Additional thematic files
+```
+
+### Single-File Documents
+
+For documents that don't require thematic subdivision (constitution, vision), assertions may be organized within a single file using clear section headings.
+
 ## Application Guidelines
 
 ### Scope
@@ -78,7 +103,7 @@ This pattern emerged from JINN-195 after observing inconsistent lineage data in 
 This structure applies to:
 - `constitution.md` - Core immutable principles
 - `vision.md` - Strategic direction and goals
-- `requirements.md` - Technical and operational requirements
+- `requirements/` directory - Technical and operational requirements (multi-file)
 
 ### Granularity
 

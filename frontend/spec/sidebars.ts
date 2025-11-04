@@ -28,7 +28,7 @@ const sidebars: SidebarsConfig = {
         },
         'blueprint/constitution',
         'blueprint/vision',
-        'blueprint/requirements',
+        'blueprint/requirements/index',
       ],
     },
     {
