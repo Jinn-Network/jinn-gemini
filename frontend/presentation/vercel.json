@@ -8,6 +8,5 @@
     "deploymentEnabled": {
       "main": true
     }
-  },
-  "ignoreCommand": "bash -c 'if git diff --quiet HEAD^ HEAD -- .; then echo \"No changes in presentation frontend, skipping build\"; exit 0; else echo \"Changes detected in presentation frontend, proceeding with build\"; exit 1; fi'"
+  }
 }
