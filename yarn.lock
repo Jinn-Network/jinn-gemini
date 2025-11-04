@@ -868,10 +868,10 @@
   dependencies:
     minipass "^7.0.4"
 
-"@jinn-network/mech-client-ts@^0.0.1":
-  version "0.0.1"
-  resolved "https://registry.yarnpkg.com/@jinn-network/mech-client-ts/-/mech-client-ts-0.0.1.tgz#54d35d7c1c1f35c8c672d4029754a77fd9cdc8a1"
-  integrity sha512-pH/itboasnI7QkcoVJqhEYxCuMhS7KxgTomZXYI9Wbun5scNWA9LqwxiXFla2e1vyc/m6IZ72a86Mk2f9g5Jdw==
+"@jinn-network/mech-client-ts@^0.0.4":
+  version "0.0.4"
+  resolved "https://registry.yarnpkg.com/@jinn-network/mech-client-ts/-/mech-client-ts-0.0.4.tgz#7f57485ee5c89046b956f3668bd5653e798b5515"
+  integrity sha512-rpbNoUeoA5O98v+gxRE7IBQpoeQZ2chAMDWeXyGpF58QJYx/L5XTwrFd7rGj6qg/wSlnKedgLHCP3x3fjICMOA==
   dependencies:
     "@types/form-data" "^2.2.1"
     "@types/uuid" "^10.0.0"

@@ -1,6 +1,13 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "yarn build",
   "outputDirectory": "dist",
   "framework": null,
-  "installCommand": "yarn install"
+  "installCommand": "yarn install",
+  "git": {
+    "deploymentEnabled": {
+      "main": true
+    }
+  },
+  "ignoreCommand": "bash -c 'if git diff --quiet HEAD^ HEAD -- .; then echo \"No changes in presentation frontend, skipping build\"; exit 1; else echo \"Changes detected in presentation frontend, proceeding with build\"; exit 0; fi'"
 }
