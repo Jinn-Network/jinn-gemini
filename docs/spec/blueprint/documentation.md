@@ -1,3 +1,7 @@
+---
+title: "Documentation"
+---
+
 # Documentation
 This is how the implementation CURRENTLY works, in plain text.
 

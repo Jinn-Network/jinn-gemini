@@ -51,6 +51,20 @@ const sidebars: SidebarsConfig = {
     'roadmap',
     {
       type: 'category',
+      label: 'Blueprint',
+      collapsed: false,
+      link: {
+        type: 'doc',
+        id: 'blueprint/index',
+      },
+      items: [
+        'blueprint/requirements',
+        'blueprint/specification',
+        'blueprint/documentation',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Code Spec',
       collapsed: false,
       items: [

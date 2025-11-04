@@ -2151,5 +2151,5 @@ These violations make code harder for AI agents to understand, navigate, and mai
 
 ## References
 
-- [AUDIT_PLAN.md](./AUDIT_PLAN.md) - Original audit methodology
+- AUDIT_PLAN.md - Original audit methodology
 - [spec.md](./spec.md) - Code Spec with Objectives, Rules, and Default Behaviors

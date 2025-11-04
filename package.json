@@ -44,6 +44,7 @@
     "frontend:dev": "cd frontend/explorer && yarn run dev",
     "frontend:start": "cd frontend/explorer && yarn run start",
     "frontend:build": "cd frontend/explorer && yarn run build",
+    "frontend:spec": "cd frontend/spec && yarn start",
     "dev:all": "run-p dev:mech mcp:start",
     "start:all": "concurrently \"yarn mech\" \"yarn frontend:start\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
     "clean": "rm -rf dist && cd frontend/explorer && yarn run clean",

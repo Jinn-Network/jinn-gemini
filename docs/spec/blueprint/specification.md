@@ -1,3 +1,7 @@
+---
+title: "Specification"
+---
+
 # Specification
 This is how the implementation SHOULD work.
 

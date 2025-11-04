@@ -48,6 +48,7 @@ const config: Config = {
           // Remove this to remove the "edit this page" links.
           editUrl:
             'https://github.com/jinn-project/jinn-cli-agents/tree/main/docs/spec/',
+          exclude: ['**/code-spec/AUDIT_PLAN.md'],
         },
         blog: false,
         theme: {
