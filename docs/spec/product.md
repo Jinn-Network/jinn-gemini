@@ -1,14 +1,5 @@
 # Product
 
-This document has been split for clarity into two tracks:
+This document has been consolidated into [Product Overview](./documentation/product-overview).
 
-- MVP (near‑term, actionable):
-  - [Demo Application](./demo-application)
-  - [Technical Architecture - MVP](./mvp-spec)
-
-- Platform (longer‑term):
-  - [Product Overview](./product-overview)
-  - [Technical Architecture](./technical-architecture)
-  - [Research Questions](./research-questions)
-
-All previous product content now lives in the docs linked above.
+For technical implementation details, see [Protocol Model](./documentation/protocol-model).

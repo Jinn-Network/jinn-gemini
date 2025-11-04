@@ -76,8 +76,8 @@ const config: Config = {
       hideOnScroll: false,
       items: [
         {
-          href: 'https://github.com/jinn-project/jinn-cli-agents',
-          label: 'GitHub',
+          href: 'https://explorer.jinn.network',
+          label: 'Explorer',
           position: 'right',
         },
       ],

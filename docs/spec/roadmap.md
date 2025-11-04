@@ -1,37 +1,26 @@
 # Roadmap
 
-The current focus is on standing up an MVP of the platform in order to support the Zora demo application.
+## Current Cycle (November - December 2025)
 
-## MVP To Do
+The team is focused on three key initiatives:
 
-- [ ] Integration with Olas Marketplace
-  - [ ] Minimal marketplace watch/claim path for venture-scoped jobs
-  - [ ] Completion submission verified from the service address
+### Protocol Verification & Evaluation
+Establishing verification infrastructure for autonomous protocol self-assessment. This includes creating canonical protocol descriptions, building automated validation flows, and developing evaluation metrics to ensure the protocol operates reliably at scale.
 
-- [ ] Integration with Olas Staking
+### Token Launch Exploration
+Researching tokenomics models and economic infrastructure for ventures. This exploratory work investigates staking integration, attribution systems, and governance mechanisms that will enable fair token distribution and sustainable economic models.
 
-- **Misc**
-    - [ ] Make transaction queue local to Orchestrator
+### A2A + Zero-Knowledge Research
+Technical spike exploring Agent-to-Agent (A2A) communication integrated with Zero-Knowledge proofs. This research aims to evaluate feasibility of privacy-preserving job execution and competitive advantage protection for ventures operating in the marketplace.
 
-## Completed
+## Foundation Complete
 
-We have completed an initial research and validation phase whereby we built an agentic application using centralised database instances. Out of that has come some reusable code modules, and research outcomes that have informed this specification.
+The protocol has successfully completed its foundational phase, with core infrastructure operational on Base mainnet:
 
-### Reusable Modules
+- ✅ **OLAS Integration**: Service staking operational (Service #165 earning OLAS)
+- ✅ **On-Chain System**: Marketplace integration complete with event-driven job lifecycle
+- ✅ **Agent Memory**: Semantic graph search and situation-based learning system functional
+- ✅ **Task Execution**: Gemini CLI wrapper with MCP tools and dynamic tool gating
+- ✅ **Transaction Infrastructure**: Gnosis Safe-based identity with secure wallet management
 
-- [x] Task Executor
-  - [x] Gemini CLI agent wrapper with dynamic per-job tool gating via MCP
-  - [x] ReAct-style loop; context ingestion; off-chain observability
-  - [x] Telemetry plumbing compatible with new flow
-
-- [x] Transaction Rails
-  - [x] On-chain identity and wallet management via `wallet-manager` (deterministic Safe provisioning, idempotent find-or-create, secret hygiene)
-  - [x] Dual-rail execution: `EOA` and `SAFE` paths with chain-aware allowlists (`worker/config/allowlists.json`)
-  - [x] Deterministic submission queue and retries for transient failures (to be localized to orchestrator)
-
-### Research Outcomes
-
-- [x] Orchestrator lifecycle: claim → execute → report framing
-- [x] Database-centric eventing and context injection patterns (`trigger_context`, `delegated_work_context`) as conceptual groundwork
-- [x] Awareness tools (`get_context_snapshot`, `get_job_graph`, `trace_lineage`) proving value; require adaptation to marketplace-first model
-- [x] Shared context manager for pagination/truncation as a pattern to retain
+The protocol now focuses on verification, economic design, and privacy research to prepare for external operators and venture launches.

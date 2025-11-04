@@ -1,6 +1,8 @@
-# Principles and Vision
+---
+title: "Constitution"
+---
 
-## Principles
+# Principles
 
 ### Decouple logic from execution
 Deploy product logic to shared, generic execution environments. Avoid bespoke infra and tokenomics just to run. Reduce builder complexity by separating what code does from how and where it runs.
@@ -14,10 +16,3 @@ Choose end-to-end autonomy even if it reduces initial capability. Human-in-the-l
 ### Respect the flows
 The most capable agentic AI systems sit on the most fluid economic rails. Agents will be the dominant consumers of AI inference and require large, reliable capital pipes. Build on crypto primitives to expand and automate funding; in the early phase, design compelling opportunities for traders to seed flow.
 
-## Mission
-
-For everyone in the world to own a part of an agent organisation.
-
-## Vision
-
-A global network of Internet-native vehicles for software-assisted human endeavour.

@@ -15,73 +15,37 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
   // Manually defined sidebar for the Jinn Project Specification
   specSidebar: [
-    {
-      type: 'category',
-      label: 'Overview',
-      collapsed: false,
-      items: [
-        'introduction',
-        'principles-and-vision',
-        'about-us',
-      ],
-    },
-    {
-      type: 'category',
-      label: 'MVP',
-      collapsed: false,
-      items: [
-        'demo-application',
-        {
-          type: 'doc',
-          id: 'mvp-spec',
-          label: 'Spec'
-        },
-      ],
-    },
-    {
-      type: 'category',
-      label: 'Platform',
-      collapsed: false,
-      items: [
-        'product-overview',
-        'technical-architecture',
-        'research-questions',
-      ],
-    },
-    'roadmap',
+    'introduction',
     {
       type: 'category',
       label: 'Blueprint',
       collapsed: false,
-      link: {
-        type: 'doc',
-        id: 'blueprint/index',
-      },
       items: [
+        {
+          type: 'doc',
+          id: 'blueprint/index',
+          label: 'Overview',
+        },
+        'blueprint/constitution',
+        'blueprint/vision',
         'blueprint/requirements',
-        'blueprint/specification',
-        'blueprint/documentation',
       ],
     },
     {
       type: 'category',
-      label: 'Code Spec',
+      label: 'Documentation',
       collapsed: false,
+      link: {
+        type: 'doc',
+        id: 'documentation/index',
+      },
       items: [
-        'code-spec/spec',
-        'code-spec/VIOLATIONS',
-        'code-spec/USAGE',
-        {
-          type: 'category',
-          label: 'Examples',
-          items: [
-            'code-spec/examples/obj1',
-            'code-spec/examples/obj2',
-            'code-spec/examples/obj3',
-          ],
-        },
+        'documentation/product-overview',
+        'documentation/protocol-model',
       ],
     },
+    'roadmap',
+    'about-us',
   ],
 };
 

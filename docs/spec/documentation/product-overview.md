@@ -1,6 +1,6 @@
 # Product Overview
 
-Longer-term platform scope. For MVP, see [Demo Application](./demo-application) and [Technical Architecture - MVP](./mvp-spec).
+Longer-term platform scope.
 
 ## The Vision: A Platform for Agentic Ventures
 
@@ -30,7 +30,7 @@ The platform's value is built on five key pillars designed to serve launchers, o
 
 An agentic venture is fundamentally different from a single, fire-and-forget agent run in a coding tool. A single agent, given access to tools like Gemini's nano banana image generation model, could be tasked to "create a compelling image to publish on a creator network like Zora." It would execute this once.
 
-In contrast, an agentic venture can be given the standing objective to "become a top creator on Zora." It will work towards this goal in perpetuity, continuously learning, adapting, and executing tasks as long as capital flows into the system. This allows ventures to tackle objectives that are an order of magnitude greater in complexity and duration than any single agent could. Our [demo application](./demo-application) on Zora serves as the first concrete example of this capability.
+In contrast, an agentic venture can be given the standing objective to "become a top creator on Zora." It will work towards this goal in perpetuity, continuously learning, adapting, and executing tasks as long as capital flows into the system. This allows ventures to tackle objectives that are an order of magnitude greater in complexity and duration than any single agent could.
 
 #### 2. Radical Extensibility
 
