@@ -9,13 +9,34 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
+import { execSync } from 'child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { loadEnvOnce } from './tools/shared/env.js';
 import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
+import { parseRepoSlug } from './test-git-repo.js';
 
 // Re-export types for convenience
 export type { VnetResult };
+
+async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return true;
+  }
+  return false;
+}
 
 /**
  * MCP Client wrapper for calling tools through the MCP protocol
@@ -23,6 +44,7 @@ export type { VnetResult };
 class McpClientWrapper {
   private client: Client | null = null;
   private transport: StdioClientTransport | null = null;
+  private mcpServerPid: number | null = null;
 
   async connect(): Promise<void> {
     if (this.client) return; // Already connected
@@ -63,14 +85,116 @@ class McpClientWrapper {
     );
 
     await this.client.connect(this.transport);
+
+    // Try to extract the child process PID from the transport
+    // StdioClientTransport spawns a child process internally, but doesn't expose it directly
+    // We'll need to find it by command/args after a short delay
+    setTimeout(() => {
+      this.findMcpServerPid(resolvedCommand, resolvedArgs || []);
+    }, 500);
+  }
+
+  /**
+   * Find the MCP server process PID by matching command and args
+   * This is a fallback since StdioClientTransport doesn't expose the child process
+   */
+  private findMcpServerPid(command: string, args: string[]): void {
+    try {
+      // Find process matching the command and args
+      // On macOS/Linux, we can use ps to find the process
+      const psOutput = execSync('ps aux', { encoding: 'utf-8' });
+      const lines = psOutput.split('\n');
+      
+      for (const line of lines) {
+        // Look for the process with matching command and args
+        if (line.includes(command) && args.some(arg => line.includes(arg))) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[1], 10);
+          if (!isNaN(pid) && pid > 0) {
+            this.mcpServerPid = pid;
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      // Non-critical - we'll fall back to process group killing
+    }
   }
 
   async disconnect(): Promise<void> {
     if (this.client) {
-      await this.client.close();
+      try {
+        // Close the client first (this should close the transport)
+        await this.client.close();
+      } catch (err: any) {
+        // Ignore errors during close
+      }
       this.client = null;
-      this.transport = null;
     }
+
+    // Ensure the MCP server child process is terminated
+    if (this.mcpServerPid) {
+      const trackedPid = this.mcpServerPid;
+      try {
+        try {
+          process.kill(-trackedPid, 'SIGTERM');
+        } catch {
+          process.kill(trackedPid, 'SIGTERM');
+        }
+
+        let exited = await waitForPidExit(trackedPid, 3000);
+        if (!exited) {
+          try {
+            process.kill(-trackedPid, 'SIGKILL');
+          } catch {
+            try {
+              process.kill(trackedPid, 'SIGKILL');
+            } catch {}
+          }
+          exited = await waitForPidExit(trackedPid, 2000);
+          if (!exited) {
+            console.warn(`[MCP] Warning: MCP server process ${trackedPid} did not exit after SIGKILL`);
+          }
+        }
+      } catch {
+        // Process may have already exited
+      }
+      this.mcpServerPid = null;
+    }
+
+    // Also try to kill any remaining MCP server processes by command pattern
+    // This is a fallback if PID tracking failed
+    try {
+      const psOutput = execSync('ps aux | grep "tsx.*gemini-agent/mcp/server.ts" | grep -v grep', { encoding: 'utf-8' }).trim();
+      if (psOutput) {
+        const lines = psOutput.split('\n');
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[1], 10);
+          if (Number.isInteger(pid) && pid > 0) {
+            try {
+              process.kill(pid, 'SIGTERM');
+              let exited = await waitForPidExit(pid, 3000);
+              if (!exited) {
+                try {
+                  process.kill(pid, 'SIGKILL');
+                } catch {}
+                exited = await waitForPidExit(pid, 2000);
+              }
+              if (!exited) {
+                console.warn(`[MCP] Warning: MCP server process ${pid} did not exit after SIGKILL`);
+              }
+            } catch {
+              // Process may have already exited
+            }
+          }
+        }
+      }
+    } catch {
+      // No matching processes or command failed, ignore
+    }
+
+    this.transport = null;
   }
 
   async callTool(toolName: string, args: Record<string, any>): Promise<any> {
@@ -460,6 +584,49 @@ function createTestOperateDir(): string {
   return testOperateDir;
 }
 
+// Registry of active worker processes for cleanup
+const activeWorkerProcesses = new Set<ExecaChildProcess>();
+
+/**
+ * Cleanup all tracked worker processes
+ * Call this from test teardown to ensure processes exit cleanly
+ */
+export async function cleanupWorkerProcesses(): Promise<void> {
+  const processes = Array.from(activeWorkerProcesses);
+  activeWorkerProcesses.clear();
+
+  for (const proc of processes) {
+    if (!proc.pid) continue;
+    
+    try {
+      // Check if process is still running by attempting to kill it
+      // This will throw if the process doesn't exist
+      proc.kill('SIGTERM');
+      
+      // Wait a short time for graceful shutdown
+      await Promise.race([
+        proc.catch(() => {}), // Ignore rejections on kill
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
+      
+      // Force kill if process might still be running
+      // Note: We can't reliably check if process is alive, so just attempt SIGKILL
+      // execa will handle the case where process is already dead
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        // Process may have already exited, ignore
+      }
+    } catch (err: any) {
+      // Non-critical - process may have already exited
+      // Only warn if it's not a "process not found" type error
+      if (!err.message?.includes('not found') && !err.message?.includes('no such process')) {
+        console.warn(`[test-cleanup] Warning killing worker process ${proc.pid}:`, err.message);
+      }
+    }
+  }
+}
+
 /**
  * Run worker single-shot targeting a specific request
  */
@@ -479,6 +646,13 @@ export async function runWorkerOnce(
   env.MECH_MODEL = options.model ?? 'gemini-2.5-pro';
   env.MECH_TARGET_REQUEST_ID = targetRequestId;
 
+  if (!env.GITHUB_REPOSITORY && process.env.TEST_GITHUB_REPO) {
+    const repoSlug = parseRepoSlug(process.env.TEST_GITHUB_REPO);
+    if (repoSlug) {
+      env.GITHUB_REPOSITORY = repoSlug;
+    }
+  }
+
   // Create test .operate directory if MECH_SAFE_ADDRESS is set
   if (process.env.MECH_SAFE_ADDRESS) {
     const testOperateDir = createTestOperateDir();
@@ -489,7 +663,17 @@ export async function runWorkerOnce(
     cwd: process.cwd(),
     env,
     stdio: 'pipe',
-    timeout: options.timeout ?? 300_000
+    timeout: options.timeout ?? 300_000,
+    cleanup: true, // Kill child processes on exit
+    forceKillAfterTimeout: 2000 // Force-kill after 2s if SIGTERM doesn't work
+  });
+
+  // Track process for cleanup
+  activeWorkerProcesses.add(workerProc);
+
+  // Remove from registry when process exits (successfully or not)
+  workerProc.finally(() => {
+    activeWorkerProcesses.delete(workerProc);
   });
 
   // Track quota errors

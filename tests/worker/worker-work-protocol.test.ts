@@ -16,6 +16,7 @@ import {
   runWorkerOnce,
   pollGraphQL,
   withJobContext,
+  cleanupWorkerProcesses,
 } from '../helpers/shared.js';
 
 describe('Worker: Work Protocol', () => {
@@ -35,6 +36,9 @@ describe('Worker: Work Protocol', () => {
     // Clean up lineage env vars that this test sets
     delete process.env.JINN_REQUEST_ID;
     delete process.env.JINN_JOB_DEFINITION_ID;
+
+    // Cleanup any lingering worker processes (e.g., from timeout scenarios)
+    await cleanupWorkerProcesses();
 
     // Note: We used to disconnect/reconnect MCP client here to pick up env changes,
     // but tests do this inline when needed (see disconnect/connect within test body)

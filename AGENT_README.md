@@ -93,6 +93,10 @@ Testing with .env.test
   - `AGENT_MAX_IDENTICAL_CHUNKS` (default 10)
 - Code workflow: `CODE_METADATA_DEFAULT_BASE_BRANCH` (default `main`) sets the parent branch for new job definitions.
 - GitHub automation: provide `GITHUB_TOKEN` (and optionally `GITHUB_REPOSITORY`, `GITHUB_API_URL`) so the worker can create PRs for completed jobs.
+- Git lineage E2E tests (git suite):
+  - `TEST_GITHUB_REPO` must point to a writable test repository (e.g., `https://github.com/ritsukai/test-repo.git`).
+  - `GITHUB_TOKEN` must have push/PR permissions for that repo; cloning/pushing use HTTPS with the token.
+  - The test harness derives `GITHUB_REPOSITORY` automatically, so no extra config is required once the env vars are set.
 
 **IMPORTANT**: All wallet addresses, Safe addresses, and private keys are read from `.operate` profile via `env/operate-profile.ts`. Never hardcode addresses in scripts or configuration - always use `getMechAddress()`, `getServiceSafeAddress()`, or `getServiceProfile()` from `env/operate-profile.ts` to ensure consistency across the codebase.
 
@@ -171,6 +175,21 @@ mutation Report($id: String!) {
   - Dev (`settings.template.dev.json`): runs MCP via `tsx`.
   - Prod (`settings.template.json`): runs built `server.js`.
 - Loop protection terminates runs on excessive output size, large chunks, or repetitive lines.
+
+### Headless Approval Mode Configuration
+
+The Agent runs Gemini CLI in headless (non-interactive) mode for automated execution. To prevent the CLI from hanging on IDE confirmation dialogs, we use `--approval-mode auto_edit` combined with explicit tool whitelisting.
+
+**Configuration (`gemini-agent/agent.ts`):**
+- `--approval-mode auto_edit`: Skips IDE confirmation for file edit tools (`write_file`, `replace`), preventing hangs when the IDE connection directory is unavailable
+- `--allowed-tools`: Explicitly whitelists all other tools that might require approval (shell, web fetch, etc.) to ensure they run without prompts in headless mode
+
+**Why this matters:**
+- In default approval mode, Gemini CLI attempts to open IDE diff views for file changes, which hangs indefinitely in headless environments
+- `AUTO_EDIT` mode is the only approval mode that bypasses the IDE confirmation step for edit tools
+- Other tools (shell, network) still need explicit whitelisting via `--allowed-tools` to run automatically in non-interactive mode
+
+This configuration ensures fully autonomous execution without manual intervention or timeouts.
 
 ### Per-Job Model Selection
 

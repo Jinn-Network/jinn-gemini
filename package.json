@@ -26,6 +26,7 @@
     "test:unit": "vitest --run",
     "test:marketplace": "vitest run --project marketplace",
     "test:worker": "vitest run --project worker",
+    "test:git": "vitest run --project git",
     "test:service": "vitest run --project service",
     "test:codespec": "vitest run --project codespec",
     "test:integration": "vitest run --project integration",

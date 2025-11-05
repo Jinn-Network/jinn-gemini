@@ -9,7 +9,8 @@
  * @since Phase 3 - Dual Rail Architecture with Queue Abstraction
  */
 
-import { TransactionRequest, ExecutionResult } from './types.js';
+import { TransactionRequest } from './queue/types.js';
+import { ExecutionResult } from './types.js';
 import { ITransactionQueue } from './queue/index.js';
 
 /**

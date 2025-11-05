@@ -1,0 +1,104 @@
+/**
+ * Reflection phase: trigger reflection agent, handle failures
+ */
+
+import { Agent } from '../../gemini-agent/agent.js';
+import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
+import { workerLogger } from '../../logging/index.js';
+import { serializeError } from '../logging/errors.js';
+import type { FinalStatus, AgentExecutionResult, IpfsMetadata, UnclaimedRequest, ReflectionResult } from '../types.js';
+
+/**
+ * Build reflection prompt based on job status
+ */
+function buildReflectionPrompt(
+  metadata: IpfsMetadata,
+  requestId: string,
+  finalStatus: FinalStatus,
+  result: AgentExecutionResult,
+  error?: any
+): string {
+  const outputPreview = typeof result.output === 'string' ? result.output : JSON.stringify(result.output ?? '');
+  
+  if (finalStatus.status === 'COMPLETED') {
+    return `You have just completed a job. Here is a summary:
+
+**Job:** ${metadata?.jobName || requestId}
+**Status:** ${finalStatus.status}
+**Output:** ${outputPreview.substring(0, 500)}${outputPreview.length > 500 ? '...' : ''}
+**Telemetry:**
+- Duration: ${result.telemetry?.duration || 0}ms
+- Tokens: ${result.telemetry?.totalTokens || 0}
+- Tools Called: ${result.telemetry?.toolCalls?.length || 0}
+
+**Reflection Task:**
+Review the execution. Did you discover any strategies, solutions, workarounds, or insights that would be valuable for future jobs? If yes, use the \`create_artifact\` tool with \`type: 'MEMORY'\` to save it. Include descriptive tags.
+
+If nothing notable was learned, simply respond "No significant learnings."`;
+  } else {
+    return `A job has failed. Here is a summary:
+
+**Job:** ${metadata?.jobName || requestId}
+**Status:** ${finalStatus.status}
+**Error:** ${error?.message || 'Unknown error'}
+**Output (if any):** ${outputPreview ? outputPreview.substring(0, 500) : 'No output'}${outputPreview && outputPreview.length > 500 ? '...' : ''}
+**Telemetry:**
+- Duration: ${result.telemetry?.duration || 0}ms
+- Tokens: ${result.telemetry?.totalTokens || 0}
+- Tools Called: ${result.telemetry?.toolCalls?.length || 0}
+
+**Reflection Task:**
+Review the failure. Were there any lessons learned, edge cases discovered, or patterns that future jobs should avoid? If yes, use the \`create_artifact\` tool with \`type: 'MEMORY'\` and include 'failure' in the tags to help future jobs avoid similar issues.
+
+If nothing notable was learned, simply respond "No significant learnings."`;
+  }
+}
+
+/**
+ * Run reflection phase if status warrants it
+ * Returns null if reflection is skipped or fails
+ */
+export async function runReflection(
+  request: UnclaimedRequest,
+  metadata: IpfsMetadata,
+  finalStatus: FinalStatus | null,
+  result: AgentExecutionResult,
+  error?: any
+): Promise<ReflectionResult | null> {
+  // Only run reflection if we have a final status
+  if (!finalStatus) {
+    return null;
+  }
+
+  try {
+    const reflectionAgent = new Agent(
+      metadata?.model || 'gemini-2.5-flash',
+      ['create_artifact'],
+      {
+        jobId: `${request.id}-reflection`,
+        jobDefinitionId: metadata?.jobDefinitionId || null,
+        jobName: 'Reflection',
+        projectRunId: null,
+        sourceEventId: null,
+        projectDefinitionId: null,
+      },
+    );
+
+    const prompt = buildReflectionPrompt(metadata, request.id, finalStatus, result, error);
+    const reflectionResult = await reflectionAgent.run(prompt);
+
+    workerLogger.info({ requestId: request.id }, 'Reflection step completed');
+
+    return {
+      output: reflectionResult.output || '',
+      telemetry: reflectionResult.telemetry || {},
+    };
+  } catch (reflectionError: any) {
+    workerLogger.warn(
+      { requestId: request.id, error: serializeError(reflectionError) },
+      'Reflection step failed (non-critical)'
+    );
+    return null;
+  }
+}
+

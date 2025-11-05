@@ -191,6 +191,8 @@ olas-operate-middleware/.operate/*.txt
 
 # Test git repositories (ephemeral test fixtures)
 tests/fixtures/test-repo-*/
+tests/tmp/git-remotes/
+tests/tmp/git-worktrees/
 
 # Service backups (moved to ~/Documents)
 service-backups/

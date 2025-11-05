@@ -58,27 +58,24 @@ describe('Worker: Git Auto-Commit Flow', () => {
     const { gqlUrl, controlUrl } = getSharedInfrastructure();
 
     const { jobDefId, requestId } = await createTestJob({
-      objective: 'Create and modify files to validate auto-commit',
+      objective: 'Create a feature file for auto-commit validation',
       context: 'Ensures worker auto-commit logic runs after successful execution',
       instructions: `
-You are working in a git repository with branch lineage tracking enabled.
+1. Create a file named "feature.txt" in the repository root with exactly this content:
 
-Tasks:
-1. Write a new file named "feature.txt" with content "Auto commit validation".
-2. Append the line "Updated by worker test" to README.md.
-3. Provide an \`Execution Summary\` section whose first bullet is "- Added feature.txt for auto-commit flow".
-Do **not** run git commands; the worker will commit and push.
-`.trim(),
-      acceptanceCriteria: 'File changes and execution summary exist so the worker can commit and push',
+Auto commit validation
+
+2. Immediately provide your final response. Do NOT create any artifacts. Do NOT ask any questions. Include the following Execution Summary section verbatim in your final chat message:
+
+### Execution Summary
+- Added feature.txt for auto-commit flow
+- Ready for auto-commit validation
+
+3. Do not run git commands; the worker will commit and push.
+      `.trim(),
+      acceptanceCriteria: 'feature.txt created with the specified content and execution summary returned in the chat response',
       enabledTools: [
-        'list_directory',
-        'read_file',
-        'write_file',
-        'search_file_content',
-        'replace',
-        'read_many_files',
-        'run_shell_command',
-        'create_artifact'
+        'write_file'
       ]
     });
 

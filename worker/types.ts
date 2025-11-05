@@ -1,124 +1,157 @@
 /**
- * Shared Types for Transaction Execution System
+ * Shared types for worker modules
  * 
- * This module contains type definitions shared across all transaction executors
- * and related components in the dual-rail execution architecture.
- * 
- * @version 1.0.0
- * @since Phase 2 - Dual Rail Architecture
+ * These types are used across orchestration, git, metadata, execution, and other worker subsystems.
  */
 
+import type { CodeMetadata } from '../gemini-agent/shared/code_metadata.js';
+import type { RecognitionPhaseResult } from './recognition_helpers.js';
+
 /**
- * Transaction payload structure
+ * Final status inferred from execution telemetry and child job states
  */
-export interface TransactionPayload {
-  /** Target contract address */
-  to: string;
-  
-  /** Transaction data (function call encoded) */
-  data: string;
-  
-  /** Transaction value in wei (as string to handle big numbers) */
-  value: string;
+export interface FinalStatus {
+  status: 'COMPLETED' | 'DELEGATING' | 'WAITING' | 'FAILED';
+  message: string;
 }
 
 /**
- * Execution strategy for transaction processing
+ * Execution summary extracted from agent output
  */
-export type ExecutionStrategy = 'EOA' | 'SAFE';
-
-/**
- * Transaction request status
- */
-export type TransactionStatus = 'PENDING' | 'CLAIMED' | 'CONFIRMED' | 'FAILED';
-
-/**
- * Complete transaction request record from the database
- */
-export interface TransactionRequest {
-  /** Unique identifier for the transaction request */
-  id: string;
-  
-  /** Current status of the transaction */
-  status: TransactionStatus;
-  
-  /** Number of execution attempts made */
-  attempt_count: number;
-  
-  /** Hash of the payload for deduplication */
-  payload_hash: string;
-  
-  /** ID of the worker currently processing this transaction */
-  worker_id: string | null;
-  
-  /** Timestamp when the transaction was claimed by a worker */
-  claimed_at: string | null;
-  
-  /** Timestamp when the transaction was completed */
-  completed_at: string | null;
-  
-  /** The transaction payload */
-  payload: TransactionPayload;
-  
-  /** Chain ID where the transaction should be executed */
-  chain_id: number;
-  
-  /** Execution strategy to use for this transaction */
-  execution_strategy: ExecutionStrategy;
-  
-  /** Optional idempotency key for duplicate prevention */
-  idempotency_key: string | null;
-  
-  /** Safe transaction hash (if executed via Safe) */
-  safe_tx_hash: string | null;
-  
-  /** Blockchain transaction hash */
-  tx_hash: string | null;
-  
-  /** Error code if transaction failed */
-  error_code: string | null;
-  
-  /** Error message if transaction failed */
-  error_message: string | null;
-  
-  /** ID of the job that created this transaction request */
-  source_job_id: string | null;
-  
-  /** Timestamp when the record was created */
-  created_at: string;
-  
-  /** Timestamp when the record was last updated */
-  updated_at: string;
+export interface ExecutionSummaryDetails {
+  heading: string;
+  lines: string[];
+  text: string;
 }
 
 /**
- * Result of a transaction execution attempt
+ * Unclaimed request from Ponder/on-chain
+ */
+export interface UnclaimedRequest {
+  id: string;           // on-chain requestId (decimal string or 0x)
+  mech: string;         // mech address (0x...)
+  requester: string;    // requester address (0x...)
+  blockTimestamp?: number;
+  ipfsHash?: string;
+  delivered?: boolean;
+}
+
+/**
+ * Fetched IPFS metadata payload
+ */
+export interface IpfsMetadata {
+  prompt?: string;
+  enabledTools?: string[];
+  sourceRequestId?: string;
+  sourceJobDefinitionId?: string;
+  additionalContext?: any;
+  jobName?: string;
+  jobDefinitionId?: string;
+  codeMetadata?: CodeMetadata;
+  model?: string;
+  recognition?: RecognitionPhaseResult | null;
+}
+
+/**
+ * Agent execution result
+ */
+export interface AgentExecutionResult {
+  output: string;
+  telemetry: any;
+  artifacts?: Array<{
+    cid: string;
+    topic: string;
+    name?: string;
+    type?: string;
+    contentPreview?: string;
+  }>;
+  pullRequestUrl?: string;
+}
+
+/**
+ * Transaction execution result (for EOA/Safe executors)
  */
 export interface ExecutionResult {
-  /** Whether the execution was successful */
   success: boolean;
-  
-  /** Transaction hash from the blockchain (for both EOA and Safe transactions) */
   txHash?: string;
-  
-  /** Safe transaction hash (only present for Safe executions) */
-  safeTxHash?: string;
-  
-  /** Error code for categorizing failures */
   errorCode?: string;
-  
-  /** Human-readable error message */
   errorMessage?: string;
 }
 
-export interface JobBoard {
+/**
+ * Git repository context
+ */
+export interface RepoContext {
+  repoRoot: string;
+  remoteUrl?: string;
+  branchName?: string;
+  baseBranch?: string;
+}
+
+/**
+ * Git operation result
+ */
+export interface GitOperationResult {
+  success: boolean;
+  error?: string;
+  branchCreated?: boolean;
+  commitMade?: boolean;
+  prUrl?: string | null;
+}
+
+/**
+ * Job metadata combined with execution context
+ */
+export interface JobContext {
+  requestId: string;
+  request: UnclaimedRequest;
+  metadata: IpfsMetadata;
+  workerAddress: string;
+}
+
+/**
+ * Delivery context for on-chain delivery
+ */
+export interface DeliveryContext {
+  requestId: string;
+  result: AgentExecutionResult;
+  finalStatus: FinalStatus;
+  metadata: IpfsMetadata;
+  recognition?: RecognitionPhaseResult | null;
+  reflection?: any;
+  error?: any;
+}
+
+/**
+ * Parent dispatch decision
+ */
+export interface ParentDispatchDecision {
+  shouldDispatch: boolean;
+  parentJobDefId?: string;
+  reason?: string;
+}
+
+/**
+ * Recognition result (re-exported from recognition_helpers)
+ */
+export type { RecognitionPhaseResult } from './recognition_helpers.js';
+  
+/**
+ * Reflection result
+ */
+export interface ReflectionResult {
+  output: string;
+  telemetry: any;
+  artifacts?: Array<{
+    cid: string;
+    topic: string;
+  }>;
+}
+
+/**
+ * Child job status from Ponder
+ */
+export interface ChildJobStatus {
   id: string;
-  status: string;
-  worker_id?: string;
-  input_prompt: string;
-  input_context: string | null;
-  enabled_tools: string[];
-  model_settings: Record<string, any>;
-  job_definition_id: string;
-  job_name: string;
+  delivered: boolean;
 }

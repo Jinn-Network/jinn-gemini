@@ -1,5 +1,5 @@
 import { EoaExecutor } from './EoaExecutor.js';
-import { TransactionRequest } from './types.js';
+import { TransactionRequest } from './queue/types.js';
 import { logger } from '../logging/index.js';
 import { claimTransactionRequest, updateTransactionStatus } from './control_api_client.js';
 

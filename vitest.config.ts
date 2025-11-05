@@ -77,6 +77,23 @@ export default defineConfig({
         resolve: sharedResolve,
         test: {
           ...sharedTestDefaults,
+          name: 'git',
+          // Don't use 'env: testEnv' here - it overrides runtime values set by globalSetup
+          include: ['tests/git/*.test.ts'],
+          globalSetup: path.resolve(__dirname, './tests/helpers/setup.ts'),
+          bail: 1, // Stop after first test failure (e.g., quota errors)
+          poolOptions: {
+            threads: {
+              singleThread: true,
+            }
+          },
+          reporters: ['default', 'hanging-process'],
+        },
+      },
+      {
+        resolve: sharedResolve,
+        test: {
+          ...sharedTestDefaults,
           name: 'service',
           env: testEnv,
           include: ['tests/service-deployment/*.test.ts'],
@@ -94,7 +111,7 @@ export default defineConfig({
         test: {
           ...sharedTestDefaults,
           name: 'unit',
-          include: ['tests/unit/*.test.ts'],
+          include: ['tests/unit/**/*.test.ts'],
           environment: 'node',
         },
       },

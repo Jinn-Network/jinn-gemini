@@ -26,7 +26,8 @@
 import { ethers } from 'ethers';
 import { logger } from '../logging/index.js';
 import { ITransactionExecutor } from './IExecutor.js';
-import { TransactionRequest, ExecutionResult } from './types.js';
+import { TransactionRequest } from './queue/types.js';
+import { ExecutionResult } from './types.js';
 import { validateTransaction } from './validation.js';
 import { ITransactionQueue } from './queue/index.js';
 import { updateTransactionStatus } from './control_api_client.js';

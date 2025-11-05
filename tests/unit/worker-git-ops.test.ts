@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import type { CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
-import { autoCommitIfNeeded, formatSummaryForPr } from '../../worker/mech_worker.js';
+import { autoCommitIfNeeded, formatSummaryForPr } from '../../worker/git/autoCommit.js';
 
 function run(cmd: string, cwd: string): string {
   return execSync(cmd, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();

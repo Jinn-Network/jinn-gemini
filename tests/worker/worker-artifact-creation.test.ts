@@ -3,7 +3,7 @@
  * Tests worker creating artifacts via MCP create_artifact tool
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -17,6 +17,7 @@ import {
   reconstructDirCidFromHexIpfsHash,
   fetchJsonWithRetry,
   parseToolText,
+  cleanupWorkerProcesses,
 } from '../helpers/shared.js';
 import { searchArtifacts, getDetails } from '../../gemini-agent/mcp/tools/index.js';
 
@@ -31,6 +32,11 @@ describe('Worker: Artifact Creation', () => {
     } catch {}
     resetTestEnvironment();
     expect(process.env.MECH_WORKER_ADDRESS || process.env.MECH_ADDRESS, 'MECH_WORKER_ADDRESS required').toBeTruthy();
+  });
+
+  afterEach(async () => {
+    // Cleanup any lingering worker processes (e.g., from timeout scenarios)
+    await cleanupWorkerProcesses();
   });
 
   it('worker creates artifact via create_artifact MCP tool', async () => {

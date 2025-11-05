@@ -373,10 +373,10 @@ With the consolidated configuration, you can run individual test files without s
 
 ```bash
 # Run a single test file (automatically detects the right project)
-yarn vitest run tests/marketplace/marketplace-worker-git-lineage.test.ts
+yarn vitest run tests/worker/worker-git-lineage.test.ts
 
 # Or be explicit with the project flag (optional)
-yarn vitest run --project marketplace tests/marketplace/marketplace-worker-git-lineage.test.ts
+yarn vitest run --project worker tests/worker/worker-git-lineage.test.ts
 
 # Works for any test suite
 yarn vitest run tests/e2e/memory-system.e2e.test.ts

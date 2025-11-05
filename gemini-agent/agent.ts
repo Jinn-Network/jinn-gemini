@@ -1,13 +1,14 @@
 // This is a test comment added by the agent to validate the PR creation workflow.
 // This is a test comment added by the agent to validate the PR creation workflow.
 import { spawn } from 'child_process';
-import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname, resolve, isAbsolute } from 'path';
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync, statSync } from 'fs';
+import { join, dirname, resolve, isAbsolute, delimiter } from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
 import { getOptionalCodeMetadataRepoRoot } from '../config/index.js';
 import { getRepoRoot } from '../shared/repo_utils.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, type ToolPolicyResult } from './toolPolicy.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
@@ -59,7 +60,9 @@ export class Agent {
   private settingsPath: string;
   private agentRoot: string;
   private codeWorkspace: string;
+  private lastTelemetryFile: string | null = null;
   private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
+  private cachedToolPolicy: ToolPolicyResult | null = null;
   
   // Stdout protection limits (configurable via environment variables)
   private readonly MAX_STDOUT_SIZE = parseInt(process.env.AGENT_MAX_STDOUT_SIZE || '5242880'); // 5MB default
@@ -68,25 +71,8 @@ export class Agent {
   private readonly REPETITION_THRESHOLD = parseInt(process.env.AGENT_REPETITION_THRESHOLD || '10'); // Same line 10+ times = loop
   private readonly MAX_IDENTICAL_CHUNKS = parseInt(process.env.AGENT_MAX_IDENTICAL_CHUNKS || '10'); // Same chunk repeated
   
-  // Define universal tools once as a class property
-  private readonly universalTools = [
-    'list_tools',
-    'get_details',
-    'get_job_context',
-    'dispatch_new_job',
-    'dispatch_existing_job',
-    'create_artifact',
-    'search_jobs',
-    'search_artifacts',
-    'google_web_search',
-    'web_fetch',
-    // Read-only native file tools (always available)
-    'list_directory',
-    'read_file',
-    'search_file_content',
-    'glob',
-    'read_many_files'
-  ];
+  // Universal tools are now defined in toolPolicy.ts
+  private readonly universalTools = UNIVERSAL_TOOLS;
 
   constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {
     this.model = model;
@@ -215,8 +201,61 @@ export class Agent {
   }
 
   private runGeminiWithTelemetry(prompt: string): Promise<{ output: string; telemetryFile: string; stderr: string; exitCode: number }> {
-    return new Promise((resolve) => {
-      const args: string[] = ['--yolo'];
+    return new Promise((resolvePromise) => {
+      // Use auto_edit mode to skip IDE confirmation for file edits (headless compatibility)
+      // This prevents the CLI from hanging on IDE connection attempts
+      const args: string[] = ['--approval-mode', 'auto_edit'];
+      
+      // Use cached tool policy (computed in generateJobSpecificSettings)
+      // This ensures consistency between MCP settings and CLI whitelist
+      const toolPolicy = this.cachedToolPolicy || computeToolPolicy(this.enabledTools);
+      
+      // Allow tools to run without confirmation in headless mode
+      // In auto_edit mode, edit tools (write_file, replace) auto-approve, but shell and other
+      // tools still need explicit whitelisting for non-interactive runs
+      // The CLI whitelist is now derived from the job's enabled tools via the centralized policy
+      if (toolPolicy.cliAllowedTools.length > 0) {
+        args.push('--allowed-tools', toolPolicy.cliAllowedTools.join(','));
+      }
+      
+      // Make sure Gemini CLI treats the job repo as part of the workspace to allow write_file
+      const includeDirectories = new Set<string>();
+      console.log(`[AGENT] codeWorkspace="${this.codeWorkspace}" cwd="${process.cwd()}" CODE_METADATA_REPO_ROOT="${process.env.CODE_METADATA_REPO_ROOT || ''}"`);
+      console.log(`[AGENT] typeof resolve import: ${typeof resolve}`);
+      try {
+        console.log(`[AGENT] resolve identity: ${resolve.toString()}`);
+      } catch {}
+      if (this.codeWorkspace) {
+        const resolvedWorkspace = resolve(this.codeWorkspace);
+        console.log(`[AGENT] adding codeWorkspace include: ${resolvedWorkspace} (type=${typeof resolvedWorkspace})`);
+        includeDirectories.add(resolvedWorkspace);
+      }
+      if (process.env.CODE_METADATA_REPO_ROOT) {
+        const resolvedEnv = resolve(process.env.CODE_METADATA_REPO_ROOT);
+        console.log(`[AGENT] adding CODE_METADATA_REPO_ROOT include: ${resolvedEnv} (type=${typeof resolvedEnv})`);
+        includeDirectories.add(resolvedEnv);
+      }
+      if (process.env.GEMINI_ADDITIONAL_INCLUDE_DIRS) {
+        for (const rawDir of process.env.GEMINI_ADDITIONAL_INCLUDE_DIRS.split(delimiter)) {
+          if (rawDir?.trim()) {
+            includeDirectories.add(resolve(rawDir.trim()));
+          }
+        }
+      }
+
+      console.log(`[AGENT] include-directories candidates: ${Array.from(includeDirectories).map((dir) => `${dir} (len=${dir.length})`).join(', ')}`);
+      for (const dir of includeDirectories) {
+        try {
+          if (dir && existsSync(dir)) {
+            args.push('--include-directories', dir);
+          } else {
+            agentLogger.debug({ dir }, 'Skipping non-existent include directory for Gemini CLI');
+          }
+        } catch (err: any) {
+          agentLogger.debug({ dir, error: err?.message }, 'Failed to register include directory for Gemini CLI');
+        }
+      }
+
       if (this.model) {
         args.unshift('--model', this.model);
       }
@@ -230,15 +269,9 @@ export class Agent {
         args.push('--debug');
       }
 
-      // Telemetry flags (workaround for known CLI bug pattern)
-      args.push('--telemetry', 'true');
-      args.push('--telemetry-target', 'local');
-      args.push('--telemetry-otlp-endpoint', ''); // prevent network attempts
-      args.push('--telemetry-log-prompts', 'true');
-
-        // Telemetry outfile
-        const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
-        args.push('--telemetry-outfile', telemetryFile);
+      // Telemetry outfile
+      const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
+      this.lastTelemetryFile = telemetryFile;
 
       // Persist the last prompt locally for debugging/repro and send via stdin + --prompt for non-interactive mode
       const promptDir = dirname(this.settingsPath);
@@ -252,6 +285,17 @@ export class Agent {
       // Propagate job context to the MCP server via environment variables so the separate
       // MCP process can read them on startup
       const envWithJob: NodeJS.ProcessEnv = { ...process.env };
+      // Configure telemetry via environment variables (CLI 0.11+ no longer accepts telemetry flags)
+      envWithJob.GEMINI_TELEMETRY_ENABLED = 'true';
+      envWithJob.GEMINI_TELEMETRY_TARGET = envWithJob.GEMINI_TELEMETRY_TARGET || 'local';
+      envWithJob.GEMINI_TELEMETRY_OUTFILE = telemetryFile;
+      envWithJob.GEMINI_TELEMETRY_LOG_PROMPTS = envWithJob.GEMINI_TELEMETRY_LOG_PROMPTS || 'true';
+      if (!('GEMINI_TELEMETRY_OTLP_ENDPOINT' in envWithJob)) {
+        envWithJob.GEMINI_TELEMETRY_OTLP_ENDPOINT = '';
+      }
+      if (!('GEMINI_TELEMETRY_USE_COLLECTOR' in envWithJob)) {
+        envWithJob.GEMINI_TELEMETRY_USE_COLLECTOR = 'false';
+      }
       try {
         if (this.jobContext) {
           envWithJob.JINN_JOB_ID = this.jobContext.jobId || '';
@@ -279,7 +323,7 @@ export class Agent {
         agentLogger.debug({ error: err.message }, 'Failed to create gemini home directory');
       }
 
-      const geminiProcess = spawn('npx', ['@google/gemini-cli@0.7.0', ...args], {
+      const geminiProcess = spawn('npx', ['@google/gemini-cli', ...args], {
         cwd: this.codeWorkspace,
         env: {
           ...envWithJob,
@@ -428,7 +472,7 @@ export class Agent {
           exitCode = exitCode || 1;
         }
         
-        resolve({ output: stdout, telemetryFile, stderr, exitCode });
+        resolvePromise({ output: stdout, telemetryFile, stderr, exitCode });
       });
 
       geminiProcess.on('error', (err) => {
@@ -437,7 +481,7 @@ export class Agent {
         // Surface as a synthetic non-zero exit with captured streams
         const exitCode = 1;
         const synthetic = `Gemini spawn error: ${err?.message || String(err)}`;
-        resolve({ output: stdout, telemetryFile, stderr: `${stderr}\n${synthetic}`.trim(), exitCode });
+        resolvePromise({ output: stdout, telemetryFile, stderr: `${stderr}\n${synthetic}`.trim(), exitCode });
       });
     });
   }
@@ -504,50 +548,28 @@ export class Agent {
         });
       }
 
-      // UNIVERSAL TOOLS: Every agent automatically gets these core capabilities
-      // regardless of what's specified in their job definition. This ensures
-      // all agents can plan projects, create jobs, manage artifacts, etc.
-
-      // Merge universal tools with job-specific tools, removing duplicates
-      const allTools = [...this.universalTools, ...this.enabledTools];
-      const uniqueTools = [...new Set(allTools)];
+      // Compute tool policy using centralized logic
+      // This ensures MCP include/exclude and CLI whitelist are consistent
+      // Cache it for reuse in runGeminiWithTelemetry to avoid double computation
+      this.cachedToolPolicy = computeToolPolicy(this.enabledTools);
+      const toolPolicy = this.cachedToolPolicy;
 
       // Include the merged tool set (universal + job-specific)
-      mcpServer.includeTools = uniqueTools;
+      mcpServer.includeTools = toolPolicy.mcpIncludeTools;
 
-      // Exclude native tools not enabled, BUT allow web tools by default
-      const allNativeTools = [
-        'list_directory',
-        'read_file',
-        'write_file',
-        'search_file_content',
-        'glob',
-        'replace',
-        'read_many_files',
-        'run_shell_command',
-        'save_memory',
-        // Intentionally exclude web tools from this list so they remain enabled by default:
-        // 'web_fetch', 'google_web_search'
-      ];
-
-      // Always-enabled native tools
-      const alwaysEnabledNativeTools = ['web_fetch', 'google_web_search'];
-
-      // Compute native tools to exclude: only exclude tools that are NOT in uniqueTools and NOT always-enabled
-      const nativeToolsToExclude = allNativeTools.filter(tool =>
-        !uniqueTools.includes(tool) && !alwaysEnabledNativeTools.includes(tool)
-      );
-      templateSettings.excludeTools = nativeToolsToExclude;
+      // Exclude native tools not enabled for this job
+      templateSettings.excludeTools = toolPolicy.mcpExcludeTools;
 
       // Ensure directory exists
       const settingsDir = dirname(this.settingsPath);
       mkdirSync(settingsDir, { recursive: true });
 
       writeFileSync(this.settingsPath, JSON.stringify(templateSettings, null, 2));
-      console.log(`Generated job-specific settings for server '${serverName}' with tools: ${uniqueTools.join(', ')}`);
-      console.log(`  - Universal tools: ${this.universalTools.join(', ')}`);
+      console.log(`Generated job-specific settings for server '${serverName}' with tools: ${toolPolicy.mcpIncludeTools.join(', ')}`);
+      console.log(`  - Universal tools: ${UNIVERSAL_TOOLS.join(', ')}`);
       console.log(`  - Job-specific tools: ${this.enabledTools.join(', ') || 'none'}`);
-      console.log(`Excluded native tools: ${nativeToolsToExclude.join(', ')}`);
+      console.log(`  - MCP excluded native tools: ${toolPolicy.mcpExcludeTools.join(', ') || 'none'}`);
+      console.log(`  - CLI allowed native tools: ${toolPolicy.cliAllowedTools.join(', ')}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('Failed to generate job-specific settings:', errorMsg);
@@ -567,6 +589,8 @@ export class Agent {
         console.error('Failed to clean up job-specific settings:', errorMsg);
       }
     }
+    // Clear cached tool policy
+    this.cachedToolPolicy = null;
   }
 
   private cleanupTelemetryFile(telemetryFile: string): void {
@@ -612,35 +636,58 @@ export class Agent {
     return telemetry;
   }
 
-  private async parseTelemetryFromFile(telemetryFile: string, output: string, startTime: number): Promise<JobTelemetry> {
+  private async parseTelemetryFromFile(telemetryFile: string | undefined, output: string | undefined, startTime: number): Promise<JobTelemetry> {
+    let candidateFile = telemetryFile && telemetryFile.trim() !== ''
+      ? telemetryFile
+      : (this.lastTelemetryFile && this.lastTelemetryFile.trim() !== '' ? this.lastTelemetryFile : '');
+
     try {
-      if (readFileSync && telemetryFile && telemetryFile.trim() !== '') {
-        console.log(`[TELEMETRY] Attempting to read telemetry file: ${telemetryFile}`);
-        const telemetryContent = readFileSync(telemetryFile, 'utf8');
+      if (readFileSync && candidateFile) {
+        console.log(`[TELEMETRY] Attempting to read telemetry file: ${candidateFile}`);
+        // Give the CLI a moment to flush the telemetry file if the process just exited.
+        const maxAttempts = 40;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          if (existsSync(candidateFile)) {
+            const size = statSync(candidateFile).size;
+            if (size > 0) {
+              break;
+            }
+          }
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
 
-        // Optional safety: cap processing to avoid runaway memory usage
-        const maxProcessChars = 50 * 1024 * 1024; // 50MB
-        const contentToParse = telemetryContent.length > maxProcessChars
-          ? telemetryContent.substring(0, maxProcessChars)
-          : telemetryContent;
+        if (!existsSync(candidateFile)) {
+          console.warn(`[TELEMETRY] Telemetry file still missing after waiting: ${candidateFile}`);
+        } else if (statSync(candidateFile).size === 0) {
+          console.warn(`[TELEMETRY] Telemetry file is still empty after waiting: ${candidateFile}`);
+        } else {
+          const telemetryContent = readFileSync(candidateFile, 'utf8');
 
-        console.log(`[TELEMETRY] File content length: ${telemetryContent.length} characters`);
-        console.log(`[TELEMETRY] First 1000 chars: ${telemetryContent.substring(0, 1000)}`);
-        console.log(`[TELEMETRY] Last 500 chars: ${telemetryContent.substring(Math.max(0, telemetryContent.length - 500))}`);
+          // Optional safety: cap processing to avoid runaway memory usage
+          const maxProcessChars = 50 * 1024 * 1024; // 50MB
+          const contentToParse = telemetryContent.length > maxProcessChars
+            ? telemetryContent.substring(0, maxProcessChars)
+            : telemetryContent;
 
-        const result = this.parseTelemetryFromContent(contentToParse, startTime);
+          console.log(`[TELEMETRY] File content length: ${telemetryContent.length} characters`);
+          console.log(`[TELEMETRY] First 1000 chars: ${telemetryContent.substring(0, 1000)}`);
+          console.log(`[TELEMETRY] Last 500 chars: ${telemetryContent.substring(Math.max(0, telemetryContent.length - 500))}`);
 
-        console.log(`[TELEMETRY] Telemetry file preserved for inspection: ${telemetryFile}`);
-        return result;
+          const result = this.parseTelemetryFromContent(contentToParse, startTime);
+
+          console.log(`[TELEMETRY] Telemetry file preserved for inspection: ${candidateFile}`);
+          return result;
+        }
       }
     } catch (error: any) {
-      console.warn(`[TELEMETRY] Failed to read telemetry file ${telemetryFile}:`, error.message);
+      console.warn(`[TELEMETRY] Failed to read telemetry file ${telemetryFile || this.lastTelemetryFile || '(none)'}:`, error.message);
       try {
         const fs = await import('fs');
-        const exists = fs.existsSync(telemetryFile);
+        const target = telemetryFile || this.lastTelemetryFile || '';
+        const exists = target ? fs.existsSync(target) : false;
         console.log(`[TELEMETRY] File exists: ${exists}`);
         if (exists) {
-          const stats = fs.statSync(telemetryFile);
+          const stats = fs.statSync(target);
           console.log(`[TELEMETRY] File size: ${stats.size} bytes`);
         }
       } catch (fsError: any) {
@@ -648,8 +695,12 @@ export class Agent {
       }
     }
 
-    console.log(`[TELEMETRY] Falling back to output parsing`);
-    return this.parseTelemetryFromOutput(output, startTime);
+    if (!candidateFile) {
+      console.warn('[TELEMETRY] Telemetry file path missing; falling back to stdout parsing');
+    } else {
+      console.log(`[TELEMETRY] Falling back to output parsing`);
+    }
+    return this.parseTelemetryFromOutput(output ?? '', startTime);
   }
 
   // Streaming JSON parser: assembles complete JSON objects from mixed-content file

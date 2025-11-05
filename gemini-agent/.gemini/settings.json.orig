@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "metacog": {
-      "command": "/Users/adrianobradley/jinn-gemini/.conductor/sacramento/node_modules/.bin/tsx",
+      "command": "/Users/adrianobradley/.cursor/worktrees/jinn-gemini/fq9Pd/node_modules/.bin/tsx",
       "args": [
-        "/Users/adrianobradley/jinn-gemini/.conductor/sacramento/gemini-agent/mcp/server.ts"
+        "/Users/adrianobradley/.cursor/worktrees/jinn-gemini/fq9Pd/gemini-agent/mcp/server.ts"
       ],
       "trust": true,
       "includeTools": [
@@ -13,7 +13,6 @@
         "dispatch_new_job",
         "dispatch_existing_job",
         "create_artifact",
-        "finalize_job",
         "search_jobs",
         "search_artifacts",
         "google_web_search",

@@ -3,7 +3,7 @@
  * Tests worker claim → execution → on-chain delivery flow
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -15,6 +15,7 @@ import {
   runWorkerOnce,
   reconstructDirCidFromHexIpfsHash,
   fetchJsonWithRetry,
+  cleanupWorkerProcesses,
 } from '../helpers/shared.js';
 
 describe('Worker: Basic Execution Flow', () => {
@@ -28,6 +29,11 @@ describe('Worker: Basic Execution Flow', () => {
     } catch {}
     resetTestEnvironment();
     expect(process.env.MECH_WORKER_ADDRESS || process.env.MECH_ADDRESS, 'MECH_WORKER_ADDRESS required').toBeTruthy();
+  });
+
+  afterEach(async () => {
+    // Cleanup any lingering worker processes (e.g., from timeout scenarios)
+    await cleanupWorkerProcesses();
   });
 
   it('worker claims, executes, and delivers on-chain', async () => {
