@@ -350,20 +350,23 @@ ponder.on(
     await requestRepo.upsert({
       id: requestId,
       create: {
+        // If Deliver event is processed before Request event, create a minimal record
         mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
+        sender: undefined, // Will be filled in when Request event is processed
         delivered: true,
         deliveryIpfsHash: ipfsHash,
         transactionHash: txHash,
         blockNumber,
         blockTimestamp,
       },
-      update: {
+      update: ({current}) => ({
+        // Always update delivery status, preserving other fields
         delivered: true,
         deliveryIpfsHash: ipfsHash,
         transactionHash: txHash,
         blockNumber,
         blockTimestamp,
-      },
+      }),
     });
 
     // Attempt to resolve artifacts from delivery JSON
