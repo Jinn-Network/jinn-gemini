@@ -240,8 +240,16 @@ export async function dispatchNewJob(args: unknown) {
       ...lineageContext,
     }];
 
+    console.error('[dispatch_new_job] codeMetadata check:', {
+      hasCodeMetadata: !!codeMetadata,
+      hasBranchResult: !!branchResult,
+      branchName: branchResult?.branchName,
+    });
+
     if (codeMetadata) {
       ipfsJsonContents[0].codeMetadata = codeMetadata;
+    } else {
+      console.error('[dispatch_new_job] WARNING: No codeMetadata - job will fail in worker!');
     }
 
     ipfsJsonContents[0].executionPolicy = {

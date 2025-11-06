@@ -71,7 +71,7 @@ const objective = `Ensure the oaksprout/olas-website-1 repository fulfills all a
 
 function buildContext(blueprintCid: string): string {
   return `
-You are the root job for the Olas website venture.
+You are the root job for this venture.
 
 **Your Blueprint**: Available at https://gateway.autonolas.tech/ipfs/${blueprintCid}
 - The blueprint is a JSON object with a 'files' property containing all markdown documents
@@ -103,31 +103,13 @@ The venture reaches a successful state when:
    - Fully satisfied (implementation matches assertion)
    - In progress (child jobs dispatched to address them)
    - Documented as deferred with rationale
-
-You maintain this state by:
-- Regularly auditing the repository against the blueprint
-- Creating launcher_briefing artifacts tracking compliance status
-- Dispatching targeted child jobs to address violations or gaps
-- Updating compliance tracking as child jobs complete
 `;
 
 const deliverables = `
-- launcher_briefing artifacts on every run showing:
-  - Current blueprint compliance status
-  - Active child jobs addressing requirements
-  - Recently completed work
-  - Any blockers or issues
-- Child jobs dispatched to fulfill unmet requirements
-- Compliance tracking artifacts (as needed)
+- Child jobs dispatched to fulfill unmet venture requirements
 `;
 
-const constraints = `
-- You are a root job - you coordinate and verify, you don't implement directly
-- Use work decomposition: dispatch focused child jobs for specific requirements
-- Prioritize constitutional principles and high-impact requirements first
-- Ensure child jobs have appropriate tools and context to succeed
-- The repository may be empty initially - that's expected, bootstrap as needed
-`;
+const constraints = ``;
 
 async function main() {
   console.log('Dispatching Olas Website Venture (Root Job)...\n');
@@ -176,7 +158,9 @@ async function main() {
       console.log('Job Metadata IPFS:', data.ipfs_gateway_url);
     }
     console.log('\nRun the worker with:');
-    console.log(`  MECH_TARGET_REQUEST_ID=${requestId} yarn dev:mech --single`);
+    console.log(`  MECH_TARGET_REQUEST_ID=${requestId} yarn dev:mech:single --single`);
+    console.log(`\nOr to run all jobs in the workstream (single-job mode):`);
+    console.log(`  yarn dev:mech:pretty --workstream=${requestId} --single`);
     console.log('\nThe venture will continuously ensure the Olas website fulfills its blueprint.');
     console.log('Check launcher_briefing artifacts for status updates.');
   } catch (error) {

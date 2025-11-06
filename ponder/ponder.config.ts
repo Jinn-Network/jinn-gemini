@@ -11,7 +11,7 @@ const isTestMode = process.env.PONDER_REVIEW_MODE === '1';
 
 // Get start block: use env var if set, otherwise fetch current block and use recent history
 async function getStartBlock(): Promise<number> {
-  const rpcUrl = process.env.BASE_RPC_URL || process.env.RPC_URL || "https://mainnet.base.org";
+  const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
 
   if (process.env.PONDER_START_BLOCK) {
     return Number(process.env.PONDER_START_BLOCK);
