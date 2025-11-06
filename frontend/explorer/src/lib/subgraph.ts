@@ -812,37 +812,9 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
     orderDirection
   })
   
-  // Group requests by jobName and only keep the earliest (first) request
-  // This filters out:
-  // 1. Re-runs of the same root job (which are part of the original workstream)
-  // 2. Different job definition IDs for the same conceptual job
-  // The key insight: jobName is stable across re-runs, but jobDefinitionId can change
-  const jobNameToEarliestRequest = new Map<string, typeof data.requests.items[0]>()
-  
-  for (const item of data.requests.items) {
-    if (!item.jobName) continue
-    
-    const existing = jobNameToEarliestRequest.get(item.jobName)
-    if (!existing || Number(item.blockTimestamp) < Number(existing.blockTimestamp)) {
-      jobNameToEarliestRequest.set(item.jobName, item)
-    }
-  }
-  
-  // Convert map values back to array and sort by original order
-  const uniqueWorkstreams = Array.from(jobNameToEarliestRequest.values())
-    .sort((a, b) => {
-      if (orderDirection === 'desc') {
-        return Number(b.blockTimestamp) - Number(a.blockTimestamp)
-      }
-      return Number(a.blockTimestamp) - Number(b.blockTimestamp)
-    })
-  
-  return {
-    requests: {
-      items: uniqueWorkstreams,
-      pageInfo: data.requests.pageInfo
-    }
-  }
+  // Return all root jobs as unique workstreams
+  // Each root request (sourceRequestId = null AND sourceJobDefinitionId = null) is its own workstream
+  return data
 }
 
 const queryWorkstreamRequests = `

@@ -350,6 +350,7 @@ ponder.on(
     await requestRepo.upsert({
       id: requestId,
       create: {
+        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
         delivered: true,
         deliveryIpfsHash: ipfsHash,
         transactionHash: txHash,
