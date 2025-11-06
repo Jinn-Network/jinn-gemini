@@ -479,7 +479,7 @@ export class Agent {
 
   private generateJobSpecificSettings(): void {
     // Always generate settings if we have universal tools, even if no job-specific tools
-    if (this.enabledTools.length === 0 && this.universalTools.length === 0) return;
+    if (this.enabledTools.length === 0 && (this.universalTools as readonly string[]).length === 0) return;
     try {
       const templateFileName = process.env.USE_TSX_MCP === '1'
         ? 'settings.template.dev.json'
@@ -570,7 +570,7 @@ export class Agent {
 
   private cleanupJobSpecificSettings(): void {
     // Always cleanup if we have universal tools, even if no job-specific tools
-    if (this.enabledTools.length === 0 && this.universalTools.length === 0) return;
+    if (this.enabledTools.length === 0 && (this.universalTools as readonly string[]).length === 0) return;
     try {
       unlinkSync(this.settingsPath);
       console.log('Cleaned up job-specific settings.');

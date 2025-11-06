@@ -54,10 +54,7 @@ export const NATIVE_TOOLS = [
  * Native tools that are always enabled regardless of job configuration
  * These are safe and essential for basic agent operation
  */
-export const ALWAYS_ENABLED_NATIVE_TOOLS = [
-  'web_fetch',
-  'google_web_search',
-] as const;
+export const ALWAYS_ENABLED_NATIVE_TOOLS: readonly (typeof NATIVE_TOOLS[number])[] = [] as const;
 
 /**
  * Result of tool policy computation
