@@ -56,9 +56,9 @@ if (!isTestMode && process.env.PONDER_REVIEW_MODE === '1') {
 
 const startBlock = await getStartBlock();
 
-const MECH_ADDRESS = getMechAddress();
+const MECH_ADDRESS = process.env.MECH_ADDRESS || getMechAddress();
 if (!MECH_ADDRESS) {
-  throw new Error('[Ponder Config] MECH_ADDRESS is required. Ensure .operate/service_*/service_config.json contains MECH_TO_CONFIG.');
+  throw new Error('[Ponder Config] MECH_ADDRESS is required. Set MECH_ADDRESS environment variable or ensure .operate/service_*/service_config.json contains MECH_TO_CONFIG.');
 }
 if (!isTestMode) {
   console.log('[Ponder Config] Indexing mech:', MECH_ADDRESS);
@@ -66,7 +66,7 @@ if (!isTestMode) {
 }
 
 // Read RPC_URL here (after env/index.js has run) to respect review mode overrides
-const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
+const rpcUrl = process.env.BASE_RPC_URL ||  process.env.RPC_URL || "https://mainnet.base.org";
 
 // Tenderly virtual networks don't mine new blocks, so finality checks fail
 // when Ponder tries to look ahead. Set finalityBlockCount to 0 for virtual networks.
