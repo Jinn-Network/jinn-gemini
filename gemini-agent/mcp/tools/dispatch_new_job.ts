@@ -14,6 +14,7 @@ const dispatchNewJobParamsBase = z.object({
   deliverables: z.string().optional().describe('Expected outputs or artifacts to be created. Specify artifact topics and what should be persisted for parent job review.'),
   acceptanceCriteria: z.string().min(10).describe('Specific, measurable criteria for successful completion (what "done" looks like). Include: (1) what outputs are complete, (2) what artifacts are created with topics, (3) how results are surfaced to parent.'),
   constraints: z.string().optional().describe('Limitations, requirements, dependencies, or important considerations'),
+  instructions: z.string().optional().describe('Explicit guidance or prohibitions the agent must follow verbatim during execution.'),
   jobName: z.string().min(1),
   model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-2.5-flash", "gemini-2.5-pro"). Defaults to "gemini-2.5-flash" if not specified.'),
   enabledTools: z.array(z.string()).optional(),
@@ -51,6 +52,7 @@ function constructPrompt(params: {
   deliverables?: string;
   acceptanceCriteria: string;
   constraints?: string;
+  instructions?: string;
 }): string {
   let prompt = `# Objective
 ${params.objective}
@@ -67,6 +69,13 @@ ${params.acceptanceCriteria}`;
 
   if (params.constraints) {
     prompt += `\n\n# Constraints\n${params.constraints}`;
+  }
+
+  if (params.instructions) {
+    const trimmedInstructions = params.instructions.trim();
+    if (trimmedInstructions.length > 0) {
+      prompt += `\n\n# Instructions\n${trimmedInstructions}`;
+    }
   }
 
   return prompt;
@@ -95,10 +104,10 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { objective, context: promptContext, deliverables, acceptanceCriteria, constraints, jobName, model, enabledTools, updateExisting, message } = parsed.data;
+    const { objective, context: promptContext, deliverables, acceptanceCriteria, constraints, instructions, jobName, model, enabledTools, updateExisting, message } = parsed.data;
 
     // Assemble structured fields into a single prompt string for IPFS storage
-    const prompt = constructPrompt({ objective, context: promptContext, deliverables, acceptanceCriteria, constraints });
+    const prompt = constructPrompt({ objective, context: promptContext, deliverables, acceptanceCriteria, constraints, instructions });
 
     const gqlUrl = getPonderGraphqlUrl();
 
