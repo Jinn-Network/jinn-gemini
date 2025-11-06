@@ -21,7 +21,7 @@ export default createSchema((p: any) => ({
     {
       id: p.string(),
       mech: p.hex(),
-      sender: p.hex().optional(),
+      sender: p.hex(),
       workstreamId: p.string().optional(),
       jobDefinitionId: p.string().optional(),
       sourceRequestId: p.string().optional(),
