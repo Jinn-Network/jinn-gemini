@@ -1,5 +1,3 @@
-// This is a test comment added by the agent to validate the PR creation workflow.
-// This is a test comment added by the agent to validate the PR creation workflow.
 import { spawn } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync, statSync } from 'fs';
 import { join, dirname, resolve, isAbsolute, delimiter } from 'path';

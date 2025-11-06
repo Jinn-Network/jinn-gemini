@@ -214,15 +214,17 @@ if (!OPERATE_PASSWORD) {
   console.error('❌ OPERATE_PASSWORD is required to decrypt the master wallet keystore.');
   process.exit(1);
 }
+// TypeScript: OPERATE_PASSWORD is guaranteed to be string after the check above
+const OPERATE_PASSWORD_STR: string = OPERATE_PASSWORD;
 
 const RPC_URL = process.env.RPC_URL || 'https://mainnet.base.org';
 const provider = new ethers.JsonRpcProvider(RPC_URL);
 
 // Constants derived from the current middleware state
 const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
-const MASTER_SAFE_ADDRESS = '0xff44b66dc042235D04350ba5bA4ACB494b8Cb258';
-const SERVICE_SAFE_ADDRESS = '0x9dCaC0b6a3E0b94aa072A464d328830F03426Ac9';
-const AGENT_KEY_ADDRESS = '0xAb0acB3954E7c1813E89fa37BfcA97E51aFF54b5';
+const MASTER_SAFE_ADDRESS = '0x8064F56D409f1FfAa9D766e1b462CD5773BE0250';
+const SERVICE_SAFE_ADDRESS = '0x608d976Da1Dd9BC53aeA87Abe74e1306Ab96280c';
+const AGENT_KEY_ADDRESS = '0xCC97C9c46451c13c0294871BA1c4bbEC94bb0C5a';
 
 const OPERATE_DIR = path.resolve('olas-operate-middleware', '.operate');
 const MASTER_KEYSTORE_PATH = path.join(OPERATE_DIR, 'wallets', 'ethereum.txt');
@@ -238,7 +240,7 @@ const TOKEN_INTERFACE = new ethers.Interface(ERC20_ABI);
 
 async function loadMasterOwner(): Promise<ethers.Wallet> {
   const encryptedJson = await readFile(MASTER_KEYSTORE_PATH, 'utf8');
-  const wallet = await decryptKeystoreWallet(encryptedJson, OPERATE_PASSWORD);
+  const wallet = await decryptKeystoreWallet(encryptedJson, OPERATE_PASSWORD_STR);
   return wallet.connect(provider);
 }
 
@@ -336,7 +338,12 @@ async function sweepSafe(
   const safeTransaction = await safeSdk.createTransaction({ transactions: metaTxs });
   const signedTx = await safeSdk.signTransaction(safeTransaction);
   const executeTxResponse = await safeSdk.executeTransaction(signedTx);
-  const receipt = await executeTxResponse.transactionResponse?.wait();
+  const transactionResponse = executeTxResponse.transactionResponse;
+  if (!transactionResponse) {
+    throw new Error('Safe transaction response is missing');
+  }
+  // Type assertion: Safe SDK transactionResponse is compatible with ethers TransactionResponse
+  const receipt = await (transactionResponse as ethers.ContractTransactionResponse).wait();
 
   if (receipt?.status === 1) {
     console.log(`✅ Safe transfer complete. Tx hash: ${receipt.hash}`);
@@ -347,7 +354,7 @@ async function sweepSafe(
 
 async function sweepEoa(wallet: ethers.Wallet, label: string): Promise<void> {
   const address = await wallet.getAddress();
-  const balance = await wallet.getBalance();
+  const balance = await provider.getBalance(address);
   if (balance === 0n) {
     console.log(`\n${label} (${address}) has no ETH to sweep.`);
     return;
@@ -359,24 +366,29 @@ async function sweepEoa(wallet: ethers.Wallet, label: string): Promise<void> {
     throw new Error('Unable to determine gas price from RPC.');
   }
   const gasLimit = 21_000n;
-  const fee = gasPrice * gasLimit;
+  // Add 50% buffer to gas price to account for fluctuations + small safety margin
+  const bufferedGasPrice = (gasPrice * 150n) / 100n;
+  const fee = bufferedGasPrice * gasLimit;
+  // Add extra 0.00001 ETH safety margin
+  const safetyMargin = ethers.parseEther('0.00001');
+  const totalReserve = fee + safetyMargin;
 
-  if (balance <= fee) {
-    console.log(`\n${label} (${address}) balance (${ethers.formatEther(balance)} ETH) is not enough to cover gas (${ethers.formatEther(fee)} ETH). Skipping.`);
+  if (balance <= totalReserve) {
+    console.log(`\n${label} (${address}) balance (${ethers.formatEther(balance)} ETH) is not enough to cover gas + safety margin (${ethers.formatEther(totalReserve)} ETH). Skipping.`);
     return;
   }
 
-  const sendValue = balance - fee;
-  console.log(`\n${label}: sending ${ethers.formatEther(sendValue)} ETH (keeping ${ethers.formatEther(fee)} ETH for gas)`);
+  const sendValue = balance - totalReserve;
+  console.log(`\n${label}: sending ${ethers.formatEther(sendValue)} ETH (keeping ${ethers.formatEther(totalReserve)} ETH for gas)`);
 
   const tx = await wallet.sendTransaction({
     to: RECOVERY_DEST,
     value: sendValue,
     gasLimit,
-    gasPrice,
+    gasPrice: bufferedGasPrice,
   });
   const receipt = await tx.wait();
-  if (receipt.status !== 1) {
+  if (!receipt || receipt.status !== 1) {
     throw new Error(`${label} transfer failed: ${tx.hash}`);
   }
   console.log(`✅ ${label} transfer complete. Tx hash: ${tx.hash}`);
@@ -385,25 +397,63 @@ async function sweepEoa(wallet: ethers.Wallet, label: string): Promise<void> {
 async function main() {
   console.log('🌐 RPC:', RPC_URL);
   console.log('🎯 Recovery destination:', RECOVERY_DEST);
+  console.log('');
 
   // Load wallets
   const masterOwner = await loadMasterOwner();
   const agentOwner = await loadAgentOwner();
 
-  // Sweep Safes first (so EOAs still have ETH for gas)
-  await sweepSafe(MASTER_SAFE_ADDRESS, masterOwner, {
-    transferTokens: true,
-    label: 'Master Safe',
-  });
+  const errors: string[] = [];
 
-  await sweepSafe(SERVICE_SAFE_ADDRESS, agentOwner, {
-    transferTokens: false,
-    label: 'Service Safe',
-  });
+  // Sweep Safes first (so EOAs still have ETH for gas)
+  try {
+    await sweepSafe(MASTER_SAFE_ADDRESS, masterOwner, {
+      transferTokens: true,
+      label: 'Master Safe',
+    });
+  } catch (error) {
+    const msg = `Master Safe sweep failed: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(`\n⚠️  ${msg}`);
+    errors.push(msg);
+  }
+
+  try {
+    await sweepSafe(SERVICE_SAFE_ADDRESS, agentOwner, {
+      transferTokens: false,
+      label: 'Service Safe',
+    });
+  } catch (error) {
+    const msg = `Service Safe sweep failed: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(`\n⚠️  ${msg}`);
+    errors.push(msg);
+  }
 
   // Sweep residual EOA ETH
-  await sweepEoa(masterOwner, 'Master EOA');
-  await sweepEoa(agentOwner, 'Agent EOA');
+  try {
+    await sweepEoa(masterOwner, 'Master EOA');
+  } catch (error) {
+    const msg = `Master EOA sweep failed: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(`\n⚠️  ${msg}`);
+    errors.push(msg);
+  }
+
+  try {
+    await sweepEoa(agentOwner, 'Agent EOA');
+  } catch (error) {
+    const msg = `Agent EOA sweep failed: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(`\n⚠️  ${msg}`);
+    errors.push(msg);
+  }
+
+  // Summary
+  console.log('\n' + '='.repeat(60));
+  if (errors.length === 0) {
+    console.log('✅ All funds recovered successfully!');
+  } else {
+    console.log(`⚠️  Recovery completed with ${errors.length} error(s):`);
+    errors.forEach((err, i) => console.log(`  ${i + 1}. ${err}`));
+  }
+  console.log('='.repeat(60));
 }
 
 main().catch((error) => {

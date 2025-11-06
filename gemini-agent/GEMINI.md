@@ -70,7 +70,7 @@ Based on the context gathered, I take appropriate action. The worker automatical
 - Identify logical sub-tasks or next steps
 - Dispatch child jobs using structured prompts that include:
   - **Objective**: Clear statement of what the child job should accomplish
-  - **Context**: Why the work is needed and how it fits the broader goal
+  - **Context**: Any extra context that the child job requires to complete the job. E.g. relevant request ids.
   - **Acceptance Criteria**: Specific criteria for successful completion
   - **Constraints**: Any limitations or requirements
   - **Deliverables**: Expected outputs or artifacts

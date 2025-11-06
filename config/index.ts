@@ -284,6 +284,14 @@ const gitWorkflowSchema = z.object({
 
   // JINN_REPO_ROOT: Repository root override for test scenarios
   JINN_REPO_ROOT: z.string().optional(),
+
+  // GIT_AUTHOR_NAME: Git commit author name for agent commits
+  // REQUIRED for worker deployments to ensure correct git identity
+  GIT_AUTHOR_NAME: z.string().optional(),
+
+  // GIT_AUTHOR_EMAIL: Git commit author email for agent commits
+  // REQUIRED for worker deployments to ensure correct git identity
+  GIT_AUTHOR_EMAIL: z.string().email('GIT_AUTHOR_EMAIL must be a valid email').optional(),
 });
 
 /**
@@ -935,4 +943,28 @@ export function getOptionalBaseBranch(): string | undefined {
 
 export function getOptionalRepoRoot(): string | undefined {
   return getConfig().JINN_REPO_ROOT;
+}
+
+export function getOptionalGitAuthorName(): string | undefined {
+  return getConfig().GIT_AUTHOR_NAME;
+}
+
+export function getRequiredGitAuthorName(): string {
+  const value = getOptionalGitAuthorName();
+  if (!value) {
+    throw new Error('GIT_AUTHOR_NAME is required for agent git operations but not configured');
+  }
+  return value;
+}
+
+export function getOptionalGitAuthorEmail(): string | undefined {
+  return getConfig().GIT_AUTHOR_EMAIL;
+}
+
+export function getRequiredGitAuthorEmail(): string {
+  const value = getOptionalGitAuthorEmail();
+  if (!value) {
+    throw new Error('GIT_AUTHOR_EMAIL is required for agent git operations but not configured');
+  }
+  return value;
 }
