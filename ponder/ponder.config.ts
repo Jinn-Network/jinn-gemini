@@ -56,7 +56,10 @@ if (!isTestMode && process.env.PONDER_REVIEW_MODE === '1') {
 
 const startBlock = await getStartBlock();
 
-const MECH_ADDRESS = getMechAddress() || '0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7';
+const MECH_ADDRESS = getMechAddress();
+if (!MECH_ADDRESS) {
+  throw new Error('[Ponder Config] MECH_ADDRESS is required. Ensure .operate/service_*/service_config.json contains MECH_TO_CONFIG.');
+}
 if (!isTestMode) {
   console.log('[Ponder Config] Indexing mech:', MECH_ADDRESS);
   console.log('[Ponder Config] Start block:', startBlock);
