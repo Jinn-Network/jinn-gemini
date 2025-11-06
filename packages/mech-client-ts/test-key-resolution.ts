@@ -69,12 +69,6 @@ async function main(): Promise<void> {
   const operateResolved = resolvePrivateKey(operateConfig);
   console.log('Test 7 - operate config:', operateResolved === '0xTEST_OPERATE_KEY' ? 'PASS' : 'FAIL');
 
-  // Test 8: Fallback chain (operate)
-  process.env.OPERATE_HOME = operateRoot;
-  const fallbackOperate = resolvePrivateKey();
-  console.log('Test 8 - fallback operate:', fallbackOperate === '0xTEST_OPERATE_KEY' ? 'PASS' : 'FAIL');
-
-  delete process.env.OPERATE_HOME;
   rmSync(operateRoot, { recursive: true, force: true });
 }
 

@@ -10,6 +10,7 @@
 import { join } from 'path';
 import { readServiceConfig, type ServiceInfo } from './ServiceConfigReader.js';
 import { logger } from '../logging/index.js';
+import { getMechAddress as getOperateMechAddress, getServiceSafeAddress as getOperateSafeAddress, getServicePrivateKey as getOperatePrivateKey } from '../env/operate-profile.js';
 
 const loaderLogger = logger.child({ component: 'SERVICE-CONFIG-LOADER' });
 
@@ -49,24 +50,24 @@ export async function initializeServiceConfig(): Promise<void> {
 
 /**
  * Get mech contract address
- * Prefers service config over environment variable
+ * Priority: 1) service config, 2) operate-profile, 3) throw error
  */
 export function getMechAddress(): string {
-  const addr = serviceConfig?.mechContractAddress || process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '';
+  const addr = serviceConfig?.mechContractAddress || getOperateMechAddress() || '';
   if (!addr) {
-    throw new Error('Mech address not found in service config or MECH_ADDRESS environment variable');
+    throw new Error('Mech address not found in service config or .operate profile');
   }
   return addr.trim();
 }
 
 /**
- * Get service Safe address  
- * Prefers service config over environment variable
+ * Get service Safe address
+ * Priority: 1) service config, 2) operate-profile, 3) throw error
  */
 export function getSafeAddress(): string {
-  const addr = serviceConfig?.serviceSafeAddress || process.env.MECH_SAFE_ADDRESS || '';
+  const addr = serviceConfig?.serviceSafeAddress || getOperateSafeAddress() || '';
   if (!addr) {
-    throw new Error('Safe address not found in service config or MECH_SAFE_ADDRESS environment variable');
+    throw new Error('Safe address not found in service config or .operate profile');
   }
   return addr.trim();
 }
@@ -93,12 +94,12 @@ export function getServiceConfig(): ServiceInfo | null {
 
 /**
  * Get agent private key
- * Prefers service config over environment variable
+ * Priority: 1) service config, 2) operate-profile, 3) throw error
  */
 export function getAgentPrivateKey(): string {
-  const key = serviceConfig?.agentPrivateKey || process.env.MECH_PRIVATE_KEY || '';
+  const key = serviceConfig?.agentPrivateKey || getOperatePrivateKey() || '';
   if (!key) {
-    throw new Error('Agent private key not found in service config or MECH_PRIVATE_KEY environment variable');
+    throw new Error('Agent private key not found in service config or .operate profile');
   }
   return key.trim();
 }

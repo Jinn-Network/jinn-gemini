@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
+import { getMechAddress, getMechChainConfig, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
 
 function getArg(flag: string, fallback?: string) {
   const i = process.argv.indexOf(flag);
@@ -17,13 +18,19 @@ async function main() {
     process.exit(1);
   }
 
-  const chainConfig = process.env.MECH_CHAIN_CONFIG || 'base';
-  const targetMechAddress = (process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '').trim();
-  const safeAddress = (process.env.MECH_SAFE_ADDRESS || '').trim();
+  const chainConfig = getMechChainConfig();
+  const targetMechAddress = getMechAddress();
+  const safeAddress = getServiceSafeAddress();
+  const privateKey = getServicePrivateKey();
   const rpcHttpUrl = (process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL || '').trim();
 
   if (!targetMechAddress || !safeAddress) {
-    console.error('Missing MECH_ADDRESS or MECH_SAFE_ADDRESS');
+    console.error('Mech address or safe address not found in .operate profile');
+    process.exit(1);
+  }
+  
+  if (!privateKey) {
+    console.error('Private key not found in .operate profile');
     process.exit(1);
   }
 
@@ -38,16 +45,13 @@ async function main() {
     resultContent = JSON.parse(readFileSync(p, 'utf8'));
   }
 
-  const privateKeyEnv = (process.env.MECH_PRIVATE_KEY || '').trim();
-  const privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH || 'mech_private_key.txt';
-
   const payload: any = {
     chainConfig,
     requestId: String(requestId),
     resultContent,
     targetMechAddress,
     safeAddress,
-    ...(privateKeyEnv ? { privateKey: privateKeyEnv } : { privateKeyPath }),
+    privateKey,
     ...(rpcHttpUrl ? { rpcHttpUrl } : {}),
     wait: true,
   };
@@ -57,7 +61,7 @@ async function main() {
     requestId: payload.requestId,
     targetMechAddress,
     safeAddress,
-    hasPrivateKey: Boolean(privateKeyEnv),
+    hasPrivateKey: Boolean(privateKey),
     hasRpcOverride: Boolean(rpcHttpUrl),
   });
 

@@ -144,8 +144,6 @@ const fileKey: KeyConfig = { source: 'file', filePath: '/secure/keys/mech.txt' }
     └── config.json
 ```
 
-Set `OPERATE_HOME` to override the default `~/.operate` location.
-
 ## What's Different from mech-client-python?
 
 This TypeScript client achieves full feature parity with the Python client:

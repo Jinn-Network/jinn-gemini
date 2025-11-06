@@ -653,12 +653,6 @@ export async function runWorkerOnce(
     }
   }
 
-  // Create test .operate directory if MECH_SAFE_ADDRESS is set
-  if (process.env.MECH_SAFE_ADDRESS) {
-    const testOperateDir = createTestOperateDir();
-    env.OPERATE_HOME = testOperateDir;
-  }
-
   const workerProc = execa('yarn', ['--ignore-engines', 'dev:mech'], {
     cwd: process.cwd(),
     env,

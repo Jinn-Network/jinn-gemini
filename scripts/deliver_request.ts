@@ -3,6 +3,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { Web3 } from 'web3';
+import { getMechChainConfig, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import agentMechArtifact from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
@@ -92,14 +93,18 @@ async function main() {
     .help()
     .parse();
 
-  const chainConfig = process.env.MECH_CHAIN_CONFIG || 'base';
-  const safeAddress = process.env.MECH_SAFE_ADDRESS || '';
+  const chainConfig = getMechChainConfig();
+  const safeAddress = getServiceSafeAddress();
   const rpcHttpUrl = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;
-  const privateKeyEnv = (process.env.MECH_PRIVATE_KEY || '').trim();
-  const privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH || 'mech_private_key.txt';
+  const privateKey = getServicePrivateKey();
 
   if (!safeAddress) {
-    console.error('Missing MECH_SAFE_ADDRESS');
+    console.error('Safe address not found in .operate profile or MECH_SAFE_ADDRESS env var');
+    process.exit(1);
+  }
+  
+  if (!privateKey) {
+    console.error('Private key not found in .operate profile or MECH_PRIVATE_KEY env var');
     process.exit(1);
   }
 
@@ -158,7 +163,7 @@ async function main() {
     },
     targetMechAddress,
     safeAddress,
-    ...(privateKeyEnv ? { privateKey: privateKeyEnv } : { privateKeyPath }),
+    privateKey,
     ...(rpcHttpUrl ? { rpcHttpUrl } : {}),
     wait: true
   } as const;

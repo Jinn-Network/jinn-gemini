@@ -205,13 +205,17 @@ PONDER_PORT=42069
 PONDER_GRAPHQL_URL=http://localhost:${PONDER_PORT}/graphql
 ```
 
-### Optional (Auto-detected)
+### Optional (Auto-detected via operate-profile.ts)
 
-These are auto-detected from service config if not set:
+These are auto-detected from `.operate` profile if not set:
 ```bash
+MECH_ADDRESS=0x...           # Auto: from service config MECH_TO_CONFIG
 MECH_SAFE_ADDRESS=0x...      # Auto: from service config
-MECH_PRIVATE_KEY=0x...       # Auto: from middleware keys
+MECH_PRIVATE_KEY=0x...       # Auto: from .operate/keys/{agent_address}
+MECH_CHAIN_CONFIG=base       # Auto: defaults to 'base'
 ```
+
+**Note:** All scripts and worker code now use `env/operate-profile.ts` functions for consistent configuration loading.
 
 ---
 

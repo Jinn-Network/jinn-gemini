@@ -170,14 +170,17 @@ Gas Used: 67890
 
 ## Environment Variables
 
-### Optional (Auto-detected)
+### Optional (Auto-detected via operate-profile.ts)
 ```bash
-# If not set, reads from latest service in .operate/services
+# All MECH_* variables now use env/operate-profile.ts as primary source
+# Reads from .operate/services/*/config.json with env var overrides
+MECH_ADDRESS=0x...
 MECH_SAFE_ADDRESS=0x...
-
-# If not set, reads from .operate/keys/{agent_address}
 MECH_PRIVATE_KEY=0x...
+MECH_CHAIN_CONFIG=base  # Defaults to 'base'
 ```
+
+**Note:** The codebase now uses centralized `operate-profile.ts` functions (`getMechAddress()`, `getServiceSafeAddress()`, `getServicePrivateKey()`, `getMechChainConfig()`) instead of direct environment variable access.
 
 ### For Test Script
 ```bash

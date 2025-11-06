@@ -64,20 +64,16 @@ const safeAddress = process.env.MECH_SAFE_ADDRESS;
 const privateKeyPath = process.env.MECH_PRIVATE_KEY_PATH;
 ```
 
-**After:**
+**After (using operate-profile.ts):**
 ```typescript
-// Auto-read from service config if not provided
-if (!safeAddress) {
-  const serviceInfo = await readServiceConfig(middlewarePath);
-  safeAddress = serviceInfo?.serviceSafeAddress;
-  
-  // Also load agent key from middleware
-  if (serviceInfo?.agentEoaAddress) {
-    const agentKey = await loadAgentPrivateKey(middlewarePath, serviceInfo.agentEoaAddress);
-    // Use inline key instead of path
-  }
-}
+import { getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
+
+// Automatically reads from .operate profile with env var fallback
+const safeAddress = getServiceSafeAddress();
+const privateKey = getServicePrivateKey();
 ```
+
+**Note:** Environment variables (MECH_SAFE_ADDRESS, MECH_PRIVATE_KEY) still work as overrides, but the primary source is now `.operate/services/*/config.json` and `.operate/keys/[agent_address]`.
 
 **Result:** Zero-configuration Safe-based deliveries when using middleware-deployed services
 
@@ -182,16 +178,21 @@ olas-operate-middleware/.operate/keys/0x{agent_address}
 
 ## Environment Variables
 
-### Optional (Auto-detected from service config)
+### Optional (Auto-detected from .operate profile via operate-profile.ts)
 
 ```bash
-# If not set, reads from latest service in .operate/services
+# If not set, automatically reads from .operate/services/*/config.json
 MECH_SAFE_ADDRESS=0x...
 
-# If not set, reads from .operate/keys/{agent_address}
+# If not set, automatically reads from .operate/keys/{agent_address}
 MECH_PRIVATE_KEY=0x...
-MECH_PRIVATE_KEY_PATH=path/to/key
+
+# Also auto-detected:
+MECH_ADDRESS=0x...  # From MECH_TO_CONFIG in service config
+MECH_CHAIN_CONFIG=base  # Defaults to 'base' if not set
 ```
+
+**Note:** All MECH_* variables now use `env/operate-profile.ts` as the primary source, with environment variables as overrides.
 
 ### Required for Test Script
 

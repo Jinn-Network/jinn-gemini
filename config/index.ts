@@ -134,9 +134,6 @@ const olasOperateSchema = z.object({
   // OPERATE_PASSWORD: Password for olas-operate-middleware (encrypts keystore)
   OPERATE_PASSWORD: z.string().optional(),
 
-  // OPERATE_HOME: Path to .operate directory
-  OPERATE_HOME: z.string().optional(),
-
   // ATTENDED: Interactive mode vs automated
   ATTENDED: z.coerce.boolean().optional(),
 
@@ -402,22 +399,14 @@ function loadConfig(): ConfigType {
              process.env.MECH_RPC_HTTP_URL ||
              process.env.BASE_RPC_URL,
 
-    // MECH_ADDRESS: Check canonical name, then legacy alias, then .operate profile
-    MECH_ADDRESS: process.env.MECH_ADDRESS ||
-                  process.env.MECH_WORKER_ADDRESS ||
-                  getOperateMechAddress() ||
-                  undefined,
+    // MECH_ADDRESS: From .operate service profile only (no env var fallbacks)
+    MECH_ADDRESS: getOperateMechAddress() || undefined,
 
-    // MECH_SAFE_ADDRESS: Check env, then .operate profile
-    MECH_SAFE_ADDRESS: process.env.MECH_SAFE_ADDRESS ||
-                       getServiceSafeAddress() ||
-                       undefined,
+    // MECH_SAFE_ADDRESS: From .operate service profile only (no env var fallbacks)
+    MECH_SAFE_ADDRESS: getServiceSafeAddress() || undefined,
 
-    // WORKER_PRIVATE_KEY: Check env, then .operate profile (for agent key)
-    WORKER_PRIVATE_KEY: process.env.WORKER_PRIVATE_KEY ||
-                        process.env.MECH_PRIVATE_KEY ||
-                        getOperatePrivateKey() ||
-                        undefined,
+    // WORKER_PRIVATE_KEY: From .operate service profile only (no env var fallbacks)
+    WORKER_PRIVATE_KEY: getOperatePrivateKey() || undefined,
   };
 
   // Validate against schema
@@ -506,7 +495,7 @@ export function getOptionalMechAddress(): string | undefined {
 export function getRequiredMechAddress(): string {
   const value = getOptionalMechAddress();
   if (!value) {
-    throw new Error('MECH_ADDRESS is required but not configured (check env vars or .operate profile)');
+    throw new Error('MECH_ADDRESS is required but not configured (check .operate service profile)');
   }
   return value;
 }
@@ -518,7 +507,7 @@ export function getOptionalMechSafeAddress(): string | undefined {
 export function getRequiredMechSafeAddress(): string {
   const value = getOptionalMechSafeAddress();
   if (!value) {
-    throw new Error('MECH_SAFE_ADDRESS is required but not configured (check env vars or .operate profile)');
+    throw new Error('MECH_SAFE_ADDRESS is required but not configured (check .operate service profile)');
   }
   return value;
 }
@@ -622,10 +611,6 @@ export function getOptionalSupabaseServiceAnonKey(): string | undefined {
 
 export function getOptionalOperatePassword(): string | undefined {
   return getConfig().OPERATE_PASSWORD;
-}
-
-export function getOptionalOperateHome(): string | undefined {
-  return getConfig().OPERATE_HOME;
 }
 
 export function getAttended(): boolean {

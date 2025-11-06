@@ -584,6 +584,16 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     chainConfig
   } = options;
 
+  console.error('[marketplace_interact] Called with:', {
+    promptsCount: prompts.length,
+    priorityMech,
+    toolsCount: tools.length,
+    postOnly,
+    chainConfig,
+    hasKeyConfig: !!keyConfig,
+    hasPrivateKeyPath: !!privateKeyPath
+  });
+
   // Get configuration
   const mechConfig = get_mech_config(chainConfig);
   const ledgerConfig = mechConfig.ledger_config;
@@ -592,7 +602,14 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
   const chainId = ledgerConfig.chain_id;
   const numRequests = prompts.length;
 
+  console.error('[marketplace_interact] Config loaded:', {
+    chainId,
+    marketplace: mechMarketplaceContractAddress,
+    rpcUrl: mechConfig.rpc_url?.substring(0, 50) + '...'
+  });
+
   if (mechMarketplaceContractAddress === '0x0000000000000000000000000000000000000000') {
+    console.error('[marketplace_interact] Marketplace not supported on chain');
     console.log(`Mech Marketplace not yet supported on ${chainConfig}`);
     return null;
   }
@@ -772,12 +789,18 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     console.log('');
 
     if (postOnly) {
-      return {
+      const result = {
         transaction_hash: transactionDigest,
         transaction_url: transactionUrlFormatted,
         request_ids: requestIds,
         request_id_ints: requestIdInts,
       };
+      console.error('[marketplace_interact] Returning (postOnly):', {
+        hasResult: true,
+        requestIdsLength: requestIds.length,
+        firstRequestId: requestIds[0]
+      });
+      return result;
     }
 
     // Wait for data URLs for all requests (async polling-based)

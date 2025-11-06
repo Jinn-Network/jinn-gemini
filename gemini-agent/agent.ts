@@ -200,21 +200,14 @@ export class Agent {
 
   private runGeminiWithTelemetry(prompt: string): Promise<{ output: string; telemetryFile: string; stderr: string; exitCode: number }> {
     return new Promise((resolvePromise) => {
-      // Use auto_edit mode to skip IDE confirmation for file edits (headless compatibility)
-      // This prevents the CLI from hanging on IDE connection attempts
-      const args: string[] = ['--approval-mode', 'auto_edit'];
+      // Initialize CLI args
+      // NOTE: Gemini CLI no longer accepts --approval-mode or --allowed-tools flags
+      // Tool permissions are now controlled via MCP settings.json (includeTools/excludeTools)
+      const args: string[] = [];
       
       // Use cached tool policy (computed in generateJobSpecificSettings)
-      // This ensures consistency between MCP settings and CLI whitelist
+      // This ensures tool access is properly restricted via MCP settings
       const toolPolicy = this.cachedToolPolicy || computeToolPolicy(this.enabledTools);
-      
-      // Allow tools to run without confirmation in headless mode
-      // In auto_edit mode, edit tools (write_file, replace) auto-approve, but shell and other
-      // tools still need explicit whitelisting for non-interactive runs
-      // The CLI whitelist is now derived from the job's enabled tools via the centralized policy
-      if (toolPolicy.cliAllowedTools.length > 0) {
-        args.push('--allowed-tools', toolPolicy.cliAllowedTools.join(','));
-      }
       
       // Make sure Gemini CLI treats the job repo as part of the workspace to allow write_file
       const includeDirectories = new Set<string>();

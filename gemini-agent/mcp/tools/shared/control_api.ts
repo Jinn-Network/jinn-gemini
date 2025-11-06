@@ -2,6 +2,7 @@ import { getCurrentJobContext } from './context.js';
 import { mcpLogger } from '../../../../logging/index.js';
 import { postJson } from '../../../../http/client.js';
 import { getOptionalControlApiUrl, getUseControlApi } from './env.js';
+import { getMechAddress } from '../../../../env/operate-profile.js';
 
 type RequestClaim = {
   request_id: string;
@@ -43,9 +44,9 @@ function getWorkerAddress(): string {
     return context.mechAddress;
   }
 
-  const addr = (process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS || '').trim();
+  const addr = getMechAddress();
   if (!addr) {
-    throw new Error('MECH_ADDRESS is required for Control API calls');
+    throw new Error('Service target mech address not configured. Check .operate service config (MECH_TO_CONFIG).');
   }
   return addr;
 }

@@ -3,7 +3,7 @@ import { graphQLRequest } from '../../../http/client.js';
 import { randomUUID } from 'node:crypto';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
-import { getMechAddress } from '../../../env/operate-profile.js';
+import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
 import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
@@ -178,26 +178,45 @@ export async function dispatchNewJob(args: unknown) {
       (context as any)?.baseBranch ||
       getCodeMetadataDefaultBaseBranch();
 
-    const branchResult = await ensureJobBranch({
-      jobDefinitionId,
-      jobName,
-      baseBranch,
-    });
+    let branchResult;
+    let codeMetadata;
+    try {
+      branchResult = await ensureJobBranch({
+        jobDefinitionId,
+        jobName,
+        baseBranch,
+      });
 
-    const metadataHints = {
-      jobDefinitionId,
-      parent:
-        context.jobDefinitionId || context.requestId
-          ? {
-              jobDefinitionId: context.jobDefinitionId || undefined,
-              requestId: context.requestId || undefined,
-            }
-          : undefined,
-      baseBranch,
-      branchName: branchResult.branchName,
-    };
+      const metadataHints = {
+        jobDefinitionId,
+        parent:
+          context.jobDefinitionId || context.requestId
+            ? {
+                jobDefinitionId: context.jobDefinitionId || undefined,
+                requestId: context.requestId || undefined,
+              }
+            : undefined,
+        baseBranch,
+        branchName: branchResult.branchName,
+      };
 
-    const codeMetadata = await collectLocalCodeMetadata(metadataHints);
+      codeMetadata = await collectLocalCodeMetadata(metadataHints);
+    } catch (branchError: any) {
+      console.error('[dispatch_new_job] Branch/metadata collection failed:', branchError.message);
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: {
+              ok: false,
+              code: 'BRANCH_ERROR',
+              message: `Failed to create job branch or collect metadata: ${branchError.message}`,
+            },
+          }),
+        }],
+      };
+    }
 
     const ipfsJsonContents: any[] = [{
       prompt,
@@ -223,16 +242,46 @@ export async function dispatchNewJob(args: unknown) {
     };
 
     try {
+      const mechAddress = getMechAddress();
+      const chainConfig = getMechChainConfig();
+      const privateKey = getServicePrivateKey();
+      
+      if (!mechAddress) {
+        throw new Error('Service target mech address not configured. Check .operate service config (MECH_TO_CONFIG).');
+      }
+      
+      if (!privateKey) {
+        throw new Error('Service agent private key not found. Check .operate/keys directory.');
+      }
+      
+      console.error('[dispatch_new_job] Calling marketplaceInteract with:', {
+        promptLength: prompt.length,
+        mech: mechAddress,
+        chainConfig,
+        toolsCount: (enabledTools || []).length,
+        hasIpfsContents: !!ipfsJsonContents,
+      });
+      
       const result = await marketplaceInteract({
         prompts: [prompt],
-        priorityMech: getMechAddress(),
+        priorityMech: mechAddress,
         tools: enabledTools || [],
         ipfsJsonContents,
-        chainConfig: 'base',
+        chainConfig,
+        keyConfig: { source: 'value', value: privateKey },
         postOnly: true,
       });
 
+      console.error('[dispatch_new_job] marketplaceInteract result:', {
+        hasResult: !!result,
+        requestIdsType: result ? typeof result.request_ids : 'n/a',
+        requestIdsIsArray: result ? Array.isArray(result.request_ids) : false,
+        requestIdsLength: result?.request_ids?.length ?? 0,
+        resultKeys: result ? Object.keys(result) : []
+      });
+
       if (!result || !Array.isArray(result.request_ids) || result.request_ids.length === 0) {
+        console.error('[dispatch_new_job] Failed - result:', result);
         return {
           content: [{
             type: 'text' as const,

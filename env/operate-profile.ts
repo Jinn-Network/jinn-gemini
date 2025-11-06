@@ -12,8 +12,14 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { configLogger } from '../logging/index.js';
+
+// Hardcoded path to .operate directory relative to project root
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const OPERATE_HOME = join(__dirname, '..', 'olas-operate-middleware', '.operate');
 
 interface ServiceConfig {
   env_variables?: {
@@ -34,37 +40,13 @@ interface ServiceConfig {
 
 /**
  * Get the path to the .operate directory
- * Priority: OPERATE_HOME env var > olas-operate-middleware/.operate > project root/.operate
  */
 function getOperateDir(): string | null {
-  if (process.env.OPERATE_HOME) {
-    return process.env.OPERATE_HOME;
+  if (existsSync(OPERATE_HOME)) {
+    return OPERATE_HOME;
   }
   
-  // Try current directory/.operate
-  const cwdPath = join(process.cwd(), '.operate');
-  if (existsSync(cwdPath)) {
-    return cwdPath;
-  }
-  
-  // Try parent directory/.operate (for when running from subdirectories like ponder/)
-  const parentPath = join(process.cwd(), '..', '.operate');
-  if (existsSync(parentPath)) {
-    return parentPath;
-  }
-  
-  // Try olas-operate-middleware/.operate (common in development)
-  const middlewarePath = join(process.cwd(), 'olas-operate-middleware', '.operate');
-  if (existsSync(middlewarePath)) {
-    return middlewarePath;
-  }
-  
-  // Try parent/olas-operate-middleware/.operate
-  const parentMiddlewarePath = join(process.cwd(), '..', 'olas-operate-middleware', '.operate');
-  if (existsSync(parentMiddlewarePath)) {
-    return parentMiddlewarePath;
-  }
-  
+  configLogger.warn({ OPERATE_HOME }, '.operate directory not found at expected location');
   return null;
 }
 
@@ -115,23 +97,15 @@ function readServiceConfig(): ServiceConfig | null {
 }
 
 /**
- * Get the mech address for this service
+ * Get the service's target mech contract address
  * 
- * Priority:
- * 1. MECH_ADDRESS environment variable
- * 2. MECH_WORKER_ADDRESS environment variable (legacy)
- * 3. Read from .operate service config MECH_TO_CONFIG
+ * Reads from .operate service config MECH_TO_CONFIG only.
+ * No environment variable fallbacks - this is service configuration.
  * 
- * @returns Mech address or null if not found
+ * @returns Mech contract address or null if not found
  */
 export function getMechAddress(): string | null {
-  // Check environment variables first
-  const envMechAddress = process.env.MECH_ADDRESS || process.env.MECH_WORKER_ADDRESS;
-  if (envMechAddress) {
-    return envMechAddress.trim();
-  }
-  
-  // Read from service config
+  // Read from service config only
   const config = readServiceConfig();
   if (!config) {
     return null;
@@ -155,7 +129,7 @@ export function getMechAddress(): string | null {
     }
     
     const mechAddress = mechAddresses[0];
-    configLogger.info(` Found mech address: ${mechAddress}`);
+    configLogger.info(` Found service target mech: ${mechAddress}`);
     return mechAddress;
   } catch (error) {
     configLogger.warn({ err: error }, 'Error parsing MECH_TO_CONFIG');
@@ -164,13 +138,13 @@ export function getMechAddress(): string | null {
 }
 
 /**
- * Get the Gnosis Safe address for this service
+ * Get the Gnosis Safe multisig address for this service
  * 
- * Priority:
- * 1. Read from .operate service config chain_configs.<chain>.chain_data.multisig
- * 2. Fall back to safe_address at root (backwards compatibility)
+ * Reads from .operate service config only:
+ * 1. chain_configs.<chain>.chain_data.multisig (primary location)
+ * 2. safe_address at root (backwards compatibility)
  * 
- * Note: Ignores MECH_SAFE_ADDRESS environment variable - must come from .operate
+ * No environment variable fallbacks - this is service configuration.
  * 
  * @returns Safe address or null if not found
  */
@@ -267,6 +241,31 @@ export function getServicePrivateKey(): string | null {
 }
 
 /**
+ * Get the chain configuration name from service config
+ * 
+ * Reads from .operate service config chain_configs keys.
+ * Defaults to 'base' if no chain configs found.
+ * 
+ * No environment variable fallbacks - this is service configuration.
+ * 
+ * @returns Chain config name (e.g., 'base', 'gnosis', 'ethereum')
+ */
+export function getMechChainConfig(): string {
+  const config = readServiceConfig();
+  if (!config || !config.chain_configs) {
+    return 'base';
+  }
+  
+  // Return the first chain config name found
+  const chainNames = Object.keys(config.chain_configs);
+  if (chainNames.length === 0) {
+    return 'base';
+  }
+  
+  return chainNames[0];
+}
+
+/**
  * Get all service configuration in one call
  * Useful when you need multiple pieces of information
  */
@@ -275,5 +274,6 @@ export function getServiceProfile() {
     mechAddress: getMechAddress(),
     safeAddress: getServiceSafeAddress(),
     privateKey: getServicePrivateKey(),
+    chainConfig: getMechChainConfig(),
   };
 }

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { getTransactionQueue } from './shared/queue.js';
 import fetch from 'cross-fetch';
 import { isControlApiEnabled } from './shared/control_api.js';
+import { getMechAddress } from '../../../env/operate-profile.js';
 
 // Control API URL
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
@@ -44,7 +45,7 @@ export async function getTransactionStatus(params: z.infer<typeof getTransaction
     if (isControlApiEnabled()) {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'X-Worker-Address': process.env.MECH_WORKER_ADDRESS || ''
+        'X-Worker-Address': getMechAddress() || ''
       };
       const query = `query GetTx($id: String!) { getTransactionStatus(id: $id) { id chain_id safe_tx_hash tx_hash status } }`;
       const body = { query, variables: { id: params.request_id } };

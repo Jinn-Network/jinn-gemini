@@ -20,7 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `source: 'operate'` - OLAS `.operate` directory integration
 - **New `resolvePrivateKey()` function** - Secure key resolution with multiple source support
 - **New `resolveOperateKey()` helper** - Reads keys from `.operate/services/sc-*/keys.json`
-- Support for `OPERATE_HOME` environment variable to specify custom `.operate` location
 - Comprehensive JSDoc documentation for all new functions
 
 ### 🔄 Changed

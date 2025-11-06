@@ -6,6 +6,7 @@ import { getAllowlist } from './shared/allowlist.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { TransactionInput } from '../../../worker/queue/index.js';
 import { workerLogger } from '../../../logging/index.js';
+import { getMechAddress } from '../../../env/operate-profile.js';
 import fetch from 'cross-fetch';
 
 // Input schema for enqueuing transactions
@@ -122,7 +123,7 @@ export async function enqueueTransaction(params: EnqueueTransactionParams) {
       const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'X-Worker-Address': process.env.MECH_WORKER_ADDRESS || ''
+        'X-Worker-Address': getMechAddress() || ''
       };
       const query = `mutation Enqueue($requestId: String, $chain_id: Int!, $execution_strategy: String!, $payload: String!, $idempotency_key: String) {
         enqueueTransaction(requestId: $requestId, chain_id: $chain_id, execution_strategy: $execution_strategy, payload: $payload, idempotency_key: $idempotency_key) {

@@ -14,6 +14,7 @@ import { writeFileSync } from "fs";
 import { promises as fs } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { getOptionalMechMarketplaceAddress } from '../config/index.js';
 import { 
   SERVICE_CONSTANTS, 
   createDefaultServiceConfig, 
@@ -508,10 +509,10 @@ export class OlasServiceManager {
       const configContent = await fs.readFile(configPath, 'utf8');
       const config = JSON.parse(configContent);
 
-      // Get mech marketplace address from environment
-      const mechMarketplaceAddress = process.env.MECH_MARKETPLACE_ADDRESS_BASE;
+      // Get mech marketplace address from config
+      const mechMarketplaceAddress = getOptionalMechMarketplaceAddress();
       if (!mechMarketplaceAddress) {
-        throw new Error('MECH_MARKETPLACE_ADDRESS_BASE environment variable is required for mech deployment');
+        throw new Error('MECH_MARKETPLACE_ADDRESS_BASE is required for mech deployment');
       }
 
       enableMechMarketplaceInConfig(config, mechMarketplaceAddress);
