@@ -57,7 +57,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   // Build where filter for workstream filtering - memoized to prevent infinite rerenders
   const whereFilter = useMemo(() => {
     if (collectionName === 'requests' && workstreamFilter) {
-      return { sourceRequestId: workstreamFilter }
+      return { workstreamId: workstreamFilter }
     }
     return undefined
   }, [collectionName, workstreamFilter])

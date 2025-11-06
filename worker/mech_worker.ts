@@ -38,6 +38,12 @@ const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('
 const USE_CONTROL_API = getUseControlApi();
 const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 10;
 
+// Workstream filtering: parse --workstream=<id> flag
+const WORKSTREAM_FILTER = (() => {
+  const arg = process.argv.find(arg => arg.startsWith('--workstream='));
+  return arg ? arg.split('=')[1] : undefined;
+})();
+
 // Auto-reposting configuration
 const ENABLE_AUTO_REPOST = getEnableAutoRepost();
 const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
@@ -58,12 +64,23 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       return [];
     }
     
-    workerLogger.info({ ponderUrl: PONDER_GRAPHQL_URL, mech: workerMech }, 'Fetching requests from Ponder');
+    workerLogger.info({ 
+      ponderUrl: PONDER_GRAPHQL_URL, 
+      mech: workerMech,
+      workstreamFilter: WORKSTREAM_FILTER || 'none'
+    }, 'Fetching requests from Ponder');
     
-    // Query our local Ponder GraphQL (custom schema) - FILTER BY MECH AND UNDELIVERED
-    const query = `query RecentRequests($limit: Int!, $mech: String!) {
+    // Build where clause dynamically to include workstream filter if provided
+    const whereConditions: string[] = ['mech: $mech', 'delivered: false'];
+    if (WORKSTREAM_FILTER) {
+      whereConditions.push('workstreamId: $workstreamId');
+    }
+    const whereClause = `{ ${whereConditions.join(', ')} }`;
+    
+    // Query our local Ponder GraphQL (custom schema) - FILTER BY MECH AND UNDELIVERED (and optionally WORKSTREAM)
+    const query = `query RecentRequests($limit: Int!, $mech: String!${WORKSTREAM_FILTER ? ', $workstreamId: String!' : ''}) {
   requests(
-    where: { mech: $mech, delivered: false }
+    where: ${whereClause}
     orderBy: "blockTimestamp"
     orderDirection: "asc"
     limit: $limit
@@ -78,13 +95,19 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     }
   }
 }`;
+    
+    const variables: any = {
+      limit,
+      mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
+    };
+    if (WORKSTREAM_FILTER) {
+      variables.workstreamId = WORKSTREAM_FILTER;
+    }
+    
     const data = await graphQLRequest<{ requests: { items: any[] } }>({
       url: PONDER_GRAPHQL_URL,
       query,
-      variables: {
-        limit,
-        mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
-      },
+      variables,
       context: { operation: 'fetchRecentRequests', mech: workerMech }
     });
     const items: any[] = data?.requests?.items || [];

@@ -62,6 +62,47 @@ function formatVectorLiteral(vector: number[]): string {
   return `[${vector.join(",")}]`;
 }
 
+/**
+ * Traverses up the request chain to find the ultimate root request ID (workstream root).
+ * @param startRequestId The ID of the request to start traversal from (the immediate parent).
+ * @param requestRepo The Ponder repository for requests.
+ * @returns The ID of the root request (workstream ID).
+ */
+async function findWorkstreamRoot(
+  startRequestId: string,
+  requestRepo: any,
+): Promise<string> {
+  let currentId = startRequestId;
+  const visited = new Set<string>();
+
+  // Limit traversal to prevent infinite loops in case of data cycles
+  for (let i = 0; i < 100; i++) {
+    // Prevent cycles
+    if (visited.has(currentId)) {
+      logger.warn({ requestId: currentId }, 'Detected cycle in request chain during workstream root search');
+      return currentId;
+    }
+    visited.add(currentId);
+
+    try {
+      const request = await requestRepo.findUnique({ id: currentId });
+      if (!request || !request.sourceRequestId) {
+        // We've found the root (no parent) or the trail goes cold.
+        return currentId;
+      }
+      // Move up the chain
+      currentId = request.sourceRequestId;
+    } catch (e) {
+      // If we can't find the parent, treat current as root
+      logger.warn({ requestId: currentId, error: serializeError(e) }, 'Failed to fetch parent request during workstream root search');
+      return currentId;
+    }
+  }
+
+  logger.warn({ startRequestId, currentId }, 'Workstream root search exceeded 100 iterations');
+  return currentId; // Fallback to last known ID
+}
+
 ponder.on(
   "MechMarketplace:MarketplaceRequest",
   async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
@@ -177,11 +218,25 @@ ponder.on(
         }
       }
 
+      // --- COMPUTE WORKSTREAM ID ---
+      // The workstream ID is the root request ID of the entire job chain.
+      // Root jobs have no sourceRequestId, so their workstream ID is their own ID.
+      // Child jobs traverse up the chain to find the ultimate root.
+      let workstreamId: string;
+      if (sourceRequestId) {
+        // This is a child job, find its ultimate root
+        workstreamId = await findWorkstreamRoot(sourceRequestId, repo);
+      } else {
+        // This is a root job, its workstream ID is its own ID
+        workstreamId = id;
+      }
+
       await repo.upsert({
         id,
         create: {
           mech,
           sender,
+          workstreamId,
           jobDefinitionId: jobDefinitionId,
           sourceRequestId: sourceRequestId,
           sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
@@ -198,6 +253,7 @@ ponder.on(
         update: {
           mech,
           sender,
+          workstreamId,
           jobDefinitionId: jobDefinitionId,
           sourceRequestId: sourceRequestId,
           sourceJobDefinitionId: sourceJobDefinitionIdFromContent,

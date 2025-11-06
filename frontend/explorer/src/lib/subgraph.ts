@@ -846,9 +846,9 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
 }
 
 const queryWorkstreamRequests = `
-  query WorkstreamRequests($rootRequestId: String!, $limit: Int, $orderBy: String, $orderDirection: String) {
+  query WorkstreamRequests($workstreamId: String!, $limit: Int, $orderBy: String, $orderDirection: String) {
     requests(
-      where: { sourceRequestId: $rootRequestId }
+      where: { workstreamId: $workstreamId }
       orderBy: $orderBy
       orderDirection: $orderDirection
       limit: $limit
@@ -870,49 +870,17 @@ const queryWorkstreamRequests = `
   }
 `
 
-// Helper to recursively fetch all descendant requests
-async function fetchDescendants(requestId: string, visited: Set<string> = new Set()): Promise<Request[]> {
-  if (visited.has(requestId)) return []
-  visited.add(requestId)
-  
+export async function getWorkstreamRequests(rootRequestId: string, limit: number = 10): Promise<RequestsResponse> {
+  // Use workstreamId to efficiently fetch all descendants in a single query
+  // The workstreamId is the root request ID, so we query for all requests with that workstreamId
   const data = await request<RequestsResponse>(SUBGRAPH_URL, queryWorkstreamRequests, {
-    rootRequestId: requestId,
-    limit: 100, // Fetch more per level
+    workstreamId: rootRequestId,
+    limit,
     orderBy: 'blockTimestamp',
     orderDirection: 'desc'
   })
   
-  const descendants: Request[] = data.requests.items
-  
-  // Recursively fetch children of each child
-  for (const child of data.requests.items) {
-    const grandchildren = await fetchDescendants(child.id, visited)
-    descendants.push(...grandchildren)
-  }
-  
-  return descendants
-}
-
-export async function getWorkstreamRequests(rootRequestId: string, limit: number = 10): Promise<RequestsResponse> {
-  // Fetch all descendants recursively
-  const allDescendants = await fetchDescendants(rootRequestId)
-  
-  // Sort by timestamp descending and limit
-  const sorted = allDescendants
-    .sort((a, b) => Number(b.blockTimestamp) - Number(a.blockTimestamp))
-    .slice(0, limit)
-  
-  return {
-    requests: {
-      items: sorted,
-      pageInfo: {
-        hasNextPage: allDescendants.length > limit,
-        hasPreviousPage: false,
-        startCursor: sorted[0]?.id,
-        endCursor: sorted[sorted.length - 1]?.id
-      }
-    }
-  }
+  return data
 }
 
 const queryWorkstreamArtifacts = `
