@@ -68,6 +68,12 @@ yarn control:dev
 # Mech worker (polls Ponder, claims work, runs Agent)
 yarn dev:mech
 
+# Mech worker with workstream filtering (process only specific workstream)
+yarn dev:mech --workstream=0x9db9a919bc8aacd40f9ba9779ff156f29645a34fc2d916421afb040eb0db79d2
+
+# Mech worker with workstream filtering + single-shot mode (debugging)
+yarn dev:mech --workstream=0x9db9a919bc8aacd40f9ba9779ff156f29645a34fc2d916421afb040eb0db79d2 --single
+
 # MCP server only (for direct tool use)
 yarn mcp:start
 ```
@@ -107,11 +113,11 @@ Testing with .env.test
 - Network: Base (8453). RPC: `RPC_URL`. Start block: `PONDER_START_BLOCK`.
 - Contracts watched: `MechMarketplace` (request events) and `OlasMech` (deliver events).
 - Schema (`ponder/ponder.schema.ts`):
-  - `request(id, mech, sender, requestData?, ipfsHash?, deliveryIpfsHash?, blockNumber, blockTimestamp, delivered, jobName?, enabledTools?[])`
+  - `request(id, mech, sender, workstreamId?, requestData?, ipfsHash?, deliveryIpfsHash?, blockNumber, blockTimestamp, delivered, jobName?, enabledTools?[])`
   - `delivery(id, requestId, mech, mechServiceMultisig, deliveryRate, ipfsHash?, transactionHash, blockNumber, blockTimestamp)`
   - `artifact(id, requestId, name, cid, topic, contentPreview?)`
 - Handlers (`ponder/src/index.ts`):
-  - On `MarketplaceRequest`: upserts `request`, resolves `ipfsHash` → fetches `jobName` and `enabledTools` from IPFS.
+  - On `MarketplaceRequest`: upserts `request`, resolves `ipfsHash` → fetches `jobName` and `enabledTools` from IPFS, computes `workstreamId` by traversing up the `sourceRequestId` chain to find the root.
   - On `OlasMech:Deliver`: upserts `delivery`, marks `request.delivered`, resolves delivery JSON and upserts `artifact` rows.
 
 **Deployment:**
@@ -553,6 +559,77 @@ Without this reconstruction, the frontend will fetch binary directory structure 
 - Returns: `{ cid, name, topic, contentPreview }`
 
 **Important**: This tool does NOT write to Supabase. Artifacts are indexed by Ponder from the on-chain delivery payload. The flow is: tool → telemetry → delivery payload → Ponder indexing.
+
+---
+
+## Workstream Filtering (JINN-246)
+
+The worker supports filtering jobs to only process requests within a specific workstream, enabling isolated testing and development.
+
+### What is a Workstream?
+
+A workstream is the complete job chain starting from a root job:
+- **Root Job**: A job with no parent (`sourceRequestId: null` AND `sourceJobDefinitionId: null`)
+- **Workstream ID**: The request ID of the root job
+- **Child Jobs**: All jobs created via `dispatch_new_job` that trace back to the same root
+
+### Architecture
+
+**Ponder Indexing:**
+- The `MarketplaceRequest` handler computes `workstreamId` for each request at index time
+- Root jobs: `workstreamId = requestId` (they are their own root)
+- Child jobs: `workstreamId = rootRequestId` (found by traversing up the `sourceRequestId` chain)
+- The `workstreamId` field is indexed for efficient querying
+
+**Worker Filtering:**
+```bash
+# Process all jobs in a specific workstream
+yarn dev:mech --workstream=<root-request-id>
+
+# Step through workstream jobs one at a time (debugging)
+yarn dev:mech --workstream=<root-request-id> --single
+```
+
+**Frontend Integration:**
+- Explorer UI uses `workstreamId` for efficient workstream views
+- Replaced recursive client-side fetching with single indexed query
+- Collection view supports `?workstream=<id>` URL parameter
+
+### Use Cases
+
+1. **Isolated Testing**: Test a specific venture without interference from other workstreams
+2. **Debugging**: Step through jobs in a workstream one at a time with `--single`
+3. **Parallel Workers**: Run multiple workers on different workstreams simultaneously
+4. **Development**: Work on specific job chains without processing unrelated jobs
+
+### Example Workflow
+
+```bash
+# 1. Dispatch a root job (creates a new workstream)
+yarn tsx scripts/dispatch-job.ts
+
+# Output shows: Request ID: 0x0447dd1e9931eb0b5445d62df631b59c61899ea6eeee3e0cdde89ada12aaf27d
+
+# 2. Process only jobs in that workstream
+yarn dev:mech --workstream=0x0447dd1e9931eb0b5445d62df631b59c61899ea6eeee3e0cdde89ada12aaf27d
+
+# 3. Or step through jobs one at a time for debugging
+yarn dev:mech --workstream=0x0447dd1e9931eb0b5445d62df631b59c61899ea6eeee3e0cdde89ada12aaf27d --single
+```
+
+### Implementation Files
+
+- `ponder/ponder.schema.ts` - Added `workstreamId` field and index
+- `ponder/src/index.ts` - Computes `workstreamId` during indexing via `findWorkstreamRoot()`
+- `worker/mech_worker.ts` - Parses `--workstream` flag and filters GraphQL queries
+- `frontend/explorer/src/lib/subgraph.ts` - Optimized workstream queries
+- `frontend/explorer/src/components/collection-view.tsx` - Workstream filtering UI
+
+### Notes
+
+- **Reindexing Required**: Existing requests need Ponder reindexing to populate `workstreamId`
+- **Production Deployment**: Changes must be deployed to Railway for production use
+- **Local Testing**: Start local Ponder with `yarn ponder:dev` to test workstream filtering
 
 ---
 

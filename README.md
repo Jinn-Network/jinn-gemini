@@ -263,6 +263,30 @@ yarn frontend:start
 yarn start:all
 ```
 
+#### Workstream Filtering
+
+The worker supports filtering jobs to only process requests within a specific workstream:
+
+```bash
+# Process all jobs in a specific workstream (continuous mode)
+yarn dev:mech --workstream=0x9db9a919bc8aacd40f9ba9779ff156f29645a34fc2d916421afb040eb0db79d2
+
+# Process one job at a time in a specific workstream (debugging)
+yarn dev:mech --workstream=0x9db9a919bc8aacd40f9ba9779ff156f29645a34fc2d916421afb040eb0db79d2 --single
+```
+
+**What is a Workstream?**
+- A workstream is all jobs downstream of a root job (jobs with no parent)
+- The workstream ID is the request ID of the root job
+- Child jobs created via `dispatch_new_job` inherit the workstream ID
+- This enables isolated testing and development of specific job chains
+
+**Use Cases:**
+- Test a specific venture or project in isolation
+- Debug a particular job chain without interference
+- Run multiple workers on different workstreams simultaneously
+- Step through jobs one at a time for debugging (`--single` flag)
+
 #### Frontend Commands
 ```bash
 # Build frontend for production

@@ -86,8 +86,8 @@ export default createConfig({
     base: {
       chainId: 8453,
       transport: http(rpcUrl),
-      pollingInterval: 4_000,
-      maxRequestsPerSecond: 5,
+      pollingInterval: 6_000,
+      maxRequestsPerSecond: 2,
       finalityBlockCount,
     },
   },
