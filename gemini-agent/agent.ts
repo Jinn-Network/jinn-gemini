@@ -251,8 +251,8 @@ export class Agent {
         args.unshift('--model', this.model);
       }
 
-      // Force YOLO approval mode so write tools are available in non-interactive runs
-      args.push('--approval-mode', 'yolo');
+      // Force YOLO mode so write tools are available in non-interactive runs
+      args.push('--yolo');
 
       // CRITICAL: Use --prompt flag for non-interactive mode to prevent "Please continue" loops
       // The --prompt flag enables non-interactive mode and appends to stdin (if any)
@@ -551,8 +551,9 @@ export class Agent {
       // Include the merged tool set (universal + job-specific)
       mcpServer.includeTools = toolPolicy.mcpIncludeTools;
 
-      // Exclude native tools not enabled for this job
-      templateSettings.excludeTools = toolPolicy.mcpExcludeTools;
+      // CRITICAL: Do NOT set global excludeTools - it overrides per-server includeTools
+      // The Gemini CLI respects per-server includeTools without needing global exclusions
+      // templateSettings.excludeTools = toolPolicy.mcpExcludeTools;
 
       // Whitelist native tools at the CLI level (write_file, replace, etc.)
       templateSettings.coreTools = toolPolicy.cliAllowedTools;
