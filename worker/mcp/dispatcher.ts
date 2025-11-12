@@ -14,6 +14,7 @@ export async function dispatchExistingJobWithContext(params: {
   message?: string;
   requestId?: string;
   mechAddress?: string;
+  baseBranch?: string;
 }): Promise<any> {
   const prevContext = snapshotJobContext();
   
@@ -22,6 +23,7 @@ export async function dispatchExistingJobWithContext(params: {
       setJobContext({
         requestId: params.requestId,
         mechAddress: params.mechAddress,
+        baseBranch: params.baseBranch,
       });
     }
     

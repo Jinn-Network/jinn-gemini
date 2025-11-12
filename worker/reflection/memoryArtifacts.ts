@@ -23,7 +23,7 @@ export function extractMemoryArtifacts(reflection: ReflectionResult | null): Ext
   ];
 
   if (artifacts.length === 0) {
-    return [];
+  return [];
   }
 
   const seen = new Set<string>();

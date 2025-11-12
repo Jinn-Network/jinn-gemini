@@ -74,6 +74,16 @@ System observability requirements. Defines three levels of observability (human,
 - OBS-005: Request Detail Pages
 - OBS-006: CLI Inspection Scripts
 
+### [Git Workflow](./git-workflow.md)
+Git integration and code lineage requirements. Covers branch isolation, hierarchical branching, work persistence, pull request creation, and execution traceability.
+
+**Key Requirements:**
+- GWQ-001: Branch Isolation
+- GWQ-002: Lineage Preservation
+- GWQ-003: Work Persistence
+- GWQ-004: Pull Request Creation
+- GWQ-005: Execution Traceability
+
 ## About This Document Set
 
 Each document follows a consistent structure where requirements are expressed as:
@@ -103,5 +113,6 @@ Requirements use a three-letter prefix indicating their domain:
 - **PER**: Persistence Requirements
 - **IDQ**: Identity Requirements
 - **OBS**: Observability Requirements
+- **GWQ**: Git Workflow Requirements
 
 Each requirement has a unique ID (e.g., ARQ-001) for cross-referencing.

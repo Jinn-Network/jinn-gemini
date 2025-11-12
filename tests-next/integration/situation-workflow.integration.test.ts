@@ -129,54 +129,54 @@ describe('situation workflow integration', () => {
     resetConfigForTests();
 
     try {
-      const jobMetadata = {
-        jobName: 'Investigate staking rewards variance',
-        jobDefinitionId: 'job-def',
-        additionalContext: {
-          objective: 'Explain staking reward drop',
-          acceptanceCriteria: 'Deliver mitigation memo',
-        },
-      };
+    const jobMetadata = {
+      jobName: 'Investigate staking rewards variance',
+      jobDefinitionId: 'job-def',
+      additionalContext: {
+        objective: 'Explain staking reward drop',
+        acceptanceCriteria: 'Deliver mitigation memo',
+      },
+    };
 
-      const result = {
-        output: 'Identified validator misconfiguration causing reward drop.',
-        telemetry: {
-          toolCalls: [
-            {
-              tool: 'search_artifacts',
-              args: JSON.stringify({ query: 'staking rewards' }),
-              success: true,
-              result: { data: [{ id: 'artifact-1' }] },
-            },
-          ],
-        },
-        artifacts: [],
-      };
+    const result = {
+      output: 'Identified validator misconfiguration causing reward drop.',
+      telemetry: {
+        toolCalls: [
+          {
+            tool: 'search_artifacts',
+            args: JSON.stringify({ query: 'staking rewards' }),
+            success: true,
+            result: { data: [{ id: 'artifact-1' }] },
+          },
+        ],
+      },
+      artifacts: [],
+    };
 
-      await createSituationArtifactForRequest({
-        target: { id: '0xaaa', mech: '0xmech', requester: '0xreq' },
-        metadata: jobMetadata,
-        result,
-        finalStatus: { status: 'COMPLETED', message: 'ok' },
-        recognition: null,
-      });
+    await createSituationArtifactForRequest({
+      target: { id: '0xaaa', mech: '0xmech', requester: '0xreq' },
+      metadata: jobMetadata,
+      result,
+      finalStatus: { status: 'COMPLETED', message: 'ok' },
+      recognition: null,
+    });
 
-      expect(createdArtifacts).toHaveLength(1);
-      const stored = JSON.parse(createdArtifacts[0].content);
+    expect(createdArtifacts).toHaveLength(1);
+    const stored = JSON.parse(createdArtifacts[0].content);
       expect(stored.job.model).toBe('gemini-2.5-pro');
-      dbRows.push({
-        nodeId: stored.job.requestId,
-        vector: stored.embedding.vector,
-        summary: stored.meta?.summaryText || null,
-        meta: stored.meta || {},
-      });
+    dbRows.push({
+      nodeId: stored.job.requestId,
+      vector: stored.embedding.vector,
+      summary: stored.meta?.summaryText || null,
+      meta: stored.meta || {},
+    });
 
-      const response = await searchSimilarSituations({ query_text: 'staking reward investigation', k: 1 });
-      const parsed = JSON.parse(response.content[0].text);
-      expect(parsed.meta.ok).toBe(true);
-      expect(parsed.data).toHaveLength(1);
-      expect(parsed.data[0].nodeId).toBe('0xaaa');
-      expect(parsed.data[0].summary).toContain('Job 0xaaa');
+    const response = await searchSimilarSituations({ query_text: 'staking reward investigation', k: 1 });
+    const parsed = JSON.parse(response.content[0].text);
+    expect(parsed.meta.ok).toBe(true);
+    expect(parsed.data).toHaveLength(1);
+    expect(parsed.data[0].nodeId).toBe('0xaaa');
+    expect(parsed.data[0].summary).toContain('Job 0xaaa');
     } finally {
       if (previousModel === undefined) {
         delete process.env.MECH_MODEL;

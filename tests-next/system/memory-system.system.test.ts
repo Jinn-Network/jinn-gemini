@@ -10,11 +10,13 @@
  * - Vector search and discovery
  * - Ponder indexing of both SITUATION and MEMORY artifacts
  *
- * Coverage: 10 requirements (MEM-001 to MEM-010), 56+ assertions
+ * Coverage: 12 requirements (MEM-001 to MEM-010, GWQ-001/002), 71 assertions
  * Tests both memory pathways: semantic (SITUATION) and tagged (MEMORY)
+ * Tests git workflow metadata: branch isolation and lineage preservation
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Client } from 'pg';
@@ -40,6 +42,7 @@ import {
   resetTestEnvironment,
   parseToolText,
   withJobContext,
+  waitForJobIndexed,
 } from '../../tests/helpers/shared.js';
 import { getOptionalMechModel } from '../../config/index.js';
 
@@ -284,13 +287,47 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] Parent job ready:', parentJob.requestId);
 
                   // =========================================================
+                  // SECTION 1A: Parent Job Git Metadata (GWQ-001)
+                  // =========================================================
+
+                  console.log('\n[TEST] SECTION 1A: Validating parent job git metadata...');
+
+                  const parentJobDef = await waitForJobIndexed(gqlUrl, parentJob.jobDefId);
+
+                  // GWQ-001: Branch metadata exists
+                  expect(parentJobDef?.codeMetadata?.branch?.name).toBeTruthy(); // Assert 59
+                  const parentBranchName = parentJobDef.codeMetadata.branch.name;
+
+                  // Branch has remote URL
+                  expect(parentJobDef?.codeMetadata?.branch?.remoteUrl).toBeTruthy(); // Assert 60
+
+                  // Base branch is set (likely "main" for root job)
+                  expect(parentJobDef?.codeMetadata?.baseBranch).toBeTruthy(); // Assert 61
+
+                  // Parent has no parent (root job)
+                  expect(parentJobDef?.codeMetadata?.parent).toBeUndefined(); // Assert 62
+
+                  // Branch actually created in git
+                  const branches = execSync('git branch --format="%(refname:short)"', {
+                    cwd: gitFixture!.repoPath,
+                    encoding: 'utf-8'
+                  }).split('\n').filter(b => b);
+                  expect(branches).toContain(parentBranchName); // Assert 63
+
+                  console.log(`[TEST] Parent git metadata validated: branch=${parentBranchName} ✓`);
+
+                  // =========================================================
                   // SECTION 2: Create Child Job (Research + Delegation)
                   // =========================================================
 
                   console.log('\n[TEST] SECTION 2: Creating child job with delegation task...');
 
                   const childJob = await withJobContext(
-                    { requestId: parentJob.requestId, jobDefinitionId: parentJob.jobDefId },
+                    {
+                      requestId: parentJob.requestId,
+                      jobDefinitionId: parentJob.jobDefId,
+                      baseBranch: parentBranchName,
+                    },
                     () => createTestJob({
                       objective:
                         'Analyze OLAS staking mechanisms and delegate optimization task',
@@ -374,6 +411,35 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   expect(childRequest!.blockTimestamp).toBeDefined();
 
                   console.log('[TEST] Child request hierarchy validated ✓');
+
+                  // =========================================================
+                  // SECTION 4A: Child Job Git Lineage Metadata (GWQ-002)
+                  // =========================================================
+
+                  console.log('\n[TEST] SECTION 4A: Validating child job git lineage metadata...');
+
+                  const childJobDef = await waitForJobIndexed(gqlUrl, childJob.jobDefId);
+                  const childBranchName = childJobDef?.codeMetadata?.branch?.name;
+
+                  // GWQ-001: Child has unique branch
+                  expect(childBranchName).toBeTruthy(); // Assert 64
+                  expect(childBranchName).not.toBe(parentBranchName); // Assert 65 - Different from parent
+
+                  // GWQ-002: Child base branch should point to parent branch
+                  expect(childJobDef?.codeMetadata?.baseBranch).toBe(parentBranchName); // Assert 66 ⭐ KEY
+
+                  // GWQ-002: Child's parent metadata points to parent job
+                  expect(childJobDef?.codeMetadata?.parent?.jobDefinitionId).toBe(parentJob.jobDefId); // Assert 67 ⭐ KEY
+                  expect(childJobDef?.codeMetadata?.parent?.requestId).toBe(parentJob.requestId); // Assert 68 ⭐ KEY
+
+                  // Branch created in git
+                  const childBranches = execSync('git branch --format="%(refname:short)"', {
+                    cwd: gitFixture!.repoPath,
+                    encoding: 'utf-8'
+                  }).split('\n').filter(b => b);
+                  expect(childBranches).toContain(childBranchName); // Assert 69
+
+                  console.log(`[TEST] Child lineage metadata validated: child=${childBranchName} → parent=${parentBranchName} ✓`);
 
                   // =========================================================
                   // SECTION 5: Wait for Child's SITUATION Embedding to be Indexed
@@ -465,6 +531,37 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   expect(typeof grandchildDelivery.transactionHash).toBe('string');
 
                   console.log('[TEST] Grandchild delivery confirmed:', grandchildDelivery.transactionHash);
+
+                  // =========================================================
+                  // SECTION 8A: Grandchild Job Git Lineage Metadata (GWQ-002)
+                  // =========================================================
+
+                  console.log('\n[TEST] SECTION 8A: Validating grandchild git lineage metadata...');
+
+                  // Get grandchild job definition
+                  const grandchildJobDef = await waitForJobIndexed(gqlUrl, grandchildRequest.jobDefinitionId);
+                  const grandchildBranchName = grandchildJobDef?.codeMetadata?.branch?.name;
+                  expect(grandchildBranchName).toBeTruthy(); // Assert 70
+
+                  // GWQ-001: Grandchild has unique branch
+                  expect(grandchildBranchName).not.toBe(parentBranchName); // Assert 71
+                  expect(grandchildBranchName).not.toBe(childBranchName); // Assert 72
+
+                  // GWQ-002: Grandchild based on child (not parent or main)
+                  expect(grandchildJobDef?.codeMetadata?.baseBranch).toBe(childBranchName); // Assert 73
+
+                  // GWQ-002: Lineage metadata points to child (not parent)
+                  expect(grandchildJobDef?.codeMetadata?.parent?.jobDefinitionId).toBe(childJob.jobDefId); // Assert 74
+                  expect(grandchildJobDef?.codeMetadata?.parent?.requestId).toBe(requestId); // Assert 75
+
+                  // Branch created in git
+                  const grandchildBranches = execSync('git branch --format="%(refname:short)"', {
+                    cwd: gitFixture!.repoPath,
+                    encoding: 'utf-8'
+                  }).split('\n').filter(b => b);
+                  expect(grandchildBranches).toContain(grandchildBranchName); // Assert 76
+
+                  console.log(`[TEST] 3-level git lineage metadata validated: grandchild→child→parent ✓`);
 
                   // =========================================================
                   // SECTION 9: Wait for MEMORY Artifact (MEM-006, MEM-007)
@@ -676,13 +773,36 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   // EXQ-004: Validate child used correct model
                   expect(childSituation.job.model).toBe('gemini-2.5-pro'); // Assert 52
 
+                  // EXQ-005/006: Validate tool usage and enablement
+                  const childTrace = childSituation.execution.trace;
+                  const childToolsUsed = childTrace.map((entry: any) => entry.tool).filter((t: string) => t);
+                  expect(childToolsUsed.length).toBeGreaterThan(0); // Assert 53 - Tool interaction occurred
+                  expect(childToolsUsed).toContain('create_artifact'); // Assert 54 - Created analysis artifact
+                  expect(childToolsUsed).toContain('dispatch_new_job'); // Assert 55 - Delegated grandchild job
+
+                  console.log(`[TEST] Child tool usage validated: ${childToolsUsed.join(', ')} ✓`);
                   console.log('[TEST] Child job execution validated: model ✓');
 
                   console.log('[TEST] ✓ Complete lineage: Parent → Child → Grandchild');
 
+                  // =========================================================
+                  // SECTION 13: Git Working Tree Status
+                  // =========================================================
+
+                  console.log('\n[TEST] SECTION 13: Validating git working tree...');
+
+                  // No uncommitted changes (jobs only create IPFS artifacts, not files)
+                  const gitStatus = execSync('git status --porcelain', {
+                    cwd: gitFixture!.repoPath,
+                    encoding: 'utf-8'
+                  }).trim();
+                  expect(gitStatus).toBe(''); // Assert 77 - Working tree clean
+
+                  console.log('[TEST] Git working tree clean (no file changes) ✓');
+
                   console.log('\n[TEST] ✅ Memory system test complete!');
-                  console.log('[TEST] Coverage: MEM-002, MEM-003, MEM-004, MEM-005, MEM-006, INT-001');
-                  console.log('[TEST] Assertions: 29 assertions executed');
+                  console.log('[TEST] Coverage: MEM-001 to MEM-010, ARQ-006, EXQ-004/005/006/007, LCQ-003/009, GWQ-001/002 (metadata)');
+                  console.log('[TEST] Assertions: 71 assertions executed (52 memory + 19 git metadata lineage)');
                   console.log('[TEST] Recognition: Grandchild successfully found child via similarity search');
                   console.log('[TEST] Lineage: 3-level delegation validated');
                 }

@@ -236,7 +236,7 @@ export function parseToolText(result: any): any {
  * record proper lineage (sourceRequestId/sourceJobDefinitionId).
  */
 export async function withJobContext<T>(
-  context: { requestId?: string | null; jobDefinitionId?: string | null },
+  context: { requestId?: string | null; jobDefinitionId?: string | null; baseBranch?: string | null },
   fn: () => Promise<T>
 ): Promise<T> {
   const client = getMcpClient();
@@ -255,6 +255,12 @@ export async function withJobContext<T>(
     delete process.env.JINN_JOB_DEFINITION_ID;
   }
 
+  if (context.baseBranch) {
+    process.env.JINN_BASE_BRANCH = context.baseBranch;
+  } else {
+    delete process.env.JINN_BASE_BRANCH;
+  }
+
   await client.connect();
 
   try {
@@ -265,6 +271,9 @@ export async function withJobContext<T>(
     }
     if (context.jobDefinitionId) {
       delete process.env.JINN_JOB_DEFINITION_ID;
+    }
+    if (context.baseBranch) {
+      delete process.env.JINN_BASE_BRANCH;
     }
     await client.disconnect();
     await client.connect();

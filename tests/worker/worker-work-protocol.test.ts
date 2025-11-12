@@ -35,6 +35,7 @@ describe('Worker: Work Protocol', () => {
     // Clean up lineage env vars that this test sets
     delete process.env.JINN_REQUEST_ID;
     delete process.env.JINN_JOB_DEFINITION_ID;
+    delete process.env.JINN_BASE_BRANCH;
 
     // Cleanup any lingering worker processes (e.g., from timeout scenarios)
     await cleanupWorkerProcesses();
@@ -53,11 +54,16 @@ describe('Worker: Work Protocol', () => {
       acceptanceCriteria: 'Child completes and parent is auto-dispatched'
     });
 
-    await waitForJobIndexed(gqlUrl, parentJobId);
+    const parentJobDef = await waitForJobIndexed(gqlUrl, parentJobId);
+    const parentBranchName = parentJobDef?.codeMetadata?.branch?.name;
 
     // 2) Create child job with lineage via env (production-like)
     const { requestId: childRequestId } = await withJobContext(
-      { requestId: parentRequestId, jobDefinitionId: parentJobId },
+      {
+        requestId: parentRequestId,
+        jobDefinitionId: parentJobId,
+        baseBranch: parentBranchName ?? undefined,
+      },
       () => createTestJob({
         objective: 'Create a test artifact and deliver a completed execution summary',
         context: 'Child job testing Work Protocol auto-dispatch behavior',
@@ -185,11 +191,16 @@ describe('Worker: Work Protocol', () => {
       acceptanceCriteria: 'Only manual dispatches exist'
     });
 
-    await waitForJobIndexed(gqlUrl, parentJobId);
+    const parentJobDef = await waitForJobIndexed(gqlUrl, parentJobId);
+    const parentBranchName = parentJobDef?.codeMetadata?.branch?.name;
 
     // 2) Create child that will finalize with WAITING status (non-terminal)
     const { jobDefId: childJobId, requestId: childRequestId } = await withJobContext(
-      { requestId: parentRequestId, jobDefinitionId: parentJobId },
+      {
+        requestId: parentRequestId,
+        jobDefinitionId: parentJobId,
+        baseBranch: parentBranchName ?? undefined,
+      },
       () => createTestJob({
         objective: 'Analyze data and document outstanding dependencies',
         context: 'Child job testing non-terminal finalization status',
@@ -204,10 +215,16 @@ describe('Worker: Work Protocol', () => {
     );
 
     await waitForRequestIndexed(gqlUrl, childRequestId);
+    const childJobDef = await waitForJobIndexed(gqlUrl, childJobId);
+    const childBranchName = childJobDef?.codeMetadata?.branch?.name;
 
     // Seed an undelivered grandchild so the child remains in WAITING state
     const { requestId: grandchildRequestId } = await withJobContext(
-      { requestId: childRequestId, jobDefinitionId: childJobId },
+      {
+        requestId: childRequestId,
+        jobDefinitionId: childJobId,
+        baseBranch: childBranchName ?? undefined,
+      },
       () => createTestJob({
         objective: 'Placeholder work pending parent instructions',
         context: 'This grandchild job intentionally remains undelivered to keep the parent in WAITING state',

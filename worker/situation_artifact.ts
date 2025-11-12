@@ -69,7 +69,7 @@ export async function createSituationArtifactForRequest(args: CreateSituationArt
     let summaryText: string;
     
     const runtimeModel = args.metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash';
-
+    
     if (args.recognition?.initialSituation) {
       if (args.recognition.initialSituation.job && !args.recognition.initialSituation.job.model) {
         args.recognition.initialSituation.job.model = runtimeModel;

@@ -8,7 +8,7 @@ import { setJobContext, clearJobContext, snapshotJobContext, restoreJobContext }
  * Execute MCP tool call with job context
  */
 export async function withJobContext<T>(
-  context: { requestId?: string; mechAddress?: string; jobDefinitionId?: string },
+  context: { requestId?: string; mechAddress?: string; jobDefinitionId?: string; baseBranch?: string },
   fn: () => Promise<T>
 ): Promise<T> {
   const prevContext = snapshotJobContext();

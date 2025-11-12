@@ -52,6 +52,10 @@ export async function runAgentForRequest(
       requestId: request.id,
       mechAddress: request.mech,
       jobDefinitionId: metadata?.jobDefinitionId || undefined,
+      baseBranch:
+        metadata?.codeMetadata?.branch?.name ||
+        metadata?.codeMetadata?.baseBranch ||
+        undefined,
     });
     
     const result = await agent.run(prompt);
