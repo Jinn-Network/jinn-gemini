@@ -35,8 +35,8 @@ export const UNIVERSAL_TOOLS = [
 ] as const;
 
 /**
- * All native tools that can be enabled/disabled per job
- * These require explicit CLI whitelisting via --allowed-tools flag
+ * All native/CLI tools that can be enabled/disabled per job.
+ * These are the tools the Gemini CLI expects in its `coreTools` whitelist.
  */
 export const NATIVE_TOOLS = [
   'list_directory',
@@ -44,6 +44,8 @@ export const NATIVE_TOOLS = [
   'write_file',
   'search_file_content',
   'glob',
+  'web_fetch',
+  'google_web_search',
   'replace',
   'read_many_files',
   'run_shell_command',
