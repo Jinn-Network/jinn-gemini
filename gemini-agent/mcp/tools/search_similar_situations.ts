@@ -112,23 +112,27 @@ export async function searchSimilarSituations(args: unknown) {
     try {
       await client.connect();
       mcpLogger.debug('Connected to database for vector search');
-      
+
+      // Use test table when running under Vitest to isolate test data
+      const tableName = process.env.VITEST === 'true' ? 'node_embeddings_test' : 'node_embeddings';
+
       // Check table has data
-      const countRes = await client.query('SELECT COUNT(*) as count FROM node_embeddings');
-      mcpLogger.info({ rowCount: countRes.rows[0].count }, 'node_embeddings table row count');
-      
+      const countRes = await client.query(`SELECT COUNT(*) as count FROM ${tableName}`);
+      mcpLogger.info({ rowCount: countRes.rows[0].count, tableName }, 'Embeddings table row count');
+
       const vectorLiteral = serializeVector(embedding.vector);
+
       // NOTE: pgvector ORDER BY with distance operator fails in some configurations
       // Workaround: Use subquery to calculate scores, then ORDER BY score column
       const sql = `
         SELECT node_id, summary, meta, score
         FROM (
-          SELECT 
+          SELECT
             node_id,
             summary,
             meta,
             1 - (vec <=> $1::vector) AS score
-          FROM node_embeddings
+          FROM ${tableName}
         ) AS scored
         ORDER BY score DESC
         LIMIT $2;

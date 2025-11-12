@@ -214,4 +214,5 @@ olas-operate-middleware
 
 # Parallel test suite cache directories
 .ponder-test-*/
+.ponder-tests-next-*/
 ponder/.ponder-test-*/

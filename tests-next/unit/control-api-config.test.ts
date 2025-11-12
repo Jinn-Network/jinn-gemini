@@ -1,11 +1,10 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
 import { isControlApiEnabled } from '../../env/control.js';
 
 describe('isControlApiEnabled', () => {
   const originalEnv = process.env.USE_CONTROL_API;
 
   afterEach(() => {
-    // Restore original env var
     if (originalEnv === undefined) {
       delete process.env.USE_CONTROL_API;
     } else {
@@ -43,4 +42,3 @@ describe('isControlApiEnabled', () => {
     expect(isControlApiEnabled()).toBe(true);
   });
 });
-

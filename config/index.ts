@@ -86,9 +86,6 @@ const ponderSchema = z.object({
   // PONDER_END_BLOCK: Stop indexing at this block (for deterministic testing)
   PONDER_END_BLOCK: z.coerce.number().int().positive().optional(),
 
-  // PONDER_REVIEW_MODE: Preserve runtime overrides for Ponder config
-  PONDER_REVIEW_MODE: z.coerce.boolean().optional(),
-
   // NEXT_PUBLIC_PONDER_PORT: Frontend convenience (mirrors PONDER_PORT)
   NEXT_PUBLIC_PONDER_PORT: z.coerce.number().int().positive().optional(),
 });
@@ -301,6 +298,9 @@ const devTestingSchema = z.object({
   // VITEST: Set by Vitest test runner
   VITEST: z.coerce.boolean().optional(),
 
+  // RUNTIME_ENVIRONMENT: Controls config override behavior (default | test | review)
+  RUNTIME_ENVIRONMENT: z.enum(['default', 'test', 'review']).default('default'),
+
   // DRY_RUN: Skip actual execution, log only
   DRY_RUN: z.coerce.boolean().optional(),
 
@@ -408,6 +408,25 @@ function loadConfig(): ConfigType {
     // WORKER_PRIVATE_KEY: From .operate service profile only (no env var fallbacks)
     WORKER_PRIVATE_KEY: getOperatePrivateKey() || undefined,
   };
+
+  // Allow test/review overrides for select keys without clobbering runtime values
+  const runtimeMode = (process.env.RUNTIME_ENVIRONMENT as 'default' | 'test' | 'review' | undefined) ?? 'default';
+  if (runtimeMode === 'test' || runtimeMode === 'review') {
+    const preserveKeys = new Set([
+      'RPC_URL',
+      'MECHX_CHAIN_RPC',
+      'MECH_RPC_HTTP_URL',
+      'BASE_RPC_URL',
+      'PONDER_GRAPHQL_URL',
+      'PONDER_START_BLOCK',
+      'PONDER_END_BLOCK',
+    ]);
+    for (const key of preserveKeys) {
+      if (process.env[key]) {
+        env[key] = process.env[key];
+      }
+    }
+  }
 
   // Validate against schema
   try {
@@ -547,10 +566,6 @@ export function getOptionalPonderStartBlock(): number | undefined {
 
 export function getOptionalPonderEndBlock(): number | undefined {
   return getConfig().PONDER_END_BLOCK;
-}
-
-export function getPonderReviewMode(): boolean {
-  return getConfig().PONDER_REVIEW_MODE ?? false;
 }
 
 // ============================================================================
@@ -827,6 +842,10 @@ export function getPlaywrightFast(): boolean {
 
 export function getPlaywrightHeadless(): boolean {
   return getConfig().PLAYWRIGHT_HEADLESS ?? true;
+}
+
+export function getRuntimeEnvironment(): 'default' | 'test' | 'review' {
+  return getConfig().RUNTIME_ENVIRONMENT;
 }
 
 export function getPlaywrightKeepOpen(): boolean {

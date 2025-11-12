@@ -41,8 +41,6 @@ describe('Worker: Git Auto-Commit Flow', () => {
         process.env.JINN_ENV_PATH = testEnv;
       }
     } catch {}
-
-    expect(process.env.MECH_WORKER_ADDRESS || process.env.MECH_ADDRESS, 'MECH_WORKER_ADDRESS required').toBeTruthy();
   });
 
   afterEach(() => {

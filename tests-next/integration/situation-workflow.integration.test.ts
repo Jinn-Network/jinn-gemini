@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetConfigForTests } from '../../config/index.js';
 import { formatRecognitionMarkdown, normalizeLearnings } from '../../worker/recognition_helpers.js';
 
 type StoredRow = {
@@ -41,11 +42,15 @@ beforeEach(async () => {
   vi.doMock('pg', () => {
     class FakeClient {
       async connect() {}
-      async query(sql: string, params: unknown[]) {
-        if (!sql.includes('SELECT')) {
+      async query(sql: string, params: unknown[] = []) {
+        if (sql.includes('COUNT(*)')) {
+          return { rows: [{ count: dbRows.length }] };
+        }
+        if (!sql.includes('SELECT node_id')) {
           throw new Error(`Unexpected SQL executed in test: ${sql}`);
         }
-        const queryVector = parseVectorLiteral(String(params[0]));
+        const vectorLiteral = typeof params[0] === 'string' ? params[0] : String(params[0] ?? '[]');
+        const queryVector = parseVectorLiteral(vectorLiteral);
         const limit = Number(params[1]) || 5;
         const rows = dbRows
           .map((row) => ({
@@ -119,53 +124,67 @@ beforeEach(async () => {
 
 describe('situation workflow integration', () => {
   it('creates situation artifact and retrieves it via semantic search', async () => {
-    const jobMetadata = {
-      jobName: 'Investigate staking rewards variance',
-      jobDefinitionId: 'job-def',
-      additionalContext: {
-        objective: 'Explain staking reward drop',
-        acceptanceCriteria: 'Deliver mitigation memo',
-      },
-    };
+    const previousModel = process.env.MECH_MODEL;
+    process.env.MECH_MODEL = 'gemini-2.5-pro';
+    resetConfigForTests();
 
-    const result = {
-      output: 'Identified validator misconfiguration causing reward drop.',
-      telemetry: {
-        toolCalls: [
-          {
-            tool: 'search_artifacts',
-            args: JSON.stringify({ query: 'staking rewards' }),
-            success: true,
-            result: { data: [{ id: 'artifact-1' }] },
-          },
-        ],
-      },
-      artifacts: [],
-    };
+    try {
+      const jobMetadata = {
+        jobName: 'Investigate staking rewards variance',
+        jobDefinitionId: 'job-def',
+        additionalContext: {
+          objective: 'Explain staking reward drop',
+          acceptanceCriteria: 'Deliver mitigation memo',
+        },
+      };
 
-    await createSituationArtifactForRequest({
-      target: { id: '0xaaa', mech: '0xmech', requester: '0xreq' },
-      metadata: jobMetadata,
-      result,
-      finalStatus: { status: 'COMPLETED', message: 'ok' },
-      recognition: null,
-    });
+      const result = {
+        output: 'Identified validator misconfiguration causing reward drop.',
+        telemetry: {
+          toolCalls: [
+            {
+              tool: 'search_artifacts',
+              args: JSON.stringify({ query: 'staking rewards' }),
+              success: true,
+              result: { data: [{ id: 'artifact-1' }] },
+            },
+          ],
+        },
+        artifacts: [],
+      };
 
-    expect(createdArtifacts).toHaveLength(1);
-    const stored = JSON.parse(createdArtifacts[0].content);
-    dbRows.push({
-      nodeId: stored.job.requestId,
-      vector: stored.embedding.vector,
-      summary: stored.meta?.summaryText || null,
-      meta: stored.meta || {},
-    });
+      await createSituationArtifactForRequest({
+        target: { id: '0xaaa', mech: '0xmech', requester: '0xreq' },
+        metadata: jobMetadata,
+        result,
+        finalStatus: { status: 'COMPLETED', message: 'ok' },
+        recognition: null,
+      });
 
-    const response = await searchSimilarSituations({ query_text: 'staking reward investigation', k: 1 });
-    const parsed = JSON.parse(response.content[0].text);
-    expect(parsed.meta.ok).toBe(true);
-    expect(parsed.data).toHaveLength(1);
-    expect(parsed.data[0].nodeId).toBe('0xaaa');
-    expect(parsed.data[0].summary).toContain('Job 0xaaa');
+      expect(createdArtifacts).toHaveLength(1);
+      const stored = JSON.parse(createdArtifacts[0].content);
+      expect(stored.job.model).toBe('gemini-2.5-pro');
+      dbRows.push({
+        nodeId: stored.job.requestId,
+        vector: stored.embedding.vector,
+        summary: stored.meta?.summaryText || null,
+        meta: stored.meta || {},
+      });
+
+      const response = await searchSimilarSituations({ query_text: 'staking reward investigation', k: 1 });
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.meta.ok).toBe(true);
+      expect(parsed.data).toHaveLength(1);
+      expect(parsed.data[0].nodeId).toBe('0xaaa');
+      expect(parsed.data[0].summary).toContain('Job 0xaaa');
+    } finally {
+      if (previousModel === undefined) {
+        delete process.env.MECH_MODEL;
+      } else {
+        process.env.MECH_MODEL = previousModel;
+      }
+      resetConfigForTests();
+    }
   });
 
   it('stores recognition metadata and surfaces it in search results', async () => {

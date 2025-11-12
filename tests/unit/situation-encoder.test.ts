@@ -36,6 +36,23 @@ const childRequestsResponse = {
   },
 };
 
+const jobDefinitionResponse = {
+  data: {
+    jobDefinition: {
+      id: 'job-def-123',
+      promptContent: `# Objective
+Inspect staking contract
+
+# Context
+Review staking flows
+
+# Acceptance Criteria
+Produce summary memo`,
+      enabledTools: ['web_fetch'],
+    },
+  },
+};
+
 beforeEach(async () => {
   vi.resetModules();
   fetchMock.mockReset();
@@ -48,6 +65,9 @@ beforeEach(async () => {
     if (query.includes('sourceRequestId')) {
       return { ok: true, json: async () => childRequestsResponse };
     }
+     if (query.includes('jobDefinition(id')) {
+       return { ok: true, json: async () => jobDefinitionResponse };
+     }
     return { ok: true, json: async () => ({ data: { requests: { items: [] } } }) };
   });
 
@@ -96,7 +116,14 @@ describe('encodeSituation', () => {
     expect(situation.execution.trace[0]).toMatchObject({
       tool: 'search_similar_situations',
     });
+    expect(situation.job.objective).toBe('Inspect staking contract');
+    expect(situation.job.acceptanceCriteria).toBe('Produce summary memo');
+    expect(situation.job.prompt).toContain('# Objective');
     expect(situation.context.parentRequestId).toBe('0xparent');
+    expect(situation.context.parent).toEqual({
+      requestId: '0xparent',
+      jobDefinitionId: 'job-parent',
+    });
     expect(situation.context.childRequestIds).toEqual(['0xchild1', '0xchild2']);
     expect(summaryText).toContain('Job 0xabc');
     expect(summaryText).toContain('Status: COMPLETED');
@@ -109,6 +136,9 @@ describe('encodeSituation', () => {
       const query: string = body.query || '';
       if (query.includes('request(id')) {
         return { ok: true, json: async () => requestResponse };
+      }
+      if (query.includes('jobDefinition(id')) {
+        return { ok: true, json: async () => jobDefinitionResponse };
       }
       return { ok: true, json: async () => ({ data: { requests: { items: [] } } }) };
     });
@@ -128,6 +158,8 @@ describe('encodeSituation', () => {
     expect(situation.execution.status).toBe('FAILED');
     expect(situation.execution.trace).toEqual([]);
     expect(situation.context.childRequestIds).toEqual([]);
+    expect(situation.context.parent?.requestId).toBe('0xparent');
+    expect(situation.job.objective).toBe('Inspect staking contract');
     expect(summaryText).toContain('Job 0xdead');
     expect(summaryText).toContain('Status: FAILED');
   });

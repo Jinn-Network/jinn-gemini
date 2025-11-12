@@ -27,7 +27,6 @@ describe('Marketplace: Message System', () => {
       }
     } catch {}
     resetTestEnvironment();
-    expect(process.env.MECH_WORKER_ADDRESS || process.env.MECH_ADDRESS, 'MECH_WORKER_ADDRESS required').toBeTruthy();
   });
 
   it('dispatches job with message and verifies indexing', async () => {

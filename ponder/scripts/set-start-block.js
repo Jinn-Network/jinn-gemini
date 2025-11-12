@@ -12,6 +12,8 @@ async function setStartBlock() {
   let rpcUrl = process.env.RPC_URL;
   let existingStartBlock = process.env.PONDER_START_BLOCK;
 
+  const forcedAutoStart = process.env.VITEST === 'true';
+
   if (existsSync(envPath)) {
     const envContent = readFileSync(envPath, 'utf8');
 
@@ -28,6 +30,15 @@ async function setStartBlock() {
         existingStartBlock = startBlockMatch[1].trim();
       }
     }
+  }
+
+  if (forcedAutoStart) {
+    if (existingStartBlock) {
+      console.log(`[ponder] VITEST detected - overriding PONDER_START_BLOCK ${existingStartBlock}`);
+    } else {
+      console.log('[ponder] VITEST detected - calculating fresh PONDER_START_BLOCK');
+    }
+    existingStartBlock = undefined;
   }
 
   if (!rpcUrl) {
@@ -64,8 +75,8 @@ async function setStartBlock() {
     // Set env var for this process
     process.env.PONDER_START_BLOCK = String(startBlock);
 
-    // Update .env file if it exists
-    if (existsSync(envPath)) {
+    // Update .env file if it exists and we are not forcing auto mode (avoid dirtying repo during tests)
+    if (!forcedAutoStart && existsSync(envPath)) {
       let envContent = readFileSync(envPath, 'utf8');
 
       // Remove existing PONDER_START_BLOCK

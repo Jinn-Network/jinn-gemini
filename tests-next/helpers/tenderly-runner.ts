@@ -1,0 +1,111 @@
+import process from 'node:process';
+import { Wallet } from 'ethers';
+import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
+import { getServicePrivateKey, getServiceSafeAddress } from '../../env/operate-profile.js';
+
+export interface TenderlyContext {
+  vnet: VnetResult;
+  rpcUrl: string;
+  publicRpcUrl?: string;
+  fundedAgent: string;
+  fundedSafe?: string;
+}
+
+export interface TenderlyOptions {
+  chainId?: number;
+  agentAllowanceEth?: string;
+  safeAllowanceEth?: string;
+}
+
+function ensureWalletAddress(): { address: string; privateKey: string | null } {
+  try {
+    const pk = getServicePrivateKey();
+    if (pk && pk.trim().length > 0) {
+      const normalized = pk.startsWith('0x') ? pk : `0x${pk}`;
+      const wallet = new Wallet(normalized);
+      return { address: wallet.address, privateKey: normalized };
+    }
+  } catch {
+    // Ignore and fall back to default
+  }
+  return { address: '0x6ad64135eae1a5a78ec74c44d337a596c682f690', privateKey: null };
+}
+
+function applyRpcEnv(rpcUrl: string, publicRpcUrl?: string) {
+  const previous: Record<string, string | undefined> = {
+    RPC_URL: process.env.RPC_URL,
+    BASE_RPC_URL: process.env.BASE_RPC_URL,
+    MECH_RPC_HTTP_URL: process.env.MECH_RPC_HTTP_URL,
+    MECHX_CHAIN_RPC: process.env.MECHX_CHAIN_RPC,
+    VNET_PUBLIC_RPC_URL: process.env.VNET_PUBLIC_RPC_URL,
+  };
+
+  process.env.RPC_URL = rpcUrl;
+  process.env.BASE_RPC_URL = rpcUrl;
+  process.env.MECH_RPC_HTTP_URL = rpcUrl;
+  process.env.MECHX_CHAIN_RPC = rpcUrl;
+  if (publicRpcUrl) {
+    process.env.VNET_PUBLIC_RPC_URL = publicRpcUrl;
+  } else {
+    delete process.env.VNET_PUBLIC_RPC_URL;
+  }
+
+  return () => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (typeof value === 'undefined') {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  };
+}
+
+export async function withTenderlyVNet<T>(
+  fn: (ctx: TenderlyContext) => Promise<T>,
+  options?: TenderlyOptions
+): Promise<T> {
+  const tenderlyClient = createTenderlyClient();
+  const chainId = options?.chainId ?? 8453;
+  const vnet = await tenderlyClient.createVnet(chainId);
+  const rpcUrl = vnet.adminRpcUrl;
+  if (!rpcUrl) {
+    await tenderlyClient.deleteVnet(vnet.id);
+    throw new Error(`Tenderly VNet ${vnet.id} did not return an admin RPC URL`);
+  }
+
+  const agent = ensureWalletAddress();
+  const safeAddress = getServiceSafeAddress();
+
+  const agentAllowance = options?.agentAllowanceEth ?? '10';
+  await tenderlyClient.fundAddress(agent.address, ethToWei(agentAllowance), rpcUrl);
+
+  let fundedSafe: string | undefined;
+  const safeAllowance = options?.safeAllowanceEth ?? '20';
+  if (safeAddress && safeAddress.trim().length > 0) {
+    fundedSafe = safeAddress.trim();
+    await tenderlyClient.fundAddress(fundedSafe, ethToWei(safeAllowance), rpcUrl);
+  }
+
+  process.env.E2E_VNET_ID = vnet.id;
+  const revertRpcEnv = applyRpcEnv(rpcUrl, vnet.publicRpcUrl);
+
+  const ctx: TenderlyContext = {
+    vnet,
+    rpcUrl,
+    publicRpcUrl: vnet.publicRpcUrl,
+    fundedAgent: agent.address,
+    fundedSafe,
+  };
+
+  try {
+    return await fn(ctx);
+  } finally {
+    revertRpcEnv();
+    try {
+      await tenderlyClient.deleteVnet(vnet.id);
+    } catch (error) {
+      console.warn(`[tests-next] Failed to delete VNet ${vnet.id}:`, (error as Error).message);
+    }
+  }
+}

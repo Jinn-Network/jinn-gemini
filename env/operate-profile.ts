@@ -12,14 +12,66 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, parse, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { configLogger } from '../logging/index.js';
 
-// Hardcoded path to .operate directory relative to project root
+// Resolve repo root so this works from both src/ and dist/ builds
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const OPERATE_HOME = join(__dirname, '..', 'olas-operate-middleware', '.operate');
+
+function findRepoRoot(startDir: string): string | null {
+  let current = startDir;
+  const { root } = parse(current);
+
+  while (true) {
+    if (existsSync(join(current, 'package.json'))) {
+      return current;
+    }
+    if (current === root) {
+      break;
+    }
+    current = dirname(current);
+  }
+  return null;
+}
+
+function resolveOperateHome(): string | null {
+  const repoRoot = findRepoRoot(__dirname);
+  const override =
+    process.env.OPERATE_PROFILE_DIR ||
+    process.env.OPERATE_DIR ||
+    process.env.OPERATE_HOME;
+
+  if (override) {
+    const normalized = override.trim();
+    const absolute = isAbsolute(normalized)
+      ? normalized
+      : resolve(repoRoot || process.cwd(), normalized);
+
+    if (!existsSync(absolute)) {
+      configLogger.warn({ operateDir: absolute }, 'Configured OPERATE_PROFILE_DIR not found');
+      return null;
+    }
+
+    return absolute;
+  }
+
+  if (!repoRoot) {
+    configLogger.warn('Unable to locate repository root for operate profile discovery');
+    return null;
+  }
+
+  const candidate = join(repoRoot, 'olas-operate-middleware', '.operate');
+  if (!existsSync(candidate)) {
+    configLogger.warn({ candidate }, 'Default .operate directory not found under olas-operate-middleware');
+    return null;
+  }
+
+  return candidate;
+}
+
+const OPERATE_HOME = resolveOperateHome();
 
 interface ServiceConfig {
   env_variables?: {
@@ -42,7 +94,7 @@ interface ServiceConfig {
  * Get the path to the .operate directory
  */
 function getOperateDir(): string | null {
-  if (existsSync(OPERATE_HOME)) {
+  if (OPERATE_HOME && existsSync(OPERATE_HOME)) {
     return OPERATE_HOME;
   }
   

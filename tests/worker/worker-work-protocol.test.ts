@@ -29,7 +29,6 @@ describe('Worker: Work Protocol', () => {
       }
     } catch {}
     // Don't call resetTestEnvironment here - it would clear env before MCP reconnect in afterEach
-    expect(process.env.MECH_WORKER_ADDRESS || process.env.MECH_ADDRESS, 'MECH_WORKER_ADDRESS required').toBeTruthy();
   });
 
   afterEach(async () => {

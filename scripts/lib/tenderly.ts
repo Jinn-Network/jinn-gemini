@@ -137,7 +137,7 @@ export class TenderlyClient {
         }
       },
       sync_state_config: {
-        enabled: true,
+        enabled: false,
         commitment_level: "latest"
       },
       explorer_page_config: {

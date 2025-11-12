@@ -214,14 +214,20 @@ function formatSituation(situation: Situation): void {
   }
   
   console.log('\n🔗 Context:');
-  if (situation.context.parentRequestId) {
-    console.log(`  Parent Request: ${situation.context.parentRequestId}`);
+  const parentRequestId = situation.context.parent?.requestId || situation.context.parentRequestId;
+  if (parentRequestId) {
+    console.log(`  Parent Request: ${parentRequestId}`);
+    if (situation.context.parent?.jobDefinitionId) {
+      console.log(`  Parent Job Definition: ${situation.context.parent.jobDefinitionId}`);
+    }
   }
-  if (situation.context.childRequestIds && situation.context.childRequestIds.length > 0) {
-    console.log(`  Child Requests: ${situation.context.childRequestIds.join(', ')}`);
+  const childRequests = situation.context.children || situation.context.childRequestIds;
+  if (childRequests && childRequests.length > 0) {
+    console.log(`  Child Requests: ${childRequests.join(', ')}`);
   }
-  if (situation.context.siblingRequestIds && situation.context.siblingRequestIds.length > 0) {
-    console.log(`  Sibling Requests: ${situation.context.siblingRequestIds.slice(0, 3).join(', ')}${situation.context.siblingRequestIds.length > 3 ? '...' : ''}`);
+  const siblingRequests = situation.context.siblings || situation.context.siblingRequestIds;
+  if (siblingRequests && siblingRequests.length > 0) {
+    console.log(`  Sibling Requests: ${siblingRequests.slice(0, 3).join(', ')}${siblingRequests.length > 3 ? '...' : ''}`);
   }
   
   if (situation.artifacts && situation.artifacts.length > 0) {
@@ -375,4 +381,3 @@ main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
-

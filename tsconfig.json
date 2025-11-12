@@ -24,7 +24,8 @@
   "include": [
     "gemini-agent/**/*.ts",
     "worker/**/*.ts",
-    "packages/jinn-types/src/**/*.ts"
+    "packages/jinn-types/src/**/*.ts",
+    "types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",

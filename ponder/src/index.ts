@@ -32,6 +32,12 @@ const toBigIntCoercible = (value: unknown): string | number | bigint => {
   return 0;
 };
 
+function safeJsonClone<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, val) => (typeof val === "bigint" ? val.toString() : val)),
+  );
+}
+
 const NODE_EMBEDDINGS_DB_URL =
   process.env.NODE_EMBEDDINGS_DB_URL ||
   process.env.SITUATION_DB_URL ||
@@ -161,7 +167,7 @@ ponder.on(
             }
             if (content.codeMetadata && typeof content.codeMetadata === 'object') {
               try {
-                codeMetadata = JSON.parse(JSON.stringify(content.codeMetadata));
+                codeMetadata = safeJsonClone(content.codeMetadata);
               } catch (err) {
                 codeMetadata = content.codeMetadata;
               }
@@ -212,7 +218,7 @@ ponder.on(
         try {
           // Deep clone to ensure serializability - this preserves ALL fields including
           // hierarchy, summary, and message
-          contextToStore = JSON.parse(JSON.stringify(additionalContext));
+          contextToStore = safeJsonClone(additionalContext);
         } catch (e) {
           contextToStore = undefined;
         }
@@ -526,8 +532,11 @@ ponder.on(
                     recognition: situation?.meta?.recognition,
                   };
 
+                  // Use test table when running under Vitest to isolate test data
+                  const tableName = process.env.VITEST === 'true' ? 'node_embeddings_test' : 'node_embeddings';
+
                   const sql = `
-                    INSERT INTO node_embeddings (node_id, model, dim, vec, summary, meta)
+                    INSERT INTO ${tableName} (node_id, model, dim, vec, summary, meta)
                     VALUES ($1, $2, $3, $4::vector, $5, $6)
                     ON CONFLICT (node_id)
                     DO UPDATE SET

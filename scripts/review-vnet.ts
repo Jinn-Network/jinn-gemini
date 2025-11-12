@@ -143,7 +143,7 @@ async function startServices(metadata: ArchiveMetadata): Promise<void> {
   // IMPORTANT: Ponder will re-index from VNet RPC (database archiving doesn't work)
   const env: Record<string, string> = {
     ...process.env,
-    PONDER_REVIEW_MODE: '1',  // Enable review mode to preserve runtime env vars
+    RUNTIME_ENVIRONMENT: 'review',
     RPC_URL: metadata.vnetRpc,  // Override RPC_URL to use archived VNet
     PONDER_START_BLOCK: metadata.startBlock.toString(),  // Use archived start block
   };

@@ -277,8 +277,13 @@ export async function dispatchNewJob(args: unknown) {
         chainConfig,
         toolsCount: (enabledTools || []).length,
         hasIpfsContents: !!ipfsJsonContents,
+        env_MECHX_CHAIN_RPC: process.env.MECHX_CHAIN_RPC,
+        env_RPC_URL: process.env.RPC_URL,
+        env__ENV_LOADED: process.env.__ENV_LOADED,
+        env_VITEST: process.env.VITEST,
       });
-      
+
+      console.error('[dispatch_new_job] About to call marketplaceInteract...');
       const result = await marketplaceInteract({
         prompts: [prompt],
         priorityMech: mechAddress,
@@ -288,6 +293,7 @@ export async function dispatchNewJob(args: unknown) {
         keyConfig: { source: 'value', value: privateKey },
         postOnly: true,
       });
+      console.error('[dispatch_new_job] marketplaceInteract call completed');
 
       console.error('[dispatch_new_job] marketplaceInteract result:', {
         hasResult: !!result,
@@ -360,6 +366,13 @@ export async function dispatchNewJob(args: unknown) {
         }],
       };
     } catch (error: any) {
+      console.error('[dispatch_new_job] EXECUTION_ERROR caught:', {
+        message: error?.message,
+        stack: error?.stack,
+        code: error?.code,
+        name: error?.name,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      });
       return {
         content: [{
           type: 'text' as const,

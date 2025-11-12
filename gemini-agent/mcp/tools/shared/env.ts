@@ -108,12 +108,35 @@ export {
  * This function is kept for backward compatibility during migration.
  */
 export function loadEnvOnce(): void {
-  if (process.env.__ENV_LOADED === '1') return;
+  console.error('[loadEnvOnce] Called. __ENV_LOADED=', process.env.__ENV_LOADED, 'MECHX_CHAIN_RPC=', process.env.MECHX_CHAIN_RPC?.slice(0, 60));
+  if (process.env.__ENV_LOADED === '1') {
+    console.error('[loadEnvOnce] Already loaded, returning early');
+    return;
+  }
 
   const candidates: string[] = [];
 
   // Detect if running in test environment (Vitest automatically sets this)
   const isTestEnv = process.env.VITEST === 'true';
+  if (!process.env.RUNTIME_ENVIRONMENT) {
+    process.env.RUNTIME_ENVIRONMENT = isTestEnv ? 'test' : 'default';
+  }
+  const runtimeMode = process.env.RUNTIME_ENVIRONMENT || 'default';
+  const preserveKeys = new Set<string>();
+  if (runtimeMode === 'test' || runtimeMode === 'review') {
+    [
+      'RPC_URL',
+      'PONDER_GRAPHQL_URL',
+      'PONDER_START_BLOCK',
+      'PONDER_END_BLOCK',
+      'MECH_RPC_HTTP_URL',
+      'MECHX_CHAIN_RPC',
+      'BASE_RPC_URL',
+      'CONTROL_API_URL',
+      'CONTROL_API_PORT',
+    ]
+      .forEach((key) => preserveKeys.add(key));
+  }
 
   // 1) Explicit path override
   const explicit = process.env.JINN_ENV_PATH;
@@ -160,7 +183,16 @@ export function loadEnvOnce(): void {
     const origWrite = process.stdout.write as any;
     try {
       (process.stdout as any).write = () => true;
+      const preserved: Record<string, string | undefined> = {};
+      for (const key of preserveKeys) {
+        preserved[key] = process.env[key];
+      }
       const res = dotenv.config({ path: abs, override: true });
+      for (const [key, value] of Object.entries(preserved)) {
+        if (value !== undefined) {
+          process.env[key] = value;
+        }
+      }
       if (!res.error) {
         process.env.__ENV_LOADED = '1';
         return;
@@ -198,4 +230,3 @@ export function envBool(name: string, defaultValue = false): boolean {
   if (['0', 'false', 'no', 'off'].includes(val)) return false;
   return defaultValue;
 }
-

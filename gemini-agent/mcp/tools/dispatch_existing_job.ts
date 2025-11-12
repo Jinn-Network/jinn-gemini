@@ -3,7 +3,7 @@ import { graphQLRequest } from '../../../http/client.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getCurrentJobContext } from './shared/context.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
-import { getMechAddress } from '../../../env/operate-profile.js';
+import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
 import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
@@ -194,14 +194,27 @@ export async function dispatchExistingJob(args: unknown) {
   };
 
     try {
+      const priorityMech = getMechAddress();
+      const privateKey = getServicePrivateKey();
+      const chainConfig = getMechChainConfig();
+
+      if (!priorityMech) {
+        throw new Error('Service target mech address not configured. Check .operate service config (MECH_TO_CONFIG).');
+      }
+
+      if (!privateKey) {
+        throw new Error('Service agent private key not found. Check .operate/keys directory.');
+      }
+
       const result = await marketplaceInteract({
-      prompts: [finalPrompt],
-      priorityMech: getMechAddress(),
-      tools: finalTools,
-      ipfsJsonContents,
-      chainConfig: 'base',
-      postOnly: true,
-    });
+        prompts: [finalPrompt],
+        priorityMech,
+        tools: finalTools,
+        ipfsJsonContents,
+        chainConfig,
+        keyConfig: { source: 'value', value: privateKey },
+        postOnly: true,
+      });
 
     if (!result || !Array.isArray(result.request_ids) || result.request_ids.length === 0) {
       return {

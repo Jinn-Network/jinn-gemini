@@ -12,6 +12,30 @@ if (process.env.__ENV_LOADED !== '1') {
 
     // Detect test environment (Vitest sets VITEST='true')
     const isTestEnv = process.env.VITEST === 'true';
+    if (!process.env.RUNTIME_ENVIRONMENT) {
+      process.env.RUNTIME_ENVIRONMENT = isTestEnv ? 'test' : 'default';
+    }
+
+    const runtimeMode = process.env.RUNTIME_ENVIRONMENT || 'default';
+    const preservedKeys = new Set<string>();
+    const preservedValues: Record<string, string | undefined> = {};
+    if (runtimeMode === 'test' || runtimeMode === 'review') {
+      [
+        'RPC_URL',
+        'PONDER_GRAPHQL_URL',
+        'PONDER_START_BLOCK',
+        'PONDER_END_BLOCK',
+        'MECH_RPC_HTTP_URL',
+        'MECHX_CHAIN_RPC',
+        'BASE_RPC_URL',
+        'CONTROL_API_URL',
+        'CONTROL_API_PORT',
+      ]
+        .forEach((key) => {
+          preservedKeys.add(key);
+          preservedValues[key] = process.env[key];
+        });
+    }
 
     // Load base .env first
     const rootEnvPath = path.join(repoRoot, '.env');
@@ -43,6 +67,12 @@ if (process.env.__ENV_LOADED !== '1') {
     }
 
     // Enforce that only variables defined in project's .env are honored for our namespaces
+    for (const [key, value] of Object.entries(preservedValues)) {
+      if (value !== undefined) {
+        process.env[key] = value;
+      }
+    }
+
     const enforcedPrefixes = [
       'PONDER_',
       'MECH_',
@@ -67,26 +97,15 @@ if (process.env.__ENV_LOADED !== '1') {
       'ATTENDED',
     ]);
 
-    // Review mode: preserve runtime-provided values for specific config vars
-    // Used in tests and VNet review sessions to prevent .env from overriding runtime values
-    const isReviewMode = process.env.PONDER_REVIEW_MODE === '1';
-    const reviewModePreservedKeys = new Set<string>([
-      'RPC_URL',
-      'PONDER_GRAPHQL_URL',
-      'PONDER_START_BLOCK',
-      'PONDER_END_BLOCK',
-    ]);
-
     for (const key of Object.keys(process.env)) {
       const isEnforced = enforcedPrefixes.some((p) => key.startsWith(p)) || enforcedSingles.has(key);
       if (!isEnforced) continue;
 
+      if (preservedKeys.has(key)) {
+        continue;
+      }
+
       if (key in parsed) {
-        // In review mode, preserve runtime values for specific Ponder config vars
-        if (isReviewMode && reviewModePreservedKeys.has(key)) {
-          // Keep the runtime value, don't overwrite from .env
-          continue;
-        }
         // If the key is present in .env, use that value (local development override)
         process.env[key] = parsed[key];
       } else {
@@ -99,14 +118,42 @@ if (process.env.__ENV_LOADED !== '1') {
     // RPC Consolidation: Map all RPC variables to use the single RPC_URL
     if (parsed.RPC_URL) {
       // Set fallback RPC variables to use the main RPC_URL if they're not explicitly set
-      if (!parsed.MECH_RPC_HTTP_URL) {
+      // In test/review mode, respect preserved keys to avoid overwriting dynamically-set values
+      if (!parsed.MECH_RPC_HTTP_URL && !preservedKeys.has('MECH_RPC_HTTP_URL')) {
         process.env.MECH_RPC_HTTP_URL = parsed.RPC_URL;
       }
-      if (!parsed.MECHX_CHAIN_RPC) {
+      if (!parsed.MECHX_CHAIN_RPC && !preservedKeys.has('MECHX_CHAIN_RPC')) {
         process.env.MECHX_CHAIN_RPC = parsed.RPC_URL;
       }
-      if (!parsed.BASE_RPC_URL) {
+      if (!parsed.BASE_RPC_URL && !preservedKeys.has('BASE_RPC_URL')) {
         process.env.BASE_RPC_URL = parsed.RPC_URL;
+      }
+    }
+
+    // Normalize legacy aliases so runtime code only needs RPC_URL
+    const runtimeBaseRpc = process.env.BASE_RPC_URL;
+    let runtimeRpcUrl = process.env.RPC_URL;
+    if (!runtimeRpcUrl && runtimeBaseRpc) {
+      process.env.RPC_URL = runtimeBaseRpc;
+      runtimeRpcUrl = runtimeBaseRpc;
+    } else if (!runtimeBaseRpc && runtimeRpcUrl) {
+      process.env.BASE_RPC_URL = runtimeRpcUrl;
+    } else if (runtimeRpcUrl && runtimeBaseRpc && runtimeRpcUrl !== runtimeBaseRpc) {
+      console.warn('[env] BASE_RPC_URL differs from RPC_URL; using RPC_URL and updating BASE_RPC_URL to match');
+      process.env.BASE_RPC_URL = runtimeRpcUrl;
+    }
+
+    // Ensure mech-client specific RPC aliases inherit from the canonical RPC_URL
+    // In test/review mode, respect preserved keys to avoid overwriting dynamically-set values
+    if (runtimeRpcUrl) {
+      if (!process.env.MECH_RPC_HTTP_URL && !preservedKeys.has('MECH_RPC_HTTP_URL')) {
+        process.env.MECH_RPC_HTTP_URL = runtimeRpcUrl;
+      }
+      if (!process.env.MECHX_CHAIN_RPC && !preservedKeys.has('MECHX_CHAIN_RPC')) {
+        process.env.MECHX_CHAIN_RPC = runtimeRpcUrl;
+      }
+      if (!process.env.MECHX_LEDGER_ADDRESS && !preservedKeys.has('MECHX_LEDGER_ADDRESS')) {
+        process.env.MECHX_LEDGER_ADDRESS = runtimeRpcUrl;
       }
     }
 
@@ -117,5 +164,3 @@ if (process.env.__ENV_LOADED !== '1') {
 }
 
 export {};
-
-

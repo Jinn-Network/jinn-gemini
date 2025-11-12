@@ -25,8 +25,14 @@ export interface SituationExecution {
 
 export interface SituationContext {
   parentRequestId?: string;
+  parent?: {
+    requestId?: string;
+    jobDefinitionId?: string;
+  };
   childRequestIds?: string[];
+  children?: string[];
   siblingRequestIds?: string[];
+  siblings?: string[];
 }
 
 export interface SituationArtifactReference {

@@ -3,6 +3,7 @@ import type { Situation, SituationArtifactReference, SituationContext, Situation
 export const SITUATION_ARTIFACT_VERSION = "sit-enc-v1.1";
 import { ExtractedArtifact } from './artifacts.js';
 import { workerLogger } from '../logging/index.js';
+import { extractPromptSections } from './recognition_helpers.js';
 
 const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
 
@@ -15,6 +16,7 @@ interface SituationEncoderInput {
   finalStatus: string;
   additionalContext?: any;
   artifacts: ExtractedArtifact[];
+  model?: string;
 }
 
 interface SituationEncoderResult {
@@ -133,25 +135,20 @@ function mapArtifacts(artifacts: ExtractedArtifact[]): SituationArtifactReferenc
   }));
 }
 
-function extractObjective(additionalContext: any): string | undefined {
-  if (!additionalContext) return undefined;
-  const candidates = [
-    additionalContext?.objective,
-    additionalContext?.job?.objective,
-    additionalContext?.summary?.objective,
-    additionalContext?.project?.objective,
-  ].filter((v) => typeof v === 'string' && v.trim().length > 0);
-  return candidates.length > 0 ? String(candidates[0]) : undefined;
-}
-
-function extractAcceptanceCriteria(additionalContext: any): string | undefined {
-  if (!additionalContext) return undefined;
-  const candidates = [
-    additionalContext?.acceptanceCriteria,
-    additionalContext?.job?.acceptanceCriteria,
-    additionalContext?.summary?.acceptanceCriteria,
-  ].filter((v) => typeof v === 'string' && v.trim().length > 0);
-  return candidates.length > 0 ? String(candidates[0]) : undefined;
+function extractStructuredFieldsFromPrompt(prompt?: string | null): {
+  objective?: string;
+  acceptanceCriteria?: string;
+} {
+  if (!prompt) return {};
+  const sections = extractPromptSections(prompt);
+  const pick = (key: string) => {
+    const value = sections[key];
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  };
+  return {
+    objective: pick('Objective'),
+    acceptanceCriteria: pick('Acceptance Criteria'),
+  };
 }
 
 function deriveSummaryText(params: {
@@ -277,18 +274,23 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
   const requestRecord = await fetchRequestRecord(input.requestId);
 
   const parentRequestId = requestRecord?.sourceRequestId || undefined;
+  const parentJobDefinitionId = requestRecord?.sourceJobDefinitionId || undefined;
   const siblingRequestIds = parentRequestId
     ? await fetchRelatedRequestIds(parentRequestId, input.requestId).catch(() => [])
     : [];
 
-  const additionalContext = input.additionalContext ?? requestRecord?.additionalContext;
-  const objective = extractObjective(additionalContext);
-  const acceptanceCriteria = extractAcceptanceCriteria(additionalContext);
-
   const situationContext: SituationContext = {
     parentRequestId,
+    parent: parentRequestId
+      ? {
+          requestId: parentRequestId,
+          jobDefinitionId: parentJobDefinitionId,
+        }
+      : undefined,
     childRequestIds: [], // Empty initially, will be populated post-execution
+    children: [],
     siblingRequestIds,
+    siblings: siblingRequestIds,
   };
 
   const jobName = input.jobName || requestRecord?.jobName || undefined;
@@ -304,6 +306,8 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
       enabledTools = jobDef.enabledTools || undefined;
     }
   }
+
+  const { objective, acceptanceCriteria } = extractStructuredFieldsFromPrompt(prompt);
 
   const summaryText = deriveInitialSummaryText({
     requestId: input.requestId,
@@ -351,7 +355,16 @@ export async function enrichSituation(input: EnrichSituationInput): Promise<Situ
   // Enrich the context with child requests discovered post-execution
   const enrichedContext: SituationContext = {
     ...input.initialSituation.context,
+    parent: input.initialSituation.context.parentRequestId
+      ? {
+          requestId: input.initialSituation.context.parentRequestId,
+          jobDefinitionId: input.initialSituation.context.parent?.jobDefinitionId,
+        }
+      : input.initialSituation.context.parent,
     childRequestIds,
+    children: childRequestIds,
+    siblingRequestIds: input.initialSituation.context.siblingRequestIds || input.initialSituation.context.siblings,
+    siblings: input.initialSituation.context.siblingRequestIds || input.initialSituation.context.siblings,
   };
 
   const summaryText = deriveSummaryText({
@@ -362,7 +375,7 @@ export async function enrichSituation(input: EnrichSituationInput): Promise<Situ
     status,
     parentRequestId: input.initialSituation.context.parentRequestId,
     childRequestIds,
-    siblingRequestIds: input.initialSituation.context.siblingRequestIds || [],
+    siblingRequestIds: input.initialSituation.context.siblingRequestIds || input.initialSituation.context.siblings || [],
     trace: executionTrace,
     finalOutputSummary,
     artifacts,
@@ -390,10 +403,7 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
   const siblingRequestIds = parentRequestId
     ? await fetchRelatedRequestIds(parentRequestId, input.requestId).catch(() => [])
     : [];
-
-  const additionalContext = input.additionalContext ?? requestRecord?.additionalContext;
-  const objective = extractObjective(additionalContext);
-  const acceptanceCriteria = extractAcceptanceCriteria(additionalContext);
+  const parentJobDefinitionId = requestRecord?.sourceJobDefinitionId || undefined;
 
   const executionTrace = buildExecutionTrace(input.telemetry);
   const status: SituationExecution['status'] =
@@ -407,12 +417,30 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
 
   const situationContext: SituationContext = {
     parentRequestId,
+    parent: parentRequestId
+      ? {
+          requestId: parentRequestId,
+          jobDefinitionId: parentJobDefinitionId,
+        }
+      : undefined,
     childRequestIds,
+    children: childRequestIds,
     siblingRequestIds,
+    siblings: siblingRequestIds,
   };
 
   const jobName = input.jobName || requestRecord?.jobName || undefined;
   const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
+  let prompt: string | undefined;
+  let enabledTools: string[] | undefined;
+  if (jobDefinitionId) {
+    const jobDef = await fetchJobDefinition(jobDefinitionId);
+    if (jobDef) {
+      prompt = jobDef.promptContent || undefined;
+      enabledTools = jobDef.enabledTools || undefined;
+    }
+  }
+  const { objective, acceptanceCriteria } = extractStructuredFieldsFromPrompt(prompt);
 
   const summaryText = deriveSummaryText({
     requestId: input.requestId,
@@ -436,6 +464,9 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
       jobName,
       objective,
       acceptanceCriteria,
+      prompt,
+      model: input.model,
+      enabledTools,
     },
     execution: {
       status,

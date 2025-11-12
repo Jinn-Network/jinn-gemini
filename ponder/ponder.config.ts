@@ -6,8 +6,9 @@ import { createConfig } from "@ponder/core";
 import { http } from "viem";
 import fetch from 'cross-fetch';
 
-// Suppress config logs in test mode to reduce noise
-const isTestMode = process.env.PONDER_REVIEW_MODE === '1';
+// Suppress config logs when running under non-default runtime environments
+const runtimeMode = process.env.RUNTIME_ENVIRONMENT || 'default';
+const suppressLogs = runtimeMode !== 'default';
 
 // Get start block: use env var if set, otherwise fetch current block and use recent history
 async function getStartBlock(): Promise<number> {
@@ -33,12 +34,12 @@ async function getStartBlock(): Promise<number> {
     const currentBlock = parseInt(result.result, 16);
     const recentStartBlock = Math.max(currentBlock - 100, 0);
 
-    if (!isTestMode) {
+    if (!suppressLogs) {
       console.log(`[ponder] Using recent start block: ${recentStartBlock} (current: ${currentBlock})`);
     }
     return recentStartBlock;
   } catch (error) {
-    if (!isTestMode) {
+    if (!suppressLogs) {
       console.warn('[ponder] Failed to fetch current block, using contract deployment block:', error);
     }
     return 35577849; // Fallback to contract deployment block
@@ -48,7 +49,7 @@ async function getStartBlock(): Promise<number> {
 // Review mode configuration
 const endBlock = process.env.PONDER_END_BLOCK ? Number(process.env.PONDER_END_BLOCK) : undefined;
 
-if (!isTestMode && process.env.PONDER_REVIEW_MODE === '1') {
+if (runtimeMode === 'review') {
   console.log('[Ponder Config] 🔍 REVIEW MODE ACTIVE');
   console.log(`[Ponder Config]   Start Block: ${process.env.PONDER_START_BLOCK || 'auto-detect'}`);
   console.log(`[Ponder Config]   End Block: ${endBlock || 'none (will sync to chain head)'}`);
@@ -60,7 +61,7 @@ const MECH_ADDRESS = process.env.MECH_ADDRESS || getMechAddress();
 if (!MECH_ADDRESS) {
   throw new Error('[Ponder Config] MECH_ADDRESS is required. Set MECH_ADDRESS environment variable or ensure .operate/service_*/service_config.json contains MECH_TO_CONFIG.');
 }
-if (!isTestMode) {
+if (!suppressLogs) {
   console.log('[Ponder Config] Indexing mech:', MECH_ADDRESS);
   console.log('[Ponder Config] Start block:', startBlock);
 }
@@ -112,5 +113,4 @@ export default createConfig({
     },
   },
 });
-
 

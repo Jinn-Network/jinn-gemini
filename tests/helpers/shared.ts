@@ -365,6 +365,8 @@ export async function pollGraphQL<T>(
 ): Promise<T> {
   const maxAttempts = options.maxAttempts ?? 20;
   const delayMs = options.delayMs ?? 1500;
+  let lastResult: any = null;
+  let lastError: string | null = null;
 
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, i === 0 ? 0 : delayMs));
@@ -374,15 +376,31 @@ export async function pollGraphQL<T>(
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ query, variables })
       });
-      if (!resp.ok) continue;
+      if (!resp.ok) {
+        lastError = `HTTP ${resp.status}`;
+        continue;
+      }
       const jr = await resp.json();
+      lastResult = jr;
       const result = extractFn(jr);
       if (result !== null) return result;
-    } catch {
-      // Continue polling
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'network_error';
     }
   }
-  throw new Error(`Polling timed out after ${maxAttempts} attempts`);
+
+  let detail = '';
+  if (lastResult) {
+    try {
+      detail = ` Last result: ${JSON.stringify(lastResult).slice(0, 300)}...`;
+    } catch {
+      detail = ' Last result: [unserializable]';
+    }
+  } else if (lastError) {
+    detail = ` Last error: ${lastError}`;
+  }
+
+  throw new Error(`Polling timed out after ${maxAttempts} attempts.${detail}`);
 }
 
 /**
@@ -416,7 +434,10 @@ export async function waitForRequestIndexed(
     gqlUrl,
     query,
     { id: requestId },
-    (jr) => jr?.data?.request?.id ? jr.data.request : null,
+    (jr) => {
+      const req = jr?.data?.request;
+      return (req?.id && req?.ipfsHash) ? req : null;
+    },
     options
   );
 }
@@ -529,6 +550,14 @@ export async function createTestJob(params: {
 
   if (!requestId || !jobDefId) {
     throw new Error('Missing requestId or jobDefId in dispatch response');
+  }
+
+  const txHash = data.transaction_hash ?? data.transactionHash ?? null;
+  const requestIdPreview = typeof requestId === 'string' ? `${requestId.slice(0, 10)}...` : String(requestId);
+  if (txHash) {
+    console.log('[dispatch] Created request', requestIdPreview, 'tx', txHash);
+  } else {
+    console.warn('[dispatch] Created request without transaction hash', requestIdPreview);
   }
 
   return { jobDefId, requestId, dispatchResult: parsed };
@@ -645,6 +674,11 @@ export async function runWorkerOnce(
   env.USE_CONTROL_API = 'true';
   env.MECH_MODEL = options.model ?? 'gemini-2.5-pro';
   env.MECH_TARGET_REQUEST_ID = targetRequestId;
+  console.log('[runWorkerOnce] launching worker', {
+    requestId: targetRequestId,
+    gqlUrl: env.PONDER_GRAPHQL_URL,
+    controlApiUrl: env.CONTROL_API_URL,
+  });
 
   if (!env.GITHUB_REPOSITORY && process.env.TEST_GITHUB_REPO) {
     const repoSlug = parseRepoSlug(process.env.TEST_GITHUB_REPO);
@@ -653,10 +687,21 @@ export async function runWorkerOnce(
     }
   }
 
-  const workerProc = execa('yarn', ['--ignore-engines', 'dev:mech'], {
+  const workerStdIO = process.env.TESTS_NEXT_WORKER_STDIO === 'inherit' ? 'inherit' : 'pipe';
+  const workerLogDir = process.env.TESTS_NEXT_LOG_DIR;
+  let workerLogStream: fs.WriteStream | null = null;
+  if (workerStdIO !== 'inherit' && workerLogDir) {
+    try {
+      fs.mkdirSync(workerLogDir, { recursive: true });
+      workerLogStream = fs.createWriteStream(path.join(workerLogDir, 'worker.log'), { flags: 'a' });
+    } catch {}
+  }
+
+  // Run worker CLI with --single so it exits after processing the target request.
+  const workerProc = execa('yarn', ['dev:mech', '--', '--single'], {
     cwd: process.cwd(),
     env,
-    stdio: 'pipe',
+    stdio: workerStdIO === 'inherit' ? 'inherit' : 'pipe',
     timeout: options.timeout ?? 300_000,
     cleanup: true, // Kill child processes on exit
     forceKillAfterTimeout: 2000 // Force-kill after 2s if SIGTERM doesn't work
@@ -668,38 +713,30 @@ export async function runWorkerOnce(
   // Remove from registry when process exits (successfully or not)
   workerProc.finally(() => {
     activeWorkerProcesses.delete(workerProc);
+    workerLogStream?.end();
   });
 
   // Track quota errors
   let quotaErrorDetected = false;
 
   // Forward output for debugging and detect quota errors
-  if (workerProc.stdout) workerProc.stdout.on('data', (d: any) => {
-    try {
-      const output = d.toString();
-      process.stderr.write(`[worker] ${d}`);
+  if (workerStdIO !== 'inherit') {
+    const handleChunk = (d: any) => {
+      try {
+        const output = d.toString();
+        process.stderr.write(`[worker] ${output}`);
+        workerLogStream?.write(output);
 
-      // Detect quota limit errors in stdout
-      if (output.includes('quota limit') && !quotaErrorDetected) {
-        quotaErrorDetected = true;
-        process.stderr.write('\n[test] ⚠️  Tenderly quota limit detected - test will fail (vitest bail:1 will stop suite)\n');
-        workerProc.kill('SIGTERM');
-      }
-    } catch {}
-  });
-  if (workerProc.stderr) workerProc.stderr.on('data', (d: any) => {
-    try {
-      const output = d.toString();
-      process.stderr.write(`[worker] ${d}`);
-
-      // Detect quota limit errors in stderr
-      if (output.includes('quota limit') && !quotaErrorDetected) {
-        quotaErrorDetected = true;
-        process.stderr.write('\n[test] ⚠️  Tenderly quota limit detected - test will fail (vitest bail:1 will stop suite)\n');
-        workerProc.kill('SIGTERM');
-      }
-    } catch {}
-  });
+        if (output.includes('quota limit') && !quotaErrorDetected) {
+          quotaErrorDetected = true;
+          process.stderr.write('\n[test] ⚠️  Tenderly quota limit detected - test will fail (vitest bail:1 will stop suite)\n');
+          workerProc.kill('SIGTERM');
+        }
+      } catch {}
+    };
+    workerProc.stdout?.on('data', handleChunk);
+    workerProc.stderr?.on('data', handleChunk);
+  }
 
   // Wrap the original promise to reject immediately on quota error
   const originalPromise = workerProc;

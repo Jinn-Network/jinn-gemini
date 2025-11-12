@@ -12,11 +12,13 @@ import fetch from 'cross-fetch';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'child_process';
+import { Wallet } from 'ethers';
 import { loadEnvOnce } from '../../gemini-agent/mcp/tools/shared/env.js';
 import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
 import { getMcpClient, cleanupWorkerProcesses } from './shared.js';
 import { findAvailablePort } from './port-utils.js';
 import { getTestGitRepo, type TestGitRepo } from './test-git-repo.js';
+import { getServicePrivateKey, getServiceSafeAddress } from '../../env/operate-profile.js';
 
 let vnetResult: VnetResult | null = null;
 let ponderProc: ExecaChildProcess | null = null;
@@ -24,6 +26,40 @@ let controlApiProc: ExecaChildProcess | null = null;
 let tenderlyClient: ReturnType<typeof createTenderlyClient> | null = null;
 let testGitRepo: TestGitRepo | null = null;
 let testPonderPort: number | null = null;
+let testRpcUrl: string | null = null;
+
+async function assertBalance(rpcUrl: string, address: string, minimumEth: number, label: string): Promise<void> {
+  const payload = {
+    jsonrpc: '2.0',
+    method: 'eth_getBalance',
+    params: [address, 'latest'],
+    id: Date.now(),
+  };
+
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`[global-setup:${SUITE_ID}] Failed to query balance for ${label}: HTTP ${response.status} ${response.statusText}`);
+  }
+
+  const body = await response.json();
+  const balanceHex = body?.result;
+  if (typeof balanceHex !== 'string') {
+    throw new Error(`[global-setup:${SUITE_ID}] Unexpected balance RPC response for ${label}: ${JSON.stringify(body)}`);
+  }
+
+  const balanceWei = BigInt(balanceHex);
+  const minWei = BigInt(Math.floor(minimumEth * 1e18));
+  if (balanceWei < minWei) {
+    throw new Error(`[global-setup:${SUITE_ID}] ${label} has insufficient balance. Expected >= ${minimumEth} ETH, got ${balanceWei.toString()} wei`);
+  }
+
+  console.log(`[global-setup:${SUITE_ID}] ✓ ${label} balance confirmed: ${balanceWei.toString()} wei`);
+}
 
 // Generate unique suite ID for process isolation
 const SUITE_ID = `test-${Date.now()}-${process.pid}`;
@@ -49,6 +85,7 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boole
 export async function setup() {
   console.log(`\n[global-setup:${SUITE_ID}] 🚀 Setting up shared E2E test infrastructure...\n`);
 
+  process.env.RUNTIME_ENVIRONMENT = 'test';
   // Load env early and set flag to prevent child processes from reloading
   loadEnvOnce();
 
@@ -73,17 +110,55 @@ export async function setup() {
   vnetResult = await tenderlyClient.createVnet(8453); // Base mainnet
   console.log(`[global-setup:${SUITE_ID}] ✓ VNet created: ${vnetResult.id}`);
 
-  // Fund test wallet
-  const testWallet = '0x6ad64135eae1a5a78ec74c44d337a596c682f690';
-  console.log(`[global-setup:${SUITE_ID}] Funding test wallet: ${testWallet}`);
-  await tenderlyClient.fundAddress(testWallet, ethToWei('10'), vnetResult.adminRpcUrl);
-  console.log(`[global-setup:${SUITE_ID}] ✓ Wallet funded`);
+  // Fund the agent wallet that will actually sign Safe transactions
+  let fundedWallet = '0x6ad64135eae1a5a78ec74c44d337a596c682f690';
+  try {
+    const privateKey = getServicePrivateKey();
+    if (privateKey && privateKey.trim().length > 0) {
+      let normalizedKey = privateKey.trim();
+      if (!normalizedKey.startsWith('0x')) {
+        normalizedKey = `0x${normalizedKey}`;
+      }
+      const wallet = new Wallet(normalizedKey);
+      fundedWallet = wallet.address;
+      console.log(`[global-setup:${SUITE_ID}] Funding agent wallet from .operate profile: ${fundedWallet}`);
+    } else {
+      console.warn(`[global-setup:${SUITE_ID}] Could not read agent private key from .operate; falling back to default funding wallet ${fundedWallet}`);
+    }
+  } catch (error: any) {
+    console.warn(`[global-setup:${SUITE_ID}] Failed to derive agent wallet from .operate: ${error?.message ?? error}. Falling back to default ${fundedWallet}`);
+  }
 
-  // Override RPC URLs for test environment
-  process.env.RPC_URL = vnetResult.adminRpcUrl;
-  process.env.MECH_RPC_HTTP_URL = vnetResult.adminRpcUrl;
-  process.env.MECHX_CHAIN_RPC = vnetResult.adminRpcUrl;
-  process.env.BASE_RPC_URL = vnetResult.adminRpcUrl;
+  await tenderlyClient.fundAddress(fundedWallet, ethToWei('10'), vnetResult.adminRpcUrl);
+  console.log(`[global-setup:${SUITE_ID}] ✓ Agent wallet funded`);
+
+  const safeAddress = getServiceSafeAddress();
+  if (safeAddress && safeAddress.trim().length > 0) {
+    console.log(`[global-setup:${SUITE_ID}] Funding service Safe: ${safeAddress}`);
+    await tenderlyClient.fundAddress(safeAddress.trim(), ethToWei('20'), vnetResult.adminRpcUrl);
+    console.log(`[global-setup:${SUITE_ID}] ✓ Service Safe funded`);
+  } else {
+    console.warn(`[global-setup:${SUITE_ID}] Service Safe address not found in .operate profile; marketplace requests may fail due to insufficient Safe balance`);
+  }
+
+  // Use the admin RPC for all client traffic (supports both reads and writes)
+  testRpcUrl = vnetResult.adminRpcUrl;
+  if (!testRpcUrl) {
+    throw new Error(`[global-setup:${SUITE_ID}] Virtual TestNet did not provide a usable RPC URL`);
+  }
+  if (vnetResult.publicRpcUrl) {
+    process.env.VNET_PUBLIC_RPC_URL = vnetResult.publicRpcUrl;
+  }
+
+  process.env.RPC_URL = testRpcUrl;
+  process.env.MECH_RPC_HTTP_URL = testRpcUrl;
+  process.env.MECHX_CHAIN_RPC = testRpcUrl;
+  process.env.BASE_RPC_URL = testRpcUrl;
+
+  await assertBalance(testRpcUrl, fundedWallet, 5, 'Agent wallet');
+  if (safeAddress && safeAddress.trim().length > 0) {
+    await assertBalance(testRpcUrl, safeAddress.trim(), 10, 'Service Safe');
+  }
 
   // Find available port for Ponder (with timestamp + PID offset to avoid parallel collisions)
   const basePonderPort = 42070 + ((Date.now() + process.pid) % 50);
@@ -158,7 +233,6 @@ export async function setup() {
 
   const ponderEnv = {
     ...process.env,
-    PONDER_REVIEW_MODE: '1',  // Enable review mode to preserve test RPC_URL
     RPC_URL: process.env.RPC_URL,  // Test VNet Admin RPC
     PORT: String(testPonderPort),
     PONDER_START_BLOCK: process.env.PONDER_START_BLOCK,

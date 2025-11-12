@@ -33,6 +33,7 @@ import { createSituationArtifactForRequest } from '../situation_artifact.js';
 import { safeParseToolResponse } from '../tool_utils.js';
 import { getJinnWorkspaceDir, extractRepoName, getRepoRoot } from '../../shared/repo_utils.js';
 import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
+import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult } from '../types.js';
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
@@ -63,6 +64,11 @@ export async function processOnce(
     telemetry.startPhase('initialization');
     try {
       metadata = await fetchIpfsMetadata(target.ipfsHash!);
+      if (!metadata) {
+        metadata = {};
+      }
+      const runtimeModel = getOptionalMechModel() || 'gemini-2.5-flash';
+      metadata.model = runtimeModel;
 
       telemetry.logCheckpoint('initialization', 'metadata_fetched', {
         hasJobName: !!metadata?.jobName,
@@ -265,6 +271,21 @@ export async function processOnce(
     workerLogger.warn({ requestId: target.id, error: serializeError(reflectionError) }, 'Reflection step failed (non-critical)');
   } finally {
     telemetry.endPhase('reflection');
+  }
+
+  if (reflection) {
+    const reflectionArtifacts = extractMemoryArtifacts(reflection);
+    if (reflectionArtifacts.length > 0) {
+      const existing = Array.isArray(result.artifacts) ? [...result.artifacts] : [];
+      const seen = new Set(existing.map((artifact) => `${artifact.cid}|${artifact.topic}`));
+      for (const artifact of reflectionArtifacts) {
+        const key = `${artifact.cid}|${artifact.topic}`;
+        if (seen.has(key)) continue;
+        existing.push(artifact);
+        seen.add(key);
+      }
+      result.artifacts = existing;
+    }
   }
 
   // Situation artifact creation

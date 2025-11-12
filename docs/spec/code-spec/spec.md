@@ -208,6 +208,7 @@ Default behaviors define the standard way to handle common operations. They are 
 2. When you introduce a new variable, extend the schema inside `config/index.ts` so validation and documentation stay centralized.
 3. Keep any legacy aliases or fallbacks inside the config module; callers always consume the canonical getter.
 4. Never access `process.env` directly in runtime code—import the helper you need from `config/index.ts` (or its domain-specific re-export).
+5. Use the `RUNTIME_ENVIRONMENT` flag (`default`, `test`, `review`) when you need runtime overrides. Set it before loading config so the loaders know which variables must never be clobbered (e.g., Tenderly RPCs during tests).
 
 **Allowed exceptions:**
 - One-off scripts or tests may read `process.env` directly if they document the deviation and do not introduce new canonical configuration.

@@ -1,5 +1,6 @@
 import { embedText } from '../gemini-agent/mcp/tools/embed_text.js';
 import { createArtifact as mcpCreateArtifact } from '../gemini-agent/mcp/tools/create_artifact.js';
+import { getOptionalMechModel } from '../gemini-agent/mcp/tools/shared/env.js';
 import { safeParseToolResponse } from './tool_utils.js';
 import { encodeSituation, enrichSituation } from './situation_encoder.js';
 import { workerLogger } from '../logging/index.js';
@@ -67,7 +68,12 @@ export async function createSituationArtifactForRequest(args: CreateSituationArt
     let situation: any;
     let summaryText: string;
     
+    const runtimeModel = args.metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash';
+
     if (args.recognition?.initialSituation) {
+      if (args.recognition.initialSituation.job && !args.recognition.initialSituation.job.model) {
+        args.recognition.initialSituation.job.model = runtimeModel;
+      }
       const enrichResult = await enrichSituation({
         initialSituation: args.recognition.initialSituation,
         output: typeof args.result?.output === 'string' ? args.result.output : JSON.stringify(args.result?.output ?? ''),
@@ -88,6 +94,7 @@ export async function createSituationArtifactForRequest(args: CreateSituationArt
         finalStatus: args.finalStatus.status,
         additionalContext: args.metadata?.additionalContext,
         artifacts: existingArtifacts,
+        model: runtimeModel,
       });
       situation = encodeResult.situation;
       summaryText = encodeResult.summaryText;
