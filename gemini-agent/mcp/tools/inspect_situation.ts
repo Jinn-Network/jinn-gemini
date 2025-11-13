@@ -268,7 +268,7 @@ export async function inspectSituation(args: unknown) {
       situation: {
         version: situation.version,
         job: situation.job,
-        execution: {
+        execution: situation.execution ? {
           status: situation.execution.status,
           traceLength: situation.execution.trace.length,
           trace: situation.execution.trace.slice(0, 10).map(step => ({
@@ -277,7 +277,7 @@ export async function inspectSituation(args: unknown) {
             result_summary: truncate(step.result_summary, 150),
           })),
           finalOutputSummary: truncate(situation.execution.finalOutputSummary, 500),
-        },
+        } : null,
         context: situation.context,
         artifacts: situation.artifacts,
         embedding: {

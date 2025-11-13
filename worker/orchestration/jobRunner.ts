@@ -67,8 +67,10 @@ export async function processOnce(
       if (!metadata) {
         metadata = {};
       }
-      const runtimeModel = getOptionalMechModel() || 'gemini-2.5-flash';
-      metadata.model = runtimeModel;
+      // Use model from job metadata if available, otherwise fallback to env var or default
+      if (!metadata.model) {
+        metadata.model = getOptionalMechModel() || 'gemini-2.5-flash';
+      }
 
       telemetry.logCheckpoint('initialization', 'metadata_fetched', {
         hasJobName: !!metadata?.jobName,

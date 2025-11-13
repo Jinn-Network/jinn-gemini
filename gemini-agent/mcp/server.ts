@@ -6,6 +6,23 @@ type LoggingModule = typeof import('../../logging/index.js');
 // Built at runtime after env is loaded and tools are imported
 export let serverTools: { name: string; schema: any; handler: (params: any) => any }[] = [];
 
+// List of MCP tool names that are registered in this server
+// This is used for validation/testing to ensure tool policy matches actual registrations
+export const REGISTERED_MCP_TOOLS = [
+  'get_details',
+  'dispatch_new_job',
+  'create_artifact',
+  'dispatch_existing_job',
+  'search_jobs',
+  'search_artifacts',
+  'search_similar_situations',
+  'inspect_situation',
+  'get_file_contents',
+  'search_code',
+  'list_commits',
+  'list_tools', // Special tool registered separately
+] as const;
+
 async function main() {
   let logging: LoggingModule | null = null;
   let mcpLogger: LoggingModule['mcpLogger'] | null = null;

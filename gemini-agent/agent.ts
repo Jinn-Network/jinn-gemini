@@ -112,7 +112,10 @@ export class Agent {
     }
     
     // Log protection limits
-    console.log(`[AGENT] Loop protection enabled - Max stdout: ${(this.MAX_STDOUT_SIZE / 1024 / 1024).toFixed(1)}MB, Repetition threshold: ${this.REPETITION_THRESHOLD} lines`);
+    agentLogger.info({
+      maxStdoutSizeMB: (this.MAX_STDOUT_SIZE / 1024 / 1024).toFixed(1),
+      repetitionThreshold: this.REPETITION_THRESHOLD
+    }, 'Loop protection enabled');
   }
 
   public async run(prompt: string): Promise<AgentResult> {
@@ -140,7 +143,9 @@ export class Agent {
 
       // Capture stderr warnings without failing the job
       if (result.stderr && result.stderr.trim()) {
-        console.log(`[TELEMETRY] Warning-level errors detected in stderr: ${result.stderr.substring(0, 200)}...`);
+        agentLogger.warn({
+          stderrPreview: result.stderr.substring(0, 200)
+        }, 'Warning-level errors detected in stderr');
         telemetry.raw = telemetry.raw || {};
         telemetry.raw.stderrWarnings = result.stderr;
       }
@@ -211,19 +216,14 @@ export class Agent {
       
       // Make sure Gemini CLI treats the job repo as part of the workspace to allow write_file
       const includeDirectories = new Set<string>();
-      console.log(`[AGENT] codeWorkspace="${this.codeWorkspace}" cwd="${process.cwd()}" CODE_METADATA_REPO_ROOT="${process.env.CODE_METADATA_REPO_ROOT || ''}"`);
-      console.log(`[AGENT] typeof resolve import: ${typeof resolve}`);
-      try {
-        console.log(`[AGENT] resolve identity: ${resolve.toString()}`);
-      } catch {}
       if (this.codeWorkspace) {
         const resolvedWorkspace = resolve(this.codeWorkspace);
-        console.log(`[AGENT] adding codeWorkspace include: ${resolvedWorkspace} (type=${typeof resolvedWorkspace})`);
+        agentLogger.debug({ workspace: resolvedWorkspace }, 'Adding codeWorkspace to include directories');
         includeDirectories.add(resolvedWorkspace);
       }
       if (process.env.CODE_METADATA_REPO_ROOT) {
         const resolvedEnv = resolve(process.env.CODE_METADATA_REPO_ROOT);
-        console.log(`[AGENT] adding CODE_METADATA_REPO_ROOT include: ${resolvedEnv} (type=${typeof resolvedEnv})`);
+        agentLogger.debug({ repoRoot: resolvedEnv }, 'Adding CODE_METADATA_REPO_ROOT to include directories');
         includeDirectories.add(resolvedEnv);
       }
       if (process.env.GEMINI_ADDITIONAL_INCLUDE_DIRS) {
@@ -233,8 +233,6 @@ export class Agent {
           }
         }
       }
-
-      console.log(`[AGENT] include-directories candidates: ${Array.from(includeDirectories).map((dir) => `${dir} (len=${dir.length})`).join(', ')}`);
       for (const dir of includeDirectories) {
         try {
           if (dir && existsSync(dir)) {
@@ -254,10 +252,6 @@ export class Agent {
       // Force YOLO mode so write tools are available in non-interactive runs
       args.push('--yolo');
 
-      // CRITICAL: Use --prompt flag for non-interactive mode to prevent "Please continue" loops
-      // The --prompt flag enables non-interactive mode and appends to stdin (if any)
-      args.push('--prompt', '');
-
       // Debug passthrough
       if (process.argv.includes('--debug') || process.argv.includes('-d')) {
         args.push('--debug');
@@ -267,14 +261,18 @@ export class Agent {
       const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
       this.lastTelemetryFile = telemetryFile;
 
-      // Persist the last prompt locally for debugging/repro and send via stdin + --prompt for non-interactive mode
+      // Persist the last prompt locally for debugging/repro
       const promptDir = dirname(this.settingsPath);
       try { mkdirSync(promptDir, { recursive: true }); } catch {} // Ignore errors here
       const lastPromptPath = join(promptDir, 'last-prompt.txt');
       try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch {} // Ignore errors here
 
-      console.log(`[TELEMETRY] Will write telemetry to: ${telemetryFile}`);
-      console.log(`Spawning Gemini CLI with model: ${this.model} (prompt provided via stdin + --prompt flag for non-interactive mode)`);
+      agentLogger.info({ telemetryFile }, 'Will write telemetry to file');
+      agentLogger.info({ model: this.model }, 'Spawning Gemini CLI');
+      
+      // Add prompt as positional argument (replaces deprecated --prompt flag)
+      // Positional prompts default to one-shot (non-interactive) mode, preventing "Please continue" loops
+      args.push(prompt);
 
       // Propagate job context to the MCP server via environment variables so the separate
       // MCP process can read them on startup
@@ -341,11 +339,7 @@ export class Agent {
       
       // Removed time-based process timeout
 
-      // Feed prompt to stdin (combined with --prompt flag for non-interactive mode)
-      try {
-        geminiProcess.stdin.write(prompt);
-        geminiProcess.stdin.end();
-      } catch {} // Ignore errors here
+      // Prompt is provided as positional argument, no stdin needed
 
       geminiProcess.stdout.on('data', (data) => {
         if (terminated) return;
@@ -354,7 +348,7 @@ export class Agent {
         
         // Check chunk size
         if (chunk.length > this.MAX_CHUNK_SIZE) {
-          console.warn(`[LOOP DETECTION] Terminating process due to large chunk (${chunk.length} bytes)`);
+          agentLogger.warn({ chunkSize: chunk.length, maxChunkSize: this.MAX_CHUNK_SIZE }, 'Terminating process due to large chunk');
           terminated = true;
           terminationReason = `Large chunk detected: ${chunk.length} bytes`;
           geminiProcess.kill('SIGTERM');
@@ -363,9 +357,10 @@ export class Agent {
         
         // Check total stdout size
         if (stdout.length + chunk.length > this.MAX_STDOUT_SIZE) {
-          console.warn(`[LOOP DETECTION] Terminating process due to output size limit (${stdout.length + chunk.length} bytes)`);
+          const totalSizeMB = ((stdout.length + chunk.length) / 1024 / 1024).toFixed(2);
+          agentLogger.warn({ totalSizeBytes: stdout.length + chunk.length, maxSizeBytes: this.MAX_STDOUT_SIZE, totalSizeMB }, 'Terminating process due to output size limit');
           terminated = true;
-          terminationReason = `Output size limit exceeded: ${(stdout.length + chunk.length) / 1024 / 1024}MB`;
+          terminationReason = `Output size limit exceeded: ${totalSizeMB}MB`;
           geminiProcess.kill('SIGTERM');
           return;
         }
@@ -378,7 +373,7 @@ export class Agent {
         
         const identicalChunks = chunkHistory.filter(c => c === chunk).length;
         if (identicalChunks >= this.MAX_IDENTICAL_CHUNKS) {
-          console.warn(`[LOOP DETECTION] Terminating process due to identical chunk repetition (${identicalChunks} times)`);
+          agentLogger.warn({ identicalChunks, maxIdenticalChunks: this.MAX_IDENTICAL_CHUNKS }, 'Terminating process due to identical chunk repetition');
           terminated = true;
           terminationReason = `Identical chunks repeated ${identicalChunks} times`;
           geminiProcess.kill('SIGTERM');
@@ -405,7 +400,11 @@ export class Agent {
                 consecutiveRepeatCount = 1;
               }
               if (consecutiveRepeatCount >= this.REPETITION_THRESHOLD) {
-                console.warn(`[LOOP DETECTION] Terminating process due to consecutive repetitive output: "${line.substring(0, 100)}"...`);
+                agentLogger.warn({
+                  consecutiveRepeatCount,
+                  repetitionThreshold: this.REPETITION_THRESHOLD,
+                  linePreview: line.substring(0, 100)
+                }, 'Terminating process due to consecutive repetitive output');
                 terminated = true;
                 terminationReason = `Consecutive repetitive line detected ${consecutiveRepeatCount} times`;
                 geminiProcess.kill('SIGTERM');
@@ -427,6 +426,8 @@ export class Agent {
         stdout += chunk;
       });
 
+      // Exception: Uses console.error for subprocess stderr forwarding (per spec: "Subprocess streaming in process managers")
+      // This forwards Gemini CLI stderr to console for operational visibility
       geminiProcess.stderr.on('data', (data) => {
         const chunk = data.toString();
         chunk.split('\n').forEach((line: string) => {
@@ -459,7 +460,7 @@ export class Agent {
         
         // Handle termination cases
         if (terminated) {
-          console.log(`[LOOP DETECTION] Process terminated: ${terminationReason}`);
+          agentLogger.warn({ terminationReason }, 'Process terminated by loop detection');
           // Add termination reason to output for debugging
           stdout += `\n\n[PROCESS TERMINATED: ${terminationReason}]`;
           // Force non-zero exit code for terminated processes
@@ -563,14 +564,17 @@ export class Agent {
       mkdirSync(settingsDir, { recursive: true });
 
       writeFileSync(this.settingsPath, JSON.stringify(templateSettings, null, 2));
-      console.log(`Generated job-specific settings for server '${serverName}' with tools: ${toolPolicy.mcpIncludeTools.join(', ')}`);
-      console.log(`  - Universal tools: ${UNIVERSAL_TOOLS.join(', ')}`);
-      console.log(`  - Job-specific tools: ${this.enabledTools.join(', ') || 'none'}`);
-      console.log(`  - MCP excluded native tools: ${toolPolicy.mcpExcludeTools.join(', ') || 'none'}`);
-      console.log(`  - CLI allowed native tools: ${toolPolicy.cliAllowedTools.join(', ')}`);
+      agentLogger.info({
+        serverName,
+        mcpIncludeTools: toolPolicy.mcpIncludeTools,
+        universalTools: UNIVERSAL_TOOLS,
+        jobSpecificTools: this.enabledTools.length > 0 ? this.enabledTools : 'none',
+        mcpExcludedTools: toolPolicy.mcpExcludeTools.length > 0 ? toolPolicy.mcpExcludeTools : 'none',
+        cliAllowedTools: toolPolicy.cliAllowedTools
+      }, 'Generated job-specific settings');
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('Failed to generate job-specific settings:', errorMsg);
+      agentLogger.error({ error: errorMsg }, 'Failed to generate job-specific settings');
       throw error;
     }
   }
@@ -580,11 +584,11 @@ export class Agent {
     if (this.enabledTools.length === 0 && (this.universalTools as readonly string[]).length === 0) return;
     try {
       unlinkSync(this.settingsPath);
-      console.log('Cleaned up job-specific settings.');
+      agentLogger.debug({ settingsPath: this.settingsPath }, 'Cleaned up job-specific settings');
     } catch (error: any) {
       if (error.code !== 'ENOENT') {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error('Failed to clean up job-specific settings:', errorMsg);
+        agentLogger.warn({ error: errorMsg, settingsPath: this.settingsPath }, 'Failed to clean up job-specific settings');
       }
     }
     // Clear cached tool policy
@@ -595,11 +599,11 @@ export class Agent {
     if (!telemetryFile || telemetryFile.trim() === '') return;
     try {
       unlinkSync(telemetryFile);
-      console.log('Cleaned up telemetry file.');
+      agentLogger.debug({ telemetryFile }, 'Cleaned up telemetry file');
     } catch (error: any) {
       if (error.code !== 'ENOENT') {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error('Failed to clean up telemetry file:', errorMsg);
+        agentLogger.warn({ error: errorMsg, telemetryFile }, 'Failed to clean up telemetry file');
       }
     }
   }
@@ -626,7 +630,7 @@ export class Agent {
         originalOutput: output.substring(0, 1000)
       };
     } catch (error: any) {
-      console.error('Error parsing telemetry:', error);
+      agentLogger.error({ error: error instanceof Error ? error.message : String(error) }, 'Error parsing telemetry from output');
       telemetry.errorMessage = `Telemetry parsing failed: ${error.message}`;
       telemetry.raw = { parseError: error.message, output: output.substring(0, 500) };
     }
@@ -641,7 +645,6 @@ export class Agent {
 
     try {
       if (readFileSync && candidateFile) {
-        console.log(`[TELEMETRY] Attempting to read telemetry file: ${candidateFile}`);
         // Give the CLI a moment to flush the telemetry file if the process just exited.
         const maxAttempts = 40;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -655,9 +658,9 @@ export class Agent {
         }
 
         if (!existsSync(candidateFile)) {
-          console.warn(`[TELEMETRY] Telemetry file still missing after waiting: ${candidateFile}`);
+          agentLogger.warn({ telemetryFile: candidateFile }, 'Telemetry file still missing after waiting');
         } else if (statSync(candidateFile).size === 0) {
-          console.warn(`[TELEMETRY] Telemetry file is still empty after waiting: ${candidateFile}`);
+          agentLogger.warn({ telemetryFile: candidateFile }, 'Telemetry file is still empty after waiting');
         } else {
           const telemetryContent = readFileSync(candidateFile, 'utf8');
 
@@ -667,36 +670,27 @@ export class Agent {
             ? telemetryContent.substring(0, maxProcessChars)
             : telemetryContent;
 
-          console.log(`[TELEMETRY] File content length: ${telemetryContent.length} characters`);
-          console.log(`[TELEMETRY] First 1000 chars: ${telemetryContent.substring(0, 1000)}`);
-          console.log(`[TELEMETRY] Last 500 chars: ${telemetryContent.substring(Math.max(0, telemetryContent.length - 500))}`);
+          agentLogger.debug({
+            telemetryFile: candidateFile,
+            contentLength: telemetryContent.length,
+            contentPreview: telemetryContent.substring(0, 100)
+          }, 'Reading telemetry file');
 
           const result = this.parseTelemetryFromContent(contentToParse, startTime);
-
-          console.log(`[TELEMETRY] Telemetry file preserved for inspection: ${candidateFile}`);
           return result;
         }
       }
     } catch (error: any) {
-      console.warn(`[TELEMETRY] Failed to read telemetry file ${telemetryFile || this.lastTelemetryFile || '(none)'}:`, error.message);
-      try {
-        const fs = await import('fs');
-        const target = telemetryFile || this.lastTelemetryFile || '';
-        const exists = target ? fs.existsSync(target) : false;
-        console.log(`[TELEMETRY] File exists: ${exists}`);
-        if (exists) {
-          const stats = fs.statSync(target);
-          console.log(`[TELEMETRY] File size: ${stats.size} bytes`);
-        }
-      } catch (fsError: any) {
-        console.warn(`[TELEMETRY] Failed to check file stats:`, fsError.message);
-      }
+      agentLogger.warn({
+        error: error.message,
+        telemetryFile: telemetryFile || this.lastTelemetryFile || 'none'
+      }, 'Failed to read telemetry file');
     }
 
     if (!candidateFile) {
-      console.warn('[TELEMETRY] Telemetry file path missing; falling back to stdout parsing');
+      agentLogger.warn({}, 'Telemetry file path missing; falling back to stdout parsing');
     } else {
-      console.log(`[TELEMETRY] Falling back to output parsing`);
+      agentLogger.debug({}, 'Falling back to output parsing');
     }
     return this.parseTelemetryFromOutput(output ?? '', startTime);
   }
@@ -711,8 +705,6 @@ export class Agent {
     };
 
     try {
-      console.log(`[TELEMETRY] Parsing telemetry content (${content.length} chars)...`);
-
       const telemetryEvents: any[] = [];
       let buffer = '';
       let started = false;
@@ -757,9 +749,12 @@ export class Agent {
           } catch (e: any) {
             parseErrors++;
             if (parseErrors <= maxParseErrors) {
-              console.log(`[TELEMETRY] Failed to parse JSON object: ${e.message}. Sample: ${candidate.substring(0, 120)}${candidate.length > 120 ? '...' : ''}`);
+              agentLogger.debug({
+                error: e.message,
+                sample: candidate.substring(0, 120)
+              }, 'Failed to parse JSON object in telemetry');
             } else if (parseErrors === maxParseErrors + 1) {
-              console.log(`[TELEMETRY] Too many parse errors (${parseErrors}+). Further errors suppressed.`);
+              agentLogger.debug({ parseErrors }, 'Too many parse errors; further errors suppressed');
             }
           }
           started = false;
@@ -769,7 +764,10 @@ export class Agent {
         }
       }
 
-      console.log(`[TELEMETRY] Successfully parsed ${telemetryEvents.length} telemetry events${parseErrors ? ` (${parseErrors} parse errors)` : ''}`);
+      agentLogger.debug({
+        eventCount: telemetryEvents.length,
+        parseErrors: parseErrors > 0 ? parseErrors : undefined
+      }, 'Parsed telemetry events');
 
       // Process events
       for (const event of telemetryEvents) {
@@ -805,7 +803,6 @@ export class Agent {
           case 'gemini_cli.api_response':
             if (attrs['total_token_count'] && typeof attrs['total_token_count'] === 'number') {
               telemetry.totalTokens = Math.max(telemetry.totalTokens, attrs['total_token_count']);
-              console.log(`[TELEMETRY] Found total token count: ${attrs['total_token_count']}`);
             }
             if (attrs['input_token_count']) {
               telemetry.raw.inputTokens = attrs['input_token_count'];
@@ -830,7 +827,6 @@ export class Agent {
               duration_ms: attrs['duration_ms'] || 0,
               args: attrs['parameters'] || attrs['args'] || attrs['arguments']
             });
-            console.log(`[TELEMETRY] Found tool call: ${attrs['function_name'] || attrs['tool_name'] || attrs['name']}`);
             break;
         }
       }
@@ -840,9 +836,13 @@ export class Agent {
 
       telemetry.raw.eventCount = telemetryEvents.length;
       telemetry.raw.events = telemetryEvents.map(e => e.attributes?.['event.name']).filter(Boolean);
-      console.log(`[TELEMETRY] Final parsing results - tokens: ${telemetry.totalTokens}, tools: ${telemetry.toolCalls.length}, session: ${telemetry.raw.sessionId}`);
+      agentLogger.debug({
+        totalTokens: telemetry.totalTokens,
+        toolCallCount: telemetry.toolCalls.length,
+        sessionId: telemetry.raw.sessionId
+      }, 'Telemetry parsing completed');
     } catch (error: any) {
-      console.error(`[TELEMETRY] Error parsing telemetry content:`, error);
+      agentLogger.error({ error: error instanceof Error ? error.message : String(error) }, 'Error parsing telemetry content');
       telemetry.errorMessage = `Telemetry file parsing failed: ${error.message}`;
       telemetry.raw = { parseError: error.message, content: content.substring(0, 500) };
     }
@@ -952,7 +952,7 @@ export class Agent {
                       const output = JSON.parse(response.output);
                       if (output.data && output.meta?.ok) {
                         toolCall.result = output.data;
-                        console.log(`[TELEMETRY] Attached result to ${toolName} tool call:`, Object.keys(output.data));
+                        agentLogger.debug({ toolName, resultKeys: Object.keys(output.data) }, 'Attached result to tool call');
                       }
                     } catch (parseError) {
                       // If JSON parsing fails, store raw output
@@ -969,7 +969,7 @@ export class Agent {
         }
       }
     } catch (error: any) {
-      console.warn(`[TELEMETRY] Failed to attach tool results:`, error.message);
+      agentLogger.warn({ error: error.message }, 'Failed to attach tool results to telemetry');
     }
   }
 

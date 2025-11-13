@@ -18,7 +18,7 @@ export const UNIVERSAL_TOOLS = [
   // MCP server tools (job management, artifacts, search)
   'list_tools',
   'get_details',
-  'get_job_context',
+  'inspect_situation',
   'dispatch_new_job',
   'dispatch_existing_job',
   'create_artifact',

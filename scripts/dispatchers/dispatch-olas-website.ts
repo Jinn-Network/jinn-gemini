@@ -9,10 +9,15 @@
  * The blueprint is uploaded to IPFS and referenced in the job metadata.
  */
 
+import 'dotenv/config';
 import { dispatchNewJob } from '../../gemini-agent/mcp/tools/dispatch_new_job.js';
 import { pushMetadataToIpfs } from '@jinn-network/mech-client-ts/dist/ipfs.js';
 import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';
+
+// Target repository for the venture
+const TARGET_REPO_URL = 'https://github.com/ritsukai/olas-website-1';
+const TARGET_REPO_NAME = 'olas-website-1';
 
 interface BlueprintFile {
   path: string;
@@ -48,14 +53,14 @@ async function uploadBlueprint(): Promise<{ ipfsHash: string; gatewayUrl: string
   const blueprint = {
     version: '1.0',
     name: 'olas-website',
-    repository: 'https://github.com/oaksprout/olas-website-1',
+    repository: TARGET_REPO_URL,
     files: files.reduce((acc, f) => {
       acc[f.path] = f.content;
       return acc;
     }, {} as Record<string, string>),
   };
 
-  const ipfsHashRaw = await pushMetadataToIpfs(JSON.stringify(blueprint, null, 2));
+  const ipfsHashRaw = await pushMetadataToIpfs(JSON.stringify(blueprint, null, 2), 'blueprint');
   
   // Extract CIDv1 from the comma-separated response (format: "0xhex,cidv1")
   const ipfsHashStr = String(ipfsHashRaw);
@@ -67,22 +72,23 @@ async function uploadBlueprint(): Promise<{ ipfsHash: string; gatewayUrl: string
   return { ipfsHash, gatewayUrl };
 }
 
-const objective = `Ensure the oaksprout/olas-website-1 repository fulfills all assertions defined in the blueprint.`;
+const objective = `Ensure the ${TARGET_REPO_URL.replace('https://github.com/', '')} repository fulfills all assertions defined in the blueprint.`;
 
 function buildContext(blueprintCid: string): string {
+  const repoShortName = TARGET_REPO_URL.replace('https://github.com/', '');
   return `
 You are the root job for this venture.
 
 **Your Blueprint**: Available at https://gateway.autonolas.tech/ipfs/${blueprintCid}
-- The blueprint is a JSON object with a 'files' property containing all markdown documents
+- The blueprint is a JSON object containing all markdown documents
 - Constitution: Core immutable principles (accuracy, community-centric, open, performant)
 - Vision: Mission and strategic goals
 - Requirements: Verifiable assertions for content, UX/design, technical, and operations
 
-**Target Repository**: oaksprout/olas-website-1 (external GitHub repository)
+**Target Repository**: ${repoShortName} (external GitHub repository)
 
 **Your Responsibility**: 
-1. Fetch and parse the blueprint from IPFS using web_fetch
+1. Fetch the blueprint from IPFS using web_fetch
 2. Verify the current state of the repository against every assertion in the blueprint
 3. Where assertions fail or are not yet addressed, dispatch jobs to bring the implementation into alignment
 
@@ -112,7 +118,33 @@ const deliverables = `
 const constraints = ``;
 
 async function main() {
+  // Parse command line arguments
+  const args = process.argv.slice(2);
+  let model = 'gemini-2.5-flash'; // Default model
+  
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--model' && args[i + 1]) {
+      model = args[i + 1];
+      i++;
+      break;
+    }
+  }
+  
   console.log('Dispatching Olas Website Venture (Root Job)...\n');
+  console.log(`Target Repository: ${TARGET_REPO_URL}\n`);
+  console.log(`Model: ${model}\n`);
+
+  // Ensure CODE_METADATA_REPO_ROOT points to the target repository
+  const workspaceDir = process.env.JINN_WORKSPACE_DIR || `${process.env.HOME}/jinn-repos`;
+  const targetRepoPath = `${workspaceDir}/${TARGET_REPO_NAME}`;
+  
+  if (!process.env.CODE_METADATA_REPO_ROOT) {
+    process.env.CODE_METADATA_REPO_ROOT = targetRepoPath;
+    console.log(`Set CODE_METADATA_REPO_ROOT to: ${targetRepoPath}`);
+    console.log('(This ensures code metadata is collected from the target repository)\n');
+  } else {
+    console.log(`Using CODE_METADATA_REPO_ROOT: ${process.env.CODE_METADATA_REPO_ROOT}\n`);
+  }
 
   try {
     // Upload blueprint to IPFS first
@@ -123,7 +155,7 @@ async function main() {
       context: buildContext(ipfsHash),
       acceptanceCriteria,
       jobName: 'olas-website-venture',
-      model: 'gemini-2.5-flash',
+      model: model,
       enabledTools: [
         'web_fetch',
         'get_file_contents',

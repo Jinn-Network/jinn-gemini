@@ -27,7 +27,8 @@ export async function runAgentForRequest(
   request: UnclaimedRequest,
   metadata: IpfsMetadata
 ): Promise<AgentExecutionResult> {
-  const model = getOptionalMechModel() || 'gemini-2.5-flash';
+  // Use model from job metadata if available, otherwise fallback to env var or default
+  const model = metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   
   const agent = new Agent(model, enabledTools, {
