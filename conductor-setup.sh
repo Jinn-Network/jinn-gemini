@@ -181,6 +181,37 @@ clean_test_artifacts() {
 }
 
 # =============================================================================
+# Helpers
+# =============================================================================
+
+sync_operate_profile_fixture() {
+    local source_dir="$1"
+    local fixture_dir="$2"
+
+    if [ ! -d "$source_dir" ]; then
+        return 1
+    fi
+
+    mkdir -p "$fixture_dir"
+
+    # Preserve repository docs (.gitignore, README.md) while replacing secrets
+    if [ "$(ls -A "$fixture_dir" 2>/dev/null)" ]; then
+        find "$fixture_dir" -mindepth 1 \
+            ! -name '.gitignore' \
+            ! -name 'README.md' \
+            -exec rm -rf {} + 2>/dev/null || true
+    fi
+
+    if cp -a "$source_dir"/. "$fixture_dir"/ 2>/dev/null; then
+        :
+    else
+        cp -R "$source_dir"/. "$fixture_dir"/
+    fi
+
+    return 0
+}
+
+# =============================================================================
 # 5. Setup test fixtures
 # =============================================================================
 
@@ -188,10 +219,6 @@ setup_test_fixtures() {
     step "Setting up test fixtures..."
 
     detect_repo_context
-
-    # Create fixtures directory structure
-    mkdir -p tests-next/fixtures/operate-profile/services
-    mkdir -p tests-next/fixtures/operate-profile/keys
 
     # 1. Copy git template fixture
     if [ "$REPO_CONTEXT" = "worktree" ]; then
@@ -212,42 +239,30 @@ setup_test_fixtures() {
         fi
     fi
 
-    # 2. Copy .operate services configuration
+    # 2. Populate operate profile fixture with full configuration
+    local operate_fixture="tests-next/fixtures/operate-profile"
+    local operate_source=""
+    local operate_root_target="olas-operate-middleware/.operate"
+
     if [ "$REPO_CONTEXT" = "worktree" ]; then
-        local operate_source="$MAIN_REPO_ROOT/olas-operate-middleware/.operate"
-        if [ -d "$operate_source/services" ]; then
-            info "Copying .operate services from main repo..."
-            cp -R "$operate_source"/services/sc-* tests-next/fixtures/operate-profile/services/ 2>/dev/null || true
-            success "Operate services configuration copied"
-        else
-            warning ".operate services not found at $operate_source (Ponder may fail to start)"
-        fi
-
-        # 3. Copy .operate keys
-        if [ -d "$operate_source/keys" ]; then
-            info "Copying .operate keys from main repo..."
-            cp -R "$operate_source/keys" tests-next/fixtures/operate-profile/
-            success "Operate keys copied"
-        else
-            warning ".operate keys not found at $operate_source (worker may fail to dispatch)"
-        fi
+        operate_source="$MAIN_REPO_ROOT/olas-operate-middleware/.operate"
     else
-        # In main repo, copy from local .operate
-        if [ -d "olas-operate-middleware/.operate/services" ]; then
-            info "Copying .operate services from local directory..."
-            cp -R olas-operate-middleware/.operate/services/sc-* tests-next/fixtures/operate-profile/services/ 2>/dev/null || true
-            success "Operate services configuration copied"
-        else
-            warning ".operate services not found locally (Ponder may fail to start)"
-        fi
+        operate_source="olas-operate-middleware/.operate"
+    fi
 
-        if [ -d "olas-operate-middleware/.operate/keys" ]; then
-            info "Copying .operate keys from local directory..."
-            cp -R olas-operate-middleware/.operate/keys tests-next/fixtures/operate-profile/
-            success "Operate keys copied"
-        else
-            warning ".operate keys not found locally (worker may fail to dispatch)"
+    if ! sync_operate_profile_fixture "$operate_source" "$operate_fixture"; then
+        error ".operate directory not found at $operate_source. Run the main repo setup first so secrets can be mirrored into the worktree."
+    fi
+
+    success "Operate profile fixture populated from $operate_source"
+
+    # 3. Ensure runtime .operate directory exists for modules that read on import
+    if [ "$REPO_CONTEXT" = "worktree" ]; then
+        mkdir -p "$(dirname "$operate_root_target")"
+        if ! sync_operate_profile_fixture "$operate_source" "$operate_root_target"; then
+            error "Failed to mirror .operate into $operate_root_target for worktree runtime"
         fi
+        success "Operate profile mirrored to $operate_root_target for module resolution"
     fi
 }
 
@@ -361,9 +376,7 @@ run_integration_test() {
     echo "  • Start Tenderly VNet (ephemeral blockchain)"
     echo "  • Start Ponder indexer"
     echo "  • Start Control API"
-    echo "  • Run worker basic execution test"
-    echo "  • Verify Poetry auto-installs Python dependencies"
-    echo "  • Verify on-chain delivery works"
+    echo "  • Verify process harness infrastructure"
     echo ""
     info "This may take 2-5 minutes on first run..."
     echo ""
@@ -371,9 +384,9 @@ run_integration_test() {
     # Create log file for test output
     local log_file="/tmp/conductor-smoke-test-$(date +%s).log"
 
-    # Run worker basic execution test
-    # The --run flag ensures Vitest runs once and exits (not watch mode)
-    if yarn test:worker --run tests/worker/worker-basic-execution.test.ts 2>&1 | tee "$log_file"; then
+    # Run harness system test to verify infrastructure
+    # The harness test verifies Ponder and Control API can start correctly
+    if yarn test:system:next tests-next/system/harness.system.test.ts 2>&1 | tee "$log_file"; then
         echo ""
         success "✅ Integration smoke test PASSED"
         echo ""
@@ -381,9 +394,7 @@ run_integration_test() {
         echo "  ✓ Tenderly VNet creation"
         echo "  ✓ Ponder indexer startup"
         echo "  ✓ Control API startup"
-        echo "  ✓ Poetry auto-installed Python dependencies"
-        echo "  ✓ Worker claimed and executed request"
-        echo "  ✓ On-chain delivery successful"
+        echo "  ✓ Process harness operational"
         echo ""
         success "Environment is fully operational!"
         return 0
@@ -398,6 +409,7 @@ run_integration_test() {
         echo "  • Missing environment variables in .env.test"
         echo "  • Network connectivity issues (Tenderly API)"
         echo "  • Port conflicts (Ponder, Control API)"
+        echo "  • Missing operate profile fixture (run setup again)"
         echo ""
         return 1
     fi
@@ -418,7 +430,7 @@ print_completion() {
     echo "  ✓ olas-operate-middleware submodule initialized"
     echo "  ✓ Poetry available (auto-installs deps on first run)"
     echo "  ✓ Build artifacts validated"
-    echo "  ✓ Full integration test passed"
+    echo "  ✓ Infrastructure smoke test passed (Ponder + Control API)"
     echo ""
     echo "Next steps:"
     echo "  • Click the Run button in Conductor"
@@ -426,9 +438,10 @@ print_completion() {
     echo "    - yarn test:marketplace"
     echo "    - yarn test:worker"
     echo "    - yarn test:service"
+    echo "    - yarn test:system:next"
     echo ""
     echo "Note: Poetry will auto-install Python dependencies"
-    echo "      when tests or services start (already done in smoke test)"
+    echo "      when worker tests or services start"
     echo ""
 }
 

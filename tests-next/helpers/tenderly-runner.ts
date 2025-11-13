@@ -17,18 +17,17 @@ export interface TenderlyOptions {
   safeAllowanceEth?: string;
 }
 
-function ensureWalletAddress(): { address: string; privateKey: string | null } {
-  try {
-    const pk = getServicePrivateKey();
-    if (pk && pk.trim().length > 0) {
-      const normalized = pk.startsWith('0x') ? pk : `0x${pk}`;
-      const wallet = new Wallet(normalized);
-      return { address: wallet.address, privateKey: normalized };
-    }
-  } catch {
-    // Ignore and fall back to default
+function ensureWalletAddress(): { address: string; privateKey: string } {
+  const pk = getServicePrivateKey();
+  if (!pk || pk.trim().length === 0) {
+    throw new Error(
+      'Service private key not found. Ensure OPERATE_PROFILE_DIR points to a valid .operate directory ' +
+      'with keys/[agent_address] files, or run conductor-setup.sh to populate test fixtures.'
+    );
   }
-  return { address: '0x6ad64135eae1a5a78ec74c44d337a596c682f690', privateKey: null };
+  const normalized = pk.startsWith('0x') ? pk : `0x${pk}`;
+  const wallet = new Wallet(normalized);
+  return { address: wallet.address, privateKey: normalized };
 }
 
 function applyRpcEnv(rpcUrl: string, publicRpcUrl?: string) {
