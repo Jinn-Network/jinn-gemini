@@ -163,8 +163,7 @@ async function main() {
         'list_commits',
         'dispatch_new_job',
         'dispatch_existing_job',
-        'create_artifact',
-        'finalize_job'
+        'create_artifact'
       ],
       deliverables,
       constraints,

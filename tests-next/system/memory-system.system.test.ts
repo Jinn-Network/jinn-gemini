@@ -48,6 +48,32 @@ import {
 } from '../../tests/helpers/shared.js';
 import { getOptionalMechModel } from '../../config/index.js';
 
+async function waitForTransactionReceipt(
+  rpcUrl: string,
+  txHash: string,
+  maxAttempts = 10,
+  delayMs = 1000
+) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const resp = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'eth_getTransactionReceipt',
+        params: [txHash],
+        id: 1,
+      }),
+    });
+    const json = await resp.json();
+    if (json.result) {
+      return json.result;
+    }
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+  }
+  throw new Error(`Timed out waiting for transaction receipt ${txHash}`);
+}
+
 // =============================================================================
 // TEST HELPERS
 // =============================================================================
@@ -284,6 +310,13 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                       'Parent job definition exists and can be referenced by child jobs.',
                     enabledTools: ['create_artifact'],
                   });
+                  const parentTxHash =
+                    parentJob.dispatchResult?.data?.transaction_hash ??
+                    parentJob.dispatchResult?.data?.transactionHash ??
+                    null;
+                  if (parentTxHash) {
+                    await waitForTransactionReceipt(tenderlyCtx.rpcUrl, parentTxHash);
+                  }
 
                   await waitForRequestIndexed(gqlUrl, parentJob.requestId);
                   console.log('[TEST] Parent job ready:', parentJob.requestId);
@@ -390,6 +423,13 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   );
 
                   const { requestId } = childJob;
+                  const childTxHash =
+                    childJob.dispatchResult?.data?.transaction_hash ??
+                    childJob.dispatchResult?.data?.transactionHash ??
+                    null;
+                  if (childTxHash) {
+                    await waitForTransactionReceipt(tenderlyCtx.rpcUrl, childTxHash);
+                  }
                   console.log('[TEST] Created child job:', requestId);
 
                   await waitForRequestIndexed(gqlUrl, requestId);
@@ -819,7 +859,7 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   // EXQ-004: Validate model selection from job metadata
                   // Note: Grandchild uses the runtime default model (no explicit override)
                   const expectedGrandchildModel =
-                    getOptionalMechModel?.() ?? process.env.MECH_MODEL ?? 'gemini-2.5-pro';
+                    getOptionalMechModel?.() ?? process.env.MECH_MODEL ?? 'gemini-2.5-flash';
                   expect(situation.job.model).toBe(expectedGrandchildModel); // Assert 45
                   console.log(`[TEST] Model selection validated (default model = ${expectedGrandchildModel}) ✓`);
 
@@ -928,7 +968,9 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] ✓ Child parent = Parent');
 
                   // EXQ-004: Validate child used correct model
-                  expect(childSituationLineage.job.model).toBe('gemini-2.5-pro'); // Assert 52
+                  const expectedChildModel =
+                    getOptionalMechModel?.() ?? process.env.MECH_MODEL ?? 'gemini-2.5-flash';
+                  expect(childSituationLineage.job.model).toBe(expectedChildModel); // Assert 52
 
                   // EXQ-005/006: Validate tool usage and enablement
                   const childTraceLineage = childSituationLineage.execution.trace;

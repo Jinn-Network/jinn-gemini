@@ -1,5 +1,5 @@
 import { ponder } from "@/generated";
-import { resolveRequestIpfsContent } from "../../gemini-agent/mcp/tools/shared/ipfs";
+import fetch from "cross-fetch";
 import axios from "axios";
 import { logger, serializeError } from "../../logging/index.js";
 import { Pool } from "pg";
@@ -68,6 +68,77 @@ function formatVectorLiteral(vector: number[]): string {
   return `[${vector.join(",")}]`;
 }
 
+function hexToBytes(hex: string): number[] {
+  const cleaned = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (cleaned.length % 2 !== 0) {
+    throw new Error(`Invalid hex string length: ${hex}`);
+  }
+  const bytes: number[] = [];
+  for (let i = 0; i < cleaned.length; i += 2) {
+    const byte = parseInt(cleaned.slice(i, i + 2), 16);
+    if (Number.isNaN(byte)) {
+      throw new Error(`Invalid hex byte "${cleaned.slice(i, i + 2)}" in ${hex}`);
+    }
+    bytes.push(byte);
+  }
+  return bytes;
+}
+
+function encodeBase32LowerNoPadding(bytes: number[]): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
+  let buffer = 0;
+  let bits = 0;
+  let output = "";
+  for (const byte of bytes) {
+    buffer = (buffer << 8) | (byte & 0xff);
+    bits += 8;
+    while (bits >= 5) {
+      const index = (buffer >> (bits - 5)) & 0x1f;
+      bits -= 5;
+      output += alphabet[index];
+    }
+  }
+  if (bits > 0) {
+    const index = (buffer << (5 - bits)) & 0x1f;
+    output += alphabet[index];
+  }
+  return output;
+}
+
+function buildRawCidFromDigest(digestHex: string): { cidHex: string; cidBase32: string } {
+  const normalized = digestHex.toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error(`Digest must be 32 bytes (64 hex chars). Received "${digestHex}"`);
+  }
+  const digestBytes = hexToBytes(normalized);
+  const cidBytes = [0x01, 0x55, 0x12, 0x20, ...digestBytes];
+  const cidHex = `f01551220${normalized}`;
+  const cidBase32 = `b${encodeBase32LowerNoPadding(cidBytes)}`;
+  return { cidHex, cidBase32 };
+}
+
+async function fetchRequestMetadata(cidBase32: string, timeoutMs = 10_000): Promise<any> {
+  const gateway = IPFS_GATEWAY_BASE;
+  const url = `${gateway}${cidBase32}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("application/json")) {
+      throw new Error(`Unexpected content-type "${contentType || "unknown"}"`);
+    }
+    return await response.json();
+  } catch (error: any) {
+    throw new Error(`Failed to fetch request metadata from ${url}: ${error.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Traverses up the request chain to find the ultimate root request ID (workstream root).
  * @param startRequestId The ID of the request to start traversal from (the immediate parent).
@@ -131,9 +202,16 @@ ponder.on(
 
     for (let i = 0; i < requestIds.length; i++) {
       const id = requestIds[i];
-      const dataHex = requestDatas?.[i] || null;
-      // Compute gateway-ready ipfsHash using raw codec (f0155...) as uploads often use raw leaves
-      const ipfsHash = dataHex ? `f01551220${String(dataHex).replace(/^0x/, '')}` : undefined;
+      const dataHex = requestDatas?.[i];
+      if (!dataHex) {
+        throw new Error(`MarketplaceRequest missing requestDatas entry for request ${id}`);
+      }
+      const digestHex = String(dataHex).replace(/^0x/, '').toLowerCase();
+      const { cidHex: ipfsHash, cidBase32 } = buildRawCidFromDigest(digestHex);
+      const content = await fetchRequestMetadata(cidBase32);
+      if (!content || typeof content !== "object") {
+        throw new Error(`IPFS payload for request ${id} is empty or malformed`);
+      }
 
       let jobName: string | undefined;
       let enabledTools: string[] | undefined;
@@ -144,37 +222,28 @@ ponder.on(
       let additionalContext: any = undefined;
       let messageContent: any = undefined;
       let codeMetadata: any = undefined;
-      if (ipfsHash) {
+      jobName = typeof content.jobName === "string" ? content.jobName : undefined;
+      enabledTools = Array.isArray(content.tools)
+        ? content.tools.map((tool: any) => String(tool))
+        : Array.isArray(content.enabledTools)
+          ? content.enabledTools.map((tool: any) => String(tool))
+          : undefined;
+      jobDefinitionId = typeof content.jobDefinitionId === "string" ? content.jobDefinitionId : undefined;
+      promptContent = typeof content.prompt === "string" ? content.prompt : undefined;
+      sourceRequestId = typeof content.sourceRequestId === "string" ? content.sourceRequestId : undefined;
+      sourceJobDefinitionIdFromContent =
+        typeof (content as any).sourceJobDefinitionId === "string"
+          ? (content as any).sourceJobDefinitionId
+          : undefined;
+      additionalContext = (content as any).additionalContext || undefined;
+      if (additionalContext?.message) {
+        messageContent = additionalContext.message;
+      }
+      if (content.codeMetadata && typeof content.codeMetadata === "object") {
         try {
-          // Minimal IPFS fetch with timeout to avoid blocking database writes during historical indexing
-          let content: any = null;
-          const fetchPromise = resolveRequestIpfsContent(ipfsHash);
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('IPFS timeout')), 5000)
-          );
-          content = await Promise.race([fetchPromise, timeoutPromise]).catch(() => null);
-          if (content && !content.error) {
-            jobName = content.jobName;
-            enabledTools = content.tools || content.enabledTools;
-            jobDefinitionId = typeof content.jobDefinitionId === 'string' ? content.jobDefinitionId : undefined;
-            promptContent = typeof content.prompt === 'string' ? content.prompt : undefined;
-            sourceRequestId = typeof content.sourceRequestId === 'string' ? content.sourceRequestId : undefined;
-            sourceJobDefinitionIdFromContent = typeof (content as any).sourceJobDefinitionId === 'string' ? (content as any).sourceJobDefinitionId : undefined;
-            additionalContext = (content as any).additionalContext || undefined;
-            // Extract message if present
-            if (additionalContext?.message) {
-              messageContent = additionalContext.message;
-            }
-            if (content.codeMetadata && typeof content.codeMetadata === 'object') {
-              try {
-                codeMetadata = safeJsonClone(content.codeMetadata);
-              } catch (err) {
-                codeMetadata = content.codeMetadata;
-              }
-            }
-          }
-        } catch (e: any) {
-          logger.error(`Failed to resolve IPFS content for hash ${ipfsHash}: ${e.message}`);
+          codeMetadata = safeJsonClone(content.codeMetadata);
+        } catch {
+          codeMetadata = content.codeMetadata;
         }
       }
 
@@ -304,7 +373,7 @@ ponder.on(
 
     logger.info({ mech, sender, requestIds }, "Indexed MarketplaceRequest");
   } catch (e: any) {
-    logger.error({ err: e?.message || String(e) }, "Failed to index MarketplaceRequest");
+    logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index MarketplaceRequest");
   }
 });
 
