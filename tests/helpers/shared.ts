@@ -436,18 +436,38 @@ export async function waitForJobIndexed(
 export async function waitForRequestIndexed(
   gqlUrl: string,
   requestId: string,
-  options?: { maxAttempts?: number; delayMs?: number }
+  options?: {
+    maxAttempts?: number;
+    delayMs?: number;
+    predicate?: (request: {
+      id: string;
+      jobDefinitionId?: string | null;
+      ipfsHash?: string | null;
+      sourceRequestId?: string | null;
+      sourceJobDefinitionId?: string | null;
+      jobName?: string | null;
+      enabledTools?: unknown;
+    }) => boolean;
+  }
 ): Promise<any> {
-  const query = 'query($id:String!){ request(id:$id){ id jobDefinitionId ipfsHash sourceRequestId sourceJobDefinitionId } }';
+  const query =
+    'query($id:String!){ request(id:$id){ id jobDefinitionId ipfsHash sourceRequestId sourceJobDefinitionId jobName enabledTools } }';
+  const { predicate, ...pollOptions } = options ?? {};
   return pollGraphQL(
     gqlUrl,
     query,
     { id: requestId },
     (jr) => {
       const req = jr?.data?.request;
-      return (req?.id && req?.ipfsHash) ? req : null;
+      if (!(req?.id && req?.ipfsHash)) {
+        return null;
+      }
+      if (predicate && !predicate(req)) {
+        return null;
+      }
+      return req;
     },
-    options
+    pollOptions
   );
 }
 

@@ -9,6 +9,19 @@ import { setTimeout as sleep } from 'node:timers/promises';
 export interface PonderWaitOptions {
   timeoutMs?: number;
   pollIntervalMs?: number;
+  /**
+   * Optional predicate that must return true before resolving.
+   * Allows callers to wait for specific fields (e.g. jobName) to populate.
+   */
+  predicate?: (request: {
+    id: string;
+    jobName?: string | null;
+    jobDefinitionId?: string | null;
+    sourceRequestId?: string | null;
+    delivered?: boolean | null;
+    enabledTools?: unknown;
+    ipfsHash?: string | null;
+  }) => boolean;
 }
 
 const DEFAULT_TIMEOUT = 30000; // 30s
@@ -35,6 +48,7 @@ export async function waitForRequestIndexed(
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT;
   const pollIntervalMs = options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL;
   const start = Date.now();
+  let lastResult: any = null;
 
   while (Date.now() - start < timeoutMs) {
     try {
@@ -42,14 +56,28 @@ export async function waitForRequestIndexed(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: `query { request(id: "${requestId}") { id } }`
+          query: `query {
+            request(id: "${requestId}") {
+              id
+              jobName
+              jobDefinitionId
+              sourceRequestId
+              delivered
+              enabledTools
+              ipfsHash
+            }
+          }`
         })
       });
 
       const data = await result.json();
 
-      if (data?.data?.request?.id === requestId) {
-        return; // Found!
+      const request = data?.data?.request;
+      if (request?.id === requestId) {
+        lastResult = request;
+        if (!options?.predicate || options.predicate(request)) {
+          return; // Found and predicate satisfied
+        }
       }
 
       if (data?.errors) {
@@ -64,7 +92,7 @@ export async function waitForRequestIndexed(
   }
 
   throw new Error(
-    `Timeout waiting for Ponder to index request ${requestId} (${timeoutMs}ms)`
+    `Timeout waiting for Ponder to index request ${requestId} (${timeoutMs}ms). Last result: ${JSON.stringify(lastResult)}`
   );
 }
 

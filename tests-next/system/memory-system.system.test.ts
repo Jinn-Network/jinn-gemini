@@ -318,7 +318,10 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                     await waitForTransactionReceipt(tenderlyCtx.rpcUrl, parentTxHash);
                   }
 
-                  await waitForRequestIndexed(gqlUrl, parentJob.requestId);
+                  await waitForRequestIndexed(gqlUrl, parentJob.requestId, {
+                    predicate: (request) =>
+                      Boolean(request.jobName && request.jobDefinitionId),
+                  });
                   console.log('[TEST] Parent job ready:', parentJob.requestId);
 
                   // =========================================================
@@ -432,7 +435,10 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   }
                   console.log('[TEST] Created child job:', requestId);
 
-                  await waitForRequestIndexed(gqlUrl, requestId);
+                  await waitForRequestIndexed(gqlUrl, requestId, {
+                    predicate: (request) =>
+                      Boolean(request.jobName && request.jobDefinitionId),
+                  });
 
                   // =========================================================
                   // SECTION 2: Validate Child Request Metadata (JINN-249, IDQ-001, LCQ-001)
@@ -540,7 +546,10 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log(`[TEST] Child dispatched ${dispatchCalls.length} job(s) ✓`);
 
                   // Wait for Ponder to index the child request
-                  await waitForRequestIndexed(gqlUrl, requestId);
+                  await waitForRequestIndexed(gqlUrl, requestId, {
+                    predicate: (request) =>
+                      Boolean(request.jobName && request.jobDefinitionId),
+                  });
 
                   // Query child request record for hierarchy validation
                   const childRequest = await getRequest(gqlUrl, requestId);
@@ -621,7 +630,10 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] Grandchild request found:', grandchildRequest.id);
                   expect(grandchildRequest.sourceRequestId).toBe(requestId);
 
-                  await waitForRequestIndexed(gqlUrl, grandchildRequest.id);
+                  await waitForRequestIndexed(gqlUrl, grandchildRequest.id, {
+                    predicate: (request) =>
+                      Boolean(request.jobName && request.jobDefinitionId),
+                  });
 
                   // =========================================================
                   // SECTION 7: Validate Grandchild Request Metadata (JINN-249, IDQ-001, LCQ-001)

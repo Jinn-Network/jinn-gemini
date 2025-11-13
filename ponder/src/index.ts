@@ -208,9 +208,46 @@ ponder.on(
       }
       const digestHex = String(dataHex).replace(/^0x/, '').toLowerCase();
       const { cidHex: ipfsHash, cidBase32 } = buildRawCidFromDigest(digestHex);
-      const content = await fetchRequestMetadata(cidBase32);
-      if (!content || typeof content !== "object") {
-        throw new Error(`IPFS payload for request ${id} is empty or malformed`);
+      
+      // Pre-seed request row immediately with minimal fields available from chain event
+      // This ensures the request exists in DB before expensive IPFS fetch completes,
+      // preventing Deliver events from hitting null constraint errors
+      await repo.upsert({
+        id,
+        create: {
+          mech,
+          sender,
+          workstreamId: id, // Temporary: will be recomputed after metadata fetch if sourceRequestId exists
+          transactionHash: txHash,
+          blockNumber,
+          blockTimestamp,
+          ipfsHash,
+          delivered: false,
+        },
+        update: {
+          // Don't overwrite existing fields during pre-seed
+        },
+      });
+      
+      // Now fetch IPFS metadata (expensive operation)
+      // Wrap in try-catch to ensure we always complete the enriched update,
+      // even if IPFS fetch fails (though it should not fail in normal operation)
+      let content: any = null;
+      try {
+        content = await fetchRequestMetadata(cidBase32);
+        if (!content || typeof content !== "object") {
+          throw new Error(`IPFS payload for request ${id} is empty or malformed`);
+        }
+      } catch (ipfsError: any) {
+        // If IPFS fetch fails, log error but don't fail the entire handler
+        // The pre-seeded row exists, so Deliver events won't hit null constraints
+        // But we can't populate enriched fields without the content
+        logger.error(
+          { requestId: id, ipfsHash, cidBase32, error: serializeError(ipfsError) },
+          "Failed to fetch IPFS metadata for request (pre-seeded row exists, but enriched fields will be missing)"
+        );
+        // Re-throw to let the outer handler catch and log, but the pre-seeded row remains
+        throw ipfsError;
       }
 
       let jobName: string | undefined;
@@ -306,6 +343,9 @@ ponder.on(
         workstreamId = id;
       }
 
+      // Update the pre-seeded request row with enriched metadata
+      // The create path should never execute here since we pre-seeded above,
+      // but include it as a safety fallback
       await repo.upsert({
         id,
         create: {
@@ -326,21 +366,16 @@ ponder.on(
           additionalContext: contextToStore,
         },
         update: {
-          mech,
-          sender,
+          // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
           workstreamId,
           jobDefinitionId: jobDefinitionId,
           sourceRequestId: sourceRequestId,
           sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
           requestData: dataHex || undefined,
-          ipfsHash,
-          transactionHash: txHash,
-          blockNumber,
-          blockTimestamp,
           jobName,
           enabledTools,
           additionalContext: contextToStore,
-          // intentionally do not overwrite delivered here
+          // intentionally do not overwrite delivered, mech, sender, blockNumber, blockTimestamp, transactionHash here
         },
       });
 
@@ -400,6 +435,27 @@ ponder.on(
       return;
     }
 
+    // Fail fast if request doesn't exist - it should have been pre-seeded by MarketplaceRequest handler
+    let existingRequest: any = null;
+    try {
+      existingRequest = await requestRepo.findUnique({ id: requestId });
+      if (!existingRequest) {
+        throw new Error(
+          `Deliver event received for request ${requestId} that does not exist in database. ` +
+          `This indicates the MarketplaceRequest event was not indexed before Deliver. ` +
+          `Check Ponder indexing order and ensure MarketplaceRequest handler pre-seeds requests.`
+        );
+      }
+    } catch (e: any) {
+      // If findUnique throws (not just returns null), re-throw as-is
+      if (e.message && e.message.includes('does not exist')) {
+        throw e;
+      }
+      // Otherwise, log and re-throw
+      logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before Deliver');
+      throw e;
+    }
+
     // Convert raw digest bytes to gateway-compatible CIDv1 (raw codec) hex multibase
     const ipfsHash = dataBytes ? `f01551220${String(dataBytes).replace(/^0x/, '')}` : undefined;
 
@@ -422,21 +478,28 @@ ponder.on(
       update: baseDeliveryRecord,
     });
 
+    // Update request with delivery info, preserving existing fields from pre-seeded row
+    // The create path should never execute since we verified existence above, but include
+    // existing fields as safety fallback
     await requestRepo.upsert({
       id: requestId,
       create: {
+        // Include existing fields if available (safety fallback)
+        mech: existingRequest?.mech || String(event.args.mech || "0x0000000000000000000000000000000000000000"),
+        sender: existingRequest?.sender || "0x0000000000000000000000000000000000000000",
+        workstreamId: existingRequest?.workstreamId || requestId,
+        transactionHash: existingRequest?.transactionHash || txHash,
+        blockNumber: existingRequest?.blockNumber || blockNumber,
+        blockTimestamp: existingRequest?.blockTimestamp || blockTimestamp,
         delivered: true,
         deliveryIpfsHash: ipfsHash,
-        transactionHash: txHash,
-        blockNumber,
-        blockTimestamp,
       },
       update: {
+        // Only update delivery-specific fields; preserve all other existing fields
         delivered: true,
         deliveryIpfsHash: ipfsHash,
-        transactionHash: txHash,
-        blockNumber,
-        blockTimestamp,
+        // Do not overwrite mech, sender, transactionHash, blockNumber, blockTimestamp here
+        // as they come from MarketplaceRequest event
       },
     });
 
