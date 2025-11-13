@@ -9,10 +9,12 @@
  * - Embedding generation and storage
  * - Vector search and discovery
  * - Ponder indexing of both SITUATION and MEMORY artifacts
+ * - Request metadata completeness validation (JINN-249)
  *
- * Coverage: 12 requirements (MEM-001 to MEM-010, GWQ-001/002), 71 assertions
+ * Coverage: 14 requirements (MEM-001 to MEM-010, IDQ-001, LCQ-001, GWQ-001/002), ~115 assertions
  * Tests both memory pathways: semantic (SITUATION) and tagged (MEMORY)
  * Tests git workflow metadata: branch isolation and lineage preservation
+ * Tests request metadata completeness: IPFS hashes, addresses, hierarchy, temporal data
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -287,6 +289,45 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] Parent job ready:', parentJob.requestId);
 
                   // =========================================================
+                  // SECTION 1: Validate Parent Request Metadata (JINN-249, IDQ-001, LCQ-001)
+                  // =========================================================
+
+                  console.log('[TEST] Validating parent request metadata completeness...');
+
+                  const parentRequest = await getRequest(gqlUrl, parentJob.requestId);
+                  expect(parentRequest).toBeDefined();
+                  expect(parentRequest!.id).toBe(parentJob.requestId);
+
+                  // IPFS hash validation (CID v1 format: f01551220 prefix + 64-char hex)
+                  expect(parentRequest!.ipfsHash).toBeTruthy();
+                  expect(typeof parentRequest!.ipfsHash).toBe('string');
+                  expect(parentRequest!.ipfsHash).toMatch(/^f01551220[a-f0-9]{64}$/i);
+
+                  // Job metadata validation
+                  expect(parentRequest!.jobName).toBeTruthy();
+                  expect(parentRequest!.jobDefinitionId).toBe(parentJob.jobDefId);
+
+                  // IDQ-001: Identity validation - addresses must be valid Ethereum format
+                  expect(parentRequest!.mech).toBeTruthy();
+                  expect(parentRequest!.mech).toMatch(/^0x[a-fA-F0-9]{40}$/);
+                  expect(parentRequest!.sender).toBeTruthy();
+                  expect(parentRequest!.sender).toMatch(/^0x[a-fA-F0-9]{40}$/);
+
+                  // Root job has no parent (hierarchy validation)
+                  expect(parentRequest!.sourceRequestId).toBeNull();
+                  expect(parentRequest!.sourceJobDefinitionId).toBeNull();
+
+                  // Enabled tools validation
+                  expect(Array.isArray(parentRequest!.enabledTools)).toBe(true);
+                  expect(parentRequest!.enabledTools).toContain('create_artifact');
+
+                  // LCQ-001: Delivery status validation
+                  expect(typeof parentRequest!.delivered).toBe('boolean');
+                  expect(parentRequest!.delivered).toBe(false); // Not yet delivered
+
+                  console.log('[TEST] Parent request metadata validated ✓');
+
+                  // =========================================================
                   // SECTION 1A: Parent Job Git Metadata (GWQ-001)
                   // =========================================================
 
@@ -352,6 +393,46 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] Created child job:', requestId);
 
                   await waitForRequestIndexed(gqlUrl, requestId);
+
+                  // =========================================================
+                  // SECTION 2: Validate Child Request Metadata (JINN-249, IDQ-001, LCQ-001)
+                  // =========================================================
+
+                  console.log('[TEST] Validating child request metadata completeness...');
+
+                  const childRequestMetadata = await getRequest(gqlUrl, requestId);
+                  expect(childRequestMetadata).toBeDefined();
+                  expect(childRequestMetadata!.id).toBe(requestId);
+
+                  // IPFS hash validation (CID v1 format: f01551220 prefix + 64-char hex)
+                  expect(childRequestMetadata!.ipfsHash).toBeTruthy();
+                  expect(typeof childRequestMetadata!.ipfsHash).toBe('string');
+                  expect(childRequestMetadata!.ipfsHash).toMatch(/^f01551220[a-f0-9]{64}$/i);
+
+                  // Job metadata validation
+                  expect(childRequestMetadata!.jobName).toBeTruthy();
+                  expect(childRequestMetadata!.jobDefinitionId).toBe(childJob.jobDefId);
+
+                  // LCQ-004: Hierarchy validation - child must link to parent
+                  expect(childRequestMetadata!.sourceRequestId).toBe(parentJob.requestId);
+                  expect(childRequestMetadata!.sourceJobDefinitionId).toBe(parentJob.jobDefId);
+
+                  // Enabled tools validation
+                  expect(Array.isArray(childRequestMetadata!.enabledTools)).toBe(true);
+                  expect(childRequestMetadata!.enabledTools).toContain('create_artifact');
+                  expect(childRequestMetadata!.enabledTools).toContain('dispatch_new_job');
+
+                  // IDQ-001: Identity validation
+                  expect(childRequestMetadata!.mech).toBeTruthy();
+                  expect(childRequestMetadata!.mech).toMatch(/^0x[a-fA-F0-9]{40}$/);
+                  expect(childRequestMetadata!.sender).toBeTruthy();
+                  expect(childRequestMetadata!.sender).toMatch(/^0x[a-fA-F0-9]{40}$/);
+
+                  // Temporal metadata (block number and timestamp)
+                  expect(childRequestMetadata!.blockNumber).toBeTruthy();
+                  expect(childRequestMetadata!.blockTimestamp).toBeTruthy();
+
+                  console.log('[TEST] Child request metadata validated ✓');
 
                   // =========================================================
                   // SECTION 3: Run Worker on Child Job
@@ -480,18 +561,50 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   await waitForRequestIndexed(gqlUrl, grandchildRequest.id);
 
-                  // Query grandchild request record for hierarchy validation
+                  // =========================================================
+                  // SECTION 7: Validate Grandchild Request Metadata (JINN-249, IDQ-001, LCQ-001)
+                  // =========================================================
+
+                  console.log('[TEST] Validating grandchild request metadata completeness...');
+
                   const grandchildRequestRecord = await getRequest(gqlUrl, grandchildRequest.id);
                   expect(grandchildRequestRecord).toBeDefined();
+                  expect(grandchildRequestRecord!.id).toBe(grandchildRequest.id);
 
-                  // LCQ-004: Job hierarchy validation - grandchild should link to child
+                  // IPFS hash validation (CID v1 format: f01551220 prefix + 64-char hex)
+                  expect(grandchildRequestRecord!.ipfsHash).toBeTruthy();
+                  expect(typeof grandchildRequestRecord!.ipfsHash).toBe('string');
+                  expect(grandchildRequestRecord!.ipfsHash).toMatch(/^f01551220[a-f0-9]{64}$/i);
+
+                  // Job metadata validation
+                  expect(grandchildRequestRecord!.jobName).toBeTruthy();
+                  expect(grandchildRequestRecord!.jobDefinitionId).toBeTruthy();
+
+                  // LCQ-004: Job hierarchy validation - grandchild should link to child (not grandparent)
                   expect(grandchildRequestRecord!.sourceRequestId).toBe(requestId);
                   expect(grandchildRequestRecord!.sourceJobDefinitionId).toBe(childJob.jobDefId);
 
-                  // MEM-008: Verify grandchild request indexed with temporal metadata
-                  expect(grandchildRequestRecord!.blockTimestamp).toBeDefined();
+                  // Enabled tools validation
+                  expect(Array.isArray(grandchildRequestRecord!.enabledTools)).toBe(true);
+                  expect(grandchildRequestRecord!.enabledTools!.length).toBeGreaterThan(0);
+                  expect(grandchildRequestRecord!.enabledTools).toContain('create_artifact');
 
-                  console.log('[TEST] Grandchild request hierarchy validated ✓');
+                  // IDQ-001: Identity validation
+                  expect(grandchildRequestRecord!.mech).toBeTruthy();
+                  expect(grandchildRequestRecord!.mech).toMatch(/^0x[a-fA-F0-9]{40}$/);
+                  expect(grandchildRequestRecord!.sender).toBeTruthy();
+                  expect(grandchildRequestRecord!.sender).toMatch(/^0x[a-fA-F0-9]{40}$/);
+
+                  // MEM-008: Temporal metadata validation
+                  expect(grandchildRequestRecord!.blockNumber).toBeTruthy();
+                  expect(grandchildRequestRecord!.blockTimestamp).toBeDefined();
+                  expect(typeof grandchildRequestRecord!.blockTimestamp).toBe('string');
+
+                  // LCQ-001: Delivery status validation
+                  expect(typeof grandchildRequestRecord!.delivered).toBe('boolean');
+                  expect(grandchildRequestRecord!.delivered).toBe(false); // Not yet delivered at this point
+
+                  console.log('[TEST] Grandchild request metadata validated ✓');
 
                   // =========================================================
                   // SECTION 7: Run Worker on Grandchild Job
@@ -801,10 +914,11 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] Git working tree clean (no file changes) ✓');
 
                   console.log('\n[TEST] ✅ Memory system test complete!');
-                  console.log('[TEST] Coverage: MEM-001 to MEM-010, ARQ-006, EXQ-004/005/006/007, LCQ-003/009, GWQ-001/002 (metadata)');
-                  console.log('[TEST] Assertions: 71 assertions executed (52 memory + 19 git metadata lineage)');
+                  console.log('[TEST] Coverage: MEM-001 to MEM-010, ARQ-006, EXQ-004/005/006/007, LCQ-003/004/009, IDQ-001, LCQ-001, GWQ-001/002');
+                  console.log('[TEST] Assertions: ~115 assertions executed (52 memory + 19 git + 44 metadata completeness)');
                   console.log('[TEST] Recognition: Grandchild successfully found child via similarity search');
                   console.log('[TEST] Lineage: 3-level delegation validated');
+                  console.log('[TEST] Metadata: Request metadata completeness validated at all 3 levels (JINN-249)');
                 }
               );
             });
