@@ -477,6 +477,28 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Child delivery confirmed:', childDelivery.transactionHash);
 
+                  // =========================================================
+                  // SECTION 4B: Child Job Status Validation (Work Protocol)
+                  // =========================================================
+
+                  console.log('\n[TEST] SECTION 4B: Validating child job status...');
+
+                  // Fetch child SITUATION from IPFS delivery
+                  const childDeliverySituation = await fetchSituation(childDelivery, gqlUrl);
+                  expect(childDeliverySituation).toBeDefined();
+
+                  // WPQ-001: Child should be DELEGATING (dispatched grandchild)
+                  expect(childDeliverySituation!.execution?.status).toBe('DELEGATING');
+                  console.log('[TEST] Child status correctly inferred as DELEGATING ✓');
+
+                  // WPQ-002: Validate dispatch tool calls in execution trace
+                  const childDeliveryTrace = childDeliverySituation!.execution?.trace || [];
+                  const dispatchCalls = childDeliveryTrace.filter(
+                    (step: any) => step.tool === 'dispatch_new_job' || step.tool === 'dispatch_existing_job'
+                  );
+                  expect(dispatchCalls.length).toBeGreaterThan(0);
+                  console.log(`[TEST] Child dispatched ${dispatchCalls.length} job(s) ✓`);
+
                   // Wait for Ponder to index the child request
                   await waitForRequestIndexed(gqlUrl, requestId);
 
@@ -644,6 +666,28 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   expect(typeof grandchildDelivery.transactionHash).toBe('string');
 
                   console.log('[TEST] Grandchild delivery confirmed:', grandchildDelivery.transactionHash);
+
+                  // =========================================================
+                  // SECTION 8B: Grandchild Job Status Validation (Work Protocol)
+                  // =========================================================
+
+                  console.log('\n[TEST] SECTION 8B: Validating grandchild job status...');
+
+                  // Fetch grandchild SITUATION from IPFS delivery
+                  const grandchildSituation = await fetchSituation(grandchildDelivery, gqlUrl);
+                  expect(grandchildSituation).toBeDefined();
+
+                  // WPQ-001: Grandchild should be COMPLETED (terminal job, no delegation)
+                  expect(grandchildSituation!.execution?.status).toBe('COMPLETED');
+                  console.log('[TEST] Grandchild status correctly inferred as COMPLETED ✓');
+
+                  // WPQ-002: Validate NO dispatch tool calls (terminal state)
+                  const grandchildTrace = grandchildSituation!.execution?.trace || [];
+                  const grandchildDispatchCalls = grandchildTrace.filter(
+                    (step: any) => step.tool === 'dispatch_new_job' || step.tool === 'dispatch_existing_job'
+                  );
+                  expect(grandchildDispatchCalls.length).toBe(0);
+                  console.log('[TEST] Grandchild is terminal job (no further delegation) ✓');
 
                   // =========================================================
                   // SECTION 8A: Grandchild Job Git Lineage Metadata (GWQ-002)
@@ -875,20 +919,20 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] ✓ Grandchild parent = Child');
 
                   // Fetch child SITUATION to verify Child → Parent
-                  const childSituation = await fetchSituation(childDelivery, gqlUrl);
-                  expect(childSituation).toBeDefined();
-                  if (!childSituation || !childSituation.context?.parent) {
+                  const childSituationLineage = await fetchSituation(childDelivery, gqlUrl);
+                  expect(childSituationLineage).toBeDefined();
+                  if (!childSituationLineage || !childSituationLineage.context?.parent) {
                     throw new Error('Child situation missing parent context');
                   }
-                  expect(childSituation.context.parent.requestId).toBe(parentJob.requestId); // Assert 29
+                  expect(childSituationLineage.context.parent.requestId).toBe(parentJob.requestId); // Assert 29
                   console.log('[TEST] ✓ Child parent = Parent');
 
                   // EXQ-004: Validate child used correct model
-                  expect(childSituation.job.model).toBe('gemini-2.5-pro'); // Assert 52
+                  expect(childSituationLineage.job.model).toBe('gemini-2.5-pro'); // Assert 52
 
                   // EXQ-005/006: Validate tool usage and enablement
-                  const childTrace = childSituation.execution.trace;
-                  const childToolsUsed = childTrace.map((entry: any) => entry.tool).filter((t: string) => t);
+                  const childTraceLineage = childSituationLineage.execution.trace;
+                  const childToolsUsed = childTraceLineage.map((entry: any) => entry.tool).filter((t: string) => t);
                   expect(childToolsUsed.length).toBeGreaterThan(0); // Assert 53 - Tool interaction occurred
                   expect(childToolsUsed).toContain('create_artifact'); // Assert 54 - Created analysis artifact
                   expect(childToolsUsed).toContain('dispatch_new_job'); // Assert 55 - Delegated grandchild job

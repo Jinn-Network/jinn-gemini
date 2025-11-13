@@ -181,7 +181,78 @@ clean_test_artifacts() {
 }
 
 # =============================================================================
-# 5. Install Node dependencies
+# 5. Setup test fixtures
+# =============================================================================
+
+setup_test_fixtures() {
+    step "Setting up test fixtures..."
+
+    detect_repo_context
+
+    # Create fixtures directory structure
+    mkdir -p tests-next/fixtures/operate-profile/services
+    mkdir -p tests-next/fixtures/operate-profile/keys
+
+    # 1. Copy git template fixture
+    if [ "$REPO_CONTEXT" = "worktree" ]; then
+        local git_template_source="$MAIN_REPO_ROOT/tests-next/fixtures/git-template"
+        if [ -d "$git_template_source/.git" ]; then
+            info "Copying git template from main repo..."
+            rm -rf tests-next/fixtures/git-template
+            cp -R "$git_template_source" tests-next/fixtures/
+            success "Git template fixture copied"
+        else
+            warning "Git template not found at $git_template_source (tests may fail)"
+        fi
+    else
+        if [ -d "tests-next/fixtures/git-template/.git" ]; then
+            success "Git template fixture already exists"
+        else
+            warning "Git template not found (tests may fail)"
+        fi
+    fi
+
+    # 2. Copy .operate services configuration
+    if [ "$REPO_CONTEXT" = "worktree" ]; then
+        local operate_source="$MAIN_REPO_ROOT/olas-operate-middleware/.operate"
+        if [ -d "$operate_source/services" ]; then
+            info "Copying .operate services from main repo..."
+            cp -R "$operate_source"/services/sc-* tests-next/fixtures/operate-profile/services/ 2>/dev/null || true
+            success "Operate services configuration copied"
+        else
+            warning ".operate services not found at $operate_source (Ponder may fail to start)"
+        fi
+
+        # 3. Copy .operate keys
+        if [ -d "$operate_source/keys" ]; then
+            info "Copying .operate keys from main repo..."
+            cp -R "$operate_source/keys" tests-next/fixtures/operate-profile/
+            success "Operate keys copied"
+        else
+            warning ".operate keys not found at $operate_source (worker may fail to dispatch)"
+        fi
+    else
+        # In main repo, copy from local .operate
+        if [ -d "olas-operate-middleware/.operate/services" ]; then
+            info "Copying .operate services from local directory..."
+            cp -R olas-operate-middleware/.operate/services/sc-* tests-next/fixtures/operate-profile/services/ 2>/dev/null || true
+            success "Operate services configuration copied"
+        else
+            warning ".operate services not found locally (Ponder may fail to start)"
+        fi
+
+        if [ -d "olas-operate-middleware/.operate/keys" ]; then
+            info "Copying .operate keys from local directory..."
+            cp -R olas-operate-middleware/.operate/keys tests-next/fixtures/operate-profile/
+            success "Operate keys copied"
+        else
+            warning ".operate keys not found locally (worker may fail to dispatch)"
+        fi
+    fi
+}
+
+# =============================================================================
+# 6. Install Node dependencies
 # =============================================================================
 
 install_node_dependencies() {
@@ -199,7 +270,7 @@ install_node_dependencies() {
 }
 
 # =============================================================================
-# 6. Validate setup
+# 7. Validate setup
 # =============================================================================
 
 validate_setup() {
@@ -279,7 +350,7 @@ validate_setup() {
 }
 
 # =============================================================================
-# 7. Run full integration smoke test
+# 8. Run full integration smoke test
 # =============================================================================
 
 run_integration_test() {
@@ -333,7 +404,7 @@ run_integration_test() {
 }
 
 # =============================================================================
-# 8. Print completion message
+# 9. Print completion message
 # =============================================================================
 
 print_completion() {
@@ -370,6 +441,7 @@ main() {
     setup_environment_files
     init_submodules
     clean_test_artifacts
+    setup_test_fixtures
     install_node_dependencies
 
     if validate_setup; then
