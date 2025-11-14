@@ -3,7 +3,8 @@
  */
 
 import { getChildJobStatus } from './childJobs.js';
-import type { FinalStatus, ChildJobStatus } from '../types.js';
+import { countSuccessfulDispatchCalls } from './dispatchUtils.js';
+import type { FinalStatus } from '../types.js';
 
 /**
  * Infer job status from observable execution signals.
@@ -18,8 +19,9 @@ export async function inferJobStatus(params: {
   requestId: string;
   error: any;
   telemetry: any;
+  delegatedThisRun?: boolean;
 }): Promise<FinalStatus> {
-  const { requestId, error, telemetry } = params;
+  const { requestId, error, telemetry, delegatedThisRun } = params;
 
   // 1. FAILED: Execution error
   if (error) {
@@ -31,15 +33,13 @@ export async function inferJobStatus(params: {
   }
 
   // 2. DELEGATING: Dispatched children this run
-  const toolCalls = telemetry?.toolCalls || telemetry?.tool_calls || [];
-  const dispatchCalls = toolCalls.filter(
-    (tc: any) => tc.success && (tc.tool === 'dispatch_new_job' || tc.tool === 'dispatch_existing_job')
-  );
-
-  if (dispatchCalls.length > 0) {
+  const dispatchCalls = countSuccessfulDispatchCalls(telemetry);
+  if (delegatedThisRun || dispatchCalls > 0) {
     return {
       status: 'DELEGATING',
-      message: `Dispatched ${dispatchCalls.length} child job(s)`
+      message: dispatchCalls > 0
+        ? `Dispatched ${dispatchCalls} child job(s)`
+        : 'Dispatched child job(s) this run',
     };
   }
 

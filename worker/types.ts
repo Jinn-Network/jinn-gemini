@@ -58,6 +58,7 @@ export interface IpfsMetadata {
 export interface AgentExecutionResult {
   output: string;
   telemetry: any;
+  delegated?: boolean;
   artifacts?: Array<{
     cid: string;
     topic: string;

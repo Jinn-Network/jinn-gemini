@@ -6,6 +6,7 @@ import { Agent } from '../../gemini-agent/agent.js';
 import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
 import { buildEnhancedPrompt } from '../metadata/prompt.js';
 import { setJobContext, clearJobContext, snapshotJobContext, restoreJobContext } from '../metadata/jobContext.js';
+import { didDispatchChild } from '../status/dispatchUtils.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult } from '../types.js';
 
 /**
@@ -60,10 +61,13 @@ export async function runAgentForRequest(
     });
     
     const result = await agent.run(prompt);
+    const telemetry = result.telemetry || {};
+    const delegated = didDispatchChild(telemetry);
     
     return {
       output: result.output || '',
-      telemetry: result.telemetry || {},
+      telemetry,
+      delegated,
     };
   } finally {
     restoreJobContext(prevContext);

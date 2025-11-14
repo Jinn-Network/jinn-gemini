@@ -81,11 +81,57 @@ export class ProcessHarness {
   private context: HarnessContext | null = null;
   private baseEnv: Record<string, string> = {};
   private previousLogDirEnv: string | undefined;
+  private cleanupRegistered = false;
 
   constructor(logDir?: string) {
     this.logDir = logDir ?? path.join(process.cwd(), 'logs', 'test-run', `${Date.now()}-${randomUUID()}`);
     fs.mkdirSync(this.logDir, { recursive: true });
     this.suiteId = `tests-next-${Date.now()}-${process.pid}`;
+    this.registerCleanupHandlers();
+  }
+
+  private registerCleanupHandlers(): void {
+    if (this.cleanupRegistered) return;
+    this.cleanupRegistered = true;
+
+    const cleanup = () => {
+      // Synchronous cleanup for exit handler
+      const procs = [...this.processes].reverse();
+      for (const proc of procs) {
+        const handle = proc.handle;
+        if (handle.pid) {
+          try {
+            handle.kill('SIGKILL');
+          } catch {
+            // Ignore errors
+          }
+        }
+      }
+    };
+
+    const asyncCleanup = async () => {
+      await this.stop().catch(() => {
+        // Ignore errors during cleanup
+      });
+    };
+
+    // Register cleanup on process exit (synchronous only)
+    process.once('exit', cleanup);
+    process.once('SIGINT', async () => {
+      await asyncCleanup();
+      process.exit(1);
+    });
+    process.once('SIGTERM', async () => {
+      await asyncCleanup();
+      process.exit(1);
+    });
+
+    // Also handle uncaught exceptions
+    process.once('uncaughtException', async (err) => {
+      console.error('[process-harness] Uncaught exception, cleaning up:', err);
+      await asyncCleanup();
+      throw err;
+    });
   }
 
   getContext(): HarnessContext {
@@ -283,20 +329,45 @@ export class ProcessHarness {
   async stop(): Promise<void> {
     const procs = [...this.processes].reverse();
     this.processes = [];
-    for (const proc of procs) {
+    
+    // Kill all processes with timeout
+    const killPromises = procs.map(async (proc) => {
       const handle = proc.handle;
-      if (!handle.pid) continue;
+      if (!handle.pid) return;
+      
       try {
-        handle.kill('SIGTERM', { forceKillAfterTimeout: 2000 });
-        await handle;
+        // Try graceful shutdown first
+        handle.kill('SIGTERM', { forceKillAfterTimeout: 3000 });
+        // Wait up to 3 seconds for graceful shutdown
+        await Promise.race([
+          handle,
+          sleep(3000),
+        ]);
       } catch {
-        try {
-          handle.kill('SIGKILL');
-        } catch {
-          // Process already gone.
-        }
+        // Process may have exited already
       }
+      
+      // Force kill if still running
+      try {
+        if (handle.pid && !handle.killed) {
+          handle.kill('SIGKILL');
+          // Give it a moment to die
+          await sleep(500);
+        }
+      } catch {
+        // Process already gone
+      }
+    });
+    
+    await Promise.allSettled(killPromises);
+    
+    // Defensive check: verify ports are actually freed
+    if (this.context) {
+      const { ponderPort, controlPort } = this.context;
+      // Small delay to let OS release ports
+      await sleep(500);
     }
+    
     this.context = null;
     this.baseEnv = {};
     if (this.previousLogDirEnv === undefined) {

@@ -45,6 +45,7 @@ import {
   parseToolText,
   withJobContext,
   waitForJobIndexed,
+  pollGraphQL,
 } from '../../tests/helpers/shared.js';
 import { getOptionalMechModel } from '../../config/index.js';
 
@@ -616,6 +617,32 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] Child SITUATION embedding ready ✓');
 
                   // =========================================================
+                  // SECTION 5: Validate Child Embedding Format
+                  // =========================================================
+
+                  console.log('\n[TEST] SECTION 5: Validating child SITUATION embedding...');
+
+                  // Fetch child SITUATION artifact from IPFS
+                  const childSituation = await fetchSituation(childDelivery, gqlUrl);
+                  expect(childSituation).toBeDefined();
+
+                  const childEmbedding = childSituation.embedding;
+                  expect(childEmbedding).toBeDefined();
+
+                  // MEM-004: Must use text-embedding-3-small with 256 dimensions
+                  expect(childEmbedding.model).toBe('text-embedding-3-small');
+                  expect(childEmbedding.dim).toBe(256);
+                  expect(Array.isArray(childEmbedding.vector)).toBe(true);
+                  expect(childEmbedding.vector.length).toBe(256);
+
+                  // Validate vector values are numeric and in valid range
+                  expect(typeof childEmbedding.vector[0]).toBe('number');
+                  expect(childEmbedding.vector[0]).toBeGreaterThanOrEqual(-1);
+                  expect(childEmbedding.vector[0]).toBeLessThanOrEqual(1);
+
+                  console.log('[TEST] Child embedding format validated ✓');
+
+                  // =========================================================
                   // SECTION 6: Find Grandchild Request Created by Child
                   // =========================================================
 
@@ -740,6 +767,119 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   );
                   expect(grandchildDispatchCalls.length).toBe(0);
                   console.log('[TEST] Grandchild is terminal job (no further delegation) ✓');
+
+                  // =========================================================
+                  // SECTION 8C: Child Auto-Dispatch Validation (JINN-253)
+                  // =========================================================
+
+                  console.log('\n[TEST] SECTION 8C: Validating child auto-dispatch after grandchild completion...');
+
+                  // Query for auto-dispatched requests on the child job definition
+                  const autoDispatchQuery = `
+                    query($childJobId:String!) {
+                      requests(
+                        where: {
+                          jobDefinitionId: $childJobId
+                        },
+                        orderBy: "blockTimestamp",
+                        orderDirection: "desc"
+                      ) {
+                        items {
+                          id
+                          jobDefinitionId
+                          blockTimestamp
+                          sourceJobDefinitionId
+                          sourceRequestId
+                          additionalContext
+                        }
+                      }
+                    }
+                  `;
+
+                  // Wait for auto-dispatched request to appear (child auto-dispatches after grandchild completes)
+                  const autoDispatchedRequest = await pollGraphQL(
+                    gqlUrl,
+                    autoDispatchQuery,
+                    { childJobId: childJob.jobDefId },
+                    (jr) => {
+                      const requests = jr?.data?.requests?.items || [];
+                      // Find auto-dispatched request with Work Protocol message in additionalContext
+                      return requests.find((r: any) => {
+                        if (!r.additionalContext) return false;
+
+                        // Check if additionalContext has Work Protocol message
+                        let hasMessage = false;
+                        if (typeof r.additionalContext === 'object' && r.additionalContext.message) {
+                          hasMessage = true;
+                        } else if (typeof r.additionalContext === 'string') {
+                          try {
+                            const parsed = JSON.parse(r.additionalContext);
+                            hasMessage = parsed.message && (
+                              typeof parsed.message === 'string' ? JSON.parse(parsed.message) : parsed.message
+                            );
+                          } catch {
+                            // Message parsing failed
+                          }
+                        }
+
+                        return hasMessage;
+                      }) || null;
+                    },
+                    { maxAttempts: 25, delayMs: 3000 }
+                  );
+
+                  // WPQ-003: Validate child was auto-dispatched after grandchild completion
+                  expect(autoDispatchedRequest, 'Child should be auto-dispatched after grandchild COMPLETED').toBeTruthy();
+                  expect(autoDispatchedRequest.jobDefinitionId).toBe(childJob.jobDefId);
+                  expect(autoDispatchedRequest.additionalContext).toBeTruthy();
+                  console.log('[TEST] Child auto-dispatched after grandchild completion ✓');
+
+                  // Validate auto-dispatch timing (should occur around the same time as grandchild delivery)
+                  // Note: Auto-dispatch can happen very quickly, sometimes even in the same block or slightly before
+                  // the delivery transaction is fully indexed, so we just verify they're close in time
+                  const autoDispatchTimestamp = typeof autoDispatchedRequest.blockTimestamp === 'string'
+                    ? parseInt(autoDispatchedRequest.blockTimestamp, 10)
+                    : autoDispatchedRequest.blockTimestamp;
+                  const grandchildTimestamp = typeof grandchildDelivery.blockTimestamp === 'string'
+                    ? parseInt(grandchildDelivery.blockTimestamp, 10)
+                    : grandchildDelivery.blockTimestamp;
+                  const timeDiff = Math.abs(autoDispatchTimestamp - grandchildTimestamp);
+                  expect(timeDiff).toBeLessThan(60); // Within 60 seconds is reasonable
+                  console.log(`[TEST] Auto-dispatch timing validated (time difference: ${timeDiff}s) ✓`);
+
+                  // Extract Work Protocol message from additionalContext
+                  const childAdditionalContext = autoDispatchedRequest.additionalContext;
+                  let childWorkProtocolMessage: any = null;
+
+                  if (typeof childAdditionalContext === 'object' && childAdditionalContext.message) {
+                    childWorkProtocolMessage = childAdditionalContext.message;
+                  } else if (typeof childAdditionalContext === 'string') {
+                    try {
+                      const parsed = JSON.parse(childAdditionalContext);
+                      childWorkProtocolMessage =
+                        typeof parsed.message === 'string' ? JSON.parse(parsed.message) : parsed.message;
+                    } catch (error) {
+                      console.error('[TEST] Failed to parse Work Protocol message:', error);
+                    }
+                  }
+
+                  // Validate Work Protocol message structure and content
+                  expect(childWorkProtocolMessage, 'Work Protocol message should be present').toBeTruthy();
+                  expect(typeof childWorkProtocolMessage).toBe('object');
+                  expect(childWorkProtocolMessage.content).toBeDefined();
+                  expect(childWorkProtocolMessage.content).toContain('Child job COMPLETED');
+                  expect(childWorkProtocolMessage.to).toBeDefined();
+                  expect(childWorkProtocolMessage.to).toBe(childJob.jobDefId);
+                  expect(childWorkProtocolMessage.from).toBeDefined();
+                  expect(childWorkProtocolMessage.from).toBe(grandchildRequest.id);
+                  console.log('[TEST] Work Protocol message structure validated ✓');
+
+                  console.log('[TEST] Child auto-dispatch validation complete:', {
+                    autoDispatched: true,
+                    messageFrom: childWorkProtocolMessage.from,
+                    messageTo: childWorkProtocolMessage.to,
+                    messageContentPreview: childWorkProtocolMessage.content.substring(0, 50) + '...'
+                  });
 
                   // =========================================================
                   // SECTION 8A: Grandchild Job Git Lineage Metadata (GWQ-002)

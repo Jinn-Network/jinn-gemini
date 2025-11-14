@@ -218,6 +218,22 @@ describe('inferJobStatus', () => {
 
       expect(result.status).not.toBe('DELEGATING');
     });
+
+    it('uses delegated flag when telemetry is missing', async () => {
+      (getChildJobStatus as any).mockResolvedValue([]);
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry: {},
+        delegatedThisRun: true,
+      });
+
+      expect(result).toEqual({
+        status: 'DELEGATING',
+        message: 'Dispatched child job(s) this run',
+      });
+    });
   });
 
   describe('WAITING status', () => {

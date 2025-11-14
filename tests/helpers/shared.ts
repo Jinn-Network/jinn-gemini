@@ -362,23 +362,58 @@ export async function waitForGraphql(url: string, timeoutMs = 60_000): Promise<v
   }
 }
 
+function readPonderLogTail(maxBytes = 4096): string | null {
+  const logDir = process.env.TESTS_NEXT_LOG_DIR;
+  if (!logDir) return null;
+  try {
+    const logPath = path.join(logDir, 'ponder.log');
+    if (!fs.existsSync(logPath)) {
+      return null;
+    }
+    const stats = fs.statSync(logPath);
+    if (stats.size === 0) return null;
+    const bytesToRead = Math.min(maxBytes, stats.size);
+    const buffer = Buffer.alloc(bytesToRead);
+    const fd = fs.openSync(logPath, 'r');
+    try {
+      fs.readSync(fd, buffer, 0, bytesToRead, stats.size - bytesToRead);
+    } finally {
+      fs.closeSync(fd);
+    }
+    return buffer.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Poll GraphQL with generic query until condition is met
+ * Optional exponential backoff and log dumping on timeout
  */
 export async function pollGraphQL<T>(
   url: string,
   query: string,
   variables: Record<string, any>,
   extractFn: (data: any) => T | null,
-  options: { maxAttempts?: number; delayMs?: number } = {}
+  options: { maxAttempts?: number; delayMs?: number; exponentialBackoff?: boolean } = {}
 ): Promise<T> {
   const maxAttempts = options.maxAttempts ?? 20;
-  const delayMs = options.delayMs ?? 1500;
+  const baseDelayMs = options.delayMs ?? 1500;
+  const useExponentialBackoff = options.exponentialBackoff ?? false;
   let lastResult: any = null;
   let lastError: string | null = null;
 
   for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(r => setTimeout(r, i === 0 ? 0 : delayMs));
+    const delayMs =
+      i === 0
+        ? 0
+        : useExponentialBackoff
+          ? Math.min(baseDelayMs * Math.pow(1.5, i - 1), 10_000)
+          : baseDelayMs;
+    if (delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+
     try {
       const resp = await fetch(url, {
         method: 'POST',
@@ -401,7 +436,8 @@ export async function pollGraphQL<T>(
   let detail = '';
   if (lastResult) {
     try {
-      detail = ` Last result: ${JSON.stringify(lastResult).slice(0, 300)}...`;
+      const resultStr = JSON.stringify(lastResult);
+      detail = ` Last result: ${resultStr.slice(0, 500)}${resultStr.length > 500 ? '...' : ''}`;
     } catch {
       detail = ' Last result: [unserializable]';
     }
@@ -409,7 +445,10 @@ export async function pollGraphQL<T>(
     detail = ` Last error: ${lastError}`;
   }
 
-  throw new Error(`Polling timed out after ${maxAttempts} attempts.${detail}`);
+  const ponderTail = readPonderLogTail();
+  const logDetail = ponderTail ? `\n--- Ponder log tail ---\n${ponderTail}` : '';
+
+  throw new Error(`Polling timed out after ${maxAttempts} attempts.${detail}${logDetail}`);
 }
 
 /**
@@ -439,6 +478,7 @@ export async function waitForRequestIndexed(
   options?: {
     maxAttempts?: number;
     delayMs?: number;
+    exponentialBackoff?: boolean;
     predicate?: (request: {
       id: string;
       jobDefinitionId?: string | null;
@@ -453,6 +493,14 @@ export async function waitForRequestIndexed(
   const query =
     'query($id:String!){ request(id:$id){ id jobDefinitionId ipfsHash sourceRequestId sourceJobDefinitionId jobName enabledTools } }';
   const { predicate, ...pollOptions } = options ?? {};
+
+  const finalOptions = {
+    maxAttempts: pollOptions.maxAttempts ?? 20,
+    delayMs: pollOptions.delayMs ?? 1500,
+    exponentialBackoff: pollOptions.exponentialBackoff ?? false,
+    ...pollOptions,
+  };
+
   return pollGraphQL(
     gqlUrl,
     query,
@@ -467,7 +515,7 @@ export async function waitForRequestIndexed(
       }
       return req;
     },
-    pollOptions
+    finalOptions
   );
 }
 
