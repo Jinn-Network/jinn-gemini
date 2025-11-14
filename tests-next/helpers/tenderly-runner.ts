@@ -15,6 +15,11 @@ export interface TenderlyOptions {
   chainId?: number;
   agentAllowanceEth?: string;
   safeAllowanceEth?: string;
+  /**
+   * Keeps the Tenderly VNet alive (and leaves RPC env vars pointing to it) when the wrapped
+   * function throws, to allow manual debugging.
+   */
+  keepAliveOnFailure?: boolean;
 }
 
 function ensureWalletAddress(): { address: string; privateKey: string } {
@@ -97,14 +102,25 @@ export async function withTenderlyVNet<T>(
     fundedSafe,
   };
 
+  let failed = false;
   try {
     return await fn(ctx);
+  } catch (err) {
+    failed = true;
+    throw err;
   } finally {
-    revertRpcEnv();
-    try {
-      await tenderlyClient.deleteVnet(vnet.id);
-    } catch (error) {
-      console.warn(`[tests-next] Failed to delete VNet ${vnet.id}:`, (error as Error).message);
+    const keepAliveEnv = process.env.KEEP_DEBUG_VNET === '1';
+    const keepAliveRequested = options?.keepAliveOnFailure ?? keepAliveEnv;
+    if (failed && keepAliveRequested) {
+      console.warn('[tenderly-runner] KEEP_DEBUG_VNET active - leaving Tenderly VNet running.');
+      console.warn(`[tenderly-runner] VNet ID: ${vnet.id} | RPC URL: ${rpcUrl}`);
+    } else {
+      revertRpcEnv();
+      try {
+        await tenderlyClient.deleteVnet(vnet.id);
+      } catch (error) {
+        console.warn(`[tests-next] Failed to delete VNet ${vnet.id}:`, (error as Error).message);
+      }
     }
   }
 }

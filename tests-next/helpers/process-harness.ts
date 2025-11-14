@@ -3,7 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { execa, type ExecaChildProcess } from 'execa';
+import { execa } from 'execa';
 import fetch from 'cross-fetch';
 import { findAvailablePort } from './port-utils.js';
 
@@ -13,9 +13,11 @@ interface SpawnOptions {
   stdio?: 'inherit' | 'pipe';
 }
 
+type SpawnedProcess = ReturnType<typeof execa>;
+
 interface HarnessProcess {
   name: string;
-  handle: ExecaChildProcess;
+  handle: SpawnedProcess;
 }
 
 export interface HarnessOptions {
@@ -25,6 +27,11 @@ export interface HarnessOptions {
   workerArgs?: string[];
   env?: Record<string, string>;
   logDir?: string;
+  /**
+   * When true (or when KEEP_DEBUG_PROCESSES=1), the harness processes will remain
+   * running if the wrapped test fails so we can inspect state manually.
+   */
+  keepAliveOnFailure?: boolean;
 }
 
 export interface HarnessContext {
@@ -82,6 +89,7 @@ export class ProcessHarness {
   private baseEnv: Record<string, string> = {};
   private previousLogDirEnv: string | undefined;
   private cleanupRegistered = false;
+  private keepAliveMode = false;
 
   constructor(logDir?: string) {
     this.logDir = logDir ?? path.join(process.cwd(), 'logs', 'test-run', `${Date.now()}-${randomUUID()}`);
@@ -146,16 +154,18 @@ export class ProcessHarness {
     command: string,
     args: string[],
     options?: SpawnOptions
-  ): ExecaChildProcess {
+  ): SpawnedProcess {
     const logPath = path.join(this.logDir, `${name}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
     logStream.write(`[${new Date().toISOString()}] ${command} ${args.join(' ')}\n`);
 
+    const detach = this.keepAliveMode;
     const handle = execa(command, args, {
       cwd: options?.cwd ?? process.cwd(),
       env: { ...process.env, ...this.baseEnv, ...options?.env },
       stdio: options?.stdio ?? 'pipe',
-      cleanup: true,
+      cleanup: !detach,
+      detached: detach,
       forceKillAfterTimeout: 2000,
     });
 
@@ -173,6 +183,10 @@ export class ProcessHarness {
       // Swallow errors; they will propagate when awaited explicitly.
     });
 
+    if (detach) {
+      handle.unref();
+    }
+
     this.processes.push({ name, handle });
     return handle;
   }
@@ -181,6 +195,8 @@ export class ProcessHarness {
     if (this.context) return this.context;
 
     this.baseEnv = options.env ?? {};
+    this.keepAliveMode =
+      options.keepAliveOnFailure ?? process.env.KEEP_DEBUG_PROCESSES === '1';
 
     const ponderCacheDir =
       process.env.PONDER_DATABASE_DIR ??
@@ -214,7 +230,6 @@ export class ProcessHarness {
       gqlUrl,
       controlUrl,
       logDir: this.logDir,
-      ponderCacheDir,
     };
 
     process.env.PONDER_PORT = String(ponderPort);
@@ -337,7 +352,7 @@ export class ProcessHarness {
       
       try {
         // Try graceful shutdown first
-        handle.kill('SIGTERM', { forceKillAfterTimeout: 3000 });
+        handle.kill('SIGTERM');
         // Wait up to 3 seconds for graceful shutdown
         await Promise.race([
           handle,
@@ -383,10 +398,33 @@ export async function withProcessHarness<T>(
   fn: (ctx: HarnessContext, harness: ProcessHarness) => Promise<T>
 ): Promise<T> {
   const harness = new ProcessHarness(options.logDir);
+  let failed = false;
   try {
     const ctx = await harness.start(options);
     return await fn(ctx, harness);
+  } catch (err) {
+    failed = true;
+    throw err;
   } finally {
-    await harness.stop();
+    const keepAliveEnv = process.env.KEEP_DEBUG_PROCESSES === '1';
+    const keepAliveRequested = options.keepAliveOnFailure ?? keepAliveEnv;
+    if (failed && keepAliveRequested) {
+      console.warn(
+        '[process-harness] KEEP_DEBUG_PROCESSES active - leaving harness running for manual inspection.'
+      );
+      let ctx: HarnessContext | null = null;
+      try {
+        ctx = harness.getContext();
+      } catch {
+        ctx = null;
+      }
+      if (ctx) {
+        console.warn(
+          `[process-harness] Ponder GraphQL: ${ctx.gqlUrl} | Control API: ${ctx.controlUrl} | Logs: ${ctx.logDir}`
+        );
+      }
+    } else {
+      await harness.stop();
+    }
   }
 }

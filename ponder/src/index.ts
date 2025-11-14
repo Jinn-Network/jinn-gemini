@@ -209,35 +209,45 @@ ponder.on(
       const digestHex = String(dataHex).replace(/^0x/, '').toLowerCase();
       const { cidHex: ipfsHash, cidBase32 } = buildRawCidFromDigest(digestHex);
       
+      logger.info({ requestId: id, ipfsHash, cidBase32, txHash }, "Processing MarketplaceRequest - pre-seeding request row");
+      
       // Pre-seed request row immediately with minimal fields available from chain event
       // This ensures the request exists in DB before expensive IPFS fetch completes,
       // preventing Deliver events from hitting null constraint errors
-      await repo.upsert({
-        id,
-        create: {
-          mech,
-          sender,
-          workstreamId: id, // Temporary: will be recomputed after metadata fetch if sourceRequestId exists
-          transactionHash: txHash,
-          blockNumber,
-          blockTimestamp,
-          ipfsHash,
-          delivered: false,
-        },
-        update: {
-          // Don't overwrite existing fields during pre-seed
-        },
-      });
+      try {
+        await repo.upsert({
+          id,
+          create: {
+            mech,
+            sender,
+            workstreamId: id, // Temporary: will be recomputed after metadata fetch if sourceRequestId exists
+            transactionHash: txHash,
+            blockNumber,
+            blockTimestamp,
+            ipfsHash,
+            delivered: false,
+          },
+          update: {
+            // Don't overwrite existing fields during pre-seed
+          },
+        });
+        logger.info({ requestId: id }, "Pre-seed upsert completed successfully");
+      } catch (upsertError: any) {
+        logger.error({ requestId: id, error: serializeError(upsertError) }, "Pre-seed upsert failed");
+        throw upsertError;
+      }
       
       // Now fetch IPFS metadata (expensive operation)
       // Wrap in try-catch to ensure we always complete the enriched update,
       // even if IPFS fetch fails (though it should not fail in normal operation)
       let content: any = null;
       try {
+        logger.info({ requestId: id, cidBase32 }, "Fetching IPFS metadata");
         content = await fetchRequestMetadata(cidBase32);
         if (!content || typeof content !== "object") {
           throw new Error(`IPFS payload for request ${id} is empty or malformed`);
         }
+        logger.info({ requestId: id, hasJobName: !!content.jobName, hasJobDefinitionId: !!content.jobDefinitionId }, "IPFS metadata fetched successfully");
       } catch (ipfsError: any) {
         // If IPFS fetch fails, log error but don't fail the entire handler
         // The pre-seeded row exists, so Deliver events won't hit null constraints
@@ -346,38 +356,45 @@ ponder.on(
       // Update the pre-seeded request row with enriched metadata
       // The create path should never execute here since we pre-seeded above,
       // but include it as a safety fallback
-      await repo.upsert({
-        id,
-        create: {
-          mech,
-          sender,
-          workstreamId,
-          jobDefinitionId: jobDefinitionId,
-          sourceRequestId: sourceRequestId,
-          sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
-          requestData: dataHex || undefined,
-          ipfsHash,
-          transactionHash: txHash,
-          blockNumber,
-          blockTimestamp,
-          delivered: false,
-          jobName,
-          enabledTools,
-          additionalContext: contextToStore,
-        },
-        update: {
-          // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
-          workstreamId,
-          jobDefinitionId: jobDefinitionId,
-          sourceRequestId: sourceRequestId,
-          sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
-          requestData: dataHex || undefined,
-          jobName,
-          enabledTools,
-          additionalContext: contextToStore,
-          // intentionally do not overwrite delivered, mech, sender, blockNumber, blockTimestamp, transactionHash here
-        },
-      });
+      try {
+        logger.info({ requestId: id, jobName, jobDefinitionId, workstreamId }, "Updating request row with enriched metadata");
+        await repo.upsert({
+          id,
+          create: {
+            mech,
+            sender,
+            workstreamId,
+            jobDefinitionId: jobDefinitionId,
+            sourceRequestId: sourceRequestId,
+            sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
+            requestData: dataHex || undefined,
+            ipfsHash,
+            transactionHash: txHash,
+            blockNumber,
+            blockTimestamp,
+            delivered: false,
+            jobName,
+            enabledTools,
+            additionalContext: contextToStore,
+          },
+          update: {
+            // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
+            workstreamId,
+            jobDefinitionId: jobDefinitionId,
+            sourceRequestId: sourceRequestId,
+            sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
+            requestData: dataHex || undefined,
+            jobName,
+            enabledTools,
+            additionalContext: contextToStore,
+            // intentionally do not overwrite delivered, mech, sender, blockNumber, blockTimestamp, transactionHash here
+          },
+        });
+        logger.info({ requestId: id }, "Enriched update completed successfully");
+      } catch (enrichError: any) {
+        logger.error({ requestId: id, error: serializeError(enrichError) }, "Enriched update failed");
+        throw enrichError;
+      }
 
       // Index message if present
       if (messageRepo && messageContent) {

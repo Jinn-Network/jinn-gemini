@@ -310,8 +310,9 @@ function isRealtimeStatus(value: any): boolean {
 
     // Ponder's actual structure: { "base": { "ready": true, "block": {...} } }
     // Check if this is a network object with a `ready` field
-    if (typeof value.ready === 'boolean') {
-      return value.ready === true;
+    const readyField = (value as Record<string, any>).ready;
+    if (typeof readyField === 'boolean') {
+      return readyField === true;
     }
 
     // Ponder exposes `networks: { [name]: { status: 'historical' | 'realtime' } }`
@@ -324,11 +325,15 @@ function isRealtimeStatus(value: any): boolean {
     const objectValues = Object.values(value);
     if (objectValues.length > 0) {
       // If all values are objects with `ready` fields, check them
-      const allHaveReady = objectValues.every(
-        (item) => typeof item === 'object' && item !== null && typeof item.ready === 'boolean'
-      );
+      const allHaveReady = objectValues.every((item) => {
+        if (typeof item !== 'object' || item === null) return false;
+        const ready = (item as Record<string, any>).ready;
+        return typeof ready === 'boolean';
+      });
       if (allHaveReady) {
-        return objectValues.every((item: any) => item.ready === true);
+        return objectValues.every(
+          (item: any) => (item as Record<string, any>).ready === true
+        );
       }
       // Otherwise recurse
       return objectValues.every((item) => isRealtimeStatus(item));
@@ -383,6 +388,75 @@ export async function waitForPonderRealtime(
   }
 
   throw lastError ?? new Error(`Timeout waiting for Ponder to reach realtime status (${timeoutMs}ms)`);
+}
+
+function readBlockNumber(entry: any): number | null {
+  if (!entry || typeof entry !== 'object') return null;
+  const blockInfo = (entry as Record<string, any>).block;
+  if (blockInfo && typeof blockInfo === 'object') {
+    const num = blockInfo.number;
+    if (typeof num === 'number') return num;
+    if (typeof num === 'string') {
+      const parsed = Number(num);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+  }
+  for (const value of Object.values(entry as Record<string, any>)) {
+    const nested = readBlockNumber(value);
+    if (nested !== null) return nested;
+  }
+  return null;
+}
+
+function extractBlockNumberFromStatus(status: any, networkName?: string): number | null {
+  if (!status || typeof status !== 'object') return null;
+  const source =
+    (networkName && (status as Record<string, any>)[networkName]) || status;
+  return readBlockNumber(source);
+}
+
+export async function waitForPonderBlock(
+  gqlUrl: string,
+  targetBlockNumber: number,
+  options?: { timeoutMs?: number; pollIntervalMs?: number; networkName?: string }
+): Promise<void> {
+  const timeoutMs = options?.timeoutMs ?? 60_000;
+  const pollIntervalMs = options?.pollIntervalMs ?? 1_000;
+  const networkName = options?.networkName;
+  const start = Date.now();
+  let lastObserved: number | null = null;
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const result = await fetch(gqlUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: '{ _meta { status } }',
+        }),
+      });
+      if (result.ok) {
+        const data = await result.json();
+        const status = data?.data?._meta?.status;
+        const block = extractBlockNumberFromStatus(status, networkName);
+        if (typeof block === 'number') {
+          lastObserved = block;
+          if (block >= targetBlockNumber) {
+            return;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    await sleep(pollIntervalMs);
+  }
+
+  throw new Error(
+    `Timeout waiting for Ponder to index block ${targetBlockNumber}. Last observed block: ${
+      lastObserved ?? 'unknown'
+    }`
+  );
 }
 
 /**

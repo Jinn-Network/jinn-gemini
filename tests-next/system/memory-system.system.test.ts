@@ -33,6 +33,7 @@ import {
   waitForChildRequest,
   waitForArtifactByType,
   waitForPonderRealtime,
+  waitForPonderBlock,
 } from '../helpers/ponder-waiters.js';
 import { getRequest } from '../helpers/ponder-queries.js';
 import {
@@ -75,6 +76,17 @@ async function waitForTransactionReceipt(
     await new Promise(resolve => setTimeout(resolve, delayMs));
   }
   throw new Error(`Timed out waiting for transaction receipt ${txHash}`);
+}
+
+function normalizeBlockNumber(blockNumber?: string | number | null): number | null {
+  if (typeof blockNumber === 'number') {
+    return Number.isNaN(blockNumber) ? null : blockNumber;
+  }
+  if (typeof blockNumber === 'string' && blockNumber.trim().length > 0) {
+    const parsed = Number(blockNumber);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
 }
 
 // =============================================================================
@@ -317,8 +329,13 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                     parentJob.dispatchResult?.data?.transaction_hash ??
                     parentJob.dispatchResult?.data?.transactionHash ??
                     null;
+                  let parentBlockNumber: number | null = null;
                   if (parentTxHash) {
-                    await waitForTransactionReceipt(tenderlyCtx.rpcUrl, parentTxHash);
+                    const parentReceipt = await waitForTransactionReceipt(tenderlyCtx.rpcUrl, parentTxHash);
+                    parentBlockNumber = normalizeBlockNumber(parentReceipt?.blockNumber);
+                    if (parentBlockNumber !== null) {
+                      await waitForPonderBlock(gqlUrl, parentBlockNumber, { timeoutMs: 120000 });
+                    }
                   }
 
                   await waitForRequestIndexed(gqlUrl, parentJob.requestId, {
@@ -434,7 +451,11 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                     childJob.dispatchResult?.data?.transactionHash ??
                     null;
                   if (childTxHash) {
-                    await waitForTransactionReceipt(tenderlyCtx.rpcUrl, childTxHash);
+                    const childReceipt = await waitForTransactionReceipt(tenderlyCtx.rpcUrl, childTxHash);
+                    const childBlockNumber = normalizeBlockNumber(childReceipt?.blockNumber);
+                    if (childBlockNumber !== null) {
+                      await waitForPonderBlock(gqlUrl, childBlockNumber, { timeoutMs: 120000 });
+                    }
                   }
                   console.log('[TEST] Created child job:', requestId);
 
