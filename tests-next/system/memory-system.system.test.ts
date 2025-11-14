@@ -10,11 +10,13 @@
  * - Vector search and discovery
  * - Ponder indexing of both SITUATION and MEMORY artifacts
  * - Request metadata completeness validation (JINN-249)
+ * - Execution trace validation: structure and tool calls (JINN-252)
  *
- * Coverage: 14 requirements (MEM-001 to MEM-010, IDQ-001, LCQ-001, GWQ-001/002), ~115 assertions
+ * Coverage: 15 requirements (MEM-001 to MEM-010, IDQ-001, LCQ-001, GWQ-001/002, EXQ-007), ~120+ assertions
  * Tests both memory pathways: semantic (SITUATION) and tagged (MEMORY)
  * Tests git workflow metadata: branch isolation and lineage preservation
  * Tests request metadata completeness: IPFS hashes, addresses, hierarchy, temporal data
+ * Tests execution trace: structure, tool calls, result validation
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -610,6 +612,36 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Child SITUATION artifact indexed:', childSituationArtifact.cid);
 
+                  // JINN-252: Validate child execution trace structure
+                  console.log('\n[TEST] SECTION 5: Validating child execution trace...');
+
+                  // Re-fetch child SITUATION to validate trace (already fetched in SECTION 4B as childDeliverySituation)
+                  const childTrace = childDeliverySituation!.execution?.trace || [];
+                  expect(Array.isArray(childTrace)).toBe(true); // Assert 78
+                  expect(childTrace.length).toBeGreaterThan(0); // Assert 79
+
+                  // Validate first trace entry structure
+                  const childFirstTraceEntry = childTrace[0];
+                  expect(childFirstTraceEntry).toBeDefined(); // Assert 80
+                  expect(typeof childFirstTraceEntry.tool).toBe('string'); // Assert 81
+                  expect(typeof childFirstTraceEntry.args).toBe('string'); // Assert 82
+                  expect(typeof childFirstTraceEntry.result_summary).toBe('string'); // Assert 83
+
+                  // JINN-252: Validate expected tools were called by child
+                  const childToolNames = childTrace.map(t => t.tool);
+                  expect(childToolNames).toContain('create_artifact'); // Assert 84 - Child should create analysis artifact
+                  expect(childToolNames).toContain('dispatch_new_job'); // Assert 85 - Child should dispatch grandchild
+                  console.log(`[TEST] Child expected tool calls present: ${[...new Set(childToolNames)].join(', ')} ✓`);
+
+                  // JINN-252: Validate all trace entries have complete structure
+                  childTrace.forEach((entry, idx) => {
+                    expect(entry.tool).toBeTruthy(); // Assert 86
+                    expect(entry.args).toBeDefined(); // Assert 87
+                    expect(entry.result_summary).toBeDefined(); // Assert 88
+                  });
+
+                  console.log('[TEST] Child execution trace validated ✓');
+
                   // Give Ponder a bit more time to fully index the embedding
                   console.log('[TEST] Allowing additional time for embedding indexing...');
                   await new Promise(resolve => setTimeout(resolve, 5000));
@@ -1006,13 +1038,25 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   expect(typeof firstTraceEntry.args).toBe('string'); // Assert 43
                   expect(typeof firstTraceEntry.result_summary).toBe('string'); // Assert 44
 
+                  // JINN-252: Validate expected tools were called by grandchild
+                  const toolNames = trace.map(t => t.tool);
+                  expect(toolNames).toContain('create_artifact'); // Assert 45 - Grandchild should call this
+                  console.log(`[TEST] Expected tool calls present: ${[...new Set(toolNames)].join(', ')} ✓`);
+
+                  // JINN-252: Validate all trace entries have complete structure
+                  trace.forEach((entry, idx) => {
+                    expect(entry.tool).toBeTruthy(); // Assert 46
+                    expect(entry.args).toBeDefined(); // Assert 47
+                    expect(entry.result_summary).toBeDefined(); // Assert 48
+                  });
+
                   console.log('[TEST] Execution trace validated ✓');
 
                   // EXQ-004: Validate model selection from job metadata
                   // Note: Grandchild uses the runtime default model (no explicit override)
                   const expectedGrandchildModel =
                     getOptionalMechModel?.() ?? process.env.MECH_MODEL ?? 'gemini-2.5-flash';
-                  expect(situation.job.model).toBe(expectedGrandchildModel); // Assert 45
+                  expect(situation.job.model).toBe(expectedGrandchildModel); // Assert 49
                   console.log(`[TEST] Model selection validated (default model = ${expectedGrandchildModel}) ✓`);
 
                   // Validate context section
@@ -1153,10 +1197,11 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('\n[TEST] ✅ Memory system test complete!');
                   console.log('[TEST] Coverage: MEM-001 to MEM-010, ARQ-006, EXQ-004/005/006/007, LCQ-003/004/009, IDQ-001, LCQ-001, GWQ-001/002');
-                  console.log('[TEST] Assertions: ~115 assertions executed (52 memory + 19 git + 44 metadata completeness)');
+                  console.log('[TEST] Assertions: ~120+ assertions executed (52 memory + 19 git + 44 metadata + 11 trace validation)');
                   console.log('[TEST] Recognition: Grandchild successfully found child via similarity search');
                   console.log('[TEST] Lineage: 3-level delegation validated');
                   console.log('[TEST] Metadata: Request metadata completeness validated at all 3 levels (JINN-249)');
+                  console.log('[TEST] Trace: Execution trace structure and tool call validation (JINN-252)');
                 }
               );
             });
