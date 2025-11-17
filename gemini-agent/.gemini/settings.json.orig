@@ -9,7 +9,7 @@
       "includeTools": [
         "list_tools",
         "get_details",
-        "get_job_context",
+        "inspect_situation",
         "dispatch_new_job",
         "dispatch_existing_job",
         "create_artifact",
@@ -21,18 +21,17 @@
         "read_file",
         "search_file_content",
         "glob",
-        "read_many_files",
-        "get_file_contents",
-        "search_code",
-        "list_commits",
-        "finalize_job"
+        "read_many_files"
       ]
     }
   },
-  "excludeTools": [
-    "write_file",
-    "replace",
-    "run_shell_command",
-    "save_memory"
+  "coreTools": [
+    "list_directory",
+    "read_file",
+    "search_file_content",
+    "glob",
+    "web_fetch",
+    "google_web_search",
+    "read_many_files"
   ]
 }

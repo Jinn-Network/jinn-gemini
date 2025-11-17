@@ -230,7 +230,7 @@ export async function dispatchNewJob(args: unknown) {
     const ipfsJsonContents: any[] = [{
       prompt,
       jobName,
-      model: model || 'gemini-2.5-flash',
+      model: model || process.env.MECH_MODEL || 'gemini-2.5-flash',
       enabledTools,
       jobDefinitionId,
       nonce: ensureUuid(),
@@ -282,6 +282,22 @@ export async function dispatchNewJob(args: unknown) {
         env__ENV_LOADED: process.env.__ENV_LOADED,
         env_VITEST: process.env.VITEST,
       });
+
+      // Check wallet balance before transaction
+      try {
+        const { Web3 } = await import('web3');
+        const { Wallet } = await import('ethers');
+        const wallet = new Wallet(privateKey);
+        const web3 = new Web3(process.env.RPC_URL || process.env.MECHX_CHAIN_RPC);
+        const balance = await web3.eth.getBalance(wallet.address);
+        console.error('[dispatch_new_job] Wallet balance check:', {
+          address: wallet.address,
+          balanceWei: balance.toString(),
+          balanceEth: Number(balance) / 1e18
+        });
+      } catch (balErr) {
+        console.error('[dispatch_new_job] Failed to check balance:', balErr);
+      }
 
       console.error('[dispatch_new_job] About to call marketplaceInteract...');
       const result = await marketplaceInteract({

@@ -71,8 +71,6 @@ function resolveOperateHome(): string | null {
   return candidate;
 }
 
-const OPERATE_HOME = resolveOperateHome();
-
 interface ServiceConfig {
   env_variables?: {
     MECH_TO_CONFIG?: {
@@ -92,13 +90,15 @@ interface ServiceConfig {
 
 /**
  * Get the path to the .operate directory
+ * Calls resolveOperateHome() lazily to respect runtime environment variable changes
  */
 function getOperateDir(): string | null {
-  if (OPERATE_HOME && existsSync(OPERATE_HOME)) {
-    return OPERATE_HOME;
+  const operateHome = resolveOperateHome();
+  if (operateHome && existsSync(operateHome)) {
+    return operateHome;
   }
   
-  configLogger.warn({ OPERATE_HOME }, '.operate directory not found at expected location');
+  configLogger.warn({ operateHome }, '.operate directory not found at expected location');
   return null;
 }
 

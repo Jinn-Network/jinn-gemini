@@ -531,17 +531,26 @@ describe('dispatchNewJob', () => {
     });
 
     it('defaults to gemini-2.5-flash model when not specified', async () => {
-      const args = {
-        objective: 'Complete task',
-        context: 'Task needs completion',
-        acceptanceCriteria: 'Task is done',
-        jobName: 'default-model',
-      };
+      const originalModel = process.env.MECH_MODEL;
+      delete process.env.MECH_MODEL;
 
-      await dispatchNewJob(args);
+      try {
+        const args = {
+          objective: 'Complete task',
+          context: 'Task needs completion',
+          acceptanceCriteria: 'Task is done',
+          jobName: 'default-model',
+        };
 
-      const call = (marketplaceInteract as any).mock.calls[0][0];
-      expect(call.ipfsJsonContents[0].model).toBe('gemini-2.5-flash');
+        await dispatchNewJob(args);
+
+        const call = (marketplaceInteract as any).mock.calls[0][0];
+        expect(call.ipfsJsonContents[0].model).toBe('gemini-2.5-flash');
+      } finally {
+        if (originalModel) {
+          process.env.MECH_MODEL = originalModel;
+        }
+      }
     });
 
     it('uses custom model when specified', async () => {

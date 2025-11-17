@@ -23,6 +23,7 @@ export interface TenderlyOptions {
 }
 
 function ensureWalletAddress(): { address: string; privateKey: string } {
+  console.log('[tenderly-runner] ensureWalletAddress called, OPERATE_PROFILE_DIR:', process.env.OPERATE_PROFILE_DIR);
   const pk = getServicePrivateKey();
   if (!pk || pk.trim().length === 0) {
     throw new Error(
@@ -32,6 +33,7 @@ function ensureWalletAddress(): { address: string; privateKey: string } {
   }
   const normalized = pk.startsWith('0x') ? pk : `0x${pk}`;
   const wallet = new Wallet(normalized);
+  console.log('[tenderly-runner] Resolved wallet address:', wallet.address);
   return { address: wallet.address, privateKey: normalized };
 }
 
@@ -81,13 +83,15 @@ export async function withTenderlyVNet<T>(
   const agent = ensureWalletAddress();
   const safeAddress = getServiceSafeAddress();
 
-  const agentAllowance = options?.agentAllowanceEth ?? '10';
+  const agentAllowance = options?.agentAllowanceEth ?? '100';
+  console.log(`[tenderly-runner] Funding agent wallet ${agent.address} with ${agentAllowance} ETH`);
   await tenderlyClient.fundAddress(agent.address, ethToWei(agentAllowance), rpcUrl);
 
   let fundedSafe: string | undefined;
-  const safeAllowance = options?.safeAllowanceEth ?? '20';
+  const safeAllowance = options?.safeAllowanceEth ?? '200';
   if (safeAddress && safeAddress.trim().length > 0) {
     fundedSafe = safeAddress.trim();
+    console.log(`[tenderly-runner] Funding safe wallet ${fundedSafe} with ${safeAllowance} ETH`);
     await tenderlyClient.fundAddress(fundedSafe, ethToWei(safeAllowance), rpcUrl);
   }
 
