@@ -295,6 +295,12 @@ Focus on:
 - **Tool usage patterns:** Which tools were used, in what order, with what parameters?
 - **Deliverable formats:** What artifacts were created? What format worked well?
 
+### System Gotchas
+Common issues encountered in past runs:
+- **CODE_METADATA_REPO_ROOT errors:** For research-only jobs (no code changes), always use \`skipBranch: true\` in dispatch_new_job to avoid git branch creation errors
+- **Transaction not found:** Blockchain RPC transient errors - retry dispatch calls that fail with this error
+- **Duplicate dispatch counting:** System tracks unique job definitions, not total dispatch attempts - retries are normal
+
 ### Output Requirements
 - Respond with **JSON only** (no prose, no Markdown).
 - Use this exact schema:

@@ -47,10 +47,10 @@ export const configLogger = createChildLogger('CONFIG');
 
 const baseAgentLogger = createChildLogger('AGENT');
 export const agentLogger = withHelpers(baseAgentLogger, {
-  // Exception: Uses console.log for subprocess stdout forwarding (per spec: "Subprocess streaming in process managers")
-  // This forwards Gemini CLI output to console with color formatting for operational visibility
+  // Exception: Uses process.stdout.write for subprocess stdout forwarding (per spec: "Subprocess streaming in process managers")
+  // This forwards Gemini CLI output directly to stdout, bypassing pino-pretty to prevent line wrapping of JSON
   output(message: string) {
-    console.log(`\x1b[95m${message}\x1b[0m`);
+    process.stdout.write(`\x1b[95m${message}\x1b[0m\n`);
   },
   thinking(message: string) {
     baseAgentLogger.debug({ agentThinking: true }, message);

@@ -128,12 +128,24 @@ describe('inferJobStatus', () => {
       expect(result.status).toBe('DELEGATING');
     });
 
-    it('infers DELEGATING with multiple dispatch calls', async () => {
+    it('infers DELEGATING with multiple dispatch calls (counts unique job definitions)', async () => {
       const telemetry = {
         toolCalls: [
-          { tool: 'dispatch_new_job', success: true },
-          { tool: 'dispatch_new_job', success: true },
-          { tool: 'dispatch_existing_job', success: true },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-1' } }
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-2' } }
+          },
+          { 
+            tool: 'dispatch_existing_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-3' } }
+          },
         ],
       };
       (getChildJobStatus as any).mockResolvedValue([]);
@@ -154,7 +166,11 @@ describe('inferJobStatus', () => {
       const telemetry = {
         toolCalls: [
           { tool: 'dispatch_new_job', success: false },
-          { tool: 'dispatch_new_job', success: true },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-1' } }
+          },
         ],
       };
       (getChildJobStatus as any).mockResolvedValue([]);
@@ -168,6 +184,96 @@ describe('inferJobStatus', () => {
       expect(result).toEqual({
         status: 'DELEGATING',
         message: 'Dispatched 1 child job(s)',
+      });
+    });
+
+    it('deduplicates retry attempts for same job definition', async () => {
+      // Simulates: 3 successful dispatches for same job (due to retries)
+      // Should count as 1 unique job
+      const telemetry = {
+        toolCalls: [
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-1' } }
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-1' } }  // Same job, retry
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-1' } }  // Same job, retry
+          },
+        ],
+      };
+      (getChildJobStatus as any).mockResolvedValue([]);
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+      });
+
+      expect(result).toEqual({
+        status: 'DELEGATING',
+        message: 'Dispatched 1 child job(s)',
+      });
+    });
+
+    it('counts distinct jobs even with retries', async () => {
+      // Simulates: 3 jobs with retries = 7 total calls, but only 3 unique jobs
+      const telemetry = {
+        toolCalls: [
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-1' } }
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: false  // Failed attempt
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-2' } }
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-2' } }  // Retry
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-3' } }
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-1' } }  // Retry of job-1
+          },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-3' } }  // Retry of job-3
+          },
+        ],
+      };
+      (getChildJobStatus as any).mockResolvedValue([]);
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+      });
+
+      expect(result).toEqual({
+        status: 'DELEGATING',
+        message: 'Dispatched 3 child job(s)',
       });
     });
 

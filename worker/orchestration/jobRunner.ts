@@ -132,10 +132,18 @@ export async function processOnce(
       if (recognition?.promptPrefix) {
         const prefix = recognition.promptPrefix.trim();
         if (prefix.length > 0) {
-          workerLogger.info({ requestId: target.id, prefixLength: prefix.length }, 'Augmented prompt with recognition learnings');
+          const rawLearnings = Array.isArray(recognition.rawLearnings) ? recognition.rawLearnings : [];
+          workerLogger.info({ 
+            requestId: target.id, 
+            prefixLength: prefix.length,
+            learningsCount: rawLearnings.length,
+            similarJobsCount: recognition.similarJobs?.length || 0,
+            promptPreview: prefix.substring(0, 200)
+          }, 'Augmented prompt with recognition learnings');
           telemetry.logCheckpoint('recognition', 'prompt_augmented', {
             prefixLength: prefix.length,
             hasLearnings: !!recognition.learningsMarkdown,
+            learningsCount: rawLearnings.length,
           });
         }
       }

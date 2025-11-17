@@ -37,7 +37,12 @@ const dispatchNewJobParamsBase = z.object({
 export const dispatchNewJobParams = dispatchNewJobParamsBase;
 
 export const dispatchNewJobSchema = {
-  description: `Create or update a job definition and dispatch a marketplace request using a structured JSON blueprint.
+  description: `Create or reuse a job definition and dispatch a new marketplace request using a structured JSON blueprint.
+
+IMPORTANT: This tool ALWAYS posts a new on-chain marketplace request, even if the job definition already exists.
+- If a job definition with the same name exists, it reuses that definition and posts a new request
+- If no definition exists, it creates a new definition and posts a request
+- The updateExisting parameter only controls whether to update the job definition metadata, not whether to dispatch
 
 BLUEPRINT FORMAT (REQUIRED):
 The blueprint must be a JSON string with the following structure:
@@ -60,7 +65,7 @@ PARAMETERS:
 - blueprint: (required) JSON string containing structured assertions array as defined above
 - model: (optional) Gemini model to use (defaults to MECH_MODEL env var or "gemini-2.5-flash")
 - enabledTools: (optional) Array of tool names to enable
-- updateExisting: (optional) If true, update existing job definition with the same name
+- updateExisting: (optional) If true, update existing job definition metadata (default: false, reuses existing)
 - message: (optional) Additional message to include in the job request
 - dependencies: (optional) Array of job definition IDs that must be fully completed before this job can execute
 
@@ -178,23 +183,10 @@ export async function dispatchNewJob(args: unknown) {
       console.warn('dispatch_new_job: subgraph lookup failed', error);
     }
 
-    if (existingJob && !updateExisting) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: existingJob,
-            meta: {
-              ok: true,
-              code: 'JOB_EXISTS',
-              message: 'Job already exists. Set updateExisting=true to reuse or call dispatch_existing_job.',
-            },
-          }),
-        }],
-      };
-    }
-
+    // If job definition exists, reuse its ID and continue to dispatch a new on-chain request
+    // The job definition (blueprint, tools) is reused, but we still create a new marketplace request
     const jobDefinitionId: string = existingJob?.id || ensureUuid();
+    const isReusingDefinition = !!existingJob;
     const context = getCurrentJobContext();
     const lineageContext: Record<string, any> = {};
     if (context.requestId) lineageContext.sourceRequestId = context.requestId;
@@ -416,7 +408,13 @@ export async function dispatchNewJob(args: unknown) {
       return {
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ data: enriched, meta: { ok: true } }),
+          text: JSON.stringify({ 
+            data: enriched, 
+            meta: { 
+              ok: true,
+              ...(isReusingDefinition ? { reusedDefinition: true } : {})
+            } 
+          }),
         }],
       };
     } catch (error: any) {

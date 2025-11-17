@@ -1947,3 +1947,41 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Fix**: For artifact-only jobs (no code metadata), the worker explicitly passes `codeWorkspace: null` to prevent loading external repos
 - **Location**: Applied in `worker/recognition/runRecognition.ts`, `worker/execution/runAgent.ts`, and `worker/reflection/runReflection.ts`
 - **Details**: The agent checks if `codeWorkspace` is `null` or empty string and skips all directory includes (including `CODE_METADATA_REPO_ROOT` env var)
+
+**dispatch_new_job and dispatch_existing_job Behavior:**
+- **Critical**: Both tools ALWAYS post new on-chain marketplace requests, even when job definitions already exist
+- **Job Definition vs Request**: A job definition (blueprint, tools, model) is reusable metadata. Each marketplace request is a separate execution instance.
+- **dispatch_new_job**: Creates OR reuses job definitions, always posts new on-chain request. Sets `meta.reusedDefinition: true` when reusing.
+- **dispatch_existing_job**: Looks up existing definition by ID/name, posts new on-chain request. Returns `NOT_FOUND` error if definition doesn't exist.
+- **Fixed Issue (2025-11-17)**: Previously, `dispatch_new_job` would return early without posting when it found an existing definition, causing child jobs to never be picked up by the worker.
+
+**Recognition Phase JSON Output Corruption (Fixed 2025-11-17):**
+- **Issue**: Recognition agent JSON output was being corrupted with line breaks mid-string when piped through `pino-pretty`
+- **Root Cause**: `agentLogger.output()` used `console.log()`, which sent output through the pino pipeline where `pino-pretty` would wrap long lines
+- **Fix**: Changed to `process.stdout.write()` to bypass pino-pretty and write directly to stdout, preventing JSON corruption
+- **Impact**: Recognition learnings now parse correctly, enabling proper prompt augmentation
+
+**Dispatch Call Counting (Fixed 2025-11-17):**
+- **Issue**: Status inference was counting total dispatch attempts (including retries) instead of unique jobs dispatched
+- **Example**: 3 successful dispatches + 4 retry attempts = "Dispatched 7 child job(s)" (incorrect)
+- **Fix**: Modified `countSuccessfulDispatchCalls()` to track unique `jobDefinitionId` values instead of raw call count
+- **Impact**: Status messages now accurately reflect the number of distinct child jobs created
+
+**Recognition Learning Injection Verification (Enhanced 2025-11-17):**
+- **Enhancement**: Added detailed logging when recognition learnings are injected into execution prompts
+- **New Fields**: `learningsCount`, `similarJobsCount`, `promptPreview` (first 200 chars)
+- **Purpose**: Enables verification that recognition phase insights are actually being used by the execution agent
+- **Location**: `worker/orchestration/jobRunner.ts` recognition phase
+
+**System Gotchas for Recognition:**
+- **CODE_METADATA_REPO_ROOT errors**: For research-only jobs (no code changes), always use `skipBranch: true` in dispatch_new_job
+- **Transaction not found**: Blockchain RPC transient errors - retry dispatch calls that fail with this error
+- **Duplicate dispatch counting**: System tracks unique job definitions, not total attempts - retries are expected and normal
+
+**Recognition Quality Considerations (2025-11-17):**
+- **Issue**: Recognition currently learns from individual job success without considering workstream-level completion
+- **Impact**: Agent may learn patterns from jobs that "succeeded" locally but were part of failed/abandoned workstreams
+- **Example**: Learning to use `blueprints/` directory from past jobs whose workstreams never completed
+- **Status**: Known limitation. Vector search does not filter for workstream success or root job completion
+- **Tracking**: See `docs/implementation/RECOGNITION-QUALITY-PROBLEM.md` for detailed analysis and proposed solutions
+- **Mitigation**: Recognition learnings should be treated as suggestions, not mandates. Agents retain autonomy to ignore patterns that seem inefficient for their specific context.

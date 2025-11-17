@@ -19,16 +19,29 @@ function getToolCalls(telemetry: any): any[] {
 
 export function countSuccessfulDispatchCalls(telemetry: any): number {
   const toolCalls = getToolCalls(telemetry);
-  return toolCalls.reduce((count, call) => {
+  // Track unique job definition IDs to avoid counting retries
+  const uniqueJobDefs = new Set<string>();
+  
+  toolCalls.forEach(call => {
     if (!call || !call.success) {
-      return count;
+      return;
     }
     const toolName = typeof call.tool === 'string' ? call.tool : '';
     if (toolName && DISPATCH_TOOL_NAMES.has(toolName)) {
-      return count + 1;
+      // Extract job definition ID from result
+      const jobDefId = call.result?.data?.jobDefinitionId || 
+                       call.result?.data?.id ||
+                       call.result?.jobDefinitionId;
+      if (jobDefId) {
+        uniqueJobDefs.add(jobDefId);
+      } else {
+        // Fallback: count as unique if no ID (shouldn't happen in practice)
+        uniqueJobDefs.add(`unknown-${Math.random()}`);
+      }
     }
-    return count;
-  }, 0);
+  });
+  
+  return uniqueJobDefs.size;
 }
 
 export function didDispatchChild(telemetry: any): boolean {
