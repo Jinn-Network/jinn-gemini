@@ -17,6 +17,19 @@ interface RecognitionData {
   timestamp?: string
   initialSituation?: Record<string, unknown>
   embeddingStatus?: 'success' | 'failed' | 'unknown'
+  progressCheckpoint?: {
+    checkpointSummary: string
+    workstreamJobs?: Array<{
+      requestId: string
+      jobName?: string
+      blockTimestamp: string
+      deliverySummary?: string
+    }>
+    stats?: {
+      totalJobs: number
+      completedJobs: number
+    }
+  }
 }
 
 export interface RecognitionPhaseCardProps {
@@ -33,6 +46,32 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Workstream Progress Summary */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <h4 className="text-sm font-semibold text-gray-700">Workstream Progress Summary</h4>
+            {recognitionData?.progressCheckpoint?.stats && (
+              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
+                {recognitionData.progressCheckpoint.stats.completedJobs} completed
+              </Badge>
+            )}
+          </div>
+          {recognitionData?.progressCheckpoint?.checkpointSummary ? (
+            <>
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200">
+                <div className="prose prose-sm max-w-none text-sm">
+                  <ReactMarkdown>{recognitionData.progressCheckpoint.checkpointSummary}</ReactMarkdown>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                AI-generated summary of all completed work in this workstream, tailored for relevance to the current job.
+              </div>
+            </>
+          ) : (
+            <div className="text-sm text-gray-500 italic">No workstream progress available</div>
+          )}
+        </div>
+
         {/* Initial Situation Section */}
         <div>
           <div className="flex items-center gap-2 mb-2">

@@ -425,19 +425,23 @@ function RequestContentDisplay({ cid }: { cid: string }) {
     })
   }, [cid])
 
-  if (loading) return <div className="text-sm text-gray-500">Loading prompt...</div>
+  if (loading) return <div className="text-sm text-gray-500">Loading blueprint...</div>
   if (error) return <div className="text-sm text-red-600">Error loading: {error}</div>
   if (!parsed) return null
 
+  // Blueprint is the primary job specification (new architecture)
+  // Fall back to prompt for backward compatibility with legacy jobs
+  const blueprint = (parsed.blueprint || parsed.prompt) as string | undefined
+
   return (
     <div className="space-y-4">
-      {/* Prompt Display - Only show the prompt field */}
-      {parsed.prompt ? (
+      {/* Blueprint Display */}
+      {blueprint ? (
         <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
-          <ReactMarkdown>{parsed.prompt as string}</ReactMarkdown>
+          <ReactMarkdown>{blueprint}</ReactMarkdown>
         </div>
       ) : (
-        <p className="text-gray-500">No prompt found in request</p>
+        <p className="text-gray-500">No blueprint found in request</p>
       )}
 
       {/* Raw JSON Toggle for debugging */}
@@ -657,9 +661,10 @@ function getFieldLabel(fieldName: string, collectionName: CollectionName): strin
 
     // Request/Delivery content fields
     deliveryIpfsHash: 'Execution Results',
-    ipfsHash: collectionName === 'deliveries' ? 'Execution Results' : 'Prompt',
-    requestIpfsHash: 'Prompt',
-    promptContent: 'Prompt',
+    ipfsHash: collectionName === 'deliveries' ? 'Execution Results' : 'Blueprint',
+    requestIpfsHash: 'Blueprint',
+    promptContent: 'Blueprint',  // Legacy field
+    blueprint: 'Blueprint',
 
     // Parent/Source relationships (renamed from Parent to Source)
     parentJobDefinitionId: 'Source Job Definition',

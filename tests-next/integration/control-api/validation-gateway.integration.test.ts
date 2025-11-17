@@ -167,9 +167,14 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
 
             // 2. Create a real test job via MCP (dispatches to blockchain)
             const { requestId, jobDefId } = await createTestJob({
-              objective: 'Validate Control API allows writes for valid requests',
-              context: 'Integration test for Control API validation gateway',
-              acceptanceCriteria: 'Control API accepts claim and writes to Supabase'
+              blueprint: JSON.stringify({
+                assertions: [{
+                  id: 'TEST-001',
+                  assertion: 'Validate Control API allows writes for valid requests',
+                  examples: { do: ['Test validation gateway'], dont: ['Skip validation'] },
+                  commentary: 'Integration test for Control API validation gateway - Control API accepts claim and writes to Supabase'
+                }]
+              })
             });
 
             console.log(`[Test 2] Created test job: ${jobDefId}, request: ${requestId}`);
@@ -236,9 +241,14 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
 
             // 2. Create a real test job via MCP
             const { requestId, jobDefId } = await createTestJob({
-              objective: 'Test idempotent claims in Control API',
-              context: 'Integration test for idempotency handling',
-              acceptanceCriteria: 'Same request can be claimed multiple times without duplicates'
+              blueprint: JSON.stringify({
+                assertions: [{
+                  id: 'TEST-002',
+                  assertion: 'Test idempotent claims in Control API',
+                  examples: { do: ['Test idempotency'], dont: ['Create duplicates'] },
+                  commentary: 'Integration test for idempotency handling - Same request can be claimed multiple times without duplicates'
+                }]
+              })
             });
 
             console.log(`[Test 3] Created test job: ${jobDefId}, request: ${requestId}`);
@@ -307,15 +317,20 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
 
             // 2. Create a real test job via MCP
             const { requestId, jobDefId } = await createTestJob({
-              objective: 'Test Control API lineage field injection',
-              context: 'Integration test for automatic lineage tracking',
-              acceptanceCriteria: 'Control API injects request_id and worker_address automatically'
+              blueprint: JSON.stringify({
+                assertions: [{
+                  id: 'TEST-003',
+                  assertion: 'Test Control API lineage field injection',
+                  examples: { do: ['Test lineage tracking'], dont: ['Skip lineage fields'] },
+                  commentary: 'Integration test for automatic lineage tracking - Control API injects request_id and worker_address automatically'
+                }]
+              })
             });
 
             console.log(`[Test 4] Created test job: ${jobDefId}, request: ${requestId}`);
 
-            // 3. Wait for Ponder to index the request
-            await waitForRequestIndexed(ctx.gqlUrl, requestId, { timeoutMs: 45000 });
+            // 3. Wait for Ponder to index the request (increased timeout for 4th test due to cumulative load)
+            await waitForRequestIndexed(ctx.gqlUrl, requestId, { timeoutMs: 60000 });
 
             // 4. Call Control API - NOTE: We do NOT pass request_id or worker_address as parameters
             const result = await callControlApi(

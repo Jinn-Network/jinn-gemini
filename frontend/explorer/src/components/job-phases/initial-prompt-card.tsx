@@ -10,7 +10,9 @@ interface InitialPromptCardProps {
   enabledTools?: string[]
 }
 
-interface PromptData {
+interface BlueprintData {
+  blueprint?: string
+  // Legacy structured fields for backward compatibility
   objective?: string
   context?: string
   acceptanceCriteria?: string
@@ -19,35 +21,35 @@ interface PromptData {
 }
 
 export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPromptCardProps) {
-  const [promptData, setPromptData] = useState<PromptData | null>(null)
+  const [blueprintData, setBlueprintData] = useState<BlueprintData | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!ipfsHash) return
 
-    const fetchPrompt = async () => {
+    const fetchBlueprint = async () => {
       try {
         setLoading(true)
         const response = await fetch(`https://gateway.autonolas.tech/ipfs/${ipfsHash}`)
         if (response.ok) {
           const data = await response.json()
-          setPromptData(data)
+          setBlueprintData(data)
         }
       } catch (error) {
-        console.error('Error fetching prompt:', error)
+        console.error('Error fetching blueprint:', error)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchPrompt()
+    fetchBlueprint()
   }, [ipfsHash])
 
   return (
     <Card className="border-blue-200 bg-blue-50/50">
       <CardHeader>
         <CardTitle className="text-xl flex items-center gap-2">
-          📝 Initial Prompt
+          📝 Initial Blueprint
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -58,37 +60,52 @@ export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPr
         )}
 
         {loading && (
-          <div className="text-sm text-gray-500">Loading prompt details...</div>
+          <div className="text-sm text-gray-500">Loading blueprint details...</div>
         )}
 
-        {promptData && (
+        {blueprintData && (
           <div className="space-y-3">
-            {promptData.objective && (
+            {/* Show full blueprint if available (new architecture) */}
+            {blueprintData.blueprint && (
               <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-1">Objective</h4>
-                <p className="text-sm text-gray-900 bg-white p-3 rounded border">{promptData.objective}</p>
+                <h4 className="text-sm font-semibold text-gray-700 mb-1">Blueprint</h4>
+                <div className="text-sm text-gray-900 bg-white p-3 rounded border whitespace-pre-wrap font-mono text-xs">
+                  {blueprintData.blueprint}
+                </div>
               </div>
             )}
 
-            {promptData.context && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-1">Context</h4>
-                <p className="text-sm text-gray-700 bg-white p-3 rounded border whitespace-pre-wrap">{promptData.context}</p>
-              </div>
-            )}
+            {/* Otherwise show legacy structured fields */}
+            {!blueprintData.blueprint && (
+              <>
+                {blueprintData.objective && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Objective</h4>
+                    <p className="text-sm text-gray-900 bg-white p-3 rounded border">{blueprintData.objective}</p>
+                  </div>
+                )}
 
-            {promptData.acceptanceCriteria && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-1">Acceptance Criteria</h4>
-                <p className="text-sm text-gray-700 bg-white p-3 rounded border whitespace-pre-wrap">{promptData.acceptanceCriteria}</p>
-              </div>
-            )}
+                {blueprintData.context && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Context</h4>
+                    <p className="text-sm text-gray-700 bg-white p-3 rounded border whitespace-pre-wrap">{blueprintData.context}</p>
+                  </div>
+                )}
 
-            {promptData.deliverables && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-1">Deliverables</h4>
-                <p className="text-sm text-gray-700 bg-white p-3 rounded border">{promptData.deliverables}</p>
-              </div>
+                {blueprintData.acceptanceCriteria && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Acceptance Criteria</h4>
+                    <p className="text-sm text-gray-700 bg-white p-3 rounded border whitespace-pre-wrap">{blueprintData.acceptanceCriteria}</p>
+                  </div>
+                )}
+
+                {blueprintData.deliverables && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Deliverables</h4>
+                    <p className="text-sm text-gray-700 bg-white p-3 rounded border">{blueprintData.deliverables}</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -106,9 +123,9 @@ export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPr
           </div>
         )}
 
-        {!loading && !promptData && ipfsHash && (
+        {!loading && !blueprintData && ipfsHash && (
           <div className="text-sm text-gray-500">
-            Prompt details not available from IPFS
+            Blueprint details not available from IPFS
           </div>
         )}
       </CardContent>

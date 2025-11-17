@@ -1,10 +1,79 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
+import { getDependencyInfo, DependencyInfo } from '@/lib/subgraph'
 
 interface RequestsTableProps {
   records: SubgraphRecord[]
+}
+
+// Component to display dependency count with tooltip
+function DependencyCell({ dependencies }: { dependencies?: string[] }) {
+  const [dependencyDetails, setDependencyDetails] = useState<DependencyInfo[]>([])
+  const [isHovering, setIsHovering] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    if (isHovering && dependencies && dependencies.length > 0 && dependencyDetails.length === 0) {
+      setIsLoading(true)
+      getDependencyInfo(dependencies)
+        .then(setDependencyDetails)
+        .catch(console.error)
+        .finally(() => setIsLoading(false))
+    }
+  }, [isHovering, dependencies, dependencyDetails.length])
+
+  if (!dependencies || dependencies.length === 0) {
+    return <span className="text-gray-400 text-sm">-</span>
+  }
+
+  const displayCount = dependencies.length
+
+  return (
+    <div 
+      className="relative inline-block"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      <span className="text-sm font-medium text-gray-700 cursor-help">
+        {displayCount}
+      </span>
+      
+      {isHovering && (
+        <div className="absolute z-50 left-0 top-full mt-1 w-64 p-3 bg-white border border-gray-200 rounded-lg shadow-lg">
+          {isLoading ? (
+            <div className="text-xs text-gray-500">Loading...</div>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-gray-700 mb-2">
+                Depends on:
+              </div>
+              {dependencyDetails.slice(0, 5).map((dep) => (
+                <div key={dep.id} className="flex items-center gap-2 text-xs py-1">
+                  {dep.delivered ? (
+                    <span className="text-green-600">✓</span>
+                  ) : dep.status === 'in_progress' ? (
+                    <span className="text-yellow-600">⏳</span>
+                  ) : (
+                    <span className="text-gray-400">○</span>
+                  )}
+                  <span className="truncate" title={dep.jobName}>
+                    {dep.jobName}
+                  </span>
+                </div>
+              ))}
+              {dependencies.length > 5 && (
+                <div className="text-xs text-gray-500 italic mt-1">
+                  +{dependencies.length - 5} more...
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function RequestsTable({ records }: RequestsTableProps) {
@@ -25,6 +94,7 @@ export function RequestsTable({ records }: RequestsTableProps) {
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Def ID</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Request ID</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Status</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Dependencies</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Workstream</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Mech</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Sender</th>
@@ -64,7 +134,7 @@ export function RequestsTable({ records }: RequestsTableProps) {
               ? record.jobDefinitionId.toString().substring(0, 12) + '...'
               : '-'
 
-            const requestId = record.id.toString().substring(0, 12) + '...'
+            const dependencies = 'dependencies' in record ? record.dependencies as string[] : undefined
 
             return (
               <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -89,12 +159,15 @@ export function RequestsTable({ records }: RequestsTableProps) {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-sm text-gray-600 font-mono">{requestId}</span>
+                  <span className="text-sm text-gray-600 font-mono">{record.id.toString().substring(0, 12) + '...'}</span>
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${statusClass}`}>
                     {statusText}
                   </span>
+                </td>
+                <td className="px-4 py-3">
+                  <DependencyCell dependencies={dependencies} />
                 </td>
                 <td className="px-4 py-3">
                   <Link

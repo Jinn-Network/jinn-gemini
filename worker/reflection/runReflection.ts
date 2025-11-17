@@ -72,16 +72,18 @@ export async function runReflection(
 
   try {
     const reflectionAgent = new Agent(
-      metadata?.model || 'gemini-2.5-flash',
+      'gemini-2.5-flash', // Always use flash for faster reflection
       ['create_artifact'],
       {
         jobId: `${request.id}-reflection`,
         jobDefinitionId: metadata?.jobDefinitionId || null,
-        jobName: 'Reflection',
+        jobName: metadata?.jobName || 'job',
+        phase: 'reflection',
         projectRunId: null,
         sourceEventId: null,
         projectDefinitionId: null,
       },
+      null, // No codeWorkspace for reflection agents
     );
 
     const prompt = buildReflectionPrompt(metadata, request.id, finalStatus, result, error);

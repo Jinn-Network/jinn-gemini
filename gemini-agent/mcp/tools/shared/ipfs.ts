@@ -117,7 +117,9 @@ async function resolveIpfsContentInternal(ipfsHash: string, requestId: string, t
       clearTimeout(timer);
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
-        return await response.json();
+        const parsed = await response.json();
+        // Sanitize: JSON.stringify removes undefined values, then parse back
+        return JSON.parse(JSON.stringify(parsed));
       }
       const text = await response.text();
       return { contentType, text };
@@ -166,7 +168,11 @@ async function resolveRequestIpfsContentInternal(ipfsHash: string, timeout: numb
       }
       clearTimeout(timer);
       const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) return await response.json();
+      if (contentType.includes('application/json')) {
+        const parsed = await response.json();
+        // Sanitize: JSON.stringify removes undefined values, then parse back
+        return JSON.parse(JSON.stringify(parsed));
+      }
       const text = await response.text();
       return { contentType, text };
     }

@@ -1,15 +1,27 @@
 /**
  * Prompt construction utilities
+ * Note: "Prompt" here refers to the final context passed to the agent via GEMINI.md
+ * The blueprint IS the job specification and is available directly in GEMINI.md context
  */
 
 import type { IpfsMetadata } from '../types.js';
 
 /**
- * Build enhanced prompt with additional context if available
+ * Build enhanced prompt with blueprint and additional context
+ * Blueprint is the primary specification - it's made available to agent via GEMINI.md
  */
-export function buildEnhancedPrompt(metadata: IpfsMetadata, basePrompt?: string): string {
-  let prompt = basePrompt || String(metadata?.prompt || '').trim();
+export function buildEnhancedPrompt(metadata: IpfsMetadata, fallbackPrompt?: string): string {
+  // Blueprint is the job specification
+  // If no blueprint exists (legacy job), use fallback
+  const blueprint = metadata?.blueprint || fallbackPrompt || '';
   
+  if (!blueprint) {
+    return 'No job specification found';
+  }
+  
+  let prompt = blueprint;
+  
+  // Add job hierarchy context if available
   if (metadata?.additionalContext) {
     const context = metadata.additionalContext;
     const contextSummary = `

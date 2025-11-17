@@ -38,25 +38,8 @@ jobs:
         echo "Running security scan on all projects..."
         echo "Note: Many vulnerabilities are in external dependencies (code-resources/)"
         echo "These are not blocking issues for the main application."
-        snyk test --all-projects --severity-threshold=high --sarif-file-output=snyk.sarif || echo "Security scan completed with findings"
-        
-    - name: Check if SARIF file exists
-      run: |
-        if [ -f "snyk.sarif" ]; then
-          echo "SARIF file found"
-          ls -la snyk.sarif
-        else
-          echo "SARIF file not found, listing current directory:"
-          ls -la
-          echo "Looking for any .sarif files:"
-          find . -name "*.sarif" -type f 2>/dev/null || echo "No .sarif files found"
-        fi
-        
-    - name: Upload result to GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v3
-      if: always() && hashFiles('snyk.sarif') != ''
-      with:
-        sarif_file: snyk.sarif
+        echo ""
+        snyk test --all-projects --severity-threshold=high || echo "Security scan completed with findings"
         
     - name: Monitor dependencies
       continue-on-error: true

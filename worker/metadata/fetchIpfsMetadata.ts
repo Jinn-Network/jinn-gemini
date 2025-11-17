@@ -37,7 +37,16 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
     }
 
     const json = await res.json();
-    const prompt = json?.prompt || json?.input || undefined;
+    
+    // Blueprint is at root level (new architecture)
+    // Fall back to additionalContext.blueprint for backward compatibility
+    // Fall back to prompt for legacy jobs
+    const blueprint = json?.blueprint 
+      ? String(json.blueprint) 
+      : (json?.additionalContext?.blueprint 
+          ? String(json.additionalContext.blueprint) 
+          : (json?.prompt || json?.input || undefined));
+    
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
     const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
     const sourceJobDefinitionId = json?.sourceJobDefinitionId ? String(json.sourceJobDefinitionId) : undefined;
@@ -48,9 +57,14 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
       ? (json.codeMetadata as any)
       : undefined;
     const model = json?.model ? String(json.model) : undefined;
+    const dependencies = Array.isArray(json?.dependencies) 
+      ? json.dependencies 
+      : (Array.isArray(json?.additionalContext?.dependencies) 
+          ? json.additionalContext.dependencies 
+          : undefined);
     
     return {
-      prompt,
+      blueprint,
       enabledTools,
       sourceRequestId,
       sourceJobDefinitionId,
@@ -59,6 +73,7 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
       jobDefinitionId,
       codeMetadata,
       model,
+      dependencies,
     };
   } catch (e: any) {
     workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');

@@ -19,6 +19,7 @@ import {
 } from '../recognition_helpers.js';
 import { serializeError } from '../logging/errors.js';
 import type { IpfsMetadata } from '../types.js';
+import { buildProgressCheckpoint, type ProgressCheckpoint } from './progressCheckpoint.js';
 
 type RemoteSituationArtifact = {
   id: string;
@@ -32,7 +33,7 @@ type RemoteSituationArtifact = {
  * Run recognition phase: create initial situation, search similar jobs, fetch artifacts, generate learnings
  */
 export async function runRecognitionPhase(requestId: string, metadata: IpfsMetadata): Promise<RecognitionPhaseResult> {
-  const sections = extractPromptSections(metadata?.prompt);
+  const sections = extractPromptSections(metadata?.blueprint);
   const parentMessage = metadata?.additionalContext?.message?.content || metadata?.additionalContext?.message;
 
   const jobOverviewLines = [
@@ -46,6 +47,36 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
 
   let initialSituation: any = null;
   let embeddingStatus: 'success' | 'failed' = 'failed';
+  let progressCheckpoint: ProgressCheckpoint | null = null;
+
+  // Build progress checkpoint (workstream-wide awareness with AI summarization)
+  try {
+    // Extract objective for AI summarization
+    const objective = sections['Objective'] || metadata?.additionalContext?.objective || 'Complete assigned work';
+    
+    progressCheckpoint = await buildProgressCheckpoint(
+      requestId,
+      {
+        sourceRequestId: metadata?.sourceRequestId,
+        jobDefinitionId: metadata?.jobDefinitionId,
+      },
+      objective,
+      metadata?.jobName
+    );
+    
+    if (progressCheckpoint) {
+      workerLogger.info({
+        requestId,
+        completedJobs: progressCheckpoint.stats.completedJobs,
+        summaryLength: progressCheckpoint.checkpointSummary.length,
+      }, 'Progress checkpoint built with AI summary');
+    }
+  } catch (checkpointError: any) {
+    workerLogger.warn({
+      requestId,
+      error: serializeError(checkpointError),
+    }, 'Failed to build progress checkpoint (non-critical)');
+  }
 
   try {
     const { createInitialSituation } = await import('../situation_encoder.js');
@@ -65,7 +96,7 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
 
     if (!vectorPayload?.meta?.ok || !Array.isArray(vectorPayload?.data) || vectorPayload.data.length === 0) {
       workerLogger.info({ requestId }, 'No similar situations found for recognition');
-      return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus: 'failed' };
+      return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus: 'failed', progressCheckpoint };
     }
 
     embeddingStatus = 'success';
@@ -152,7 +183,7 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
 
     if (situationArtifacts.length === 0) {
       workerLogger.info({ requestId }, 'Recognition phase: no SITUATION artifacts available for similar jobs');
-      return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus };
+      return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus, progressCheckpoint };
     }
 
     workerLogger.info({ requestId, artifactCount: situationArtifacts.length }, 'Fetched SITUATION artifacts for recognition');
@@ -164,16 +195,18 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
     );
 
     const recognitionAgent = new Agent(
-      metadata?.model || 'gemini-2.5-flash',
+      'gemini-2.5-flash', // Always use flash for faster recognition
       [],
       {
         jobId: `${requestId}-recognition`,
         jobDefinitionId: metadata?.jobDefinitionId || null,
-        jobName: metadata?.jobName ? `${metadata.jobName} (Recognition)` : 'Recognition Scout',
+        jobName: metadata?.jobName || 'job',
+        phase: 'recognition',
         projectRunId: null,
         sourceEventId: null,
         projectDefinitionId: null,
       },
+      null, // No codeWorkspace for recognition agents
     );
 
     const agentResult = await recognitionAgent.run(recognitionPrompt);
@@ -190,6 +223,7 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
         similarJobs,
         initialSituation,
         embeddingStatus,
+        progressCheckpoint,
       };
     }
 
@@ -204,6 +238,7 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
       similarJobs,
       initialSituation,
       embeddingStatus,
+      progressCheckpoint,
     };
 
     try {
@@ -248,7 +283,7 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
       workerLogger.warn({ requestId, error: serializeError(fallbackError) }, 'Failed to persist fallback RECOGNITION_RESULT artifact');
     }
 
-    return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus };
+    return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus, progressCheckpoint };
   }
 }
 

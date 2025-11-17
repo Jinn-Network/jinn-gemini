@@ -7,6 +7,7 @@ export interface JobDefinition {
   name: string
   enabledTools: string[]
   promptContent?: string
+  blueprint?: string
   sourceJobDefinitionId?: string
   sourceRequestId?: string
 }
@@ -28,6 +29,14 @@ export interface Request {
   jobName?: string
   enabledTools: string[]
   additionalContext?: Record<string, unknown>
+  dependencies?: string[]
+}
+
+export interface DependencyInfo {
+  id: string           // job definition ID
+  jobName: string      // resolved job name
+  delivered: boolean   // true if all requests delivered
+  status: 'pending' | 'in_progress' | 'delivered'
 }
 
 export interface Delivery {
@@ -82,6 +91,11 @@ export interface PageInfo {
   endCursor?: string
 }
 
+export interface PaginatedResponse<T> {
+  items: T[]
+  pageInfo: PageInfo
+}
+
 export interface JobDefinitionsResponse {
   jobDefinitions: {
     items: JobDefinition[]
@@ -133,7 +147,7 @@ export interface QueryOptions {
   where?: Record<string, unknown>
 }
 
-export async function queryJobDefinitions(options: QueryOptions = {}): Promise<JobDefinition[]> {
+export async function queryJobDefinitions(options: QueryOptions = {}): Promise<PaginatedResponse<JobDefinition>> {
   const {
     limit = 100,
     after,
@@ -158,6 +172,7 @@ export async function queryJobDefinitions(options: QueryOptions = {}): Promise<J
           name
           enabledTools
           promptContent
+          blueprint
           sourceJobDefinitionId
           sourceRequestId
         }
@@ -180,14 +195,14 @@ export async function queryJobDefinitions(options: QueryOptions = {}): Promise<J
       orderDirection,
       where
     })
-    return response.jobDefinitions.items
+    return response.jobDefinitions
   } catch (error) {
     console.error('Error querying job definitions:', error)
-    return []
+    return { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false } }
   }
 }
 
-export async function queryRequests(options: QueryOptions = {}): Promise<Request[]> {
+export async function queryRequests(options: QueryOptions = {}): Promise<PaginatedResponse<Request>> {
   const {
     limit = 100,
     after,
@@ -224,6 +239,7 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Request
           jobName
           enabledTools
           additionalContext
+          dependencies
         }
         pageInfo {
           hasNextPage
@@ -244,14 +260,14 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Request
       orderDirection,
       where
     })
-    return response.requests.items
+    return response.requests
   } catch (error) {
     console.error('Error querying requests:', error)
-    return []
+    return { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false } }
   }
 }
 
-export async function queryDeliveries(options: QueryOptions = {}): Promise<Delivery[]> {
+export async function queryDeliveries(options: QueryOptions = {}): Promise<PaginatedResponse<Delivery>> {
   const {
     limit = 100,
     after,
@@ -303,14 +319,14 @@ export async function queryDeliveries(options: QueryOptions = {}): Promise<Deliv
       orderDirection,
       where
     })
-    return response.deliverys.items
+    return response.deliverys
   } catch (error) {
     console.error('Error querying deliveries:', error)
-    return []
+    return { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false } }
   }
 }
 
-export async function queryArtifacts(options: QueryOptions = {}): Promise<Artifact[]> {
+export async function queryArtifacts(options: QueryOptions = {}): Promise<PaginatedResponse<Artifact>> {
   const {
     limit = 100,
     after,
@@ -360,10 +376,10 @@ export async function queryArtifacts(options: QueryOptions = {}): Promise<Artifa
       orderDirection,
       where
     })
-    return response.artifacts.items
+    return response.artifacts
   } catch (error) {
     console.error('Error querying artifacts:', error)
-    return []
+    return { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false } }
   }
 }
 
@@ -375,6 +391,7 @@ export async function getJobDefinition(id: string): Promise<JobDefinition | null
         name
         enabledTools
         promptContent
+        blueprint
         sourceJobDefinitionId
         sourceRequestId
       }
@@ -410,6 +427,7 @@ export async function getRequest(id: string): Promise<Request | null> {
         jobName
         enabledTools
         additionalContext
+        dependencies
       }
     }
   `
@@ -477,7 +495,7 @@ export async function getArtifact(id: string): Promise<Artifact | null> {
   }
 }
 
-export async function queryMessages(options: QueryOptions = {}): Promise<Message[]> {
+export async function queryMessages(options: QueryOptions = {}): Promise<PaginatedResponse<Message>> {
   const {
     limit = 100,
     after,
@@ -525,10 +543,10 @@ export async function queryMessages(options: QueryOptions = {}): Promise<Message
       orderDirection,
       where
     })
-    return response.messages.items
+    return response.messages
   } catch (error) {
     console.error('Error querying messages:', error)
-    return []
+    return { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false } }
   }
 }
 
@@ -557,12 +575,12 @@ export async function getMessage(id: string): Promise<Message | null> {
 }
 
 export async function getRequestsAndDeliveries(options: QueryOptions = {}): Promise<{ requests: Request[], deliveries: Delivery[] }> {
-  const [requests, deliveries] = await Promise.all([
+  const [requestsResponse, deliveriesResponse] = await Promise.all([
     queryRequests(options),
     queryDeliveries(options)
   ])
 
-  return { requests, deliveries }
+  return { requests: requestsResponse.items, deliveries: deliveriesResponse.items }
 }
 
 // Helper to fetch job name by ID
@@ -888,4 +906,99 @@ export async function getWorkstreamArtifact(rootRequestId: string, topic: string
   })
   
   return data.artifacts.items[0] || null
+}
+
+// Fetch dependency information for a list of job definition IDs
+export async function getDependencyInfo(jobDefIds: string[]): Promise<DependencyInfo[]> {
+  if (!jobDefIds || jobDefIds.length === 0) {
+    return []
+  }
+
+  const query = `
+    query DependencyInfo($ids: [String!]!) {
+      jobDefinitions(where: { id_in: $ids }) {
+        items {
+          id
+          name
+        }
+      }
+    }
+  `
+
+  try {
+    const response = await request<{ jobDefinitions: { items: Array<{ id: string; name: string }> } }>(
+      SUBGRAPH_URL,
+      query,
+      { ids: jobDefIds }
+    )
+
+    // For each job definition, query all its requests to determine overall status
+    const jobDefs = response.jobDefinitions.items
+    const dependencyInfo = await Promise.all(
+      jobDefs.map(async (jobDef) => {
+        // Query requests for this job definition
+        const reqQuery = `
+          query JobDefRequests($jobDefId: String!) {
+            requests(where: { jobDefinitionId: $jobDefId }) {
+              items {
+                id
+                delivered
+                jobName
+              }
+            }
+          }
+        `
+        const reqResponse = await request<{ requests: { items: Array<{ id: string; delivered: boolean; jobName?: string }> } }>(
+          SUBGRAPH_URL,
+          reqQuery,
+          { jobDefId: jobDef.id }
+        )
+
+        const requests = reqResponse.requests.items
+        const allDelivered = requests.length > 0 && requests.every(r => r.delivered)
+        const anyDelivered = requests.some(r => r.delivered)
+
+        return {
+          id: jobDef.id,
+          jobName: jobDef.name || 'Unknown Job',
+          delivered: allDelivered,
+          status: allDelivered ? 'delivered' : (anyDelivered ? 'in_progress' : 'pending') as 'pending' | 'in_progress' | 'delivered'
+        }
+      })
+    )
+
+    return dependencyInfo
+  } catch (error) {
+    console.error('Error fetching dependency info:', error)
+    return []
+  }
+}
+
+// Find all requests that depend on a given request ID
+export async function getDependents(requestId: string): Promise<DependencyInfo[]> {
+  const query = `
+    query Dependents($requestId: String!) {
+      requests(where: { dependencies_has: $requestId }) {
+        items {
+          id
+          jobName
+          delivered
+          blockTimestamp
+        }
+      }
+    }
+  `
+
+  try {
+    const response = await request<RequestsResponse>(SUBGRAPH_URL, query, { requestId })
+    return response.requests.items.map(req => ({
+      id: req.id,
+      jobName: req.jobName || 'Unknown Job',
+      delivered: req.delivered,
+      status: req.delivered ? 'delivered' as const : 'pending' as const
+    }))
+  } catch (error) {
+    console.error('Error querying dependents:', error)
+    return []
+  }
 }

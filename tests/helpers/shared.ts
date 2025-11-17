@@ -459,7 +459,7 @@ export async function waitForJobIndexed(
   jobDefinitionId: string,
   options?: { maxAttempts?: number; delayMs?: number }
 ): Promise<any> {
-  const query = 'query($id:String!){ jobDefinition(id:$id){ id name enabledTools promptContent sourceRequestId sourceJobDefinitionId codeMetadata } }';
+  const query = 'query($id:String!){ jobDefinition(id:$id){ id name enabledTools blueprint sourceRequestId sourceJobDefinitionId codeMetadata } }';
   return pollGraphQL(
     gqlUrl,
     query,
@@ -595,9 +595,23 @@ export async function createTestJob(params: {
   message?: string;
   sourceRequestId?: string;
   sourceJobDefinitionId?: string;
+  blueprint?: string;
 }): Promise<{ jobDefId: string; requestId: string; dispatchResult: any }> {
   const jobName = params.jobName ?? `test-job-${Date.now()}-${randomUUID().slice(0, 6)}`;
   const enabledTools = params.enabledTools ?? ['create_artifact'];
+
+  // Generate a minimal blueprint if not provided
+  const blueprint = params.blueprint ?? JSON.stringify({
+    assertions: [{
+      id: 'TEST-001',
+      assertion: 'Complete the assigned task successfully',
+      examples: {
+        do: ['Follow instructions carefully', 'Validate output before submission'],
+        dont: ['Skip validation steps', 'Ignore acceptance criteria']
+      },
+      commentary: 'Default test blueprint for automated test jobs'
+    }]
+  });
 
   // Call dispatch_new_job through MCP protocol
   const client = getMcpClient();
@@ -610,6 +624,7 @@ export async function createTestJob(params: {
     constraints: params.constraints,
     jobName,
     enabledTools,
+    blueprint,
     updateExisting: true,
     message: params.message,
     sourceRequestId: params.sourceRequestId,

@@ -8,6 +8,7 @@ import {
   getEnableAutoRepost,
   getRequiredRpcUrl,
   getOptionalMechTargetRequestId,
+  getOptionalControlApiUrl,
 } from '../gemini-agent/mcp/tools/shared/env.js';
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -28,12 +29,14 @@ type UnclaimedRequest = {
   mech: string;         // mech address (0x...)
   requester: string;    // requester address (0x...)
   blockTimestamp?: number;
+  dependencies?: string[];  // request IDs that must be delivered first
   ipfsHash?: string;
   delivered?: boolean;
 };
 
 
 const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
+const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/graphql';
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = getUseControlApi();
 const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 10;
@@ -92,6 +95,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       ipfsHash
       blockTimestamp
       delivered
+      dependencies
     }
   }
 }`;
@@ -111,14 +115,15 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       context: { operation: 'fetchRecentRequests', mech: workerMech }
     });
     const items: any[] = data?.requests?.items || [];
-    workerLogger.info({ totalItems: items.length, items: items.map(r => ({ id: r.id, delivered: r.delivered })) }, 'Ponder GraphQL response');
+    workerLogger.info({ totalItems: items.length, items: items.map(r => ({ id: r.id, delivered: r.delivered, dependencies: r.dependencies })) }, 'Ponder GraphQL response');
     return items.map((r: any) => ({
       id: String(r.id),
       mech: String(r.mech),
       requester: String(r.sender || ''),
       ipfsHash: r?.ipfsHash ? String(r.ipfsHash) : undefined,
       blockTimestamp: Number(r.blockTimestamp),
-      delivered: Boolean(r?.delivered === true)
+      delivered: Boolean(r?.delivered === true),
+      dependencies: Array.isArray(r?.dependencies) ? r.dependencies.map((dep: any) => String(dep)) : undefined
     })) as UnclaimedRequest[];
   } catch (e) {
     workerLogger.warn({ error: e instanceof Error ? e.message : String(e) }, 'Ponder GraphQL not reachable; returning empty set');
@@ -165,6 +170,123 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
   } catch {
     return notDelivered;
   }
+}
+
+/**
+ * Check if a job definition and all its child definitions are fully delivered
+ */
+async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean> {
+  try {
+    // Query all requests for this job definition
+    const query = `query CheckJobDefCompletion($jobDefId: String!) {
+      requests(where: { jobDefinitionId: $jobDefId }) {
+        items {
+          id
+          delivered
+          sourceJobDefinitionId
+        }
+      }
+      jobDefinitions(where: { sourceJobDefinitionId: $jobDefId }) {
+        items {
+          id
+        }
+      }
+    }`;
+
+    const data = await graphQLRequest<{
+      requests: { items: Array<{ id: string; delivered: boolean; sourceJobDefinitionId?: string }> };
+      jobDefinitions: { items: Array<{ id: string }> };
+    }>({
+      url: PONDER_GRAPHQL_URL,
+      query,
+      variables: { jobDefId: jobDefinitionId },
+      context: { operation: 'isJobDefinitionComplete', jobDefinitionId }
+    });
+
+    const requests = data?.requests?.items || [];
+    const childJobDefs = data?.jobDefinitions?.items || [];
+    
+    // Must have at least one request
+    if (requests.length === 0) {
+      workerLogger.debug({ jobDefinitionId }, 'Job definition has no requests yet');
+      return false;
+    }
+    
+    // All requests for this job definition must be delivered
+    const allRequestsDelivered = requests.every(r => r.delivered);
+    if (!allRequestsDelivered) {
+      return false;
+    }
+    
+    // Recursively check all child job definitions
+    for (const childDef of childJobDefs) {
+      const childComplete = await isJobDefinitionComplete(childDef.id);
+      if (!childComplete) {
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (e: any) {
+    workerLogger.warn({ 
+      jobDefinitionId,
+      error: e instanceof Error ? e.message : String(e) 
+    }, 'Failed to check job definition completion - assuming not complete');
+    return false;
+  }
+}
+
+/**
+ * Check if all job definition dependencies for a request are complete
+ */
+async function checkDependenciesMet(request: UnclaimedRequest): Promise<boolean> {
+  // If no dependencies, job can proceed
+  if (!request.dependencies || request.dependencies.length === 0) {
+    return true;
+  }
+
+  try {
+    // Check each dependency
+    const results = await Promise.all(
+      request.dependencies.map(async (jobDefId) => {
+        const isComplete = await isJobDefinitionComplete(jobDefId);
+        return { jobDefId, isComplete };
+      })
+    );
+    
+    const allComplete = results.every(r => r.isComplete);
+    
+    if (!allComplete) {
+      const incomplete = results.filter(r => !r.isComplete).map(r => r.jobDefId);
+      workerLogger.info({ 
+        requestId: request.id, 
+        totalDeps: request.dependencies.length,
+        incompleteDeps: incomplete,
+      }, 'Dependencies not met - waiting for job definitions to complete');
+    }
+    
+    return allComplete;
+  } catch (e: any) {
+    workerLogger.warn({ 
+      requestId: request.id, 
+      error: e instanceof Error ? e.message : String(e) 
+    }, 'Failed to check dependencies - assuming not met');
+    return false;
+  }
+}
+
+/**
+ * Filter requests to only include those with met dependencies
+ */
+async function filterByDependencies(requests: UnclaimedRequest[]): Promise<UnclaimedRequest[]> {
+  const results = await Promise.all(
+    requests.map(async (request) => ({
+      request,
+      canProceed: await checkDependenciesMet(request)
+    }))
+  );
+  
+  return results.filter(r => r.canProceed).map(r => r.request);
 }
 
 async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promise<boolean> {
@@ -346,6 +468,7 @@ async function fetchSpecificRequest(requestId: string): Promise<UnclaimedRequest
       ipfsHash
       blockTimestamp
       delivered
+      dependencies
     }
   }
 }`;
@@ -357,7 +480,16 @@ async function fetchSpecificRequest(requestId: string): Promise<UnclaimedRequest
     });
     const items = data?.requests?.items || [];
     if (items.length === 0) return null;
-    return items[0];
+    const r = items[0];
+    return {
+      id: String(r.id),
+      mech: String(r.mech),
+      requester: String(r.sender || ''),
+      ipfsHash: r?.ipfsHash ? String(r.ipfsHash) : undefined,
+      blockTimestamp: Number(r.blockTimestamp),
+      delivered: Boolean(r?.delivered === true),
+      dependencies: Array.isArray(r?.dependencies) ? r.dependencies.map((dep: any) => String(dep)) : undefined
+    };
   } catch (e: any) {
     workerLogger.warn({ error: serializeError(e) }, 'Error fetching specific request');
     return null;
@@ -386,6 +518,14 @@ async function processOnce(): Promise<void> {
       workerLogger.info({ target: targetHex }, 'Target request already delivered');
       return;
     }
+    
+    // Check dependencies even for targeted requests
+    const depsMet = await checkDependenciesMet(specificRequest);
+    if (!depsMet) {
+      workerLogger.info({ target: targetHex }, 'Target request dependencies not met - skipping');
+      return;
+    }
+    
     candidates = [specificRequest];
     workerLogger.info({ target: targetHex }, 'Targeting specific request');
   } else {
@@ -393,6 +533,13 @@ async function processOnce(): Promise<void> {
     candidates = await filterUnclaimed(recent);
     if (candidates.length === 0) {
       workerLogger.info('No unclaimed on-chain requests found');
+      return;
+    }
+    
+    // Filter by dependencies - only process jobs whose dependencies are met
+    candidates = await filterByDependencies(candidates);
+    if (candidates.length === 0) {
+      workerLogger.info('No requests with met dependencies found');
       return;
     }
   }
@@ -409,8 +556,39 @@ async function processOnce(): Promise<void> {
   await processJobOnce(target, workerAddress);
 }
 
+/**
+ * Health check for Control API at startup
+ */
+async function checkControlApiHealth(): Promise<void> {
+  if (!USE_CONTROL_API) {
+    return; // Control API disabled, skip check
+  }
+
+  try {
+    // Simple health check query
+    const query = `query { __typename }`;
+    await graphQLRequest({
+      url: CONTROL_API_URL,
+      query,
+      maxRetries: 0,
+      context: { operation: 'healthCheck' }
+    });
+    workerLogger.info({ controlApiUrl: CONTROL_API_URL }, 'Control API health check passed');
+  } catch (e: any) {
+    workerLogger.error({ 
+      error: serializeError(e),
+      controlApiUrl: CONTROL_API_URL
+    }, 'Control API is not running - worker cannot start');
+    throw new Error('Control API health check failed: ' + (e?.message || String(e)) + '\n\nPlease start Control API with: yarn control:dev');
+  }
+}
+
 async function main() {
   workerLogger.info('Mech worker starting');
+  
+  // Verify Control API is running before processing any jobs
+  await checkControlApiHealth();
+  
   if (SINGLE_SHOT) {
     await processOnce();
     return;

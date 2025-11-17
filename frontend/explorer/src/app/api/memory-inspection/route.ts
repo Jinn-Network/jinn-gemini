@@ -110,6 +110,19 @@ interface RecognitionData {
   learningsMarkdown?: string
   initialSituation?: Record<string, unknown>
   embeddingStatus?: string
+  progressCheckpoint?: {
+    checkpointSummary: string
+    workstreamJobs?: Array<{
+      requestId: string
+      jobName?: string
+      blockTimestamp: string
+      deliverySummary?: string
+    }>
+    stats?: {
+      totalJobs: number
+      completedJobs: number
+    }
+  }
 }
 
 interface ReflectionData {
@@ -167,7 +180,8 @@ export async function GET(req: NextRequest) {
               similarJobs: deliveryData.recognition.similarJobs || [],
               learnings: deliveryData.recognition.learningsMarkdown || deliveryData.recognition.learnings,
               initialSituation: deliveryData.recognition.initialSituation,
-              embeddingStatus: deliveryData.recognition.embeddingStatus
+              embeddingStatus: deliveryData.recognition.embeddingStatus,
+              progressCheckpoint: deliveryData.recognition.progressCheckpoint
             }
             console.log('[API] Found recognition data in delivery')
           }
@@ -217,6 +231,7 @@ export async function GET(req: NextRequest) {
           learnings: situationData.meta.recognition.markdown || situationData.meta.recognition.learnings,
           initialSituation: situationData.meta.recognition.initialSituation,
           embeddingStatus: situationData.meta.recognition.embeddingStatus,
+          progressCheckpoint: situationData.meta.recognition.progressCheckpoint,
           timestamp: situationData.meta.generatedAt
         }
         console.log('[API] Using fallback recognition data from SITUATION artifact')

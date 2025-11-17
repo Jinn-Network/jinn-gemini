@@ -56,7 +56,7 @@ interface RequestRecord {
 
 interface JobDefinitionRecord {
   id: string;
-  promptContent?: string | null;
+  blueprint?: string | null;
   enabledTools?: string[] | null;
 }
 
@@ -217,7 +217,7 @@ async function fetchJobDefinition(jobDefinitionId: string): Promise<JobDefinitio
     query ($id: String!) {
       jobDefinition(id: $id) {
         id
-        promptContent
+        blueprint
         enabledTools
       }
     }
@@ -250,6 +250,7 @@ function deriveInitialSummaryText(params: {
   siblingRequestIds: string[];
   prompt?: string;
   enabledTools?: string[];
+  blueprint?: string;
 }): string {
   const lines: string[] = [];
   lines.push(`Job ${params.requestId}${params.jobName ? `: ${params.jobName}` : ''}`);
@@ -258,6 +259,9 @@ function deriveInitialSummaryText(params: {
   }
   if (params.acceptanceCriteria) {
     lines.push(`Acceptance Criteria: ${truncate(params.acceptanceCriteria, 400)}`);
+  }
+  if (params.blueprint) {
+    lines.push(`Blueprint: ${truncate(params.blueprint, 400)}`);
   }
   if (params.prompt) {
     lines.push(`Prompt: ${truncate(params.prompt, 600)}`);
@@ -279,6 +283,11 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
     ? await fetchRelatedRequestIds(parentRequestId, input.requestId).catch(() => [])
     : [];
 
+  // Extract blueprint for metadata (objective/acceptanceCriteria extracted later from prompt on line 318)
+  const blueprint = (input.additionalContext ?? requestRecord?.additionalContext)?.blueprint 
+    ? String((input.additionalContext ?? requestRecord?.additionalContext).blueprint) 
+    : undefined;
+
   const situationContext: SituationContext = {
     parentRequestId,
     parent: parentRequestId
@@ -296,28 +305,30 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
   const jobName = input.jobName || requestRecord?.jobName || undefined;
   const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
 
-  // Fetch job definition to enrich with prompt and enabled tools
-  let prompt: string | undefined;
+  // Fetch job definition to enrich with blueprint and enabled tools
+  let jobBlueprint: string | undefined;
   let enabledTools: string[] | undefined;
   if (jobDefinitionId) {
     const jobDef = await fetchJobDefinition(jobDefinitionId);
     if (jobDef) {
-      prompt = jobDef.promptContent || undefined;
+      jobBlueprint = jobDef.blueprint || undefined;
       enabledTools = jobDef.enabledTools || undefined;
     }
   }
 
-  const { objective, acceptanceCriteria } = extractStructuredFieldsFromPrompt(prompt);
+  // Blueprint-based jobs: no objective/acceptanceCriteria extraction
+  // Blueprint is the primary job specification
 
   const summaryText = deriveInitialSummaryText({
     requestId: input.requestId,
     jobName,
-    objective,
-    acceptanceCriteria,
+    objective: undefined,
+    acceptanceCriteria: undefined,
     parentRequestId,
     siblingRequestIds,
-    prompt,
+    prompt: undefined,
     enabledTools,
+    blueprint: jobBlueprint,
   });
 
   const situation: Omit<Situation, 'embedding' | 'execution' | 'artifacts'> = {
@@ -326,9 +337,7 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
       requestId: input.requestId,
       jobDefinitionId,
       jobName,
-      objective,
-      acceptanceCriteria,
-      prompt,
+      blueprint: jobBlueprint,
       model: input.model,
       enabledTools,
     },
@@ -431,22 +440,22 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
 
   const jobName = input.jobName || requestRecord?.jobName || undefined;
   const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
-  let prompt: string | undefined;
+  let jobBlueprint: string | undefined;
   let enabledTools: string[] | undefined;
   if (jobDefinitionId) {
     const jobDef = await fetchJobDefinition(jobDefinitionId);
     if (jobDef) {
-      prompt = jobDef.promptContent || undefined;
+      jobBlueprint = jobDef.blueprint || undefined;
       enabledTools = jobDef.enabledTools || undefined;
     }
   }
-  const { objective, acceptanceCriteria } = extractStructuredFieldsFromPrompt(prompt);
+  // Blueprint-based jobs: no objective/acceptanceCriteria extraction
 
   const summaryText = deriveSummaryText({
     requestId: input.requestId,
     jobName,
-    objective,
-    acceptanceCriteria,
+    objective: undefined,
+    acceptanceCriteria: undefined,
     status,
     parentRequestId,
     childRequestIds,
@@ -462,9 +471,7 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
       requestId: input.requestId,
       jobDefinitionId,
       jobName,
-      objective,
-      acceptanceCriteria,
-      prompt,
+      blueprint: jobBlueprint,
       model: input.model,
       enabledTools,
     },

@@ -27,7 +27,7 @@ interface BatchedJobData {
     jobDefinitions: Array<{
         id: string;
         name: string;
-        promptContent?: string;
+        blueprint?: string;
         sourceJobDefinitionId?: string;
     }>;
     requests: Array<{
@@ -64,7 +64,7 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
                 items {
                     id
                     name
-                    promptContent
+                    blueprint
                     sourceJobDefinitionId
                 }
             }
@@ -107,7 +107,7 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
         jobDefinitions: { items: Array<{
             id: string;
             name: string;
-            promptContent?: string;
+            blueprint?: string;
             sourceJobDefinitionId?: string;
         }> };
         requests: { items: Array<{

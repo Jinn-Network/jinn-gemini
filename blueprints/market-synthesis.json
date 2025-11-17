@@ -1,0 +1,100 @@
+{
+  "assertions": [
+    {
+      "id": "SYNTH-001",
+      "assertion": "Market synthesis must identify convergent signals across multiple research tracks before forming trade ideas",
+      "examples": {
+        "do": [
+          "Identify when whale accumulation aligns with positive protocol metrics",
+          "Connect smart contract launches to whale positioning in related tokens",
+          "Find confluence between on-chain activity and governance catalysts",
+          "Require 2+ independent signal sources before high-confidence trade idea"
+        ],
+        "dont": [
+          "Generate trade ideas from single research track in isolation",
+          "Ignore contradictory signals from different analysis tracks",
+          "Form conclusions without cross-referencing multiple data sources",
+          "Present trades without multi-dimensional signal confirmation"
+        ]
+      },
+      "commentary": "Signal reliability increases with source diversity. Trade ideas must synthesize convergent patterns across protocol activity, whale behavior, and smart contract events for robust conviction."
+    },
+    {
+      "id": "SYNTH-002",
+      "assertion": "Each trade idea must specify clear entry conditions, risk parameters, and conviction level",
+      "examples": {
+        "do": [
+          "Define specific entry price or on-chain trigger condition",
+          "State position sizing recommendation (5%, 10%, 25% allocation)",
+          "Specify stop-loss levels based on technical or on-chain invalidation",
+          "Rate conviction (high/medium/low) based on signal confluence"
+        ],
+        "dont": [
+          "Suggest trades without entry criteria",
+          "Omit risk management parameters",
+          "Present all ideas as equally confident regardless of signal strength",
+          "Fail to specify position sizing or allocation recommendations"
+        ]
+      },
+      "commentary": "Trade ideas without execution parameters are useless. Each recommendation must include actionable entry conditions, risk management, and conviction rating to enable implementation."
+    },
+    {
+      "id": "SYNTH-003",
+      "assertion": "Trade rationale must cite specific findings from each contributing research track",
+      "examples": {
+        "do": [
+          "Reference specific protocol TVL changes from Track 1",
+          "Cite whale wallet addresses and transaction IDs from Track 2",
+          "Link to governance proposals or contract deployments from Track 3",
+          "Build argument from concrete evidence across all tracks"
+        ],
+        "dont": [
+          "Make assertions without citing source research findings",
+          "Use vague references like 'research shows' without specifics",
+          "Fail to connect trade idea to actual data from parallel tracks",
+          "Present synthesis that could have been written without research input"
+        ]
+      },
+      "commentary": "Synthesis credibility requires traceability. Each trade idea must explicitly reference specific findings from contributing research tracks, demonstrating genuine integration of parallel analysis work."
+    },
+    {
+      "id": "SYNTH-004",
+      "assertion": "Trade ideas must be prioritized by conviction level and potential risk-reward ratio",
+      "examples": {
+        "do": [
+          "Rank top 3 ideas by signal confluence strength",
+          "Present highest conviction idea first with detailed rationale",
+          "Explicitly compare risk-reward across the 3 recommendations",
+          "Acknowledge uncertainty and alternative scenario risks"
+        ],
+        "dont": [
+          "Present 3 ideas in random order without prioritization",
+          "Fail to distinguish between high and medium conviction setups",
+          "Ignore downside scenarios that could invalidate the thesis",
+          "Present all ideas as certain outcomes rather than probabilistic"
+        ]
+      },
+      "commentary": "Capital allocation requires prioritization. The synthesis must rank trade ideas by conviction and risk-reward, with the strongest signal-supported idea leading the recommendations."
+    },
+    {
+      "id": "SYNTH-005",
+      "assertion": "Synthesis must acknowledge progress checkpoint data and reference prior workstream research findings",
+      "examples": {
+        "do": [
+          "Explicitly reference completion of all 3 research tracks",
+          "Cite specific findings from Protocol Activity track by name",
+          "Reference whale movement patterns identified in Track 2",
+          "Acknowledge smart contract events from Track 3 analysis"
+        ],
+        "dont": [
+          "Synthesize without acknowledging prior research completion",
+          "Fail to demonstrate awareness of parallel track findings",
+          "Ignore progress checkpoint provided by recognition phase",
+          "Generate analysis that appears independent of prerequisite research"
+        ]
+      },
+      "commentary": "This assertion tests Phase 3 (Progress Checkpointing). The synthesis agent must demonstrate awareness of completed research tracks through explicit references to their findings, validating the context management system."
+    }
+  ]
+}
+

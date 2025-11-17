@@ -74,48 +74,49 @@ export async function processOnce(
 
       telemetry.logCheckpoint('initialization', 'metadata_fetched', {
         hasJobName: !!metadata?.jobName,
-        hasPrompt: !!metadata?.prompt,
+        hasBlueprint: !!metadata?.blueprint,
         hasCodeMetadata: !!metadata?.codeMetadata,
       });
 
-      if (!metadata?.codeMetadata) {
-        throw new Error(
-          'codeMetadata missing from IPFS payload - all jobs must include code metadata. ' +
-          'This is required for git lineage tracking. Check job dispatch configuration.',
-        );
-      }
-
       workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Processing request');
 
-      process.env.JINN_BASE_BRANCH = metadata.codeMetadata.branch?.name ||
-        metadata.codeMetadata.baseBranch ||
-        DEFAULT_BASE_BRANCH;
+      // Handle code metadata if present (artifact-only jobs may not have it)
+      if (metadata?.codeMetadata) {
+        process.env.JINN_BASE_BRANCH = metadata.codeMetadata.branch?.name ||
+          metadata.codeMetadata.baseBranch ||
+          DEFAULT_BASE_BRANCH;
 
-      const remoteUrl = metadata.codeMetadata?.repo?.remoteUrl;
-      if (remoteUrl) {
-        let repoRoot = process.env.CODE_METADATA_REPO_ROOT;
+        const remoteUrl = metadata.codeMetadata?.repo?.remoteUrl;
+        if (remoteUrl) {
+          let repoRoot = process.env.CODE_METADATA_REPO_ROOT;
 
-        if (repoRoot) {
-          workerLogger.info({ repoRoot, remoteUrl }, 'Using existing CODE_METADATA_REPO_ROOT');
-        } else {
-          const repoName = extractRepoName(remoteUrl);
-          if (repoName) {
-            const workspaceDir = getJinnWorkspaceDir();
-            repoRoot = `${workspaceDir}/${repoName}`;
-            process.env.CODE_METADATA_REPO_ROOT = repoRoot;
-            workerLogger.info({ repoRoot, remoteUrl }, 'Set CODE_METADATA_REPO_ROOT for job');
+          if (repoRoot) {
+            workerLogger.info({ repoRoot, remoteUrl }, 'Using existing CODE_METADATA_REPO_ROOT');
+          } else {
+            const repoName = extractRepoName(remoteUrl);
+            if (repoName) {
+              const workspaceDir = getJinnWorkspaceDir();
+              repoRoot = `${workspaceDir}/${repoName}`;
+              process.env.CODE_METADATA_REPO_ROOT = repoRoot;
+              workerLogger.info({ repoRoot, remoteUrl }, 'Set CODE_METADATA_REPO_ROOT for job');
+            }
+          }
+
+          if (repoRoot) {
+            await ensureRepoCloned(remoteUrl, repoRoot);
           }
         }
 
-        if (repoRoot) {
-          await ensureRepoCloned(remoteUrl, repoRoot);
-        }
+        await checkoutJobBranch(metadata.codeMetadata);
+      } else {
+        workerLogger.info({ requestId: target.id }, 'No code metadata - artifact-only job');
       }
-
-      await checkoutJobBranch(metadata.codeMetadata);
-      telemetry.logCheckpoint('initialization', 'checkout_complete', {
-        branch: metadata.codeMetadata.branch?.name,
-      });
+      
+      if (metadata?.codeMetadata) {
+        telemetry.logCheckpoint('initialization', 'checkout_complete', {
+          branch: metadata.codeMetadata.branch?.name,
+        });
+      }
     } catch (initializationError: any) {
       telemetry.logError('initialization', initializationError);
       throw initializationError;

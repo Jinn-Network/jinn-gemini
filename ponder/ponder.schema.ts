@@ -6,7 +6,7 @@ export default createSchema((p: any) => ({
       id: p.string(),
       name: p.string(),
       enabledTools: p.string().list().optional(),
-      promptContent: p.string().optional(),
+      blueprint: p.string().optional(),
       sourceJobDefinitionId: p.string().optional(),
       sourceRequestId: p.string().optional(),
       codeMetadata: p.json().optional(),
@@ -36,6 +36,7 @@ export default createSchema((p: any) => ({
       jobName: p.string().optional(),
       enabledTools: p.string().list().optional(),
       additionalContext: p.json().optional(),
+      dependencies: p.string().list().optional(),
     },
     {
       ts: p.index("blockTimestamp").desc(),

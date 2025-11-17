@@ -45,7 +45,7 @@ describe('fetchIpfsMetadata', () => {
   describe('successful fetches', () => {
     it('fetches and parses metadata', async () => {
       const metadata = {
-        prompt: 'Do the task',
+        blueprint: 'Do the task',
         enabledTools: ['read_file', 'write_file'],
         jobName: 'test-job',
       };
@@ -60,7 +60,7 @@ describe('fetchIpfsMetadata', () => {
       const result = await fetchIpfsMetadata('Qmabcdef123');
 
       expect(result).toEqual({
-        prompt: 'Do the task',
+        blueprint: 'Do the task',
         enabledTools: ['read_file', 'write_file'],
         jobName: 'test-job',
         sourceRequestId: undefined,
@@ -69,12 +69,13 @@ describe('fetchIpfsMetadata', () => {
         jobDefinitionId: undefined,
         codeMetadata: undefined,
         model: undefined,
+        dependencies: undefined,
       });
     });
 
     it('extracts all supported fields', async () => {
       const metadata = {
-        prompt: 'Task prompt',
+        blueprint: 'Task blueprint',
         enabledTools: ['tool1', 'tool2'],
         sourceRequestId: '0xsource123',
         sourceJobDefinitionId: 'job-def-456',
@@ -83,6 +84,7 @@ describe('fetchIpfsMetadata', () => {
         jobDefinitionId: 'job-789',
         codeMetadata: { branch: { name: 'feature' } },
         model: 'gemini-2.5-pro',
+        dependencies: ['dep1', 'dep2'],
       };
 
       mockFetch.mockResolvedValue({
@@ -102,7 +104,7 @@ describe('fetchIpfsMetadata', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
-        json: async () => ({ prompt: 'test' }),
+        json: async () => ({ blueprint: 'test' }),
       });
 
       await fetchIpfsMetadata('Qmabc123');
@@ -120,7 +122,7 @@ describe('fetchIpfsMetadata', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
-        json: async () => ({ prompt: 'test' }),
+        json: async () => ({ blueprint: 'test' }),
       });
 
       await fetchIpfsMetadata('Qmhash');
@@ -138,7 +140,7 @@ describe('fetchIpfsMetadata', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
-        json: async () => ({ prompt: 'test' }),
+        json: async () => ({ blueprint: 'test' }),
       });
 
       await fetchIpfsMetadata('Qmhash');
@@ -154,7 +156,7 @@ describe('fetchIpfsMetadata', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
-        json: async () => ({ prompt: 'test' }),
+        json: async () => ({ blueprint: 'test' }),
       });
 
       await fetchIpfsMetadata('0xQmhash');
@@ -165,17 +167,17 @@ describe('fetchIpfsMetadata', () => {
       );
     });
 
-    it('falls back to input field if prompt missing', async () => {
+    it('falls back to input field if blueprint missing', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',
-        json: async () => ({ input: 'Input as prompt' }),
+        json: async () => ({ input: 'Input as blueprint' }),
       });
 
       const result = await fetchIpfsMetadata('Qmhash');
 
-      expect(result?.prompt).toBe('Input as prompt');
+      expect(result?.blueprint).toBe('Input as blueprint');
     });
 
     it('converts non-string sourceRequestId to string', async () => {
@@ -184,7 +186,7 @@ describe('fetchIpfsMetadata', () => {
         status: 200,
         statusText: 'OK',
         json: async () => ({
-          prompt: 'test',
+          blueprint: 'test',
           sourceRequestId: 12345,
         }),
       });
@@ -201,7 +203,7 @@ describe('fetchIpfsMetadata', () => {
         status: 200,
         statusText: 'OK',
         json: async () => ({
-          prompt: 'test',
+          blueprint: 'test',
           enabledTools: 'not an array',
         }),
       });
@@ -217,7 +219,7 @@ describe('fetchIpfsMetadata', () => {
         status: 200,
         statusText: 'OK',
         json: async () => ({
-          prompt: 'test',
+          blueprint: 'test',
           codeMetadata: 'not an object',
         }),
       });
@@ -254,7 +256,7 @@ describe('fetchIpfsMetadata', () => {
                 ok: true,
                 status: 200,
                 statusText: 'OK',
-                json: async () => ({ prompt: 'test' }),
+                json: async () => ({ blueprint: 'test' }),
               });
             }, 10000); // Longer than timeout
           })
@@ -275,7 +277,7 @@ describe('fetchIpfsMetadata', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
-        json: async () => ({ prompt: 'test' }),
+        json: async () => ({ blueprint: 'test' }),
       });
 
       await fetchIpfsMetadata('Qmhash');

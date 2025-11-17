@@ -117,11 +117,14 @@ Only `COMPLETED` and `FAILED` are terminal states that trigger parent job dispat
 The main worker loop executes this sequence for each job:
 
 1. **Fetch Unclaimed Requests**: Query Ponder GraphQL for recent, unclaimed, undelivered requests for this worker's mech address
+   - **Dependency Filtering**: Worker checks if request has `dependencies` field; if present, verifies all dependency requests are delivered before proceeding
 2. **Claim Request**: Call Control API `claimRequest` mutation (idempotent, atomic)
-3. **Fetch IPFS Metadata**: Retrieve job prompt, model, enabledTools, jobDefinitionId, sourceJobDefinitionId, codeMetadata from IPFS
+3. **Fetch IPFS Metadata**: Retrieve job prompt, model, enabledTools, jobDefinitionId, sourceJobDefinitionId, codeMetadata, **blueprint**, **dependencies** from IPFS
 4. **Initialization**: Checkout job branch, ensure repo is cloned
 5. **Recognition Phase**: Create initial situation, search for similar past jobs via vector search, inject learnings into prompt (graceful degradation if fails)
+   - **5a. Progress Checkpointing** (if workstream has completed jobs): Query Ponder for all delivered requests in the same workstream, fetch their delivery summaries, generate progress checkpoint, inject into prompt prefix
 6. **Agent Execution**: Run Agent with enhanced prompt and enabled tools
+   - **Blueprint Context**: If job has `blueprint` in metadata, it is injected into agent context; agent processes blueprint directly without external fetching
 7. **Status Inference**: Determine job status based on error state, dispatch calls, and child job delivery status
 8. **Reporting**: Store job report via Control API
 9. **Reflection Phase**: Run lightweight reflection agent to identify learnings, create MEMORY artifacts if valuable
@@ -130,6 +133,7 @@ The main worker loop executes this sequence for each job:
 12. **PR Creation** (if COMPLETED): Automatically create GitHub pull request
 13. **Telemetry Persistence**: Upload worker telemetry as artifact
 14. **Delivery**: Push result JSON to IPFS, call `deliverViaSafe()` to submit on-chain
+    - **14a. Structured Summary Extraction**: Worker extracts clean, structured summary from agent output (looking for "Work Completed", "Key Decisions" sections) and includes in delivery as `structuredSummary` field
 
 **Error Handling:**
 - Execution errors are caught and persisted in telemetry
@@ -164,6 +168,199 @@ Root Job (sourceJobDefinitionId: null)
 
 **Context Fetching:**
 The worker queries Ponder using `jobDefinitionId_in` (not `sourceJobDefinitionId_in`) to find all requests for the same job definition across re-runs. This ensures root jobs can see completed children when re-running.
+
+### 2.4 Blueprint-Driven Execution
+
+Jobs receive structured JSON blueprints in their metadata following a mandatory assertion format:
+
+```json
+{
+  "assertions": [
+    {
+      "id": "REQ-001",
+      "assertion": "Brief declarative statement of requirement",
+      "examples": {
+        "do": ["Positive example 1", "Positive example 2"],
+        "dont": ["Negative example 1", "Negative example 2"]
+      },
+      "commentary": "Explanation of why this assertion exists and its implications"
+    }
+  ]
+}
+```
+
+**Validation:**
+- Blueprint must be valid JSON
+- Must contain `assertions` array with at least one assertion
+- Each assertion requires: `id`, `assertion`, `examples` (with `do`/`dont` arrays), and `commentary`
+- Validation occurs at dispatch time via `dispatch_new_job` tool
+- Invalid blueprints return error codes: `INVALID_BLUEPRINT`, `INVALID_BLUEPRINT_STRUCTURE`
+
+**Frontend Display:**
+Blueprints are rendered in the frontend explorer by parsing the JSON and displaying assertions in a structured, human-readable format.
+
+**Blueprint Structure:**
+```typescript
+interface BlueprintAssertion {
+  id: string;              // e.g., "CON-001", "TST-002"
+  assertion: string;       // Clear, verifiable requirement
+  examples: {
+    do: string[];         // Positive examples
+    dont: string[];       // Negative examples (anti-patterns)
+  };
+  commentary: string;     // Context and rationale
+}
+```
+
+**Dispatch Flow:**
+1. Parent job calls `dispatch_new_job` with `blueprint` parameter (JSON string)
+2. Blueprint is stored in IPFS metadata under `additionalContext.blueprint`
+3. Worker fetches metadata and injects blueprint into agent context
+4. Agent receives blueprint as structured data, processes assertions directly
+
+**Agent Workflow:**
+1. Read all assertions in the blueprint
+2. Plan work that satisfies all assertions
+3. Execute work using available tools
+4. Verify no assertions were violated
+5. Report which assertions were addressed
+
+**Benefits:**
+- No external blueprint artifact management
+- Blueprint is version-controlled with the job
+- Agents start work immediately without search/fetch cycles
+- Clear success criteria (all assertions satisfied)
+
+**Example Dispatch:**
+```typescript
+await dispatch_new_job({
+  objective: "Implement feature X following architectural blueprint",
+  blueprint: JSON.stringify({
+    assertions: [
+      { id: "ARCH-001", assertion: "Use dependency injection", ... },
+      { id: "ARCH-002", assertion: "Write unit tests", ... },
+    ]
+  }),
+  // ... other params
+});
+```
+
+### 2.5 Dependency Management
+
+Jobs can specify prerequisite jobs that must complete before execution begins, enabling complex orchestration and sequencing.
+
+**Dependency Declaration:**
+```typescript
+await dispatch_new_job({
+  objective: "Deploy frontend after backend is ready",
+  dependencies: ["0xabc123...", "0xdef456..."], // Backend + DB migration job IDs
+  // ... other params
+});
+```
+
+**IPFS Metadata Storage:**
+- `dependencies` array stored in `additionalContext.dependencies`
+- Contains request IDs (on-chain identifiers) of prerequisite jobs
+
+**Ponder Schema:**
+```typescript
+request: {
+  // ... existing fields
+  dependencies: p.string().list().optional(), // Array of request IDs
+}
+```
+
+**Worker Enforcement:**
+1. Worker fetches candidate requests from Ponder
+2. For each request, checks if `dependencies` field exists
+3. If dependencies present:
+   - Queries Ponder for dependency request status
+   - Skips job if any dependency is not yet delivered
+   - Logs: "Skipping request {id}: dependencies not met"
+4. If no dependencies or all delivered, proceeds with execution
+
+**Use Cases:**
+- Sequential build pipelines (test → build → deploy)
+- Multi-stage migrations (schema → data → validation)
+- Coordinated launches (backend → frontend → docs)
+- Complex venture workflows (research → design → implement → review)
+
+**Failure Handling:**
+- If dependency job fails, dependent job remains in queue
+- Parent can dispatch cleanup or alternative path jobs
+- No automatic cancellation (allows manual intervention)
+
+### 2.6 Progress Checkpointing
+
+Before executing a job, the worker builds a progress checkpoint from completed work in the same workstream, enabling agents to be aware of prior accomplishments and avoid redundant work.
+
+**Workstream Context:**
+- **Workstream**: All jobs sharing the same root `jobDefinitionId`
+- **Root Job**: Job with `sourceJobDefinitionId: null`
+- **Workstream ID**: The request ID of the root job (indexed by Ponder as `workstreamId`)
+
+**Checkpoint Building (Recognition Phase):**
+1. Worker identifies the workstream root via `sourceJobDefinitionId` chain
+2. Queries Ponder for all delivered requests in workstream:
+   ```graphql
+   requests(where: { workstreamId: $rootId, delivered: true })
+   ```
+3. Fetches delivery payloads from IPFS for each completed job
+4. Extracts final output summaries (first 500 chars or `structuredSummary` if available)
+5. Generates progress summary markdown:
+   ```markdown
+   ## Work Stream Progress (N jobs completed)
+   
+   - {jobName} ({timestamp}): {summary}
+   - {jobName} ({timestamp}): {summary}
+   ...
+   ```
+
+**Prompt Injection:**
+```markdown
+---
+## Work Stream Context
+
+{progress summary}
+
+---
+## Recognition Learnings
+
+{semantic search learnings}
+
+---
+
+# Your Task
+
+{original job prompt}
+```
+
+**Semantic Filtering (Optional Enhancement):**
+Instead of including all completed jobs, filter for relevance:
+1. Generate embedding for current job objective
+2. Generate embeddings for all completed job summaries
+3. Calculate cosine similarity scores
+4. Include top-10 most relevant completed jobs
+5. Reduces noise, focuses agent on contextually similar work
+
+**Benefits:**
+- Agents understand venture state before acting
+- Eliminates redundant work (sees what's already done)
+- Enables synthesis jobs (combining child results)
+- Provides continuity across job re-runs
+
+**Example Use Case:**
+```
+Root job: "Implement Olas website venture"
+  ├─ Child 1: "Add LICENSE file" [COMPLETED]
+  ├─ Child 2: "Setup CI/CD" [COMPLETED]
+  └─ Child 3: "Add documentation" [IN_PROGRESS]
+
+Child 3's prompt includes:
+- Summary of LICENSE addition
+- Summary of CI/CD setup
+- Knows not to re-do these tasks
+```
 
 ---
 

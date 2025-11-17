@@ -20,7 +20,7 @@ describe('buildDeliveryPayload', () => {
       };
 
       const metadata: IpfsMetadata = {
-        prompt: 'Do the thing',
+        blueprint: 'Do the thing',
       };
 
       const payload = buildDeliveryPayload({
@@ -32,6 +32,7 @@ describe('buildDeliveryPayload', () => {
       expect(payload).toEqual({
         requestId: '0x1234',
         output: 'Task completed successfully',
+        structuredSummary: 'Task completed successfully',
         telemetry: { tools_used: 2 },
         artifacts: [],
       });
@@ -460,7 +461,7 @@ describe('buildDeliveryPayload', () => {
       };
 
       const metadata: IpfsMetadata = {
-        prompt: 'Build feature X',
+        blueprint: 'Build feature X',
         codeMetadata: {
           branch: { name: 'job/feature-x', base: 'main' },
           repoRoot: '/code',

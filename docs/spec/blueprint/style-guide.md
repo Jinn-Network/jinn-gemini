@@ -1,135 +1,284 @@
 # Blueprint Style Guide
 
+**Version**: 1.0  
+**Last Updated**: 2025-11-14
+
 ## Purpose
 
-This style guide defines the structural requirements for all blueprint documentation. Every document in the blueprint—including the constitution, vision, requirements, and specifications—must adhere to this homomorphic assertion format to ensure clarity, verifiability, and actionable guidance.
+Blueprints define **what** must be true about the system state after job completion - not **how** to achieve it. They specify acceptance criteria, constraints, and quality standards that the system must satisfy.
 
-## Assertion Structure
+## Core Principles
 
-Each assertion in the blueprint must contain three components:
+### 1. Declarative Over Imperative
 
-### 1. Assertion
-
-A brief, declarative statement that defines a principle, requirement, or constraint according to which the venture should operate.
-
-**Characteristics:**
-- Concise (typically 1-2 sentences)
-- Unambiguous
-- Actionable or verifiable
-- Written in imperative or declarative mood
-
-### 2. Examples
-
-A two-column table providing concrete positive and negative guidance:
-
-| Do | Don't |
-|---|---|
-| Positive example showing correct application | Negative example showing violation or anti-pattern |
-
-**Requirements:**
-- Minimum 1 example pair per assertion
-- Examples must be concrete and specific
-- Do column shows alignment with the assertion
-- Don't column shows clear violation or misapplication
-- Use code snippets, architectural patterns, or process descriptions as appropriate
-
-### 3. Commentary
-
-Human-readable context explaining the rationale, background, or implications of the assertion.
-
-**Purpose:**
-- Explain *why* the assertion exists
-- Provide historical context or motivation
-- Clarify edge cases or nuances
-- Connect to broader architectural or philosophical principles
-
-**Characteristics:**
-- Written for comprehension, not enforcement
-- May reference related assertions
-- Should aid interpretation without changing the assertion's meaning
-
-## Full Example
-
-**Assertion:**  
-All off-chain writes related to an on-chain job must be routed through the Control API.
-
-**Examples:**
-
-| Do | Don't |
-|---|---|
-| `await controlApiClient.createArtifact({ requestId, artifactData })` | `await supabase.from('onchain_artifacts').insert({ ... })` |
-| Route artifact creation through Control API mutations | Write directly to Supabase tables from agent tools |
-| Let Control API inject lineage metadata automatically | Manually construct lineage fields in tool code |
-
-**Commentary:**
-
-The Control API serves as a mandatory security and integrity layer for all database writes associated with on-chain jobs. By enforcing this bottleneck, we ensure:
-- Request IDs are validated against Ponder before writes occur
-- Worker addresses and lineage metadata are injected consistently
-- Audit trails are complete and tamper-evident
-- Direct database access cannot bypass validation logic
-
-This pattern emerged from JINN-195 after observing inconsistent lineage data in production. The Control API centralizes validation logic that was previously scattered across tools, reducing the attack surface and preventing malformed writes.
-
-## Document Organization
-
-### Multi-File Requirements
-
-Requirements should be organized into thematic files within a dedicated `requirements/` directory:
-
-- Each file addresses a distinct architectural concern or system component
-- Files should be appropriately sized for comprehension (typically 5-20 assertions per file)
-- An `index.md` file must be present to serve as a navigable entry point
-- Cross-references between files should use relative links
-
-**Example Structure:**
-```
-requirements/
-  ├── index.md              # Table of contents
-  ├── architecture.md       # Core architecture assertions
-  ├── lifecycle.md          # Job lifecycle assertions
-  ├── execution.md          # Agent execution assertions
-  └── ...                   # Additional thematic files
+**GOOD** - Specifies desired outcome:
+```json
+{
+  "id": "DATA-001",
+  "assertion": "Analysis must include real-time protocol TVL data from authoritative sources with timestamps",
+  "examples": {
+    "do": [
+      "Report TVL with source attribution: 'Uniswap V3 TVL: $2.1B (DeFi Llama, 2024-11-14 16:30 UTC)'",
+      "Cross-reference data across multiple sources for validation"
+    ],
+    "dont": [
+      "Report TVL without timestamp or source",
+      "Use data older than 24 hours without justification"
+    ]
+  },
+  "commentary": "Real-time accuracy requires transparent data provenance and recency validation."
+}
 ```
 
-### Single-File Documents
+**BAD** - Prescribes implementation steps:
+```json
+{
+  "assertion": "Agent must call web_search with 'DeFi Llama TVL' then parse the results",
+  "examples": {
+    "do": ["Use web_search tool", "Parse JSON response"],
+    "dont": ["Skip tool usage"]
+  }
+}
+```
 
-For documents that don't require thematic subdivision (constitution, vision), assertions may be organized within a single file using clear section headings.
+### 2. Outcome-Focused Over Process-Focused
 
-## Application Guidelines
+Blueprints define success criteria, not execution paths.
 
-### Scope
+**GOOD**:
+- "Deliverable must provide 3 actionable trade ideas with entry/exit parameters"
+- "Code changes must pass all existing tests"
+- "API response time must be under 200ms"
 
-This structure applies to:
-- `constitution.md` - Core immutable principles
-- `vision.md` - Strategic direction and goals
-- `requirements/` directory - Technical and operational requirements (multi-file)
+**BAD**:
+- "Agent should first research, then write, then review"
+- "Use dispatch_new_job to delegate subtasks"
+- "Break work into phases"
 
-### Granularity
+### 3. Constraints Over Commands
 
-- One assertion per distinct principle or requirement
-- Avoid compound assertions that bundle multiple constraints
-- Use cross-references when assertions relate to each other
+State what boundaries exist, not what actions to take.
 
-### Evolution
+**GOOD**:
+- "Analysis must focus on protocols with >$100M TVL"
+- "Code must maintain backward compatibility"
+- "Changes must not modify the public API"
 
-- Assertions may be added as the system evolves
-- Existing assertions should be versioned if modified
-- Deprecated assertions should be marked but not removed
+**BAD**:
+- "Only analyze large protocols"
+- "Don't break the API"
+- "Keep it compatible"
 
-### Verification
+## Blueprint Structure
 
-Each assertion should be:
-- **Testable**: Can be validated through code inspection, tests, or monitoring
-- **Traceable**: Can be linked to specific implementation files or architectural decisions
-- **Enforceable**: Violations can be detected and prevented
+### Required Fields
 
-## Migration Path
+Every assertion must contain:
 
-Existing blueprint documents should be incrementally refactored to this format:
-1. Extract implicit assertions from prose
-2. Formulate as explicit declarative statements
-3. Add concrete examples from codebase
-4. Preserve context as commentary
-5. Verify no information is lost in translation
+```json
+{
+  "id": "CATEGORY-NNN",
+  "assertion": "Brief declarative statement",
+  "examples": {
+    "do": ["Positive example 1", "Positive example 2"],
+    "dont": ["Negative example 1", "Negative example 2"]
+  },
+  "commentary": "Explanation of rationale and implications"
+}
+```
 
+### Assertion ID Conventions
+
+Use semantic prefixes:
+- `DATA-xxx`: Data sourcing, quality, provenance
+- `ANALYSIS-xxx`: Analytical methodology, rigor
+- `OUTPUT-xxx`: Deliverable format, content
+- `SCOPE-xxx`: Boundaries, focus areas
+- `QUALITY-xxx`: Standards, validation criteria
+- `CONSTRAINT-xxx`: Technical or business constraints
+
+## Anti-Patterns
+
+### ❌ Prescribing Tools
+
+**BAD**:
+```json
+{
+  "assertion": "Must use web_search and create_artifact tools"
+}
+```
+
+**GOOD**:
+```json
+{
+  "assertion": "Research must cite authoritative external sources with timestamps",
+  "commentary": "System will determine optimal information gathering approach."
+}
+```
+
+### ❌ Dictating Architecture
+
+**BAD**:
+```json
+{
+  "assertion": "Create separate jobs for data gathering, analysis, and synthesis"
+}
+```
+
+**GOOD**:
+```json
+{
+  "assertion": "Analysis must synthesize data from multiple distinct information sources",
+  "commentary": "System will determine optimal decomposition strategy."
+}
+```
+
+### ❌ Specifying Sequence
+
+**BAD**:
+```json
+{
+  "assertion": "First validate inputs, then process data, finally generate output"
+}
+```
+
+**GOOD**:
+```json
+{
+  "assertion": "Output must be derived from validated, processed input data",
+  "commentary": "System ensures logical dependency order."
+}
+```
+
+### ❌ Implementation Details
+
+**BAD**:
+```json
+{
+  "assertion": "Use RegEx pattern ^[A-Z]{3}$ to validate currency codes"
+}
+```
+
+**GOOD**:
+```json
+{
+  "assertion": "Currency codes must conform to ISO 4217 three-letter standard",
+  "examples": {
+    "do": ["USD", "EUR", "GBP"],
+    "dont": ["us", "dollar", "US$"]
+  }
+}
+```
+
+## System Autonomy
+
+The execution system (agent, worker, orchestrator) has **full autonomy** to determine:
+
+- Which tools to use
+- How to decompose work
+- Whether to delegate subtasks
+- Execution order and parallelization
+- Resource allocation
+- Error recovery strategies
+
+Blueprints constrain **what is acceptable**, not **how to get there**.
+
+## Quality Examples
+
+### Research Job Blueprint
+
+```json
+{
+  "assertions": [
+    {
+      "id": "DATA-001",
+      "assertion": "Research must use authoritative sources with timestamps within the specified time window",
+      "examples": {
+        "do": [
+          "DeFi Llama protocol metrics (timestamp: 2024-11-14 15:00 UTC)",
+          "Dune Analytics dashboard data (updated: 2 hours ago)"
+        ],
+        "dont": [
+          "Generic web searches without source attribution",
+          "Data without timestamps or provenance"
+        ]
+      },
+      "commentary": "Credibility depends on verifiable, recent data sources."
+    },
+    {
+      "id": "ANALYSIS-001",
+      "assertion": "Findings must be quantified relative to historical baselines",
+      "examples": {
+        "do": [
+          "Volume is 2.3x the 7-day average",
+          "TVL decreased 15% vs. previous 24h"
+        ],
+        "dont": [
+          "Volume was high",
+          "TVL dropped significantly"
+        ]
+      },
+      "commentary": "Statistical context prevents spurious signal detection."
+    }
+  ]
+}
+```
+
+### Code Modification Blueprint
+
+```json
+{
+  "assertions": [
+    {
+      "id": "QUALITY-001",
+      "assertion": "All existing tests must pass after changes",
+      "examples": {
+        "do": ["Run full test suite and verify zero failures"],
+        "dont": ["Skip tests", "Disable failing tests"]
+      },
+      "commentary": "Regression prevention is non-negotiable."
+    },
+    {
+      "id": "CONSTRAINT-001",
+      "assertion": "Public API surface must remain unchanged",
+      "examples": {
+        "do": ["Add new methods", "Modify private internals"],
+        "dont": ["Remove public methods", "Change method signatures"]
+      },
+      "commentary": "API stability ensures downstream compatibility."
+    }
+  ]
+}
+```
+
+## Recognition Learnings vs. Blueprints
+
+**Blueprints** define job requirements (what must be satisfied).
+
+**Recognition learnings** provide execution strategies (how similar jobs succeeded/failed).
+
+The agent synthesizes both:
+1. Blueprint defines success criteria
+2. Recognition suggests proven approaches
+3. Agent decides final execution plan
+
+If recognition learnings conflict with blueprint requirements, **blueprint always wins**.
+
+## Validation
+
+Before finalizing a blueprint, verify:
+
+- [ ] No imperative verbs (use, call, execute, run, dispatch)
+- [ ] No tool names (web_search, create_artifact, dispatch_new_job)
+- [ ] No architectural prescriptions (decompose, delegate, parallelize)
+- [ ] All assertions are testable/verifiable
+- [ ] Examples are concrete and specific
+- [ ] Commentary explains "why", not "how"
+
+## Summary
+
+**Blueprint Purpose**: Define the target state, not the path.
+
+**System Responsibility**: Determine optimal execution strategy.
+
+**Golden Rule**: If you're telling the agent what to do, you're writing it wrong. Tell it what must be true instead.

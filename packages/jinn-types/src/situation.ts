@@ -4,9 +4,10 @@ export interface SituationJob {
   requestId: string;
   jobDefinitionId?: string;
   jobName?: string;
-  objective?: string;
-  acceptanceCriteria?: string;
-  prompt?: string;
+  blueprint?: string;  // Blueprint-based job specification
+  objective?: string;  // Legacy: extracted from prompt
+  acceptanceCriteria?: string;  // Legacy: extracted from prompt
+  prompt?: string;  // Legacy: pre-blueprint jobs
   model?: string;
   enabledTools?: string[];
 }

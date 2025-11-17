@@ -131,24 +131,24 @@ async function fetchRootNode(
 async function enrichNodeWithCounts(node: GraphNode): Promise<void> {
   try {
     // Fetch artifact count
-    const artifacts = await queryArtifacts({
+    const artifactsResponse = await queryArtifacts({
       where: {
         [node.type === 'jobDefinition' ? 'sourceJobDefinitionId' : 'requestId']: node.id
       },
       limit: 1000,
     })
-    node.metadata.artifactCount = artifacts.length
+    node.metadata.artifactCount = artifactsResponse.items.length
 
     // Fetch message count
     // For job definitions, query by sourceJobDefinitionId (messages FROM this job)
     // For requests, query by requestId (messages TO this request)
-    const messages = await queryMessages({
+    const messagesResponse = await queryMessages({
       where: {
         [node.type === 'jobDefinition' ? 'sourceJobDefinitionId' : 'requestId']: node.id
       },
       limit: 1000,
     })
-    node.metadata.messageCount = messages.length
+    node.metadata.messageCount = messagesResponse.items.length
   } catch (error) {
     console.error('Error enriching node with counts:', error)
   }
@@ -202,12 +202,12 @@ async function traverseDownstream(
     // ==================================================================
     if (current.type === 'jobDefinition') {
       // Find requests that execute this job definition
-      const requests = await queryRequests({
+      const requestsResponse = await queryRequests({
         where: { jobDefinitionId: current.id },
         limit: 100,
       })
 
-      for (const req of requests) {
+      for (const req of requestsResponse.items) {
         const reqNode = createGraphNode(req, 'request', current.level + 1)
         await enrichNodeWithCounts(reqNode)
         nodes.set(req.id, reqNode)
@@ -223,12 +223,12 @@ async function traverseDownstream(
       }
 
       // Find job definitions spawned by this job definition
-      const childJobDefs = await queryJobDefinitions({
+      const childJobDefsResponse = await queryJobDefinitions({
         where: { sourceJobDefinitionId: current.id },
         limit: 100,
       })
 
-      for (const childJobDef of childJobDefs) {
+      for (const childJobDef of childJobDefsResponse.items) {
         const childNode = createGraphNode(childJobDef, 'jobDefinition', current.level + 1)
         await enrichNodeWithCounts(childNode)
         nodes.set(childJobDef.id, childNode)
@@ -244,12 +244,12 @@ async function traverseDownstream(
       }
 
       // Find requests dispatched from this job definition (via sourceJobDefinitionId)
-      const dispatchedRequests = await queryRequests({
+      const dispatchedRequestsResponse = await queryRequests({
         where: { sourceJobDefinitionId: current.id },
         limit: 100,
       })
 
-      for (const req of dispatchedRequests) {
+      for (const req of dispatchedRequestsResponse.items) {
         const reqNode = createGraphNode(req, 'request', current.level + 1)
         await enrichNodeWithCounts(reqNode)
         nodes.set(req.id, reqNode)
@@ -270,12 +270,12 @@ async function traverseDownstream(
     // ==================================================================
     if (current.type === 'request') {
       // Find job definitions created by this request
-      const createdJobDefs = await queryJobDefinitions({
+      const createdJobDefsResponse = await queryJobDefinitions({
         where: { sourceRequestId: current.id },
         limit: 100,
       })
 
-      for (const jobDef of createdJobDefs) {
+      for (const jobDef of createdJobDefsResponse.items) {
         const jobDefNode = createGraphNode(jobDef, 'jobDefinition', current.level + 1)
         await enrichNodeWithCounts(jobDefNode)
         nodes.set(jobDef.id, jobDefNode)
@@ -291,12 +291,12 @@ async function traverseDownstream(
 
         // Find requests dispatched from this created job definition
         // This creates the path: Request → JobDef → Request (via sourceJobDefinitionId)
-        const requestsFromJobDef = await queryRequests({
+        const requestsFromJobDefResponse = await queryRequests({
           where: { sourceJobDefinitionId: jobDef.id },
           limit: 100,
         })
 
-        for (const childReq of requestsFromJobDef) {
+        for (const childReq of requestsFromJobDefResponse.items) {
           if (!nodes.has(childReq.id)) {
             const childReqNode = createGraphNode(childReq, 'request', current.level + 2)
             await enrichNodeWithCounts(childReqNode)
@@ -315,12 +315,12 @@ async function traverseDownstream(
       }
 
       // Find child requests spawned by this request
-      const childRequests = await queryRequests({
+      const childRequestsResponse = await queryRequests({
         where: { sourceRequestId: current.id },
         limit: 100,
       })
 
-      for (const childReq of childRequests) {
+      for (const childReq of childRequestsResponse.items) {
         const childReqNode = createGraphNode(childReq, 'request', current.level + 1)
         await enrichNodeWithCounts(childReqNode)
         nodes.set(childReq.id, childReqNode)

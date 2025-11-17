@@ -72,7 +72,9 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     lastUpdate,
     setCurrentPage,
     refresh,
-    error
+    error,
+    hasNextPage,
+    hasPreviousPage
   } = useSubgraphCollection({
     collectionName,
     pageSize,
@@ -197,6 +199,8 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
         totalRecords={totalRecords}
         pageSize={pageSize}
         onPageChange={setCurrentPage}
+        hasNextPage={hasNextPage}
+        hasPreviousPage={hasPreviousPage}
       />
     </div>
   )

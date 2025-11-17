@@ -14,6 +14,7 @@ interface JobDefinition {
   name: string
   enabledTools?: string[]
   promptContent?: string
+  blueprint?: string
   sourceJobDefinitionId?: string
   sourceRequestId?: string
 }
@@ -33,18 +34,18 @@ export function JobDefinitionDetailLayout({ record }: JobDefinitionDetailLayoutP
     const fetchData = async () => {
       try {
         // Fetch all runs for this job definition
-        const runs = await queryRequests({
+        const runsResponse = await queryRequests({
           where: { jobDefinitionId: record.id },
           orderBy: 'blockTimestamp',
           orderDirection: 'desc',
         })
         
-        setJobRuns(runs)
+        setJobRuns(runsResponse.items)
         setLoadingRuns(false)
 
         // Find workstream by traversing to root
-        if (runs.length > 0) {
-          const latestRun = runs[0]
+        if (runsResponse.items.length > 0) {
+          const latestRun = runsResponse.items[0]
           let currentRequestId = latestRun.id
           let sourceRequestId = latestRun.sourceRequestId || null
           
@@ -85,21 +86,21 @@ export function JobDefinitionDetailLayout({ record }: JobDefinitionDetailLayoutP
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       {/* Main Content Area - 8/12 columns */}
       <div className="lg:col-span-8 space-y-6">
-        {/* Prompt Card */}
+        {/* Blueprint Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Prompt</CardTitle>
+            <CardTitle>Blueprint</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Prompt Content */}
+            {/* Blueprint Content */}
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Prompt</div>
-              {record.promptContent ? (
+              <div className="text-sm font-medium text-gray-700 mb-2">Blueprint</div>
+              {record.blueprint || record.promptContent ? (
                 <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
-                  <ReactMarkdown>{record.promptContent}</ReactMarkdown>
+                  <ReactMarkdown>{record.blueprint || record.promptContent || ''}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="text-gray-500">[No prompt content available]</div>
+                <div className="text-gray-500">[No blueprint content available]</div>
               )}
             </div>
 

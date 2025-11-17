@@ -51,7 +51,7 @@ export function ExecutionPhaseCard({
         const jobs = await Promise.all(
           childRequestIds.map(id => 
             queryRequests({ where: { id }, orderBy: 'blockTimestamp', orderDirection: 'desc' })
-              .then(results => results[0])
+              .then(results => results.items[0])
               .catch(() => null)
           )
         )

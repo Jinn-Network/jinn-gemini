@@ -14,10 +14,10 @@ import { buildEnhancedPrompt } from '../../../../worker/metadata/prompt.js';
 import type { IpfsMetadata } from '../../../../worker/types.js';
 
 describe('buildEnhancedPrompt', () => {
-  describe('basic prompt handling', () => {
-    it('uses metadata prompt when basePrompt not provided', () => {
+  describe('basic blueprint handling', () => {
+    it('uses metadata blueprint when fallbackPrompt not provided', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Task from metadata',
+        blueprint: 'Task from metadata',
       };
 
       const result = buildEnhancedPrompt(metadata);
@@ -25,50 +25,39 @@ describe('buildEnhancedPrompt', () => {
       expect(result).toContain('Task from metadata');
     });
 
-    it('uses basePrompt when provided', () => {
+    it('prefers blueprint over fallbackPrompt', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Original prompt',
+        blueprint: 'Original blueprint',
       };
 
       const result = buildEnhancedPrompt(metadata, 'Override prompt');
 
-      expect(result).toContain('Override prompt');
-      expect(result).not.toContain('Original prompt');
+      // Blueprint takes precedence
+      expect(result).toContain('Original blueprint');
+      expect(result).not.toContain('Override prompt');
     });
 
-    it('trims whitespace from prompt', () => {
-      const metadata: IpfsMetadata = {
-        prompt: '  Prompt with spaces  \n\n',
-      };
-
-      const result = buildEnhancedPrompt(metadata);
-
-      expect(result.startsWith('Prompt with spaces')).toBe(true);
-    });
-
-    it('handles empty metadata prompt', () => {
-      const metadata: IpfsMetadata = {
-        prompt: '',
-      };
-
-      const result = buildEnhancedPrompt(metadata);
-
-      expect(result).toBe('');
-    });
-
-    it('handles missing prompt field', () => {
+    it('returns error message when no blueprint or fallback', () => {
       const metadata: IpfsMetadata = {};
 
       const result = buildEnhancedPrompt(metadata);
 
-      expect(result).toBe('');
+      expect(result).toBe('No job specification found');
+    });
+
+    it('uses fallback when blueprint missing', () => {
+      const metadata: IpfsMetadata = {};
+
+      const result = buildEnhancedPrompt(metadata, 'Fallback task');
+
+      expect(result).toContain('Fallback task');
     });
   });
 
   describe('context enhancement', () => {
     it('adds context summary when present', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Base task',
+        blueprint: 'Base task',
         additionalContext: {
           summary: {
             totalJobs: 5,
@@ -91,7 +80,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('adds related jobs information', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Base task',
+        blueprint: 'Base task',
         additionalContext: {
           summary: {
             totalJobs: 2,
@@ -115,7 +104,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('lists available artifacts', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Base task',
+        blueprint: 'Base task',
         additionalContext: {
           summary: {
             totalJobs: 1,
@@ -146,7 +135,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('handles empty hierarchy', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Base task',
+        blueprint: 'Base task',
         additionalContext: {
           summary: {
             totalJobs: 0,
@@ -166,7 +155,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('handles jobs without artifacts', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Base task',
+        blueprint: 'Base task',
         additionalContext: {
           summary: {
             totalJobs: 1,
@@ -191,7 +180,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('prepends context before base prompt', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Original task instructions',
+        blueprint: 'Original task instructions',
         additionalContext: {
           summary: {
             totalJobs: 1,
@@ -213,7 +202,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('handles missing summary fields with defaults', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Base task',
+        blueprint: 'Base task',
         additionalContext: {
           summary: {},
           hierarchy: [],
@@ -230,7 +219,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('does not add context when additionalContext is absent', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Simple task',
+        blueprint: 'Simple task',
       };
 
       const result = buildEnhancedPrompt(metadata);
@@ -241,7 +230,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('handles null additionalContext', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Simple task',
+        blueprint: 'Simple task',
         additionalContext: null as any,
       };
 
@@ -254,7 +243,7 @@ describe('buildEnhancedPrompt', () => {
   describe('complex scenarios', () => {
     it('handles multiple jobs with multiple artifacts', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Complete the analysis',
+        blueprint: 'Complete the analysis',
         additionalContext: {
           summary: {
             totalJobs: 3,
@@ -303,9 +292,9 @@ describe('buildEnhancedPrompt', () => {
       expect(result).toContain('Complete the analysis');
     });
 
-    it('preserves prompt line breaks', () => {
+    it('preserves blueprint line breaks', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Line 1\nLine 2\nLine 3',
+        blueprint: 'Line 1\nLine 2\nLine 3',
       };
 
       const result = buildEnhancedPrompt(metadata);
@@ -313,10 +302,10 @@ describe('buildEnhancedPrompt', () => {
       expect(result).toContain('Line 1\nLine 2\nLine 3');
     });
 
-    it('handles very long prompts', () => {
-      const longPrompt = 'a'.repeat(10000);
+    it('handles very long blueprints', () => {
+      const longBlueprint = 'a'.repeat(10000);
       const metadata: IpfsMetadata = {
-        prompt: longPrompt,
+        blueprint: longBlueprint,
         additionalContext: {
           summary: { totalJobs: 1, completedJobs: 0, activeJobs: 1, totalArtifacts: 0 },
           hierarchy: [],
@@ -326,7 +315,7 @@ describe('buildEnhancedPrompt', () => {
       const result = buildEnhancedPrompt(metadata);
 
       expect(result.length).toBeGreaterThan(10000);
-      expect(result).toContain(longPrompt);
+      expect(result).toContain(longBlueprint);
     });
   });
 });

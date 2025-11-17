@@ -38,6 +38,8 @@ interface UseSubgraphCollectionReturn {
   setCurrentPage: (page: number) => void
   refresh: () => void
   error: string | null
+  hasNextPage: boolean
+  hasPreviousPage: boolean
 }
 
 export function useSubgraphCollection({
@@ -55,7 +57,11 @@ export function useSubgraphCollection({
   const [totalRecords, setTotalRecords] = useState(0)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [error, setError] = useState<string | null>(null)
+  const [hasNextPage, setHasNextPage] = useState(false)
+  const [hasPreviousPage, setHasPreviousPage] = useState(false)
   
+  // Track cursors for each page
+  const cursorsRef = useRef<Map<number, { after?: string; before?: string }>>(new Map())
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   
   // Get the appropriate query function for the collection
@@ -101,20 +107,35 @@ export function useSubgraphCollection({
     
     try {
       const queryFn = getQueryFunction()
+      
+      // Get cursor for this page
+      const pageCursor = cursorsRef.current.get(page)
+      
       const options: QueryOptions = {
         limit: pageSize,
         orderBy: getDefaultSortColumn(),
         orderDirection: sortAscending ? 'asc' : 'desc',
         where: whereFilter,
-        // For pagination, we'll use simple offset-based pagination
-        // Note: This is a simplification. Proper cursor-based pagination would be better
+        after: pageCursor?.after,
+        before: pageCursor?.before,
       }
 
-      const data = await queryFn(options)
+      const response = await queryFn(options)
       
-      setRecords(data)
-      // Note: We don't have total count from GraphQL, so we estimate
-      setTotalRecords(data.length >= pageSize ? (page * pageSize) + 1 : (page - 1) * pageSize + data.length)
+      setRecords(response.items)
+      setHasNextPage(response.pageInfo.hasNextPage)
+      setHasPreviousPage(response.pageInfo.hasPreviousPage)
+      
+      // Store cursor for next page
+      if (response.pageInfo.hasNextPage && response.pageInfo.endCursor) {
+        cursorsRef.current.set(page + 1, { after: response.pageInfo.endCursor })
+      }
+      
+      // Calculate minimum known total: current page's last record position
+      // If there's a next page, add 1 to show there are more
+      const currentEnd = (page - 1) * pageSize + response.items.length
+      setTotalRecords(response.pageInfo.hasNextPage ? currentEnd + 1 : currentEnd)
+      
       setLastUpdate(new Date())
     } catch (fetchError) {
       console.error(`Error fetching ${collectionName} records:`, fetchError)
@@ -178,6 +199,8 @@ export function useSubgraphCollection({
     lastUpdate,
     setCurrentPage,
     refresh,
-    error
+    error,
+    hasNextPage,
+    hasPreviousPage
   }
 }

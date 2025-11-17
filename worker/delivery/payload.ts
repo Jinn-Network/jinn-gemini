@@ -20,6 +20,7 @@ export function buildDeliveryPayload(params: {
   return {
     requestId: String(requestId),
     output: result.output || '',
+    structuredSummary: result.structuredSummary || result.output?.slice(-1200) || '',
     telemetry: result.telemetry || {},
     artifacts: result.artifacts || [],
     ...(workerTelemetry ? { workerTelemetry } : {}),

@@ -263,12 +263,13 @@ ponder.on(
       let jobName: string | undefined;
       let enabledTools: string[] | undefined;
       let jobDefinitionId: string | undefined;
-      let promptContent: string | undefined;
+      let blueprint: string | undefined;
       let sourceRequestId: string | undefined;
       let sourceJobDefinitionIdFromContent: string | undefined;
       let additionalContext: any = undefined;
       let messageContent: any = undefined;
       let codeMetadata: any = undefined;
+      let dependencies: string[] | undefined;
       jobName = typeof content.jobName === "string" ? content.jobName : undefined;
       enabledTools = Array.isArray(content.tools)
         ? content.tools.map((tool: any) => String(tool))
@@ -276,7 +277,10 @@ ponder.on(
           ? content.enabledTools.map((tool: any) => String(tool))
           : undefined;
       jobDefinitionId = typeof content.jobDefinitionId === "string" ? content.jobDefinitionId : undefined;
-      promptContent = typeof content.prompt === "string" ? content.prompt : undefined;
+      // Support both blueprint (new) and prompt (legacy)
+      blueprint = typeof content.blueprint === "string" 
+        ? content.blueprint 
+        : (typeof content.prompt === "string" ? content.prompt : undefined);
       sourceRequestId = typeof content.sourceRequestId === "string" ? content.sourceRequestId : undefined;
       sourceJobDefinitionIdFromContent =
         typeof (content as any).sourceJobDefinitionId === "string"
@@ -293,6 +297,10 @@ ponder.on(
           codeMetadata = content.codeMetadata;
         }
       }
+      // Extract dependencies array if present
+      dependencies = Array.isArray(content.dependencies)
+        ? content.dependencies.map((dep: any) => String(dep))
+        : undefined;
 
       // Upsert jobDefinition if present
       if (jobDefRepo && jobDefinitionId) {
@@ -305,7 +313,7 @@ ponder.on(
             id: jobDefinitionId,
             name: jobName || 'Unnamed Job',
             enabledTools,
-            promptContent,
+            blueprint,
             sourceJobDefinitionId: parentJobDefinitionId,
             sourceRequestId: sourceRequestId,
             codeMetadata,
@@ -313,7 +321,7 @@ ponder.on(
           update: {
             name: jobName || 'Unnamed Job',
             enabledTools,
-            promptContent,
+            blueprint,
             codeMetadata: codeMetadata || undefined,
             // Do NOT re-attribute lineage on updates; preserve original creator
           },
@@ -376,6 +384,7 @@ ponder.on(
             jobName,
             enabledTools,
             additionalContext: contextToStore,
+            dependencies,
           },
           update: {
             // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
@@ -387,6 +396,7 @@ ponder.on(
             jobName,
             enabledTools,
             additionalContext: contextToStore,
+            dependencies,
             // intentionally do not overwrite delivered, mech, sender, blockNumber, blockTimestamp, transactionHash here
           },
         });
@@ -569,7 +579,10 @@ ponder.on(
           const deliveryJobDefinitionId = typeof res.data.jobDefinitionId === 'string' ? res.data.jobDefinitionId : undefined;
           const jobName = typeof res.data.jobName === 'string' ? res.data.jobName : undefined;
           const enabledTools = Array.isArray(res.data.enabledTools) ? res.data.enabledTools.map((x: any) => String(x)) : undefined;
-          const promptContent = typeof res.data.prompt === 'string' ? res.data.prompt : undefined;
+          // Support both blueprint (new) and prompt (legacy)
+          const blueprint = typeof res.data.blueprint === 'string' 
+            ? res.data.blueprint 
+            : (typeof res.data.prompt === 'string' ? res.data.prompt : undefined);
 
           // Backfill job definition on delivery if available
           // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
@@ -577,8 +590,8 @@ ponder.on(
             if (jobDefRepo) {
               await jobDefRepo.upsert({
                 id: deliveryJobDefinitionId,
-                create: { id: deliveryJobDefinitionId, name: jobName || 'Unnamed Job', enabledTools, promptContent, sourceRequestId: requestId },
-                update: { name: jobName || 'Unnamed Job', enabledTools, promptContent, sourceRequestId: requestId },
+                create: { id: deliveryJobDefinitionId, name: jobName || 'Unnamed Job', enabledTools, blueprint, sourceRequestId: requestId },
+                update: { name: jobName || 'Unnamed Job', enabledTools, blueprint, sourceRequestId: requestId },
               });
             }
             // Backfill jobDefinitionId (target job) on delivery and request

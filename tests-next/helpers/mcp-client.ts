@@ -285,17 +285,13 @@ export async function withJobContext<T>(
  * Uses MCP protocol to create real on-chain requests
  */
 export async function createTestJob(params: {
-  objective: string;
-  context: string;
-  acceptanceCriteria: string;
+  blueprint: string;
   jobName?: string;
   enabledTools?: string[];
-  instructions?: string;
-  deliverables?: string;
-  constraints?: string;
   message?: string;
   sourceRequestId?: string;
   sourceJobDefinitionId?: string;
+  dependencies?: string[];
 }): Promise<{ jobDefId: string; requestId: string; dispatchResult: any }> {
   const jobName = params.jobName ?? `test-job-${Date.now()}-${randomUUID().slice(0, 6)}`;
   const enabledTools = params.enabledTools ?? ['create_artifact'];
@@ -303,18 +299,14 @@ export async function createTestJob(params: {
   // Call dispatch_new_job through MCP protocol
   const client = getMcpClient();
   const dispatchRes = await client.callTool('dispatch_new_job', {
-    objective: params.objective,
-    context: params.context,
-    instructions: params.instructions,
-    acceptanceCriteria: params.acceptanceCriteria,
-    deliverables: params.deliverables,
-    constraints: params.constraints,
+    blueprint: params.blueprint,
     jobName,
     enabledTools,
     updateExisting: true,
     message: params.message,
     sourceRequestId: params.sourceRequestId,
     sourceJobDefinitionId: params.sourceJobDefinitionId,
+    dependencies: params.dependencies,
   });
 
   const parsed = parseToolText(dispatchRes);

@@ -11,10 +11,10 @@ import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
   jobName: z.string().min(1).optional(),
-  // Optional overrides for tools/prompt if caller wants to tweak minor fields
+  // Optional overrides for tools/blueprint if caller wants to tweak minor fields
   // If not provided, we use the values from the job definition as-is
   enabledTools: z.array(z.string()).optional(),
-  prompt: z.string().optional(),
+  prompt: z.string().optional().describe('DEPRECATED: Use blueprint instead. For backward compatibility only.'),
   message: z.string().optional(),
 });
 
@@ -24,7 +24,7 @@ export const dispatchExistingJobParams = dispatchExistingJobParamsBase.refine(
 );
 
 export const dispatchExistingJobSchema = {
-  description: 'Dispatch an existing job definition by ID or name to the marketplace. Looks up the job in the subgraph and posts a new request anchored to its jobDefinitionId.',
+  description: 'Dispatch an existing job definition by ID or name to the marketplace. ONLY use this if you know the job definition already exists in Ponder (e.g., you previously created it with dispatch_new_job). For new job definitions, use dispatch_new_job instead. This tool looks up the job in Ponder and posts a new request anchored to its jobDefinitionId. The job definition must have a blueprint; prompt-based jobs are no longer supported.',
   inputSchema: dispatchExistingJobParamsBase.shape,
 };
 
@@ -54,11 +54,11 @@ export async function dispatchExistingJob(args: unknown) {
           id: string;
           name: string;
           enabledTools?: string;
-          promptContent?: string;
+          blueprint?: string;
         } | null;
       }>({
         url: gqlUrl,
-        query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools promptContent } }`,
+        query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools blueprint } }`,
         variables: { id: jobId },
         maxRetries: 1,
         context: { operation: 'getJobById', jobId }
@@ -71,12 +71,12 @@ export async function dispatchExistingJob(args: unknown) {
             id: string;
             name: string;
             enabledTools?: string;
-            promptContent?: string;
+            blueprint?: string;
           }>;
         };
       }>({
         url: gqlUrl,
-        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools promptContent } } }`,
+        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools blueprint } } }`,
         variables: { name: jobName },
         maxRetries: 1,
         context: { operation: 'getJobByName', jobName }
@@ -88,18 +88,18 @@ export async function dispatchExistingJob(args: unknown) {
   }
 
   if (!jobDef) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'NOT_FOUND', message: 'Job definition not found' } }) }] };
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'NOT_FOUND', message: `Job definition '${jobName || jobId}' not found in Ponder. Use dispatch_new_job to create it first.` } }) }] };
   }
 
   const jobDefinitionId: string = jobDef.id;
   const name: string = jobDef.name;
   const baseTools: string[] | undefined = Array.isArray(jobDef.enabledTools) ? jobDef.enabledTools : undefined;
-  const basePrompt: string | undefined = typeof jobDef.promptContent === 'string' ? jobDef.promptContent : undefined;
+  const baseBlueprint: string | undefined = typeof jobDef.blueprint === 'string' ? jobDef.blueprint : undefined;
 
   const finalTools = overridesTools ?? baseTools ?? [];
-  const finalPrompt = overridePrompt ?? basePrompt ?? '';
-  if (!finalPrompt) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'MISSING_PROMPT', message: 'No prompt content available to dispatch.' } }) }] };
+  const finalBlueprint = overridePrompt ?? baseBlueprint ?? '';
+  if (!finalBlueprint) {
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'MISSING_BLUEPRINT', message: 'No blueprint content available to dispatch. Use dispatch_new_job to create a job definition with a blueprint first.' } }) }] };
   }
 
   // Build request payload mirroring post_marketplace_job expectations
@@ -147,51 +147,68 @@ export async function dispatchExistingJob(args: unknown) {
     }
   }
 
-  const baseBranch =
-    (context as any)?.baseBranch ||
-    getCodeMetadataDefaultBaseBranch();
+  // Code metadata collection is optional for artifact-only jobs
+  let branchResult: any = null;
+  let codeMetadata: any = null;
+  
+  try {
+    const baseBranch =
+      (context as any)?.baseBranch ||
+      getCodeMetadataDefaultBaseBranch();
 
-  const branchResult = await ensureJobBranch({
-    jobDefinitionId,
-    jobName: name,
-    baseBranch,
-  });
+    branchResult = await ensureJobBranch({
+      jobDefinitionId,
+      jobName: name,
+      baseBranch,
+    });
 
-  const metadataHints = {
-    jobDefinitionId,
-    parent:
-      context.jobDefinitionId || context.requestId
-        ? {
-            jobDefinitionId: context.jobDefinitionId || undefined,
-            requestId: context.requestId || undefined,
-          }
-        : undefined,
-    baseBranch,
-    branchName: branchResult.branchName,
-  };
+    const metadataHints = {
+      jobDefinitionId,
+      parent:
+        context.jobDefinitionId || context.requestId
+          ? {
+              jobDefinitionId: context.jobDefinitionId || undefined,
+              requestId: context.requestId || undefined,
+            }
+          : undefined,
+      baseBranch,
+      branchName: branchResult.branchName,
+    };
 
-  const codeMetadata = await collectLocalCodeMetadata(metadataHints);
+    codeMetadata = await collectLocalCodeMetadata(metadataHints);
+  } catch (codeMetadataError: any) {
+    // Code metadata collection failed - this is acceptable for artifact-only jobs
+    // Log the error but continue with dispatch
+    console.error('[dispatch_existing_job] Code metadata collection skipped:', codeMetadataError.message);
+  }
 
   const ipfsJsonContents: any[] = [{
-    prompt: finalPrompt,
+    blueprint: finalBlueprint,
     jobName: name,
     enabledTools: finalTools,
     jobDefinitionId,
     additionalContext,
-    branchName: branchResult.branchName,
-    baseBranch,
     ...lineageContext,
   }];
+
+  // Only include branch info if we successfully collected it
+  if (branchResult) {
+    ipfsJsonContents[0].branchName = branchResult.branchName;
+    ipfsJsonContents[0].baseBranch = branchResult.baseBranch || getCodeMetadataDefaultBaseBranch();
+  }
 
   if (codeMetadata) {
     ipfsJsonContents[0].codeMetadata = codeMetadata;
   }
 
-  ipfsJsonContents[0].executionPolicy = {
-    branch: branchResult.branchName,
-    ensureTestsPass: true,
-    description: 'Agent must execute work on the provided branch and pass required validations before finalizing.',
-  };
+  // Only include execution policy if we have branch info
+  if (branchResult) {
+    ipfsJsonContents[0].executionPolicy = {
+      branch: branchResult.branchName,
+      ensureTestsPass: true,
+      description: 'Agent must execute work on the provided branch and pass required validations before finalizing.',
+    };
+  }
 
     try {
       const priorityMech = getMechAddress();
@@ -207,7 +224,7 @@ export async function dispatchExistingJob(args: unknown) {
       }
 
       const result = await marketplaceInteract({
-        prompts: [finalPrompt],
+        prompts: [finalBlueprint],
         priorityMech,
         tools: finalTools,
         ipfsJsonContents,

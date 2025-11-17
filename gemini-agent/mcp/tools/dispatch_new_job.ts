@@ -6,35 +6,65 @@ import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
-import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
+import { getCodeMetadataDefaultBaseBranch, getOptionalMechModel } from '../../../config/index.js';
+
+// Blueprint assertion schema matching the style guide
+const blueprintAssertionSchema = z.object({
+  id: z.string().describe('Unique identifier for this assertion (e.g., "TST-001")'),
+  assertion: z.string().min(10).describe('Brief, declarative statement defining a principle, requirement, or constraint'),
+  examples: z.object({
+    do: z.array(z.string()).min(1).describe('Positive examples showing correct application'),
+    dont: z.array(z.string()).min(1).describe('Negative examples showing violation or anti-pattern'),
+  }).describe('Two-column guidance with concrete positive and negative examples'),
+  commentary: z.string().min(10).describe('Human-readable context explaining the rationale, background, or implications'),
+});
+
+const blueprintStructureSchema = z.object({
+  assertions: z.array(blueprintAssertionSchema).min(1).describe('Array of assertions defining the job requirements'),
+});
 
 const dispatchNewJobParamsBase = z.object({
-  objective: z.string().min(10).describe('Clear, specific statement of what needs to be accomplished'),
-  context: z.string().min(20).describe('Why this work is needed and how it fits into the broader goal. Include relevant background from parent job.'),
-  deliverables: z.string().optional().describe('Expected outputs or artifacts to be created. Specify artifact topics and what should be persisted for parent job review.'),
-  acceptanceCriteria: z.string().min(10).describe('Specific, measurable criteria for successful completion (what "done" looks like). Include: (1) what outputs are complete, (2) what artifacts are created with topics, (3) how results are surfaced to parent.'),
-  constraints: z.string().optional().describe('Limitations, requirements, dependencies, or important considerations'),
-  instructions: z.string().optional().describe('Explicit guidance or prohibitions the agent must follow verbatim during execution.'),
-  jobName: z.string().min(1),
-  model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-2.5-flash", "gemini-2.5-pro"). Defaults to "gemini-2.5-flash" if not specified.'),
-  enabledTools: z.array(z.string()).optional(),
-  updateExisting: z.boolean().optional().default(false),
-  message: z.string().optional(),
+  jobName: z.string().min(1).describe('Unique name for this job definition'),
+  blueprint: z.string().optional().describe('JSON string containing structured blueprint with assertions array. Each assertion must have: id, assertion, examples (do/dont arrays), and commentary.'),
+  model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-2.5-flash", "gemini-2.5-pro"). Defaults to MECH_MODEL env var or "gemini-2.5-flash" if not specified.'),
+  enabledTools: z.array(z.string()).optional().describe('Array of tool names to enable for this job'),
+  updateExisting: z.boolean().optional().default(false).describe('If true, update existing job definition with the same name'),
+  message: z.string().optional().describe('Optional message to include in the job request'),
+  dependencies: z.array(z.string()).optional().describe('Array of job definition IDs that must be fully completed (all requests and child jobs delivered) before this job can execute. Use this to enforce execution order for related job definitions.'),
+  skipBranch: z.boolean().optional().default(false).describe('If true, skip branch creation and code metadata collection (for artifact-only jobs)'),
 });
 
 export const dispatchNewJobParams = dispatchNewJobParamsBase;
 
 export const dispatchNewJobSchema = {
-  description: `Create or update a job definition and dispatch a marketplace request using structured prompt fields for high-quality work delegation.
+  description: `Create or update a job definition and dispatch a marketplace request using a structured JSON blueprint.
 
-STRUCTURED PROMPT FIELDS (all required except deliverables/constraints):
-- objective: Clear, specific statement of what needs to be accomplished (min 10 chars)
-- context: Why this work is needed and how it fits the broader goal. Include relevant background from parent job. (min 20 chars)
-- deliverables: (optional) Expected outputs or artifacts to be created. Specify artifact topics and what should be persisted for parent job review.
-- acceptanceCriteria: Specific, measurable criteria for successful completion - what "done" looks like (min 10 chars). Include: (1) what outputs are complete, (2) what artifacts are created with topics, (3) how results are surfaced to parent.
-- constraints: (optional) Limitations, requirements, dependencies, or important considerations
+BLUEPRINT FORMAT (REQUIRED):
+The blueprint must be a JSON string with the following structure:
+{
+  "assertions": [
+    {
+      "id": "UNIQUE-ID",
+      "assertion": "Brief declarative statement of requirement",
+      "examples": {
+        "do": ["Positive example 1", "Positive example 2"],
+        "dont": ["Negative example 1", "Negative example 2"]
+      },
+      "commentary": "Explanation of why this assertion exists and its implications"
+    }
+  ]
+}
 
-These fields are assembled into a well-structured prompt that preserves context through delegation levels.`,
+PARAMETERS:
+- jobName: (required) Unique name for this job definition
+- blueprint: (required) JSON string containing structured assertions array as defined above
+- model: (optional) Gemini model to use (defaults to MECH_MODEL env var or "gemini-2.5-flash")
+- enabledTools: (optional) Array of tool names to enable
+- updateExisting: (optional) If true, update existing job definition with the same name
+- message: (optional) Additional message to include in the job request
+- dependencies: (optional) Array of job definition IDs that must be fully completed before this job can execute
+
+The blueprint is validated and made directly available to the agent in GEMINI.md context.`,
   inputSchema: dispatchNewJobParamsBase.shape,
 };
 
@@ -46,40 +76,6 @@ function ensureUuid(): string {
   throw new Error('crypto.randomUUID not available; cannot generate strict UUID');
 }
 
-function constructPrompt(params: {
-  objective: string;
-  context: string;
-  deliverables?: string;
-  acceptanceCriteria: string;
-  constraints?: string;
-  instructions?: string;
-}): string {
-  let prompt = `# Objective
-${params.objective}
-
-# Context
-${params.context}`;
-
-  if (params.deliverables) {
-    prompt += `\n\n# Deliverables\n${params.deliverables}`;
-  }
-
-  prompt += `\n\n# Acceptance Criteria
-${params.acceptanceCriteria}`;
-
-  if (params.constraints) {
-    prompt += `\n\n# Constraints\n${params.constraints}`;
-  }
-
-  if (params.instructions) {
-    const trimmedInstructions = params.instructions.trim();
-    if (trimmedInstructions.length > 0) {
-      prompt += `\n\n# Instructions\n${trimmedInstructions}`;
-    }
-  }
-
-  return prompt;
-}
 
 export async function dispatchNewJob(args: unknown) {
   try {
@@ -104,10 +100,58 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { objective, context: promptContext, deliverables, acceptanceCriteria, constraints, instructions, jobName, model, enabledTools, updateExisting, message } = parsed.data;
+    const { jobName, blueprint, model, enabledTools, updateExisting, message, dependencies, skipBranch } = parsed.data;
 
-    // Assemble structured fields into a single prompt string for IPFS storage
-    const prompt = constructPrompt({ objective, context: promptContext, deliverables, acceptanceCriteria, constraints, instructions });
+    if (!blueprint) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: { ok: false, code: 'VALIDATION_ERROR', message: 'blueprint is required and cannot be empty' },
+          }),
+        }],
+      };
+    }
+
+    // Validate blueprint structure
+    let blueprintObj: any;
+    try {
+      blueprintObj = JSON.parse(blueprint);
+    } catch (error) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: { 
+              ok: false, 
+              code: 'INVALID_BLUEPRINT', 
+              message: `blueprint must be valid JSON: ${error instanceof Error ? error.message : 'Parse error'}` 
+            },
+          }),
+        }],
+      };
+    }
+
+    const blueprintValidation = blueprintStructureSchema.safeParse(blueprintObj);
+    if (!blueprintValidation.success) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: { 
+              ok: false, 
+              code: 'INVALID_BLUEPRINT_STRUCTURE', 
+              message: `blueprint structure is invalid: ${blueprintValidation.error.message}` 
+            },
+          }),
+        }],
+      };
+    }
+
+    const finalBlueprint = blueprint;
 
     const gqlUrl = getPonderGraphqlUrl();
 
@@ -119,12 +163,11 @@ export async function dispatchNewJob(args: unknown) {
             id: string;
             name: string;
             enabledTools?: string;
-            promptContent?: string;
           }>;
         };
       }>({
         url: gqlUrl,
-        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools promptContent } } }`,
+        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools } } }`,
         variables: { name: jobName },
         maxRetries: 0,
         context: { operation: 'checkExistingJob', jobName }
@@ -158,7 +201,7 @@ export async function dispatchNewJob(args: unknown) {
     if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
 
     // Build additionalContext with message if provided
-    // Always initialize as object to ensure it's included in IPFS even if empty
+    // Blueprint and dependencies are now stored at root level, not in additionalContext
     let additionalContext: Record<string, any> = {};
     if (message) {
       // Try to parse message as JSON (for structured messages from worker)
@@ -189,56 +232,63 @@ export async function dispatchNewJob(args: unknown) {
 
     let branchResult;
     let codeMetadata;
-    try {
-      branchResult = await ensureJobBranch({
-        jobDefinitionId,
-        jobName,
-        baseBranch,
-      });
+    if (!skipBranch) {
+      try {
+        branchResult = await ensureJobBranch({
+          jobDefinitionId,
+          jobName,
+          baseBranch,
+        });
 
-      const metadataHints = {
-        jobDefinitionId,
-        parent:
-          context.jobDefinitionId || context.requestId
-            ? {
-                jobDefinitionId: context.jobDefinitionId || undefined,
-                requestId: context.requestId || undefined,
-              }
-            : undefined,
-        baseBranch,
-        branchName: branchResult.branchName,
-      };
+        const metadataHints = {
+          jobDefinitionId,
+          parent:
+            context.jobDefinitionId || context.requestId
+              ? {
+                  jobDefinitionId: context.jobDefinitionId || undefined,
+                  requestId: context.requestId || undefined,
+                }
+              : undefined,
+          baseBranch,
+          branchName: branchResult.branchName,
+        };
 
-      codeMetadata = await collectLocalCodeMetadata(metadataHints);
-    } catch (branchError: any) {
-      console.error('[dispatch_new_job] Branch/metadata collection failed:', branchError.message);
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: null,
-            meta: {
-              ok: false,
-              code: 'BRANCH_ERROR',
-              message: `Failed to create job branch or collect metadata: ${branchError.message}`,
-            },
-          }),
-        }],
-      };
+        codeMetadata = await collectLocalCodeMetadata(metadataHints);
+      } catch (branchError: any) {
+        console.error('[dispatch_new_job] Branch/metadata collection failed:', branchError.message);
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              data: null,
+              meta: {
+                ok: false,
+                code: 'BRANCH_ERROR',
+                message: `Failed to create job branch or collect metadata: ${branchError.message}`,
+              },
+            }),
+          }],
+        };
+      }
     }
 
+    // IPFS metadata structure: blueprint at root level (not prompt)
     const ipfsJsonContents: any[] = [{
-      prompt,
+      blueprint: finalBlueprint,
       jobName,
-      model: model || process.env.MECH_MODEL || 'gemini-2.5-flash',
+      model: model || getOptionalMechModel() || 'gemini-2.5-flash',
       enabledTools,
       jobDefinitionId,
       nonce: ensureUuid(),
       additionalContext,
-      branchName: branchResult.branchName,
-      baseBranch,
+      ...(branchResult ? { branchName: branchResult.branchName, baseBranch } : {}),
       ...lineageContext,
     }];
+
+    // Add dependencies at root level if provided
+    if (dependencies && dependencies.length > 0) {
+      ipfsJsonContents[0].dependencies = dependencies;
+    }
 
     console.error('[dispatch_new_job] codeMetadata check:', {
       hasCodeMetadata: !!codeMetadata,
@@ -248,15 +298,17 @@ export async function dispatchNewJob(args: unknown) {
 
     if (codeMetadata) {
       ipfsJsonContents[0].codeMetadata = codeMetadata;
-    } else {
+    } else if (!skipBranch) {
       console.error('[dispatch_new_job] WARNING: No codeMetadata - job will fail in worker!');
     }
 
-    ipfsJsonContents[0].executionPolicy = {
-      branch: branchResult.branchName,
-      ensureTestsPass: true,
-      description: 'Agent must work on the provided branch and pass required validations before finalizing.',
-    };
+    if (branchResult) {
+      ipfsJsonContents[0].executionPolicy = {
+        branch: branchResult.branchName,
+        ensureTestsPass: true,
+        description: 'Agent must work on the provided branch and pass required validations before finalizing.',
+      };
+    }
 
     try {
       const mechAddress = getMechAddress();
@@ -272,36 +324,22 @@ export async function dispatchNewJob(args: unknown) {
       }
       
       console.error('[dispatch_new_job] Calling marketplaceInteract with:', {
-        promptLength: prompt.length,
+        blueprintLength: finalBlueprint.length,
         mech: mechAddress,
         chainConfig,
         toolsCount: (enabledTools || []).length,
         hasIpfsContents: !!ipfsJsonContents,
+        hasDependencies: !!(dependencies && dependencies.length > 0),
         env_MECHX_CHAIN_RPC: process.env.MECHX_CHAIN_RPC,
         env_RPC_URL: process.env.RPC_URL,
         env__ENV_LOADED: process.env.__ENV_LOADED,
         env_VITEST: process.env.VITEST,
       });
-
-      // Check wallet balance before transaction
-      try {
-        const { Web3 } = await import('web3');
-        const { Wallet } = await import('ethers');
-        const wallet = new Wallet(privateKey);
-        const web3 = new Web3(process.env.RPC_URL || process.env.MECHX_CHAIN_RPC);
-        const balance = await web3.eth.getBalance(wallet.address);
-        console.error('[dispatch_new_job] Wallet balance check:', {
-          address: wallet.address,
-          balanceWei: balance.toString(),
-          balanceEth: Number(balance) / 1e18
-        });
-      } catch (balErr) {
-        console.error('[dispatch_new_job] Failed to check balance:', balErr);
-      }
-
-      console.error('[dispatch_new_job] About to call marketplaceInteract...');
+      
+      // Note: marketplaceInteract still expects 'prompts' parameter for on-chain data field
+      // But the actual job specification comes from blueprint in IPFS metadata
       const result = await marketplaceInteract({
-        prompts: [prompt],
+        prompts: [finalBlueprint],
         priorityMech: mechAddress,
         tools: enabledTools || [],
         ipfsJsonContents,

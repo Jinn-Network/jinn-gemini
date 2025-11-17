@@ -121,11 +121,36 @@ Testing with .env.test
   - On `OlasMech:Deliver`: upserts `delivery`, marks `request.delivered`, resolves delivery JSON and upserts `artifact` rows.
 
 **Deployment:**
-- Production: Hosted on Railway at `https://jinn-gemini-production.up.railway.app/` (GraphQL endpoint)
-- Local development: `http://localhost:42069/graphql` (when running `yarn ponder:dev`)
-- Frontend defaults to Railway endpoint for production data
+- **Production**: Hosted on Railway at `https://jinn-gemini-production.up.railway.app/` (GraphQL endpoint)
+- **Railway Auto-Deploy**: Pushes to `oak/jinn-247-evalution-context-management-updates` branch trigger automatic redeployment
+- **Local development**: `http://localhost:42069/graphql` (ONLY for testing Ponder changes before pushing)
+- Frontend and worker default to Railway endpoint for production data
 - Set `PONDER_GRAPHQL_URL` (worker) or `NEXT_PUBLIC_SUBGRAPH_URL` (frontend) to override
-- To use local Ponder with frontend: `NEXT_PUBLIC_SUBGRAPH_URL=http://localhost:42069/graphql yarn frontend-explorer`
+
+**CRITICAL: Railway Ponder is the Primary Dependency**
+- The system depends on the Railway-hosted Ponder instance for all normal operations
+- Running Ponder locally is ONLY for testing indexing changes before deployment
+- Validation scripts, worker, and frontend all default to Railway Ponder
+- Do NOT run local Ponder unless you are specifically testing indexing logic changes
+
+**Environment Configuration:**
+```bash
+# Default (uses Railway Ponder - RECOMMENDED):
+# No configuration needed - Railway endpoint is the default
+
+# Override for local Ponder testing ONLY:
+PONDER_GRAPHQL_URL=http://localhost:42069/graphql
+NEXT_PUBLIC_SUBGRAPH_URL=http://localhost:42069/graphql
+```
+
+**Testing Workflow for Ponder Changes:**
+1. Make indexing changes in `ponder/src/index.ts` or `ponder/ponder.schema.ts`
+2. Test locally: `cd ponder && yarn dev`
+3. Verify changes work with local worker/frontend
+4. Push to `oak/jinn-247-evalution-context-management-updates` branch
+5. Railway automatically redeploys Ponder with your changes
+6. Wait ~2-3 minutes for Railway deployment to complete
+7. Verify changes in production using Railway endpoint
 
 Example queries:
 ```graphql
@@ -204,24 +229,39 @@ Each job specifies its own Gemini model in the job definition. Model selection i
 
 **When Creating Jobs:**
 ```typescript
-// Option 1: Via dispatch_new_job tool
+// Blueprint must be a JSON string with assertions array
+// Blueprints define WHAT must be true (outcomes), not HOW to achieve it (process)
+// The agent has full autonomy to determine execution strategy
+const blueprint = JSON.stringify({
+  assertions: [
+    {
+      id: 'REQ-001',
+      assertion: 'Brief declarative statement of requirement (WHAT must be satisfied)',
+      examples: {
+        do: ['Positive example 1', 'Positive example 2'],
+        dont: ['Negative example 1', 'Negative example 2']
+      },
+      commentary: 'Explanation of why this assertion exists (rationale, not process)'
+    }
+  ]
+});
+
+// Via dispatch_new_job tool
 dispatchNewJob({
-  objective: '...',
-  context: '...',
-  acceptanceCriteria: '...',
   jobName: '...',
+  blueprint: blueprint,  // Defines success criteria, not implementation steps
   model: 'gemini-2.5-pro',  // or 'gemini-2.5-flash'
-  enabledTools: [...]
+  enabledTools: [...]  // Available capabilities, agent chooses which to use
 })
 
-// Option 2: In dispatch scripts
-const jobSpec = {
-  objective: '...',
-  model: 'gemini-2.5-flash',
-  // ...
-};
-await dispatchNewJob(jobSpec);
+// The agent receiving this job will:
+// 1. Read all blueprint assertions (WHAT must be satisfied)
+// 2. Consult recognition learnings (HOW similar jobs succeeded)
+// 3. Autonomously decide execution strategy (direct work vs delegation)
+// 4. Verify all assertions are satisfied in the final deliverable
 ```
+
+**Blueprint Style Guide**: See `docs/spec/blueprint/style-guide.md` for detailed guidance on writing declarative, outcome-focused blueprints.
 
 **Model Storage & Execution:**
 1. Model is stored in IPFS metadata with the job definition
@@ -242,7 +282,7 @@ await dispatchNewJob(jobSpec);
 MCP server (`gemini-agent/mcp/server.ts`) registers tools from `gemini-agent/mcp/tools/index.ts`:
 - `list_tools` – catalogs both core CLI tools and MCP tools.
 - `get_details` – reads on-chain data via Ponder; supports IPFS resolution.
-- `dispatch_new_job` – creates a new job definition and posts a marketplace request on Base. Uploads structured prompt to IPFS.
+- `dispatch_new_job` – creates a new job definition and posts a marketplace request on Base. Validates and uploads structured JSON blueprint (with assertions array) to IPFS.
 - `dispatch_existing_job` – dispatches a new request for an existing job definition by ID or name.
 - `create_artifact` – uploads content to IPFS and returns `{ cid, name, topic, contentPreview }`. The tool's output is captured in telemetry; the worker is responsible for persisting it via the Control API.
 
@@ -544,9 +584,12 @@ Without this reconstruction, the frontend will fetch binary directory structure 
 
 ### dispatch_new_job
 - Purpose: Create a new job definition and post a marketplace request on Base.
-- Params: `{ objective: string, context: string, acceptanceCriteria: string, jobName: string, model?: string, enabledTools?: string[], deliverables?: string, constraints?: string }`
+- Params: `{ jobName: string, blueprint: string, model?: string, enabledTools?: string[], message?: string, dependencies?: string[] }`
+  - `blueprint`: **REQUIRED**. JSON string containing structured assertions array. Each assertion must have: `id`, `assertion`, `examples` (with `do`/`dont` arrays), and `commentary`.
   - `model`: Gemini model to use (e.g., `'gemini-2.5-flash'`, `'gemini-2.5-pro'`). Defaults to `'gemini-2.5-flash'` if not specified.
+  - `dependencies`: Optional array of job definition IDs that must complete before this job executes.
 - Returns: Mech client result plus `ipfs_gateway_url` when indexed.
+- Validation: Blueprint structure is validated at dispatch time. Invalid JSON or missing required fields will return error codes: `INVALID_BLUEPRINT`, `INVALID_BLUEPRINT_STRUCTURE`.
 
 ### dispatch_existing_job
 - Purpose: Dispatch a new request for an existing job definition.
@@ -643,7 +686,7 @@ yarn dev:mech --workstream=0x0447dd1e9931eb0b5445d62df631b59c61899ea6eeee3e0cdde
   2) In Gemini CLI, call:
      - `list_tools({ include_parameters: true })`
      - `get_details({ ids: ["0x..."], resolve_ipfs: true })`
-     - `dispatch_new_job({ objective: "...", context: "...", acceptanceCriteria: "...", jobName: "...", enabledTools: ["web_fetch"] })`
+     - `dispatch_new_job({ jobName: "...", blueprint: "{ \"assertions\": [...] }", enabledTools: ["web_fetch"] })`
      - `create_artifact({ name: "report", topic: "analysis", content: "..." })`
 
 ---
@@ -1318,11 +1361,46 @@ The entire system operates on a continuous, on-chain, event-driven cycle:
 
 ---
 
-## Enhanced Context Management
+## Context Management Architecture
+
+The system provides three key mechanisms for managing job context:
+
+### 1. Blueprint-Driven Execution
+Jobs receive structured blueprints as their primary specification. Each blueprint contains assertions with:
+- Declarative requirement statements
+- Positive and negative examples (`do`/`dont`)
+- Commentary explaining the rationale
+
+Blueprints are stored at the root level of IPFS metadata and passed directly to agents, eliminating external artifact search overhead.
+
+### 2. Dependency Management
+Jobs can specify prerequisite job definitions that must complete before execution:
+```typescript
+dispatch_new_job({
+  jobName: 'deploy-app',
+  dependencies: ['<build-job-def-id>', '<test-job-def-id>'],
+  // ...
+})
+```
+
+The worker enforces dependencies using recursive completion checking - a job definition is considered complete only when all of its requests and their dependencies are delivered.
+
+### 3. Progress Checkpointing (Recognition Phase)
+For jobs in a workstream, the recognition phase builds a progress checkpoint by:
+1. Querying completed jobs in the workstream via Ponder
+2. Fetching delivery summaries from IPFS
+3. Using AI to generate a concise progress summary
+4. Injecting the summary into the agent's context
+
+This enables later jobs to understand prior work without manual coordination.
+
+---
+
+## Legacy Context Management (Deprecated)
 
 **NOTE:** The features described below were part of the legacy, database-centric architecture. They are not yet implemented in the new on-chain system but are preserved here as a reference for future development.
 
-The system now provides agents with comprehensive operational context through two key mechanisms:
+The legacy system provided agents with comprehensive operational context through two key mechanisms:
 
 ### **Trigger Context (`trigger_context`)**
 Rich information about what triggered the job, including:
@@ -1863,3 +1941,9 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Issue**: `Error: EPERM: operation not permitted` when writing chat history
 - **Fix**: Run `./scripts/clear-gemini-chat-cache.sh` or `rm -rf ~/.gemini/tmp/*/chats/*`
 - **Cause**: macOS file protection on existing chat files
+
+**External Repository Loading for Artifact-Only Jobs:**
+- **Issue**: Recognition/execution/reflection agents hang when trying to load external repositories from environment variables
+- **Fix**: For artifact-only jobs (no code metadata), the worker explicitly passes `codeWorkspace: null` to prevent loading external repos
+- **Location**: Applied in `worker/recognition/runRecognition.ts`, `worker/execution/runAgent.ts`, and `worker/reflection/runReflection.ts`
+- **Details**: The agent checks if `codeWorkspace` is `null` or empty string and skips all directory includes (including `CODE_METADATA_REPO_ROOT` env var)

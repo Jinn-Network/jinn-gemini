@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
 import { RecognitionPhaseCard } from './recognition-phase-card'
 import { WorkerTelemetryCard } from '../worker-telemetry-card'
+import { DependenciesSection } from '../dependencies-section'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,12 +23,12 @@ function ChildJobsSection({ parentRequestId }: { parentRequestId: string }) {
     const fetchChildren = async () => {
       try {
         // Query subgraph for all jobs where sourceRequestId matches this job
-        const jobs = await queryRequests({ 
+        const jobsResponse = await queryRequests({ 
           where: { sourceRequestId: parentRequestId }, 
           orderBy: 'blockTimestamp', 
           orderDirection: 'desc' 
         })
-        setChildJobs(jobs)
+        setChildJobs(jobsResponse.items)
       } catch (error) {
         console.error('Error fetching child jobs:', error)
       } finally {
@@ -72,6 +73,7 @@ interface Request {
   jobDefinitionId?: string
   sourceRequestId?: string
   sourceJobDefinitionId?: string
+  dependencies?: string[]
 }
 
 interface MemoryInspectionResponse {
@@ -169,6 +171,7 @@ interface TelemetryData {
 
 interface DeliveryData {
   output?: string
+  structuredSummary?: string
   artifacts?: unknown[]
   telemetry?: TelemetryData
   reflection?: {
@@ -260,12 +263,12 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
     const fetchArtifacts = async () => {
       try {
         setLoadingArtifacts(true)
-        const allArtifacts = await queryArtifacts({
+        const artifactsResponse = await queryArtifacts({
           where: { requestId: record.id },
           orderBy: 'blockTimestamp',
           orderDirection: 'desc'
         })
-        setArtifacts(allArtifacts)
+        setArtifacts(artifactsResponse.items)
       } catch (error) {
         console.error('Error fetching artifacts:', error)
       } finally {
@@ -372,11 +375,21 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
     }
   }, [record.sourceJobDefinitionId])
 
-  // Fetch prompt content from IPFS
+  // Fetch blueprint content from IPFS
   useEffect(() => {
     if (record.ipfsHash) {
       fetchIpfsContent(record.ipfsHash).then(result => {
-        if (result) setPromptContent(result.content)
+        if (result) {
+          try {
+            const parsed = JSON.parse(result.content)
+            // Extract blueprint (new architecture) or fall back to prompt (legacy)
+            const blueprint = parsed.blueprint || parsed.prompt || result.content
+            setPromptContent(blueprint)
+          } catch {
+            // If parsing fails, use raw content
+            setPromptContent(result.content)
+          }
+        }
       })
     }
   }, [record.ipfsHash])
@@ -448,16 +461,77 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
               <CardContent>
                 <div className="space-y-4">
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-2">Prompt</div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Blueprint</div>
                     {promptContent ? (
                       (() => {
-                        // Try to parse the prompt content as JSON to extract the actual prompt
                         try {
                           const parsed = JSON.parse(promptContent)
-                          const actualPrompt = parsed.prompt || promptContent
+                          const blueprintContent = parsed.blueprint || parsed.prompt || promptContent
+                          
+                          // Check if blueprint itself is JSON with assertions structure
+                          try {
+                            const blueprintParsed = typeof blueprintContent === 'string' 
+                              ? JSON.parse(blueprintContent) 
+                              : blueprintContent
+                            
+                            if (blueprintParsed.assertions && Array.isArray(blueprintParsed.assertions)) {
+                              // Render structured blueprint with assertions
+                              return (
+                                <div className="space-y-4">
+                                  {blueprintParsed.assertions.map((assertion: { id: string; assertion?: string; description?: string; commentary?: string; examples?: { do?: string[]; dont?: string[] } }, idx: number) => (
+                                    <div key={idx} className="border border-gray-200 rounded-lg p-4 bg-white">
+                                      <div className="flex items-start gap-2 mb-2">
+                                        <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                          {assertion.id}
+                                        </span>
+                                        <p className="text-sm font-medium text-gray-900 flex-1">
+                                          {assertion.assertion}
+                                        </p>
+                                      </div>
+                                      
+                                      {assertion.examples && (
+                                        <div className="mt-3 space-y-2">
+                                          {assertion.examples.do && assertion.examples.do.length > 0 && (
+                                            <div>
+                                              <div className="text-xs font-semibold text-green-700 mb-1">✓ Do:</div>
+                                              <ul className="text-xs text-gray-700 space-y-1 ml-4">
+                                                {assertion.examples.do.map((item: string, i: number) => (
+                                                  <li key={i} className="list-disc">{item}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                          {assertion.examples.dont && assertion.examples.dont.length > 0 && (
+                                            <div>
+                                              <div className="text-xs font-semibold text-red-700 mb-1">✗ Don&apos;t:</div>
+                                              <ul className="text-xs text-gray-700 space-y-1 ml-4">
+                                                {assertion.examples.dont.map((item: string, i: number) => (
+                                                  <li key={i} className="list-disc">{item}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                      
+                                      {assertion.commentary && (
+                                        <div className="mt-3 pt-3 border-t border-gray-100">
+                                          <p className="text-xs text-gray-600 italic">{assertion.commentary}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            }
+                          } catch {
+                            // Not a structured blueprint, fall through
+                          }
+                          
+                          // Render as markdown if not structured
                           return (
                             <div className="bg-gray-50 p-4 rounded text-sm max-h-[300px] overflow-auto prose prose-sm max-w-none">
-                              <ReactMarkdown>{actualPrompt}</ReactMarkdown>
+                              <ReactMarkdown>{typeof blueprintContent === 'string' ? blueprintContent : JSON.stringify(blueprintContent, null, 2)}</ReactMarkdown>
                             </div>
                           )
                         } catch {
@@ -551,8 +625,20 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                         <div>
                           <div className="text-sm font-medium text-gray-700 mb-2">Final Output</div>
                           <div className="bg-gray-50 p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
-                            <ReactMarkdown>{executionData.finalOutput}</ReactMarkdown>
+                            <ReactMarkdown>
+                              {deliveryData?.structuredSummary || executionData.finalOutput}
+                            </ReactMarkdown>
                           </div>
+                          {deliveryData?.structuredSummary && deliveryData.structuredSummary !== executionData.finalOutput && (
+                            <details className="mt-2">
+                              <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
+                                View full raw output
+                              </summary>
+                              <div className="mt-2 bg-gray-50 p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
+                                <ReactMarkdown>{executionData.finalOutput}</ReactMarkdown>
+                              </div>
+                            </details>
+                          )}
                         </div>
                       )}
 
@@ -1048,6 +1134,9 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Dependencies Section - show if job has dependencies or is required by other jobs */}
+            <DependenciesSection requestId={record.id} dependencies={record.dependencies} />
       </div>
     </div>
       </TabsContent>
@@ -1106,13 +1195,13 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
             </CardContent>
           </Card>
 
-          {/* Prompt Content (IPFS) */}
+          {/* Blueprint Content (IPFS) */}
           <Card>
             <CardHeader>
               <CardTitle>Request IPFS Content</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
                 Fetched from <code className="text-xs bg-gray-100 px-1 rounded">request.ipfsHash</code> - 
-                the original job specification uploaded when posting the <code className="text-xs bg-gray-100 px-1 rounded">MarketplaceRequest</code> event
+                the blueprint specification uploaded when posting the <code className="text-xs bg-gray-100 px-1 rounded">MarketplaceRequest</code> event
               </p>
             </CardHeader>
             <CardContent>
@@ -1210,6 +1299,10 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                 <div className="text-gray-500 text-sm">Job not yet delivered</div>
               ) : !record.deliveryIpfsHash ? (
                 <div className="text-gray-500 text-sm">No delivery IPFS hash for this job</div>
+              ) : deliveryData ? (
+                <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono whitespace-pre-wrap">
+                  {JSON.stringify(deliveryData, null, 2)}
+                </pre>
               ) : deliveryContent ? (
                 <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono whitespace-pre-wrap">
                   {deliveryContent}

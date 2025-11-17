@@ -1,0 +1,102 @@
+{
+  "assertions": [
+    {
+      "id": "DATA-001",
+      "assertion": "Research must use web search to find real-time data from authoritative sources about Ethereum protocol activity within the last 24 hours",
+      "examples": {
+        "do": [
+          "Search for 'DeFi Llama Ethereum TVL last 24 hours' to find protocol TVL data",
+          "Search for 'Uniswap volume Dune Analytics' to find DEX trading volumes",
+          "Search for 'Ethereum liquidations today' to find lending protocol activity",
+          "Cite exact sources and timestamps for all metrics found"
+        ],
+        "dont": [
+          "Rely on speculative or unverified data sources",
+          "Use outdated cached data without timestamp verification",
+          "Make claims without citing specific data sources",
+          "Include data older than 24 hours without clear justification"
+        ]
+      },
+      "commentary": "Research credibility depends on data provenance and recency. All protocol metrics must come from verifiable sources with clear timestamps within the specified 24-hour window."
+    },
+    {
+      "id": "ANALYSIS-001",
+      "assertion": "Protocol activity must be analyzed in context of broader market movements with statistical quantification",
+      "examples": {
+        "do": [
+          "Compare protocol TVL changes to overall DeFi TVL trends",
+          "Quantify volume as multiple of 7-day average",
+          "Report liquidation events exceeding 95th percentile",
+          "Cross-reference TVL changes with ETH price movements"
+        ],
+        "dont": [
+          "Report absolute numbers without context or comparison",
+          "Use subjective terms like 'large' without quantification",
+          "Ignore market-wide trends when analyzing protocol-specific changes",
+          "Fail to distinguish between price-driven and volume-driven changes"
+        ]
+      },
+      "commentary": "Context and statistical rigor are essential. Activity patterns must be quantified relative to historical norms and broader market conditions."
+    },
+    {
+      "id": "SCOPE-001",
+      "assertion": "Analysis must focus on major DeFi protocols with significant TVL and trading volume on Ethereum mainnet",
+      "examples": {
+        "do": [
+          "Analyze Uniswap, Aave, Lido, Maker, Curve activity",
+          "Focus on protocols with >$100M TVL",
+          "Include DEX volumes, lending metrics, staking flows",
+          "Prioritize unusual activity patterns that deviate from norms"
+        ],
+        "dont": [
+          "Include small or unverified protocols",
+          "Analyze protocols on other chains without clear justification",
+          "Spend equal time on all protocols regardless of significance",
+          "Report routine activity without notable patterns"
+        ]
+      },
+      "commentary": "Efficient research requires focus on economically significant protocols. Major DeFi blue-chips drive market dynamics and provide the most actionable signals."
+    },
+    {
+      "id": "OUTPUT-001",
+      "assertion": "Deliverable must provide top 3 actionable trade ideas with clear entry conditions, risk parameters, and multi-source rationale",
+      "examples": {
+        "do": [
+          "Rank ideas by signal strength and conviction level",
+          "Specify entry price or on-chain trigger condition for each idea",
+          "State position sizing recommendation (e.g., 5%, 10% allocation)",
+          "Cite specific protocol metrics supporting each trade thesis",
+          "Define stop-loss levels based on technical or on-chain invalidation"
+        ],
+        "dont": [
+          "Present ideas without clear execution parameters",
+          "Omit risk management or position sizing guidance",
+          "Make recommendations without citing supporting data",
+          "Present all ideas as equally confident regardless of signal strength",
+          "Provide vague entries like 'buy on dips' without specific levels"
+        ]
+      },
+      "commentary": "Trade ideas must be actionable and risk-managed. Each recommendation needs concrete entry/exit parameters enabling immediate implementation."
+    },
+    {
+      "id": "SYNTHESIS-001",
+      "assertion": "Analysis must synthesize findings into a coherent market narrative connecting protocol activity to trading opportunities",
+      "examples": {
+        "do": [
+          "Identify convergent patterns across multiple protocols",
+          "Connect TVL flows to potential market direction",
+          "Link unusual activity to specific trade setups",
+          "Acknowledge alternative scenarios that could invalidate thesis"
+        ],
+        "dont": [
+          "Present disconnected data points without narrative",
+          "Fail to connect observations to actionable conclusions",
+          "Ignore contradictory signals or conflicting data",
+          "Present analysis without clear implications for trading"
+        ]
+      },
+      "commentary": "Data synthesis creates alpha. The deliverable must weave protocol metrics into a coherent story that informs directional market views and specific trade ideas."
+    }
+  ]
+}
+

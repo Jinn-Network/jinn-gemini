@@ -28,23 +28,33 @@ export async function runAgentForRequest(
   request: UnclaimedRequest,
   metadata: IpfsMetadata
 ): Promise<AgentExecutionResult> {
-  // Use model from job metadata if available, otherwise fallback to env var or default
-  const model = metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash';
+  // Default to flash for faster execution
+  const model = metadata?.model || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   
-  const agent = new Agent(model, enabledTools, {
-    jobId: request.id,
-    jobDefinitionId: metadata?.jobDefinitionId || null,
-    jobName: metadata?.jobName || 'Onchain Task',
-    projectRunId: null,
-    sourceEventId: null,
-    projectDefinitionId: null
-  });
+  // For artifact-only jobs (no code), pass null to prevent loading external repos
+  const codeWorkspace = metadata?.codeMetadata ? undefined : null;
+  
+  const agent = new Agent(
+    model,
+    enabledTools,
+    {
+      jobId: request.id,
+      jobDefinitionId: metadata?.jobDefinitionId || null,
+      jobName: metadata?.jobName || 'job',
+      phase: 'execution',
+      projectRunId: null,
+      sourceEventId: null,
+      projectDefinitionId: null
+    },
+    codeWorkspace
+  );
 
-  // Build enhanced prompt with context if available
+  // Build enhanced prompt from blueprint and context
+  // Fallback to generic prompt if no blueprint exists (shouldn't happen in normal flow)
   const prompt = buildEnhancedPrompt(
     metadata,
-    String(metadata?.prompt || '').trim() || `Process request ${request.id} for mech ${request.mech}`
+    `Process request ${request.id} for mech ${request.mech}`
   );
 
   // Snapshot and set job context for downstream tools

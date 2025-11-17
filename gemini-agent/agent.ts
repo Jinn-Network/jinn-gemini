@@ -49,6 +49,7 @@ interface JobTelemetry {
 
 interface AgentResult {
   output: string;
+  structuredSummary?: string;
   telemetry: JobTelemetry;
 }
 
@@ -59,7 +60,7 @@ export class Agent {
   private agentRoot: string;
   private codeWorkspace: string;
   private lastTelemetryFile: string | null = null;
-  private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
+  private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
   private cachedToolPolicy: ToolPolicyResult | null = null;
   
   // Stdout protection limits (configurable via environment variables)
@@ -72,7 +73,12 @@ export class Agent {
   // Universal tools are now defined in toolPolicy.ts
   private readonly universalTools = UNIVERSAL_TOOLS;
 
-  constructor(model: string, enabledTools: string[], jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null }) {
+  constructor(
+    model: string, 
+    enabledTools: string[], 
+    jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null },
+    codeWorkspace?: string | null
+  ) {
     this.model = model;
     this.enabledTools = enabledTools || [];
     this.jobContext = jobContext;
@@ -100,15 +106,27 @@ export class Agent {
       }, 'Settings template files not found in agentRoot - path resolution may be incorrect');
     }
 
+    // Allow explicit codeWorkspace override (e.g., null for recognition agents)
     // Use shared getRepoRoot logic for codeWorkspace
     // This supports JINN_WORKSPACE_DIR (for ventures) and CODE_METADATA_REPO_ROOT (legacy)
     // Note: We don't have codeMetadata here, so it will fallback to env vars or cwd
-    const repoRoot = getRepoRoot();
-    if (existsSync(repoRoot)) {
-      this.codeWorkspace = repoRoot;
+    if (codeWorkspace === null) {
+      // Explicitly set to null - don't include any workspace (for recognition agents)
+      this.codeWorkspace = '';
+      agentLogger.debug('codeWorkspace explicitly set to empty (no repo includes)');
+    } else if (codeWorkspace) {
+      // Explicit codeWorkspace provided
+      this.codeWorkspace = codeWorkspace;
+      agentLogger.debug({ codeWorkspace }, 'Using explicit codeWorkspace');
     } else {
-      agentLogger.warn({ path: repoRoot, fallback: this.agentRoot }, 'Repo root does not exist, falling back to agent root');
-      this.codeWorkspace = this.agentRoot;
+      // Default behavior: use getRepoRoot()
+      const repoRoot = getRepoRoot();
+      if (existsSync(repoRoot)) {
+        this.codeWorkspace = repoRoot;
+      } else {
+        agentLogger.warn({ path: repoRoot, fallback: this.agentRoot }, 'Repo root does not exist, falling back to agent root');
+        this.codeWorkspace = this.agentRoot;
+      }
     }
     
     // Log protection limits
@@ -166,7 +184,11 @@ export class Agent {
 
       // Extract final output; if tool responses are JSON blobs from our tools, keep them as-is
       const output = this.extractFinalOutput(result.output);
-      return { output, telemetry };
+      
+      // Extract structured summary from output (Phase 4)
+      const structuredSummary = extractStructuredSummary(output);
+      
+      return { output, structuredSummary, telemetry };
     } catch (error) {
       // Preserve telemetry if the thrown error already includes it (e.g., from non-zero exit path)
       const nestedError = (error as any)?.error ?? error;
@@ -216,20 +238,26 @@ export class Agent {
       
       // Make sure Gemini CLI treats the job repo as part of the workspace to allow write_file
       const includeDirectories = new Set<string>();
-      if (this.codeWorkspace) {
+      if (this.codeWorkspace && this.codeWorkspace.trim() !== '') {
         const resolvedWorkspace = resolve(this.codeWorkspace);
         agentLogger.debug({ workspace: resolvedWorkspace }, 'Adding codeWorkspace to include directories');
         includeDirectories.add(resolvedWorkspace);
+      } else if (!this.codeWorkspace || this.codeWorkspace.trim() === '') {
+        agentLogger.debug('codeWorkspace is empty - skipping all directory includes (including env vars)');
       }
-      if (process.env.CODE_METADATA_REPO_ROOT) {
-        const resolvedEnv = resolve(process.env.CODE_METADATA_REPO_ROOT);
-        agentLogger.debug({ repoRoot: resolvedEnv }, 'Adding CODE_METADATA_REPO_ROOT to include directories');
-        includeDirectories.add(resolvedEnv);
-      }
-      if (process.env.GEMINI_ADDITIONAL_INCLUDE_DIRS) {
-        for (const rawDir of process.env.GEMINI_ADDITIONAL_INCLUDE_DIRS.split(delimiter)) {
-          if (rawDir?.trim()) {
-            includeDirectories.add(resolve(rawDir.trim()));
+      
+      // Only add environment variable directories if codeWorkspace is not explicitly empty
+      if (this.codeWorkspace && this.codeWorkspace.trim() !== '') {
+        if (process.env.CODE_METADATA_REPO_ROOT) {
+          const resolvedEnv = resolve(process.env.CODE_METADATA_REPO_ROOT);
+          agentLogger.debug({ repoRoot: resolvedEnv }, 'Adding CODE_METADATA_REPO_ROOT to include directories');
+          includeDirectories.add(resolvedEnv);
+        }
+        if (process.env.GEMINI_ADDITIONAL_INCLUDE_DIRS) {
+          for (const rawDir of process.env.GEMINI_ADDITIONAL_INCLUDE_DIRS.split(delimiter)) {
+            if (rawDir?.trim()) {
+              includeDirectories.add(resolve(rawDir.trim()));
+            }
           }
         }
       }
@@ -268,7 +296,11 @@ export class Agent {
       try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch {} // Ignore errors here
 
       agentLogger.info({ telemetryFile }, 'Will write telemetry to file');
-      agentLogger.info({ model: this.model }, 'Spawning Gemini CLI');
+      agentLogger.info({ 
+        model: this.model,
+        jobName: this.jobContext?.jobName || 'job',
+        phase: this.jobContext?.phase || 'execution'
+      }, 'Spawning Gemini CLI');
       
       // Add prompt as positional argument (replaces deprecated --prompt flag)
       // Positional prompts default to one-shot (non-interactive) mode, preventing "Please continue" loops
@@ -988,4 +1020,42 @@ export class Agent {
 
     return 'SYSTEM_ERROR';
   }
+}
+
+/**
+ * Extract structured summary from agent output
+ * Looks for markdown sections like "**Execution Summary:**" and extracts from that point
+ * Falls back to last 1200 chars if no structured format found
+ */
+export function extractStructuredSummary(output: string): string | null {
+  if (!output || output.length === 0) {
+    return null;
+  }
+
+  // Look for markdown headings indicating structured format
+  const summaryMarkers = [
+    /\*\*Execution Summary:\*\*/i,
+    /### Work Completed/i,
+    /## Execution Summary/i,
+    /# Summary/i
+  ];
+  
+  for (const marker of summaryMarkers) {
+    if (marker.test(output)) {
+      // Extract from marker to end (or to next major section)
+      const match = output.match(marker);
+      if (match && match.index !== undefined) {
+        // Extract until end or next major heading (that's not part of the summary)
+        const remaining = output.slice(match.index);
+        
+        // Don't cut off if we find internal headings like "### Actions Taken"
+        // Only cut off if we find something that looks like a new top-level section
+        // For now, just take everything from the marker to the end
+        return remaining.trim();
+      }
+    }
+  }
+  
+  // Fallback: Last 1200 chars (current behavior)
+  return output.slice(-1200);
 }

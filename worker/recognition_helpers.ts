@@ -1,3 +1,5 @@
+import type { ProgressCheckpoint } from './recognition/progressCheckpoint.js';
+
 export interface RecognitionLearning {
   sourceRequestId?: string;
   title?: string;
@@ -20,6 +22,7 @@ export interface RecognitionPhaseResult {
   }>;
   initialSituation?: any | null;
   embeddingStatus?: 'success' | 'failed' | null;
+  progressCheckpoint?: ProgressCheckpoint | null;
 }
 
 export function extractPromptSections(prompt: string | undefined | null): Record<string, string> {

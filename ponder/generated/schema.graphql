@@ -16,7 +16,7 @@ type jobDefinition {
   id: String!
   name: String!
   enabledTools: [String!]
-  promptContent: String
+  blueprint: String
   sourceJobDefinitionId: String
   sourceRequestId: String
   codeMetadata: JSON
@@ -66,16 +66,16 @@ input jobDefinitionFilter {
   enabledTools_not: [String]
   enabledTools_has: String
   enabledTools_not_has: String
-  promptContent: String
-  promptContent_not: String
-  promptContent_in: [String]
-  promptContent_not_in: [String]
-  promptContent_contains: String
-  promptContent_not_contains: String
-  promptContent_starts_with: String
-  promptContent_ends_with: String
-  promptContent_not_starts_with: String
-  promptContent_not_ends_with: String
+  blueprint: String
+  blueprint_not: String
+  blueprint_in: [String]
+  blueprint_not_in: [String]
+  blueprint_contains: String
+  blueprint_not_contains: String
+  blueprint_starts_with: String
+  blueprint_ends_with: String
+  blueprint_not_starts_with: String
+  blueprint_not_ends_with: String
   sourceJobDefinitionId: String
   sourceJobDefinitionId_not: String
   sourceJobDefinitionId_in: [String]
@@ -116,6 +116,7 @@ type request {
   jobName: String
   enabledTools: [String!]
   additionalContext: JSON
+  dependencies: [String!]
 }
 
 scalar BigInt
@@ -268,6 +269,10 @@ input requestFilter {
   enabledTools_not: [String]
   enabledTools_has: String
   enabledTools_not_has: String
+  dependencies: [String]
+  dependencies_not: [String]
+  dependencies_has: String
+  dependencies_not_has: String
 }
 
 type delivery {

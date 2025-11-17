@@ -5,21 +5,26 @@ interface PaginationProps {
   totalRecords: number
   pageSize: number
   onPageChange: (page: number) => void
+  hasNextPage?: boolean
+  hasPreviousPage?: boolean
 }
 
-export function Pagination({ currentPage, totalRecords, pageSize, onPageChange }: PaginationProps) {
+export function Pagination({ currentPage, totalRecords, pageSize, onPageChange, hasNextPage = false, hasPreviousPage = false }: PaginationProps) {
   const totalPages = Math.ceil(totalRecords / pageSize)
-  const hasNext = currentPage < totalPages
-  const hasPrev = currentPage > 1
+  const hasNext = hasNextPage || currentPage < totalPages
+  const hasPrev = hasPreviousPage || currentPage > 1
 
-  if (totalPages <= 1) {
+  if (totalPages <= 1 && !hasNext) {
     return null
   }
 
+  const startRecord = ((currentPage - 1) * pageSize) + 1
+  const endRecord = Math.min(currentPage * pageSize, totalRecords)
+  
   return (
     <div className="flex items-center justify-between px-2 py-4">
       <div className="text-sm text-gray-700">
-        Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} records
+        Showing {startRecord} to {endRecord}{hasNextPage ? '+' : ''} of {hasNextPage ? `${totalRecords}+` : totalRecords} records
       </div>
       
       <div className="flex items-center space-x-2">

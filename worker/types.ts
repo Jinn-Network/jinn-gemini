@@ -34,13 +34,15 @@ export interface UnclaimedRequest {
   blockTimestamp?: number;
   ipfsHash?: string;
   delivered?: boolean;
+  dependencies?: string[];  // request IDs that must be delivered first
 }
 
 /**
  * Fetched IPFS metadata payload
+ * Note: blueprint is now the primary job specification (replaces legacy "prompt" field)
  */
 export interface IpfsMetadata {
-  prompt?: string;
+  blueprint?: string;  // Primary job specification
   enabledTools?: string[];
   sourceRequestId?: string;
   sourceJobDefinitionId?: string;
@@ -50,6 +52,7 @@ export interface IpfsMetadata {
   codeMetadata?: CodeMetadata;
   model?: string;
   recognition?: RecognitionPhaseResult | null;
+  dependencies?: string[];  // Request IDs that must complete first
 }
 
 /**
@@ -57,6 +60,7 @@ export interface IpfsMetadata {
  */
 export interface AgentExecutionResult {
   output: string;
+  structuredSummary?: string;
   telemetry: any;
   delegated?: boolean;
   artifacts?: Array<{

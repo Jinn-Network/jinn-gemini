@@ -72,7 +72,23 @@ export interface MarketplaceInteractOptions {
   useOffchain?: boolean;
   mechOffchainUrl?: string;
   tools?: string[];
-  // Optional: if provided, overrides default metadata shape and uploads these objects to IPFS as-is
+  /**
+   * Optional: Array of JSON objects (NOT strings) to upload to IPFS as request metadata.
+   * If provided, overrides default metadata shape. Each object is serialized and uploaded to IPFS.
+   * One object per prompt. Must be a plain object, not a JSON string.
+   * 
+   * Example:
+   * ```
+   * ipfsJsonContents: [
+   *   { blueprint: JSON.stringify({...}), jobName: 'test', model: 'gemini-2.5-flash' }
+   * ]
+   * ```
+   * 
+   * NOT:
+   * ```
+   * ipfsJsonContents: JSON.stringify({ ... })  // ❌ Wrong - this is a string
+   * ```
+   */
   ipfsJsonContents?: Record<string, any>[];
   extraAttributes?: Record<string, any>;
   privateKeyPath?: string;

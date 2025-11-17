@@ -75,6 +75,7 @@ if (process.env.__ENV_LOADED !== '1') {
 
     const enforcedPrefixes = [
       'PONDER_',
+      'CONTROL_API_',
       'MECH_',
       'MECHX_',
       'SUPABASE_',
