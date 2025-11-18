@@ -124,7 +124,46 @@ export async function deliverViaSafeTransaction(
     wait: true,
   } as const;
 
-  const delivery = await (deliverViaSafe as any)(payload);
+  let delivery: any;
+  const maxRetries = 2;
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const backoffMs = Math.pow(2, attempt) * 5000;
+      workerLogger.info({ requestId: context.requestId, attempt, backoffMs }, 'Retrying Safe delivery');
+      await new Promise(r => setTimeout(r, backoffMs));
+      
+      // Re-check delivery status
+      try {
+        const isUndelivered = await isUndeliveredOnChain({
+            mechAddress: targetMechAddress,
+            requestIdHex,
+            rpcHttpUrl,
+        });
+        if (!isUndelivered) {
+             workerLogger.info({ requestId: context.requestId }, 'Request already delivered on retry check');
+             return { status: 'confirmed' };
+        }
+      } catch (e) { /* ignore check errors */ }
+    }
+
+    try {
+      delivery = await (deliverViaSafe as any)(payload);
+      break; // Success
+    } catch (e: any) {
+      lastError = e;
+      // Only retry on likely transient errors or timeouts
+      if (e.message?.includes('timeout') || e.message?.includes('not mined') || e.message?.includes('Transaction not found')) {
+         workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery timeout or transient error');
+         continue;
+      }
+      throw e; // Fail fast on other errors
+    }
+  }
+  
+  if (!delivery && lastError) throw lastError;
+
   workerLogger.info({ requestId: context.requestId, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
   
   return {

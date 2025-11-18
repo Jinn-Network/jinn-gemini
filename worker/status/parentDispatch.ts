@@ -70,10 +70,39 @@ export async function dispatchParentIfNeeded(
     };
 
     // Dispatch parent job
-    const result = await dispatchExistingJob({
-      jobId: parentJobDefId,
-      message: JSON.stringify(message)
-    });
+    let result;
+    const maxRetries = 3;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      if (attempt > 0) {
+        const backoffMs = Math.pow(2, attempt) * 2000;
+        workerLogger.info({ parentJobDefId, attempt, backoffMs }, 'Retrying parent dispatch');
+        await new Promise(r => setTimeout(r, backoffMs));
+      }
+
+      try {
+        result = await dispatchExistingJob({
+          jobId: parentJobDefId,
+          message: JSON.stringify(message)
+        });
+        
+        const check = safeParseToolResponse(result);
+        if (check.ok) break; // Success
+        
+        // If not ok, check if it's a recoverable error
+        if (check.message?.includes('Transaction not found') || check.message?.includes('timeout')) {
+            workerLogger.warn({ parentJobDefId, error: check.message }, 'Parent dispatch transient failure');
+            continue;
+        }
+        
+        // Not recoverable (e.g. validation error, subgraph error that isn't transient)
+        break;
+      } catch (e) {
+         // Should not happen as tool catches errors, but safe guard
+         workerLogger.warn({ parentJobDefId, error: e }, 'Parent dispatch execution error');
+         if (attempt < maxRetries - 1) continue;
+      }
+    }
     
     const dispatchResult = safeParseToolResponse(result);
     if (dispatchResult.ok) {

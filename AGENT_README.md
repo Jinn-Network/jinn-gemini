@@ -1897,6 +1897,38 @@ Proper service configurations are available in `code-resources/olas-operate-app/
 
 - **Check Authentication**: Look for "Invalid password" in `worker.log`
 - **Find Stuck Processes**: `ps aux | grep operate`
+
+---
+
+## Common Issues & Gotchas
+
+### Transaction Reliability (JINN-247)
+
+The system includes comprehensive retry logic for handling transient blockchain RPC errors and network congestion:
+
+**Delivery Retry Logic** (`worker/delivery/transaction.ts`):
+- 3 attempts with exponential backoff (5s, 10s)
+- Re-checks delivery status before retry to avoid duplicate submissions
+- Retries on timeout, "not mined", and "Transaction not found" errors
+- Fast-fails on non-transient errors (validation, gas estimation)
+
+**Parent Dispatch Retry Logic** (`worker/status/parentDispatch.ts`):
+- 3 attempts with exponential backoff (2s, 4s)
+- Retries on "Transaction not found" and timeout errors
+- Validates response after each attempt
+- Skips retry on non-recoverable errors (validation, subgraph errors)
+
+**Receipt Polling** (`packages/mech-client-ts`):
+- 100-block timeout (up from 50) for transaction confirmation
+- 3-second polling interval with error suppression
+- Applies to both `marketplaceInteract` and `deliverViaSafe`
+- Returns gracefully on timeout without marking as failed
+
+**Best Practices**:
+- System automatically handles transient RPC failures
+- Monitor BaseScan for transaction status during debugging
+- Use `--workstream=` flag to isolate testing workstreams
+- Use `--single` flag for step-through debugging
 - **Kill Stuck Processes**: `pkill -f "poetry run operate"`
 - **Reset State**: Remove `.operate` directory if authentication fails
 - **Validate RPC**: Ensure Base RPC URL is accessible and supports required methods

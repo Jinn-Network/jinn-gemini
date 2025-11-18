@@ -780,7 +780,28 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     console.log('  - Waiting for transaction receipt...');
 
     // Get transaction receipt to extract block number
-    const txReceipt = await web3.eth.getTransactionReceipt(transactionDigest);
+    // Retry loop for receipt to handle RPC lag
+    let txReceipt = null;
+    const startBlock = await web3.eth.getBlockNumber();
+    const timeoutBlocks = 100;
+    const maxBlock = startBlock + BigInt(timeoutBlocks);
+    
+    while (!txReceipt) {
+      try {
+        txReceipt = await web3.eth.getTransactionReceipt(transactionDigest);
+      } catch (e) { 
+        // Ignore errors during polling
+      }
+      
+      if (!txReceipt) {
+        const currentBlock = await web3.eth.getBlockNumber();
+        if (currentBlock > maxBlock) {
+          throw new Error(`Transaction ${transactionDigest} not confirmed within ${timeoutBlocks} blocks`);
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+
     const fromBlock = Number(txReceipt.blockNumber);
 
     const requestIds = await watchForMarketplaceRequestIds(
