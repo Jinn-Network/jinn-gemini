@@ -40,6 +40,7 @@ interface UseSubgraphCollectionReturn {
   error: string | null
   hasNextPage: boolean
   hasPreviousPage: boolean
+  setSorting: (column: string, ascending: boolean) => void
 }
 
 export function useSubgraphCollection({
@@ -59,6 +60,8 @@ export function useSubgraphCollection({
   const [error, setError] = useState<string | null>(null)
   const [hasNextPage, setHasNextPage] = useState(false)
   const [hasPreviousPage, setHasPreviousPage] = useState(false)
+  const [currentSortColumn, setCurrentSortColumn] = useState<string>(sortColumn || '')
+  const [currentSortAscending, setCurrentSortAscending] = useState<boolean>(sortAscending)
   
   // Track cursors for each page
   const cursorsRef = useRef<Map<number, { after?: string; before?: string }>>(new Map())
@@ -84,6 +87,7 @@ export function useSubgraphCollection({
 
   // Get default sort column for collection
   const getDefaultSortColumn = useCallback(() => {
+    if (currentSortColumn) return currentSortColumn
     if (sortColumn) return sortColumn
     
     switch (collectionName) {
@@ -98,7 +102,7 @@ export function useSubgraphCollection({
       default:
         return 'id'
     }
-  }, [collectionName, sortColumn])
+  }, [collectionName, sortColumn, currentSortColumn])
 
   // Fetch records with pagination
   const fetchRecords = useCallback(async (page: number, showLoading = true) => {
@@ -114,7 +118,7 @@ export function useSubgraphCollection({
       const options: QueryOptions = {
         limit: pageSize,
         orderBy: getDefaultSortColumn(),
-        orderDirection: sortAscending ? 'asc' : 'desc',
+        orderDirection: currentSortAscending ? 'asc' : 'desc',
         where: whereFilter,
         after: pageCursor?.after,
         before: pageCursor?.before,
@@ -144,7 +148,7 @@ export function useSubgraphCollection({
     } finally {
       if (showLoading) setLoading(false)
     }
-  }, [collectionName, pageSize, getQueryFunction, getDefaultSortColumn, sortAscending, whereFilter])
+  }, [collectionName, pageSize, getQueryFunction, getDefaultSortColumn, currentSortAscending, whereFilter])
 
   // Set up polling
   useEffect(() => {
@@ -178,6 +182,14 @@ export function useSubgraphCollection({
     fetchRecords(currentPage, false)
   }, [fetchRecords, currentPage])
 
+  // Function to update sorting
+  const setSorting = useCallback((column: string, ascending: boolean) => {
+    setCurrentSortColumn(column)
+    setCurrentSortAscending(ascending)
+    setCurrentPage(1) // Reset to first page when sorting changes
+    cursorsRef.current.clear() // Clear cursor cache
+  }, [])
+
   // Initial load and refetch when filter changes
   useEffect(() => {
     fetchRecords(currentPage)
@@ -191,6 +203,11 @@ export function useSubgraphCollection({
     }
   }, [currentPage, fetchRecords])
 
+  // Refetch when sorting changes
+  useEffect(() => {
+    fetchRecords(1)
+  }, [currentSortColumn, currentSortAscending, fetchRecords])
+
   return {
     records,
     loading,
@@ -201,6 +218,7 @@ export function useSubgraphCollection({
     refresh,
     error,
     hasNextPage,
-    hasPreviousPage
+    hasPreviousPage,
+    setSorting
   }
 }

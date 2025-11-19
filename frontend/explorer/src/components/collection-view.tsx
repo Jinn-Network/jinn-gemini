@@ -74,7 +74,8 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     refresh,
     error,
     hasNextPage,
-    hasPreviousPage
+    hasPreviousPage,
+    setSorting
   } = useSubgraphCollection({
     collectionName,
     pageSize,
@@ -84,6 +85,10 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     sortAscending: sortConfig.ascending,
     whereFilter,
   })
+
+  const handleSort = (column: string, direction: 'asc' | 'desc') => {
+    setSorting(column, direction === 'asc')
+  }
 
   // When filtering by workstream, prepend the root request to the list
   const displayRecords = useMemo(() => {
@@ -189,7 +194,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
       ) : collectionName === 'artifacts' ? (
         <ArtifactsTable records={displayRecords} />
       ) : collectionName === 'jobDefinitions' ? (
-        <JobDefinitionsTable records={displayRecords} />
+        <JobDefinitionsTable records={displayRecords} onSort={handleSort} />
       ) : (
         <RecordList records={displayRecords} collectionName={collectionName} />
       )}
