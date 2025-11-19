@@ -128,10 +128,14 @@ async function fetchRequestMetadata(cidBase32: string, timeoutMs = 10_000): Prom
       throw new Error(`HTTP ${response.status}`);
     }
     const contentType = response.headers.get("content-type") || "";
-    if (!contentType.toLowerCase().includes("application/json")) {
-      throw new Error(`Unexpected content-type "${contentType || "unknown"}"`);
+    // Accept both application/json and application/octet-stream for raw IPFS CIDs
+    // Raw CIDs (bafkrei...) return octet-stream but contain valid JSON
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch (parseError: any) {
+      throw new Error(`Failed to parse JSON: ${parseError.message}`);
     }
-    return await response.json();
   } catch (error: any) {
     throw new Error(`Failed to fetch request metadata from ${url}: ${error.message}`);
   } finally {

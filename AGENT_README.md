@@ -636,16 +636,18 @@ Without this reconstruction, the frontend will fetch binary directory structure 
 
 ### dispatch_new_job
 - Purpose: Create a new job definition and post a marketplace request on Base.
-- Params: `{ jobName: string, blueprint: string, model?: string, enabledTools?: string[], message?: string, dependencies?: string[] }`
+- Params: `{ jobName: string, blueprint: string, model?: string, enabledTools?: string[], message?: string, dependencies?: string[], responseTimeout?: number }`
   - `blueprint`: **REQUIRED**. JSON string containing structured assertions array. Each assertion must have: `id`, `assertion`, `examples` (with `do`/`dont` arrays), and `commentary`.
   - `model`: Gemini model to use (e.g., `'gemini-2.5-flash'`, `'gemini-2.5-pro'`). Defaults to `'gemini-2.5-flash'` if not specified.
   - `dependencies`: Optional array of job definition IDs that must complete before this job executes.
+  - `responseTimeout`: Optional timeout in seconds for marketplace delivery (defaults to 3600 = 1 hour). Set higher for long-running jobs with recognition/reflection phases or complex web fetches.
 - Returns: Mech client result plus `ipfs_gateway_url` when indexed.
 - Validation: Blueprint structure is validated at dispatch time. Invalid JSON or missing required fields will return error codes: `INVALID_BLUEPRINT`, `INVALID_BLUEPRINT_STRUCTURE`.
 
 ### dispatch_existing_job
 - Purpose: Dispatch a new request for an existing job definition.
-- Params: `{ jobId?: string, jobName?: string, enabledTools?: string[], prompt?: string, message?: string }`
+- Params: `{ jobId?: string, jobName?: string, enabledTools?: string[], prompt?: string, message?: string, responseTimeout?: number }`
+  - `responseTimeout`: Optional timeout in seconds for marketplace delivery (defaults to 3600 = 1 hour). Set higher for long-running jobs.
 - Returns: Mech client result plus `ipfs_gateway_url` when indexed.
 
 ### create_artifact
@@ -1961,6 +1963,33 @@ Proper service configurations are available in `code-resources/olas-operate-app/
 
 ## Common Issues & Gotchas
 
+### Ponder Indexing Failures: IPFS Content-Type Mismatch
+
+**Issue**: Ponder fails to index `MarketplaceRequest` events with error: `Unexpected content-type "application/octet-stream"`
+
+**Root Cause**: IPFS uploads use `wrap-with-directory: false`, producing raw CIDv1 hashes (`bafkrei...` format). IPFS gateways serve these as `application/octet-stream` instead of `application/json`, even though the content is valid JSON.
+
+**Symptoms**:
+- Railway Ponder logs show `[err] Failed to index MarketplaceRequest`
+- Jobs appear in Ponder but lack metadata (jobName, enabledTools, dependencies)
+- Worker skips jobs due to unresolved dependencies
+- On-chain contract shows requests as undelivered, but Ponder doesn't index them
+
+**Fix**: Update `fetchRequestMetadata` in `ponder/src/index.ts` to accept both content types and parse response as text before JSON parsing (applied 2025-11-19).
+
+**Verification**:
+```bash
+# Check Railway Ponder logs for indexing errors
+# Should see "Indexed MarketplaceRequest" instead of "Failed to index MarketplaceRequest"
+
+# Verify request has metadata in Ponder
+curl -X POST https://jinn-gemini-production.up.railway.app/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ request(id: \"REQUEST_ID\") { jobName enabledTools dependencies } }"}'
+```
+
+**Related**: JINN-247 (Transaction Reliability)
+
 ### Transaction Reliability (JINN-247)
 
 The system includes comprehensive retry logic for handling transient blockchain RPC errors and network congestion:
@@ -2076,3 +2105,16 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Status**: Known limitation. Vector search does not filter for workstream success or root job completion
 - **Tracking**: See `docs/implementation/RECOGNITION-QUALITY-PROBLEM.md` for detailed analysis and proposed solutions
 - **Mitigation**: Recognition learnings should be treated as suggestions, not mandates. Agents retain autonomy to ignore patterns that seem inefficient for their specific context.
+
+**RevokeRequest and Marketplace Timeout Issues (2025-11-19):**
+- **Issue**: Safe-based delivery transactions successfully confirm on-chain but emit `RevokeRequest` instead of `Deliver` events
+- **Root Cause**: Marketplace `responseTimeout` (default 300s = 5 minutes) expires before Safe delivery completes. When `deliverToMarketplace()` is called after timeout, the marketplace returns `deliveredRequests[i] == false`, causing OlasMech to emit `RevokeRequest`.
+- **Impact**: Job completes successfully but delivery is rejected by marketplace. Funds locked in balance tracker, no `Deliver` event indexed by Ponder, user sees no completion.
+- **Fix Applied**: Added `responseTimeout` parameter to `dispatch_new_job` and `dispatch_existing_job` with default of 3600s (1 hour), up from previous 300s (5 minutes).
+- **Why This Happened**: Jobs with recognition + execution + reflection phases, plus Safe-based transaction flow, plus external API retries (DefiLlama, CoinGecko) now routinely exceed 5 minute window.
+- **Detection Added**: Commit `485e6a6` (Nov 19) added `wasRequestRevoked()` check in `deliverViaSafeTransaction` to detect and surface these failures. Previously, `RevokeRequest` events were silently treated as successful deliveries.
+- **Recommended Timeouts**:
+  - Default jobs: 3600s (1 hour) - covers recognition/reflection phases
+  - Complex research: 7200s (2 hours) - for jobs with extensive web fetches and retries
+  - Simple jobs: 600s (10 minutes) minimum
+- **On-Chain Behavior**: When timeout expires, marketplace considers request "undeliverable". Late delivery attempts are rejected with `RevokeRequest`, funds remain locked (no automatic refund mechanism in deployed balance tracker).

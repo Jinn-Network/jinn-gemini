@@ -31,6 +31,7 @@ const dispatchNewJobParamsBase = z.object({
   message: z.string().optional().describe('Optional message to include in the job request'),
   dependencies: z.array(z.string()).optional().describe('Array of job definition IDs that must be fully completed (all requests and child jobs delivered) before this job can execute. Use this to enforce execution order for related job definitions.'),
   skipBranch: z.boolean().optional().default(false).describe('If true, skip branch creation and code metadata collection (for artifact-only jobs)'),
+  responseTimeout: z.number().optional().default(3600).describe('Response timeout in seconds for marketplace request. Defaults to 3600 (1 hour). Set higher for long-running jobs with recognition/reflection phases or complex web fetches.'),
 });
 
 export const dispatchNewJobParams = dispatchNewJobParamsBase;
@@ -65,6 +66,7 @@ PARAMETERS:
 - enabledTools: (optional) Array of tool names to enable
 - message: (optional) Additional message to include in the job request
 - dependencies: (optional) Array of job definition IDs that must be fully completed before this job can execute
+- responseTimeout: (optional) Response timeout in seconds for marketplace request (defaults to 3600). Set higher for long-running jobs
 
 The blueprint is validated and made directly available to the agent in GEMINI.md context.`,
   inputSchema: dispatchNewJobParamsBase.shape,
@@ -102,7 +104,7 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { jobName, blueprint, model, enabledTools, message, dependencies, skipBranch } = parsed.data;
+    const { jobName, blueprint, model, enabledTools, message, dependencies, skipBranch, responseTimeout } = parsed.data;
 
     if (!blueprint) {
       return {
@@ -311,6 +313,7 @@ export async function dispatchNewJob(args: unknown) {
         chainConfig,
         keyConfig: { source: 'value', value: privateKey },
         postOnly: true,
+        responseTimeout,
       });
       console.error('[dispatch_new_job] marketplaceInteract call completed');
 

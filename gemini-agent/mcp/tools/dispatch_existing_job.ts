@@ -16,6 +16,7 @@ const dispatchExistingJobParamsBase = z.object({
   enabledTools: z.array(z.string()).optional(),
   prompt: z.string().optional().describe('DEPRECATED: Use blueprint instead. For backward compatibility only.'),
   message: z.string().optional(),
+  responseTimeout: z.number().optional().default(3600).describe('Response timeout in seconds for marketplace request. Defaults to 3600 (1 hour). Set higher for long-running jobs with recognition/reflection phases or complex web fetches.'),
 });
 
 export const dispatchExistingJobParams = dispatchExistingJobParamsBase.refine(
@@ -41,7 +42,7 @@ export async function dispatchExistingJob(args: unknown) {
   if (!parse.success) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: parse.error.message } }) }] };
   }
-  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message } = parse.data;
+  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message, responseTimeout } = parse.data;
 
   const gqlUrl = getPonderGraphqlUrl();
 
@@ -231,6 +232,7 @@ export async function dispatchExistingJob(args: unknown) {
         chainConfig,
         keyConfig: { source: 'value', value: privateKey },
         postOnly: true,
+        responseTimeout,
       });
 
     if (!result || !Array.isArray(result.request_ids) || result.request_ids.length === 0) {
