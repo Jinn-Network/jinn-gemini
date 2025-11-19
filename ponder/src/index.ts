@@ -317,12 +317,17 @@ ponder.on(
             sourceJobDefinitionId: parentJobDefinitionId,
             sourceRequestId: sourceRequestId,
             codeMetadata,
+            createdAt: blockTimestamp,
+            lastInteraction: blockTimestamp,
+            lastStatus: 'PENDING',
           },
           update: {
             name: jobName || 'Unnamed Job',
             enabledTools,
             blueprint,
             codeMetadata: codeMetadata || undefined,
+            lastInteraction: blockTimestamp,
+            lastStatus: 'PENDING',
             // Do NOT re-attribute lineage on updates; preserve original creator
           },
         });
@@ -590,8 +595,24 @@ ponder.on(
             if (jobDefRepo) {
               await jobDefRepo.upsert({
                 id: deliveryJobDefinitionId,
-                create: { id: deliveryJobDefinitionId, name: jobName || 'Unnamed Job', enabledTools, blueprint, sourceRequestId: requestId },
-                update: { name: jobName || 'Unnamed Job', enabledTools, blueprint, sourceRequestId: requestId },
+                create: { 
+                  id: deliveryJobDefinitionId, 
+                  name: jobName || 'Unnamed Job', 
+                  enabledTools, 
+                  blueprint, 
+                  sourceRequestId: requestId,
+                  createdAt: blockTimestamp,
+                  lastInteraction: blockTimestamp,
+                  lastStatus: 'COMPLETED',
+                },
+                update: { 
+                  name: jobName || 'Unnamed Job', 
+                  enabledTools, 
+                  blueprint, 
+                  sourceRequestId: requestId,
+                  lastInteraction: blockTimestamp,
+                  lastStatus: 'COMPLETED',
+                },
               });
             }
             // Backfill jobDefinitionId (target job) on delivery and request

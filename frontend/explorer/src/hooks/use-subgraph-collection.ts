@@ -88,7 +88,7 @@ export function useSubgraphCollection({
     
     switch (collectionName) {
       case 'jobDefinitions':
-        return 'name'
+        return 'lastInteraction'
       case 'requests':
       case 'deliveries':
       case 'messages':

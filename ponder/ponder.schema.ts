@@ -10,11 +10,15 @@ export default createSchema((p: any) => ({
       sourceJobDefinitionId: p.string().optional(),
       sourceRequestId: p.string().optional(),
       codeMetadata: p.json().optional(),
+      createdAt: p.bigint().optional(),
+      lastInteraction: p.bigint().optional(),
+      lastStatus: p.string().optional(),
     },
     {
       nameIdx: p.index("name"),
       sourceJobDefIdx: p.index("sourceJobDefinitionId"),
       sourceReqIdx: p.index("sourceRequestId"),
+      lastInteractionIdx: p.index("lastInteraction").desc(),
     }
   ),
   request: p.createTable(

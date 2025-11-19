@@ -22,7 +22,7 @@ interface CollectionViewProps {
 function getSortingConfig(collectionName: CollectionName): { column: string; ascending: boolean } {
   // Collection-specific sorting configurations for subgraph entities
   const sortingConfigs: Record<CollectionName, { column: string; ascending: boolean }> = {
-    jobDefinitions: { column: 'name', ascending: true },
+    jobDefinitions: { column: 'lastInteraction', ascending: false },
     requests: { column: 'blockTimestamp', ascending: false },
     deliveries: { column: 'blockTimestamp', ascending: false },
     artifacts: { column: 'blockTimestamp', ascending: false },

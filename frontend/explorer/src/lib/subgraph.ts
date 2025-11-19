@@ -10,6 +10,9 @@ export interface JobDefinition {
   sourceJobDefinitionId?: string
   sourceRequestId?: string
   codeMetadata?: Record<string, unknown>
+  createdAt?: string
+  lastInteraction?: string
+  lastStatus?: string
 }
 
 export interface Request {
@@ -166,6 +169,9 @@ export const JOB_DEFINITIONS_QUERY = `
         sourceJobDefinitionId
         sourceRequestId
         codeMetadata
+        createdAt
+        lastInteraction
+        lastStatus
       }
       pageInfo {
         hasNextPage
@@ -182,8 +188,8 @@ export async function queryJobDefinitions(options: QueryOptions = {}): Promise<P
     limit = 100,
     after,
     before,
-    orderBy = 'name',
-    orderDirection = 'asc',
+    orderBy = 'lastInteraction',
+    orderDirection = 'desc',
     where
   } = options
 
@@ -396,6 +402,9 @@ export const JOB_DEFINITION_QUERY = `
       sourceJobDefinitionId
       sourceRequestId
       codeMetadata
+      createdAt
+      lastInteraction
+      lastStatus
     }
   }
 `
