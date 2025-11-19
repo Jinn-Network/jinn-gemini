@@ -6,10 +6,10 @@ export interface JobDefinition {
   id: string
   name: string
   enabledTools: string[]
-  promptContent?: string
   blueprint?: string
   sourceJobDefinitionId?: string
   sourceRequestId?: string
+  codeMetadata?: Record<string, unknown>
 }
 
 export interface Request {
@@ -147,6 +147,36 @@ export interface QueryOptions {
   where?: Record<string, unknown>
 }
 
+// Export query strings for testing
+export const JOB_DEFINITIONS_QUERY = `
+  query JobDefinitions($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String, $where: jobDefinitionFilter) {
+    jobDefinitions(
+      limit: $limit,
+      after: $after,
+      before: $before,
+      orderBy: $orderBy,
+      orderDirection: $orderDirection,
+      where: $where
+    ) {
+      items {
+        id
+        name
+        enabledTools
+        blueprint
+        sourceJobDefinitionId
+        sourceRequestId
+        codeMetadata
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+    }
+  }
+`
+
 export async function queryJobDefinitions(options: QueryOptions = {}): Promise<PaginatedResponse<JobDefinition>> {
   const {
     limit = 100,
@@ -157,34 +187,7 @@ export async function queryJobDefinitions(options: QueryOptions = {}): Promise<P
     where
   } = options
 
-  const query = `
-    query JobDefinitions($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String, $where: jobDefinitionFilter) {
-      jobDefinitions(
-        limit: $limit,
-        after: $after,
-        before: $before,
-        orderBy: $orderBy,
-        orderDirection: $orderDirection,
-        where: $where
-      ) {
-        items {
-          id
-          name
-          enabledTools
-          promptContent
-          blueprint
-          sourceJobDefinitionId
-          sourceRequestId
-        }
-        pageInfo {
-          hasNextPage
-          hasPreviousPage
-          startCursor
-          endCursor
-        }
-      }
-    }
-  `
+  const query = JOB_DEFINITIONS_QUERY
 
   try {
     const response = await request<JobDefinitionsResponse>(SUBGRAPH_URL, query, {
@@ -383,20 +386,22 @@ export async function queryArtifacts(options: QueryOptions = {}): Promise<Pagina
   }
 }
 
-export async function getJobDefinition(id: string): Promise<JobDefinition | null> {
-  const query = `
-    query JobDefinition($id: String!) {
-      jobDefinition(id: $id) {
-        id
-        name
-        enabledTools
-        promptContent
-        blueprint
-        sourceJobDefinitionId
-        sourceRequestId
-      }
+export const JOB_DEFINITION_QUERY = `
+  query JobDefinition($id: String!) {
+    jobDefinition(id: $id) {
+      id
+      name
+      enabledTools
+      blueprint
+      sourceJobDefinitionId
+      sourceRequestId
+      codeMetadata
     }
-  `
+  }
+`
+
+export async function getJobDefinition(id: string): Promise<JobDefinition | null> {
+  const query = JOB_DEFINITION_QUERY
 
   try {
     const response = await request<{ jobDefinition: JobDefinition | null }>(SUBGRAPH_URL, query, { id })

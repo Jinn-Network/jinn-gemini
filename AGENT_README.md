@@ -168,6 +168,27 @@ query Artifact($id: String!) {
 
 ---
 
+## Frontend Explorer
+
+The Next.js frontend (`frontend/explorer/`) provides a web interface for exploring on-chain job requests, deliveries, artifacts, and workstreams.
+
+### Schema Validation Tests
+
+To prevent GraphQL query/schema mismatches, the frontend includes comprehensive validation tests:
+
+- **Query Validation** (`frontend/explorer/src/lib/subgraph.test.ts`): Ensures GraphQL queries only request fields that exist in the Ponder schema
+- **Component Tests** (`frontend/explorer/src/components/job-definitions-table.test.tsx`): Validates component rendering with actual schema fields
+- **Golden Schema**: Test files define expected valid fields for each entity type as a contract
+
+Tests automatically fail if:
+- Queries request non-existent fields (e.g., `promptContent`, `description` on `jobDefinition`)
+- Components try to access fields that don't exist in the schema
+- TypeScript interfaces drift from the Ponder schema
+
+Run tests: `cd frontend/explorer && yarn test`
+
+---
+
 ## Control API (secure writes)
 
 Endpoint: `http://localhost:4001/graphql`
@@ -1607,6 +1628,13 @@ yarn dev:all        # Start both worker and frontend (recommended)
 yarn mech           # Start mech worker only
 yarn frontend:start # Start frontend only
 yarn start:all      # Start both worker and frontend
+```
+
+#### Testing Commands
+```bash
+yarn test                    # Run all tests
+yarn test:coverage           # Run tests with coverage
+cd frontend/explorer && yarn test  # Run frontend tests only
 ```
 
 ### Running Services Locally

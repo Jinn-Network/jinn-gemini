@@ -22,8 +22,8 @@ export function JobDefinitionsTable({ records }: JobDefinitionsTableProps) {
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Name</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Description</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Created</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Enabled Tools</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Blueprint</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Source Job</th>
             <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700">ID</th>
           </tr>
@@ -34,12 +34,14 @@ export function JobDefinitionsTable({ records }: JobDefinitionsTableProps) {
               ? (record.name.length > 50 ? record.name.substring(0, 50) + '...' : record.name)
               : 'Unnamed'
             
-            const description = 'description' in record && record.description && typeof record.description === 'string'
-              ? (record.description.length > 80 ? record.description.substring(0, 80) + '...' : record.description)
+            const enabledTools = 'enabledTools' in record && Array.isArray(record.enabledTools)
+              ? record.enabledTools.length > 0 
+                ? record.enabledTools.join(', ').substring(0, 50) + (record.enabledTools.join(', ').length > 50 ? '...' : '')
+                : '-'
               : '-'
             
-            const timestamp = 'blockTimestamp' in record && record.blockTimestamp 
-              ? formatDate(record.blockTimestamp) 
+            const blueprint = 'blueprint' in record && record.blueprint && typeof record.blueprint === 'string'
+              ? (record.blueprint.length > 80 ? record.blueprint.substring(0, 80) + '...' : record.blueprint)
               : '-'
             
             const sourceJobDefinitionId = 'sourceJobDefinitionId' in record && record.sourceJobDefinitionId 
@@ -57,10 +59,10 @@ export function JobDefinitionsTable({ records }: JobDefinitionsTableProps) {
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">
-                  {description}
+                  {enabledTools}
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">
-                  {timestamp}
+                  {blueprint}
                 </td>
                 <td className="px-4 py-3">
                   {sourceJobDefinitionId ? (
