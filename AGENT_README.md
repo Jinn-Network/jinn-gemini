@@ -122,7 +122,7 @@ Testing with .env.test
 
 **Deployment:**
 - **Production**: Hosted on Railway at `https://jinn-gemini-production.up.railway.app/` (GraphQL endpoint)
-- **Railway Auto-Deploy**: Pushes to `oak/jinn-247-evalution-context-management-updates` branch trigger automatic redeployment
+- **Railway Auto-Deploy**: Pushes to GitHub trigger automatic redeployment (branch configured in Railway UI)
 - **Local development**: `http://localhost:42069/graphql` (ONLY for testing Ponder changes before pushing)
 - Frontend and worker default to Railway endpoint for production data
 - Set `PONDER_GRAPHQL_URL` (worker) or `NEXT_PUBLIC_SUBGRAPH_URL` (frontend) to override
@@ -147,7 +147,7 @@ NEXT_PUBLIC_SUBGRAPH_URL=http://localhost:42069/graphql
 1. Make indexing changes in `ponder/src/index.ts` or `ponder/ponder.schema.ts`
 2. Test locally: `cd ponder && yarn dev`
 3. Verify changes work with local worker/frontend
-4. Push to `oak/jinn-247-evalution-context-management-updates` branch
+4. Push to GitHub (Railway monitors the branch configured in Railway UI)
 5. Railway automatically redeploys Ponder with your changes
 6. Wait ~2-3 minutes for Railway deployment to complete
 7. Verify changes in production using Railway endpoint
