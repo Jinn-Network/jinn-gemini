@@ -41,6 +41,8 @@ interface UseSubgraphCollectionReturn {
   hasNextPage: boolean
   hasPreviousPage: boolean
   setSorting: (column: string, ascending: boolean) => void
+  sortColumn: string
+  sortAscending: boolean
 }
 
 export function useSubgraphCollection({
@@ -219,6 +221,8 @@ export function useSubgraphCollection({
     error,
     hasNextPage,
     hasPreviousPage,
-    setSorting
+    setSorting,
+    sortColumn: currentSortColumn,
+    sortAscending: currentSortAscending
   }
 }

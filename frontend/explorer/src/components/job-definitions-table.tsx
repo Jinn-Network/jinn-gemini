@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import Link from 'next/link'
 import { ArrowUpDown, ArrowDown, ArrowUp } from 'lucide-react'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
@@ -7,16 +7,14 @@ import { formatDate } from '@/lib/utils'
 interface JobDefinitionsTableProps {
   records: SubgraphRecord[]
   onSort?: (column: string, direction: 'asc' | 'desc') => void
+  sortColumn: string
+  sortAscending: boolean
 }
 
-export function JobDefinitionsTable({ records, onSort }: JobDefinitionsTableProps) {
-  const [sortColumn, setSortColumn] = useState<string>('lastInteraction')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
-
+export function JobDefinitionsTable({ records, onSort, sortColumn, sortAscending }: JobDefinitionsTableProps) {
   const handleSort = (column: string) => {
-    const newDirection = sortColumn === column && sortDirection === 'desc' ? 'asc' : 'desc'
-    setSortColumn(column)
-    setSortDirection(newDirection)
+    // Toggle direction if clicking the same column, otherwise default to descending
+    const newDirection = sortColumn === column && !sortAscending ? 'asc' : 'desc'
     if (onSort) {
       onSort(column, newDirection)
     }
@@ -26,9 +24,9 @@ export function JobDefinitionsTable({ records, onSort }: JobDefinitionsTableProp
     if (sortColumn !== column) {
       return <ArrowUpDown className="w-4 h-4 text-gray-400 ml-1" />
     }
-    return sortDirection === 'desc' 
-      ? <ArrowDown className="w-4 h-4 ml-1" />
-      : <ArrowUp className="w-4 h-4 ml-1" />
+    return sortAscending 
+      ? <ArrowUp className="w-4 h-4 ml-1" />
+      : <ArrowDown className="w-4 h-4 ml-1" />
   }
   if (records.length === 0) {
     return (

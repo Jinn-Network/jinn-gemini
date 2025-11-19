@@ -75,7 +75,9 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     error,
     hasNextPage,
     hasPreviousPage,
-    setSorting
+    setSorting,
+    sortColumn,
+    sortAscending
   } = useSubgraphCollection({
     collectionName,
     pageSize,
@@ -194,7 +196,12 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
       ) : collectionName === 'artifacts' ? (
         <ArtifactsTable records={displayRecords} />
       ) : collectionName === 'jobDefinitions' ? (
-        <JobDefinitionsTable records={displayRecords} onSort={handleSort} />
+        <JobDefinitionsTable 
+          records={displayRecords} 
+          onSort={handleSort}
+          sortColumn={sortColumn}
+          sortAscending={sortAscending}
+        />
       ) : (
         <RecordList records={displayRecords} collectionName={collectionName} />
       )}
