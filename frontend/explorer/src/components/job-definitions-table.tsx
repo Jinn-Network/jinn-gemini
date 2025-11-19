@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
+import { ArrowUpDown, ArrowDown, ArrowUp } from 'lucide-react'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
 
@@ -23,9 +24,11 @@ export function JobDefinitionsTable({ records, onSort }: JobDefinitionsTableProp
 
   const SortIcon = ({ column }: { column: string }) => {
     if (sortColumn !== column) {
-      return <span className="text-gray-400 ml-1">↕</span>
+      return <ArrowUpDown className="w-4 h-4 text-gray-400 ml-1" />
     }
-    return <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+    return sortDirection === 'desc' 
+      ? <ArrowDown className="w-4 h-4 ml-1" />
+      : <ArrowUp className="w-4 h-4 ml-1" />
   }
   if (records.length === 0) {
     return (
