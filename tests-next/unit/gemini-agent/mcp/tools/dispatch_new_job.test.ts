@@ -175,7 +175,6 @@ describe('dispatchNewJob', () => {
         blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
         model: 'gemini-2.5-pro',
         enabledTools: ['read_file', 'write_file'],
-        updateExisting: false,
         message: 'Please start working on this',
         dependencies: ['job-def-uuid-1', 'job-def-uuid-2'],
         skipBranch: false,
@@ -452,43 +451,11 @@ describe('dispatchNewJob', () => {
     });
   });
 
-  describe('updateExisting parameter', () => {
-    it('updates existing job definition when updateExisting is true', async () => {
-      (graphQLRequest as any).mockImplementation(async ({ query }: any) => {
-        if (query.includes('jobDefinitions')) {
-          return { 
-            jobDefinitions: { 
-              items: [{ 
-                id: 'existing-uuid',
-                jobName: 'test-job',
-              }] 
-            } 
-          };
-        }
-        if (query.includes('request(id:')) {
-          return { request: { ipfsHash: 'QmTestIpfsHash' } };
-        }
-        return {};
-      });
-
+  describe('job definition creation', () => {
+    it('always creates a new job definition with unique ID', async () => {
       const args = {
         jobName: 'test-job',
         blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
-        updateExisting: true,
-      };
-
-      const result = await dispatchNewJob(args);
-      const response = JSON.parse(result.content[0].text);
-
-      expect(response.meta.ok).toBe(true);
-      expect(response.data.jobDefinitionId).toBe('existing-uuid');
-    });
-
-    it('creates new job definition when updateExisting is false', async () => {
-      const args = {
-        jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
-        updateExisting: false,
       };
 
       const result = await dispatchNewJob(args);
@@ -496,6 +463,36 @@ describe('dispatchNewJob', () => {
 
       expect(response.meta.ok).toBe(true);
       expect(response.data.jobDefinitionId).toMatch(/^[a-f0-9-]{36}$/); // UUID format
+    });
+
+    it('creates distinct job definitions for same job name', async () => {
+      const args = {
+        jobName: 'test-job',
+        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+      };
+
+      const result1 = await dispatchNewJob(args);
+      const response1 = JSON.parse(result1.content[0].text);
+
+      const result2 = await dispatchNewJob(args);
+      const response2 = JSON.parse(result2.content[0].text);
+
+      expect(response1.meta.ok).toBe(true);
+      expect(response2.meta.ok).toBe(true);
+      expect(response1.data.jobDefinitionId).not.toBe(response2.data.jobDefinitionId);
+    });
+
+    it('does not include reusedDefinition in meta', async () => {
+      const args = {
+        jobName: 'test-job',
+        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+      };
+
+      const result = await dispatchNewJob(args);
+      const response = JSON.parse(result.content[0].text);
+
+      expect(response.meta.ok).toBe(true);
+      expect(response.meta.reusedDefinition).toBeUndefined();
     });
   });
 

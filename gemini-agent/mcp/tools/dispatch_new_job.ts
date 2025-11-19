@@ -24,11 +24,10 @@ const blueprintStructureSchema = z.object({
 });
 
 const dispatchNewJobParamsBase = z.object({
-  jobName: z.string().min(1).describe('Unique name for this job definition'),
+  jobName: z.string().min(1).describe('Name for this job definition'),
   blueprint: z.string().optional().describe('JSON string containing structured blueprint with assertions array. Each assertion must have: id, assertion, examples (do/dont arrays), and commentary.'),
   model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-2.5-flash", "gemini-2.5-pro"). Defaults to MECH_MODEL env var or "gemini-2.5-flash" if not specified.'),
   enabledTools: z.array(z.string()).optional().describe('Array of tool names to enable for this job'),
-  updateExisting: z.boolean().optional().default(false).describe('If true, update existing job definition with the same name'),
   message: z.string().optional().describe('Optional message to include in the job request'),
   dependencies: z.array(z.string()).optional().describe('Array of job definition IDs that must be fully completed (all requests and child jobs delivered) before this job can execute. Use this to enforce execution order for related job definitions.'),
   skipBranch: z.boolean().optional().default(false).describe('If true, skip branch creation and code metadata collection (for artifact-only jobs)'),
@@ -37,12 +36,11 @@ const dispatchNewJobParamsBase = z.object({
 export const dispatchNewJobParams = dispatchNewJobParamsBase;
 
 export const dispatchNewJobSchema = {
-  description: `Create or reuse a job definition and dispatch a new marketplace request using a structured JSON blueprint.
+  description: `Create a new job definition and dispatch a new marketplace request using a structured JSON blueprint.
 
-IMPORTANT: This tool ALWAYS posts a new on-chain marketplace request, even if the job definition already exists.
-- If a job definition with the same name exists, it reuses that definition and posts a new request
-- If no definition exists, it creates a new definition and posts a request
-- The updateExisting parameter only controls whether to update the job definition metadata, not whether to dispatch
+IMPORTANT: This tool ALWAYS creates a new job definition with a unique ID and posts a new on-chain marketplace request.
+- Each call creates a distinct job instance (node in the work graph)
+- To re-run an existing job, use dispatch_existing_job instead
 
 BLUEPRINT FORMAT (REQUIRED):
 The blueprint must be a JSON string with the following structure:
@@ -61,11 +59,10 @@ The blueprint must be a JSON string with the following structure:
 }
 
 PARAMETERS:
-- jobName: (required) Unique name for this job definition
+- jobName: (required) Name for this job definition
 - blueprint: (required) JSON string containing structured assertions array as defined above
 - model: (optional) Gemini model to use (defaults to MECH_MODEL env var or "gemini-2.5-flash")
 - enabledTools: (optional) Array of tool names to enable
-- updateExisting: (optional) If true, update existing job definition metadata (default: false, reuses existing)
 - message: (optional) Additional message to include in the job request
 - dependencies: (optional) Array of job definition IDs that must be fully completed before this job can execute
 
@@ -105,7 +102,7 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { jobName, blueprint, model, enabledTools, updateExisting, message, dependencies, skipBranch } = parsed.data;
+    const { jobName, blueprint, model, enabledTools, message, dependencies, skipBranch } = parsed.data;
 
     if (!blueprint) {
       return {
@@ -160,33 +157,9 @@ export async function dispatchNewJob(args: unknown) {
 
     const gqlUrl = getPonderGraphqlUrl();
 
-    let existingJob: any | null = null;
-    try {
-      const result = await graphQLRequest<{
-        jobDefinitions: {
-          items: Array<{
-            id: string;
-            name: string;
-            enabledTools?: string;
-          }>;
-        };
-      }>({
-        url: gqlUrl,
-        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools } } }`,
-        variables: { name: jobName },
-        maxRetries: 0,
-        context: { operation: 'checkExistingJob', jobName }
-      });
-      existingJob = result?.jobDefinitions?.items?.[0] || null;
-    } catch (error) {
-      // Duplicate detection is best-effort; ignore lookup failures
-      console.warn('dispatch_new_job: subgraph lookup failed', error);
-    }
-
-    // If job definition exists, reuse its ID and continue to dispatch a new on-chain request
-    // The job definition (blueprint, tools) is reused, but we still create a new marketplace request
-    const jobDefinitionId: string = existingJob?.id || ensureUuid();
-    const isReusingDefinition = !!existingJob;
+    // Always create a new job definition with a unique ID
+    // Each dispatch_new_job call creates a distinct job instance (node in the work graph)
+    const jobDefinitionId: string = ensureUuid();
     const context = getCurrentJobContext();
     const lineageContext: Record<string, any> = {};
     if (context.requestId) lineageContext.sourceRequestId = context.requestId;
@@ -410,10 +383,7 @@ export async function dispatchNewJob(args: unknown) {
           type: 'text' as const,
           text: JSON.stringify({ 
             data: enriched, 
-            meta: { 
-              ok: true,
-              ...(isReusingDefinition ? { reusedDefinition: true } : {})
-            } 
+            meta: { ok: true } 
           }),
         }],
       };

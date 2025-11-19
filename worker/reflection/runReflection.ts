@@ -32,7 +32,24 @@ function buildReflectionPrompt(
 - Tools Called: ${result.telemetry?.toolCalls?.length || 0}
 
 **Reflection Task:**
-Review the execution. Did you discover any strategies, solutions, workarounds, or insights that would be valuable for future jobs? If yes, use the \`create_artifact\` tool with \`type: 'MEMORY'\` to save it. Include descriptive tags.
+Review the execution. Did you discover any strategies, solutions, workarounds, or insights that would be valuable for future jobs?
+
+If yes, you MUST use the \`create_artifact\` tool to save a memory.
+Parameters:
+- \`type\`: "MEMORY" (required)
+- \`name\`: A short, descriptive title for the memory.
+- \`topic\`: A category (e.g., "optimization", "bug-fix", "best-practice").
+- \`tags\`: An array of string tags. You MUST include tags derived from the Job Name and key technologies used (e.g., "staking", "optimization", "olas", "defi").
+- \`content\`: The detailed insight/learning.
+
+Example:
+create_artifact({
+  name: "Optimized Staking Parameters",
+  type: "MEMORY",
+  topic: "optimization",
+  tags: ["staking", "optimization", "olas", "yield"],
+  content: "..."
+})
 
 If nothing notable was learned, simply respond "No significant learnings."`;
   } else {
@@ -48,7 +65,24 @@ If nothing notable was learned, simply respond "No significant learnings."`;
 - Tools Called: ${result.telemetry?.toolCalls?.length || 0}
 
 **Reflection Task:**
-Review the failure. Were there any lessons learned, edge cases discovered, or patterns that future jobs should avoid? If yes, use the \`create_artifact\` tool with \`type: 'MEMORY'\` and include 'failure' in the tags to help future jobs avoid similar issues.
+Review the failure. Were there any lessons learned, edge cases discovered, or patterns that future jobs should avoid?
+
+If yes, you MUST use the \`create_artifact\` tool to save a memory.
+Parameters:
+- \`type\`: "MEMORY" (required)
+- \`name\`: A short, descriptive title for the memory.
+- \`topic\`: "failure-analysis"
+- \`tags\`: An array of string tags. You MUST include "failure" and tags derived from the error (e.g., "timeout", "validation-error").
+- \`content\`: The detailed failure analysis and prevention strategy.
+
+Example:
+create_artifact({
+  name: "Timeout Handling Strategy",
+  type: "MEMORY",
+  topic: "failure-analysis",
+  tags: ["failure", "timeout", "network"],
+  content: "..."
+})
 
 If nothing notable was learned, simply respond "No significant learnings."`;
   }

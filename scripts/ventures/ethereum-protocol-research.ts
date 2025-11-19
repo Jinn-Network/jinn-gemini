@@ -75,7 +75,6 @@ async function main() {
         'create_artifact',
       ],
       skipBranch: true, // Research job, no code changes
-      updateExisting: true,
     });
     
     const { jobDefinitionId, requestId } = parseDispatchResponse(result);

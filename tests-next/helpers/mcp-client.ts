@@ -302,7 +302,6 @@ export async function createTestJob(params: {
     blueprint: params.blueprint,
     jobName,
     enabledTools,
-    updateExisting: true,
     message: params.message,
     sourceRequestId: params.sourceRequestId,
     sourceJobDefinitionId: params.sourceJobDefinitionId,

@@ -482,13 +482,35 @@ export async function processOnce(
     telemetry.logError('delivery', e);
     workerLogger.warn({ requestId: target.id, error: serializeError(e) }, 'Safe delivery failed');
 
-    try {
-      await storeOnchainReport(target, workerAddress, result, {
-        status: 'FAILED',
-        message: `Delivery failed: ${e?.message || String(e)}`,
-      }, e, metadata!);
-    } catch (reportErr: any) {
-      workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(reportErr) }, 'Failed to record FAILED status');
+    // Check if the error is due to a RevokeRequest event
+    const isRevokeError = e?.message?.includes('revoked by the Mech contract');
+    
+    if (isRevokeError && metadata?.jobDefinitionId) {
+      workerLogger.warn({ 
+        requestId: target.id, 
+        jobDefinitionId: metadata.jobDefinitionId,
+        jobName: metadata.jobName 
+      }, 'Request was revoked - automatic re-dispatch recommended');
+      
+      // Store failure status with revoke context
+      try {
+        await storeOnchainReport(target, workerAddress, result, {
+          status: 'FAILED',
+          message: `Delivery revoked by Mech contract. Job should be re-dispatched: ${metadata.jobName || metadata.jobDefinitionId}`,
+        }, e, metadata!);
+      } catch (reportErr: any) {
+        workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(reportErr) }, 'Failed to record REVOKE_FAILURE status');
+      }
+    } else {
+      // Standard failure handling
+      try {
+        await storeOnchainReport(target, workerAddress, result, {
+          status: 'FAILED',
+          message: `Delivery failed: ${e?.message || String(e)}`,
+        }, e, metadata!);
+      } catch (reportErr: any) {
+        workerLogger.warn({ jobName: metadata?.jobName, requestId: target.id, error: serializeError(reportErr) }, 'Failed to record FAILED status');
+      }
     }
   } finally {
     telemetry.endPhase('delivery');

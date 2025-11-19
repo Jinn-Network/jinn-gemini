@@ -28,8 +28,9 @@ type UnclaimedRequest = {
   id: string;           // on-chain requestId (decimal string or 0x)
   mech: string;         // mech address (0x...)
   requester: string;    // requester address (0x...)
+  workstreamId?: string; // workstream context for dependency resolution
   blockTimestamp?: number;
-  dependencies?: string[];  // request IDs that must be delivered first
+  dependencies?: string[];  // job definition IDs or names that must be delivered first
   ipfsHash?: string;
   delivered?: boolean;
 };
@@ -92,6 +93,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       id
       mech
       sender
+      workstreamId
       ipfsHash
       blockTimestamp
       delivered
@@ -120,6 +122,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       id: String(r.id),
       mech: String(r.mech),
       requester: String(r.sender || ''),
+      workstreamId: r?.workstreamId ? String(r.workstreamId) : undefined,
       ipfsHash: r?.ipfsHash ? String(r.ipfsHash) : undefined,
       blockTimestamp: Number(r.blockTimestamp),
       delivered: Boolean(r?.delivered === true),
@@ -169,6 +172,78 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
     return filtered;
   } catch {
     return notDelivered;
+  }
+}
+
+/**
+ * Resolve a dependency identifier to a job definition ID.
+ * If the identifier is already a UUID, return it as-is.
+ * If the identifier is a job name, try to resolve it within the workstream context.
+ */
+async function resolveJobDefinitionId(
+  workstreamId: string | undefined,
+  identifier: string
+): Promise<string> {
+  // Check if identifier is already a UUID
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (UUID_REGEX.test(identifier)) {
+    return identifier;
+  }
+
+  // If no workstream context, can't resolve - return original
+  if (!workstreamId) {
+    workerLogger.debug({ identifier }, 'Cannot resolve dependency without workstream context');
+    return identifier;
+  }
+
+  try {
+    // Try to resolve by querying for requests with this job name in the workstream
+    const query = `query ResolveJobDef($workstreamId: String!, $jobName: String!) {
+      requests(
+        where: { workstreamId: $workstreamId, jobName: $jobName }
+        orderBy: "blockTimestamp"
+        orderDirection: "desc"
+        limit: 1
+      ) {
+        items {
+          jobDefinitionId
+        }
+      }
+    }`;
+
+    const data = await graphQLRequest<{
+      requests: { items: Array<{ jobDefinitionId?: string }> };
+    }>({
+      url: PONDER_GRAPHQL_URL,
+      query,
+      variables: { workstreamId, jobName: identifier },
+      context: { operation: 'resolveJobDefinitionId', identifier, workstreamId }
+    });
+
+    const requests = data?.requests?.items || [];
+    if (requests.length > 0 && requests[0].jobDefinitionId) {
+      const resolvedId = requests[0].jobDefinitionId;
+      workerLogger.debug({
+        identifier,
+        resolvedId,
+        workstreamId
+      }, 'Resolved job name to definition ID');
+      return resolvedId;
+    }
+
+    // Not found - return original identifier
+    workerLogger.debug({
+      identifier,
+      workstreamId
+    }, 'Could not resolve job name - no matching requests found');
+    return identifier;
+  } catch (e: any) {
+    workerLogger.warn({
+      identifier,
+      workstreamId,
+      error: e instanceof Error ? e.message : String(e)
+    }, 'Failed to resolve dependency identifier');
+    return identifier;
   }
 }
 
@@ -246,18 +321,19 @@ async function checkDependenciesMet(request: UnclaimedRequest): Promise<boolean>
   }
 
   try {
-    // Check each dependency
+    // Resolve each dependency (name to ID if needed) and check completion
     const results = await Promise.all(
-      request.dependencies.map(async (jobDefId) => {
-        const isComplete = await isJobDefinitionComplete(jobDefId);
-        return { jobDefId, isComplete };
+      request.dependencies.map(async (identifier) => {
+        const resolvedId = await resolveJobDefinitionId(request.workstreamId, identifier);
+        const isComplete = await isJobDefinitionComplete(resolvedId);
+        return { identifier, resolvedId, isComplete };
       })
     );
     
     const allComplete = results.every(r => r.isComplete);
     
     if (!allComplete) {
-      const incomplete = results.filter(r => !r.isComplete).map(r => r.jobDefId);
+      const incomplete = results.filter(r => !r.isComplete).map(r => r.identifier);
       workerLogger.info({ 
         requestId: request.id, 
         totalDeps: request.dependencies.length,

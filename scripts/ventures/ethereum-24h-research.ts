@@ -63,7 +63,6 @@ async function dispatchRootJob(): Promise<DispatchResult> {
       'create_artifact',
     ],
     skipBranch: true, // Research venture, no code changes
-    updateExisting: false,
   });
   
   const { jobDefinitionId, requestId } = parseDispatchResponse(result);

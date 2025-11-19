@@ -167,7 +167,6 @@ async function main() {
       ],
       deliverables,
       constraints,
-      updateExisting: true,  // Update the job definition with IPFS blueprint URL
     });
 
     // Parse the MCP tool response

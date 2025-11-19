@@ -26,7 +26,6 @@ async function main() {
       'search_artifacts',
       'get_details'
     ],
-    updateExisting: false
   });
 
   if (result.content && result.content[0] && result.content[0].type === 'text') {

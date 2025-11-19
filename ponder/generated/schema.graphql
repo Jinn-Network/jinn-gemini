@@ -20,12 +20,17 @@ type jobDefinition {
   sourceJobDefinitionId: String
   sourceRequestId: String
   codeMetadata: JSON
+  createdAt: BigInt!
+  lastInteraction: BigInt!
+  lastStatus: String
 }
 
 """
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
 scalar JSON
+
+scalar BigInt
 
 type jobDefinitionPage {
   items: [jobDefinition!]!
@@ -96,6 +101,32 @@ input jobDefinitionFilter {
   sourceRequestId_ends_with: String
   sourceRequestId_not_starts_with: String
   sourceRequestId_not_ends_with: String
+  createdAt: BigInt
+  createdAt_not: BigInt
+  createdAt_in: [BigInt]
+  createdAt_not_in: [BigInt]
+  createdAt_gt: BigInt
+  createdAt_lt: BigInt
+  createdAt_gte: BigInt
+  createdAt_lte: BigInt
+  lastInteraction: BigInt
+  lastInteraction_not: BigInt
+  lastInteraction_in: [BigInt]
+  lastInteraction_not_in: [BigInt]
+  lastInteraction_gt: BigInt
+  lastInteraction_lt: BigInt
+  lastInteraction_gte: BigInt
+  lastInteraction_lte: BigInt
+  lastStatus: String
+  lastStatus_not: String
+  lastStatus_in: [String]
+  lastStatus_not_in: [String]
+  lastStatus_contains: String
+  lastStatus_not_contains: String
+  lastStatus_starts_with: String
+  lastStatus_ends_with: String
+  lastStatus_not_starts_with: String
+  lastStatus_not_ends_with: String
 }
 
 type request {
@@ -118,8 +149,6 @@ type request {
   additionalContext: JSON
   dependencies: [String!]
 }
-
-scalar BigInt
 
 type requestPage {
   items: [request!]!

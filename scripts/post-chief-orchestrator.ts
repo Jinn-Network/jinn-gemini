@@ -33,7 +33,6 @@ async function main() {
         'google_web_search',
         'web_fetch'
       ],
-      updateExisting: false
     });
 
     console.log('✅ Job posted successfully!');

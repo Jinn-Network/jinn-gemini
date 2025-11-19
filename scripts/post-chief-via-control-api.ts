@@ -53,7 +53,6 @@ async function postJobViaControlApi() {
       $constraints: String
       $jobName: String!
       $enabledTools: [String!]
-      $updateExisting: Boolean
     ) {
       dispatchNewJob(
         objective: $objective
@@ -63,7 +62,6 @@ async function postJobViaControlApi() {
         constraints: $constraints
         jobName: $jobName
         enabledTools: $enabledTools
-        updateExisting: $updateExisting
       ) {
         ok
         code
@@ -86,7 +84,6 @@ async function postJobViaControlApi() {
     constraints,
     jobName,
     enabledTools,
-    updateExisting: false,
   };
 
   const headers: Record<string, string> = {

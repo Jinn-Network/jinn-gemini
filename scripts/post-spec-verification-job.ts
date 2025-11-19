@@ -101,8 +101,6 @@ My entire operation ladders up to one mandate: **Detect spec-code divergence by 
         'search_repositories',
         'list_commits',
       ],
-      
-      updateExisting: true
     });
 
     console.log('\n✅ Job posted successfully!');

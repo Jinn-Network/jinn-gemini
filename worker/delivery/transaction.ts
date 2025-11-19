@@ -51,6 +51,72 @@ export async function isUndeliveredOnChain(params: {
 }
 
 /**
+ * Check if a transaction emitted a RevokeRequest event
+ */
+export async function wasRequestRevoked(params: {
+  txHash: string;
+  requestIdHex: string;
+  mechAddress: string;
+  rpcHttpUrl?: string;
+}): Promise<boolean> {
+  const { txHash, requestIdHex, mechAddress, rpcHttpUrl } = params;
+  try {
+    if (!rpcHttpUrl) return false;
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const agentMechArtifact = await import('@jinn-network/mech-client-ts/dist/abis/AgentMech.json');
+    const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
+    const web3 = new Web3(rpcHttpUrl);
+    
+    // Get transaction receipt
+    const receipt = await web3.eth.getTransactionReceipt(txHash);
+    if (!receipt || !receipt.logs) {
+      workerLogger.debug({ txHash, hasReceipt: !!receipt, hasLogs: !!receipt?.logs }, 'No logs in receipt');
+      return false;
+    }
+    
+    // Parse logs for RevokeRequest event
+    // Event signature: RevokeRequest(bytes32 requestId) - requestId is not indexed, so it's in data
+    const contract = new (web3 as any).eth.Contract(abi, mechAddress);
+    const revokeEventSignature = web3.utils.keccak256('RevokeRequest(bytes32)');
+    
+    workerLogger.debug({ 
+      txHash, 
+      totalLogs: receipt.logs.length, 
+      revokeEventSignature,
+      mechAddress 
+    }, 'Checking logs for RevokeRequest');
+    
+    for (const log of receipt.logs) {
+      workerLogger.debug({ 
+        logAddress: log.address, 
+        logTopics: log.topics,
+        logData: log.data,
+        matchesAddress: log.address.toLowerCase() === mechAddress.toLowerCase(),
+        matchesSignature: log.topics[0] === revokeEventSignature
+      }, 'Inspecting log');
+      
+      if (log.topics[0] === revokeEventSignature && 
+          log.address.toLowerCase() === mechAddress.toLowerCase()) {
+        // Decode the requestId from the data field (not topics, since it's not indexed)
+        // data field is the raw bytes32 requestId
+        const decodedRequestId = log.data;
+        workerLogger.debug({ decodedRequestId, expectedRequestId: requestIdHex }, 'Found RevokeRequest event, checking requestId');
+        if (decodedRequestId.toLowerCase() === requestIdHex.toLowerCase()) {
+          workerLogger.warn({ txHash, requestId: requestIdHex }, 'RevokeRequest event detected for this request');
+          return true;
+        }
+      }
+    }
+    workerLogger.debug({ txHash }, 'No RevokeRequest event found for this request');
+    return false;
+  } catch (e: any) {
+    workerLogger.warn({ txHash, error: e?.message }, 'Failed to check for RevokeRequest event');
+    return false;
+  }
+}
+
+/**
  * Deliver result via Safe transaction
  */
 export async function deliverViaSafeTransaction(
@@ -166,6 +232,21 @@ export async function deliverViaSafeTransaction(
   if (!delivery && lastError) throw lastError;
 
   workerLogger.info({ requestId: context.requestId, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
+  
+  // Check if the transaction actually revoked the request instead of delivering
+  if (delivery?.tx_hash) {
+    const wasRevoked = await wasRequestRevoked({
+      txHash: delivery.tx_hash,
+      requestIdHex,
+      mechAddress: targetMechAddress,
+      rpcHttpUrl,
+    });
+    
+    if (wasRevoked) {
+      workerLogger.error({ requestId: context.requestId, tx: delivery.tx_hash }, 'Request was REVOKED instead of delivered - likely contract state issue');
+      throw new Error('Request was revoked by the Mech contract during delivery');
+    }
+  }
   
   return {
     tx_hash: delivery?.tx_hash,

@@ -408,11 +408,40 @@ CREATE INDEX node_embeddings_vec_idx
 
 **CLI Scripts:**
 
-**Comprehensive Job Inspection:**
+**Comprehensive Job Run Inspection:**
 ```bash
 yarn inspect-job-run <requestId>
 ```
-Fetches complete job run data from Ponder, resolves all IPFS references (request, delivery, artifacts), and outputs a fully-resolved JSON snapshot to stdout. This is the primary debugging tool for inspecting job execution data.
+Fetches complete job run data from Ponder, resolves all IPFS references (request, delivery, artifacts), and outputs a fully-resolved JSON snapshot to stdout. This is the primary debugging tool for inspecting individual job execution data.
+
+**Job Definition Inspection:**
+```bash
+yarn inspect-job <jobDefinitionId>
+```
+Fetches the complete story of a job definition including:
+- Job definition metadata (name, blueprint, enabled tools, lineage)
+- All execution runs (requests) with resolved IPFS content
+- Child jobs created by each run
+- Deliveries and artifacts for all runs
+- Workstream relationships
+- Summary statistics (total/completed runs, artifacts)
+
+Outputs comprehensive JSON to stdout with progress messages to stderr. Use this to understand the full lifecycle and execution history of a job definition across all its runs.
+
+**Example Usage:**
+```bash
+# Inspect a job and save to file
+yarn inspect-job <jobDefinitionId> 2>/dev/null > job-analysis.json
+
+# View summary statistics
+yarn inspect-job <jobDefinitionId> 2>/dev/null | jq '.summary'
+
+# List all workstreams involved
+yarn inspect-job <jobDefinitionId> 2>/dev/null | jq '.workstreams'
+
+# Check child jobs created by first run
+yarn inspect-job <jobDefinitionId> 2>/dev/null | jq '.runs[0].children'
+```
 
 **Default Endpoint:** Production Railway instance (`https://jinn-gemini-production.up.railway.app/graphql`)  
 **Local Override:** Set `PONDER_GRAPHQL_URL=http://localhost:42069/graphql` to use local Ponder
@@ -437,7 +466,9 @@ The explorer UI shows a memory visualization section on completed request detail
 - `gemini-agent/mcp/tools/search_similar_situations.ts` – Vector search tool
 - `gemini-agent/mcp/tools/inspect_situation.ts` – Memory inspection tool
 - `gemini-agent/mcp/tools/embed_text.ts` – Text embedding tool
-- `scripts/memory/inspect-situation.ts` – CLI inspection script
+- `scripts/memory/inspect-situation.ts` – CLI inspection script for SITUATION artifacts
+- `scripts/inspect-job-run.ts` – CLI tool for inspecting individual job run data
+- `scripts/inspect-job.ts` – CLI tool for inspecting complete job definition history
 - `frontend/explorer/src/components/memory-visualization.tsx` – UI component
 - `packages/jinn-types/src/situation.ts` – TypeScript types for SITUATION artifacts
 
