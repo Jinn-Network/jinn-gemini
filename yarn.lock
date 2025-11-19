@@ -891,6 +891,28 @@
     web3 "^4.0.0"
     ws "^8.18.3"
 
+"@jinn-network/mech-client-ts@file:./packages/mech-client-ts/mech-client-ts-ipfsjson.tgz":
+  version "0.0.3"
+  resolved "file:./packages/mech-client-ts/mech-client-ts-ipfsjson.tgz#a09dfb019ab26921b5e25de7b1e7247e2189590a"
+  dependencies:
+    "@types/form-data" "^2.2.1"
+    "@types/uuid" "^10.0.0"
+    axios "^1.0.0"
+    bs58 "^6.0.0"
+    cids "^1.1.9"
+    commander "^14.0.0"
+    ethers "^6.0.0"
+    form-data "^4.0.4"
+    graphql "^16.11.0"
+    graphql-request "^7.2.0"
+    ipfs-http-client "^60.0.1"
+    multibase "^4.0.6"
+    multicodec "^3.2.1"
+    multiformats "^13.4.0"
+    uuid "^13.0.0"
+    web3 "^4.0.0"
+    ws "^8.18.3"
+
 "@joshua.litt/get-ripgrep@^0.0.2":
   version "0.0.2"
   resolved "https://registry.yarnpkg.com/@joshua.litt/get-ripgrep/-/get-ripgrep-0.0.2.tgz#b5b1db6611cc9f2fde709a4dc34ffe8186319638"

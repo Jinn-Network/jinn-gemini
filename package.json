@@ -88,7 +88,7 @@
     "codespec:worktree:cleanup": "tsx -e \"import {WorktreeManager} from './codespec/lib/worktree-manager.js'; const wm = new WorktreeManager(); wm.cleanup().then(n => console.log('Cleaned up', n, 'worktrees'))\""
   },
   "dependencies": {
-    "@jinn-network/mech-client-ts": "^0.0.4",
+    "@jinn-network/mech-client-ts": "file:./packages/mech-client-ts/mech-client-ts-ipfsjson.tgz",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "@ponder/core": "^0.6.1",
     "@safe-global/protocol-kit": "^6.1.0",
