@@ -588,6 +588,8 @@ ponder.on(
           const blueprint = typeof res.data.blueprint === 'string' 
             ? res.data.blueprint 
             : (typeof res.data.prompt === 'string' ? res.data.prompt : undefined);
+          // Extract actual job status from delivery payload (COMPLETED, FAILED, DELEGATING, WAITING)
+          const deliveryStatus = typeof res.data.status === 'string' ? res.data.status : 'COMPLETED';
 
           // Backfill job definition on delivery if available
           // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
@@ -603,7 +605,7 @@ ponder.on(
                   sourceRequestId: requestId,
                   createdAt: blockTimestamp,
                   lastInteraction: blockTimestamp,
-                  lastStatus: 'COMPLETED',
+                  lastStatus: deliveryStatus,
                 },
                 update: { 
                   name: jobName || 'Unnamed Job', 
@@ -611,7 +613,7 @@ ponder.on(
                   blueprint, 
                   sourceRequestId: requestId,
                   lastInteraction: blockTimestamp,
-                  lastStatus: 'COMPLETED',
+                  lastStatus: deliveryStatus,
                 },
               });
             }

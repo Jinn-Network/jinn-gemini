@@ -14,8 +14,9 @@ export function buildDeliveryPayload(params: {
   recognition?: RecognitionPhaseResult | null;
   reflection?: ReflectionResult | null;
   workerTelemetry?: any;
+  finalStatus?: { status: string; message?: string };
 }): any {
-  const { requestId, result, metadata, recognition, reflection, workerTelemetry } = params;
+  const { requestId, result, metadata, recognition, reflection, workerTelemetry, finalStatus } = params;
 
   return {
     requestId: String(requestId),
@@ -23,6 +24,7 @@ export function buildDeliveryPayload(params: {
     structuredSummary: result.structuredSummary || result.output?.slice(-1200) || '',
     telemetry: result.telemetry || {},
     artifacts: result.artifacts || [],
+    ...(finalStatus ? { status: finalStatus.status, statusMessage: finalStatus.message } : {}),
     ...(workerTelemetry ? { workerTelemetry } : {}),
     ...(recognition
       ? {

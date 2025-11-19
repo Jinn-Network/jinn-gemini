@@ -106,6 +106,7 @@ export async function deliverViaSafeTransaction(
     recognition: context.recognition,
     reflection: context.reflection,
     workerTelemetry: context.workerTelemetry,
+    finalStatus: context.finalStatus,
   });
 
   // Add artifacts if provided
