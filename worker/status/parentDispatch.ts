@@ -6,6 +6,7 @@ import { workerLogger } from '../../logging/index.js';
 import { dispatchExistingJob } from '../../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import { safeParseToolResponse } from '../tool_utils.js';
 import type { FinalStatus, ParentDispatchDecision } from '../types.js';
+import type { WorkerTelemetryService } from '../worker_telemetry.js';
 
 /**
  * Determine if parent should be dispatched
@@ -44,7 +45,8 @@ export async function dispatchParentIfNeeded(
   finalStatus: FinalStatus | null,
   metadata: any,
   requestId: string,
-  output: string
+  output: string,
+  telemetry?: WorkerTelemetryService
 ): Promise<void> {
   const decision = shouldDispatchParent(finalStatus, metadata);
   
@@ -54,6 +56,16 @@ export async function dispatchParentIfNeeded(
   }
 
   const parentJobDefId = decision.parentJobDefId!;
+  
+  // Track in telemetry
+  if (telemetry) {
+    telemetry.startPhase('parent_dispatch');
+    telemetry.logCheckpoint('parent_dispatch', 'dispatching_parent', {
+      parentJobDefId,
+      childStatus: finalStatus!.status,
+      reason: 'child_terminal_state'
+    });
+  }
   
   try {
     workerLogger.info(`Dispatching parent job ${parentJobDefId} after child ${finalStatus!.status}`);
@@ -106,12 +118,28 @@ export async function dispatchParentIfNeeded(
     
     const dispatchResult = safeParseToolResponse(result);
     if (dispatchResult.ok) {
+      if (telemetry) {
+        telemetry.logCheckpoint('parent_dispatch', 'dispatch_success', {
+          parentJobDefId,
+          newRequestId: dispatchResult.data?.requestId
+        });
+      }
       workerLogger.info(`Parent job ${parentJobDefId} dispatched successfully`);
     } else {
+      if (telemetry) {
+        telemetry.logError('parent_dispatch', dispatchResult.message || 'Unknown error');
+      }
       workerLogger.error(`Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult.message}`);
     }
   } catch (e) {
+    if (telemetry) {
+      telemetry.logError('parent_dispatch', e instanceof Error ? e.message : String(e));
+    }
     workerLogger.error({ error: e, parentJobDefId }, `Error dispatching parent job ${parentJobDefId}`);
+  } finally {
+    if (telemetry) {
+      telemetry.endPhase('parent_dispatch');
+    }
   }
 }
 

@@ -20,11 +20,13 @@ function buildReflectionPrompt(
 ): string {
   const outputPreview = typeof result.output === 'string' ? result.output : JSON.stringify(result.output ?? '');
   
-  if (finalStatus.status === 'COMPLETED') {
-    return `You have just completed a job. Here is a summary:
+  // Treat DELEGATING and WAITING as successful/active states, not failures
+  if (finalStatus.status === 'COMPLETED' || finalStatus.status === 'DELEGATING' || finalStatus.status === 'WAITING') {
+    return `You have just completed a job step. Here is a summary:
 
 **Job:** ${metadata?.jobName || requestId}
 **Status:** ${finalStatus.status}
+**Message:** ${finalStatus.message}
 **Output:** ${outputPreview.substring(0, 500)}${outputPreview.length > 500 ? '...' : ''}
 **Telemetry:**
 - Duration: ${result.telemetry?.duration || 0}ms
@@ -34,21 +36,23 @@ function buildReflectionPrompt(
 **Reflection Task:**
 Review the execution. Did you discover any strategies, solutions, workarounds, or insights that would be valuable for future jobs?
 
+If the status is DELEGATING or WAITING, consider reflecting on the decomposition strategy or the delegation process itself.
+
 If yes, you MUST use the \`create_artifact\` tool to save a memory.
 Parameters:
 - \`type\`: "MEMORY" (required)
 - \`name\`: A short, descriptive title for the memory.
-- \`topic\`: A category (e.g., "optimization", "bug-fix", "best-practice").
-- \`tags\`: An array of string tags. You MUST include tags derived from the Job Name and key technologies used (e.g., "staking", "optimization", "olas", "defi").
+- \`topic\`: A category (e.g., "optimization", "bug-fix", "best-practice", "delegation-strategy").
+- \`tags\`: An array of string tags. You MUST include tags derived from the Job Name and key technologies used.
 - \`content\`: The detailed insight/learning.
 
 Example:
 create_artifact({
-  name: "Optimized Staking Parameters",
+  name: "Effective Work Decomposition",
   type: "MEMORY",
-  topic: "optimization",
-  tags: ["staking", "optimization", "olas", "yield"],
-  content: "..."
+  topic: "delegation-strategy",
+  tags: ["delegation", "planning", "olas"],
+  content: "Breaking down the research task into data gathering and analysis steps proved effective..."
 })
 
 If nothing notable was learned, simply respond "No significant learnings."`;
@@ -137,4 +141,3 @@ export async function runReflection(
     return null;
   }
 }
-

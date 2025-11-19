@@ -24,6 +24,9 @@ export function buildDeliveryPayload(params: {
     structuredSummary: result.structuredSummary || result.output?.slice(-1200) || '',
     telemetry: result.telemetry || {},
     artifacts: result.artifacts || [],
+    ...(metadata?.jobDefinitionId ? { jobDefinitionId: metadata.jobDefinitionId } : {}),
+    ...(metadata?.jobName ? { jobName: metadata.jobName } : {}),
+    ...(metadata?.blueprint ? { blueprint: metadata.blueprint } : {}),
     ...(finalStatus ? { status: finalStatus.status, statusMessage: finalStatus.message } : {}),
     ...(workerTelemetry ? { workerTelemetry } : {}),
     ...(recognition

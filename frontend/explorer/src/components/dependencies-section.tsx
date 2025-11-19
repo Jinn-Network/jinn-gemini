@@ -7,9 +7,10 @@ import { getDependencyInfo, getDependents, DependencyInfo } from '@/lib/subgraph
 interface DependenciesSectionProps {
   requestId: string
   dependencies?: string[]
+  renderAsSubsection?: boolean
 }
 
-export function DependenciesSection({ requestId, dependencies }: DependenciesSectionProps) {
+export function DependenciesSection({ requestId, dependencies, renderAsSubsection = false }: DependenciesSectionProps) {
   const [dependencyDetails, setDependencyDetails] = useState<DependencyInfo[]>([])
   const [dependents, setDependents] = useState<DependencyInfo[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -39,10 +40,8 @@ export function DependenciesSection({ requestId, dependencies }: DependenciesSec
   const hasDependencies = dependencies && dependencies.length > 0
   const hasDependents = dependents.length > 0
 
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900">Dependencies</h3>
-
+  const content = (
+    <>
       {isLoading ? (
         <div className="text-sm text-gray-500">Loading dependency information...</div>
       ) : !hasDependencies && !hasDependents ? (
@@ -133,6 +132,22 @@ export function DependenciesSection({ requestId, dependencies }: DependenciesSec
           )}
         </>
       )}
+    </>
+  )
+
+  if (renderAsSubsection) {
+    return (
+      <div className="space-y-4 pt-4 border-t border-gray-200">
+        <h4 className="text-sm font-medium text-gray-700">Dependencies</h4>
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
+      <h3 className="text-lg font-semibold text-gray-900">Dependencies</h3>
+      {content}
     </div>
   )
 }

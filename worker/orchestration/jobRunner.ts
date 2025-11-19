@@ -426,7 +426,7 @@ export async function processOnce(
   }
   
   // Dispatch parent if needed
-  await dispatchParentIfNeeded(finalStatus, metadata!, target.id, result?.output || '');
+  await dispatchParentIfNeeded(finalStatus, metadata!, target.id, result?.output || '', telemetry);
 
   // Deliver via Safe
   telemetry.startPhase('delivery');

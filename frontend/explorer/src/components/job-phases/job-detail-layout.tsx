@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
+import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
 import { RecognitionPhaseCard } from './recognition-phase-card'
 import { WorkerTelemetryCard } from '../worker-telemetry-card'
 import { DependenciesSection } from '../dependencies-section'
@@ -10,9 +10,235 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
-import { ExternalLink, FileText, GitBranch, ArrowRight, ArrowLeft, Wrench, Zap, Cpu, Clock, Check } from 'lucide-react'
+import { ExternalLink, FileText, GitBranch, ArrowRight, ArrowLeft, Wrench, Zap, Cpu, Clock, Check, ArrowUp, HelpCircle } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { RequestsTable } from '../requests-table'
 import { RequestsTableSkeleton } from '../loading-skeleton'
+
+// Component for showing parent dispatch trigger
+function ParentDispatchIndicator({ 
+  requestId, 
+  sourceJobDefinitionId,
+  jobStatus 
+}: { 
+  requestId: string
+  sourceJobDefinitionId: string | null
+  jobStatus: string | null
+}) {
+  const [parentDispatched, setParentDispatched] = useState(false)
+  const [newParentRequestId, setNewParentRequestId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [parentJobDef, setParentJobDef] = useState<SubgraphJobDefinition | null>(null)
+  
+  useEffect(() => {
+    if (!sourceJobDefinitionId) {
+      setLoading(false)
+      return
+    }
+
+    // Only show if this job reached terminal state (would have triggered parent)
+    if (jobStatus !== 'COMPLETED' && jobStatus !== 'FAILED') {
+      setLoading(false)
+      return
+    }
+    
+    const checkParentDispatch = async () => {
+      try {
+        // Fetch parent job definition info
+        const parentDef = await getJobDefinition(sourceJobDefinitionId)
+        if (parentDef) {
+          setParentJobDef(parentDef)
+        }
+
+        // Query for messages sent to parent job definition from this request
+        const messages = await queryMessages({
+          where: { 
+            requestId: requestId,
+            to: sourceJobDefinitionId 
+          },
+          limit: 1
+        })
+        
+        if (messages.items.length > 0) {
+          setParentDispatched(true)
+          
+          // Try to find the new parent request that was created
+          // Query for recent requests of the parent job definition
+          const parentRequests = await queryRequests({
+            where: { jobDefinitionId: sourceJobDefinitionId },
+            orderBy: 'blockTimestamp',
+            orderDirection: 'desc',
+            limit: 5
+          })
+          
+          // Find the request that came after this job's completion
+          const messageTimestamp = BigInt(messages.items[0].blockTimestamp)
+          const newRequest = parentRequests.items.find(r => 
+            BigInt(r.blockTimestamp) >= messageTimestamp
+          )
+          
+          if (newRequest) {
+            setNewParentRequestId(newRequest.id)
+          }
+        }
+      } catch (error) {
+        console.error('Error checking parent dispatch:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    checkParentDispatch()
+  }, [requestId, sourceJobDefinitionId, jobStatus])
+  
+  if (loading || !parentDispatched || !sourceJobDefinitionId) return null
+  
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 mt-4">
+      <div className="flex items-center gap-2 mb-2">
+        <ArrowUp className="h-5 w-5 text-blue-600" />
+        <span className="font-medium text-blue-900">
+          Parent Job Re-Triggered
+        </span>
+      </div>
+      <p className="text-sm text-blue-700">
+        This job's <Badge variant="outline" className="mx-1">{jobStatus}</Badge> status triggered parent job{' '}
+        {parentJobDef && (
+          <Link 
+            href={`/job-definitions/${sourceJobDefinitionId}`} 
+            className="font-medium underline hover:text-blue-900"
+          >
+            {parentJobDef.name}
+          </Link>
+        )}
+        {' '}to automatically re-run.
+        {newParentRequestId && (
+          <>
+            {' '}
+            <Link 
+              href={`/requests/${newParentRequestId}`}
+              className="font-medium underline hover:text-blue-900"
+            >
+              View parent's new run →
+            </Link>
+          </>
+        )}
+      </p>
+    </div>
+  )
+}
+
+// Component for showing parent re-run status in Job Info card
+function ParentReRunField({ 
+  requestId, 
+  sourceJobDefinitionId,
+  jobStatus,
+  delivered,
+  workerTelemetry
+}: { 
+  requestId: string
+  sourceJobDefinitionId: string | null
+  jobStatus: string | null
+  delivered: boolean
+  workerTelemetry: any
+}) {
+  const [newRequestId, setNewRequestId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  
+  useEffect(() => {
+    // No parent job
+    if (!sourceJobDefinitionId) {
+      setLoading(false)
+      return
+    }
+    
+    // Job not delivered yet
+    if (!delivered) {
+      setLoading(false)
+      return
+    }
+    
+    // Job not in terminal state (parent only triggered on COMPLETED/FAILED)
+    if (jobStatus !== 'COMPLETED' && jobStatus !== 'FAILED') {
+      setLoading(false)
+      return
+    }
+    
+    const find = async () => {
+      try {
+        // First, try to get newRequestId from worker telemetry (most reliable)
+        if (workerTelemetry?.events) {
+          const dispatchSuccessEvent = workerTelemetry.events.find(
+            (e: any) => e.phase === 'parent_dispatch' && e.event === 'dispatch_success'
+          )
+          if (dispatchSuccessEvent?.metadata?.newRequestId) {
+            setNewRequestId(dispatchSuccessEvent.metadata.newRequestId)
+            setLoading(false)
+            return
+          }
+        }
+        
+        // Fallback: query messages and find parent request
+        const messages = await queryMessages({
+          where: { requestId, to: sourceJobDefinitionId },
+          limit: 1
+        })
+        
+        if (messages.items.length > 0) {
+          const parentRequests = await queryRequests({
+            where: { jobDefinitionId: sourceJobDefinitionId },
+            orderBy: 'blockTimestamp',
+            orderDirection: 'desc',
+            limit: 5
+          })
+          
+          const messageTimestamp = BigInt(messages.items[0].blockTimestamp)
+          const newRequest = parentRequests.items.find(r => 
+            BigInt(r.blockTimestamp) >= messageTimestamp
+          )
+          
+          if (newRequest) setNewRequestId(newRequest.id)
+        }
+      } catch (error) {
+        console.error('Error finding parent re-run:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    find()
+  }, [requestId, sourceJobDefinitionId, jobStatus, delivered, workerTelemetry])
+  
+  // Show appropriate empty states
+  if (!sourceJobDefinitionId) {
+    return <div className="text-sm text-gray-500">No parent job</div>
+  }
+  
+  if (!delivered) {
+    return <div className="text-sm text-gray-500">Pending delivery</div>
+  }
+  
+  if (jobStatus !== 'COMPLETED' && jobStatus !== 'FAILED') {
+    return <div className="text-sm text-gray-500">Not in terminal state</div>
+  }
+  
+  if (loading) {
+    return <div className="text-sm text-gray-500">Checking...</div>
+  }
+  
+  if (!newRequestId) {
+    return <div className="text-sm text-gray-500">Not triggered yet</div>
+  }
+  
+  return (
+    <Link
+      href={`/requests/${newRequestId}`}
+      className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all flex items-center gap-1"
+    >
+      <span className="break-all">{newRequestId}</span>
+      <ArrowRight className="w-3 h-3 flex-shrink-0" />
+    </Link>
+  )
+}
 
 // Component for displaying child jobs spawned during execution
 function ChildJobsSection({ parentRequestId }: { parentRequestId: string }) {
@@ -603,24 +829,6 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                 <div className="space-y-6">
                   {deliveryData || executionData ? (
                     <>
-                      <div>
-                        <div className="text-sm font-medium text-gray-700 mb-1">State Update</div>
-                        <div className="text-xs text-gray-500 mb-2">
-                          Job definition state after this run
-                        </div>
-                        {executionData?.status && (
-                          <span className={`inline-flex items-center px-3 py-1 rounded-md text-sm border ${
-                            executionData.status === 'COMPLETED' 
-                              ? 'bg-green-50 text-green-700 border-green-200'
-                              : executionData.status === 'FAILED'
-                              ? 'bg-red-50 text-red-700 border-red-200'
-                              : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                          }`}>
-                            {executionData.status}
-                          </span>
-                        )}
-                      </div>
-                      
                       {executionData?.finalOutput && (
                         <div>
                           <div className="text-sm font-medium text-gray-700 mb-2">Final Output</div>
@@ -883,6 +1091,13 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                       {/* Child Jobs Spawned */}
                       <ChildJobsSection parentRequestId={record.id} />
+                      
+                      {/* Parent Dispatch Indicator */}
+                      <ParentDispatchIndicator 
+                        requestId={record.id}
+                        sourceJobDefinitionId={record.sourceJobDefinitionId || null}
+                        jobStatus={deliveryData?.finalStatus?.status || null}
+                      />
                     </>
                   ) : (
                     <div className="text-gray-500 text-sm">No data available</div>
@@ -1004,14 +1219,15 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
           </div>
 
           {/* Sidebar - 4/12 width */}
-          <div className="w-80">
+          <div className="w-80 space-y-6">
+            {/* Job Run Info Card */}
             <Card>
               <CardHeader>
-                <CardTitle>Job Info</CardTitle>
+                <CardTitle>Job Run Info</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {/* View in Workstream Link - moved to top */}
+                  {/* View in Workstream Link */}
                   {loadingWorkstream ? (
                     <div className="text-gray-500 text-sm">Loading workstream...</div>
                   ) : workstreamId ? (
@@ -1047,7 +1263,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Job ID</div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Job Run ID</div>
                     <div className="text-sm text-gray-600 font-mono break-all">
                       {record.id}
                     </div>
@@ -1080,48 +1296,6 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Job Definition ID</div>
-                    {record.jobDefinitionId ? (
-                      <Link
-                        href={`/jobDefinitions/${record.jobDefinitionId}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
-                      >
-                        {record.jobDefinitionId}
-                      </Link>
-                    ) : (
-                      <div className="text-gray-500 text-sm">N/A</div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Source Request ID</div>
-                    {record.sourceRequestId ? (
-                      <Link
-                        href={`/requests/${record.sourceRequestId}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
-                      >
-                        {record.sourceRequestId}
-                      </Link>
-                    ) : (
-                      <div className="text-gray-500 text-sm">N/A</div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Source Job Definition ID</div>
-                    {record.sourceJobDefinitionId ? (
-                      <Link
-                        href={`/jobDefinitions/${record.sourceJobDefinitionId}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
-                      >
-                        {record.sourceJobDefinitionId}
-                      </Link>
-                    ) : (
-                      <div className="text-gray-500 text-sm">N/A</div>
-        )}
-      </div>
-
-                  <div>
                     <div className="text-sm font-medium text-gray-700 mb-1">Delivered Status</div>
                     <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
                       record.delivered
@@ -1135,8 +1309,118 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
               </CardContent>
             </Card>
 
-            {/* Dependencies Section - show if job has dependencies or is required by other jobs */}
-            <DependenciesSection requestId={record.id} dependencies={record.dependencies} />
+            {/* Job Info Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Job Info</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Job ID</div>
+                    {record.jobDefinitionId ? (
+                      <Link
+                        href={`/jobDefinitions/${record.jobDefinitionId}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
+                      >
+                        {record.jobDefinitionId}
+                      </Link>
+                    ) : (
+                      <div className="text-gray-500 text-sm">N/A</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Source Job Run ID</div>
+                    {record.sourceRequestId ? (
+                      <Link
+                        href={`/requests/${record.sourceRequestId}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
+                      >
+                        {record.sourceRequestId}
+                      </Link>
+                    ) : (
+                      <div className="text-gray-500 text-sm">N/A</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Source Job ID</div>
+                    {record.sourceJobDefinitionId ? (
+                      <Link
+                        href={`/jobDefinitions/${record.sourceJobDefinitionId}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
+                      >
+                        {record.sourceJobDefinitionId}
+                      </Link>
+                    ) : (
+                      <div className="text-gray-500 text-sm">N/A</div>
+                    )}
+                  </div>
+
+                  {/* Parent Re-Run Status - NEW */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <div className="text-sm font-medium text-gray-700">Parent Re-Run</div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">New parent job run triggered by this completion (COMPLETED/FAILED status automatically re-dispatches parent)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <ParentReRunField 
+                      requestId={record.id}
+                      sourceJobDefinitionId={record.sourceJobDefinitionId || null}
+                      jobStatus={executionData?.status || null}
+                      delivered={record.delivered}
+                      workerTelemetry={workerTelemetry}
+                    />
+                  </div>
+
+                  {/* State Update - moved from Execution/Delivery card */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <div className="text-sm font-medium text-gray-700">State Update</div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">Job definition state after this run (COMPLETED, FAILED, DELEGATING, or WAITING)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    {(deliveryData || executionData) && executionData?.status ? (
+                      <span className={`inline-flex items-center px-3 py-1 rounded-md text-sm border ${
+                        executionData.status === 'COMPLETED' 
+                          ? 'bg-green-50 text-green-700 border-green-200'
+                          : executionData.status === 'FAILED'
+                          ? 'bg-red-50 text-red-700 border-red-200'
+                          : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                      }`}>
+                        {executionData.status}
+                      </span>
+                    ) : (
+                      <div className="text-gray-500 text-sm">Not yet available</div>
+                    )}
+                  </div>
+
+                  {/* Dependencies Subsection */}
+                  <DependenciesSection 
+                    requestId={record.id} 
+                    dependencies={record.dependencies}
+                    renderAsSubsection={true}
+                  />
+                </div>
+              </CardContent>
+            </Card>
       </div>
     </div>
       </TabsContent>
