@@ -30,10 +30,10 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
   }
 
   // Fetch all jobs in workstream (increase limit to get comprehensive data)
+  // Note: getWorkstreamRequests already includes the root request in results
   const { requests: workstreamRequests } = await getWorkstreamRequests(workstreamId, 500)
   
-  // Add root request to the list (it's the top-level job)
-  const allJobs = [rootRequest, ...workstreamRequests.items]
+  const allJobs = workstreamRequests.items
 
   // Fetch launcher briefing artifact
   const briefing = await getWorkstreamArtifact(workstreamId, 'launcher_briefing')

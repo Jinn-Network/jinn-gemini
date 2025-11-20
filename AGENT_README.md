@@ -133,6 +133,11 @@ Testing with .env.test
 - Validation scripts, worker, and frontend all default to Railway Ponder
 - Do NOT run local Ponder unless you are specifically testing indexing logic changes
 
+**Schema Notes:**
+- The `jobDefinition` table includes a `workstreamId` field that is populated during indexing
+- `workstreamId` is set in both the `MarketplaceRequest` handler (after computing the workstream root) and the `OlasMech:Deliver` handler (propagated from the request)
+- Existing job definitions created before this field was added will have `null` workstreamId until they receive a new request
+
 **Environment Configuration:**
 ```bash
 # Default (uses Railway Ponder - RECOMMENDED):
