@@ -17,11 +17,12 @@ type jobDefinition {
   name: String!
   enabledTools: [String!]
   blueprint: String
+  workstreamId: String
   sourceJobDefinitionId: String
   sourceRequestId: String
   codeMetadata: JSON
-  createdAt: BigInt!
-  lastInteraction: BigInt!
+  createdAt: BigInt
+  lastInteraction: BigInt
   lastStatus: String
 }
 
@@ -81,6 +82,16 @@ input jobDefinitionFilter {
   blueprint_ends_with: String
   blueprint_not_starts_with: String
   blueprint_not_ends_with: String
+  workstreamId: String
+  workstreamId_not: String
+  workstreamId_in: [String]
+  workstreamId_not_in: [String]
+  workstreamId_contains: String
+  workstreamId_not_contains: String
+  workstreamId_starts_with: String
+  workstreamId_ends_with: String
+  workstreamId_not_starts_with: String
+  workstreamId_not_ends_with: String
   sourceJobDefinitionId: String
   sourceJobDefinitionId_not: String
   sourceJobDefinitionId_in: [String]

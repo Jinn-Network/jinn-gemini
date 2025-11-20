@@ -2,20 +2,20 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔍 PONDER RUNTIME CONFIG
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VITEST: true
-RPC_URL: https://virtual.base.eu.rpc.tenderly.co/cc80b833-df4d-420b-907f-66bd28e91496
-BASE_RPC_URL: https://virtual.base.eu.rpc.tenderly.co/cc80b833-df4d-420b-907f-66bd28e91496
-Resolved RPC URL: https://virtual.base.eu.rpc.tenderly.co/cc80b833-df4d-420b-907f-66bd28e91496
-Is Tenderly VNet: true
-Finality Block Count: 0
-Start Block: 38380358
+VITEST: not set
+RPC_URL: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c31d04025de6c556a6eb1145a801657a7/
+BASE_RPC_URL: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c31d04025de6c556a6eb1145a801657a7/
+Resolved RPC URL: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c31d04025de6c556a6eb1145a801657a7/
+Is Tenderly VNet: false
+Finality Block Count: 30
+Start Block: 38434135
 End Block: none (realtime)
 Database Mode: postgres
 Database URL: postgresql://postgres:****@db.clnwgxgvmnrkwqdblqgf.supabase.co:5432/postgres
-MECH_ADDRESS: 0xD03d75D3B59Ac252F2e8C7Bf4617cf91a102E613
-OPERATE_PROFILE_DIR: tests-next/fixtures/operate-profile
-PORT: 42076
+MECH_ADDRESS: 0x8c083Dfe9bee719a05Ba3c75A9B16BE4ba52c299
+OPERATE_PROFILE_DIR: not set
+PORT: not set
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Timestamp: 2025-11-19T11:04:25.886Z
+Timestamp: 2025-11-20T16:56:57.967Z
 CWD: /Users/gcd/Repositories/main/jinn-cli-agents/ponder

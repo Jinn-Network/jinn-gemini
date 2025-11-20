@@ -260,8 +260,9 @@ ponder.on(
           { requestId: id, ipfsHash, cidBase32, error: serializeError(ipfsError) },
           "Failed to fetch IPFS metadata for request (pre-seeded row exists, but enriched fields will be missing)"
         );
-        // Re-throw to let the outer handler catch and log, but the pre-seeded row remains
-        throw ipfsError;
+        // Don't re-throw - let handler continue with pre-seeded row
+        // Skip enrichment and continue to next request in batch
+        continue;
       }
 
       let jobName: string | undefined;
@@ -365,7 +366,7 @@ ponder.on(
       //           2) Traverse sourceRequestId chain to find root (for child jobs)
       //           3) Use own request ID (for root jobs)
       let workstreamId: string;
-      const explicitWorkstreamId = metadata?.workstreamId;
+      const explicitWorkstreamId = additionalContext?.workstreamId;
       if (explicitWorkstreamId && typeof explicitWorkstreamId === 'string') {
         // Parent re-dispatch preserving workstream
         workstreamId = explicitWorkstreamId;
