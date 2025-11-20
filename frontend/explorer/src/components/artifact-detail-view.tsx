@@ -184,15 +184,17 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
           </Card>
         )}
 
-        {/* Triggered Jobs Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Jobs Triggered by This Artifact</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TriggeredJobsList artifactId={String(id)} />
-          </CardContent>
-        </Card>
+        {/* Triggered Jobs Card - Only for DB artifacts */}
+        {isDbArtifact && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Jobs Triggered by This Artifact</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TriggeredJobsList artifactId={String(id)} isDbArtifact={isDbArtifact} />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Details Sidebar - Right aligned */}

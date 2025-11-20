@@ -17,7 +17,7 @@ export interface GraphNode {
   id: string
   type: 'jobDefinition' | 'request'
   label: string
-  status: 'active' | 'completed' | 'failed' | 'unknown'
+  status: 'active' | 'completed' | 'failed' | 'unknown' | 'delegating' | 'waiting' | 'pending'
   level: number // depth from root
   metadata: {
     blockTimestamp?: string
@@ -26,6 +26,8 @@ export interface GraphNode {
     messageCount?: number
     deliveryRate?: string
     delivered?: boolean
+    runCount?: number // Number of request executions (for consolidated job definition nodes)
+    lastStatus?: string // Raw status from job definition (DELEGATING, WAITING, etc)
   }
 }
 
@@ -77,16 +79,29 @@ function createGraphNode(
 ): GraphNode {
   if (type === 'jobDefinition') {
     const jobDef = record as JobDefinition
+    // Map lastStatus to our status enum
+    let status: GraphNode['status'] = 'unknown'
+    if (jobDef.lastStatus) {
+      const statusLower = jobDef.lastStatus.toLowerCase()
+      if (statusLower === 'completed') status = 'completed'
+      else if (statusLower === 'failed') status = 'failed'
+      else if (statusLower === 'delegating') status = 'delegating'
+      else if (statusLower === 'waiting') status = 'waiting'
+      else if (statusLower === 'pending') status = 'pending'
+      else status = 'active'
+    }
+    
     return {
       id: jobDef.id,
       type: 'jobDefinition',
       label: jobDef.name || 'Unnamed Job',
-      status: 'unknown',
+      status,
       level,
       metadata: {
         enabledTools: jobDef.enabledTools || [],
         artifactCount: 0,
         messageCount: 0,
+        lastStatus: jobDef.lastStatus,
       },
     }
   } else {

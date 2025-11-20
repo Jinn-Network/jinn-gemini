@@ -7,11 +7,11 @@ import { formatDate } from '@/lib/utils'
 interface JobDefinitionsTableProps {
   records: SubgraphRecord[]
   onSort?: (column: string, direction: 'asc' | 'desc') => void
-  sortColumn: string
-  sortAscending: boolean
+  sortColumn?: string
+  sortAscending?: boolean
 }
 
-export function JobDefinitionsTable({ records, onSort, sortColumn, sortAscending }: JobDefinitionsTableProps) {
+export function JobDefinitionsTable({ records, onSort, sortColumn = '', sortAscending = false }: JobDefinitionsTableProps) {
   const handleSort = (column: string) => {
     // Toggle direction if clicking the same column, otherwise default to descending
     const newDirection = sortColumn === column && !sortAscending ? 'asc' : 'desc'
@@ -21,7 +21,7 @@ export function JobDefinitionsTable({ records, onSort, sortColumn, sortAscending
   }
 
   const SortIcon = ({ column }: { column: string }) => {
-    if (sortColumn !== column) {
+    if (!onSort || sortColumn !== column) {
       return <ArrowUpDown className="w-4 h-4 text-gray-400 ml-1" />
     }
     return sortAscending 
@@ -43,21 +43,21 @@ export function JobDefinitionsTable({ records, onSort, sortColumn, sortAscending
           <tr className="bg-gray-50 border-b border-gray-200">
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700 w-[40%]">Name</th>
             <th 
-              className="text-left px-4 py-3 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none w-[25%]"
-              onClick={() => handleSort('lastInteraction')}
+              className={`text-left px-4 py-3 text-sm font-semibold text-gray-700 w-[25%] ${onSort ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
+              onClick={onSort ? () => handleSort('lastInteraction') : undefined}
             >
               <span className="flex items-center">
                 Last Activity
-                <SortIcon column="lastInteraction" />
+                {onSort && <SortIcon column="lastInteraction" />}
               </span>
             </th>
             <th 
-              className="text-left px-4 py-3 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none w-[15%]"
-              onClick={() => handleSort('lastStatus')}
+              className={`text-left px-4 py-3 text-sm font-semibold text-gray-700 w-[15%] ${onSort ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
+              onClick={onSort ? () => handleSort('lastStatus') : undefined}
             >
               <span className="flex items-center">
                 Status
-                <SortIcon column="lastStatus" />
+                {onSort && <SortIcon column="lastStatus" />}
               </span>
             </th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700 w-[20%]">ID</th>
