@@ -307,7 +307,7 @@ dispatchNewJob({
 
 MCP server (`gemini-agent/mcp/server.ts`) registers tools from `gemini-agent/mcp/tools/index.ts`:
 - `list_tools` – catalogs both core CLI tools and MCP tools.
-- `get_details` – reads on-chain data via Ponder; supports IPFS resolution.
+- `get_details` – reads on-chain data via Ponder; supports IPFS resolution. Accepts request IDs (0x...), artifact IDs (0x...:index), CIDs (bafkrei..., Qm...), and job definition UUIDs.
 - `dispatch_new_job` – creates a new job definition and posts a marketplace request on Base. Validates and uploads structured JSON blueprint (with assertions array) to IPFS.
 - `dispatch_existing_job` – dispatches a new request for an existing job definition by ID or name.
 - `create_artifact` – uploads content to IPFS and returns `{ cid, name, topic, contentPreview }`. The tool's output is captured in telemetry; the worker is responsible for persisting it via the Control API.
@@ -664,7 +664,9 @@ Without this reconstruction, the frontend will fetch binary directory structure 
 - Purpose: Fetch `request` and `artifact` records via Ponder; optionally resolve IPFS content.
 - Params: `{ ids: string | string[], cursor?: string, resolve_ipfs?: boolean }`
   - Request IDs: `0x...`
-  - Artifact IDs: `<requestId>:<index>`
+  - Artifact IDs: `0x<requestId>:<index>` (e.g., `0x123abc...:0`)
+  - CIDs: IPFS content identifiers (e.g., `bafkreid5ebotrkenji...`, `Qm...`, `f01...`)
+  - Job Definition IDs: UUID format
 - Returns: Single-page response with `data` in requested order and `meta` (cursor, token estimates).
 
 ### dispatch_new_job
@@ -2170,3 +2172,13 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - Implemented multi-gateway support with automatic failover (Autonolas -> Cloudflare -> IPFS.io -> DWeb).
 - Added exponential backoff/retry logic for IPFS fetches.
 - Increased default timeout to 15s per gateway attempt.
+
+### Agent `get_details` Artifact Retrieval by CID (Fixed 2025-11-20)
+
+**Issue**: Agents calling `get_details` with CID (e.g., `bafkreid5ebotrkenji2y7cwvsdqwicnk2rggmvi7rstemq7d5mcqnmisbe`) receive empty results, causing job failures when trying to access artifacts from previous jobs.
+**Root Cause**: `get_details` only supported artifact IDs in `requestId:index` format, not raw CIDs. Agents seeing artifact CIDs in progress summaries would try to fetch them directly but fail.
+**Fix**:
+- Enhanced `get_details` to detect and handle CID format (Qm..., bafkrei..., f01...).
+- When CID is provided, query Ponder's `artifacts(where: { cid: $cid })` to find matching artifacts.
+- Returns all artifacts with that CID (typically 1, but supports duplicates across requests).
+- IPFS content resolution still works when `resolve_ipfs: true` (default).

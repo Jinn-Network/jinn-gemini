@@ -7,17 +7,17 @@ import { resolveRequestIpfsContent } from './shared/ipfs.js';
 // MCP registration schema (permissive) to avoid -32602 pre-validation failures.
 // We normalize and strictly validate inside the handler.
 const getDetailsBase = z.object({
-    ids: z.union([z.string(), z.array(z.string())]).describe('ID or array of IDs to retrieve. Supports 0x-prefixed request IDs, artifact IDs (requestId:index), and job definition UUIDs.'),
+    ids: z.union([z.string(), z.array(z.string())]).describe('ID or array of IDs to retrieve. Supports 0x-prefixed request IDs, artifact IDs (requestId:index), CIDs (IPFS content identifiers like bafkrei...), and job definition UUIDs.'),
     cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
     descendants: z.boolean().optional().describe('If true and an id is a job definition (jobs.id), include related items for descendant job definitions.'),
 });
 
 // Strict internal schema used by the handler after normalization (on-chain only)
 export const getDetailsParams = z.object({
-    ids: z.array(z.string()).describe('Array of IDs. 0x-prefixed on-chain request IDs are supported.'),
+    ids: z.array(z.string()).describe('Array of IDs. Supports 0x-prefixed request IDs, artifact IDs (requestId:index), CIDs (bafkrei..., Qm..., f01...), and job definition UUIDs.'),
     cursor: z.string().optional().describe('Opaque cursor for fetching the next page of results.'),
     descendants: z.boolean().optional().describe('No-op in on-chain mode.'),
-    resolve_ipfs: z.boolean().optional().default(true).describe('If true, resolve and embed IPFS content for requests.'),
+    resolve_ipfs: z.boolean().optional().default(true).describe('If true, resolve and embed IPFS content for requests and artifacts.'),
 });
 
 export type GetDetailsParams = z.infer<typeof getDetailsParams>;
@@ -64,13 +64,15 @@ export async function getDetails(params: GetDetailsParams) {
             return { content: [{ type: 'text' as const, text: JSON.stringify({ data: composed.data, meta: composed.meta }, null, 2) }] };
         }
 
-        // Partition into request IDs, artifact IDs, and jobDefinition IDs (uuid)
+        // Partition into request IDs, artifact IDs, CIDs, and jobDefinition IDs (uuid)
         const isRequestId = (s: string) => /^0x[0-9a-fA-F]+$/.test(s);
         const isArtifactId = (s: string) => /^0x[0-9a-fA-F]+:\d+$/.test(s);
+        const isCid = (s: string) => /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,}|f[0-9a-f]{50,})$/i.test(s);
         const isJobDefId = (s: string) => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s);
 
         const requestIds = (validIds || []).filter((x) => typeof x === 'string' && isRequestId(x)) as string[];
         const artifactIds = (validIds || []).filter((x) => typeof x === 'string' && isArtifactId(x)) as string[];
+        const cidIds = (validIds || []).filter((x) => typeof x === 'string' && isCid(x)) as string[];
         const jobDefIds = (validIds || []).filter((x) => typeof x === 'string' && isJobDefId(x)) as string[];
 
         const requestRecords: any[] = [];
@@ -137,7 +139,7 @@ export async function getDetails(params: GetDetailsParams) {
             }
         }
 
-        // Fetch artifacts
+        // Fetch artifacts by artifact ID
         if (artifactIds.length > 0) {
             for (const id of artifactIds) {
                 try {
@@ -168,6 +170,44 @@ export async function getDetails(params: GetDetailsParams) {
                     }
                 } catch (error: any) {
                     errors.push(`artifact:${id}: ${error?.message || String(error)}`);
+                }
+            }
+        }
+
+        // Fetch artifacts by CID
+        if (cidIds.length > 0) {
+            for (const cid of cidIds) {
+                try {
+                    const res = await fetch(PONDER_GRAPHQL_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            query: `query($cid: String!) { artifacts(where: { cid: $cid }, limit: 10) { items { id requestId sourceRequestId sourceJobDefinitionId name topic cid contentPreview } } }`,
+                            variables: { cid }
+                        })
+                    });
+                    if (!res.ok) {
+                        errors.push(`cid:${cid}: HTTP ${res.status}`);
+                        continue;
+                    }
+                    const json = await res.json();
+                    if (Array.isArray(json?.errors) && json.errors.length) {
+                        errors.push(`cid:${cid}: ${json.errors.map((e: any) => e?.message || 'Unknown error').join('; ')}`);
+                        continue;
+                    }
+                    const artifacts = json?.data?.artifacts?.items || [];
+                    for (const a of artifacts) {
+                        const record: any = { ...a, _source_table: 'ponder_artifact' };
+                        if (shouldResolveIpfs && record.cid) {
+                            record.ipfsContent = await resolveRequestIpfsContent(record.cid, 10000);
+                        }
+                        artifactRecords.push(record);
+                    }
+                    if (artifacts.length === 0) {
+                        errors.push(`cid:${cid}: No artifacts found with this CID`);
+                    }
+                } catch (error: any) {
+                    errors.push(`cid:${cid}: ${error?.message || String(error)}`);
                 }
             }
         }
