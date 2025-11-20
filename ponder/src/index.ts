@@ -307,6 +307,8 @@ ponder.on(
         : undefined;
 
       // Upsert jobDefinition if present
+      // NOTE: This happens BEFORE workstreamId is computed, so we can't include it here yet.
+      // We'll need to update it after workstreamId is computed.
       if (jobDefRepo && jobDefinitionId) {
         // Prefer explicit lineage from payload if provided
         const parentJobDefinitionId: string | undefined = sourceJobDefinitionIdFromContent;
@@ -359,10 +361,16 @@ ponder.on(
 
       // --- COMPUTE WORKSTREAM ID ---
       // The workstream ID is the root request ID of the entire job chain.
-      // Root jobs have no sourceRequestId, so their workstream ID is their own ID.
-      // Child jobs traverse up the chain to find the ultimate root.
+      // Priority: 1) Explicit workstreamId in IPFS metadata (for parent re-dispatches)
+      //           2) Traverse sourceRequestId chain to find root (for child jobs)
+      //           3) Use own request ID (for root jobs)
       let workstreamId: string;
-      if (sourceRequestId) {
+      const explicitWorkstreamId = metadata?.workstreamId;
+      if (explicitWorkstreamId && typeof explicitWorkstreamId === 'string') {
+        // Parent re-dispatch preserving workstream
+        workstreamId = explicitWorkstreamId;
+        logger.debug({ requestId: id, workstreamId }, 'Using explicit workstream ID from metadata');
+      } else if (sourceRequestId) {
         // This is a child job, find its ultimate root
         workstreamId = await findWorkstreamRoot(sourceRequestId, repo);
       } else {
@@ -413,6 +421,22 @@ ponder.on(
       } catch (enrichError: any) {
         logger.error({ requestId: id, error: serializeError(enrichError) }, "Enriched update failed");
         throw enrichError;
+      }
+
+      // Update jobDefinition with workstreamId now that it's computed
+      if (jobDefRepo && jobDefinitionId) {
+        try {
+          await jobDefRepo.update({
+            id: jobDefinitionId,
+            data: {
+              workstreamId,
+            },
+          });
+          logger.debug({ jobDefinitionId, workstreamId }, "Updated job definition with workstream ID");
+        } catch (jobDefError: any) {
+          logger.error({ jobDefinitionId, error: serializeError(jobDefError) }, "Failed to update job definition with workstream ID");
+          // Don't throw - this is not critical enough to fail the entire indexing
+        }
       }
 
       // Index message if present

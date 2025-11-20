@@ -10,8 +10,9 @@ export function setJobContext(params: {
   jobDefinitionId?: string | null;
   baseBranch?: string;
   mechAddress?: string;
+  workstreamId?: string;
 }): void {
-  const { requestId, jobDefinitionId, baseBranch, mechAddress } = params;
+  const { requestId, jobDefinitionId, baseBranch, mechAddress, workstreamId } = params;
   
   if (requestId) {
     process.env.JINN_REQUEST_ID = requestId;
@@ -28,6 +29,10 @@ export function setJobContext(params: {
   if (mechAddress) {
     process.env.JINN_MECH_ADDRESS = mechAddress;
   }
+  
+  if (workstreamId) {
+    process.env.JINN_WORKSTREAM_ID = workstreamId;
+  }
 }
 
 /**
@@ -38,6 +43,7 @@ export function clearJobContext(): void {
   delete process.env.JINN_JOB_DEFINITION_ID;
   delete process.env.JINN_BASE_BRANCH;
   delete process.env.JINN_MECH_ADDRESS;
+  delete process.env.JINN_WORKSTREAM_ID;
 }
 
 /**
@@ -48,12 +54,14 @@ export function snapshotJobContext(): {
   jobDefinitionId?: string;
   baseBranch?: string;
   mechAddress?: string;
+  workstreamId?: string;
 } {
   return {
     requestId: process.env.JINN_REQUEST_ID,
     jobDefinitionId: process.env.JINN_JOB_DEFINITION_ID,
     baseBranch: process.env.JINN_BASE_BRANCH,
     mechAddress: process.env.JINN_MECH_ADDRESS,
+    workstreamId: process.env.JINN_WORKSTREAM_ID,
   };
 }
 
@@ -65,6 +73,7 @@ export function restoreJobContext(snapshot: {
   jobDefinitionId?: string;
   baseBranch?: string;
   mechAddress?: string;
+  workstreamId?: string;
 }): void {
   clearJobContext();
   setJobContext(snapshot);

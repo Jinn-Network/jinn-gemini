@@ -31,7 +31,7 @@ const dispatchNewJobParamsBase = z.object({
   message: z.string().optional().describe('Optional message to include in the job request'),
   dependencies: z.array(z.string()).optional().describe('Array of job definition IDs that must be fully completed (all requests and child jobs delivered) before this job can execute. Use this to enforce execution order for related job definitions.'),
   skipBranch: z.boolean().optional().default(false).describe('If true, skip branch creation and code metadata collection (for artifact-only jobs)'),
-  responseTimeout: z.number().optional().default(3600).describe('Response timeout in seconds for marketplace request. Defaults to 3600 (1 hour). Set higher for long-running jobs with recognition/reflection phases or complex web fetches.'),
+  responseTimeout: z.number().optional().default(300).describe('Response timeout in seconds for marketplace request. Defaults to 300 (5 minutes). Maximum allowed by marketplace is 300 seconds.'),
 });
 
 export const dispatchNewJobParams = dispatchNewJobParamsBase;
@@ -66,7 +66,7 @@ PARAMETERS:
 - enabledTools: (optional) Array of tool names to enable
 - message: (optional) Additional message to include in the job request
 - dependencies: (optional) Array of job definition IDs that must be fully completed before this job can execute
-- responseTimeout: (optional) Response timeout in seconds for marketplace request (defaults to 3600). Set higher for long-running jobs
+- responseTimeout: (optional) Response timeout in seconds for marketplace request (defaults to 300, max 300)
 
 The blueprint is validated and made directly available to the agent in GEMINI.md context.`,
   inputSchema: dispatchNewJobParamsBase.shape,
@@ -166,6 +166,7 @@ export async function dispatchNewJob(args: unknown) {
     const lineageContext: Record<string, any> = {};
     if (context.requestId) lineageContext.sourceRequestId = context.requestId;
     if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
+    if (context.workstreamId) lineageContext.workstreamId = context.workstreamId;
 
     // Build additionalContext with message if provided
     // Blueprint and dependencies are now stored at root level, not in additionalContext

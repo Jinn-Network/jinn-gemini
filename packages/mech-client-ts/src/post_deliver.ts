@@ -405,7 +405,7 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
   };
 
   // Nonce, gas, fees
-  txPayload.nonce = await web3.eth.getTransactionCount(checksumSender);
+  txPayload.nonce = await web3.eth.getTransactionCount(checksumSender, 'pending');
 
   // Estimate gas
   const gasEstimate = await web3.eth.estimateGas(txPayload);
@@ -464,31 +464,7 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
 
   if (wait) {
     console.log('Waiting for transaction receipt...');
-    
-    const startBlock = await web3.eth.getBlockNumber();
-    const timeoutBlocks = 100;
-    const maxBlock = startBlock + BigInt(timeoutBlocks);
-    let receipt = null;
-    
-    while (!receipt) {
-      try {
-        receipt = await web3.eth.getTransactionReceipt(txHash!);
-      } catch (err) {
-        // Ignore errors during polling (e.g. network glitches)
-      }
-      
-      if (!receipt) {
-        const currentBlock = await web3.eth.getBlockNumber();
-        if (currentBlock > maxBlock) {
-          console.log(`Transaction ${txHash} not confirmed within ${timeoutBlocks} blocks`);
-          // Don't mark as failed/unknown if we just timed out polling - it might still be pending
-          // But for now, we return submitted/unknown
-          result.status = 'unknown';
-          return result;
-        }
-        await new Promise(r => setTimeout(r, 3000)); // 3s poll interval
-      }
-    }
+    const receipt = await web3.eth.getTransactionReceipt(txHash!);
     
     if (receipt && receipt.status) {
       result.status = 'confirmed';

@@ -9,6 +9,7 @@ export interface JobContext {
   requestId?: string | null;
   mechAddress?: string | null;
   baseBranch?: string | null;
+  workstreamId?: string | null;
 }
 
 // Canonical: read from environment only
@@ -24,6 +25,7 @@ export function getCurrentJobContext(): JobContext {
     requestId: process.env.JINN_REQUEST_ID || null,
     mechAddress: process.env.JINN_MECH_ADDRESS || null,
     baseBranch: process.env.JINN_BASE_BRANCH || null,
+    workstreamId: process.env.JINN_WORKSTREAM_ID || null,
   };
 }
 

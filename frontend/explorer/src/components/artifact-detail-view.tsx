@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { MarkdownField } from '@/components/markdown-field'
 import { IdLink } from '@/components/id-link'
 import { DbRecord } from '@/lib/types'
+import { Artifact } from '@/lib/subgraph'
 
 interface ArtifactDetailViewProps {
-  record: DbRecord
+  record: DbRecord | (Artifact & { content?: string })
 }
 
 interface TriggeredJob {
@@ -45,7 +46,7 @@ function ObjectViewer({ data }: { data: unknown }) {
   return <span>{String(data)}</span>
 }
 
-function TriggeredJobsList({ artifactId }: { artifactId: string }) {
+function TriggeredJobsList({ artifactId, isDbArtifact }: { artifactId: string; isDbArtifact: boolean }) {
   const [triggeredJobs, setTriggeredJobs] = useState<TriggeredJob[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -53,6 +54,13 @@ function TriggeredJobsList({ artifactId }: { artifactId: string }) {
   useEffect(() => {
     const fetchTriggeredJobs = async () => {
       try {
+        // Only fetch for DB artifacts - subgraph artifacts don't have triggered jobs
+        if (!isDbArtifact) {
+          setTriggeredJobs([])
+          setLoading(false)
+          return
+        }
+        
         // We no longer use artifact → job linkage in DB queries. Show none for now.
         const data: TriggeredJob[] = []
 
@@ -66,7 +74,7 @@ function TriggeredJobsList({ artifactId }: { artifactId: string }) {
     }
 
     fetchTriggeredJobs()
-  }, [artifactId])
+  }, [artifactId, isDbArtifact])
 
   if (loading) {
     return <div className="text-sm text-gray-500">Loading triggered jobs...</div>
@@ -77,7 +85,7 @@ function TriggeredJobsList({ artifactId }: { artifactId: string }) {
   }
 
   if (triggeredJobs.length === 0) {
-    return <div className="text-sm text-gray-500">No jobs were triggered by this artifact.</div>
+    return null // Don't show section if no jobs
   }
 
   return (
@@ -117,31 +125,42 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
     return null
   }
 
+  // Check if this is a DB artifact (has source_job_name) or Subgraph artifact
+  const isDbArtifact = 'source_job_name' in record
+  
   // Extract the main content fields
-  const { 
-    content, 
-    topic,
-    status,
-    source_job_name,
-    thread_id,
-    created_at,
-    updated_at,
-    id,
-    ...otherFields 
-  } = record
+  const content = 'content' in record ? record.content : null
+  const topic = 'topic' in record ? record.topic : null
+  const name = 'name' in record ? record.name : null
+  const cid = 'cid' in record ? record.cid : null
+  const requestId = 'requestId' in record ? record.requestId : null
+  const blockTimestamp = 'blockTimestamp' in record ? record.blockTimestamp : null
+  const contentPreview = 'contentPreview' in record ? record.contentPreview : null
+  
+  // DB-specific fields
+  const status = 'status' in record ? record.status : null
+  const source_job_name = 'source_job_name' in record ? record.source_job_name : null
+  const thread_id = 'thread_id' in record ? record.thread_id : null
+  const created_at = 'created_at' in record ? record.created_at : null
+  const updated_at = 'updated_at' in record ? record.updated_at : null
+  
+  const id = record.id
 
   // Fields to hide from the detail view
-  const hiddenFields = ['id', 'content'] // Content is shown separately
+  const hiddenFields = ['id', 'content', 'contentPreview'] // Content is shown separately
   
   // Prepare details for the right sidebar
-  const detailFields = {
+  const detailFields: Record<string, unknown> = {
+    name,
     topic,
+    cid,
+    requestId,
+    blockTimestamp,
     status,
     source_job_name,
     thread_id,
     created_at,
     updated_at,
-    ...otherFields
   }
 
   // Filter out hidden fields and null/undefined values

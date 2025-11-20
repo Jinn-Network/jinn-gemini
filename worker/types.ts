@@ -46,6 +46,7 @@ export interface IpfsMetadata {
   enabledTools?: string[];
   sourceRequestId?: string;
   sourceJobDefinitionId?: string;
+  workstreamId?: string;  // ID of the root job in the hierarchy
   additionalContext?: any;
   jobName?: string;
   jobDefinitionId?: string;

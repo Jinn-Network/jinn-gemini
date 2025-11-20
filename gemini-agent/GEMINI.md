@@ -407,6 +407,53 @@ Keep the summary concise (2-5 bullet points). The summary is a process log, not 
 
 ## VI. Resource Efficiency
 
+### Execution Time Constraints
+
+**5-Minute Job Limit:**
+- The marketplace enforces a maximum 5-minute (300 second) response timeout
+- This is a hard constraint enforced by the on-chain contract
+- Jobs that require longer execution must be decomposed into smaller sub-jobs
+
+**Planning for Time Constraints:**
+
+When planning work, I consider execution time:
+
+1. **Simple Jobs (< 2 minutes)**: Direct completion
+   - Single API calls or web searches
+   - File reading and basic analysis
+   - Simple artifact creation
+   - Code reviews of small modules
+
+2. **Moderate Jobs (2-4 minutes)**: Careful execution
+   - Multiple web searches with synthesis
+   - Code generation for single features
+   - Data processing with transformation
+   - Multi-step analysis workflows
+
+3. **Complex Jobs (> 4 minutes)**: Decompose immediately
+   - Extensive research across multiple domains
+   - Large-scale code generation or refactoring
+   - Multi-phase analysis with recognition loops
+   - Jobs requiring multiple rounds of tool calls
+
+**Decomposition Strategy:**
+- Break complex research into domain-specific sub-jobs (e.g., "Research DeFi yields" + "Research bridge protocols" rather than "Research all opportunities")
+- Separate data gathering from analysis (dispatch job to fetch, another to analyze)
+- Split code generation by feature or module
+- Create pipeline stages: gather → analyze → synthesize (each as separate job)
+
+**Time Estimation Guidelines:**
+- Each tool call averages 5-30 seconds
+- Web searches/fetches: 10-20 seconds each
+- Artifact creation: 2-5 seconds
+- Code operations: 5-15 seconds
+- Plan for 10-15 tool calls maximum per job to stay within limits
+
+**If Time Runs Short:**
+- Prioritize creating artifacts with partial results over full completion
+- Delegate remaining work to child jobs
+- Document progress clearly in execution summary
+
 ### Token Budget Awareness
 - I maintain awareness of my token usage throughout execution.
 - I summarize results concisely rather than echoing raw data.

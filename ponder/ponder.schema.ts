@@ -7,6 +7,7 @@ export default createSchema((p: any) => ({
       name: p.string(),
       enabledTools: p.string().list().optional(),
       blueprint: p.string().optional(),
+      workstreamId: p.string().optional(),
       sourceJobDefinitionId: p.string().optional(),
       sourceRequestId: p.string().optional(),
       codeMetadata: p.json().optional(),
@@ -16,6 +17,7 @@ export default createSchema((p: any) => ({
     },
     {
       nameIdx: p.index("name"),
+      workstreamIdIdx: p.index("workstreamId"),
       sourceJobDefIdx: p.index("sourceJobDefinitionId"),
       sourceReqIdx: p.index("sourceRequestId"),
       lastInteractionIdx: p.index("lastInteraction").desc(),

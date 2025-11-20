@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2025-11-05
+
+### 🐛 Fixed
+
+- **CRITICAL:** Fixed Deliver event parsing bug where requestId was incorrectly extracted from `topics[1]` (mech address) instead of decoded event data
+- Event monitoring now correctly matches Python mech_client implementation
+- Delivery detection now works properly for all mech types
+- Aligned with actual Deliver event ABI where requestId is a non-indexed parameter in event data
+
 ## [0.0.2] - 2025-10-29
 
 ### 🔒 Security Fix
@@ -20,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `source: 'operate'` - OLAS `.operate` directory integration
 - **New `resolvePrivateKey()` function** - Secure key resolution with multiple source support
 - **New `resolveOperateKey()` helper** - Reads keys from `.operate/services/sc-*/keys.json`
+- Support for `OPERATE_HOME` environment variable to specify custom `.operate` location
 - Comprehensive JSDoc documentation for all new functions
 
 ### 🔄 Changed

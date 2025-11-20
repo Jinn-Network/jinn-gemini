@@ -7,6 +7,73 @@ import { dispatchExistingJob } from '../../gemini-agent/mcp/tools/dispatch_exist
 import { safeParseToolResponse } from '../tool_utils.js';
 import type { FinalStatus, ParentDispatchDecision } from '../types.js';
 import type { WorkerTelemetryService } from '../worker_telemetry.js';
+import { graphQLRequest } from '../../http/client.js';
+import { getPonderGraphqlUrl } from '../../gemini-agent/mcp/tools/shared/env.js';
+
+const DISPATCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes - long enough for jobs to process
+
+/**
+ * Check if parent was already dispatched for this child by querying on-chain state.
+ * This survives worker restarts, unlike in-memory tracking.
+ */
+async function wasRecentlyDispatched(
+  parentJobDefId: string, 
+  childRequestId: string
+): Promise<boolean> {
+  try {
+    const ponderUrl = getPonderGraphqlUrl();
+    
+    // Query for recent requests of this parent that were triggered by this child
+    const response = await graphQLRequest<{ 
+      requests: { items: Array<{ id: string; blockTimestamp: string }> } 
+    }>({
+      url: ponderUrl,
+      query: `query CheckRecentDispatch($jobDefId: String!, $sourceReqId: String!) {
+        requests(
+          where: { 
+            jobDefinitionId: $jobDefId,
+            sourceRequestId: $sourceReqId
+          },
+          orderBy: "blockTimestamp",
+          orderDirection: "desc",
+          limit: 1
+        ) {
+          items {
+            id
+            blockTimestamp
+          }
+        }
+      }`,
+      variables: { 
+        jobDefId: parentJobDefId,
+        sourceReqId: childRequestId 
+      },
+      context: { operation: 'checkRecentDispatch', parentJobDefId, childRequestId }
+    });
+
+    const recentRequest = response?.requests?.items?.[0];
+    if (!recentRequest) return false;
+
+    // Already dispatched from this child within cooldown period
+    const dispatchTime = Number(recentRequest.blockTimestamp) * 1000;
+    const timeSince = Date.now() - dispatchTime;
+
+    if (timeSince < DISPATCH_COOLDOWN_MS) {
+      workerLogger.debug({ 
+        parentJobDefId, 
+        childRequestId, 
+        recentRequestId: recentRequest.id,
+        timeSince 
+      }, 'Found recent dispatch from this child');
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    workerLogger.warn({ error, parentJobDefId, childRequestId }, 'Failed to check recent dispatch, allowing dispatch (fail-open)');
+    return false; // Fail open - allow dispatch on query error
+  }
+}
 
 /**
  * Determine if parent should be dispatched
@@ -57,18 +124,55 @@ export async function dispatchParentIfNeeded(
 
   const parentJobDefId = decision.parentJobDefId!;
   
+  // Check for duplicate dispatch using on-chain state (survives worker restarts)
+  if (await wasRecentlyDispatched(parentJobDefId, requestId)) {
+    workerLogger.info({ parentJobDefId, childRequestId: requestId }, 'Skipping duplicate parent dispatch (found recent on-chain dispatch from this child)');
+    return;
+  }
+  
+  // Query child request's workstreamId to preserve it in parent re-dispatch
+  let workstreamId: string | undefined;
+  try {
+    const ponderUrl = getPonderGraphqlUrl();
+    const response = await graphQLRequest<{ request: { workstreamId?: string } | null }>({
+      url: ponderUrl,
+      query: `query GetWorkstreamId($id: String!) {
+        request(id: $id) {
+          workstreamId
+        }
+      }`,
+      variables: { id: requestId },
+      context: { operation: 'getChildWorkstreamId', requestId }
+    });
+    workstreamId = response?.request?.workstreamId;
+    if (workstreamId) {
+      workerLogger.debug({ requestId, workstreamId }, 'Retrieved workstream ID from child request');
+    }
+  } catch (error) {
+    workerLogger.warn({ requestId, error }, 'Failed to query child workstream ID, will proceed without it');
+  }
+  
   // Track in telemetry
   if (telemetry) {
     telemetry.startPhase('parent_dispatch');
     telemetry.logCheckpoint('parent_dispatch', 'dispatching_parent', {
       parentJobDefId,
+      childRequestId: requestId,
       childStatus: finalStatus!.status,
+      workstreamId,
       reason: 'child_terminal_state'
     });
   }
   
   try {
-    workerLogger.info(`Dispatching parent job ${parentJobDefId} after child ${finalStatus!.status}`);
+    // Log detailed dispatch decision
+    workerLogger.info({ 
+      parentJobDefId, 
+      childRequestId: requestId,
+      childStatus: finalStatus!.status, 
+      workstreamId,
+      dispatchReason: 'Child job reached terminal state'
+    }, `Dispatching parent job ${parentJobDefId} after child ${finalStatus!.status}`);
     
     // Create message with child results using standard format
     const messageContent = `Child job ${finalStatus!.status}: ${finalStatus!.message}. Output: ${
@@ -95,7 +199,8 @@ export async function dispatchParentIfNeeded(
       try {
         result = await dispatchExistingJob({
           jobId: parentJobDefId,
-          message: JSON.stringify(message)
+          message: JSON.stringify(message),
+          workstreamId
         });
         
         const check = safeParseToolResponse(result);
@@ -121,15 +226,24 @@ export async function dispatchParentIfNeeded(
       if (telemetry) {
         telemetry.logCheckpoint('parent_dispatch', 'dispatch_success', {
           parentJobDefId,
-          newRequestId: dispatchResult.data?.requestId
+          childRequestId: requestId,
+          newRequestId: dispatchResult.data?.request_ids?.[0]
         });
       }
-      workerLogger.info(`Parent job ${parentJobDefId} dispatched successfully`);
+      workerLogger.info({ 
+        parentJobDefId, 
+        childRequestId: requestId,
+        newRequestId: dispatchResult.data?.request_ids?.[0] 
+      }, `Parent job ${parentJobDefId} dispatched successfully`);
     } else {
       if (telemetry) {
         telemetry.logError('parent_dispatch', dispatchResult.message || 'Unknown error');
       }
-      workerLogger.error(`Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult.message}`);
+      workerLogger.error({ 
+        parentJobDefId, 
+        childRequestId: requestId,
+        error: dispatchResult.message 
+      }, `Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult.message}`);
     }
   } catch (e) {
     if (telemetry) {

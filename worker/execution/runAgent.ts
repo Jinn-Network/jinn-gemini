@@ -68,6 +68,7 @@ export async function runAgentForRequest(
         metadata?.codeMetadata?.branch?.name ||
         metadata?.codeMetadata?.baseBranch ||
         undefined,
+      workstreamId: metadata?.workstreamId || request.id, // Fallback to requestId for root jobs
     });
     
     const result = await agent.run(prompt);

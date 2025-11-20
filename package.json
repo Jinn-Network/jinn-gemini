@@ -75,9 +75,11 @@
     "setup:dev": "bash scripts/dev-setup.sh",
     "setup:python": "bash scripts/dev-setup.sh --python-only",
     "setup:service": "tsx scripts/interactive-service-setup.ts",
+    "restake:service": "cd olas-operate-middleware && poetry run python operate/quickstart/run_service.py",
     "qa:jinn-179": "bash scripts/qa-jinn-179.sh",
     "inspect-job-run": "tsx scripts/inspect-job-run.ts",
     "inspect-job": "tsx scripts/inspect-job.ts",
+    "inspect-workstream": "tsx scripts/inspect-workstream.ts",
     "lint:spec": "./codespec/scripts/detect-violations.sh --diff",
     "lint:spec:all": "./codespec/scripts/detect-violations.sh worker/",
     "setup:hooks": "./codespec/scripts/setup-git-hooks.sh",
@@ -88,7 +90,7 @@
     "codespec:worktree:cleanup": "tsx -e \"import {WorktreeManager} from './codespec/lib/worktree-manager.js'; const wm = new WorktreeManager(); wm.cleanup().then(n => console.log('Cleaned up', n, 'worktrees'))\""
   },
   "dependencies": {
-    "@jinn-network/mech-client-ts": "file:./packages/mech-client-ts/mech-client-ts-ipfsjson.tgz",
+    "@jinn-network/mech-client-ts": "file:packages/mech-client-ts",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "@ponder/core": "^0.6.1",
     "@safe-global/protocol-kit": "^6.1.0",

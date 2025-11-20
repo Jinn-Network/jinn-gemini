@@ -246,7 +246,7 @@ export function checkPrivateKeyFile(privateKeyPath: string): void {
  * Resolve a private key from an Operate services directory.
  */
 function resolveOperateKey(operateDir?: string): string {
-  const baseDir = operateDir || join(homedir(), '.operate');
+  const baseDir = operateDir || process.env.OPERATE_HOME || join(homedir(), '.operate');
 
   if (!existsSync(baseDir)) {
     throw new Error(`Operate directory not found: ${baseDir}`);

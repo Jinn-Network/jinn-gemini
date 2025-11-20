@@ -169,6 +169,24 @@ Root Job (sourceJobDefinitionId: null)
 **Context Fetching:**
 The worker queries Ponder using `jobDefinitionId_in` (not `sourceJobDefinitionId_in`) to find all requests for the same job definition across re-runs. This ensures root jobs can see completed children when re-running.
 
+**Parent Re-dispatch Rules:**
+
+*Trigger Condition:*
+- Child job reaches terminal state (COMPLETED or FAILED)
+- Parent job definition ID exists in child's metadata (sourceJobDefinitionId)
+
+*Workstream Preservation:*
+- Parent re-dispatch inherits child's workstreamId via explicit metadata field
+- All jobs in delegation chain share same workstream root
+- Ponder prioritizes explicit workstreamId in IPFS metadata over sourceRequestId traversal
+- This ensures workstream ID remains stable across parent re-runs
+
+*Deduplication:*
+- Parent is dispatched once per child completion
+- In-memory guard prevents duplicate dispatches from same child within 30-second cooldown window
+- Multiple children completing trigger multiple parent dispatches (expected behavior for synthesis)
+- Each parent dispatch includes child request ID in logging for traceability
+
 ### 2.4 Blueprint-Driven Execution
 
 Jobs receive structured JSON blueprints in their metadata following a mandatory assertion format:

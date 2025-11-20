@@ -72,23 +72,7 @@ export interface MarketplaceInteractOptions {
   useOffchain?: boolean;
   mechOffchainUrl?: string;
   tools?: string[];
-  /**
-   * Optional: Array of JSON objects (NOT strings) to upload to IPFS as request metadata.
-   * If provided, overrides default metadata shape. Each object is serialized and uploaded to IPFS.
-   * One object per prompt. Must be a plain object, not a JSON string.
-   * 
-   * Example:
-   * ```
-   * ipfsJsonContents: [
-   *   { blueprint: JSON.stringify({...}), jobName: 'test', model: 'gemini-2.5-flash' }
-   * ]
-   * ```
-   * 
-   * NOT:
-   * ```
-   * ipfsJsonContents: JSON.stringify({ ... })  // ❌ Wrong - this is a string
-   * ```
-   */
+  // Optional: if provided, overrides default metadata shape and uploads these objects to IPFS as-is
   ipfsJsonContents?: Record<string, any>[];
   extraAttributes?: Record<string, any>;
   privateKeyPath?: string;
@@ -98,7 +82,6 @@ export interface MarketplaceInteractOptions {
   sleep?: number;
   postOnly?: boolean;
   chainConfig?: string;
-  responseTimeout?: number;
 }
 
 export interface MechInfo {
@@ -598,19 +581,8 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     timeout,
     sleep,
     postOnly = false,
-    chainConfig,
-    responseTimeout
+    chainConfig
   } = options;
-
-  console.error('[marketplace_interact] Called with:', {
-    promptsCount: prompts.length,
-    priorityMech,
-    toolsCount: tools.length,
-    postOnly,
-    chainConfig,
-    hasKeyConfig: !!keyConfig,
-    hasPrivateKeyPath: !!privateKeyPath
-  });
 
   // Get configuration
   const mechConfig = get_mech_config(chainConfig);
@@ -620,14 +592,7 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
   const chainId = ledgerConfig.chain_id;
   const numRequests = prompts.length;
 
-  console.error('[marketplace_interact] Config loaded:', {
-    chainId,
-    marketplace: mechMarketplaceContractAddress,
-    rpcUrl: mechConfig.rpc_url?.substring(0, 50) + '...'
-  });
-
   if (mechMarketplaceContractAddress === '0x0000000000000000000000000000000000000000') {
-    console.error('[marketplace_interact] Marketplace not supported on chain');
     console.log(`Mech Marketplace not yet supported on ${chainConfig}`);
     return null;
   }
@@ -641,11 +606,6 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
 
   configValues.priorityMechAddress = priorityMechAddress;
   configValues.mechMarketplaceContract = mechMarketplaceContractAddress;
-  
-  // Apply custom responseTimeout if provided (defaults to 300s in sendMarketplaceRequest)
-  if (responseTimeout !== undefined) {
-    configValues.responseTimeout = responseTimeout;
-  }
 
   // Initialize Web3
   const web3 = new Web3(mechConfig.rpc_url);
@@ -787,28 +747,7 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     console.log('  - Waiting for transaction receipt...');
 
     // Get transaction receipt to extract block number
-    // Retry loop for receipt to handle RPC lag
-    let txReceipt = null;
-    const startBlock = await web3.eth.getBlockNumber();
-    const timeoutBlocks = 100;
-    const maxBlock = startBlock + BigInt(timeoutBlocks);
-    
-    while (!txReceipt) {
-      try {
-        txReceipt = await web3.eth.getTransactionReceipt(transactionDigest);
-      } catch (e) { 
-        // Ignore errors during polling
-      }
-      
-      if (!txReceipt) {
-        const currentBlock = await web3.eth.getBlockNumber();
-        if (currentBlock > maxBlock) {
-          throw new Error(`Transaction ${transactionDigest} not confirmed within ${timeoutBlocks} blocks`);
-        }
-        await new Promise(r => setTimeout(r, 3000));
-      }
-    }
-
+    const txReceipt = await web3.eth.getTransactionReceipt(transactionDigest);
     const fromBlock = Number(txReceipt.blockNumber);
 
     const requestIds = await watchForMarketplaceRequestIds(
@@ -833,18 +772,12 @@ export async function marketplaceInteract(options: MarketplaceInteractOptions): 
     console.log('');
 
     if (postOnly) {
-      const result = {
+      return {
         transaction_hash: transactionDigest,
         transaction_url: transactionUrlFormatted,
         request_ids: requestIds,
         request_id_ints: requestIdInts,
       };
-      console.error('[marketplace_interact] Returning (postOnly):', {
-        hasResult: true,
-        requestIdsLength: requestIds.length,
-        firstRequestId: requestIds[0]
-      });
-      return result;
     }
 
     // Wait for data URLs for all requests (async polling-based)

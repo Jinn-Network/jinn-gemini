@@ -1,3 +1,6 @@
 [submodule "olas-operate-middleware"]
 	path = olas-operate-middleware
 	url = https://github.com/valory-xyz/olas-operate-middleware.git
+[submodule "packages/mech-client-ts"]
+	path = packages/mech-client-ts
+	url = https://github.com/Jinn-Network/mech-client-ts.git

@@ -7,6 +7,7 @@ export interface JobDefinition {
   name: string
   enabledTools: string[]
   blueprint?: string
+  workstreamId?: string
   sourceJobDefinitionId?: string
   sourceRequestId?: string
   codeMetadata?: Record<string, unknown>
@@ -19,6 +20,7 @@ export interface Request {
   id: string
   mech: string
   sender: string
+  workstreamId?: string
   jobDefinitionId?: string
   sourceRequestId?: string
   sourceJobDefinitionId?: string
@@ -166,6 +168,7 @@ export const JOB_DEFINITIONS_QUERY = `
         name
         enabledTools
         blueprint
+        workstreamId
         sourceJobDefinitionId
         sourceRequestId
         codeMetadata
@@ -235,6 +238,7 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Paginat
           id
           mech
           sender
+          workstreamId
           jobDefinitionId
           sourceRequestId
           sourceJobDefinitionId
@@ -399,6 +403,7 @@ export const JOB_DEFINITION_QUERY = `
       name
       enabledTools
       blueprint
+      workstreamId
       sourceJobDefinitionId
       sourceRequestId
       codeMetadata
@@ -428,6 +433,7 @@ export async function getRequest(id: string): Promise<Request | null> {
         id
         mech
         sender
+        workstreamId
         jobDefinitionId
         sourceRequestId
         sourceJobDefinitionId

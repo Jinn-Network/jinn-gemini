@@ -640,14 +640,14 @@ Without this reconstruction, the frontend will fetch binary directory structure 
   - `blueprint`: **REQUIRED**. JSON string containing structured assertions array. Each assertion must have: `id`, `assertion`, `examples` (with `do`/`dont` arrays), and `commentary`.
   - `model`: Gemini model to use (e.g., `'gemini-2.5-flash'`, `'gemini-2.5-pro'`). Defaults to `'gemini-2.5-flash'` if not specified.
   - `dependencies`: Optional array of job definition IDs that must complete before this job executes.
-  - `responseTimeout`: Optional timeout in seconds for marketplace delivery (defaults to 3600 = 1 hour). Set higher for long-running jobs with recognition/reflection phases or complex web fetches.
+  - `responseTimeout`: Optional timeout in seconds for marketplace delivery (defaults to 300, max 300). Marketplace enforces a 5-minute hard limit.
 - Returns: Mech client result plus `ipfs_gateway_url` when indexed.
 - Validation: Blueprint structure is validated at dispatch time. Invalid JSON or missing required fields will return error codes: `INVALID_BLUEPRINT`, `INVALID_BLUEPRINT_STRUCTURE`.
 
 ### dispatch_existing_job
 - Purpose: Dispatch a new request for an existing job definition.
 - Params: `{ jobId?: string, jobName?: string, enabledTools?: string[], prompt?: string, message?: string, responseTimeout?: number }`
-  - `responseTimeout`: Optional timeout in seconds for marketplace delivery (defaults to 3600 = 1 hour). Set higher for long-running jobs.
+  - `responseTimeout`: Optional timeout in seconds for marketplace delivery (defaults to 300, max 300). Marketplace enforces a 5-minute hard limit.
 - Returns: Mech client result plus `ipfs_gateway_url` when indexed.
 
 ### create_artifact
@@ -2107,13 +2107,12 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Mitigation**: Recognition learnings should be treated as suggestions, not mandates. Agents retain autonomy to ignore patterns that seem inefficient for their specific context.
 
 **RevokeRequest and Marketplace Timeout Issues (2025-11-19):**
-- **Issue**: Safe-based delivery transactions successfully confirm on-chain but emit `RevokeRequest` instead of `Deliver` events
-- **Root Cause**: Marketplace `responseTimeout` (default 300s = 5 minutes) expires before Safe delivery completes. When `deliverToMarketplace()` is called after timeout, the marketplace returns `deliveredRequests[i] == false`, causing OlasMech to emit `RevokeRequest`.
-- **Impact**: Job completes successfully but delivery is rejected by marketplace. Funds locked in balance tracker, no `Deliver` event indexed by Ponder, user sees no completion.
-- **Fix Applied**: Added `responseTimeout` parameter to `dispatch_new_job` and `dispatch_existing_job` with default of 3600s (1 hour), up from previous 300s (5 minutes).
-- **Why This Happened**: Jobs with recognition + execution + reflection phases, plus Safe-based transaction flow, plus external API retries (DefiLlama, CoinGecko) now routinely exceed 5 minute window.
-- **Detection Added**: Commit `485e6a6` (Nov 19) added `wasRequestRevoked()` check in `deliverViaSafeTransaction` to detect and surface these failures. Previously, `RevokeRequest` events were silently treated as successful deliveries.
-- **Recommended Timeouts**:
+- **Issue**: Marketplace enforces a hard 5-minute (300 second) maximum timeout for all requests
+- **Root Cause**: The on-chain MechMarketplace contract validates `responseTimeout <= 300` and reverts with `OutOfBounds` error if exceeded
+- **Impact**: Cannot dispatch jobs with timeout > 300 seconds. Jobs requiring longer execution must be decomposed into smaller sub-jobs.
+- **Fix Applied**: Updated default `responseTimeout` to 300 seconds (max allowed) in `dispatch_new_job` and `dispatch_existing_job`. Added execution time planning guidance to GEMINI.md.
+- **Work Decomposition Strategy**: Complex jobs requiring > 5 minutes should be broken into smaller sub-jobs (e.g., separate research into domain-specific tasks, split data gathering from analysis, create pipeline stages).
+- **Time Planning**: Agents should estimate ~10-15 tool calls maximum per job, with each tool call averaging 5-30 seconds. Jobs approaching this limit should delegate remaining work to children.
   - Default jobs: 3600s (1 hour) - covers recognition/reflection phases
   - Complex research: 7200s (2 hours) - for jobs with extensive web fetches and retries
   - Simple jobs: 600s (10 minutes) minimum

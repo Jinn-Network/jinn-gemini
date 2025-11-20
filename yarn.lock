@@ -868,32 +868,8 @@
   dependencies:
     minipass "^7.0.4"
 
-"@jinn-network/mech-client-ts@^0.0.4":
-  version "0.0.4"
-  resolved "https://registry.yarnpkg.com/@jinn-network/mech-client-ts/-/mech-client-ts-0.0.4.tgz#7f57485ee5c89046b956f3668bd5653e798b5515"
-  integrity sha512-rpbNoUeoA5O98v+gxRE7IBQpoeQZ2chAMDWeXyGpF58QJYx/L5XTwrFd7rGj6qg/wSlnKedgLHCP3x3fjICMOA==
-  dependencies:
-    "@types/form-data" "^2.2.1"
-    "@types/uuid" "^10.0.0"
-    axios "^1.0.0"
-    bs58 "^6.0.0"
-    cids "^1.1.9"
-    commander "^14.0.0"
-    ethers "^6.0.0"
-    form-data "^4.0.4"
-    graphql "^16.11.0"
-    graphql-request "^7.2.0"
-    ipfs-http-client "^60.0.1"
-    multibase "^4.0.6"
-    multicodec "^3.2.1"
-    multiformats "^13.4.0"
-    uuid "^13.0.0"
-    web3 "^4.0.0"
-    ws "^8.18.3"
-
-"@jinn-network/mech-client-ts@file:./packages/mech-client-ts/mech-client-ts-ipfsjson.tgz":
-  version "0.0.3"
-  resolved "file:./packages/mech-client-ts/mech-client-ts-ipfsjson.tgz#a09dfb019ab26921b5e25de7b1e7247e2189590a"
+"@jinn-network/mech-client-ts@file:packages/mech-client-ts":
+  version "0.0.5"
   dependencies:
     "@types/form-data" "^2.2.1"
     "@types/uuid" "^10.0.0"

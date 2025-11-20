@@ -16,7 +16,8 @@ const dispatchExistingJobParamsBase = z.object({
   enabledTools: z.array(z.string()).optional(),
   prompt: z.string().optional().describe('DEPRECATED: Use blueprint instead. For backward compatibility only.'),
   message: z.string().optional(),
-  responseTimeout: z.number().optional().default(3600).describe('Response timeout in seconds for marketplace request. Defaults to 3600 (1 hour). Set higher for long-running jobs with recognition/reflection phases or complex web fetches.'),
+  workstreamId: z.string().optional().describe('Workstream ID to preserve when re-dispatching parent jobs. If provided, ensures the new request maintains the same workstream as the child that triggered it.'),
+  responseTimeout: z.number().optional().default(300).describe('Response timeout in seconds for marketplace request. Defaults to 300 (5 minutes). Maximum allowed by marketplace is 300 seconds.'),
 });
 
 export const dispatchExistingJobParams = dispatchExistingJobParamsBase.refine(
@@ -42,7 +43,11 @@ export async function dispatchExistingJob(args: unknown) {
   if (!parse.success) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: parse.error.message } }) }] };
   }
-  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message, responseTimeout } = parse.data;
+  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message, workstreamId: explicitWorkstreamId, responseTimeout } = parse.data;
+
+  // Auto-populate workstreamId from context if not explicitly provided
+  const context = getCurrentJobContext();
+  const workstreamId = explicitWorkstreamId || context.workstreamId || undefined;
 
   const gqlUrl = getPonderGraphqlUrl();
 
@@ -191,6 +196,11 @@ export async function dispatchExistingJob(args: unknown) {
     additionalContext,
     ...lineageContext,
   }];
+
+  // Include workstreamId if provided (for parent re-dispatches)
+  if (workstreamId) {
+    ipfsJsonContents[0].workstreamId = workstreamId;
+  }
 
   // Only include branch info if we successfully collected it
   if (branchResult) {

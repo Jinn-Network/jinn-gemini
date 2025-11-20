@@ -2,7 +2,7 @@
  * Transaction delivery: wrap mech-client deliver logic, including Safe/Operate adjustments
  */
 
-import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
+import { deliverViaSafe } from '@jinn-network/mech-client-ts';
 import { Web3 } from 'web3';
 import { workerLogger } from '../../logging/index.js';
 import { getOptionalMechChainConfig, getRequiredRpcUrl } from '../../gemini-agent/mcp/tools/shared/env.js';
@@ -221,8 +221,8 @@ export async function deliverViaSafeTransaction(
     } catch (e: any) {
       lastError = e;
       // Only retry on likely transient errors or timeouts
-      if (e.message?.includes('timeout') || e.message?.includes('not mined') || e.message?.includes('Transaction not found')) {
-         workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery timeout or transient error');
+      if (e.message?.includes('timeout') || e.message?.includes('not mined') || e.message?.includes('Transaction not found') || e.message?.includes('nonce too low')) {
+         workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery timeout, transient error, or nonce issue');
          continue;
       }
       throw e; // Fail fast on other errors
