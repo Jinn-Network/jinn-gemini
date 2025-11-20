@@ -118,6 +118,7 @@ function createGraphNode(
         delivered: req.delivered,
         artifactCount: 0,
         messageCount: 0,
+        runCount: 1, // Each request node represents one run
       },
     }
   }
@@ -627,4 +628,22 @@ export async function buildJobGraph(options: GraphQueryOptions): Promise<JobGrap
     rootNode,
     stats,
   }
+}
+
+// ============================================================================
+// Graph Consolidation by Job Definition
+// ============================================================================
+
+/**
+ * Consolidate a request-level graph into a job-definition-level graph
+ * Groups all request nodes by their jobDefinitionId and creates consolidated nodes
+ * 
+ * NOTE: This function is currently a no-op placeholder.
+ * The consolidation logic needs to be implemented properly with async support
+ * or moved to the page/component layer where async operations are easier.
+ */
+export function consolidateByJobDefinition(graph: JobGraph): JobGraph {
+  // For now, just return the original graph as-is
+  // Each request node now has runCount: 1 to indicate it's a single execution
+  return graph
 }

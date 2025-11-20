@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { buildJobGraph, JobGraph, GraphQueryOptions } from '@/lib/graph-queries'
+import { buildJobGraph, JobGraph, GraphQueryOptions, consolidateByJobDefinition } from '@/lib/graph-queries'
 import { Node, Edge } from 'reactflow'
 import { layoutGraph } from '@/lib/graph-layout'
 import { toast } from 'sonner'
@@ -11,6 +11,7 @@ interface UseJobGraphOptions {
   rootType?: 'jobDefinition' | 'request'
   initialDepth?: number
   initialDirection?: 'upstream' | 'downstream' | 'both'
+  groupByDefinition?: boolean
 }
 
 export function useJobGraph({
@@ -18,6 +19,7 @@ export function useJobGraph({
   rootType = 'request',
   initialDepth = 3,
   initialDirection = 'both',
+  groupByDefinition = false,
 }: UseJobGraphOptions) {
   const [graph, setGraph] = useState<JobGraph | null>(null)
   const [nodes, setNodes] = useState<Node[]>([])
@@ -50,6 +52,10 @@ export function useJobGraph({
       }
 
       const graphData = await buildJobGraph(options)
+      
+      // Note: groupByDefinition is currently not fully implemented
+      // The graph shows request nodes which represent job executions
+      // TODO: Implement proper job definition consolidation
       
       // Only update if data actually changed (compare structure)
       const currentGraph = graphRef.current
@@ -91,7 +97,7 @@ export function useJobGraph({
         setLoading(false)
       }
     }
-  }, [rootId, rootType, depth, direction, layout])
+  }, [rootId, rootType, depth, direction, layout, groupByDefinition])
 
   useEffect(() => {
     fetchGraph()

@@ -29,9 +29,10 @@ const edgeTypes = {
 
 interface JobGraphViewInnerProps {
   rootId: string
+  groupByDefinition?: boolean
 }
 
-function JobGraphViewInner({ rootId }: JobGraphViewInnerProps) {
+function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewInnerProps) {
   const router = useRouter()
   const {
     graph,
@@ -46,7 +47,7 @@ function JobGraphViewInner({ rootId }: JobGraphViewInnerProps) {
     updateDirection,
     toggleLayout,
     refresh,
-  } = useJobGraph({ rootId })
+  } = useJobGraph({ rootId, groupByDefinition })
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)

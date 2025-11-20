@@ -1,9 +1,11 @@
-import { getRequest, getWorkstreamRequests, getWorkstreamArtifact } from '@/lib/subgraph'
+import { getRequest, getWorkstreamRequests, getWorkstreamArtifact, fetchIpfsContent, getJobDefinition } from '@/lib/subgraph'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { WorkstreamBriefing } from '@/components/workstream-briefing'
+import { ArtifactDetailView } from '@/components/artifact-detail-view'
 import { JobGraphView } from '@/components/graph/job-graph-view'
+import { JobDefinitionsTable } from '@/components/job-definitions-table'
+import { RequestsTable } from '@/components/requests-table'
 
 // Force dynamic rendering to avoid build-time data fetching
 export const dynamic = 'force-dynamic'
@@ -27,14 +29,66 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
     notFound()
   }
 
-  // Fetch recent jobs in workstream
-  const { requests: recentJobs } = await getWorkstreamRequests(workstreamId, 9)
+  // Fetch all jobs in workstream (increase limit to get comprehensive data)
+  const { requests: workstreamRequests } = await getWorkstreamRequests(workstreamId, 500)
   
   // Add root request to the list (it's the top-level job)
-  const allJobs = [rootRequest, ...recentJobs.items]
+  const allJobs = [rootRequest, ...workstreamRequests.items]
 
-  // Fetch launcher briefing
+  // Fetch launcher briefing artifact
   const briefing = await getWorkstreamArtifact(workstreamId, 'launcher_briefing')
+  
+  // Fetch briefing content from IPFS if available
+  let briefingWithContent = briefing
+  if (briefing?.cid) {
+    const ipfsContent = await fetchIpfsContent(briefing.cid)
+    if (ipfsContent) {
+      briefingWithContent = {
+        ...briefing,
+        content: ipfsContent.content
+      }
+    }
+  }
+  
+  // Aggregate jobs by jobDefinitionId to create unique job list
+  const jobDefinitionMap = new Map<string, {
+    id: string
+    name: string
+    lastInteraction: string
+    lastStatus: string
+    runCount: number
+  }>()
+  
+  for (const job of allJobs) {
+    if (job.jobDefinitionId) {
+      const existing = jobDefinitionMap.get(job.jobDefinitionId)
+      if (existing) {
+        existing.runCount++
+        // Update with most recent interaction
+        if (job.blockTimestamp > existing.lastInteraction) {
+          existing.lastInteraction = job.blockTimestamp
+        }
+      } else {
+        // Fetch job definition to get name and status
+        const jobDef = await getJobDefinition(job.jobDefinitionId)
+        jobDefinitionMap.set(job.jobDefinitionId, {
+          id: job.jobDefinitionId,
+          name: jobDef?.name || job.jobName || 'Unnamed Job',
+          lastInteraction: job.blockTimestamp,
+          lastStatus: jobDef?.lastStatus || (job.delivered ? 'COMPLETED' : 'PENDING'),
+          runCount: 1
+        })
+      }
+    }
+  }
+  
+  // Convert to array for table display
+  const uniqueJobDefinitions = Array.from(jobDefinitionMap.values()).map(def => ({
+    id: def.id,
+    name: def.name,
+    lastInteraction: def.lastInteraction,
+    lastStatus: def.lastStatus,
+  }))
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(Number(timestamp) * 1000)
@@ -76,87 +130,65 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
         </p>
       </div>
 
-      {/* Launcher Briefing */}
+      {/* Workstream Graph - Full Width */}
       <Card>
         <CardHeader>
-          <CardTitle>Launcher Briefing</CardTitle>
+          <CardTitle>Workstream Graph</CardTitle>
         </CardHeader>
-        <CardContent>
-          <WorkstreamBriefing 
-            rootRequestId={workstreamId} 
-            initialBriefing={briefing}
-          />
+        <CardContent className="p-0 border-t">
+          <div className="h-[600px] overflow-hidden">
+            <JobGraphView rootId={workstreamId} groupByDefinition={true} />
+          </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Job Graph */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Workstream Graph</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 border-t">
-              <div className="h-[600px] overflow-hidden">
-                <JobGraphView rootId={workstreamId} />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      {/* Launcher Briefing - Full Width */}
+      {briefingWithContent && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Launcher Briefing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ArtifactDetailView record={briefingWithContent} />
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Recent Jobs */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Recent Jobs</CardTitle>
-                <Link 
-                  href={`/requests?workstream=${workstreamId}`}
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                >
-                  See all →
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {allJobs.length === 0 ? (
-                <p className="text-gray-500 text-sm">No jobs found in this workstream yet</p>
-              ) : (
-                <div className="space-y-3">
-                  {allJobs.map((job) => (
-                    <Link 
-                      key={job.id} 
-                      href={`/requests/${job.id}`}
-                      className="block p-3 border rounded-md hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-sm">
-                              {job.jobName || 'Unnamed Job'}
-                            </span>
-                            {job.delivered && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">
-                                ✓ Delivered
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {formatRelativeTime(job.blockTimestamp)}
-                          </div>
-                        </div>
-                        <div className="text-xs text-gray-400 font-mono">
-                          {job.id.substring(0, 8)}...
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* Jobs - Full Width */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Jobs ({uniqueJobDefinitions.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {uniqueJobDefinitions.length === 0 ? (
+            <p className="text-gray-500 text-sm">No job definitions found in this workstream yet</p>
+          ) : (
+            <JobDefinitionsTable records={uniqueJobDefinitions} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Job Runs - Full Width */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Job Runs ({allJobs.length})</CardTitle>
+            <Link 
+              href={`/requests?workstream=${workstreamId}`}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              See all →
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {allJobs.length === 0 ? (
+            <p className="text-gray-500 text-sm">No job runs found in this workstream yet</p>
+          ) : (
+            <RequestsTable records={allJobs} />
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

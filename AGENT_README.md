@@ -443,6 +443,33 @@ yarn inspect-job <jobDefinitionId> 2>/dev/null | jq '.workstreams'
 yarn inspect-job <jobDefinitionId> 2>/dev/null | jq '.runs[0].children'
 ```
 
+**Workstream Graph Inspection:**
+```bash
+yarn inspect-workstream <workstreamId>
+```
+Visualizes the complete execution graph of a workstream, showing parent/child relationships, status, and key artifacts. This provides a high-level view of job execution trees within a venture.
+
+Returns:
+- `stats`: Total jobs, completed/pending counts, artifact counts
+- `tree`: Hierarchical graph showing parent/child job relationships with status and summaries
+
+The script resolves delivery content selectively to extract job status (COMPLETED/PENDING/FAILED), summaries, and errors while keeping output manageable through truncation.
+
+**Example Usage:**
+```bash
+# Inspect workstream and save to file
+yarn inspect-workstream <workstreamId> 2>/dev/null > workstream-graph.json
+
+# View workstream stats
+yarn inspect-workstream <workstreamId> 2>/dev/null | jq '.stats'
+
+# See all job names in tree
+yarn inspect-workstream <workstreamId> 2>/dev/null | jq '.. | .jobName? | select(. != null)'
+
+# Find failed jobs
+yarn inspect-workstream <workstreamId> 2>/dev/null | jq '.. | select(.status? == "FAILED") | {jobName, error}'
+```
+
 **Default Endpoint:** Production Railway instance (`https://jinn-gemini-production.up.railway.app/graphql`)  
 **Local Override:** Set `PONDER_GRAPHQL_URL=http://localhost:42069/graphql` to use local Ponder
 
@@ -469,6 +496,7 @@ The explorer UI shows a memory visualization section on completed request detail
 - `scripts/memory/inspect-situation.ts` – CLI inspection script for SITUATION artifacts
 - `scripts/inspect-job-run.ts` – CLI tool for inspecting individual job run data
 - `scripts/inspect-job.ts` – CLI tool for inspecting complete job definition history
+- `scripts/inspect-workstream.ts` – CLI tool for inspecting workstream execution graphs
 - `frontend/explorer/src/components/memory-visualization.tsx` – UI component
 - `packages/jinn-types/src/situation.ts` – TypeScript types for SITUATION artifacts
 

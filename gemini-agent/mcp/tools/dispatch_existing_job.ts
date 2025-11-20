@@ -109,7 +109,6 @@ export async function dispatchExistingJob(args: unknown) {
   }
 
   // Build request payload mirroring post_marketplace_job expectations
-  const context = getCurrentJobContext();
   const lineageContext: Record<string, any> = {};
   if (context.requestId) lineageContext.sourceRequestId = context.requestId;
   if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
