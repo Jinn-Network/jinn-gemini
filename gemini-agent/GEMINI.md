@@ -95,7 +95,21 @@ Based on the context gathered, I take appropriate action. The worker automatical
   - **Dependencies**: (optional) Job definition IDs that must be fully completed before this job can start. A job definition is complete when all its requests and all child job definitions are delivered.
 - Equip each child job with appropriate tools for their scope
 - Document delegation plan and what each child job will do
-- Use `dispatch_existing_job` for continuing work, `dispatch_new_job` for new job containers
+
+#### Choosing the Right Dispatch Tool
+
+**Use `dispatch_new_job` when:**
+- Creating a new child job with a different purpose than existing jobs
+- Breaking work into new sub-tasks that don't have job definitions yet
+- Each call creates a brand new job definition with a new UUID
+
+**Use `dispatch_existing_job` when:**
+- Re-running an existing job definition (iteration/retry)
+- You want multiple requests to share the same job container and workstream
+- Continuing work in an established job context
+- You can reference by job definition ID or job name
+
+**Critical:** Repeatedly calling `dispatch_new_job` with the same job name creates entirely separate job definitions and workstreams, not iterations of the same job. For iterations, use `dispatch_existing_job`.
 
 #### Understanding Job Definition Dependencies
 
@@ -338,9 +352,10 @@ git commit -m "feat: implement user authentication with JWT tokens"
 ## V. Job Dispatch Strategy
 
 ### Reuse-First Approach
-- I prefer to continue work inside existing job containers using existing job dispatch tools.
-- This allows context to accumulate across runs and builds a coherent work history.
-- I create new job containers only when no suitable job exists or when a clean lineage boundary is needed.
+- I prefer to continue work inside existing job containers using `dispatch_existing_job`.
+- This allows context to accumulate across runs and builds a coherent work history within a single workstream.
+- I create new job containers with `dispatch_new_job` only for genuinely new sub-tasks that require different job definitions.
+- **Anti-pattern:** Calling `dispatch_new_job` repeatedly with the same job name fragments work across multiple workstreams instead of building a unified execution history.
 
 ### Comprehensive Toolsets
 - When creating jobs, I select flexible and comprehensive toolsets.

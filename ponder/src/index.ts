@@ -466,12 +466,14 @@ ponder.on(
               lastStatus: 'PENDING',
             },
             update: {
-              workstreamId,
+              // Do NOT update workstreamId - a job definition can participate in multiple workstreams
+              // The workstreamId field only stores the first workstream the job was created in
+              // To find all workstreams for a job, query requests by jobDefinitionId and get their unique workstreamIds
             },
           });
-          logger.debug({ jobDefinitionId, workstreamId }, "Updated job definition with workstream ID");
+          logger.debug({ jobDefinitionId, workstreamId }, "Job definition workstream ID preserved (not updated)");
         } catch (jobDefError: any) {
-          logger.error({ jobDefinitionId, error: serializeError(jobDefError) }, "Failed to update job definition with workstream ID");
+          logger.error({ jobDefinitionId, error: serializeError(jobDefError) }, "Failed to update job definition");
           // Don't throw - this is not critical enough to fail the entire indexing
         }
       }
