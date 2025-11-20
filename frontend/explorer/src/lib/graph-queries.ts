@@ -57,6 +57,164 @@ export interface GraphQueryOptions {
   rootType: 'jobDefinition' | 'request'
   maxDepth: number // 1-5
   direction: 'upstream' | 'downstream' | 'both'
+  groupByDefinition?: boolean
+}
+
+// ============================================================================
+// Workstream Job Graph Builder (Group by Definition)
+// ============================================================================
+
+async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobGraph> {
+  const { rootId } = options
+  
+  // 1. Fetch all Job Definitions in this workstream
+  const jobDefsResponse = await queryJobDefinitions({
+    where: { workstreamId: rootId },
+    limit: 1000
+  })
+  const jobDefs = jobDefsResponse.items
+
+  // 2. Fetch all Requests in this workstream (for stats aggregation)
+  const requestsResponse = await queryRequests({
+    where: { workstreamId: rootId },
+    limit: 1000
+  })
+  const requests = requestsResponse.items
+
+  // 3. Map Requests to their Job Definitions for stats
+  const statsByJobDef = new Map<string, {
+    runCount: number
+    deliveredCount: number
+    lastStatus: string
+    artifactCount: number
+    messageCount: number
+  }>()
+
+  // Initialize stats for all known job definitions
+  for (const jd of jobDefs) {
+    statsByJobDef.set(jd.id, {
+      runCount: 0,
+      deliveredCount: 0,
+      lastStatus: jd.lastStatus || 'active',
+      artifactCount: 0,
+      messageCount: 0
+    })
+  }
+
+  // Aggregate request stats
+  for (const req of requests) {
+    if (req.jobDefinitionId) {
+      const stats = statsByJobDef.get(req.jobDefinitionId)
+      if (stats) {
+        stats.runCount++
+        if (req.delivered) stats.deliveredCount++
+        
+        // Update status based on most recent request
+        // (Simple heuristic: if any request is active, job is active)
+        if (!req.delivered) stats.lastStatus = 'active'
+        else if (stats.lastStatus === 'active' && req.delivered) stats.lastStatus = 'completed'
+      } else {
+        // Request has jobDefinitionId but we didn't find the definition in the workstream query.
+        // This might happen if the job definition itself doesn't have the workstreamId set correctly
+        // or if it's a cross-workstream reference.
+        // For now, we ignore these as "ghost" runs or handle them if needed.
+      }
+    }
+  }
+
+  // 4. Enrich nodes with artifact/message counts (bulk or per node?)
+  // For now, we'll skip separate artifact/message queries per node to keep it fast.
+  // We could fetch ALL artifacts for the workstream if needed, but that might be heavy.
+  // Let's stick to what we have in the stats map for now.
+
+  // 5. Build Nodes
+  const nodes: GraphNode[] = jobDefs.map(jd => {
+    const stats = statsByJobDef.get(jd.id)!
+    
+    // Determine status enum
+    let status: GraphNode['status'] = 'unknown'
+    const statusLower = stats.lastStatus.toLowerCase()
+    if (statusLower === 'completed' || statusLower === 'delivered') status = 'completed'
+    else if (statusLower === 'failed') status = 'failed'
+    else if (statusLower === 'waiting') status = 'waiting'
+    else if (statusLower === 'delegating') status = 'delegating'
+    else status = 'active'
+
+    return {
+      id: jd.id,
+      type: 'jobDefinition',
+      label: jd.name || 'Unnamed Job',
+      status,
+      level: 0, // Will calculate later
+      metadata: {
+        enabledTools: jd.enabledTools || [],
+        artifactCount: stats.artifactCount, // Placeholder
+        messageCount: stats.messageCount, // Placeholder
+        runCount: stats.runCount,
+        lastStatus: stats.lastStatus,
+        delivered: stats.deliveredCount === stats.runCount && stats.runCount > 0
+      }
+    }
+  })
+
+  const nodeMap = new Map(nodes.map(n => [n.id, n]))
+
+  // 6. Build Edges
+  const edges: GraphEdge[] = []
+  
+  for (const jd of jobDefs) {
+    if (jd.sourceJobDefinitionId && nodeMap.has(jd.sourceJobDefinitionId)) {
+      edges.push({
+        id: createEdgeId(jd.sourceJobDefinitionId, jd.id, 'spawned_job'),
+        source: jd.sourceJobDefinitionId,
+        target: jd.id,
+        type: 'spawned_job',
+        label: 'spawned'
+      })
+    }
+  }
+
+  // 7. Identify Root and Calculate Levels
+  // The "root" of the graph is likely the job definition that has no parent IN THIS SET
+  // or matches the rootId (if rootId was a job def, but here it is workstream ID).
+  
+  // Find nodes with no incoming edges from within the set
+  const hasIncoming = new Set<string>(edges.map(e => e.target))
+  const potentialRoots = nodes.filter(n => !hasIncoming.has(n.id))
+  
+  // Default to the first potential root, or the one created earliest (if we had timestamps)
+  // Since we don't have sort, pick first.
+  let graphRoot = potentialRoots[0]
+  
+  // If we can't find a root (cycle?), pick first node
+  if (!graphRoot && nodes.length > 0) graphRoot = nodes[0]
+  
+  if (graphRoot) {
+    recalculateLevels(nodeMap, edges, graphRoot.id)
+  }
+
+  // If we have requests but no job definitions (e.g. legacy workstream or raw requests),
+  // we should probably fallback to the request graph or show a synthetic root.
+  // But the user said "job definitions now include workstreamIds", implies they expect this to work.
+
+  if (nodes.length === 0 && requests.length > 0) {
+    // Fallback: Return request graph if no definitions found?
+    // Or return empty graph.
+    // For now, let's return empty and let the UI show "No job definitions found".
+  }
+
+  return {
+    nodes,
+    edges,
+    rootNode: graphRoot || { id: 'empty', type: 'jobDefinition', label: 'No Jobs', status: 'unknown', level: 0, metadata: {} },
+    stats: {
+      totalNodes: nodes.length,
+      totalEdges: edges.length,
+      maxDepth: Math.max(...nodes.map(n => n.level), 0),
+      jobDefinitionCount: nodes.length,
+      requestCount: requests.length
+    }
+  }
 }
 
 // ============================================================================
@@ -570,6 +728,11 @@ function recalculateLevels(
 // ============================================================================
 
 export async function buildJobGraph(options: GraphQueryOptions): Promise<JobGraph> {
+  // If grouping by definition, use the optimized workstream query
+  if (options.groupByDefinition) {
+    return buildWorkstreamJobGraph(options)
+  }
+
   // Fetch root node first
   const rootNode = await fetchRootNode(options.rootId, options.rootType)
   if (!rootNode) {

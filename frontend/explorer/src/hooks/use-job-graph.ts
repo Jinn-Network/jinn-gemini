@@ -49,13 +49,12 @@ export function useJobGraph({
         rootType,
         maxDepth: depth,
         direction,
+        groupByDefinition,
       }
 
       const graphData = await buildJobGraph(options)
       
-      // Note: groupByDefinition is currently not fully implemented
-      // The graph shows request nodes which represent job executions
-      // TODO: Implement proper job definition consolidation
+      // Note: groupByDefinition is handled natively by buildJobGraph now
       
       // Only update if data actually changed (compare structure)
       const currentGraph = graphRef.current

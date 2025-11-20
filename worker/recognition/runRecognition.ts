@@ -249,6 +249,7 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
         learnings: markdown,
         searchQuery: summaryText,
         timestamp: new Date().toISOString(),
+        progressCheckpoint,
       };
       const [, recognitionCid] = await pushJsonToIpfs(recognitionArtifactPayload);
       await createArtifact(requestId, {
@@ -271,6 +272,7 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
         embeddingStatus,
         error: recognitionError?.message || String(recognitionError),
         timestamp: new Date().toISOString(),
+        progressCheckpoint,
       };
       const [, fallbackCid] = await pushJsonToIpfs(fallbackPayload);
       await createArtifact(requestId, {

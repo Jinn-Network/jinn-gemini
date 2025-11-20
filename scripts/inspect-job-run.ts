@@ -46,6 +46,7 @@ interface JobRunData {
   request?: Request;
   delivery?: Delivery;
   artifacts: Artifact[];
+  recognitionResult?: Artifact;
 }
 
 const QUERY = gql`
@@ -75,6 +76,16 @@ const QUERY = gql`
       blockTimestamp
     }
     artifacts(where: { requestId: $requestId }) {
+      items {
+        id
+        requestId
+        name
+        cid
+        topic
+        contentPreview
+      }
+    }
+    recognitionResult: artifacts(where: { requestId: $requestId, topic: "RECOGNITION_RESULT" }, limit: 1) {
       items {
         id
         requestId
@@ -189,7 +200,8 @@ async function resolveIpfsReferences(data: JobRunData): Promise<any> {
   const resolved: any = {
     request: data.request,
     delivery: data.delivery,
-    artifacts: []
+    artifacts: [],
+    recognitionResult: null
   };
   
   // Resolve request IPFS hash
@@ -211,6 +223,17 @@ async function resolveIpfsReferences(data: JobRunData): Promise<any> {
     console.error(`Resolving request delivery IPFS hash: ${data.request.deliveryIpfsHash}`);
     const content = await fetchIpfsContent(data.request.deliveryIpfsHash, data.request.id);
     resolved.request.deliveryIpfsContent = tryParseNestedJson(content);
+  }
+  
+  // Resolve recognition result artifact (separate for easier access)
+  if (data.recognitionResult) {
+    console.error(`Resolving RECOGNITION_RESULT artifact: ${data.recognitionResult.cid}`);
+    const content = await fetchIpfsContent(data.recognitionResult.cid);
+    const parsedContent = tryParseNestedJson(content);
+    resolved.recognitionResult = {
+      ...data.recognitionResult,
+      resolvedContent: parsedContent
+    };
   }
   
   // Resolve all artifact CIDs
@@ -254,6 +277,7 @@ async function main() {
       request?: Request;
       delivery?: Delivery;
       artifacts: { items: Artifact[] };
+      recognitionResult: { items: Artifact[] };
     }>(QUERY, { requestId });
     
     if (!response.request) {
@@ -264,13 +288,15 @@ async function main() {
     const jobRunData: JobRunData = {
       request: response.request,
       delivery: response.delivery,
-      artifacts: response.artifacts.items
+      artifacts: response.artifacts.items,
+      recognitionResult: response.recognitionResult.items[0]
     };
     
     console.error(`\n✅ Found request data:`);
     console.error(`   Job Name: ${jobRunData.request?.jobName || 'N/A'}`);
     console.error(`   Delivered: ${jobRunData.request?.delivered ? 'Yes' : 'No'}`);
     console.error(`   Artifacts: ${jobRunData.artifacts.length}`);
+    console.error(`   Recognition Result: ${jobRunData.recognitionResult ? 'Yes' : 'No'}`);
     console.error(`\nResolving IPFS references...\n`);
     
     const resolved = await resolveIpfsReferences(jobRunData);

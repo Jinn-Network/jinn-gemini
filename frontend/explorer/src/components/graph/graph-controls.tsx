@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { ArrowUp, ArrowDown, ArrowLeftRight, ArrowUpDown, RefreshCw } from 'lucide-react'
 
 interface GraphControlsProps {
   onZoomIn: () => void
@@ -72,24 +73,35 @@ export function GraphControls({
           onChange={(e) => onDirectionChange(e.target.value as typeof direction)}
           className="w-full px-2 py-1.5 text-sm border rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="upstream">⬆ Upstream (Parents)</option>
-          <option value="downstream">⬇ Downstream (Children)</option>
-          <option value="both">⬍ Both Directions</option>
+          <option value="upstream">Upstream (Parents)</option>
+          <option value="downstream">Downstream (Children)</option>
+          <option value="both">Both Directions</option>
         </select>
       </div>
 
       {/* Layout toggle */}
       <div className="space-y-2">
         <div className="text-xs font-semibold text-gray-700 uppercase">Layout</div>
-        <Button onClick={onToggleLayout} size="sm" variant="outline" className="w-full justify-start">
-          {layout === 'TB' ? '↔ Switch to Horizontal' : '↕ Switch to Vertical'}
+        <Button onClick={onToggleLayout} size="sm" variant="outline" className="w-full justify-start gap-2">
+          {layout === 'TB' ? (
+            <>
+              <ArrowLeftRight className="w-4 h-4" />
+              Switch to Horizontal
+            </>
+          ) : (
+            <>
+              <ArrowUpDown className="w-4 h-4" />
+              Switch to Vertical
+            </>
+          )}
         </Button>
       </div>
 
       {/* Refresh button */}
       <div className="pt-2 border-t">
-        <Button onClick={onRefresh} size="sm" variant="outline" className="w-full justify-start">
-          🔄 Refresh Graph
+        <Button onClick={onRefresh} size="sm" variant="outline" className="w-full justify-start gap-2">
+          <RefreshCw className="w-4 h-4" />
+          Refresh Graph
         </Button>
       </div>
     </div>

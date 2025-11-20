@@ -198,7 +198,55 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // FALLBACK: Fetch SITUATION artifact (for backward compatibility)
+    // FALLBACK 1: Fetch RECOGNITION_RESULT artifact if we didn't get recognition from delivery
+    if (!recognitionData) {
+      const GET_RECOGNITION_ARTIFACT = `
+        query GetRecognitionArtifact($requestId: String!) {
+          artifacts(
+            where: { 
+              AND: [
+                { requestId: $requestId },
+                { topic: "RECOGNITION_RESULT" }
+              ]
+            }
+            limit: 1
+          ) {
+            items {
+              id
+              requestId
+              name
+              cid
+              topic
+              contentPreview
+              blockTimestamp
+            }
+          }
+        }
+      `
+      
+      const recognitionResponse = await request<{
+        artifacts: { items: Array<{ cid: string; contentPreview?: string }> }
+      }>(PONDER_URL, GET_RECOGNITION_ARTIFACT, { requestId })
+
+      if (recognitionResponse.artifacts.items.length > 0) {
+        const recognitionCid = recognitionResponse.artifacts.items[0].cid
+        const rawRecognition = await fetchIpfsContent(recognitionCid)
+        
+        if (rawRecognition) {
+          recognitionData = {
+            searchQuery: rawRecognition.searchQuery as string,
+            similarJobs: rawRecognition.similarJobs as Array<{ requestId: string; score: number; jobName?: string }>,
+            learnings: rawRecognition.learnings as string,
+            initialSituation: rawRecognition.initialSituation as Record<string, unknown>,
+            embeddingStatus: rawRecognition.embeddingStatus as string,
+            progressCheckpoint: rawRecognition.progressCheckpoint as RecognitionData['progressCheckpoint']
+          }
+          console.log('[API] Found recognition data in RECOGNITION_RESULT artifact')
+        }
+      }
+    }
+
+    // FALLBACK 2: Fetch SITUATION artifact (for backward compatibility)
     const situationResponse = await request<{
       artifacts: { items: Array<{ cid: string; contentPreview?: string }> }
     }>(PONDER_URL, GET_SITUATION_ARTIFACT, { requestId })
@@ -223,7 +271,7 @@ export async function GET(req: NextRequest) {
         situationData = rawSituation
       }
 
-      // FALLBACK: Extract recognition data from situation.meta.recognition if we didn't get it from delivery
+      // FALLBACK 3: Extract recognition data from situation.meta.recognition if we didn't get it from delivery or RECOGNITION_RESULT
       if (!recognitionData && situationData?.meta?.recognition) {
         recognitionData = {
           searchQuery: situationData.meta.recognition.searchQuery,

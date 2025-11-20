@@ -2150,3 +2150,23 @@ The legacy tag-based memory system has been replaced with a situation-centric le
   - Complex research: 7200s (2 hours) - for jobs with extensive web fetches and retries
   - Simple jobs: 600s (10 minutes) minimum
 - **On-Chain Behavior**: When timeout expires, marketplace considers request "undeliverable". Late delivery attempts are rejected with `RevokeRequest`, funds remain locked (no automatic refund mechanism in deployed balance tracker).
+
+### Ponder OlasMech:Deliver Failures (Fixed 2025-11-20)
+
+**Issue**: `OlasMech:Deliver` handler fails with "Failed to index OlasMech Deliver" and "Failed to fetch IPFS metadata".
+**Root Cause**: 
+1. `MarketplaceRequest` IPFS fetch fails (timeout/network), leaving request pre-seeded but incomplete.
+2. `OlasMech:Deliver` attempts to create `JobDefinition` but fails because `workstreamId` was missing or IPFS content-type was handled incorrectly (string vs object).
+**Fix**:
+- Updated `OlasMech:Deliver` to parse IPFS response if returned as string.
+- Updated `JobDefinition` upsert to inherit `workstreamId` from request.
+- Wrapped `JobDefinition` upsert in try/catch to prevent blocking delivery indexing.
+
+### Ponder MarketplaceRequest IPFS Failures (Fixed 2025-11-20)
+
+**Issue**: `MarketplaceRequest` handlers failing frequently with "Failed to fetch IPFS metadata" due to gateway timeouts or rate limiting.
+**Root Cause**: Single gateway (`gateway.autonolas.tech`) dependency with no retry logic and short (10s) timeout.
+**Fix**:
+- Implemented multi-gateway support with automatic failover (Autonolas -> Cloudflare -> IPFS.io -> DWeb).
+- Added exponential backoff/retry logic for IPFS fetches.
+- Increased default timeout to 15s per gateway attempt.

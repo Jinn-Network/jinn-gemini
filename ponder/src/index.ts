@@ -48,6 +48,11 @@ const NODE_EMBEDDINGS_DB_URL =
 
 let vectorDbPool: Pool | null = null;
 const IPFS_GATEWAY_BASE = (process.env.IPFS_GATEWAY_URL || "https://gateway.autonolas.tech/ipfs/").replace(/\/+$/, "/");
+const IPFS_GATEWAY_FALLBACKS = [
+  "https://cloudflare-ipfs.com/ipfs/",
+  "https://ipfs.io/ipfs/",
+  "https://dweb.link/ipfs/"
+];
 
 function getVectorDbPool(): Pool | null {
   if (!NODE_EMBEDDINGS_DB_URL) return null;
@@ -117,30 +122,46 @@ function buildRawCidFromDigest(digestHex: string): { cidHex: string; cidBase32: 
   return { cidHex, cidBase32 };
 }
 
-async function fetchRequestMetadata(cidBase32: string, timeoutMs = 10_000): Promise<any> {
-  const gateway = IPFS_GATEWAY_BASE;
-  const url = `${gateway}${cidBase32}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const contentType = response.headers.get("content-type") || "";
-    // Accept both application/json and application/octet-stream for raw IPFS CIDs
-    // Raw CIDs (bafkrei...) return octet-stream but contain valid JSON
-    const text = await response.text();
+async function fetchRequestMetadata(cidBase32: string, timeoutMs = 15_000): Promise<any> {
+  const gateways = [IPFS_GATEWAY_BASE, ...IPFS_GATEWAY_FALLBACKS];
+  let lastError: Error | null = null;
+
+  for (const gateway of gateways) {
+    const url = `${gateway}${cidBase32}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    
     try {
-      return JSON.parse(text);
-    } catch (parseError: any) {
-      throw new Error(`Failed to parse JSON: ${parseError.message}`);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      
+      if (!response.ok) {
+        const msg = `HTTP ${response.status} from ${gateway}`;
+        logger.debug({ cidBase32, gateway, status: response.status }, "IPFS gateway failed, trying next");
+        lastError = new Error(msg);
+        continue;
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      // Accept both application/json and application/octet-stream for raw IPFS CIDs
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch (parseError: any) {
+        const msg = `JSON parse error from ${gateway}: ${parseError.message}`;
+        logger.warn({ cidBase32, gateway, error: parseError.message }, "IPFS JSON parse failed, trying next");
+        lastError = new Error(msg);
+        continue;
+      }
+    } catch (error: any) {
+      clearTimeout(timer);
+      lastError = error;
+      logger.debug({ cidBase32, gateway, error: error.message }, "IPFS fetch network error, trying next");
+      continue;
     }
-  } catch (error: any) {
-    throw new Error(`Failed to fetch request metadata from ${url}: ${error.message}`);
-  } finally {
-    clearTimeout(timer);
   }
+
+  throw new Error(`Failed to fetch request metadata from any gateway. Last error: ${lastError?.message}`);
 }
 
 /**
@@ -366,8 +387,8 @@ ponder.on(
       //           2) Traverse sourceRequestId chain to find root (for child jobs)
       //           3) Use own request ID (for root jobs)
       let workstreamId: string;
-      const explicitWorkstreamId = additionalContext?.workstreamId;
-      if (explicitWorkstreamId && typeof explicitWorkstreamId === 'string') {
+      const explicitWorkstreamId = typeof content.workstreamId === 'string' ? content.workstreamId : undefined;
+      if (explicitWorkstreamId) {
         // Parent re-dispatch preserving workstream
         workstreamId = explicitWorkstreamId;
         logger.debug({ requestId: id, workstreamId }, 'Using explicit workstream ID from metadata');
@@ -609,6 +630,11 @@ ponder.on(
           }
         }
         if (res && res.status === 200 && res.data) {
+          // Ensure data is parsed if it came back as string (e.g. wrong content-type)
+          if (typeof res.data === 'string') {
+            try { res.data = JSON.parse(res.data); } catch {}
+          }
+
           // Try to extract jobDefinitionId from delivery payload
           const deliveryJobDefinitionId = typeof res.data.jobDefinitionId === 'string' ? res.data.jobDefinitionId : undefined;
           const jobName = typeof res.data.jobName === 'string' ? res.data.jobName : undefined;
@@ -624,27 +650,36 @@ ponder.on(
           // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
           if (deliveryJobDefinitionId) {
             if (jobDefRepo) {
-              await jobDefRepo.upsert({
-                id: deliveryJobDefinitionId,
-                create: { 
-                  id: deliveryJobDefinitionId, 
-                  name: jobName || 'Unnamed Job', 
-                  enabledTools, 
-                  blueprint, 
-                  sourceRequestId: requestId,
-                  createdAt: blockTimestamp,
-                  lastInteraction: blockTimestamp,
-                  lastStatus: deliveryStatus,
-                },
-                update: { 
-                  name: jobName || 'Unnamed Job', 
-                  enabledTools, 
-                  blueprint, 
-                  sourceRequestId: requestId,
-                  lastInteraction: blockTimestamp,
-                  lastStatus: deliveryStatus,
-                },
-              });
+              try {
+                // Inherit workstreamId from the request (or default to requestId if root)
+                const workstreamId = existingRequest?.workstreamId || requestId;
+                
+                await jobDefRepo.upsert({
+                  id: deliveryJobDefinitionId,
+                  create: { 
+                    id: deliveryJobDefinitionId, 
+                    name: jobName || 'Unnamed Job', 
+                    enabledTools, 
+                    blueprint, 
+                    workstreamId,
+                    sourceRequestId: requestId,
+                    createdAt: blockTimestamp,
+                    lastInteraction: blockTimestamp,
+                    lastStatus: deliveryStatus,
+                  },
+                  update: { 
+                    name: jobName || 'Unnamed Job', 
+                    enabledTools, 
+                    blueprint, 
+                    // Don't overwrite workstreamId on update
+                    sourceRequestId: requestId,
+                    lastInteraction: blockTimestamp,
+                    lastStatus: deliveryStatus,
+                  },
+                });
+              } catch (jdErr: any) {
+                logger.error({ jobDefinitionId: deliveryJobDefinitionId, error: serializeError(jdErr) }, "Failed to backfill job definition in Deliver handler");
+              }
             }
             // Backfill jobDefinitionId (target job) on delivery and request
             await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId, sourceRequestId: requestId } });
@@ -785,6 +820,6 @@ ponder.on(
 
     logger.info({ requestId, ipfsHash }, "Indexed OlasMech Deliver (delivery ipfs)");
   } catch (e: any) {
-    logger.error({ err: e?.message || String(e) }, "Failed to index OlasMech Deliver");
+    logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index OlasMech Deliver");
   }
 });
