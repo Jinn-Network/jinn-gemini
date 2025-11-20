@@ -212,6 +212,9 @@ env.tenderly
 olas-operate-middleware
 .cursor/screenshots/
 
+# mech-client-ts submodule (for local dev only, use npm package in production)
+packages/mech-client-ts/
+
 # Parallel test suite cache directories
 .ponder-test-*/
 .ponder-tests-next-*/

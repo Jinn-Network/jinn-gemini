@@ -2,7 +2,7 @@
  * Transaction delivery: wrap mech-client deliver logic, including Safe/Operate adjustments
  */
 
-import { deliverViaSafe } from '@jinn-network/mech-client-ts';
+import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { Web3 } from 'web3';
 import { workerLogger } from '../../logging/index.js';
 import { getOptionalMechChainConfig, getRequiredRpcUrl } from '../../gemini-agent/mcp/tools/shared/env.js';
