@@ -448,9 +448,24 @@ ponder.on(
       // Update jobDefinition with workstreamId now that it's computed
       if (jobDefRepo && jobDefinitionId) {
         try {
-          await jobDefRepo.update({
+          // Use upsert instead of update to ensure workstreamId is set even on create
+          await jobDefRepo.upsert({
             id: jobDefinitionId,
-            data: {
+            create: {
+              // This should never execute since we created above, but include as fallback
+              id: jobDefinitionId,
+              name: jobName || 'Unnamed Job',
+              enabledTools,
+              blueprint,
+              workstreamId,
+              sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
+              sourceRequestId: sourceRequestId,
+              codeMetadata,
+              createdAt: blockTimestamp,
+              lastInteraction: blockTimestamp,
+              lastStatus: 'PENDING',
+            },
+            update: {
               workstreamId,
             },
           });

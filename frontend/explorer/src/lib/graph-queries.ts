@@ -67,21 +67,29 @@ export interface GraphQueryOptions {
 async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobGraph> {
   const { rootId } = options
   
-  // 1. Fetch all Job Definitions in this workstream
-  const jobDefsResponse = await queryJobDefinitions({
-    where: { workstreamId: rootId },
-    limit: 1000
-  })
-  const jobDefs = jobDefsResponse.items
-
-  // 2. Fetch all Requests in this workstream (for stats aggregation)
+  // 1. Fetch all Requests in this workstream first
   const requestsResponse = await queryRequests({
     where: { workstreamId: rootId },
     limit: 1000
   })
   const requests = requestsResponse.items
+  
+  // 2. Collect unique job definition IDs from all requests
+  const jobDefIds = new Set<string>()
+  for (const req of requests) {
+    if (req.jobDefinitionId) {
+      jobDefIds.add(req.jobDefinitionId)
+    }
+  }
+  
+  // 3. Fetch all Job Definitions by their IDs (handles root jobs that span multiple workstreams)
+  const jobDefsResponse = await queryJobDefinitions({
+    where: { id_in: Array.from(jobDefIds) },
+    limit: 1000
+  })
+  const jobDefs = jobDefsResponse.items
 
-  // 3. Map Requests to their Job Definitions for stats
+  // 4. Map Requests to their Job Definitions for stats
   const statsByJobDef = new Map<string, {
     runCount: number
     deliveredCount: number
@@ -90,7 +98,7 @@ async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobG
     messageCount: number
   }>()
 
-  // Initialize stats for all known job definitions
+  // Initialize stats for all job definitions found in this workstream
   for (const jd of jobDefs) {
     statsByJobDef.set(jd.id, {
       runCount: 0,
@@ -122,12 +130,12 @@ async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobG
     }
   }
 
-  // 4. Enrich nodes with artifact/message counts (bulk or per node?)
+  // 5. Enrich nodes with artifact/message counts (bulk or per node?)
   // For now, we'll skip separate artifact/message queries per node to keep it fast.
   // We could fetch ALL artifacts for the workstream if needed, but that might be heavy.
   // Let's stick to what we have in the stats map for now.
 
-  // 5. Build Nodes
+  // 6. Build Nodes
   const nodes: GraphNode[] = jobDefs.map(jd => {
     const stats = statsByJobDef.get(jd.id)!
     
@@ -159,7 +167,7 @@ async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobG
 
   const nodeMap = new Map(nodes.map(n => [n.id, n]))
 
-  // 6. Build Edges
+  // 7. Build Edges
   const edges: GraphEdge[] = []
   
   for (const jd of jobDefs) {
@@ -174,7 +182,7 @@ async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobG
     }
   }
 
-  // 7. Identify Root and Calculate Levels
+  // 8. Identify Root and Calculate Levels
   // The "root" of the graph is likely the job definition that has no parent IN THIS SET
   // or matches the rootId (if rootId was a job def, but here it is workstream ID).
   
