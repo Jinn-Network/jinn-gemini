@@ -64,8 +64,8 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
       const existing = jobDefinitionMap.get(job.jobDefinitionId)
       if (existing) {
         existing.runCount++
-        // Update with most recent interaction
-        if (job.blockTimestamp > existing.lastInteraction) {
+        // Update with most recent interaction (numeric comparison for timestamps)
+        if (BigInt(job.blockTimestamp) > BigInt(existing.lastInteraction)) {
           existing.lastInteraction = job.blockTimestamp
         }
       } else {
