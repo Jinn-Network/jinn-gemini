@@ -50,7 +50,7 @@ import {
   waitForJobIndexed,
   pollGraphQL,
 } from '../../tests/helpers/shared.js';
-import { getOptionalMechModel } from '../../config/index.js';
+import { getOptionalMechModel, resetConfigForTests } from '../../config/index.js';
 
 async function waitForTransactionReceipt(
   rpcUrl: string,
@@ -1165,8 +1165,21 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   // EXQ-004: Validate model selection from job metadata
                   // Note: Grandchild uses the runtime default model (no explicit override)
+                  // Worker is started with model: 'gemini-2.5-pro', which gets inherited via MECH_MODEL
+                  // Set MECH_MODEL in test context to match what the worker uses for proper assertion
+                  const workerModel = 'gemini-2.5-pro'; // Matches runWorkerOnce model parameter
+                  const prevMechModel = process.env.MECH_MODEL;
+                  process.env.MECH_MODEL = workerModel;
+                  resetConfigForTests(); // Reset config cache to pick up MECH_MODEL change
                   const expectedGrandchildModel =
                     getOptionalMechModel?.() ?? process.env.MECH_MODEL ?? 'gemini-2.5-flash';
+                  // Restore previous MECH_MODEL
+                  if (prevMechModel === undefined) {
+                    delete process.env.MECH_MODEL;
+                  } else {
+                    process.env.MECH_MODEL = prevMechModel;
+                  }
+                  resetConfigForTests(); // Reset config cache again after restoring
                   expect(situation.job.model).toBe(expectedGrandchildModel); // Assert 49
                   console.log(`[TEST] Model selection validated (default model = ${expectedGrandchildModel}) ✓`);
 
@@ -1275,8 +1288,10 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] ✓ Child parent = Parent');
 
                   // EXQ-004: Validate child used correct model
-                  const expectedChildModel =
-                    getOptionalMechModel?.() ?? process.env.MECH_MODEL ?? 'gemini-2.5-flash';
+                  // Child job was created via createTestJob (before worker runs), so it defaults to 'gemini-2.5-flash'
+                  // The SITUATION encoder reads model from job metadata (IPFS), not worker's runtime MECH_MODEL
+                  // So child SITUATION will have 'gemini-2.5-flash' even though worker runs with 'gemini-2.5-pro'
+                  const expectedChildModel = 'gemini-2.5-flash';
                   expect(childSituationLineage.job.model).toBe(expectedChildModel); // Assert 52
 
                   // EXQ-005/006: Validate tool usage and enablement
