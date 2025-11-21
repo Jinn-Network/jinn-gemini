@@ -7,6 +7,7 @@ import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
 import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
+import { ensureUniversalTools } from './shared/base-tools.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
@@ -18,6 +19,7 @@ const dispatchExistingJobParamsBase = z.object({
   message: z.string().optional(),
   workstreamId: z.string().optional().describe('Workstream ID to preserve when re-dispatching parent jobs. If provided, ensures the new request maintains the same workstream as the child that triggered it.'),
   responseTimeout: z.number().optional().default(300).describe('Response timeout in seconds for marketplace request. Defaults to 300 (5 minutes). Maximum allowed by marketplace is 300 seconds.'),
+  additionalContext: z.any().optional(),
 });
 
 export const dispatchExistingJobParams = dispatchExistingJobParamsBase.refine(
@@ -43,7 +45,7 @@ export async function dispatchExistingJob(args: unknown) {
   if (!parse.success) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: parse.error.message } }) }] };
   }
-  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message, workstreamId: explicitWorkstreamId, responseTimeout } = parse.data;
+  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message, workstreamId: explicitWorkstreamId, responseTimeout, additionalContext: extraContext } = parse.data;
 
   // Auto-populate workstreamId from context if not explicitly provided
   const context = getCurrentJobContext();
@@ -102,7 +104,8 @@ export async function dispatchExistingJob(args: unknown) {
   const baseTools: string[] | undefined = Array.isArray(jobDef.enabledTools) ? jobDef.enabledTools : undefined;
   const baseBlueprint: string | undefined = typeof jobDef.blueprint === 'string' ? jobDef.blueprint : undefined;
 
-  const finalTools = overridesTools ?? baseTools ?? [];
+  const requestedTools = overridesTools ?? baseTools ?? [];
+  const finalTools = ensureUniversalTools(requestedTools);
   const finalBlueprint = overridePrompt ?? baseBlueprint ?? '';
   if (!finalBlueprint) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'MISSING_BLUEPRINT', message: 'No blueprint content available to dispatch. Use dispatch_new_job to create a job definition with a blueprint first.' } }) }] };
@@ -118,29 +121,40 @@ export async function dispatchExistingJob(args: unknown) {
 
   // Build additionalContext with job context and message
   let additionalContext: any = {};
+  if (extraContext) {
+    if (typeof extraContext === 'string') {
+      try {
+        additionalContext = JSON.parse(extraContext);
+      } catch {
+        additionalContext = {};
+      }
+    } else if (typeof extraContext === 'object') {
+      additionalContext = { ...extraContext };
+    }
+  }
 
-  // Include hierarchy and summary if job context was successfully fetched
   if (jobContext) {
-    additionalContext.hierarchy = jobContext.hierarchy;
-    additionalContext.summary = jobContext.summary;
+    if (!additionalContext.hierarchy) {
+      additionalContext.hierarchy = jobContext.hierarchy;
+    }
+    if (!additionalContext.summary) {
+      additionalContext.summary = jobContext.summary;
+    }
   }
 
   // Add message to additionalContext if provided
   // This is CRITICAL for Work Protocol - message must always be preserved
   if (message) {
-    // Try to parse message as JSON (for structured messages from worker)
     let messageObj: any = null;
     try {
       const parsed = JSON.parse(message);
-      // If it's already a structured message with content/to/from, use it directly
       if (parsed && typeof parsed === 'object' && parsed.content) {
         messageObj = parsed;
       }
     } catch {
-      // Not JSON, treat as plain string
+      // ignore
     }
 
-    // Use parsed structure if available, otherwise create envelope
     if (messageObj) {
       additionalContext.message = messageObj;
     } else {
@@ -152,15 +166,38 @@ export async function dispatchExistingJob(args: unknown) {
     }
   }
 
-  // Code metadata collection is optional for artifact-only jobs
+  const deterministicArtifactCount = Array.isArray(additionalContext.completedChildRuns)
+    ? additionalContext.completedChildRuns.reduce((sum: number, run: any) => {
+        if (!Array.isArray(run?.artifacts)) return sum;
+        return sum + run.artifacts.filter((artifact: any) => Boolean(artifact?.cid || artifact?.id)).length;
+      }, 0)
+    : 0;
+
+  if (deterministicArtifactCount > 0) {
+    if (!additionalContext.summary || typeof additionalContext.summary !== 'object') {
+      additionalContext.summary = {
+        totalJobs: jobContext?.hierarchy?.length ?? 0,
+        completedJobs: jobContext?.summary?.completedJobs ?? 0,
+        activeJobs: jobContext?.summary?.activeJobs ?? 0,
+        totalArtifacts: deterministicArtifactCount,
+        hasErrors: jobContext?.summary?.hasErrors ?? false,
+      };
+    } else {
+      additionalContext.summary.totalArtifacts =
+        (additionalContext.summary.totalArtifacts || 0) + deterministicArtifactCount;
+    }
+  }
+
+  const baseBranch =
+    context.branchName ||
+    context.baseBranch ||
+    context.branchName ||
+    getCodeMetadataDefaultBaseBranch();
+
   let branchResult: any = null;
   let codeMetadata: any = null;
   
   try {
-    const baseBranch =
-      (context as any)?.baseBranch ||
-      getCodeMetadataDefaultBaseBranch();
-
     branchResult = await ensureJobBranch({
       jobDefinitionId,
       jobName: name,
@@ -187,6 +224,21 @@ export async function dispatchExistingJob(args: unknown) {
     console.error('[dispatch_existing_job] Code metadata collection skipped:', codeMetadataError.message);
   }
 
+  const lineage =
+    context.requestId ||
+    context.jobDefinitionId ||
+    context.parentRequestId ||
+    context.branchName ||
+    context.baseBranch
+      ? {
+          dispatcherRequestId: context.requestId || undefined,
+          dispatcherJobDefinitionId: context.jobDefinitionId || undefined,
+          parentDispatcherRequestId: context.parentRequestId || undefined,
+          dispatcherBranchName: context.branchName || undefined,
+          dispatcherBaseBranch: context.baseBranch || undefined,
+        }
+      : undefined;
+
   const ipfsJsonContents: any[] = [{
     blueprint: finalBlueprint,
     jobName: name,
@@ -207,11 +259,14 @@ export async function dispatchExistingJob(args: unknown) {
     ipfsJsonContents[0].baseBranch = branchResult.baseBranch || getCodeMetadataDefaultBaseBranch();
   }
 
+  if (lineage) {
+    ipfsJsonContents[0].lineage = lineage;
+  }
+
   if (codeMetadata) {
     ipfsJsonContents[0].codeMetadata = codeMetadata;
   }
 
-  // Only include execution policy if we have branch info
   if (branchResult) {
     ipfsJsonContents[0].executionPolicy = {
       branch: branchResult.branchName,
@@ -220,29 +275,29 @@ export async function dispatchExistingJob(args: unknown) {
     };
   }
 
-    try {
-      const priorityMech = getMechAddress();
-      const privateKey = getServicePrivateKey();
-      const chainConfig = getMechChainConfig();
+  try {
+    const priorityMech = getMechAddress();
+    const privateKey = getServicePrivateKey();
+    const chainConfig = getMechChainConfig();
 
-      if (!priorityMech) {
-        throw new Error('Service target mech address not configured. Check .operate service config (MECH_TO_CONFIG).');
-      }
+    if (!priorityMech) {
+      throw new Error('Service target mech address not configured. Check .operate service config (MECH_TO_CONFIG).');
+    }
 
-      if (!privateKey) {
-        throw new Error('Service agent private key not found. Check .operate/keys directory.');
-      }
+    if (!privateKey) {
+      throw new Error('Service agent private key not found. Check .operate/keys directory.');
+    }
 
-      const result = await marketplaceInteract({
-        prompts: [finalBlueprint],
-        priorityMech,
-        tools: finalTools,
-        ipfsJsonContents,
-        chainConfig,
-        keyConfig: { source: 'value', value: privateKey },
-        postOnly: true,
-        responseTimeout,
-      });
+    const result = await marketplaceInteract({
+      prompts: [finalBlueprint],
+      priorityMech,
+      tools: finalTools,
+      ipfsJsonContents,
+      chainConfig,
+      keyConfig: { source: 'value', value: privateKey },
+      postOnly: true,
+      responseTimeout,
+    });
 
     if (!result || !Array.isArray(result.request_ids) || result.request_ids.length === 0) {
       return {

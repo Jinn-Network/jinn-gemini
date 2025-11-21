@@ -26,6 +26,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { withTestEnv } from '../../helpers/env-controller.js';
 import { withProcessHarness } from '../../helpers/process-harness.js';
 import { withTenderlyVNet } from '../../helpers/tenderly-runner.js';
+import { withSuiteEnv } from '../../helpers/suite-env.js';
 import { createGitFixture, type GitFixture } from '../../helpers/git-fixture.js';
 import { createTestJob } from '../../helpers/mcp-client.js';
 import { waitForRequestIndexed, waitForPonderReady } from '../../helpers/ponder-waiters.js';
@@ -102,13 +103,14 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
    * prevents invalid writes before they reach Supabase.
    */
   it('blocks claim when requestId not found in Ponder', async () => {
-    await withTestEnv(async () => {
-      await withProcessHarness(
-        {
-          rpcUrl: 'http://127.0.0.1:8545', // Mock RPC (no VNet needed, empty Ponder)
-          startWorker: false
-        },
-        async (ctx) => {
+    await withSuiteEnv(async () => {
+      await withTestEnv(async () => {
+        await withProcessHarness(
+          {
+            rpcUrl: 'http://127.0.0.1:8545', // Mock RPC (no VNet needed, empty Ponder)
+            startWorker: false
+          },
+          async (ctx) => {
           // 1. Wait for Ponder to be ready (but empty - no requests seeded)
           await waitForPonderReady(ctx.gqlUrl);
 
@@ -143,8 +145,9 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
             .eq('request_id', invalidRequestId);
 
           expect(claims).toHaveLength(0); // Critical: No database pollution!
-        }
-      );
+          }
+        );
+      });
     });
   }, 60000); // 60s timeout for Ponder startup
 
@@ -154,14 +157,15 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
    * Validates the happy path: valid requestId → validation passes → write succeeds
    */
   it('allows claim when requestId exists in Ponder', async () => {
-    await withTestEnv(async () => {
-      await withTenderlyVNet(async (tenderly) => {
-        await withProcessHarness(
-          {
-            rpcUrl: tenderly.rpcUrl,
-            startWorker: false
-          },
-          async (ctx) => {
+    await withSuiteEnv(async () => {
+      await withTestEnv(async () => {
+        await withTenderlyVNet(async (tenderly) => {
+          await withProcessHarness(
+            {
+              rpcUrl: tenderly.rpcUrl,
+              startWorker: false
+            },
+            async (ctx) => {
             // 1. Wait for Ponder to be ready
             await waitForPonderReady(ctx.gqlUrl, { timeoutMs: 60000 });
 
@@ -215,8 +219,9 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
             expect(claims).toHaveLength(1);
             expect(claims![0].request_id).toBe(requestId);
             expect(claims![0].worker_address).toBe(TEST_WORKER_ADDRESS);
-          }
-        );
+            }
+          );
+        });
       });
     });
   }, 240000); // 240s timeout for Git + Tenderly + Ponder + job creation
@@ -228,14 +233,15 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
    * Tests ON CONFLICT DO NOTHING logic in Supabase.
    */
   it('handles idempotent claims (same request claimed twice)', async () => {
-    await withTestEnv(async () => {
-      await withTenderlyVNet(async (tenderly) => {
-        await withProcessHarness(
-          {
-            rpcUrl: tenderly.rpcUrl,
-            startWorker: false
-          },
-          async (ctx) => {
+    await withSuiteEnv(async () => {
+      await withTestEnv(async () => {
+        await withTenderlyVNet(async (tenderly) => {
+          await withProcessHarness(
+            {
+              rpcUrl: tenderly.rpcUrl,
+              startWorker: false
+            },
+            async (ctx) => {
             // 1. Wait for Ponder to be ready
             await waitForPonderReady(ctx.gqlUrl, { timeoutMs: 60000 });
 
@@ -291,8 +297,9 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
             expect(claims![0].worker_address).toBe(TEST_WORKER_ADDRESS);
 
             console.log('[Test 3] Verified: Only 1 claim in database (idempotency works!)');
-          }
-        );
+            }
+          );
+        });
       });
     });
   }, 240000); // 240s timeout
@@ -304,14 +311,15 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
    * not manually constructed by worker.
    */
   it('injects lineage fields (request_id, worker_address)', async () => {
-    await withTestEnv(async () => {
-      await withTenderlyVNet(async (tenderly) => {
-        await withProcessHarness(
-          {
-            rpcUrl: tenderly.rpcUrl,
-            startWorker: false
-          },
-          async (ctx) => {
+    await withSuiteEnv(async () => {
+      await withTestEnv(async () => {
+        await withTenderlyVNet(async (tenderly) => {
+          await withProcessHarness(
+            {
+              rpcUrl: tenderly.rpcUrl,
+              startWorker: false
+            },
+            async (ctx) => {
             // 1. Wait for Ponder to be ready
             await waitForPonderReady(ctx.gqlUrl, { timeoutMs: 60000 });
 
@@ -372,8 +380,9 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
             console.log('[Test 4] Verified: Lineage fields injected correctly!');
             console.log(`  - request_id: ${claim.request_id}`);
             console.log(`  - worker_address: ${claim.worker_address}`);
-          }
-        );
+            }
+          );
+        });
       });
     });
   }, 240000); // 240s timeout

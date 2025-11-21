@@ -121,7 +121,7 @@ This document outlines the implementation plan for integrating the Work Protocol
    - Implement parent dispatch logic
    - Modify `runAgentForRequest()` and `storeOnchainReport()`
 
-3. **gemini-agent/mcp/tools/get_job_context.ts**
+3. **gemini-agent/mcp/tools/get-details.ts** and **gemini-agent/mcp/tools/search-artifacts.ts**
    - Ensure parent job info is available
    - May need to enhance context retrieval
 

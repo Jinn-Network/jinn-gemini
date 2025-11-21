@@ -171,7 +171,7 @@ Automatic re-dispatch implements the work protocol's notification mechanism:
 2. Worker extracts `sourceRequestId` from child's metadata
 3. Worker fetches parent's `jobDefinitionId` from Ponder
 4. Worker calls `dispatch_existing_job({ jobId: parentJobDefId })`
-5. Parent's new run sees completed child via `get_job_context`
+5. Parent's new run sees completed child via `get_details` or `search_artifacts`
 6. Parent synthesizes results or waits for remaining children
 
 This design provides:
@@ -180,7 +180,7 @@ This design provides:
 - **Scalability**: Parent can have arbitrary number of children
 - **Fault Tolerance**: Re-dispatch happens even if child failed
 
-The parent's next run uses `get_job_context` to discover all requests for its `jobDefinitionId`, allowing it to see which children have completed and make intelligent decisions about synthesizing results or continuing to wait.
+The parent's next run uses `get_details` to query requests for its `jobDefinitionId`, or `search_artifacts` to find artifacts from completed children, allowing it to see which children have completed and make intelligent decisions about synthesizing results or continuing to wait.
 
 ---
 
@@ -195,7 +195,7 @@ Job containers (jobDefinitionId) must accumulate context across multiple executi
 |---|---|
 | Query all requests with same `jobDefinitionId` to get full history | Only look at current request in isolation |
 | Access artifacts from previous runs of same job | Assume each run starts from scratch |
-| Use `get_job_context` to see completed children from all runs | Query only current run's children |
+| Use `get_details` or `search_artifacts` to see completed children from all runs | Query only current run's children |
 | Build on learnings from failed attempts in previous runs | Treat each run as independent execution |
 
 **Commentary:**
@@ -220,7 +220,7 @@ This enables sophisticated work patterns:
 3. **Progressive Enhancement**: Artifacts accumulate, enabling richer context for later runs
 4. **Memory Formation**: SITUATION artifacts link to job container, building institutional knowledge
 
-The `get_job_context` tool provides this accumulated view, showing:
+The `get_details` and `search_artifacts` tools provide this accumulated view, showing:
 - All runs of this job definition
 - Status of each run (COMPLETED, FAILED, WAITING)
 - Artifacts created across all runs

@@ -23,7 +23,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+// @ts-ignore
 import { Client } from 'pg';
+import dotenv from 'dotenv';
 import { withTestEnv } from '../helpers/env-controller.js';
 import { withTenderlyVNet } from '../helpers/tenderly-runner.js';
 import { withProcessHarness } from '../helpers/process-harness.js';
@@ -35,18 +37,17 @@ import {
   waitForPonderRealtime,
   waitForPonderBlock,
 } from '../helpers/ponder-waiters.js';
-import { getRequest } from '../helpers/ponder-queries.js';
+import { getRequest, queryPonder } from '../helpers/ponder-queries.js';
+import { createTestJob, withJobContext, parseToolText } from '../helpers/mcp-client.js';
+import { waitForRequestIndexed } from '../helpers/ponder-waiters.js';
+import { waitForDelivery } from '../helpers/assertions.js';
+import { runWorkerOnce, cleanupWorkerProcesses } from '../helpers/worker-lifecycle.js';
 import {
-  createTestJob,
-  waitForRequestIndexed,
-  waitForDelivery,
-  runWorkerOnce,
   reconstructDirCidFromHexIpfsHash,
   fetchJsonWithRetry,
-  cleanupWorkerProcesses,
   resetTestEnvironment,
-  parseToolText,
-  withJobContext,
+} from '../helpers/shared-utils.js';
+import {
   waitForJobIndexed,
   pollGraphQL,
 } from '../../tests/helpers/shared.js';
@@ -110,10 +111,8 @@ async function advanceBlocks(rpcUrl: string, count: number) {
   await new Promise(resolve => setTimeout(resolve, 2000));
 }
 
-// =============================================================================
-// TEST HELPERS
-// =============================================================================
-
+// ======================================================================// TEST HELPERS
+// ======================================================================
 /**
  * Clear test embeddings from Supabase before test run.
  * Ensures test isolation and prevents data from previous runs.
@@ -133,10 +132,8 @@ async function clearTestEmbeddings() {
   }
 }
 
-// =============================================================================
-// TYPES & INTERFACES
-// =============================================================================
-
+// ======================================================================// TYPES & INTERFACES
+// ======================================================================
 interface SituationArtifact {
   version: string;
   job: {
@@ -184,10 +181,8 @@ interface SituationArtifact {
   };
 }
 
-// =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
-
+// ======================================================================// HELPER FUNCTIONS
+// ======================================================================
 /**
  * Fetches SITUATION artifact from delivery payload
  *
@@ -252,8 +247,8 @@ async function fetchSituation(
       // Some storage formats wrap the payload in {name, topic, content, ...}
       const embeddedContent =
         situationContent &&
-        typeof situationContent === 'object' &&
-        'content' in situationContent
+          typeof situationContent === 'object' &&
+          'content' in situationContent
           ? (situationContent as any).content
           : situationContent;
 
@@ -274,14 +269,15 @@ async function fetchSituation(
   }
 }
 
-// =============================================================================
-// TESTS
-// =============================================================================
-
+// ======================================================================// TESTS
+// ======================================================================
 describe('System: Memory System (MEM-001 to MEM-010)', () => {
   let gitFixture: GitFixture | null = null;
 
   beforeAll(async () => {
+    // Load .env.test before creating git fixture (needed for TEST_GITHUB_REPO)
+    dotenv.config({ path: path.resolve(process.cwd(), '.env.test'), override: false });
+
     // Clear previous test data to ensure clean state
     await clearTestEmbeddings();
 
@@ -300,18 +296,18 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
     'validates complete memory system lifecycle with recognition, reflection, and indexing',
     async () => {
       await withSuiteEnv(async () => {
-          const prevWorkerStdio = process.env.TESTS_NEXT_WORKER_STDIO;
-          process.env.TESTS_NEXT_WORKER_STDIO = 'inherit';
+        const prevWorkerStdio = process.env.TESTS_NEXT_WORKER_STDIO;
+        process.env.TESTS_NEXT_WORKER_STDIO = 'inherit';
 
-          try {
-            await withTestEnv(async () => {
+        try {
+          await withTestEnv(async () => {
             // Load test environment
             try {
               const testEnv = path.join(process.cwd(), '.env.test');
               if (fs.existsSync(testEnv)) {
                 process.env.JINN_ENV_PATH = testEnv;
               }
-            } catch {}
+            } catch { }
 
             await withTenderlyVNet(async (tenderlyCtx) => {
               await withProcessHarness(
@@ -331,10 +327,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   await waitForPonderRealtime(gqlUrl, { timeoutMs: 120000 });
                   console.log('[TEST] Ponder is ready for realtime indexing ✓');
 
-                  // =========================================================
-                  // SECTION 1: Create Parent Job For Lineage
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 1: Create Parent Job For Lineage
+                  // ==================================================
                   console.log('\n[TEST] Bootstrapping parent job for lineage...');
 
                   const parentJob = await createTestJob({
@@ -370,10 +364,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   });
                   console.log('[TEST] Parent job ready:', parentJob.requestId);
 
-                  // =========================================================
-                  // SECTION 1: Validate Parent Request Metadata (JINN-249, IDQ-001, LCQ-001)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 1: Validate Parent Request Metadata (JINN-249, IDQ-001, LCQ-001)
+                  // ==================================================
                   console.log('[TEST] Validating parent request metadata completeness...');
 
                   const parentRequest = await getRequest(gqlUrl, parentJob.requestId);
@@ -409,10 +401,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Parent request metadata validated ✓');
 
-                  // =========================================================
-                  // SECTION 1A: Parent Job Git Metadata (GWQ-001)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 1A: Parent Job Git Metadata (GWQ-001)
+                  // ==================================================
                   console.log('\n[TEST] SECTION 1A: Validating parent job git metadata...');
 
                   const parentJobDef = await waitForJobIndexed(gqlUrl, parentJob.jobDefId);
@@ -439,46 +429,80 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log(`[TEST] Parent git metadata validated: branch=${parentBranchName} ✓`);
 
-                  // =========================================================
-                  // SECTION 2: Create Child Job (Research + Delegation)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 2: Create Child Job (Research + Delegation)
+                  // ==================================================
                   console.log('\n[TEST] SECTION 2: Creating child job with delegation task...');
 
-                  const childJob = await withJobContext(
+                                    const childJob = await withJobContext(
                     {
                       requestId: parentJob.requestId,
                       jobDefinitionId: parentJob.jobDefId,
                       baseBranch: parentBranchName,
                     },
                     () => createTestJob({
-                      objective: 'Analyze OLAS staking mechanisms and delegate optimization task',
-                      context: 'Task 1: Call create_artifact with name="olas-staking-analysis", topic="defi-research", content="# OLAS Staking\\n\\nCurrent: APY 8-12%, 1w-1y locks, weekly rewards, 10% penalty.\\n\\nOptimize: dynamic APY, tiered locks, compounding." Task 2: Call dispatch_new_job with a blueprint containing an assertion to optimize OLAS staking parameters, with instructions to create MEMORY artifact with tags for future reuse.',
-                      acceptanceCriteria: 'Created analysis artifact and dispatched child job with MEMORY artifact creation instructions',
                       blueprint: JSON.stringify({
-                        assertions: [{
-                          id: 'MEM-002',
-                          assertion: 'Analyze OLAS staking mechanisms and delegate optimization task',
-                          examples: {
-                            do: [
-                              'Create "olas-staking-analysis" artifact with current parameters',
-                              'Dispatch child job for optimization with detailed context',
-                              'Ensure child job creates MEMORY artifact with tags'
-                            ],
-                            dont: [
-                              'Skip creating parent artifact',
-                              'Dispatch child job without context',
-                              'Forget MEMORY artifact in child job'
-                            ]
+                        assertions: [
+                          {
+                            id: 'MEM-002A',
+                            assertion: 'Review completed child work before delegating OLAS staking optimization.',
+                            examples: {
+                              do: [
+                                'If completed child jobs exist, use get_details with their request IDs (resolve_ipfs=true) before taking any action.',
+                                'When child work is sufficient, synthesize their findings into the final deliverable instead of dispatching new work.',
+                                'Document why delegation or completion was chosen.',
+                              ],
+                              dont: [
+                                'Ignore completed child jobs or their artifacts.',
+                                'Dispatch a new optimization job when existing child work already satisfies the objective.',
+                                'Skip documenting the decision.',
+                              ],
+                            },
+                            commentary:
+                              'Decision rule: delegate only when no completed child jobs exist. If completed child work exists, review it (artifacts, execution summaries, PR links) and complete this job yourself.',
                           },
-                          commentary: 'Task 1: Call create_artifact with name="olas-staking-analysis", topic="defi-research", content="# OLAS Staking\\n\\nCurrent: APY 8-12%, 1w-1y locks, weekly rewards, 10% penalty.\\n\\nOptimize: dynamic APY, tiered locks, compounding." Task 2: Call dispatch_new_job with a blueprint containing an assertion to optimize OLAS staking parameters, with instructions to create MEMORY artifact with tags for future reuse.'
-                        }]
+                          {
+                            id: 'MEM-002B',
+                            assertion: 'Analyze OLAS staking and, when delegating, require optimized outputs and reusable artifacts.',
+                            examples: {
+                              do: [
+                                'Create "olas-staking-analysis" artifact with current parameters (APY 8-12%, locks 1w-1y, weekly rewards, 10% penalty).',
+                                'If delegation is needed, dispatch optimization child job with instructions to write "olas-staking-optimization.md" with heading "# OLAS Staking Optimization Strategy" and to create a MEMORY artifact with tags [staking, optimization, olas]. When dispatching, set enabledTools to include ["create_artifact", "write_file"] (in addition to defaults).',
+                                'Provide detailed context to the child job for optimization.',
+                              ],
+                              dont: [
+                                'Skip creating the analysis artifact.',
+                                'Dispatch child job without MEMORY artifact instructions.',
+                                'Forget to include tags on the MEMORY artifact.',
+                              ],
+                            },
+                            commentary:
+                              'Task 1: Call create_artifact with name="olas-staking-analysis", topic="defi-research", content "# OLAS Staking\n\nCurrent: APY 8-12%, 1w-1y locks, weekly rewards, 10% penalty.\n\nOptimize: dynamic APY, tiered locks, compounding." Task 2: If delegation is required, instruct the child to create the optimization file and MEMORY artifact for future reuse.',
+                          },
+                          {
+                            id: 'MEM-002C',
+                            assertion: 'When a completed child exposes a git branch artifact, evaluate and merge it via process_branch before finishing.',
+                            examples: {
+                              do: [
+                                "Inspect the GIT_BRANCH artifact's diff/merge status and summarize whether it satisfies acceptance criteria.",
+                                'Call process_branch with action="merge" (or "skip" with rationale) before marking the job complete.',
+                                'Explain in the final response why the branch was merged or skipped.',
+                              ],
+                              dont: [
+                                'Ignore git branch artifacts produced by child jobs.',
+                                'Merge or skip a branch without calling process_branch or documenting the rationale.',
+                                'Finish the job without reviewing the branch diff/merge status.',
+                              ],
+                            },
+                            commentary:
+                              'Before completing this job, review any GIT_BRANCH artifacts from child jobs and call process_branch({ branch_name, action, rationale }) to merge or explicitly skip with justification to maintain deterministic branch state.',
+                          },
+                        ],
                       }),
-                      enabledTools: ['create_artifact', 'dispatch_new_job'],
+                      enabledTools: ['create_artifact', 'dispatch_new_job', 'write_file', 'process_branch'],
                     })
-                  );
+              );
 
-                  const { requestId } = childJob;
+const { requestId } = childJob;
                   const childTxHash =
                     childJob.dispatchResult?.data?.transaction_hash ??
                     childJob.dispatchResult?.data?.transactionHash ??
@@ -497,10 +521,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                       Boolean(request.jobName && request.jobDefinitionId),
                   });
 
-                  // =========================================================
-                  // SECTION 2: Validate Child Request Metadata (JINN-249, IDQ-001, LCQ-001)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 2: Validate Child Request Metadata (JINN-249, IDQ-001, LCQ-001)
+                  // ==================================================
                   console.log('[TEST] Validating child request metadata completeness...');
 
                   const childRequestMetadata = await getRequest(gqlUrl, requestId);
@@ -524,6 +546,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   expect(Array.isArray(childRequestMetadata!.enabledTools)).toBe(true);
                   expect(childRequestMetadata!.enabledTools).toContain('create_artifact');
                   expect(childRequestMetadata!.enabledTools).toContain('dispatch_new_job');
+                  expect(childRequestMetadata!.enabledTools).toContain('get_details');
+                  expect(childRequestMetadata!.enabledTools).toContain('search_artifacts');
 
                   // IDQ-001: Identity validation
                   expect(childRequestMetadata!.mech).toBeTruthy();
@@ -537,10 +561,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Child request metadata validated ✓');
 
-                  // =========================================================
-                  // SECTION 2A: Phase 1 Blueprint Verification
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 2A: Phase 1 Blueprint Verification
+                  // ==================================================
                   console.log('\n[TEST] SECTION 2A: Validating Phase 1 blueprint implementation...');
 
                   // Fetch child job definition from Ponder
@@ -581,10 +603,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Phase 1 blueprint verification complete ✓');
 
-                  // =========================================================
-                  // SECTION 3: Run Worker on Child Job
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 3: Run Worker on Child Job
+                  // ==================================================
                   console.log('\n[TEST] SECTION 3: Running worker on child job...');
 
                   const workerProc = await runWorkerOnce(requestId, {
@@ -605,10 +625,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                     await cleanupWorkerProcesses();
                   }
 
-                  // =========================================================
-                  // SECTION 4: Wait for Child Delivery
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 4: Wait for Child Delivery
+                  // ==================================================
                   console.log('\n[TEST] SECTION 4: Waiting for child delivery...');
 
                   const childDelivery = await waitForDelivery(gqlUrl, requestId, {
@@ -624,10 +642,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Child delivery confirmed:', childDelivery.transactionHash);
 
-                  // =========================================================
-                  // SECTION 4B: Child Job Status Validation (Work Protocol)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 4B: Child Job Status Validation (Work Protocol)
+                  // ==================================================
                   console.log('\n[TEST] SECTION 4B: Validating child job status...');
 
                   // Fetch child SITUATION from IPFS delivery
@@ -672,10 +688,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Child request hierarchy validated ✓');
 
-                  // =========================================================
-                  // SECTION 4A: Child Job Git Lineage Metadata (GWQ-002)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 4A: Child Job Git Lineage Metadata (GWQ-002)
+                  // ==================================================
                   console.log('\n[TEST] SECTION 4A: Validating child job git lineage metadata...');
 
                   const childJobDefGit = await waitForJobIndexed(gqlUrl, childJob.jobDefId);
@@ -701,10 +715,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log(`[TEST] Child lineage metadata validated: child=${childBranchName} → parent=${parentBranchName} ✓`);
 
-                  // =========================================================
-                  // SECTION 5: Wait for Child's SITUATION Embedding to be Indexed
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 5: Wait for Child's SITUATION Embedding to be Indexed
+                  // ==================================================
                   console.log('\n[TEST] SECTION 5: Waiting for child SITUATION to be indexed...');
 
                   // Wait for SITUATION artifact to appear in Ponder
@@ -753,10 +765,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Child SITUATION embedding ready ✓');
 
-                  // =========================================================
-                  // SECTION 5: Validate Child Embedding Format
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 5: Validate Child Embedding Format
+                  // ==================================================
                   console.log('\n[TEST] SECTION 5: Validating child SITUATION embedding...');
 
                   // Fetch child SITUATION artifact from IPFS
@@ -765,6 +775,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   if (!childSituation) {
                     throw new Error('Child situation is null');
                   }
+                  if (!childSituation) throw new Error('Child situation missing');
+
 
                   const childEmbedding = childSituation.embedding;
                   expect(childEmbedding).toBeDefined();
@@ -782,10 +794,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Child embedding format validated ✓');
 
-                  // =========================================================
-                  // SECTION 6: Find Grandchild Request Created by Child
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 6: Find Grandchild Request Created by Child
+                  // ==================================================
                   console.log('\n[TEST] SECTION 6: Looking for grandchild job created by child...');
 
                   // Advance blocks to ensure Ponder picks up grandchild's MarketplaceRequest event
@@ -807,10 +817,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                       Boolean(request.jobName && request.jobDefinitionId),
                   });
 
-                  // =========================================================
-                  // SECTION 7: Validate Grandchild Request Metadata (JINN-249, IDQ-001, LCQ-001)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 7: Validate Grandchild Request Metadata (JINN-249, IDQ-001, LCQ-001)
+                  // ==================================================
                   console.log('[TEST] Validating grandchild request metadata completeness...');
 
                   const grandchildRequestRecord = await getRequest(gqlUrl, grandchildRequest.id);
@@ -830,13 +838,12 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   expect(grandchildRequestRecord!.sourceRequestId).toBe(requestId);
                   expect(grandchildRequestRecord!.sourceJobDefinitionId).toBe(childJob.jobDefId);
 
-                  // Enabled tools validation (optional field - may be undefined if not specified)
-                  if (grandchildRequestRecord!.enabledTools) {
-                    expect(Array.isArray(grandchildRequestRecord!.enabledTools)).toBe(true);
-                    expect(grandchildRequestRecord!.enabledTools!.length).toBeGreaterThan(0);
-                    // Note: Agent should have specified tools per blueprint, but didn't
-                    // This is acceptable - enabledTools is optional in dispatch_new_job schema
-                  }
+                  // Enabled tools validation
+                  expect(Array.isArray(grandchildRequestRecord!.enabledTools)).toBe(true);
+                  expect(grandchildRequestRecord!.enabledTools!.length).toBeGreaterThan(0);
+                  expect(grandchildRequestRecord!.enabledTools).toContain('create_artifact');
+                  // Coding tools validation - grandchild should have write_file enabled
+                  expect(grandchildRequestRecord!.enabledTools).toContain('write_file');
 
                   // IDQ-001: Identity validation
                   expect(grandchildRequestRecord!.mech).toBeTruthy();
@@ -855,10 +862,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Grandchild request metadata validated ✓');
 
-                  // =========================================================
-                  // SECTION 7: Run Worker on Grandchild Job
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 7: Run Worker on Grandchild Job
+                  // ==================================================
                   console.log('\n[TEST] SECTION 7: Running worker on grandchild...');
 
                   const grandchildWorkerProc = await runWorkerOnce(grandchildRequest.id, {
@@ -876,10 +881,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                     await cleanupWorkerProcesses();
                   }
 
-                  // =========================================================
-                  // SECTION 8: Wait for Grandchild Delivery
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 8: Wait for Grandchild Delivery
+                  // ==================================================
                   console.log('\n[TEST] SECTION 8: Waiting for grandchild delivery...');
 
                   const grandchildDelivery = await waitForDelivery(gqlUrl, grandchildRequest.id, {
@@ -894,10 +897,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Grandchild delivery confirmed:', grandchildDelivery.transactionHash);
 
-                  // =========================================================
-                  // SECTION 8B: Grandchild Job Status Validation (Work Protocol)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 8B: Grandchild Job Status Validation (Work Protocol)
+                  // ==================================================
                   console.log('\n[TEST] SECTION 8B: Validating grandchild job status...');
 
                   // Fetch grandchild SITUATION from IPFS delivery
@@ -916,10 +917,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   expect(grandchildDispatchCalls.length).toBe(0);
                   console.log('[TEST] Grandchild is terminal job (no further delegation) ✓');
 
-                  // =========================================================
-                  // SECTION 8C: Child Auto-Dispatch Validation (JINN-253)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 8C: Child Auto-Dispatch Validation (JINN-253)
+                  // ==================================================
                   console.log('\n[TEST] SECTION 8C: Validating child auto-dispatch after grandchild completion...');
 
                   // Query for auto-dispatched requests on the child job definition
@@ -1029,9 +1028,9 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                     messageContentPreview: childWorkProtocolMessage.content.substring(0, 50) + '...'
                   });
 
-                  // =========================================================
-                  // SECTION 8A: Grandchild Job Git Lineage Metadata (GWQ-002)
-                  // =========================================================
+                  // ==================================================                  // SECTION 8A: Validating grandchild git lineage metadata
+                  // ==================================================                  // NOTE: This section runs BEFORE Section 8D (child rerun worker) because
+                  // we need to verify the branch exists before the worker merges/deletes it
 
                   console.log('\n[TEST] SECTION 8A: Validating grandchild git lineage metadata...');
 
@@ -1051,7 +1050,7 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   expect(grandchildJobDef?.codeMetadata?.parent?.jobDefinitionId).toBe(childJob.jobDefId); // Assert 74
                   expect(grandchildJobDef?.codeMetadata?.parent?.requestId).toBe(requestId); // Assert 75
 
-                  // Branch created in git
+                  // Branch created in git (validates branch creation before merge)
                   const grandchildBranches = execSync('git branch --format="%(refname:short)"', {
                     cwd: gitFixture!.repoPath,
                     encoding: 'utf-8'
@@ -1060,10 +1059,285 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log(`[TEST] 3-level git lineage metadata validated: grandchild→child→parent ✓`);
 
-                  // =========================================================
-                  // SECTION 9: Wait for MEMORY Artifact (MEM-006, MEM-007)
-                  // =========================================================
+                  // ==================================================                  // SECTION 8A-B: Validating grandchild coding capabilities (pre-merge)
+                  // ==================================================
+                  console.log('\n[TEST] SECTION 8A-B: Validating grandchild coding capabilities (pre-merge)...');
 
+                  const grandchildBranchNameForCoding = grandchildBranchName;
+                  const expectedFileName = 'olas-staking-optimization.md';
+
+                  // Ensure origin has latest commits before inspection
+                  execSync('git fetch origin', {
+                    cwd: gitFixture!.repoPath,
+                    encoding: 'utf-8'
+                  });
+
+                  // Verify the file exists in the grandchild branch
+                  let fileContent: string;
+                  try {
+                    fileContent = execSync(`git show origin/${grandchildBranchNameForCoding}:${expectedFileName}`, {
+                      cwd: gitFixture!.repoPath,
+                      encoding: 'utf-8'
+                    });
+                  } catch (error: any) {
+                    throw new Error(`File ${expectedFileName} not found in grandchild branch ${grandchildBranchNameForCoding}: ${error.message}`);
+                  }
+
+                  expect(fileContent).toBeTruthy();
+                  expect(fileContent.toLowerCase()).toContain('olas');
+                  expect(fileContent.toLowerCase()).toContain('staking');
+                  // Content can vary; ensure non-empty and thematically relevant
+                  expect(fileContent.length).toBeGreaterThan(0);
+                  console.log(`[TEST] ✓ File ${expectedFileName} exists in grandchild branch with expected content`);
+
+                  // Verify the commit message matches the Execution Summary
+                  const latestCommitMessage = execSync(
+                    `git log origin/${grandchildBranchNameForCoding} --format="%s" -n 1`,
+                    { cwd: gitFixture!.repoPath, encoding: 'utf-8' }
+                  ).trim();
+
+                  expect(latestCommitMessage.length).toBeGreaterThan(0);
+                  console.log(`[TEST] ✓ Commit message present: "${latestCommitMessage}"`);
+
+                  // Verify the file was actually committed (not just staged)
+                  const fileCommitLog = execSync(
+                    `git log origin/${grandchildBranchNameForCoding} --format="%s" --follow -n 1 -- ${expectedFileName}`,
+                    { cwd: gitFixture!.repoPath, encoding: 'utf-8' }
+                  ).trim();
+
+                  expect(fileCommitLog.length).toBeGreaterThan(0);
+                  console.log(`[TEST] ✓ File was committed: "${fileCommitLog}"`);
+
+                  // ==================================================                  // SECTION 8A-C: Validating PR creation readiness (pre-merge)
+                  // ==================================================
+                  console.log('\n[TEST] SECTION 8A-C: Validating PR readiness before merge...');
+
+                  const githubToken = process.env.GITHUB_TOKEN;
+                  if (!githubToken) {
+                    throw new Error('GITHUB_TOKEN environment variable is required for PR creation test');
+                  }
+
+                  let remoteUrl = gitFixture!.remoteUrl;
+                  if (!remoteUrl || !remoteUrl.startsWith('http')) {
+                    try {
+                      remoteUrl = execSync('git remote get-url origin', {
+                        cwd: gitFixture!.repoPath,
+                        encoding: 'utf-8'
+                      }).trim();
+                    } catch (error: any) {
+                      throw new Error(`Failed to get remote URL from git config: ${error.message}`);
+                    }
+                  }
+
+                  if (remoteUrl.startsWith('https://') && remoteUrl.includes('@')) {
+                    try {
+                      const url = new URL(remoteUrl);
+                      url.username = '';
+                      remoteUrl = url.toString();
+                    } catch {
+                      remoteUrl = remoteUrl.replace(/https:\/\/[^@]+@/, 'https://');
+                    }
+                  }
+
+                  if (!remoteUrl || (!remoteUrl.startsWith('http') && !remoteUrl.startsWith('git@'))) {
+                    throw new Error(`Invalid remote URL format: ${remoteUrl}. Expected HTTPS URL or git@ format.`);
+                  }
+
+                  let owner: string;
+                  let repo: string;
+
+                  if (remoteUrl.startsWith('http')) {
+                    const url = new URL(remoteUrl);
+                    const pathParts = url.pathname.replace(/^\/+/, '').replace(/\.git$/, '').split('/');
+                    [owner, repo] = pathParts;
+                  } else {
+                    const match = remoteUrl.match(/git@([^:]+):(.+?)(?:\.git)?$/);
+                    if (!match) {
+                      throw new Error(`Unable to parse SSH remote URL: ${remoteUrl}`);
+                    }
+                    const [, , repoPath] = match;
+                    [owner, repo] = repoPath.split('/');
+                  }
+
+                  if (!owner || !repo) {
+                    throw new Error(`Unable to extract owner/repo from remote URL: ${remoteUrl}`);
+                  }
+
+                  console.log(`[TEST] Repository: ${owner}/${repo}`);
+                  console.log(`[TEST] Branch: ${grandchildBranchNameForCoding}`);
+
+                  const branchCheckResult = execSync(
+                    `git ls-remote --heads origin ${grandchildBranchNameForCoding}`,
+                    { cwd: gitFixture!.repoPath, encoding: 'utf-8' }
+                  ).trim();
+
+                  expect(branchCheckResult.length).toBeGreaterThan(0);
+                  console.log(`[TEST] ✓ Branch exists on remote: ${grandchildBranchNameForCoding}`);
+
+                  const expectedBaseBranch = childBranchName;
+                  const commitCountResult = execSync(
+                    `git rev-list --count origin/${expectedBaseBranch}..origin/${grandchildBranchNameForCoding}`,
+                    { cwd: gitFixture!.repoPath, encoding: 'utf-8' }
+                  ).trim();
+                  const commitCount = parseInt(commitCountResult);
+
+                  expect(commitCount).toBeGreaterThan(0);
+                  console.log(`[TEST] ✓ Branch has ${commitCount} commit(s) ahead of base`);
+                  console.log(`[TEST] ✓ Base branch: ${expectedBaseBranch}`);
+                  console.log('[TEST] Branch validation complete ✓');
+
+                  // ==================================================                  // SECTION 8D: Run auto-dispatched child rerun (context envelope validation)
+                  // ==================================================
+                  const childRerunRequestId = autoDispatchedRequest.id;
+                  console.log(`\n[TEST] SECTION 8D: Running worker on auto-dispatched child request ${childRerunRequestId}...`);
+
+                  await waitForRequestIndexed(gqlUrl, childRerunRequestId, {
+                    predicate: (request) => Boolean(request.jobName && request.jobDefinitionId),
+                  });
+
+                  const childRerunRequestRecord = await getRequest(gqlUrl, childRerunRequestId);
+                  expect(childRerunRequestRecord).toBeDefined();
+                  expect(childRerunRequestRecord!.jobDefinitionId).toBe(childJob.jobDefId);
+                  expect(childRerunRequestRecord!.sourceRequestId).toBe(parentJob.requestId);
+
+                  // Parse additionalContext to verify deterministic hierarchy envelope
+                  let rerunAdditionalContext: any = childRerunRequestRecord!.additionalContext;
+                  if (rerunAdditionalContext && typeof rerunAdditionalContext === 'string') {
+                    try {
+                      rerunAdditionalContext = JSON.parse(rerunAdditionalContext);
+                    } catch (error) {
+                      console.warn('[TEST] Failed to parse rerun additionalContext string:', error);
+                    }
+                  }
+                  expect(rerunAdditionalContext, 'Auto-dispatched request should include additionalContext').toBeTruthy();
+                  const rerunHierarchy = rerunAdditionalContext?.hierarchy;
+                  expect(Array.isArray(rerunHierarchy)).toBe(true);
+                  const rerunSummary = rerunAdditionalContext?.summary;
+                  expect(rerunSummary, 'Hierarchy summary should be present').toBeTruthy();
+                  if (rerunSummary) {
+                    expect(typeof rerunSummary.totalArtifacts).toBe('number');
+                    expect(rerunSummary.totalArtifacts, 'Summary should report child artifacts for completed work').toBeGreaterThan(0);
+                  }
+                  if (Array.isArray(rerunHierarchy)) {
+                    const currentNode = rerunHierarchy.find((node: any) => node.jobId === childJob.jobDefId && node.level === 0);
+                    expect(currentNode, 'Hierarchy should include current child job node').toBeTruthy();
+                    const grandchildNode = rerunHierarchy.find(
+                      (node: any) =>
+                        Array.isArray(node.requestIds) && node.requestIds.includes(grandchildRequest.id)
+                    );
+                    expect(grandchildNode, 'Hierarchy should include grandchild request IDs').toBeTruthy();
+                    const completedChildNode = rerunHierarchy.find(
+                      (node: any) =>
+                        node.status === 'completed' &&
+                        Array.isArray(node.requestIds) &&
+                        node.requestIds.includes(grandchildRequest.id)
+                    );
+                    if (completedChildNode) {
+                      const completedChildArtifacts =
+                        completedChildNode?.artifactRefs?.filter((artifact: any) => Boolean(artifact?.cid)) || [];
+                      expect(
+                        completedChildArtifacts.length,
+                        'Completed child node should expose artifact references (id + cid)'
+                      ).toBeGreaterThan(0);
+                    } else {
+                      console.warn('[TEST] Ponder hierarchy did not reflect completed child yet; relying on deterministic context');
+                    }
+                  }
+
+                  const deterministicRuns = rerunAdditionalContext?.completedChildRuns;
+                  expect(Array.isArray(deterministicRuns)).toBe(true);
+                  if (Array.isArray(deterministicRuns)) {
+                    const deterministicEntry = deterministicRuns.find(
+                      (run: any) => run?.requestId === grandchildRequest.id
+                    );
+                    expect(deterministicEntry, 'Deterministic context should include the completed grandchild run').toBeTruthy();
+                    const deterministicArtifacts =
+                      deterministicEntry?.artifacts?.filter((artifact: any) => Boolean(artifact?.cid && artifact?.id)) || [];
+                    expect(deterministicArtifacts.length).toBeGreaterThan(0);
+                    deterministicArtifacts.forEach((artifact: any) => {
+                      expect(typeof artifact.id).toBe('string');
+                      expect(artifact.id).toContain(grandchildRequest.id);
+                      expect(typeof artifact.cid).toBe('string');
+                      expect(artifact.cid).toMatch(/^baf|^Qm/);
+
+                      // RICH CONTEXT ASSERTION (TDD):
+                      // Verify that branch artifacts have enriched details (diff & status)
+                      if (artifact.type === 'GIT_BRANCH' || artifact.topic === 'git/branch') {
+                        expect(artifact.details, 'Branch artifact should have enriched details').toBeDefined();
+                        expect(artifact.details.mergeStatus).toMatch(/mergeable|conflict|unknown/);
+                        expect(typeof artifact.details.diffSummary).toBe('string');
+                        expect(artifact.details.diffSummary.length).toBeGreaterThan(0);
+                        console.log('[TEST] ✓ Branch artifact enriched with diff & status');
+                      }
+                    });
+                  }
+
+                  const childRerunWorker = await runWorkerOnce(childRerunRequestId, {
+                    gqlUrl,
+                    controlApiUrl: controlUrl,
+                    model: 'gemini-2.5-pro',
+                    timeout: 300_000,
+                  });
+
+                  try {
+                    await childRerunWorker;
+                  } catch (error) {
+                    console.warn('[TEST] Child rerun worker exited with error:', error);
+                  } finally {
+                    await cleanupWorkerProcesses();
+                  }
+
+                  // Verify branch cleanup (Assert 95)
+                  // The process_branch tool should have deleted the branch locally after merging
+                  const grandchildBranchStillExists = execSync('git branch --format="%(refname:short)"', {
+                    cwd: gitFixture!.repoPath,
+                    encoding: 'utf-8'
+                  }).split('\n').map(b => b.trim()).includes(grandchildBranchName);
+                  expect(grandchildBranchStillExists, 'Grandchild branch should be deleted locally after merge').toBe(false);
+                  console.log('[TEST] Grandchild branch cleanup validated (deleted locally) ✓');
+
+                  const childRerunDelivery = await waitForDelivery(gqlUrl, childRerunRequestId, {
+                    maxAttempts: 40,
+                    delayMs: 5000,
+                  });
+                  expect(childRerunDelivery.id).toBe(childRerunRequestId);
+
+                  const childRerunSituation = await fetchSituation(childRerunDelivery, gqlUrl);
+                  expect(childRerunSituation).toBeDefined();
+                  if (!childRerunSituation) {
+                    throw new Error('Child rerun SITUATION artifact missing');
+                  }
+
+                  // Child rerun should now be COMPLETED (no further delegation)
+                  expect(childRerunSituation.execution.status).toBe('COMPLETED');
+                  const rerunDispatchCalls =
+                    (childRerunSituation.execution.trace || []).filter(
+                      (step: any) => step.tool === 'dispatch_new_job' || step.tool === 'dispatch_existing_job'
+                    );
+                  expect(rerunDispatchCalls.length).toBe(0);
+
+                  // Deterministic context should include previously completed grandchild
+                  const rerunContext = childRerunSituation.context as any;
+                  expect(Array.isArray(rerunContext?.childRequestIds)).toBe(true);
+                  expect(rerunContext.childRequestIds).toContain(grandchildRequest.id);
+
+                  const rerunRecognition = childRerunSituation.meta?.recognition;
+                  expect(rerunRecognition).toBeDefined();
+                  const rerunInitialSituation = rerunRecognition?.initialSituation;
+                  expect(rerunInitialSituation).toBeDefined();
+                  const rerunInitialChildren = rerunInitialSituation?.context?.childRequestIds || [];
+                  expect(Array.isArray(rerunInitialChildren)).toBe(true);
+                  if (Array.isArray(rerunInitialChildren)) {
+                    expect(rerunInitialChildren).toContain(grandchildRequest.id);
+                  }
+
+                  console.log('[TEST] Child rerun completed with deterministic context ✓');
+
+                  // NOTE: Section 8A has been moved to run BEFORE Section 8D
+                  // This ensures we validate branch existence before the worker merges/deletes it
+
+                  // ==================================================                  // SECTION 9: Wait for MEMORY Artifact (MEM-006, MEM-007)
+                  // ==================================================
                   console.log('\n[TEST] SECTION 9: Waiting for MEMORY artifact from reflection...');
 
                   // MEM-006: Reflection phase should create MEMORY artifact
@@ -1116,11 +1390,9 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] ✅ Reflection phase complete - MEMORY artifact created and indexed');
 
-                  // =========================================================
-                  // SECTION 10: Validate Grandchild SITUATION Structure
+                  // ==================================================                  // SECTION 10: Validate Grandchild SITUATION Structure
                   // (MEM-002, MEM-003, MEM-004)
-                  // =========================================================
-
+                  // ==================================================
                   console.log('\n[TEST] SECTION 10: Validating grandchild SITUATION structure...');
 
                   const situation = await fetchSituation(grandchildDelivery, gqlUrl);
@@ -1165,6 +1437,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   // JINN-252: Validate expected tools were called by grandchild
                   const toolNames = trace.map(t => t.tool);
                   expect(toolNames).toContain('create_artifact'); // Assert 45 - Grandchild should call this
+                  // Coding capability validation - grandchild should have written a file
+                  expect(toolNames).toContain('write_file'); // Assert 45a - Grandchild should write file
                   console.log(`[TEST] Expected tool calls present: ${[...new Set(toolNames)].join(', ')} ✓`);
 
                   // JINN-252: Validate all trace entries have complete structure
@@ -1205,10 +1479,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] Grandchild SITUATION structure valid ✓');
 
-                  // =========================================================
-                  // SECTION 10: Validate Embedding Format
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 10: Validate Embedding Format
+                  // ==================================================
                   console.log('\n[TEST] SECTION 10: Validating grandchild embedding...');
 
                   const embedding = situation.embedding;
@@ -1230,10 +1502,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   // MEM-001: Complete SITUATION artifact with embedding demonstrates
                   // the system's ability to capture execution context for future retrieval
 
-                  // =========================================================
-                  // SECTION 11: Recognition Phase Validation (MEM-005)
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 11: Recognition Phase Validation (MEM-005)
+                  // ==================================================
                   console.log('\n[TEST] SECTION 11: Validating grandchild recognized child...');
 
                   // Recognition MUST exist and include child
@@ -1280,10 +1550,8 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                     console.log('[TEST] ✓ Embedding status: success');
                   }
 
-                  // =========================================================
-                  // SECTION 12: 3-Level Lineage Validation
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 12: 3-Level Lineage Validation
+                  // ==================================================
                   console.log('\n[TEST] SECTION 12: Validating 3-level lineage...');
 
                   // Grandchild → Child
@@ -1319,20 +1587,74 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 
                   console.log('[TEST] ✓ Complete lineage: Parent → Child → Grandchild');
 
-                  // =========================================================
-                  // SECTION 13: Git Working Tree Status
-                  // =========================================================
-
+                  // ==================================================                  // SECTION 13: Git Working Tree Status
+                  // ==================================================
                   console.log('\n[TEST] SECTION 13: Validating git working tree...');
 
-                  // No uncommitted changes (jobs only create IPFS artifacts, not files)
+                  // No uncommitted changes (worker auto-commits file changes before push)
                   const gitStatus = execSync('git status --porcelain', {
                     cwd: gitFixture!.repoPath,
                     encoding: 'utf-8'
                   }).trim();
                   expect(gitStatus).toBe(''); // Assert 77 - Working tree clean
 
-                  console.log('[TEST] Git working tree clean (no file changes) ✓');
+                  console.log('[TEST] Git working tree clean (all changes auto-committed) ✓');
+
+                  // ==================================================                  // SECTION 14: Branch Artifact Validation
+                  // ==================================================
+                  console.log('\n[TEST] SECTION 14: Validating branch artifact creation...');
+
+                  const branchArtifactQuery = `
+                    query BranchArtifact($requestId: String!) {
+                      artifacts(where: { requestId: $requestId, topic: "git/branch" }, limit: 10) {
+                        items {
+                          id
+                          requestId
+                          cid
+                          topic
+                          name
+                          type
+                          tags
+                        }
+                      }
+                    }
+                  `;
+
+                  const branchArtifactResponse = await queryPonder(gqlUrl, branchArtifactQuery, {
+                    variables: { requestId: grandchildRequest.id },
+                  }) as {
+                    artifacts: { items: Array<{ id: string; requestId: string; cid: string; topic: string; name?: string; type?: string; tags?: string[] }> };
+                  };
+
+                  const branchArtifacts = branchArtifactResponse?.artifacts?.items || [];
+                  expect(branchArtifacts.length).toBeGreaterThan(0);
+
+                  const branchArtifact = branchArtifacts.find((artifact) => artifact.topic === 'git/branch');
+                  expect(branchArtifact).toBeTruthy();
+                  expect(branchArtifact?.cid).toBeTruthy();
+
+                  const gatewayBase = (process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/').replace(/\/+$/, '');
+                  const branchIpfsUrl = `${gatewayBase}/${branchArtifact!.cid}`;
+                  const branchIpfsResponse = await fetch(branchIpfsUrl);
+                  expect(branchIpfsResponse.ok).toBe(true);
+
+                  const branchArtifactContent = await branchIpfsResponse.json();
+                  expect(branchArtifactContent.type).toBe('GIT_BRANCH');
+                  expect(branchArtifactContent.topic).toBe('git/branch');
+                  expect(branchArtifactContent.content).toBeTruthy();
+
+                  const branchMetadata = JSON.parse(branchArtifactContent.content);
+                  expect(branchMetadata.branchUrl).toContain(`/tree/${grandchildBranchName}`);
+                  expect(branchMetadata.branchUrl).toMatch(/^https:\/\//);
+                  expect(branchMetadata.headBranch).toBe(grandchildBranchName);
+                  expect(branchMetadata.baseBranch).toBe(childBranchName);
+                  expect(branchMetadata.requestId).toBe(grandchildRequest.id);
+                  expect(branchMetadata.jobDefinitionId).toBe(grandchildRequest.jobDefinitionId);
+                  expect(branchMetadata.title).toContain(grandchildRequest.jobDefinitionId);
+
+                  console.log(`[TEST] ✓ Branch artifact created: ${branchArtifact!.id}`);
+                  console.log(`[TEST] ✓ Branch artifact CID: ${branchArtifact!.cid}`);
+                  console.log('[TEST] Branch artifact metadata validated ✓');
 
                   console.log('\n[TEST] ✅ Memory system test complete!');
                   console.log('[TEST] Coverage: MEM-001 to MEM-010, ARQ-006, EXQ-004/005/006/007, LCQ-003/004/009, IDQ-001, LCQ-001, GWQ-001/002');
@@ -1345,23 +1667,22 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
               );
             });
           });
-          } finally {
-            // Restore worker stdio setting
-            if (prevWorkerStdio === undefined) {
-              delete process.env.TESTS_NEXT_WORKER_STDIO;
-            } else {
-              process.env.TESTS_NEXT_WORKER_STDIO = prevWorkerStdio;
-            }
+        } finally {
+          // Restore worker stdio setting
+          if (prevWorkerStdio === undefined) {
+            delete process.env.TESTS_NEXT_WORKER_STDIO;
+          } else {
+            process.env.TESTS_NEXT_WORKER_STDIO = prevWorkerStdio;
           }
-        });
+        }
+      });
     },
     600_000 // 10 minute timeout
   );
 });
 
 
-// =============================================================================
-// REMOVED SECTIONS (for future incremental testing):
+// ======================================================================// REMOVED SECTIONS (for future incremental testing):
 // - SECTION 6: Recognition Phase Validation
 // - SECTION 7: Reflection Phase Validation
 // - SECTION 8: Ponder Indexing Validation
@@ -1369,4 +1690,4 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
 //
 // These sections will be added back incrementally after the baseline test
 // passes consistently.
-// =============================================================================
+// ======================================================================

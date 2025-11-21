@@ -3,6 +3,7 @@ export type ExtractedArtifact = {
   name?: string;
   topic: string;
   contentPreview?: string;
+  content?: string;
   type?: string;
   tags?: string[];
 };
@@ -90,7 +91,7 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
           if (result.contentPreview) artifact.contentPreview = String(result.contentPreview);
           if (result.type) artifact.type = String(result.type);
           if (Array.isArray(result.tags)) artifact.tags = result.tags.map((t: any) => String(t));
-          
+
           artifacts.push(artifact);
         }
       }
@@ -104,7 +105,7 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
 
   // FALLBACK: Legacy parsing for backward compatibility
   const texts: string[] = [];
-  
+
   // Collect all text strings from request and response
   if (Array.isArray(telemetry?.responseText)) {
     for (const t of telemetry.responseText) {
@@ -116,9 +117,9 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
       if (typeof t === 'string') texts.push(t);
     }
   }
-  
+
   const seen = new Set<string>();
-  
+
   for (const t of texts) {
     // First try to extract from the text as-is (for backward compatibility with flat structures)
     const flatItems = extractArtifactsFromOutput(t);
@@ -128,7 +129,7 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
       seen.add(key);
       artifacts.push(it);
     }
-    
+
     // Then try to parse as JSON and extract from nested Gemini CLI structure
     const nestedItems = extractArtifactsFromNestedStructure(t);
     for (const it of nestedItems) {
@@ -138,16 +139,16 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
       artifacts.push(it);
     }
   }
-  
+
   return artifacts;
 }
 
 function extractArtifactsFromNestedStructure(text: string): ExtractedArtifact[] {
   const artifacts: ExtractedArtifact[] = [];
-  
+
   try {
     const parsed = JSON.parse(text);
-    
+
     // Handle Gemini API response structure: candidates[].content.parts[].functionResponse.response.output
     if (parsed.candidates && Array.isArray(parsed.candidates)) {
       for (const candidate of parsed.candidates) {
@@ -158,7 +159,7 @@ function extractArtifactsFromNestedStructure(text: string): ExtractedArtifact[] 
               try {
                 const output = JSON.parse(part.functionResponse.response.output);
                 const maybe = output?.data || output;
-                
+
                 if (maybe && typeof maybe === 'object' && typeof maybe.cid === 'string' && typeof maybe.topic === 'string') {
                   const item: ExtractedArtifact = {
                     cid: String(maybe.cid),
@@ -182,7 +183,7 @@ function extractArtifactsFromNestedStructure(text: string): ExtractedArtifact[] 
   } catch (parseError) {
     // If outer JSON parsing fails, return empty array (not an error, just not nested structure)
   }
-  
+
   return artifacts;
 }
 

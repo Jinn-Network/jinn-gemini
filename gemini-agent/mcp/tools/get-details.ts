@@ -4,6 +4,38 @@ import { z } from 'zod';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 import { resolveRequestIpfsContent } from './shared/ipfs.js';
 
+function markChildWorkReviewed(requestIds: string[], artifactIds: string[]) {
+    const completedRaw = process.env.JINN_COMPLETED_CHILDREN;
+    if (!completedRaw) {
+        return;
+    }
+    let completedIds: string[] = [];
+    try {
+        const parsed = JSON.parse(completedRaw);
+        if (Array.isArray(parsed)) {
+            completedIds = parsed.filter((id: unknown) => typeof id === 'string');
+        }
+    } catch {
+        return;
+    }
+    if (completedIds.length === 0) {
+        return;
+    }
+    const normalizedCompleted = new Set(completedIds.map((id) => id.toLowerCase()));
+    const artifactBaseIds = artifactIds
+        .map((id) => (typeof id === 'string' ? id.split(':')[0] : undefined))
+        .filter((id): id is string => !!id)
+        .map((id) => id.toLowerCase());
+    const referencedIds = new Set([
+        ...requestIds.map((id) => id.toLowerCase()),
+        ...artifactBaseIds,
+    ]);
+    const intersects = Array.from(referencedIds).some((id) => normalizedCompleted.has(id));
+    if (intersects) {
+        process.env.JINN_CHILD_WORK_REVIEWED = 'true';
+    }
+}
+
 // MCP registration schema (permissive) to avoid -32602 pre-validation failures.
 // We normalize and strictly validate inside the handler.
 const getDetailsBase = z.object({
@@ -72,6 +104,8 @@ export async function getDetails(params: GetDetailsParams) {
         const requestIds = (validIds || []).filter((x) => typeof x === 'string' && isRequestId(x)) as string[];
         const artifactIds = (validIds || []).filter((x) => typeof x === 'string' && isArtifactId(x)) as string[];
         const jobDefIds = (validIds || []).filter((x) => typeof x === 'string' && isJobDefId(x)) as string[];
+
+        markChildWorkReviewed(requestIds, artifactIds);
 
         const requestRecords: any[] = [];
         const artifactRecords: any[] = [];

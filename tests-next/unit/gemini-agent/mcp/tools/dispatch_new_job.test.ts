@@ -346,7 +346,13 @@ describe('dispatchNewJob', () => {
       await dispatchNewJob(args);
 
       const call = (marketplaceInteract as any).mock.calls[0][0];
-      expect(call.ipfsJsonContents[0].enabledTools).toEqual(['read_file', 'write_file', 'create_artifact']);
+      expect(call.ipfsJsonContents[0].enabledTools).toEqual([
+        'read_file',
+        'write_file',
+        'create_artifact',
+        'get_details',
+        'search_artifacts',
+      ]);
     });
 
     it('omits enabledTools when not provided', async () => {
@@ -358,7 +364,7 @@ describe('dispatchNewJob', () => {
       await dispatchNewJob(args);
 
       const call = (marketplaceInteract as any).mock.calls[0][0];
-      expect(call.ipfsJsonContents[0].enabledTools).toBeUndefined();
+      expect(call.ipfsJsonContents[0].enabledTools).toEqual(['get_details', 'search_artifacts']);
     });
   });
 

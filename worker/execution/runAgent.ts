@@ -24,13 +24,36 @@ export interface ExecutionContext {
  * The Agent class computes MCP include/exclude lists and CLI whitelists
  * based on the enabledTools passed here, ensuring consistency across the system.
  */
+function extractCompletedChildRequestIds(additionalContext: any): string[] {
+  if (!additionalContext || typeof additionalContext !== 'object') {
+    return [];
+  }
+  const hierarchy = Array.isArray(additionalContext.hierarchy)
+    ? additionalContext.hierarchy
+    : [];
+  const ids = new Set<string>();
+  hierarchy
+    .filter((job: any) => job && job.level > 0 && job.status === 'completed')
+    .forEach((job: any) => {
+      if (Array.isArray(job.requestIds)) {
+        job.requestIds.forEach((id: any) => {
+          if (typeof id === 'string' && id.length > 0) {
+            ids.add(id);
+          }
+        });
+      }
+    });
+  return Array.from(ids);
+}
+
 export async function runAgentForRequest(
   request: UnclaimedRequest,
   metadata: IpfsMetadata
 ): Promise<AgentExecutionResult> {
-  // Default to flash for faster execution
-  const model = metadata?.model || 'gemini-2.5-flash';
+  // Prefer explicit model, then environment default, otherwise flash for speed
+  const model = metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
+  const completedChildRequestIds = extractCompletedChildRequestIds(metadata?.additionalContext);
   
   // For artifact-only jobs (no code), pass null to prevent loading external repos
   const codeWorkspace = metadata?.codeMetadata ? undefined : null;
@@ -65,10 +88,13 @@ export async function runAgentForRequest(
       mechAddress: request.mech,
       jobDefinitionId: metadata?.jobDefinitionId || undefined,
       baseBranch:
-        metadata?.codeMetadata?.branch?.name ||
         metadata?.codeMetadata?.baseBranch ||
+        metadata?.codeMetadata?.branch?.name ||
         undefined,
       workstreamId: metadata?.workstreamId || request.id, // Fallback to requestId for root jobs
+      parentRequestId: metadata?.sourceRequestId || undefined,
+      branchName: metadata?.codeMetadata?.branch?.name || undefined,
+      completedChildRequestIds,
     });
     
     const result = await agent.run(prompt);
@@ -84,4 +110,3 @@ export async function runAgentForRequest(
     restoreJobContext(prevContext);
   }
 }
-

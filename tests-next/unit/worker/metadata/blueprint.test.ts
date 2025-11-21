@@ -89,7 +89,8 @@ describe('Blueprint metadata parsing', () => {
       const fallback = 'This is a fallback prompt';
       const prompt = buildEnhancedPrompt(metadata, fallback);
 
-      expect(prompt).toBe(fallback);
+      expect(prompt).toContain('Blueprint (required):');
+      expect(prompt).toContain(fallback);
     });
 
     it('should return "No job specification found" when neither blueprint nor fallback exists', () => {
@@ -211,10 +212,8 @@ describe('Blueprint metadata parsing', () => {
 
       const prompt = buildEnhancedPrompt(metadata);
 
-      expect(prompt).toContain('Available Artifacts');
-      expect(prompt).toContain('analysis-report');
-      expect(prompt).toContain('research');
-      expect(prompt).toContain('bafytest123');
+      expect(prompt).toContain('analysis-report (research)');
+      expect(prompt).toContain('CID: bafytest123');
     });
 
     it('should gracefully handle context without hierarchy', () => {
@@ -278,8 +277,9 @@ describe('Blueprint metadata parsing', () => {
 
       const prompt = buildEnhancedPrompt(metadata, 'fallback');
 
-      // Empty string is falsy, should use fallback
-      expect(prompt).toBe('fallback');
+      // Empty string is falsy, should use fallback with blueprint preface
+      expect(prompt).toContain('Blueprint (required):');
+      expect(prompt).toContain('fallback');
     });
 
     it('should handle blueprint with special JSON characters', () => {
@@ -320,4 +320,3 @@ describe('Blueprint metadata parsing', () => {
     });
   });
 });
-

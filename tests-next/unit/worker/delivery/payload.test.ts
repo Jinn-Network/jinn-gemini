@@ -35,6 +35,7 @@ describe('buildDeliveryPayload', () => {
         structuredSummary: 'Task completed successfully',
         telemetry: { tools_used: 2 },
         artifacts: [],
+        blueprint: 'Do the thing',
       });
     });
 

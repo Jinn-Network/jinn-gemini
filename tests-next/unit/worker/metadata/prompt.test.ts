@@ -128,9 +128,8 @@ describe('buildEnhancedPrompt', () => {
 
       const result = buildEnhancedPrompt(metadata);
 
-      expect(result).toContain('**Available Artifacts:**');
-      expect(result).toContain('analysis.md (analysis) - CID: Qmabc123');
-      expect(result).toContain('data.json (data) - CID: Qmdef456');
+      expect(result).toContain('analysis.md (analysis) — ID: n/a, CID: Qmabc123');
+      expect(result).toContain('data.json (data) — ID: n/a, CID: Qmdef456');
     });
 
     it('handles empty hierarchy', () => {
@@ -225,7 +224,8 @@ describe('buildEnhancedPrompt', () => {
       const result = buildEnhancedPrompt(metadata);
 
       expect(result).not.toContain('## Job Context');
-      expect(result).toBe('Simple task');
+      expect(result).toContain('Blueprint (required):');
+      expect(result).toContain('Simple task');
     });
 
     it('handles null additionalContext', () => {
@@ -286,9 +286,9 @@ describe('buildEnhancedPrompt', () => {
 
       expect(result).toContain('Total jobs in hierarchy: 3');
       expect(result).toContain('Data Collection (Level 1, Status: COMPLETED)');
-      expect(result).toContain('raw-data.csv (data) - CID: Qm1');
-      expect(result).toContain('processed-data.csv (data) - CID: Qm3');
-      expect(result).toContain('partial-analysis.md (analysis) - CID: Qm5');
+      expect(result).toContain('raw-data.csv (data) — ID: n/a, CID: Qm1');
+      expect(result).toContain('processed-data.csv (data) — ID: n/a, CID: Qm3');
+      expect(result).toContain('partial-analysis.md (analysis) — ID: n/a, CID: Qm5');
       expect(result).toContain('Complete the analysis');
     });
 
@@ -316,6 +316,182 @@ describe('buildEnhancedPrompt', () => {
 
       expect(result.length).toBeGreaterThan(10000);
       expect(result).toContain(longBlueprint);
+    });
+  });
+
+  describe('review-first guidance for completed children', () => {
+    it('adds review guidance when completed child jobs exist', () => {
+      const metadata: IpfsMetadata = {
+        prompt: 'Complete the task',
+        additionalContext: {
+          summary: {
+            totalJobs: 2,
+            completedJobs: 1,
+            activeJobs: 1,
+            totalArtifacts: 0,
+          },
+          hierarchy: [
+            {
+              name: 'Current Job',
+              level: 0,
+              status: 'active',
+            },
+            {
+              name: 'Child Job',
+              level: 1,
+              status: 'completed',
+              artifactRefs: [],
+            },
+          ],
+        },
+      };
+
+      const result = buildEnhancedPrompt(metadata);
+
+      expect(result).toContain('## IMPORTANT: Review Completed Child Work Before Acting');
+      expect(result).toContain('You have 1 completed child job(s)');
+      expect(result).toContain('Review Child Deliverables');
+      expect(result).toContain('Do **not** re-delegate until you have reviewed');
+    });
+
+    it('does not add review guidance when only parent jobs are completed', () => {
+      const metadata: IpfsMetadata = {
+        prompt: 'Complete the task',
+        additionalContext: {
+          summary: {
+            totalJobs: 2,
+            completedJobs: 1,
+            activeJobs: 1,
+            totalArtifacts: 0,
+          },
+          hierarchy: [
+            {
+              name: 'Parent Job',
+              level: 0,
+              status: 'completed',
+            },
+            {
+              name: 'Current Job',
+              level: 1,
+              status: 'active',
+            },
+          ],
+        },
+      };
+
+      const result = buildEnhancedPrompt(metadata);
+
+      expect(result).not.toContain('## IMPORTANT: Review Completed Child Work Before Acting');
+    });
+
+    it('adds review guidance when Work Protocol message indicates child completion', () => {
+      const metadata: IpfsMetadata = {
+        prompt: 'Complete the task',
+        additionalContext: {
+          summary: {
+            totalJobs: 1,
+            completedJobs: 0,
+            activeJobs: 1,
+            totalArtifacts: 0,
+          },
+          hierarchy: [],
+          message: {
+            content: 'Child job COMPLETED: Job completed direct work. Output: ...',
+            to: 'job-def-id',
+            from: 'child-request-id',
+          },
+        },
+      };
+
+      const result = buildEnhancedPrompt(metadata);
+
+      expect(result).toContain('## IMPORTANT: Review Completed Child Work Before Acting');
+      expect(result).toContain('Review Child Deliverables');
+    });
+
+    it('adds review guidance when Work Protocol message is a string', () => {
+      const metadata: IpfsMetadata = {
+        prompt: 'Complete the task',
+        additionalContext: {
+          summary: {
+            totalJobs: 1,
+            completedJobs: 0,
+            activeJobs: 1,
+            totalArtifacts: 0,
+          },
+          hierarchy: [],
+          message: 'Child job completed successfully',
+        },
+      };
+
+      const result = buildEnhancedPrompt(metadata);
+
+      expect(result).toContain('## IMPORTANT: Review Completed Child Work Before Acting');
+    });
+
+    it('does not add review guidance when no completed children or Work Protocol message', () => {
+      const metadata: IpfsMetadata = {
+        prompt: 'Complete the task',
+        additionalContext: {
+          summary: {
+            totalJobs: 2,
+            completedJobs: 0,
+            activeJobs: 2,
+            totalArtifacts: 0,
+          },
+          hierarchy: [
+            {
+              name: 'Current Job',
+              level: 0,
+              status: 'active',
+            },
+            {
+              name: 'Child Job',
+              level: 1,
+              status: 'active',
+            },
+          ],
+        },
+      };
+
+      const result = buildEnhancedPrompt(metadata);
+
+      expect(result).not.toContain('## IMPORTANT: Review Completed Child Work Before Acting');
+    });
+
+    it('counts multiple completed children correctly', () => {
+      const metadata: IpfsMetadata = {
+        prompt: 'Complete the task',
+        additionalContext: {
+          summary: {
+            totalJobs: 3,
+            completedJobs: 2,
+            activeJobs: 1,
+            totalArtifacts: 0,
+          },
+          hierarchy: [
+            {
+              name: 'Current Job',
+              level: 0,
+              status: 'active',
+            },
+            {
+              name: 'Child Job 1',
+              level: 1,
+              status: 'completed',
+            },
+            {
+              name: 'Child Job 2',
+              level: 1,
+              status: 'completed',
+            },
+          ],
+        },
+      };
+
+      const result = buildEnhancedPrompt(metadata);
+
+      expect(result).toContain('You have 2 completed child job(s)');
     });
   });
 });

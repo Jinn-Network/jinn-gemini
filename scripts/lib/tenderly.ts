@@ -148,7 +148,13 @@ export class TenderlyClient {
 
     const url = `${this.baseUrl}/api/v1/account/${this.config.accountSlug}/project/${this.config.projectSlug}/vnets`;
 
-    scriptLogger.info({ slug, chainId, blockNumber }, 'Creating Virtual TestNet');
+    scriptLogger.info({
+      slug,
+      chainId,
+      blockNumber,
+      accountSlug: this.config.accountSlug,
+      projectSlug: this.config.projectSlug,
+    }, 'Creating Virtual TestNet');
     
     try {
       const response = await fetch(url, {
@@ -337,7 +343,10 @@ export function createTenderlyClient(): TenderlyClient {
   const realClient = new TenderlyClient();
 
   if (realClient.isConfigured()) {
-    scriptLogger.info('Using real Tenderly API client');
+    scriptLogger.info({
+      accountSlug: process.env.TENDERLY_ACCOUNT_SLUG,
+      projectSlug: process.env.TENDERLY_PROJECT_SLUG,
+    }, 'Using real Tenderly API client');
     return realClient;
   } else {
     scriptLogger.info('Tenderly not configured, using mock client');
