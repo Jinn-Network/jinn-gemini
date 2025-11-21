@@ -144,9 +144,10 @@ interface SituationArtifact {
     jobName: string;
     jobDefinitionId?: string;
     model?: string;
-    objective: string;
+    objective?: string;
     context?: string;
-    acceptanceCriteria: string;
+    acceptanceCriteria?: string;
+    blueprint?: string;
     enabledTools: string[];
   };
   context: {
@@ -337,6 +338,9 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('\n[TEST] Bootstrapping parent job for lineage...');
 
                   const parentJob = await createTestJob({
+                    objective: 'Survey prior memory-system jobs for lineage seeding',
+                    context: 'Parent job to ensure child requests record source lineage in the new framework',
+                    acceptanceCriteria: 'Parent job definition exists and can be referenced by child jobs',
                     blueprint: JSON.stringify({
                       assertions: [{
                         id: 'MEM-001',
@@ -448,6 +452,9 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                       baseBranch: parentBranchName,
                     },
                     () => createTestJob({
+                      objective: 'Analyze OLAS staking mechanisms and delegate optimization task',
+                      context: 'Task 1: Call create_artifact with name="olas-staking-analysis", topic="defi-research", content="# OLAS Staking\\n\\nCurrent: APY 8-12%, 1w-1y locks, weekly rewards, 10% penalty.\\n\\nOptimize: dynamic APY, tiered locks, compounding." Task 2: Call dispatch_new_job with a blueprint containing an assertion to optimize OLAS staking parameters, with instructions to create MEMORY artifact with tags for future reuse.',
+                      acceptanceCriteria: 'Created analysis artifact and dispatched child job with MEMORY artifact creation instructions',
                       blueprint: JSON.stringify({
                         assertions: [{
                           id: 'MEM-002',
@@ -559,6 +566,9 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log(`[TEST] Blueprint structure validated: ${blueprintData.assertions.length} assertions`);
 
                   // Fetch IPFS metadata to verify blueprint at root level
+                  if (!childRequestMetadata) {
+                    throw new Error('Child request metadata is null');
+                  }
                   const metadataContent = await fetchJsonWithRetry(
                     `https://gateway.autonolas.tech/ipfs/${childRequestMetadata.ipfsHash}`,
                     5,
@@ -752,6 +762,9 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   // Fetch child SITUATION artifact from IPFS
                   const childSituation = await fetchSituation(childDelivery, gqlUrl);
                   expect(childSituation).toBeDefined();
+                  if (!childSituation) {
+                    throw new Error('Child situation is null');
+                  }
 
                   const childEmbedding = childSituation.embedding;
                   expect(childEmbedding).toBeDefined();
