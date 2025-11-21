@@ -322,7 +322,7 @@ describe('buildEnhancedPrompt', () => {
   describe('review-first guidance for completed children', () => {
     it('adds review guidance when completed child jobs exist', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Complete the task',
+        blueprint: 'Complete the task',
         additionalContext: {
           summary: {
             totalJobs: 2,
@@ -356,7 +356,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('does not add review guidance when only parent jobs are completed', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Complete the task',
+        blueprint: 'Complete the task',
         additionalContext: {
           summary: {
             totalJobs: 2,
@@ -386,7 +386,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('adds review guidance when Work Protocol message indicates child completion', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Complete the task',
+        blueprint: 'Complete the task',
         additionalContext: {
           summary: {
             totalJobs: 1,
@@ -411,7 +411,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('adds review guidance when Work Protocol message is a string', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Complete the task',
+        blueprint: 'Complete the task',
         additionalContext: {
           summary: {
             totalJobs: 1,
@@ -431,7 +431,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('does not add review guidance when no completed children or Work Protocol message', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Complete the task',
+        blueprint: 'Complete the task',
         additionalContext: {
           summary: {
             totalJobs: 2,
@@ -461,7 +461,7 @@ describe('buildEnhancedPrompt', () => {
 
     it('counts multiple completed children correctly', () => {
       const metadata: IpfsMetadata = {
-        prompt: 'Complete the task',
+        blueprint: 'Complete the task',
         additionalContext: {
           summary: {
             totalJobs: 3,
