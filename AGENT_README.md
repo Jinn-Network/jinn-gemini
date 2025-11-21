@@ -2141,6 +2141,19 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Tracking**: See `docs/implementation/RECOGNITION-QUALITY-PROBLEM.md` for detailed analysis and proposed solutions
 - **Mitigation**: Recognition learnings should be treated as suggestions, not mandates. Agents retain autonomy to ignore patterns that seem inefficient for their specific context.
 
+**Agent Polling Loop After Delegation (2025-11-21):**
+- **Issue**: Agents enter polling loops after dispatching child jobs, repeatedly checking child status instead of finalizing immediately
+- **Symptom**: Agent dispatches child via `dispatch_new_job`, then enters loop: check status → update `launcher_briefing` → repeat
+- **Root Cause**: Agent confusion between DELEGATING vs WAITING states. After dispatching child, agent checked status, saw "undelivered child", and concluded it was in WAITING state (which permits status checking). Agent didn't understand DELEGATING means "just dispatched THIS RUN, exit immediately" vs WAITING means "dispatched in PRIOR run, being re-run to check status".
+- **Fix Applied**: 
+  1. Added explicit "FINALIZE IMMEDIATELY after dispatching" instruction to GEMINI.md delegation section
+  2. Clarified DELEGATING vs WAITING distinction: DELEGATING = just dispatched → exit; WAITING = dispatched previously → check status and exit
+  3. Added warning to WAITING section: "This state applies ONLY when being RE-RUN after previous execution"
+  4. Wrapped progress checkpoint in "Historical Progress (Read-Only Context)" header to prevent misinterpretation
+- **Prevention**: Agents must finalize immediately after dispatching children. The system automatically re-dispatches parent when children complete. Never check child status in the same run as dispatch.
+- **Cost Impact**: Polling loops burn tokens checking status repeatedly. Each iteration costs ~2-5K tokens. Job with 20+ iterations = 40-100K tokens wasted.
+- **Not Related To**: Progress checkpointing (only runs when workstream has completed jobs, which root jobs on first run don't have)
+
 **RevokeRequest and Marketplace Timeout Issues (2025-11-19):**
 - **Issue**: Marketplace enforces a hard 5-minute (300 second) maximum timeout for all requests
 - **Root Cause**: The on-chain MechMarketplace contract validates `responseTimeout <= 300` and reverts with `OutOfBounds` error if exceeded

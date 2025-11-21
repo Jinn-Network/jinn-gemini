@@ -26,7 +26,15 @@ export function augmentPromptWithRecognition(
   if (recognition?.progressCheckpoint?.checkpointSummary) {
     const checkpoint = recognition.progressCheckpoint.checkpointSummary.trim();
     if (checkpoint.length > 0) {
-      parts.push(checkpoint);
+      // Wrap checkpoint in clear read-only framing
+      parts.push(`---
+## Historical Progress (Read-Only Context)
+
+The following information describes work completed in prior runs. This is historical data for your awareness.
+**DO NOT poll for updates, check status, or wait for children** - this context is frozen at job start time.
+
+${checkpoint}
+---`);
     }
   }
   

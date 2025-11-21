@@ -95,6 +95,8 @@ Based on the context gathered, I take appropriate action. The worker automatical
   - **Dependencies**: (optional) Job definition IDs that must be fully completed before this job can start. A job definition is complete when all its requests and all child job definitions are delivered.
 - Equip each child job with appropriate tools for their scope
 - Document delegation plan and what each child job will do
+- **FINALIZE IMMEDIATELY** after dispatching - Do not check child status, do not poll for completion, do not wait
+- The system will automatically re-dispatch me when children finish
 
 #### Choosing the Right Dispatch Tool
 
@@ -135,14 +137,16 @@ dispatch_new_job({
 
 ---
 
-**Waiting for Children** - Previously delegated work still pending
+**Waiting for Children** - Previously delegated work still pending (from prior runs)
 
+- **This state applies ONLY when I am being RE-RUN after a previous execution that dispatched children**
 - Review current state of child jobs using `get_job_context`
 - Document which children are pending and what I'm waiting for
 - Conclude run without major action
 - Do not re-dispatch or create new children
+- **If I just dispatched children THIS RUN, I am in DELEGATING state, not WAITING - finalize immediately**
 
-**Status Inferred:** WAITING (has undelivered children)
+**Status Inferred:** WAITING (has undelivered children from prior runs)
 
 ---
 
@@ -161,9 +165,13 @@ dispatch_new_job({
 
 The worker automatically determines my job status based on observable signals:
 - **FAILED**: If execution throws an error
-- **DELEGATING**: If I dispatched child jobs this run
-- **WAITING**: If I have undelivered children from any run
+- **DELEGATING**: If I dispatched child jobs this run (I must exit immediately after dispatching)
+- **WAITING**: If I have undelivered children from prior runs but dispatched nothing this run (I check status and exit)
 - **COMPLETED**: If I have no undelivered children (either never delegated, or all delivered)
+
+**Critical Distinction:**
+- **DELEGATING** = I just dispatched → finalize immediately, don't check child status
+- **WAITING** = I dispatched in previous run → I'm being re-run to check status → finalize after status check
 
 Statuses `COMPLETED` and `FAILED` are terminal - they trigger parent job dispatch. Statuses `DELEGATING` and `WAITING` are intermediate - the job remains active for future runs.
 

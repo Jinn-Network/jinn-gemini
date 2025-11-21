@@ -95,7 +95,10 @@ Structure your summary as markdown with these sections:
 
 ---
 
-**Important:** Be concise. Focus on information that will help the agent execute "${currentJobObjective}" effectively. Omit irrelevant details.`;
+**Important:** 
+- Be concise. Focus on information that will help the agent execute "${currentJobObjective}" effectively. Omit irrelevant details.
+- This is HISTORICAL CONTEXT ONLY. The agent receiving this summary must NOT poll for updates or check child status.
+- Frame all information as completed facts from prior runs.`;
 
     const summarizationAgent = new Agent(
       'gemini-2.5-flash',  // Always use flash for summarization
