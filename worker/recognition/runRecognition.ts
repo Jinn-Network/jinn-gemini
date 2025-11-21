@@ -5,9 +5,7 @@
 import { workerLogger } from '../../logging/index.js';
 import { graphQLRequest } from '../../http/client.js';
 import { getPonderGraphqlUrl, getOptionalIpfsGatewayUrl } from '../../gemini-agent/mcp/tools/shared/env.js';
-import { pushJsonToIpfs } from '@jinn-network/mech-client-ts/dist/ipfs.js';
 import { Agent } from '../../gemini-agent/agent.js';
-import { createArtifact } from '../control_api_client.js';
 import type { RecognitionPhaseResult } from '../recognition_helpers.js';
 import {
   buildRecognitionPromptWithArtifacts,
@@ -241,49 +239,15 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
       progressCheckpoint,
     };
 
-    try {
-      const recognitionArtifactPayload = {
-        initialSituation,
-        embeddingStatus,
-        similarJobs,
-        learnings: markdown,
-        searchQuery: summaryText,
-        timestamp: new Date().toISOString(),
-        progressCheckpoint,
-      };
-      const [, recognitionCid] = await pushJsonToIpfs(recognitionArtifactPayload);
-      await createArtifact(requestId, {
-        cid: recognitionCid,
-        topic: 'RECOGNITION_RESULT',
-        content: null,
-      });
-      workerLogger.info({ requestId, cid: recognitionCid }, 'Persisted RECOGNITION_RESULT artifact');
-    } catch (artifactError: any) {
-      workerLogger.warn({ requestId, error: serializeError(artifactError) }, 'Failed to persist RECOGNITION_RESULT artifact');
-    }
+    // Note: Recognition data (including progressCheckpoint) is now included in the delivery payload
+    // via worker/delivery/payload.ts, so we don't need to create a separate RECOGNITION_RESULT artifact
 
     return recognitionResult;
   } catch (recognitionError: any) {
     workerLogger.error({ requestId, error: serializeError(recognitionError) }, 'Recognition phase failed');
 
-    try {
-      const fallbackPayload = {
-        initialSituation,
-        embeddingStatus,
-        error: recognitionError?.message || String(recognitionError),
-        timestamp: new Date().toISOString(),
-        progressCheckpoint,
-      };
-      const [, fallbackCid] = await pushJsonToIpfs(fallbackPayload);
-      await createArtifact(requestId, {
-        cid: fallbackCid,
-        topic: 'RECOGNITION_RESULT',
-        content: null,
-      });
-      workerLogger.info({ requestId, cid: fallbackCid }, 'Persisted fallback RECOGNITION_RESULT artifact');
-    } catch (fallbackError: any) {
-      workerLogger.warn({ requestId, error: serializeError(fallbackError) }, 'Failed to persist fallback RECOGNITION_RESULT artifact');
-    }
+    // Note: Recognition error data is logged but not persisted separately
+    // The error will be visible in worker telemetry
 
     return { promptPrefix: '', learningsMarkdown: undefined, rawLearnings: null, initialSituation, embeddingStatus, progressCheckpoint };
   }

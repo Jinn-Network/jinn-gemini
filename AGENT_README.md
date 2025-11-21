@@ -2182,3 +2182,12 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - When CID is provided, query Ponder's `artifacts(where: { cid: $cid })` to find matching artifacts.
 - Returns all artifacts with that CID (typically 1, but supports duplicates across requests).
 - IPFS content resolution still works when `resolve_ipfs: true` (default).
+
+### Parent Re-Dispatch Workstream Propagation (Fixed 2025-11-21)
+
+**Issue**: When worker auto-dispatches parent jobs after child completion, the new parent request gets a different `workstreamId` instead of preserving the child's workstream.
+**Root Cause**: `dispatch_existing_job` was including `sourceRequestId` from the child job context even when `workstreamId` was explicitly provided. This caused Ponder's indexer to treat the parent re-dispatch as a child job and traverse up the lineage chain, overwriting the explicit `workstreamId`.
+**Fix**:
+- Modified `dispatch_existing_job` to exclude `sourceRequestId` and `sourceJobDefinitionId` from lineage context when `workstreamId` is explicitly provided.
+- This ensures parent re-dispatches are indexed as root jobs with the preserved workstream, not as child jobs requiring traversal.
+**Impact**: Parent jobs now correctly maintain the same `workstreamId` across re-dispatches, keeping entire job hierarchies unified within a single workstream.

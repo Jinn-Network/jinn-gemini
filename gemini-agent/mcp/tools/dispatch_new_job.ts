@@ -29,7 +29,7 @@ const dispatchNewJobParamsBase = z.object({
   model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-2.5-flash", "gemini-2.5-pro"). Defaults to MECH_MODEL env var or "gemini-2.5-flash" if not specified.'),
   enabledTools: z.array(z.string()).optional().describe('Array of tool names to enable for this job'),
   message: z.string().optional().describe('Optional message to include in the job request'),
-  dependencies: z.array(z.string()).optional().describe('Array of job definition IDs that must be fully completed (all requests and child jobs delivered) before this job can execute. Use this to enforce execution order for related job definitions.'),
+  dependencies: z.array(z.string()).optional().describe('Array of job definition UUIDs (not job names) that must have at least one delivered request before this job can execute. Use get_details or search_jobs to find job definition IDs. Example: ["4eac1570-7980-4e2b-afc7-3f5159e99ea5"]'),
   skipBranch: z.boolean().optional().default(false).describe('If true, skip branch creation and code metadata collection (for artifact-only jobs)'),
   responseTimeout: z.number().optional().default(300).describe('Response timeout in seconds for marketplace request. Defaults to 300 (5 minutes). Maximum allowed by marketplace is 300 seconds.'),
 });
@@ -65,7 +65,7 @@ PARAMETERS:
 - model: (optional) Gemini model to use (defaults to MECH_MODEL env var or "gemini-2.5-flash")
 - enabledTools: (optional) Array of tool names to enable
 - message: (optional) Additional message to include in the job request
-- dependencies: (optional) Array of job definition IDs that must be fully completed before this job can execute
+- dependencies: (optional) Array of job definition UUIDs (not job names) that must have at least one delivered request before this job executes. Use get_details or search_jobs to find job definition IDs.
 - responseTimeout: (optional) Response timeout in seconds for marketplace request (defaults to 300, max 300)
 
 The blueprint is validated and made directly available to the agent in GEMINI.md context.`,
@@ -255,6 +255,27 @@ export async function dispatchNewJob(args: unknown) {
 
     // Add dependencies at root level if provided
     if (dependencies && dependencies.length > 0) {
+      // Validate that all dependencies are UUIDs (not job names)
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const invalidDeps = dependencies.filter(dep => !UUID_REGEX.test(dep));
+      
+      if (invalidDeps.length > 0) {
+        console.error('[dispatch_new_job] Invalid dependencies - must be UUIDs, not job names:', invalidDeps);
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              data: null,
+              meta: {
+                ok: false,
+                code: 'INVALID_DEPENDENCIES',
+                message: `Dependencies must be job definition UUIDs, not job names. Invalid: ${invalidDeps.join(', ')}. Use get_details or search_jobs to find job definition IDs.`,
+              },
+            }),
+          }],
+        };
+      }
+      
       ipfsJsonContents[0].dependencies = dependencies;
     }
 

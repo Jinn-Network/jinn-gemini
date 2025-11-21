@@ -21,7 +21,8 @@
         "read_file",
         "search_file_content",
         "glob",
-        "read_many_files"
+        "read_many_files",
+        "web_search"
       ]
     }
   },

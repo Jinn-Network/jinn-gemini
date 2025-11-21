@@ -38,6 +38,7 @@ export function buildDeliveryPayload(params: {
             learnings: recognition.rawLearnings,
             learningsMarkdown: recognition.learningsMarkdown,
             searchQuery: recognition.searchQuery,
+            progressCheckpoint: recognition.progressCheckpoint,
           },
         }
       : {}),

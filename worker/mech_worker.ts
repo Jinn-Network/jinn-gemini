@@ -41,6 +41,10 @@ const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/gra
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = getUseControlApi();
 const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 5;
+// Base network enforces a strict 300s (5 minute) timeout. 
+// We apply a safety buffer to ensure we don't pick up jobs that will expire during execution.
+// 240s allows 60s for execution before the 300s deadline.
+const MAX_REQUEST_AGE_SECONDS = 240; 
 
 // Workstream filtering: parse --workstream=<id> flag
 const WORKSTREAM_FILTER = (() => {
@@ -74,7 +78,18 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       workstreamFilter: WORKSTREAM_FILTER || 'none'
     }, 'Fetching requests from Ponder');
     
-    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (STALE_MINUTES * 60);
+    // Ensure we only pick up requests that are fresh enough to complete
+    // Current time - MAX_REQUEST_AGE_SECONDS
+    const cutoffTimestamp = Math.floor(Date.now() / 1000) - MAX_REQUEST_AGE_SECONDS;
+    
+    workerLogger.info({ 
+      ponderUrl: PONDER_GRAPHQL_URL, 
+      mech: workerMech,
+      workstreamFilter: WORKSTREAM_FILTER || 'none',
+      cutoffTimestamp,
+      maxAgeSeconds: MAX_REQUEST_AGE_SECONDS
+    }, 'Fetching recent requests from Ponder');
+    
     const whereConditions: string[] = ['mech: $mech', 'delivered: false', 'blockTimestamp_gt: $minTimestamp'];
     if (WORKSTREAM_FILTER) {
       whereConditions.push('workstreamId: $workstreamId');
@@ -249,20 +264,18 @@ async function resolveJobDefinitionId(
 }
 
 /**
- * Check if a job definition and all its child definitions are fully delivered
+ * Check if a job definition has at least one successfully delivered request.
+ * This does NOT check child jobs - dependencies are shallow by design.
+ * 
+ * Rationale: Jobs only deliver when their agent decides they're complete.
+ * If children are critical, the parent waits for them before delivering.
+ * Dependencies just need to know "did this job finish?" (delivered = yes).
  */
 async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean> {
   try {
-    // Query all requests for this job definition
+    // Query delivered requests for this job definition
     const query = `query CheckJobDefCompletion($jobDefId: String!) {
-      requests(where: { jobDefinitionId: $jobDefId }) {
-        items {
-          id
-          delivered
-          sourceJobDefinitionId
-        }
-      }
-      jobDefinitions(where: { sourceJobDefinitionId: $jobDefId }) {
+      requests(where: { jobDefinitionId: $jobDefId, delivered: true }) {
         items {
           id
         }
@@ -270,8 +283,7 @@ async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean
     }`;
 
     const data = await graphQLRequest<{
-      requests: { items: Array<{ id: string; delivered: boolean; sourceJobDefinitionId?: string }> };
-      jobDefinitions: { items: Array<{ id: string }> };
+      requests: { items: Array<{ id: string }> };
     }>({
       url: PONDER_GRAPHQL_URL,
       query,
@@ -279,30 +291,18 @@ async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean
       context: { operation: 'isJobDefinitionComplete', jobDefinitionId }
     });
 
-    const requests = data?.requests?.items || [];
-    const childJobDefs = data?.jobDefinitions?.items || [];
+    const deliveredRequests = data?.requests?.items || [];
     
-    // Must have at least one request
-    if (requests.length === 0) {
-      workerLogger.debug({ jobDefinitionId }, 'Job definition has no requests yet');
-      return false;
-    }
+    // Job definition is complete if it has at least one delivered request
+    const isComplete = deliveredRequests.length > 0;
     
-    // All requests for this job definition must be delivered
-    const allRequestsDelivered = requests.every(r => r.delivered);
-    if (!allRequestsDelivered) {
-      return false;
-    }
+    workerLogger.debug({ 
+      jobDefinitionId, 
+      deliveredCount: deliveredRequests.length,
+      isComplete 
+    }, 'Job definition completion check (shallow)');
     
-    // Recursively check all child job definitions
-    for (const childDef of childJobDefs) {
-      const childComplete = await isJobDefinitionComplete(childDef.id);
-      if (!childComplete) {
-        return false;
-      }
-    }
-    
-    return true;
+    return isComplete;
   } catch (e: any) {
     workerLogger.warn({ 
       jobDefinitionId,
@@ -334,11 +334,15 @@ async function checkDependenciesMet(request: UnclaimedRequest): Promise<boolean>
     const allComplete = results.every(r => r.isComplete);
     
     if (!allComplete) {
-      const incomplete = results.filter(r => !r.isComplete).map(r => r.identifier);
+      const incomplete = results.filter(r => !r.isComplete);
       workerLogger.info({ 
         requestId: request.id, 
         totalDeps: request.dependencies.length,
-        incompleteDeps: incomplete,
+        incompleteDeps: incomplete.map(r => ({
+          identifier: r.identifier,
+          resolvedId: r.resolvedId,
+          wasResolved: r.identifier !== r.resolvedId  // Shows if name→UUID resolution happened
+        })),
       }, 'Dependencies not met - waiting for job definitions to complete');
     }
     

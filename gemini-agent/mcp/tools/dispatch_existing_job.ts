@@ -110,8 +110,14 @@ export async function dispatchExistingJob(args: unknown) {
 
   // Build request payload mirroring post_marketplace_job expectations
   const lineageContext: Record<string, any> = {};
-  if (context.requestId) lineageContext.sourceRequestId = context.requestId;
-  if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
+  
+  // CRITICAL: If workstreamId is explicitly provided, this is a parent re-dispatch.
+  // Do NOT include sourceRequestId/sourceJobDefinitionId, as that would make Ponder
+  // treat it as a child job and overwrite the explicit workstreamId via traversal.
+  if (!workstreamId) {
+    if (context.requestId) lineageContext.sourceRequestId = context.requestId;
+    if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
+  }
 
   // Fetch job context for the existing job being dispatched
   const jobContext = await getJobContextForDispatch(jobDefinitionId, 3);
