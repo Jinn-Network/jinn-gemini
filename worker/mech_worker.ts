@@ -40,7 +40,7 @@ const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
 const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/graphql';
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = getUseControlApi();
-const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 10;
+const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 5;
 
 // Workstream filtering: parse --workstream=<id> flag
 const WORKSTREAM_FILTER = (() => {
@@ -74,15 +74,15 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       workstreamFilter: WORKSTREAM_FILTER || 'none'
     }, 'Fetching requests from Ponder');
     
-    // Build where clause dynamically to include workstream filter if provided
-    const whereConditions: string[] = ['mech: $mech', 'delivered: false'];
+    const cutoffTimestamp = Math.floor(Date.now() / 1000) - (STALE_MINUTES * 60);
+    const whereConditions: string[] = ['mech: $mech', 'delivered: false', 'blockTimestamp_gt: $minTimestamp'];
     if (WORKSTREAM_FILTER) {
       whereConditions.push('workstreamId: $workstreamId');
     }
     const whereClause = `{ ${whereConditions.join(', ')} }`;
     
     // Query our local Ponder GraphQL (custom schema) - FILTER BY MECH AND UNDELIVERED (and optionally WORKSTREAM)
-    const query = `query RecentRequests($limit: Int!, $mech: String!${WORKSTREAM_FILTER ? ', $workstreamId: String!' : ''}) {
+    const query = `query RecentRequests($limit: Int!, $mech: String!, $minTimestamp: BigInt!${WORKSTREAM_FILTER ? ', $workstreamId: String!' : ''}) {
   requests(
     where: ${whereClause}
     orderBy: "blockTimestamp"
@@ -104,7 +104,8 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     
     const variables: any = {
       limit,
-      mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
+      mech: workerMech.toLowerCase(), // Ponder stores addresses lowercase
+      minTimestamp: String(cutoffTimestamp)
     };
     if (WORKSTREAM_FILTER) {
       variables.workstreamId = WORKSTREAM_FILTER;
