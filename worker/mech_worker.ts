@@ -48,12 +48,6 @@ const WORKSTREAM_FILTER = (() => {
   return arg ? arg.split('=')[1] : undefined;
 })();
 
-// Base network enforces a strict 300s (5 minute) timeout. 
-// We apply a safety buffer to ensure we don't pick up jobs that will expire during execution.
-// 240s allows 60s for execution before the 300s deadline.
-// For workstream-filtered development runs, use longer window to catch old jobs
-const MAX_REQUEST_AGE_SECONDS = WORKSTREAM_FILTER ? 3600 : 240; // 1 hour for dev, 4 min for production
-
 // Auto-reposting configuration
 const ENABLE_AUTO_REPOST = getEnableAutoRepost();
 const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
@@ -80,26 +74,14 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       workstreamFilter: WORKSTREAM_FILTER || 'none'
     }, 'Fetching requests from Ponder');
     
-    // Ensure we only pick up requests that are fresh enough to complete
-    // Current time - MAX_REQUEST_AGE_SECONDS
-    const cutoffTimestamp = Math.floor(Date.now() / 1000) - MAX_REQUEST_AGE_SECONDS;
-    
-    workerLogger.info({ 
-      ponderUrl: PONDER_GRAPHQL_URL, 
-      mech: workerMech,
-      workstreamFilter: WORKSTREAM_FILTER || 'none',
-      cutoffTimestamp,
-      maxAgeSeconds: MAX_REQUEST_AGE_SECONDS
-    }, 'Fetching recent requests from Ponder');
-    
-    const whereConditions: string[] = ['mech: $mech', 'delivered: false', 'blockTimestamp_gt: $minTimestamp'];
+    const whereConditions: string[] = ['mech: $mech', 'delivered: false'];
     if (WORKSTREAM_FILTER) {
       whereConditions.push('workstreamId: $workstreamId');
     }
     const whereClause = `{ ${whereConditions.join(', ')} }`;
     
     // Query our local Ponder GraphQL (custom schema) - FILTER BY MECH AND UNDELIVERED (and optionally WORKSTREAM)
-    const query = `query RecentRequests($limit: Int!, $mech: String!, $minTimestamp: BigInt!${WORKSTREAM_FILTER ? ', $workstreamId: String!' : ''}) {
+    const query = `query RecentRequests($limit: Int!, $mech: String!${WORKSTREAM_FILTER ? ', $workstreamId: String!' : ''}) {
   requests(
     where: ${whereClause}
     orderBy: "blockTimestamp"
@@ -121,8 +103,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     
     const variables: any = {
       limit,
-      mech: workerMech.toLowerCase(), // Ponder stores addresses lowercase
-      minTimestamp: String(cutoffTimestamp)
+      mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
     };
     if (WORKSTREAM_FILTER) {
       variables.workstreamId = WORKSTREAM_FILTER;
