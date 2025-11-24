@@ -110,14 +110,19 @@ export function RequestsTable({ records }: RequestsTableProps) {
               : record.id.toString().substring(0, 16) + '...'
             
             const delivered = 'delivered' in record ? record.delivered : false
-            const statusText = delivered ? 'DELIVERED' : 'PENDING'
+            const expired = 'expired' in record ? record.expired : false
+            
+            // Determine status based on delivered and expired flags
+            const statusText = delivered ? 'DELIVERED' : (expired ? 'EXPIRED' : 'PENDING')
             const statusClass = delivered 
               ? 'text-green-600 bg-green-50 border-green-200'
-              : 'text-yellow-600 bg-yellow-50 border-yellow-200'
+              : (expired 
+                  ? 'text-red-600 bg-red-50 border-red-200'
+                  : 'text-yellow-600 bg-yellow-50 border-yellow-200')
             
-            // Get workstream ID (sourceRequestId for child jobs, or id for root jobs)
-            const workstreamId = 'sourceRequestId' in record && record.sourceRequestId 
-              ? record.sourceRequestId 
+            // Get workstream ID from Ponder (always use the indexed field)
+            const workstreamId = 'workstreamId' in record && record.workstreamId 
+              ? record.workstreamId 
               : record.id
             
             const mech = 'mech' in record && record.mech 

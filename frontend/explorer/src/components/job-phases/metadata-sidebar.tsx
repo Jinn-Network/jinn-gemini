@@ -11,6 +11,7 @@ interface MetadataSidebarProps {
   blockTimestamp?: string
   transactionHash?: string
   delivered?: boolean
+  expired?: boolean
   jobDefinitionId?: string
   sourceRequestId?: string
   sourceJobDefinitionId?: string
@@ -24,6 +25,7 @@ export function MetadataSidebar({
   blockTimestamp,
   transactionHash,
   delivered,
+  expired,
   jobDefinitionId,
   sourceRequestId,
   sourceJobDefinitionId
@@ -69,9 +71,11 @@ export function MetadataSidebar({
               <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${
                 delivered 
                   ? 'bg-green-100 text-green-800' 
-                  : 'bg-yellow-100 text-yellow-800'
+                  : (expired 
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-yellow-100 text-yellow-800')
               }`}>
-                {delivered ? '✓ Delivered' : 'Pending'}
+                {delivered ? '✓ Delivered' : (expired ? '✗ Expired' : '⏳ Pending')}
               </span>
             </div>
           )}

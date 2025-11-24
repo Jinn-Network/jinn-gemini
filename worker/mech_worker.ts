@@ -16,11 +16,13 @@ import {
 import agentMechArtifact from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
 import { workerLogger } from '../logging/index.js';
 import { claimRequest as apiClaimRequest } from './control_api_client.js';
-import { getMechAddress } from '../env/operate-profile.js';
+import { getMechAddress, getServicePrivateKey, getMechChainConfig } from '../env/operate-profile.js';
 import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import { serializeError } from './logging/errors.js';
 import { safeParseToolResponse } from './tool_utils.js';
 import { processOnce as processJobOnce } from './orchestration/jobRunner.js';
+import { fetchIpfsMetadata } from './metadata/fetchIpfsMetadata.js';
+import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 
 export { formatSummaryForPr, autoCommitIfNeeded } from './git/autoCommit.js';
 
@@ -41,6 +43,9 @@ const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/gra
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = getUseControlApi();
 const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 5;
+// Safety buffer: if a request is > 240s old (4 mins), we risk hitting the 300s timeout.
+// Instead of processing and failing, we preemptively redispatch it.
+const STALE_THRESHOLD_SECONDS = 240;
 
 // Workstream filtering: parse --workstream=<id> flag
 const WORKSTREAM_FILTER = (() => {
@@ -54,6 +59,8 @@ const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
 
 // Track recent reposts to prevent loops
 const recentReposts = new Map<string, number>();
+// Track requests we've already redispatched to avoid spamming
+const redispatchedRequests = new Set<string>();
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
 
@@ -134,7 +141,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
 }
 
 async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: string; size?: number; offset?: number }): Promise<Set<string>> {
-  const { mechAddress, rpcHttpUrl, size = 100, offset = 0 } = params;
+  const { mechAddress, rpcHttpUrl, size = 1000, offset = 0 } = params;
   try {
     if (!rpcHttpUrl) return new Set<string>();
     const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
@@ -159,17 +166,32 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
     for (const r of notDelivered) {
       const key = r.mech.toLowerCase();
       if (!mechToSet.has(key)) {
-        mechToSet.set(key, await getUndeliveredSet({ mechAddress: r.mech, rpcHttpUrl }));
+        // Fetch a large batch to ensure we don't miss recent requests due to pagination
+        mechToSet.set(key, await getUndeliveredSet({ mechAddress: r.mech, rpcHttpUrl, size: 1000 }));
       }
     }
     const filtered = notDelivered.filter(r => {
       const set = mechToSet.get(r.mech.toLowerCase());
+      // If we failed to get the set (or empty), we default to TRUSTING Ponder (return true)
+      // This prevents blocking if RPC is flaky, but might cause a revert on claim if actually delivered.
       if (!set || set.size === 0) return true;
+      
       const idHex = String(r.id).startsWith('0x') ? String(r.id).toLowerCase() : ('0x' + BigInt(String(r.id)).toString(16)).toLowerCase();
-      return set.has(idHex);
+      const inSet = set.has(idHex);
+      
+      if (!inSet) {
+        workerLogger.debug({ 
+          requestId: r.id, 
+          mech: r.mech,
+          onChainSetSize: set.size 
+        }, 'Request filtered out - not found in on-chain undelivered set (may be already delivered)');
+      }
+      
+      return inSet;
     });
     return filtered;
-  } catch {
+  } catch (e) {
+    workerLogger.warn({ error: e instanceof Error ? e.message : String(e) }, 'Error checking on-chain status, falling back to Ponder status');
     return notDelivered;
   }
 }
@@ -560,6 +582,73 @@ async function fetchSpecificRequest(requestId: string): Promise<UnclaimedRequest
   }
 }
 
+/**
+ * Preemptively redispatch a stale request to avoid RevokeRequest errors.
+ * This creates a fresh on-chain request with the same parameters.
+ */
+async function redispatchStaleRequest(request: UnclaimedRequest): Promise<boolean> {
+  if (redispatchedRequests.has(request.id)) {
+    return false; // Already handled
+  }
+
+  try {
+    workerLogger.info({ requestId: request.id, age: Math.floor(Date.now()/1000) - (request.blockTimestamp || 0) }, 'Request is stale (>4 mins) - attempting preemptive redispatch');
+
+    // 1. Fetch IPFS metadata to get job definition and parameters
+    const metadata = await fetchIpfsMetadata(request.ipfsHash);
+    if (!metadata) {
+      workerLogger.warn({ requestId: request.id, ipfsHash: request.ipfsHash }, 'Could not fetch IPFS metadata for stale request - cannot redispatch');
+      return false;
+    }
+
+    // 2. Prepare parameters for marketplace dispatch
+    const priorityMech = getMechAddress();
+    const privateKey = getServicePrivateKey();
+    const chainConfig = getMechChainConfig();
+
+    if (!priorityMech || !privateKey) {
+      workerLogger.error('Missing mech address or private key for redispatch');
+      return false;
+    }
+
+    // Construct IPFS content payload exactly as mech-client expects
+    // We reuse the metadata we fetched, ensuring we pass all context forward
+    const ipfsJsonContents = [{
+      ...metadata,
+      // Ensure we map 'prompt' to 'blueprint' if legacy format
+      blueprint: metadata.blueprint || (metadata as any).prompt,
+    }];
+
+    // 3. Call marketplace interact directly
+    // We set postOnly: true to just create the request without waiting for delivery
+    const result = await marketplaceInteract({
+      prompts: [ipfsJsonContents[0].blueprint], // Required arg, even if using ipfsJsonContents
+      priorityMech,
+      // Use tools from metadata, default to empty
+      tools: metadata.enabledTools || [],
+      ipfsJsonContents,
+      chainConfig,
+      keyConfig: { source: 'value', value: privateKey },
+      postOnly: true,
+      responseTimeout: 300, // Max allowed by marketplace
+    });
+
+    if (result && result.request_ids && result.request_ids.length > 0) {
+      const newRequestId = result.request_ids[0];
+      workerLogger.info({ oldRequestId: request.id, newRequestId }, 'Successfully redispatched stale request');
+      redispatchedRequests.add(request.id);
+      return true;
+    } else {
+      workerLogger.warn({ requestId: request.id, result }, 'Redispatch failed - no new request ID returned');
+      return false;
+    }
+
+  } catch (e: any) {
+    workerLogger.error({ requestId: request.id, error: e?.message || String(e) }, 'Error during stale request redispatch');
+    return false;
+  }
+}
+
 async function processOnce(): Promise<void> {
   const workerAddress = getMechAddress();
   if (!workerAddress) {
@@ -611,6 +700,24 @@ async function processOnce(): Promise<void> {
   // Iterate candidates until we claim one successfully
   let target: UnclaimedRequest | null = null;
   for (const c of candidates) {
+    // Check for staleness before claiming
+    const now = Math.floor(Date.now() / 1000);
+    const age = now - (c.blockTimestamp || 0);
+    
+    if (c.blockTimestamp && age > STALE_THRESHOLD_SECONDS) {
+      // Attempt to redispatch
+      const dispatched = await redispatchStaleRequest(c);
+      if (dispatched) {
+        // Successfully redispatched - skip this one and continue loop (will pick up new one next cycle)
+        continue; 
+      } else {
+        // Failed to redispatch (or already handled) - log warning but maybe skip to avoid RevokeRequest?
+        // Safer to skip processing a known stale request than to waste gas on RevokeRequest
+        workerLogger.warn({ requestId: c.id, age }, 'Skipping stale request that could not be redispatched (or was already handled)');
+        continue;
+      }
+    }
+
     const ok = await tryClaim(c, workerAddress);
     if (ok) { target = c; break; }
   }

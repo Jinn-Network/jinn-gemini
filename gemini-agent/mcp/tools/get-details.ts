@@ -249,6 +249,14 @@ export async function getDetails(params: GetDetailsParams) {
         for (const r of requestRecords) requestMap.set(r.id, r);
         const artifactMap = new Map<string, any>();
         for (const a of artifactRecords) artifactMap.set(a.id, a);
+        const cidMap = new Map<string, any[]>();
+        // CIDs can have multiple artifacts, so store arrays
+        for (const a of artifactRecords) {
+            if (a.cid) {
+                if (!cidMap.has(a.cid)) cidMap.set(a.cid, []);
+                cidMap.get(a.cid)!.push(a);
+            }
+        }
         const jobDefMap = new Map<string, any>();
         for (const j of jobDefRecords) jobDefMap.set(j.id, j);
         const combined: any[] = [];
@@ -259,6 +267,9 @@ export async function getDetails(params: GetDetailsParams) {
             } else if (isArtifactId(id)) {
                 const a = artifactMap.get(id);
                 if (a) combined.push(a);
+            } else if (isCid(id)) {
+                const artifacts = cidMap.get(id);
+                if (artifacts) combined.push(...artifacts);
             } else if (isJobDefId(id)) {
                 const j = jobDefMap.get(id);
                 if (j) combined.push(j);

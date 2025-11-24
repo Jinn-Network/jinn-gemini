@@ -2154,17 +2154,31 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Cost Impact**: Polling loops burn tokens checking status repeatedly. Each iteration costs ~2-5K tokens. Job with 20+ iterations = 40-100K tokens wasted.
 - **Not Related To**: Progress checkpointing (only runs when workstream has completed jobs, which root jobs on first run don't have)
 
-**RevokeRequest and Marketplace Timeout Issues (2025-11-19):**
-- **Issue**: Marketplace enforces a hard 5-minute (300 second) maximum timeout for all requests
-- **Root Cause**: The on-chain MechMarketplace contract validates `responseTimeout <= 300` and reverts with `OutOfBounds` error if exceeded
+**RevokeRequest and Marketplace Timeout Issues (2025-11-19, Updated 2025-11-24):**
+- **Issue**: Marketplace enforces a hard 5-minute (300 second) maximum timeout for all requests on Base network
+- **Root Cause**: The on-chain MechMarketplace contract validates `responseTimeout <= 300` and reverts with `OutOfBounds` error if exceeded. Additionally, the mech contract (`MechFixedPriceNative`) enforces the timeout and emits `RevokeRequest` for late delivery attempts.
 - **Impact**: Cannot dispatch jobs with timeout > 300 seconds. Jobs requiring longer execution must be decomposed into smaller sub-jobs.
-- **Fix Applied**: Updated default `responseTimeout` to 300 seconds (max allowed) in `dispatch_new_job` and `dispatch_existing_job`. Added execution time planning guidance to GEMINI.md.
+- **Fix Applied (2025-11-19)**: Updated default `responseTimeout` to 300 seconds (max allowed) in `dispatch_new_job` and `dispatch_existing_job`. Added execution time planning guidance to GEMINI.md.
+- **Fix Applied (2025-11-24 - Preemptive Redispatch)**: Implemented proactive stale request handling in `worker/mech_worker.ts`:
+  - **Safety Threshold**: 240 seconds (4 minutes). If a request is older than this when the worker discovers it, the worker preemptively redispatches it rather than processing it.
+  - **Why**: Processing a stale request wastes computation and gas - the job executes, but delivery fails with `RevokeRequest` because the 300s deadline has passed.
+  - **Mechanism**: When the worker encounters a stale request (age > 240s), it:
+    1. Fetches the original IPFS metadata (blueprint, tools, context).
+    2. Posts a fresh on-chain request with identical parameters via `marketplaceInteract`.
+    3. Skips processing the old request.
+    4. The new request has a fresh 5-minute window and will be picked up in the next poll cycle.
+  - **Benefits**: Eliminates RevokeRequest errors for requests that sat in the queue too long. Preserves all work context in the redispatch.
+- **EXPIRED Status (2025-11-24)**: Added virtual `expired` field to Ponder `request` table:
+  - Computed as `blockTimestamp + 300s < currentTime` during indexing.
+  - Allows filtering of expired requests in GraphQL queries without on-chain checks.
+  - Set to `false` when a request is successfully delivered.
+  - Indexed for efficient queries (e.g., `requests(where: { expired: false, delivered: false })`).
 - **Work Decomposition Strategy**: Complex jobs requiring > 5 minutes should be broken into smaller sub-jobs (e.g., separate research into domain-specific tasks, split data gathering from analysis, create pipeline stages).
 - **Time Planning**: Agents should estimate ~10-15 tool calls maximum per job, with each tool call averaging 5-30 seconds. Jobs approaching this limit should delegate remaining work to children.
   - Default jobs: 3600s (1 hour) - covers recognition/reflection phases
   - Complex research: 7200s (2 hours) - for jobs with extensive web fetches and retries
   - Simple jobs: 600s (10 minutes) minimum
-- **On-Chain Behavior**: When timeout expires, marketplace considers request "undeliverable". Late delivery attempts are rejected with `RevokeRequest`, funds remain locked (no automatic refund mechanism in deployed balance tracker).
+- **On-Chain Behavior**: When timeout expires, marketplace considers request "undeliverable". Late delivery attempts are rejected with `RevokeRequest`, funds remain locked (no automatic refund mechanism in deployed balance tracker). The preemptive redispatch mechanism prevents this scenario for the worker's own requests.
 
 ### Ponder OlasMech:Deliver Failures (Fixed 2025-11-20)
 
@@ -2186,15 +2200,25 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - Added exponential backoff/retry logic for IPFS fetches.
 - Increased default timeout to 15s per gateway attempt.
 
-### Agent `get_details` Artifact Retrieval by CID (Fixed 2025-11-20)
+### Agent `get_details` Artifact Retrieval by CID (Fixed 2025-11-24)
 
 **Issue**: Agents calling `get_details` with CID (e.g., `bafkreid5ebotrkenji2y7cwvsdqwicnk2rggmvi7rstemq7d5mcqnmisbe`) receive empty results, causing job failures when trying to access artifacts from previous jobs.
-**Root Cause**: `get_details` only supported artifact IDs in `requestId:index` format, not raw CIDs. Agents seeing artifact CIDs in progress summaries would try to fetch them directly but fail.
+**Root Cause**: `get_details` initially supported CID detection and querying but failed to add CID-based artifacts to the combined results array, resulting in empty data returns.
 **Fix**:
 - Enhanced `get_details` to detect and handle CID format (Qm..., bafkrei..., f01...).
 - When CID is provided, query Ponder's `artifacts(where: { cid: $cid })` to find matching artifacts.
+- Fixed result assembly to include CID-based artifacts in the combined response.
 - Returns all artifacts with that CID (typically 1, but supports duplicates across requests).
 - IPFS content resolution still works when `resolve_ipfs: true` (default).
+
+### MCP Tool Schema `additionalProperties` Error (Fixed 2025-11-24)
+
+**Issue**: Gemini agent execution fails with "params must NOT have additional properties" when calling `dispatch_existing_job` or other MCP tools.
+**Root Cause**: MCP SDK validates tool parameters against JSON Schema before passing to handler. Zod `.shape` generates strict schemas with `additionalProperties: false`, rejecting any extra fields Gemini might include in function calls.
+**Fix**:
+- Modified `dispatch_existing_job` schema to use `.passthrough()` before `.shape`, allowing additional properties while still validating required fields.
+- Pattern: `inputSchema: schemaBase.passthrough().shape` instead of `inputSchema: schemaBase.shape`.
+- This allows Gemini to include metadata fields without breaking validation while maintaining type safety for expected parameters.
 
 ### Parent Re-Dispatch Workstream Propagation (Fixed 2025-11-21)
 
@@ -2204,3 +2228,17 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - Modified `dispatch_existing_job` to exclude `sourceRequestId` and `sourceJobDefinitionId` from lineage context when `workstreamId` is explicitly provided.
 - This ensures parent re-dispatches are indexed as root jobs with the preserved workstream, not as child jobs requiring traversal.
 **Impact**: Parent jobs now correctly maintain the same `workstreamId` across re-dispatches, keeping entire job hierarchies unified within a single workstream.
+
+### Worker Request Filtering & Delivery Preflight (Fixed 2025-11-24)
+
+**Issue**: Worker fails to pick up valid unclaimed requests or incorrectly reports "Request already delivered" during delivery preflight checks.
+**Root Cause**: Multiple functions verify requests against the on-chain `getUndeliveredRequestIds` list, but used insufficient fetch limits (100-1000). If the mech has >limit undelivered requests globally (across all workstreams), requests outside this window were falsely assumed to be delivered.
+**Affected Functions**:
+- `filterUnclaimed` in `worker/mech_worker.ts` (discovery phase)
+- `isUndeliveredOnChain` in `worker/delivery/transaction.ts` (delivery preflight)
+**Fix**:
+- Increased fetch limit to 5000 in both functions (sufficient for production workload)
+- Added explicit warning logging when requests are not found in on-chain undelivered set
+- Added graceful fallback (trust Ponder/continue) if on-chain verification fails
+- Enforces membership check only when on-chain query succeeds
+**Impact**: Workers can now correctly process and deliver requests even when the shared mech has a large backlog of undelivered requests from other workstreams.

@@ -296,10 +296,12 @@ interface Request {
   blockTimestamp?: string
   transactionHash?: string
   delivered?: boolean
+  expired?: boolean
   jobDefinitionId?: string
   sourceRequestId?: string
   sourceJobDefinitionId?: string
   dependencies?: string[]
+  workstreamId?: string
 }
 
 interface MemoryInspectionResponse {
@@ -430,35 +432,18 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
   const [workerTelemetry, setWorkerTelemetry] = useState<WorkerTelemetryLog | null>(null)
   const [loadingWorkerTelemetry, setLoadingWorkerTelemetry] = useState(true)
 
-  // Find the root request (workstream) by traversing up the chain
+  // Get workstream ID from Ponder (already indexed and computed)
   useEffect(() => {
-    const findWorkstream = async () => {
-      try {
-        setLoadingWorkstream(true)
-        let currentRequestId = record.id
-        let currentSourceId = record.sourceRequestId
-
-        // Traverse up the chain until we find a request with no source (the root)
-        while (currentSourceId) {
-          const parent = await getRequest(currentSourceId)
-          if (!parent || !parent.sourceRequestId) {
-            currentRequestId = currentSourceId
-            break
-          }
-          currentRequestId = currentSourceId
-          currentSourceId = parent.sourceRequestId
-        }
-
-        setWorkstreamId(currentRequestId)
-      } catch (error) {
-        console.error('Error finding workstream:', error)
-      } finally {
-        setLoadingWorkstream(false)
-      }
+    setLoadingWorkstream(true)
+    // Use the workstreamId field from the request if available
+    if ('workstreamId' in record && record.workstreamId) {
+      setWorkstreamId(record.workstreamId as string)
+    } else {
+      // Fallback to own ID if workstreamId not available (shouldn't happen)
+      setWorkstreamId(record.id)
     }
-
-    findWorkstream()
-  }, [record.id, record.sourceRequestId])
+    setLoadingWorkstream(false)
+  }, [record.id])
 
   useEffect(() => {
     const fetchMemoryData = async () => {
@@ -1300,9 +1285,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
                       record.delivered
                         ? 'bg-green-50 text-green-700 border-green-200'
-                        : 'bg-gray-50 text-gray-700 border-gray-200'
+                        : (record.expired
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : 'bg-gray-50 text-gray-700 border-gray-200')
                     }`}>
-                      {record.delivered ? '✓ Delivered' : 'Pending'}
+                      {record.delivered ? '✓ Delivered' : (record.expired ? '✗ Expired' : '⏳ Pending')}
                     </span>
                   </div>
                 </div>
@@ -1377,7 +1364,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                       requestId={record.id}
                       sourceJobDefinitionId={record.sourceJobDefinitionId || null}
                       jobStatus={executionData?.status || null}
-                      delivered={record.delivered}
+                      delivered={record.delivered || false}
                       workerTelemetry={workerTelemetry}
                     />
                   </div>

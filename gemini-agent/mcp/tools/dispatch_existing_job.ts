@@ -27,7 +27,7 @@ export const dispatchExistingJobParams = dispatchExistingJobParamsBase.refine(
 
 export const dispatchExistingJobSchema = {
   description: 'Dispatch an existing job definition by ID or name to the marketplace. ONLY use this if you know the job definition already exists in Ponder (e.g., you previously created it with dispatch_new_job). For new job definitions, use dispatch_new_job instead. This tool looks up the job in Ponder and posts a new request anchored to its jobDefinitionId. The job definition must have a blueprint; prompt-based jobs are no longer supported.',
-  inputSchema: dispatchExistingJobParamsBase.shape,
+  inputSchema: dispatchExistingJobParamsBase.passthrough().shape,
 };
 
 export async function dispatchExistingJob(args: unknown) {

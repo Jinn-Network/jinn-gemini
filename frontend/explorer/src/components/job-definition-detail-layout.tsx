@@ -43,33 +43,11 @@ export function JobDefinitionDetailLayout({ record }: JobDefinitionDetailLayoutP
         setJobRuns(runsResponse.items)
         setLoadingRuns(false)
 
-        // Find workstream by traversing to root
+        // Get workstream from first run (all runs in same job definition share same workstream)
         if (runsResponse.items.length > 0) {
           const latestRun = runsResponse.items[0]
-          let currentRequestId = latestRun.id
-          let sourceRequestId = latestRun.sourceRequestId || null
-          
-          // Keep traversing up until we find a request with no source (the root)
-          while (sourceRequestId) {
-            try {
-              const parentRequest = await getRequest(sourceRequestId)
-              if (!parentRequest) {
-                break
-              }
-
-              currentRequestId = sourceRequestId
-              sourceRequestId = parentRequest.sourceRequestId || null
-
-              if (!sourceRequestId) {
-                break
-              }
-            } catch (parentError) {
-              console.error('Error fetching parent request:', parentError)
-              break
-            }
-          }
-          
-          setWorkstreamId(currentRequestId)
+          // Use the indexed workstreamId field from Ponder
+          setWorkstreamId(latestRun.workstreamId || latestRun.id)
         }
       } catch (error) {
         console.error('Error fetching job runs:', error)

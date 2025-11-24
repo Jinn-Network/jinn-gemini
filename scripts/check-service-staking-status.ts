@@ -29,6 +29,7 @@ const services = [
   { name: 'Service #149 (Master Safe)', tokenId: 149, safe: '0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645' },
   { name: 'Service #150 (jinn-mech)', tokenId: 150, safe: '0xbcE25403FE17Cc0C41F334A07ca26cd8890090d9' },
   { name: 'Service #163 (default-service)', tokenId: 163, safe: '0xa70Ea55b009fB50AFae9136049bB1EB52880691e' },
+  { name: 'Service #165 (Current)', tokenId: 165, safe: '0xb8B7A89760A4430C3f69eeE7Ba5D2B985D593D92' },
 ];
 
 async function main() {

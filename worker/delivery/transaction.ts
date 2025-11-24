@@ -42,10 +42,21 @@ export async function isUndeliveredOnChain(params: {
     const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
     const web3 = new Web3(rpcHttpUrl);
     const contract = new (web3 as any).eth.Contract(abi, mechAddress);
-    const ids: string[] = await contract.methods.getUndeliveredRequestIds(100, 0).call();
+    const ids: string[] = await contract.methods.getUndeliveredRequestIds(5000, 0).call();
     const set = new Set((ids || []).map((x: string) => String(x).toLowerCase()));
-    return set.has(String(requestIdHex).toLowerCase());
-  } catch {
+    const isUndelivered = set.has(String(requestIdHex).toLowerCase());
+    
+    if (!isUndelivered) {
+      workerLogger.warn({ 
+        requestIdHex, 
+        totalUndelivered: ids.length,
+        fetchLimit: 5000 
+      }, 'Request not found in on-chain undelivered set (may be outside fetch window)');
+    }
+    
+    return isUndelivered;
+  } catch (error: any) {
+    workerLogger.warn({ error: error?.message }, 'Failed to check on-chain delivery status; assuming undelivered');
     return true; // don't fail hard on preflight errors
   }
 }

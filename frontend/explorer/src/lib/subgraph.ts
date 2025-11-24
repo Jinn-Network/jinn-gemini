@@ -31,6 +31,7 @@ export interface Request {
   blockNumber: string
   blockTimestamp: string
   delivered: boolean
+  expired?: boolean
   jobName?: string
   enabledTools: string[]
   additionalContext?: Record<string, unknown>
@@ -249,6 +250,7 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Paginat
           blockNumber
           blockTimestamp
           delivered
+          expired
           jobName
           enabledTools
           additionalContext
@@ -444,6 +446,7 @@ export async function getRequest(id: string): Promise<Request | null> {
         blockNumber
         blockTimestamp
         delivered
+        expired
         jobName
         enabledTools
         additionalContext

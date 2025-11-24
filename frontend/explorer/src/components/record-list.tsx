@@ -39,12 +39,26 @@ function getPrimaryIdentifier(record: SubgraphRecord): string {
 function getStatusDisplay(record: SubgraphRecord): { status: string; className: string } | null {
   // Check if this is a request and show delivery status
   if ('delivered' in record) {
-    const status = record.delivered ? 'DELIVERED' : 'PENDING'
-    const className = record.delivered 
-      ? 'text-green-600 bg-green-50 border-green-200'
-      : 'text-yellow-600 bg-yellow-50 border-yellow-200'
+    const expired = 'expired' in record ? record.expired : false
     
-    return { status, className }
+    if (record.delivered) {
+      return {
+        status: 'DELIVERED',
+        className: 'text-green-600 bg-green-50 border-green-200'
+      }
+    }
+    
+    if (expired) {
+      return {
+        status: 'EXPIRED',
+        className: 'text-red-600 bg-red-50 border-red-200'
+      }
+    }
+    
+    return {
+      status: 'PENDING',
+      className: 'text-yellow-600 bg-yellow-50 border-yellow-200'
+    }
   }
   
   return null

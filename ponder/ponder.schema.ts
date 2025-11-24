@@ -39,6 +39,7 @@ export default createSchema((p: any) => ({
       blockNumber: p.bigint(),
       blockTimestamp: p.bigint(),
       delivered: p.boolean(),
+      expired: p.boolean().optional(), // Virtual status: true if blockTimestamp + 300s < now (5 min timeout)
       jobName: p.string().optional(),
       enabledTools: p.string().list().optional(),
       additionalContext: p.json().optional(),
@@ -52,6 +53,7 @@ export default createSchema((p: any) => ({
       jobDefIdx: p.index("jobDefinitionId"),
       sourceReqIdx: p.index("sourceRequestId"),
       sourceJobDefIdx: p.index("sourceJobDefinitionId"),
+      expiredIdx: p.index("expired"), // Index for efficient filtering of expired requests
     }
   ),
   delivery: p.createTable(

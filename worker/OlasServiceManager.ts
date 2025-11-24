@@ -1,5 +1,19 @@
 /**
- * OLAS Service Manager
+ * ⚠️ DEPRECATED - DO NOT USE ⚠️
+ * 
+ * This class is DEPRECATED and SHOULD NOT be used under any circumstances.
+ * 
+ * Use the olas-operate-middleware CLI directly instead:
+ * - For staking: `cd olas-operate-middleware && poetry run operate quickstart`
+ * - For claiming: `cd olas-operate-middleware && poetry run operate claim`
+ * - For termination: `cd olas-operate-middleware && poetry run operate terminate`
+ * 
+ * The operate CLI is the official interface and handles all service lifecycle operations correctly.
+ * This wrapper layer adds complexity and potential for errors.
+ * 
+ * @deprecated Use olas-operate-middleware CLI directly
+ * 
+ * OLAS Service Manager (DEPRECATED)
  *
  * Manages the OLAS service lifecycle through the olas-operate-middleware CLI.
  * This class abstracts the entire service lifecycle (creation, deployment, staking)
