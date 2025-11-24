@@ -2160,16 +2160,20 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Impact**: Cannot dispatch jobs with timeout > 300 seconds. Jobs requiring longer execution must be decomposed into smaller sub-jobs.
 - **Fix Applied (2025-11-19)**: Updated default `responseTimeout` to 300 seconds (max allowed) in `dispatch_new_job` and `dispatch_existing_job`. Added execution time planning guidance to GEMINI.md.
 - **Fix Applied (2025-11-24 - Preemptive Redispatch)**: Implemented proactive stale request handling in `worker/mech_worker.ts`:
-  - **Safety Threshold**: 240 seconds (4 minutes). If a request is older than this when the worker discovers it, the worker preemptively redispatches it rather than processing it.
+  - **Safety Threshold**: 240 seconds (4 minutes). Requests older than this are considered stale.
   - **Why**: Processing a stale request wastes computation and gas - the job executes, but delivery fails with `RevokeRequest` because the 300s deadline has passed.
+  - **Priority Logic**: Worker uses two-pass approach:
+    1. **First pass**: Try to claim any fresh request (age < 240s). Fresh requests always have priority.
+    2. **Second pass**: Only if no fresh requests exist, attempt to redispatch one stale request.
   - **Rate Limiting**: Worker redispatches **only one** stale request per polling cycle, then returns immediately. This prevents bulk redispatches that would create multiple new requests that expire before being processed.
   - **Dependency Exclusion**: Requests with dependencies are **never redispatched**. They remain in the queue until their dependencies complete, regardless of age. Redispatching them would break the dependency chain and create orphaned requests.
-  - **Mechanism**: When the worker encounters a stale request (age > 240s, no dependencies), it:
+  - **No Persistence Needed**: Because fresh requests are prioritized, newly redispatched requests are claimed immediately on the next cycle. No need to track which requests have been redispatched across worker sessions.
+  - **Mechanism**: When the worker encounters only stale requests (age > 240s, no dependencies), it:
     1. Fetches the original IPFS metadata (blueprint, tools, context).
     2. Posts a fresh on-chain request with identical parameters via `marketplaceInteract`.
     3. Ends the current polling cycle immediately.
     4. The new request has a fresh 5-minute window and will be picked up in the next poll cycle.
-  - **Benefits**: Eliminates RevokeRequest errors for requests that sat in the queue too long. Preserves all work context in the redispatch. Prevents cascading redispatch waste. Maintains dependency integrity.
+  - **Benefits**: Eliminates RevokeRequest errors for requests that sat in the queue too long. Preserves all work context in the redispatch. Prevents cascading redispatch waste. Maintains dependency integrity. Ensures fresh work is always processed first.
 - **EXPIRED Status (Client-Side Computation)**: Expiration status is computed client-side based on `blockTimestamp + 300s`:
   - Ponder only stores `blockTimestamp`, clients compute expiration dynamically at query time.
   - Frontend uses `isRequestExpired()` helper function from `frontend/explorer/src/lib/subgraph.ts`.
