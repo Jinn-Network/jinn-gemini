@@ -534,23 +534,20 @@ ponder.on(
       return;
     }
 
-    // Fail fast if request doesn't exist - it should have been pre-seeded by MarketplaceRequest handler
+    // Check if request exists - it should have been pre-seeded by MarketplaceRequest handler
+    // If indexing from a later start block, we may see Deliver events for requests that were
+    // created before our indexing window. Skip these gracefully.
     let existingRequest: any = null;
     try {
       existingRequest = await requestRepo.findUnique({ id: requestId });
       if (!existingRequest) {
-        throw new Error(
-          `Deliver event received for request ${requestId} that does not exist in database. ` +
-          `This indicates the MarketplaceRequest event was not indexed before Deliver. ` +
-          `Check Ponder indexing order and ensure MarketplaceRequest handler pre-seeds requests.`
+        logger.warn(
+          { requestId, txHash },
+          'Deliver event received for request that does not exist in database (likely created before indexing start block). Skipping.'
         );
+        return;
       }
     } catch (e: any) {
-      // If findUnique throws (not just returns null), re-throw as-is
-      if (e.message && e.message.includes('does not exist')) {
-        throw e;
-      }
-      // Otherwise, log and re-throw
       logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before Deliver');
       throw e;
     }
