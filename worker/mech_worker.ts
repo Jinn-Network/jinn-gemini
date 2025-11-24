@@ -41,16 +41,18 @@ const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/gra
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = getUseControlApi();
 const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 5;
-// Base network enforces a strict 300s (5 minute) timeout. 
-// We apply a safety buffer to ensure we don't pick up jobs that will expire during execution.
-// 240s allows 60s for execution before the 300s deadline.
-const MAX_REQUEST_AGE_SECONDS = 240; 
 
 // Workstream filtering: parse --workstream=<id> flag
 const WORKSTREAM_FILTER = (() => {
   const arg = process.argv.find(arg => arg.startsWith('--workstream='));
   return arg ? arg.split('=')[1] : undefined;
 })();
+
+// Base network enforces a strict 300s (5 minute) timeout. 
+// We apply a safety buffer to ensure we don't pick up jobs that will expire during execution.
+// 240s allows 60s for execution before the 300s deadline.
+// For workstream-filtered development runs, use longer window to catch old jobs
+const MAX_REQUEST_AGE_SECONDS = WORKSTREAM_FILTER ? 3600 : 240; // 1 hour for dev, 4 min for production
 
 // Auto-reposting configuration
 const ENABLE_AUTO_REPOST = getEnableAutoRepost();
