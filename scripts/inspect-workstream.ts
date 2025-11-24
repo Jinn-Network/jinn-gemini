@@ -61,7 +61,7 @@ interface WorkstreamNode {
   id: string; // requestId
   jobName?: string;
   jobDefinitionId?: string;
-  status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'UNKNOWN';
+  status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'EXPIRED' | 'UNKNOWN';
   timestamp: string;
   duration?: number;
   summary?: string; // Short summary from delivery or inference
@@ -72,6 +72,7 @@ interface WorkstreamNode {
   _debug?: {
     delivered: boolean;
     hasDelivery: boolean;
+    expired: boolean;
   };
 }
 
@@ -187,6 +188,14 @@ function truncate(str: string, maxLength: number = 100): string {
   return str.substring(0, maxLength) + '...';
 }
 
+function isRequestExpired(blockTimestamp: string): boolean {
+  const MARKETPLACE_TIMEOUT_SECONDS = 300; // 5 minutes
+  const timestamp = Number(blockTimestamp);
+  const expirationTime = timestamp + MARKETPLACE_TIMEOUT_SECONDS;
+  const currentTime = Math.floor(Date.now() / 1000);
+  return currentTime > expirationTime;
+}
+
 // --- Main ---
 
 async function main() {
@@ -251,8 +260,9 @@ async function main() {
     for (const req of requests) {
       const delivery = deliveryMap.get(req.id);
       const reqArtifacts = artifactMap.get(req.id) || [];
+      const expired = !req.delivered && isRequestExpired(req.blockTimestamp);
       
-      let status: WorkstreamNode['status'] = req.delivered ? 'COMPLETED' : 'PENDING';
+      let status: WorkstreamNode['status'] = req.delivered ? 'COMPLETED' : (expired ? 'EXPIRED' : 'PENDING');
       let summary: string | undefined;
       let error: string | undefined;
 
@@ -286,7 +296,7 @@ async function main() {
         error,
         children: [],
         artifacts: reqArtifacts.map(a => ({ name: a.name, topic: a.topic, type: a.type })),
-        _debug: { delivered: req.delivered, hasDelivery: !!delivery }
+        _debug: { delivered: req.delivered, hasDelivery: !!delivery, expired }
       });
     }
 
@@ -320,7 +330,8 @@ async function main() {
       stats: {
         totalJobs: requests.length,
         completed: requests.filter(r => r.delivered).length,
-        pending: requests.filter(r => !r.delivered).length,
+        pending: requests.filter(r => !r.delivered && !isRequestExpired(r.blockTimestamp)).length,
+        expired: requests.filter(r => !r.delivered && isRequestExpired(r.blockTimestamp)).length,
         totalArtifacts: artifacts.length
       },
       tree: rootNodes.length === 1 ? rootNodes[0] : rootNodes
