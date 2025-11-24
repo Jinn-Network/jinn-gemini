@@ -38,6 +38,18 @@ export interface Request {
   dependencies?: string[]
 }
 
+// Constants
+const MARKETPLACE_TIMEOUT_SECONDS = 300 // 5 minutes
+
+// Helper function to determine if a request is expired
+export function isRequestExpired(request: Request): boolean {
+  if (request.delivered) return false
+  const blockTime = parseInt(request.blockTimestamp)
+  const expirationTime = blockTime + MARKETPLACE_TIMEOUT_SECONDS
+  const currentTime = Math.floor(Date.now() / 1000)
+  return currentTime > expirationTime
+}
+
 export interface DependencyInfo {
   id: string           // job definition ID
   jobName: string      // resolved job name
@@ -250,7 +262,6 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Paginat
           blockNumber
           blockTimestamp
           delivered
-          expired
           jobName
           enabledTools
           additionalContext
@@ -446,7 +457,6 @@ export async function getRequest(id: string): Promise<Request | null> {
         blockNumber
         blockTimestamp
         delivered
-        expired
         jobName
         enabledTools
         additionalContext

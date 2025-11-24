@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
-import { getDependencyInfo, DependencyInfo } from '@/lib/subgraph'
+import { getDependencyInfo, DependencyInfo, isRequestExpired, Request } from '@/lib/subgraph'
 
 interface RequestsTableProps {
   records: SubgraphRecord[]
@@ -110,7 +110,7 @@ export function RequestsTable({ records }: RequestsTableProps) {
               : record.id.toString().substring(0, 16) + '...'
             
             const delivered = 'delivered' in record ? record.delivered : false
-            const expired = 'expired' in record ? record.expired : false
+            const expired = 'blockTimestamp' in record ? isRequestExpired(record as Request) : false
             
             // Determine status based on delivered and expired flags
             const statusText = delivered ? 'DELIVERED' : (expired ? 'EXPIRED' : 'PENDING')

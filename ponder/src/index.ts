@@ -69,17 +69,6 @@ function truncate(text: unknown, max = 800): string | null {
   return str.length > max ? str.slice(0, max) + "…" : str;
 }
 
-/**
- * Check if a request is expired based on the 300-second (5 minute) marketplace timeout.
- * A request is considered expired if: blockTimestamp + 300 < currentTime
- */
-function isRequestExpired(blockTimestamp: bigint): boolean {
-  const MARKETPLACE_TIMEOUT_SECONDS = 300n;
-  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
-  const expirationTime = blockTimestamp + MARKETPLACE_TIMEOUT_SECONDS;
-  return currentTimestamp > expirationTime;
-}
-
 function formatVectorLiteral(vector: number[]): string {
   return `[${vector.join(",")}]`;
 }
@@ -262,7 +251,6 @@ ponder.on(
             blockTimestamp,
             ipfsHash,
             delivered: false,
-            expired: isRequestExpired(blockTimestamp), // Virtual status based on 300s timeout
           },
           update: {
             // Don't overwrite existing fields during pre-seed
@@ -432,7 +420,6 @@ ponder.on(
             blockNumber,
             blockTimestamp,
             delivered: false,
-            expired: isRequestExpired(blockTimestamp),
             jobName,
             enabledTools,
             additionalContext: contextToStore,
@@ -449,7 +436,6 @@ ponder.on(
             enabledTools,
             additionalContext: contextToStore,
             dependencies,
-            expired: isRequestExpired(blockTimestamp), // Recompute on update
             // intentionally do not overwrite delivered, mech, sender, blockNumber, blockTimestamp, transactionHash here
           },
         });
@@ -602,13 +588,11 @@ ponder.on(
         blockNumber: existingRequest?.blockNumber || blockNumber,
         blockTimestamp: existingRequest?.blockTimestamp || blockTimestamp,
         delivered: true,
-        expired: false, // Successfully delivered means not expired
         deliveryIpfsHash: ipfsHash,
       },
       update: {
         // Only update delivery-specific fields; preserve all other existing fields
         delivered: true,
-        expired: false, // Successfully delivered means not expired
         deliveryIpfsHash: ipfsHash,
         // Do not overwrite mech, sender, transactionHash, blockNumber, blockTimestamp here
         // as they come from MarketplaceRequest event

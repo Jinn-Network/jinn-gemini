@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getDependencyInfo, getDependents, DependencyInfo } from '@/lib/subgraph'
+import { getDependencyInfo, getDependents, DependencyInfo, isRequestExpired, Request } from '@/lib/subgraph'
 
 interface DependenciesSectionProps {
   requestId: string
@@ -120,12 +120,12 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
                       className={`ml-4 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
                         dep.delivered 
                           ? 'text-green-700 bg-green-100 border border-green-300'
-                          : ((dep as any).expired
+                          : (isRequestExpired(dep as Request)
                               ? 'text-red-700 bg-red-100 border border-red-300'
                               : 'text-yellow-700 bg-yellow-100 border border-yellow-300')
                       }`}
                     >
-                      {dep.delivered ? '✓ Delivered' : ((dep as any).expired ? '✗ Expired' : '⏳ Pending')}
+                      {dep.delivered ? '✓ Delivered' : (isRequestExpired(dep as Request) ? '✗ Expired' : '⏳ Pending')}
                     </span>
                   </li>
                 ))}

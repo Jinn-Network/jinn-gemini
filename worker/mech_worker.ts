@@ -705,14 +705,22 @@ async function processOnce(): Promise<void> {
     const age = now - (c.blockTimestamp || 0);
     
     if (c.blockTimestamp && age > STALE_THRESHOLD_SECONDS) {
+      // Don't redispatch requests with dependencies - they're waiting for their deps to complete
+      // Redispatching them would break the dependency chain
+      if (c.dependencies && c.dependencies.length > 0) {
+        workerLogger.info({ requestId: c.id, age, dependencies: c.dependencies }, 'Skipping stale request with dependencies - waiting for deps to complete');
+        continue;
+      }
+      
       // Attempt to redispatch
       const dispatched = await redispatchStaleRequest(c);
       if (dispatched) {
-        // Successfully redispatched - skip this one and continue loop (will pick up new one next cycle)
-        continue; 
+        // Successfully redispatched - STOP processing this cycle.
+        // The newly created request will be picked up on the next poll.
+        workerLogger.info({ requestId: c.id, age }, 'Redispatched stale request - ending this cycle to allow fresh request to be processed');
+        return; 
       } else {
-        // Failed to redispatch (or already handled) - log warning but maybe skip to avoid RevokeRequest?
-        // Safer to skip processing a known stale request than to waste gas on RevokeRequest
+        // Failed to redispatch (or already handled) - skip this request to avoid RevokeRequest
         workerLogger.warn({ requestId: c.id, age }, 'Skipping stale request that could not be redispatched (or was already handled)');
         continue;
       }

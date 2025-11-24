@@ -4,6 +4,7 @@ import { CollectionName } from '@/lib/types'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { IdLink } from '@/components/id-link'
 import { formatDate } from '@/lib/utils'
+import { isRequestExpired, Request } from '@/lib/subgraph'
 
 interface RecordListProps {
   records: SubgraphRecord[]
@@ -39,7 +40,7 @@ function getPrimaryIdentifier(record: SubgraphRecord): string {
 function getStatusDisplay(record: SubgraphRecord): { status: string; className: string } | null {
   // Check if this is a request and show delivery status
   if ('delivered' in record) {
-    const expired = 'expired' in record ? record.expired : false
+    const expired = 'blockTimestamp' in record ? isRequestExpired(record as Request) : false
     
     if (record.delivered) {
       return {

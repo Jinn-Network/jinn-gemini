@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
+import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, isRequestExpired, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
 import { RecognitionPhaseCard } from './recognition-phase-card'
 import { WorkerTelemetryCard } from '../worker-telemetry-card'
 import { DependenciesSection } from '../dependencies-section'
@@ -1285,11 +1285,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
                       record.delivered
                         ? 'bg-green-50 text-green-700 border-green-200'
-                        : (record.expired
+                        : (isRequestExpired(record)
                             ? 'bg-red-50 text-red-700 border-red-200'
                             : 'bg-gray-50 text-gray-700 border-gray-200')
                     }`}>
-                      {record.delivered ? '✓ Delivered' : (record.expired ? '✗ Expired' : '⏳ Pending')}
+                      {record.delivered ? '✓ Delivered' : (isRequestExpired(record) ? '✗ Expired' : '⏳ Pending')}
                     </span>
                   </div>
                 </div>

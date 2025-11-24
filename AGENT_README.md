@@ -2162,17 +2162,19 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Fix Applied (2025-11-24 - Preemptive Redispatch)**: Implemented proactive stale request handling in `worker/mech_worker.ts`:
   - **Safety Threshold**: 240 seconds (4 minutes). If a request is older than this when the worker discovers it, the worker preemptively redispatches it rather than processing it.
   - **Why**: Processing a stale request wastes computation and gas - the job executes, but delivery fails with `RevokeRequest` because the 300s deadline has passed.
-  - **Mechanism**: When the worker encounters a stale request (age > 240s), it:
+  - **Rate Limiting**: Worker redispatches **only one** stale request per polling cycle, then returns immediately. This prevents bulk redispatches that would create multiple new requests that expire before being processed.
+  - **Dependency Exclusion**: Requests with dependencies are **never redispatched**. They remain in the queue until their dependencies complete, regardless of age. Redispatching them would break the dependency chain and create orphaned requests.
+  - **Mechanism**: When the worker encounters a stale request (age > 240s, no dependencies), it:
     1. Fetches the original IPFS metadata (blueprint, tools, context).
     2. Posts a fresh on-chain request with identical parameters via `marketplaceInteract`.
-    3. Skips processing the old request.
+    3. Ends the current polling cycle immediately.
     4. The new request has a fresh 5-minute window and will be picked up in the next poll cycle.
-  - **Benefits**: Eliminates RevokeRequest errors for requests that sat in the queue too long. Preserves all work context in the redispatch.
-- **EXPIRED Status (2025-11-24)**: Added virtual `expired` field to Ponder `request` table:
-  - Computed as `blockTimestamp + 300s < currentTime` during indexing.
-  - Allows filtering of expired requests in GraphQL queries without on-chain checks.
-  - Set to `false` when a request is successfully delivered.
-  - Indexed for efficient queries (e.g., `requests(where: { expired: false, delivered: false })`).
+  - **Benefits**: Eliminates RevokeRequest errors for requests that sat in the queue too long. Preserves all work context in the redispatch. Prevents cascading redispatch waste. Maintains dependency integrity.
+- **EXPIRED Status (Client-Side Computation)**: Expiration status is computed client-side based on `blockTimestamp + 300s`:
+  - Ponder only stores `blockTimestamp`, clients compute expiration dynamically at query time.
+  - Frontend uses `isRequestExpired()` helper function from `frontend/explorer/src/lib/subgraph.ts`.
+  - Status updates in real-time as requests age past the 5-minute marketplace timeout.
+  - Rationale: Expiration is time-dependent and changes continuously. Computing during indexing would store stale values that don't reflect current state.
 - **Work Decomposition Strategy**: Complex jobs requiring > 5 minutes should be broken into smaller sub-jobs (e.g., separate research into domain-specific tasks, split data gathering from analysis, create pipeline stages).
 - **Time Planning**: Agents should estimate ~10-15 tool calls maximum per job, with each tool call averaging 5-30 seconds. Jobs approaching this limit should delegate remaining work to children.
   - Default jobs: 3600s (1 hour) - covers recognition/reflection phases
