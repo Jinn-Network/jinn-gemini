@@ -49,9 +49,9 @@ const NODE_EMBEDDINGS_DB_URL =
 let vectorDbPool: Pool | null = null;
 const IPFS_GATEWAY_BASE = (process.env.IPFS_GATEWAY_URL || "https://gateway.autonolas.tech/ipfs/").replace(/\/+$/, "/");
 const IPFS_GATEWAY_FALLBACKS = [
-  "https://cloudflare-ipfs.com/ipfs/",
-  "https://ipfs.io/ipfs/",
-  "https://dweb.link/ipfs/"
+  "https://cloudflare-ipfs.com/ipfs/"
+  // Reduced fallbacks during historical sync to fail faster on unpinned/corrupt content
+  // Full list: ipfs.io, dweb.link (can re-enable if needed)
 ];
 
 function getVectorDbPool(): Pool | null {
@@ -122,7 +122,7 @@ function buildRawCidFromDigest(digestHex: string): { cidHex: string; cidBase32: 
   return { cidHex, cidBase32 };
 }
 
-async function fetchRequestMetadata(cidBase32: string, timeoutMs = 15_000): Promise<any> {
+async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promise<any> {
   const gateways = [IPFS_GATEWAY_BASE, ...IPFS_GATEWAY_FALLBACKS];
   let lastError: Error | null = null;
 
