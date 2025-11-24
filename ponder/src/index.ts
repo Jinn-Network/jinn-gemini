@@ -133,7 +133,6 @@ async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promi
     
     try {
       const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
       
       if (!response.ok) {
         const msg = `HTTP ${response.status} from ${gateway}`;
@@ -154,10 +153,11 @@ async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promi
         continue;
       }
     } catch (error: any) {
-      clearTimeout(timer);
       lastError = error;
       logger.debug({ cidBase32, gateway, error: error.message }, "IPFS fetch network error, trying next");
       continue;
+    } finally {
+      clearTimeout(timer);
     }
   }
 

@@ -50,6 +50,7 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
     const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
     const sourceJobDefinitionId = json?.sourceJobDefinitionId ? String(json.sourceJobDefinitionId) : undefined;
+    const workstreamId = json?.workstreamId ? String(json.workstreamId) : undefined;
     const additionalContext = json?.additionalContext || undefined;
     const jobName = json?.jobName ? String(json.jobName) : undefined;
     const jobDefinitionId = json?.jobDefinitionId ? String(json.jobDefinitionId) : undefined;
@@ -68,6 +69,7 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
       enabledTools,
       sourceRequestId,
       sourceJobDefinitionId,
+      workstreamId,
       additionalContext,
       jobName,
       jobDefinitionId,

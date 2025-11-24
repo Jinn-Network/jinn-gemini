@@ -617,6 +617,8 @@ async function redispatchStaleRequest(request: UnclaimedRequest): Promise<boolea
       ...metadata,
       // Ensure we map 'prompt' to 'blueprint' if legacy format
       blueprint: metadata.blueprint || (metadata as any).prompt,
+      // Explicitly preserve workstreamId for lineage tracking
+      workstreamId: metadata.workstreamId,
     }];
 
     // 3. Call marketplace interact directly
