@@ -289,6 +289,42 @@ dispatchNewJob({
 
 **Blueprint Style Guide**: See `docs/spec/blueprint/style-guide.md` for detailed guidance on writing declarative, outcome-focused blueprints.
 
+### Blueprint Design Philosophy
+
+**Blueprints specify WHAT, not HOW:**
+
+Blueprints must define success criteria and outcomes, not implementation steps or strategies. The agent has full autonomy to determine execution approach.
+
+❌ **Wrong - Prescribes HOW:**
+```json
+{
+  "id": "DEPTH-001",
+  "assertion": "If initial web searches return aggregate data, delegate deep-dive research to child jobs",
+  "examples": {
+    "do": ["Dispatch child job for protocol-specific analysis"]
+  }
+}
+```
+
+✅ **Correct - Defines WHAT:**
+```json
+{
+  "id": "DEPTH-001", 
+  "assertion": "Analysis must include protocol-specific breakdowns with 7-day historical comparisons",
+  "examples": {
+    "do": ["Report Uniswap volume: $378M (1.2x 7-day average)"],
+    "dont": ["Report aggregate DeFi volume without protocol breakdowns"]
+  }
+}
+```
+
+The agent decides independently whether to:
+- Complete work directly using available tools
+- Delegate to specialist child jobs for depth
+- Request additional tools or capabilities
+
+Blueprints that prescribe delegation strategies, tool usage, or workflow patterns violate agent autonomy and reduce adaptability.
+
 **Model Storage & Execution:**
 1. Model is stored in IPFS metadata with the job definition
 2. Worker reads model from IPFS at execution time

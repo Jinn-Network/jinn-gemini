@@ -272,7 +272,7 @@ async function main() {
         const content = await fetchIpfsContent(delivery.ipfsHash, req.id);
         if (content) {
             // Check for explicit error
-            if (content.error || (content.telemetry && !content.telemetry.success)) {
+            if (content.error || content.errorMessage) {
                 status = 'FAILED';
                 error = content.errorMessage || content.error || "Unknown error";
             }

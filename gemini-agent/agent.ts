@@ -348,7 +348,11 @@ export class Agent {
       }
 
       const geminiProcess = spawn('npx', ['@google/gemini-cli', ...args], {
-        cwd: this.codeWorkspace,
+        // Use codeWorkspace if available, otherwise fall back to gemini-agent directory
+        // This ensures GEMINI.md is always found (in repo for code jobs, in gemini-agent/ for artifact jobs)
+        cwd: this.codeWorkspace && this.codeWorkspace.trim() !== '' 
+          ? this.codeWorkspace 
+          : this.agentRoot,
         env: {
           ...envWithJob,
           // Set GEMINI_HOME to a writable directory within the project to avoid EPERM errors
