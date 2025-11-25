@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
-import { getDependencyInfo, DependencyInfo, isRequestExpired, Request } from '@/lib/subgraph'
+import { getDependencyInfo, DependencyInfo, getJobDefinition } from '@/lib/subgraph'
+import { StatusIcon, mapDependencyStatusToJobStatus } from '@/components/status-icon'
 
 interface RequestsTableProps {
   records: SubgraphRecord[]
@@ -51,20 +52,17 @@ function DependencyCell({ dependencies }: { dependencies?: string[] }) {
               <div className="text-xs font-semibold text-gray-700 mb-2">
                 Depends on:
               </div>
-              {dependencyDetails.slice(0, 5).map((dep) => (
-                <div key={dep.id} className="flex items-center gap-2 text-xs py-1">
-                  {dep.delivered ? (
-                    <span className="text-green-600">✓</span>
-                  ) : dep.status === 'in_progress' ? (
-                    <span className="text-yellow-600">⏳</span>
-                  ) : (
-                    <span className="text-gray-400">○</span>
-                  )}
-                  <span className="truncate" title={dep.jobName}>
-                    {dep.jobName}
-                  </span>
-                </div>
-              ))}
+              {dependencyDetails.slice(0, 5).map((dep) => {
+                const jobStatus = mapDependencyStatusToJobStatus(dep.delivered, dep.status)
+                return (
+                  <div key={dep.id} className="flex items-center gap-2 text-xs py-1">
+                    <StatusIcon status={jobStatus} size={14} />
+                    <span className="truncate" title={dep.jobName}>
+                      {dep.jobName}
+                    </span>
+                  </div>
+                )
+              })}
               {dependencies.length > 5 && (
                 <div className="text-xs text-gray-500 italic mt-1">
                   +{dependencies.length - 5} more...
@@ -76,6 +74,31 @@ function DependencyCell({ dependencies }: { dependencies?: string[] }) {
       )}
     </div>
   )
+}
+
+// Component to display job definition status icon with tooltip
+function JobDefStatusCell({ jobDefId }: { jobDefId?: string }) {
+  const [status, setStatus] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    if (jobDefId) {
+      setIsLoading(true)
+      getJobDefinition(jobDefId)
+        .then((jobDef) => {
+          if (jobDef?.lastStatus) {
+            setStatus(jobDef.lastStatus)
+          }
+        })
+        .catch(console.error)
+        .finally(() => setIsLoading(false))
+    }
+  }, [jobDefId])
+
+  if (!jobDefId) return null
+  if (isLoading) return null
+
+  return status ? <StatusIcon status={status} size={16} className="inline-block" /> : null
 }
 
 export function RequestsTable({ records }: RequestsTableProps) {
@@ -93,14 +116,13 @@ export function RequestsTable({ records }: RequestsTableProps) {
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Name</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Def ID</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Request ID</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">ID</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Status</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Dependencies</th>
             <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Workstream</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Mech</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Sender</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job ID</th>
             <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700">Timestamp</th>
+            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Mech</th>
           </tr>
         </thead>
         <tbody>
@@ -110,15 +132,12 @@ export function RequestsTable({ records }: RequestsTableProps) {
               : record.id.toString().substring(0, 16) + '...'
             
             const delivered = 'delivered' in record ? record.delivered : false
-            const expired = 'blockTimestamp' in record ? isRequestExpired(record as Request) : false
             
-            // Determine status based on delivered and expired flags
-            const statusText = delivered ? 'DELIVERED' : (expired ? 'EXPIRED' : 'PENDING')
+            // Determine status based on delivered flag
+            const statusText = delivered ? 'DELIVERED' : 'PENDING'
             const statusClass = delivered 
               ? 'text-green-600 bg-green-50 border-green-200'
-              : (expired 
-                  ? 'text-red-600 bg-red-50 border-red-200'
-                  : 'text-yellow-600 bg-yellow-50 border-yellow-200')
+              : 'text-yellow-600 bg-yellow-50 border-yellow-200'
             
             // Get workstream ID from Ponder (always use the indexed field)
             const workstreamId = 'workstreamId' in record && record.workstreamId 
@@ -127,10 +146,6 @@ export function RequestsTable({ records }: RequestsTableProps) {
             
             const mech = 'mech' in record && record.mech 
               ? record.mech.slice(0, 10) + '...' 
-              : '-'
-            
-            const sender = 'sender' in record && record.sender 
-              ? record.sender.slice(0, 10) + '...' 
               : '-'
             
             const timestamp = 'blockTimestamp' in record && record.blockTimestamp 
@@ -154,18 +169,6 @@ export function RequestsTable({ records }: RequestsTableProps) {
                   </Link>
                 </td>
                 <td className="px-4 py-3">
-                  {'jobDefinitionId' in record && record.jobDefinitionId ? (
-                    <Link
-                      href={`/jobDefinitions/${record.jobDefinitionId}`}
-                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono"
-                    >
-                      {jobDefId}
-                    </Link>
-                  ) : (
-                    <span className="text-gray-400 text-sm">-</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
                   <span className="text-sm text-gray-600 font-mono">{record.id.toString().substring(0, 12) + '...'}</span>
                 </td>
                 <td className="px-4 py-3">
@@ -184,14 +187,26 @@ export function RequestsTable({ records }: RequestsTableProps) {
                     {workstreamId.toString().substring(0, 12)}...
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600 font-mono">
-                  {mech}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600 font-mono">
-                  {sender}
+                <td className="px-4 py-3">
+                  {'jobDefinitionId' in record && record.jobDefinitionId ? (
+                    <div className="flex items-center gap-2">
+                      <JobDefStatusCell jobDefId={record.jobDefinitionId} />
+                      <Link
+                        href={`/jobDefinitions/${record.jobDefinitionId}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono"
+                      >
+                        {jobDefId}
+                      </Link>
+                    </div>
+                  ) : (
+                    <span className="text-gray-400 text-sm">-</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right text-sm text-gray-600">
                   {timestamp}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600 font-mono">
+                  {mech}
                 </td>
               </tr>
             )

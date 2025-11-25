@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowUpDown, ArrowDown, ArrowUp } from 'lucide-react'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
+import { StatusIcon } from '@/components/status-icon'
 
 interface JobDefinitionsTableProps {
   records: SubgraphRecord[]
@@ -111,7 +112,8 @@ export function JobDefinitionsTable({ records, onSort, sortColumn = '', sortAsce
                   {lastInteraction}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor}`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor}`}>
+                    <StatusIcon status={lastStatus} size={14} />
                     {lastStatus}
                   </span>
                 </td>

@@ -4,7 +4,6 @@ import { graphQLRequest } from '../http/client.js';
 import {
   getPonderGraphqlUrl,
   getUseControlApi,
-  getOptionalMechReclaimAfterMinutes,
   getEnableAutoRepost,
   getRequiredRpcUrl,
   getOptionalMechTargetRequestId,
@@ -42,10 +41,6 @@ const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
 const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/graphql';
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = getUseControlApi();
-const STALE_MINUTES = getOptionalMechReclaimAfterMinutes() ?? 5;
-// Safety buffer: if a request is > 240s old (4 mins), we risk hitting the 300s timeout.
-// Instead of processing and failing, we preemptively redispatch it.
-const STALE_THRESHOLD_SECONDS = 240;
 
 // Workstream filtering: parse --workstream=<id> flag
 const WORKSTREAM_FILTER = (() => {
@@ -59,8 +54,6 @@ const MIN_TIME_BETWEEN_REPOSTS = 5 * 60 * 1000; // 5 minutes
 
 // Track recent reposts to prevent loops
 const recentReposts = new Map<string, number>();
-// Track requests we've already redispatched to avoid spamming
-const redispatchedRequests = new Set<string>();
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
 
@@ -144,12 +137,52 @@ async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: str
   const { mechAddress, rpcHttpUrl, size = 1000, offset = 0 } = params;
   try {
     if (!rpcHttpUrl) return new Set<string>();
+    
+    // Step 1: Get requests pending in YOUR mech's queue
     const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
     const web3 = new Web3(rpcHttpUrl);
-    const contract = new (web3 as any).eth.Contract(abi, mechAddress);
-    const ids: string[] = await contract.methods.getUndeliveredRequestIds(size, offset).call();
-    return new Set((ids || []).map((x: string) => String(x).toLowerCase()));
-  } catch {
+    const mechContract = new (web3 as any).eth.Contract(abi, mechAddress);
+    const requestIds: string[] = await mechContract.methods.getUndeliveredRequestIds(size, offset).call();
+    
+    if (!requestIds || requestIds.length === 0) {
+      return new Set<string>();
+    }
+    
+    // Step 2: Filter out requests that have been delivered by OTHER mechs in the marketplace
+    // This prevents wasted gas on delivery attempts that will be revoked
+    const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
+    // Dynamic import with require to avoid TypeScript module resolution issues
+    const marketplaceAbi = require('../ponder/abis/MechMarketplace.json');
+    const marketplace = new (web3 as any).eth.Contract(marketplaceAbi, MARKETPLACE_ADDRESS);
+    
+    const undeliveredSet = new Set<string>();
+    
+    // Check each request in the marketplace to see if it's actually still undelivered
+    for (const requestId of requestIds) {
+      try {
+        const requestInfo = await marketplace.methods.mapRequestIdInfos(requestId).call();
+        const isDelivered = requestInfo.deliveryMech !== '0x0000000000000000000000000000000000000000';
+        
+        if (!isDelivered) {
+          // Request is still undelivered in marketplace - safe to attempt delivery
+          undeliveredSet.add(String(requestId).toLowerCase());
+        } else {
+          // Request was delivered by another mech - skip it
+          workerLogger.debug({ 
+            requestId, 
+            deliveredByMech: requestInfo.deliveryMech 
+          }, 'Request already delivered in marketplace by another mech - filtering out');
+        }
+      } catch (err) {
+        // If we can't check marketplace status for this specific request, be conservative and include it
+        workerLogger.warn({ requestId, error: err instanceof Error ? err.message : String(err) }, 'Failed to check marketplace status for request; including in set');
+        undeliveredSet.add(String(requestId).toLowerCase());
+      }
+    }
+    
+    return undeliveredSet;
+  } catch (err) {
+    workerLogger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to get undelivered set; returning empty');
     return new Set<string>();
   }
 }
@@ -582,74 +615,6 @@ async function fetchSpecificRequest(requestId: string): Promise<UnclaimedRequest
   }
 }
 
-/**
- * Preemptively redispatch a stale request to avoid RevokeRequest errors.
- * This creates a fresh on-chain request with the same parameters.
- */
-async function redispatchStaleRequest(request: UnclaimedRequest): Promise<boolean> {
-  if (redispatchedRequests.has(request.id)) {
-    return false; // Already handled
-  }
-
-  try {
-    workerLogger.info({ requestId: request.id, age: Math.floor(Date.now()/1000) - (request.blockTimestamp || 0) }, 'Request is stale (>4 mins) - attempting preemptive redispatch');
-
-    // 1. Fetch IPFS metadata to get job definition and parameters
-    const metadata = await fetchIpfsMetadata(request.ipfsHash);
-    if (!metadata) {
-      workerLogger.warn({ requestId: request.id, ipfsHash: request.ipfsHash }, 'Could not fetch IPFS metadata for stale request - cannot redispatch');
-      return false;
-    }
-
-    // 2. Prepare parameters for marketplace dispatch
-    const priorityMech = getMechAddress();
-    const privateKey = getServicePrivateKey();
-    const chainConfig = getMechChainConfig();
-
-    if (!priorityMech || !privateKey) {
-      workerLogger.error('Missing mech address or private key for redispatch');
-      return false;
-    }
-
-    // Construct IPFS content payload exactly as mech-client expects
-    // We reuse the metadata we fetched, ensuring we pass all context forward
-    const ipfsJsonContents = [{
-      ...metadata,
-      // Ensure we map 'prompt' to 'blueprint' if legacy format
-      blueprint: metadata.blueprint || (metadata as any).prompt,
-      // Explicitly preserve workstreamId for lineage tracking
-      workstreamId: metadata.workstreamId,
-    }];
-
-    // 3. Call marketplace interact directly
-    // We set postOnly: true to just create the request without waiting for delivery
-    const result = await marketplaceInteract({
-      prompts: [ipfsJsonContents[0].blueprint], // Required arg, even if using ipfsJsonContents
-      priorityMech,
-      // Use tools from metadata, default to empty
-      tools: metadata.enabledTools || [],
-      ipfsJsonContents,
-      chainConfig,
-      keyConfig: { source: 'value', value: privateKey },
-      postOnly: true,
-      responseTimeout: 300, // Max allowed by marketplace
-    });
-
-    if (result && result.request_ids && result.request_ids.length > 0) {
-      const newRequestId = result.request_ids[0];
-      workerLogger.info({ oldRequestId: request.id, newRequestId }, 'Successfully redispatched stale request');
-      redispatchedRequests.add(request.id);
-      return true;
-    } else {
-      workerLogger.warn({ requestId: request.id, result }, 'Redispatch failed - no new request ID returned');
-      return false;
-    }
-
-  } catch (e: any) {
-    workerLogger.error({ requestId: request.id, error: e?.message || String(e) }, 'Error during stale request redispatch');
-    return false;
-  }
-}
 
 async function processOnce(): Promise<void> {
   const workerAddress = getMechAddress();
@@ -699,51 +664,13 @@ async function processOnce(): Promise<void> {
     }
   }
 
-  // First pass: Try to claim any fresh (non-stale) request
+  // Try to claim a request
   let target: UnclaimedRequest | null = null;
   for (const c of candidates) {
-    const now = Math.floor(Date.now() / 1000);
-    const age = now - (c.blockTimestamp || 0);
-    
-    // Skip stale requests in the first pass - we want to prioritize fresh requests
-    if (c.blockTimestamp && age > STALE_THRESHOLD_SECONDS) {
-      continue;
-    }
-
     const ok = await tryClaim(c, workerAddress);
     if (ok) { 
       target = c; 
       break; 
-    }
-  }
-  
-  // If no fresh request was claimed, try redispatching one stale request
-  if (!target) {
-    for (const c of candidates) {
-      const now = Math.floor(Date.now() / 1000);
-      const age = now - (c.blockTimestamp || 0);
-      
-      if (c.blockTimestamp && age > STALE_THRESHOLD_SECONDS) {
-        // Don't redispatch requests with dependencies - they're waiting for their deps to complete
-        // Redispatching them would break the dependency chain
-        if (c.dependencies && c.dependencies.length > 0) {
-          workerLogger.info({ requestId: c.id, age, dependencies: c.dependencies }, 'Skipping stale request with dependencies - waiting for deps to complete');
-          continue;
-        }
-        
-        // Attempt to redispatch
-        const dispatched = await redispatchStaleRequest(c);
-        if (dispatched) {
-          // Successfully redispatched - STOP processing this cycle.
-          // The newly created request will be picked up on the next poll.
-          workerLogger.info({ requestId: c.id, age }, 'Redispatched stale request - ending this cycle to allow fresh request to be processed');
-          return; 
-        } else {
-          // Failed to redispatch (or already handled) - skip this request to avoid RevokeRequest
-          workerLogger.warn({ requestId: c.id, age }, 'Skipping stale request that could not be redispatched (or was already handled)');
-          continue;
-        }
-      }
     }
   }
   

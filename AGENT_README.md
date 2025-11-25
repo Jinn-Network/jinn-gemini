@@ -2205,32 +2205,12 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Root Cause**: The on-chain MechMarketplace contract validates `responseTimeout <= 300` and reverts with `OutOfBounds` error if exceeded. Additionally, the mech contract (`MechFixedPriceNative`) enforces the timeout and emits `RevokeRequest` for late delivery attempts.
 - **Impact**: Cannot dispatch jobs with timeout > 300 seconds. Jobs requiring longer execution must be decomposed into smaller sub-jobs.
 - **Fix Applied (2025-11-19)**: Updated default `responseTimeout` to 300 seconds (max allowed) in `dispatch_new_job` and `dispatch_existing_job`. Added execution time planning guidance to GEMINI.md.
-- **Fix Applied (2025-11-24 - Preemptive Redispatch)**: Implemented proactive stale request handling in `worker/mech_worker.ts`:
-  - **Safety Threshold**: 240 seconds (4 minutes). Requests older than this are considered stale.
-  - **Why**: Processing a stale request wastes computation and gas - the job executes, but delivery fails with `RevokeRequest` because the 300s deadline has passed.
-  - **Priority Logic**: Worker uses two-pass approach:
-    1. **First pass**: Try to claim any fresh request (age < 240s). Fresh requests always have priority.
-    2. **Second pass**: Only if no fresh requests exist, attempt to redispatch one stale request.
-  - **Rate Limiting**: Worker redispatches **only one** stale request per polling cycle, then returns immediately. This prevents bulk redispatches that would create multiple new requests that expire before being processed.
-  - **Dependency Exclusion**: Requests with dependencies are **never redispatched**. They remain in the queue until their dependencies complete, regardless of age. Redispatching them would break the dependency chain and create orphaned requests.
-  - **No Persistence Needed**: Because fresh requests are prioritized, newly redispatched requests are claimed immediately on the next cycle. No need to track which requests have been redispatched across worker sessions.
-  - **Mechanism**: When the worker encounters only stale requests (age > 240s, no dependencies), it:
-    1. Fetches the original IPFS metadata (blueprint, tools, context).
-    2. Posts a fresh on-chain request with identical parameters via `marketplaceInteract`.
-    3. Ends the current polling cycle immediately.
-    4. The new request has a fresh 5-minute window and will be picked up in the next poll cycle.
-  - **Benefits**: Eliminates RevokeRequest errors for requests that sat in the queue too long. Preserves all work context in the redispatch. Prevents cascading redispatch waste. Maintains dependency integrity. Ensures fresh work is always processed first.
-- **EXPIRED Status (Client-Side Computation)**: Expiration status is computed client-side based on `blockTimestamp + 300s`:
-  - Ponder only stores `blockTimestamp`, clients compute expiration dynamically at query time.
-  - Frontend uses `isRequestExpired()` helper function from `frontend/explorer/src/lib/subgraph.ts`.
-  - Status updates in real-time as requests age past the 5-minute marketplace timeout.
-  - Rationale: Expiration is time-dependent and changes continuously. Computing during indexing would store stale values that don't reflect current state.
 - **Work Decomposition Strategy**: Complex jobs requiring > 5 minutes should be broken into smaller sub-jobs (e.g., separate research into domain-specific tasks, split data gathering from analysis, create pipeline stages).
 - **Time Planning**: Agents should estimate ~10-15 tool calls maximum per job, with each tool call averaging 5-30 seconds. Jobs approaching this limit should delegate remaining work to children.
   - Default jobs: 3600s (1 hour) - covers recognition/reflection phases
   - Complex research: 7200s (2 hours) - for jobs with extensive web fetches and retries
   - Simple jobs: 600s (10 minutes) minimum
-- **On-Chain Behavior**: When timeout expires, marketplace considers request "undeliverable". Late delivery attempts are rejected with `RevokeRequest`, funds remain locked (no automatic refund mechanism in deployed balance tracker). The preemptive redispatch mechanism prevents this scenario for the worker's own requests.
+- **On-Chain Behavior**: When timeout expires, marketplace considers request "undeliverable". Late delivery attempts are rejected with `RevokeRequest`, funds remain locked (no automatic refund mechanism in deployed balance tracker).
 
 ### Ponder OlasMech:Deliver Failures (Fixed 2025-11-20)
 
@@ -2294,3 +2274,55 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - Added graceful fallback (trust Ponder/continue) if on-chain verification fails
 - Enforces membership check only when on-chain query succeeds
 **Impact**: Workers can now correctly process and deliver requests even when the shared mech has a large backlog of undelivered requests from other workstreams.
+
+### RevokeRequest & Stale Pending Requests (Fixed 2025-11-25)
+
+**Issue**: Worker repeatedly selects and attempts to deliver requests that have already been delivered by competing mechs, resulting in:
+- Transaction confirms on-chain but emits `RevokeRequest` instead of `Deliver`
+- Wasted gas on doomed delivery attempts (~120k gas per failed attempt)
+- Frontend shows request as "pending" indefinitely (Ponder never sees the delivery)
+- Request remains in worker's queue across runs, causing infinite retry loops
+
+**Root Cause**: Two-part architectural issue:
+1. **Worker preflight**: Only checked mech's local undelivered queue via `getUndeliveredRequestIds()`, which doesn't reflect marketplace state when another mech wins the delivery race
+2. **Ponder indexing**: Only indexed `OlasMech:Deliver` events (your mech), missing deliveries by other mechs, so `request.delivered` stayed `false` even after marketplace marked it delivered
+
+**Fix Applied (2025-11-25)**:
+
+**Part 1: Network ID Filtering (Jinn-Only Indexing)**
+- Added `networkId: "jinn"` to all new request metadata in `dispatch_new_job` and `dispatch_existing_job`
+- Updated Ponder `MarketplaceRequest` handler to filter by `networkId`:
+  - `networkId === "jinn"` → INDEX (explicit Jinn marker)
+  - `networkId === undefined` → INDEX (legacy Jinn, backward compatibility)
+  - `networkId === anything else` → SKIP and delete pre-seeded row (non-Jinn tenant)
+- Ensures Ponder only tracks Jinn jobs, not global marketplace traffic
+
+**Part 2: Marketplace Delivery Sync**
+- Added new Ponder handler for `MechMarketplace:MarketplaceDelivery` events
+- Handler updates `request.delivered = true` for Jinn requests when ANY mech delivers them
+- Added schema fields: `deliveryMech`, `deliveryTxHash`, `deliveryBlockNumber`, `deliveryBlockTimestamp`
+- Syncs Ponder's `delivered` status with marketplace truth, regardless of which mech won
+
+**Part 3: Colleague Mech Telemetry (Optional)**
+- Added `OlasMechColleague` contract tracking in Ponder config (`0xe535D7AcDEeD905dddcb5443f41980436833cA2B`)
+- Duplicated `OlasMech:Deliver` handler for colleague's mech to index their deliveries and artifacts
+- Provides richer telemetry on competing mech activity without requiring marketplace handler
+
+**Impact**: 
+- Workers stop selecting requests after marketplace marks them delivered (any mech)
+- Frontend correctly shows delivered status for all Jinn jobs
+- No more `RevokeRequest` events from late delivery attempts
+- Ponder database stays clean (Jinn-only, no global marketplace pollution)
+- Worker preflight checks remain as safety guardrail but Ponder is now authoritative
+
+**Migration Notes**:
+- Existing requests without `networkId` are treated as legacy Jinn (backward compatible)
+- Schema changes require Ponder reindexing (new fields: `deliveryMech`, delivery timestamps)
+- Railway Ponder deployment will auto-reindex on next push
+
+**Related Files**:
+- `gemini-agent/mcp/tools/dispatch_new_job.ts` - Added `networkId` to metadata
+- `gemini-agent/mcp/tools/dispatch_existing_job.ts` - Added `networkId` to metadata
+- `ponder/ponder.schema.ts` - Added delivery tracking fields
+- `ponder/ponder.config.ts` - Added colleague mech contract
+- `ponder/src/index.ts` - Added networkId filtering, MarketplaceDelivery handler, colleague mech handler

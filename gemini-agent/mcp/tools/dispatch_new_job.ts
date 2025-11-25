@@ -242,6 +242,7 @@ export async function dispatchNewJob(args: unknown) {
 
     // IPFS metadata structure: blueprint at root level (not prompt)
     const ipfsJsonContents: any[] = [{
+      networkId: 'jinn', // Identify Jinn network requests for Ponder filtering
       blueprint: finalBlueprint,
       jobName,
       model: model || getOptionalMechModel() || 'gemini-2.5-flash',

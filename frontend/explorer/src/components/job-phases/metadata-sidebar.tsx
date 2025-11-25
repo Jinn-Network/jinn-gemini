@@ -2,7 +2,6 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import Link from 'next/link'
-import { isRequestExpired, Request } from '@/lib/subgraph'
 
 interface MetadataSidebarProps {
   requestId: string
@@ -29,10 +28,6 @@ export function MetadataSidebar({
   sourceRequestId,
   sourceJobDefinitionId
 }: MetadataSidebarProps) {
-  // Compute expiration dynamically from blockTimestamp
-  const expired = blockTimestamp && delivered !== undefined
-    ? isRequestExpired({ blockTimestamp, delivered } as Request)
-    : false
   const formatTimestamp = (timestamp?: string) => {
     if (!timestamp) return 'N/A'
     const date = new Date(Number(timestamp) * 1000)
@@ -74,11 +69,9 @@ export function MetadataSidebar({
               <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${
                 delivered 
                   ? 'bg-green-100 text-green-800' 
-                  : (expired 
-                      ? 'bg-red-100 text-red-800'
-                      : 'bg-yellow-100 text-yellow-800')
+                  : 'bg-yellow-100 text-yellow-800'
               }`}>
-                {delivered ? '✓ Delivered' : (expired ? '✗ Expired' : '⏳ Pending')}
+                {delivered ? '✓ Delivered' : '⏳ Pending'}
               </span>
             </div>
           )}

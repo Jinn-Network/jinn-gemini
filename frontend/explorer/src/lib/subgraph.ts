@@ -31,23 +31,10 @@ export interface Request {
   blockNumber: string
   blockTimestamp: string
   delivered: boolean
-  expired?: boolean
   jobName?: string
   enabledTools: string[]
   additionalContext?: Record<string, unknown>
   dependencies?: string[]
-}
-
-// Constants
-const MARKETPLACE_TIMEOUT_SECONDS = 300 // 5 minutes
-
-// Helper function to determine if a request is expired
-export function isRequestExpired(request: Request): boolean {
-  if (request.delivered) return false
-  const blockTime = parseInt(request.blockTimestamp)
-  const expirationTime = blockTime + MARKETPLACE_TIMEOUT_SECONDS
-  const currentTime = Math.floor(Date.now() / 1000)
-  return currentTime > expirationTime
 }
 
 export interface DependencyInfo {

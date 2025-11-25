@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown'
 import { RequestsTable } from './requests-table'
 import { RequestsTableSkeleton } from './loading-skeleton'
 import { getRequest, queryRequests, type Request } from '@/lib/subgraph'
+import { StatusIcon } from '@/components/status-icon'
 
 interface JobDefinition {
   id: string
@@ -17,6 +18,8 @@ interface JobDefinition {
   blueprint?: string
   sourceJobDefinitionId?: string
   sourceRequestId?: string
+  lastStatus?: string
+  lastInteraction?: string
 }
 
 interface JobDefinitionDetailLayoutProps {
@@ -132,6 +135,29 @@ export function JobDefinitionDetailLayout({ record }: JobDefinitionDetailLayoutP
                   {record.id}
                 </div>
               </div>
+
+              {/* Status */}
+              {record.lastStatus && (
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-1">Status</div>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                    record.lastStatus === 'COMPLETED'
+                      ? 'bg-green-100 text-green-800'
+                      : record.lastStatus === 'FAILED'
+                      ? 'bg-red-100 text-red-800'
+                      : record.lastStatus === 'DELEGATING'
+                      ? 'bg-blue-100 text-blue-800'
+                      : record.lastStatus === 'WAITING'
+                      ? 'bg-purple-100 text-purple-800'
+                      : record.lastStatus === 'PENDING'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    <StatusIcon status={record.lastStatus} size={14} />
+                    {record.lastStatus}
+                  </span>
+                </div>
+              )}
 
               {/* Workstream Link */}
               {loadingWorkstream ? (

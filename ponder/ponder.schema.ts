@@ -35,6 +35,10 @@ export default createSchema((p: any) => ({
       requestData: p.string().optional(),
       ipfsHash: p.string().optional(),
       deliveryIpfsHash: p.string().optional(),
+      deliveryMech: p.hex().optional(), // NEW: Which mech delivered this request (from marketplace)
+      deliveryTxHash: p.string().optional(), // NEW: Marketplace delivery tx hash
+      deliveryBlockNumber: p.bigint().optional(), // NEW: Marketplace delivery block
+      deliveryBlockTimestamp: p.bigint().optional(), // NEW: Marketplace delivery timestamp
       transactionHash: p.string().optional(),
       blockNumber: p.bigint(),
       blockTimestamp: p.bigint(),
@@ -48,6 +52,7 @@ export default createSchema((p: any) => ({
       ts: p.index("blockTimestamp").desc(),
       mechIdx: p.index("mech"),
       senderIdx: p.index("sender"),
+      deliveryMechIdx: p.index("deliveryMech"), // NEW: Index for filtering by delivery mech
       workstreamIdIdx: p.index("workstreamId"),
       jobDefIdx: p.index("jobDefinitionId"),
       sourceReqIdx: p.index("sourceRequestId"),

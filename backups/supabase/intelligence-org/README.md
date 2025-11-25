@@ -35,3 +35,4 @@ This backup contains the complete schema structure. To restore:
 - supabase_vault (0.3.1)
 
 
+

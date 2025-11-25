@@ -12,3 +12,4 @@ CREATE TYPE public.transaction_error_code AS ENUM ('ALLOWLIST_VIOLATION', 'CHAIN
 CREATE TYPE public.transaction_status AS ENUM ('PENDING', 'CLAIMED', 'CONFIRMED', 'FAILED');
 
 
+

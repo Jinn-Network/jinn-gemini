@@ -286,6 +286,30 @@ ponder.on(
         continue;
       }
 
+      // TASK 2: Filter by networkId to only index Jinn jobs
+      const networkId = typeof content.networkId === 'string' ? content.networkId : undefined;
+      
+      // Decision logic:
+      // - networkId === 'jinn' → INDEX (explicit Jinn marker)
+      // - networkId === undefined → INDEX (legacy Jinn, backward compatibility)
+      // - networkId === something else → SKIP (non-Jinn tenant)
+      if (networkId !== undefined && networkId !== 'jinn') {
+        logger.info(
+          { requestId: id, networkId },
+          "Skipping non-Jinn request (networkId mismatch)"
+        );
+        // Delete the pre-seeded row since this is not a Jinn request
+        try {
+          await repo.delete({ id });
+          logger.debug({ requestId: id }, "Deleted pre-seeded row for non-Jinn request");
+        } catch (deleteError: any) {
+          logger.warn({ requestId: id, error: serializeError(deleteError) }, "Failed to delete pre-seeded non-Jinn row");
+        }
+        continue; // Skip to next request
+      }
+      
+      logger.debug({ requestId: id, networkId: networkId || 'legacy' }, "Request identified as Jinn job, proceeding with indexing");
+
       let jobName: string | undefined;
       let enabledTools: string[] | undefined;
       let jobDefinitionId: string | undefined;
@@ -511,7 +535,117 @@ ponder.on(
   }
 });
 
-// Removed MechMarketplace delivery handlers in favor of OlasMech:Deliver
+// TASK 3: Add MechMarketplace:MarketplaceDelivery handler to sync delivered status
+// This ensures Jinn requests are marked delivered when ANY mech delivers them via marketplace
+ponder.on(
+  "MechMarketplace:MarketplaceDelivery",
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  try {
+    const deliveryMech: string = String(event.args.deliveryMech);
+    const requestIds: string[] = toStringArray((event.args as any).requestIds);
+    const deliveredRequests: boolean[] = Array.isArray((event.args as any).deliveredRequests)
+      ? ((event.args as any).deliveredRequests as any[]).map((val: any) => Boolean(val))
+      : [];
+    const txHash: string = String(event.transaction.hash);
+    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
+    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+    const requestRepo = (context as any).db?.request || (context as any).entities?.request;
+    if (!requestRepo) {
+      logger.error("No repository for 'request' in MarketplaceDelivery handler. Skipping.");
+      return;
+    }
+
+    logger.info(
+      { deliveryMech, requestIdsCount: requestIds.length, txHash },
+      "Processing MarketplaceDelivery event"
+    );
+
+    // Iterate over each request in the delivery batch
+    for (let i = 0; i < requestIds.length; i++) {
+      const requestId = requestIds[i];
+      const wasDelivered = deliveredRequests[i] !== false; // Default true if not present
+
+      if (!wasDelivered) {
+        logger.debug(
+          { requestId, deliveryMech },
+          "Request was revoked in marketplace (deliveredRequests[i] = false), skipping"
+        );
+        continue;
+      }
+
+      // Check if this request exists in our database (i.e., is it a Jinn request?)
+      let existingRequest: any = null;
+      try {
+        existingRequest = await requestRepo.findUnique({ id: requestId });
+      } catch (findError: any) {
+        logger.error(
+          { requestId, error: serializeError(findError) },
+          "Failed to check request existence in MarketplaceDelivery handler"
+        );
+        continue;
+      }
+
+      if (!existingRequest) {
+        logger.debug(
+          { requestId, deliveryMech },
+          "Request not found in database (non-Jinn request or created before indexing start), skipping"
+        );
+        continue;
+      }
+
+      // This is a Jinn request that has been delivered by ANY mech via the marketplace
+      // Update the request to mark it as delivered with marketplace delivery info
+      try {
+        await requestRepo.upsert({
+          id: requestId,
+          create: {
+            // Safety fallback - should never execute since we verified existence above
+            mech: existingRequest.mech || "0x0000000000000000000000000000000000000000",
+            sender: existingRequest.sender || "0x0000000000000000000000000000000000000000",
+            workstreamId: existingRequest.workstreamId || requestId,
+            transactionHash: existingRequest.transactionHash || txHash,
+            blockNumber: existingRequest.blockNumber || blockNumber,
+            blockTimestamp: existingRequest.blockTimestamp || blockTimestamp,
+            delivered: true,
+            deliveryMech: deliveryMech,
+            deliveryTxHash: txHash,
+            deliveryBlockNumber: blockNumber,
+            deliveryBlockTimestamp: blockTimestamp,
+          },
+          update: {
+            // Update delivery status and marketplace delivery metadata
+            delivered: true,
+            deliveryMech: deliveryMech,
+            deliveryTxHash: txHash,
+            deliveryBlockNumber: blockNumber,
+            deliveryBlockTimestamp: blockTimestamp,
+          },
+        });
+
+        logger.info(
+          { requestId, deliveryMech, txHash },
+          "Marked Jinn request as delivered via MarketplaceDelivery"
+        );
+      } catch (updateError: any) {
+        logger.error(
+          { requestId, deliveryMech, error: serializeError(updateError) },
+          "Failed to update request in MarketplaceDelivery handler"
+        );
+      }
+    }
+
+    logger.info(
+      { deliveryMech, processedCount: requestIds.length },
+      "Completed MarketplaceDelivery event processing"
+    );
+  } catch (e: any) {
+    logger.error(
+      { err: e?.message || String(e), stack: e?.stack },
+      "Failed to index MarketplaceDelivery"
+    );
+  }
+});
 
 
 // Fallback path: index AgentMech (OlasMech) Deliver events which include raw delivery data bytes
@@ -835,5 +969,302 @@ ponder.on(
     logger.info({ requestId, ipfsHash }, "Indexed OlasMech Deliver (delivery ipfs)");
   } catch (e: any) {
     logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index OlasMech Deliver");
+  }
+});
+
+// TASK 5: Add handler for colleague's mech Deliver events (same logic as OlasMech)
+ponder.on(
+  "OlasMechColleague:Deliver",
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  try {
+    const requestId: string = String(event.args.requestId);
+    const dataBytes: string | undefined = event.args.data ? String(event.args.data) : undefined;
+    const txHash: string = String(event.transaction.hash);
+    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
+    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+    const deliveryRepo = (context as any).db?.delivery || (context as any).entities?.delivery;
+    const requestRepo = (context as any).db?.request || (context as any).entities?.request;
+    const artifactsRepo = (context as any).db?.artifact || (context as any).entities?.artifact;
+    const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
+    if (!deliveryRepo || !requestRepo) {
+      logger.error("No repository for 'delivery' or 'request'. Skipping OlasMechColleague Deliver handler.");
+      return;
+    }
+
+    // Check if request exists - it should have been pre-seeded by MarketplaceRequest handler
+    // If indexing from a later start block, we may see Deliver events for requests that were
+    // created before our indexing window. Skip these gracefully.
+    let existingRequest: any = null;
+    try {
+      existingRequest = await requestRepo.findUnique({ id: requestId });
+      if (!existingRequest) {
+        logger.warn(
+          { requestId, txHash },
+          'OlasMechColleague Deliver event received for request that does not exist in database (likely non-Jinn or created before indexing start block). Skipping.'
+        );
+        return;
+      }
+    } catch (e: any) {
+      logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before OlasMechColleague Deliver');
+      throw e;
+    }
+
+    // Convert raw digest bytes to gateway-compatible CIDv1 (raw codec) hex multibase
+    const ipfsHash = dataBytes ? `f01551220${String(dataBytes).replace(/^0x/, '')}` : undefined;
+
+    const baseDeliveryRecord = {
+      requestId,
+      sourceRequestId: undefined,
+      sourceJobDefinitionId: undefined,
+      mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
+      mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
+      deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
+      ipfsHash,
+      transactionHash: txHash,
+      blockNumber,
+      blockTimestamp,
+    } as const;
+
+    await deliveryRepo.upsert({
+      id: requestId,
+      create: baseDeliveryRecord,
+      update: baseDeliveryRecord,
+    });
+
+    // Update request with delivery info, preserving existing fields from pre-seeded row
+    await requestRepo.upsert({
+      id: requestId,
+      create: {
+        mech: existingRequest?.mech || String(event.args.mech || "0x0000000000000000000000000000000000000000"),
+        sender: existingRequest?.sender || "0x0000000000000000000000000000000000000000",
+        workstreamId: existingRequest?.workstreamId || requestId,
+        transactionHash: existingRequest?.transactionHash || txHash,
+        blockNumber: existingRequest?.blockNumber || blockNumber,
+        blockTimestamp: existingRequest?.blockTimestamp || blockTimestamp,
+        delivered: true,
+        deliveryIpfsHash: ipfsHash,
+      },
+      update: {
+        delivered: true,
+        deliveryIpfsHash: ipfsHash,
+      },
+    });
+
+    // Attempt to resolve artifacts from delivery JSON (same logic as OlasMech)
+    try {
+      if (ipfsHash) {
+        const digestHex = String(ipfsHash).replace(/^f01551220/i, '');
+        let url = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`;
+        try {
+          const digestBytes: number[] = [];
+          for (let i = 0; i < digestHex.length; i += 2) {
+            digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
+          }
+          const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
+          const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
+          let bitBuffer = 0;
+          let bitCount = 0;
+          let out = '';
+          for (const b of cidBytes) {
+            bitBuffer = (bitBuffer << 8) | (b & 0xff);
+            bitCount += 8;
+            while (bitCount >= 5) {
+              const idx = (bitBuffer >> (bitCount - 5)) & 0x1f;
+              bitCount -= 5;
+              out += base32Alphabet[idx];
+            }
+          }
+          if (bitCount > 0) {
+            const idx = (bitBuffer << (5 - bitCount)) & 0x1f;
+            out += base32Alphabet[idx];
+          }
+          const dirCid = 'b' + out;
+          url = `https://gateway.autonolas.tech/ipfs/${dirCid}/${requestId}`;
+        } catch {}
+        let res: any = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try {
+            res = await axios.get(url, { timeout: 8000 });
+            if (res && res.status === 200 && res.data) break;
+          } catch (e) {
+            if (attempt < 4) await new Promise(r => setTimeout(r, 1500));
+          }
+        }
+        if (res && res.status === 200 && res.data) {
+          if (typeof res.data === 'string') {
+            try { res.data = JSON.parse(res.data); } catch {}
+          }
+
+          const deliveryJobDefinitionId = typeof res.data.jobDefinitionId === 'string' ? res.data.jobDefinitionId : undefined;
+          const jobName = typeof res.data.jobName === 'string' ? res.data.jobName : undefined;
+          const enabledTools = Array.isArray(res.data.enabledTools) ? res.data.enabledTools.map((x: any) => String(x)) : undefined;
+          const blueprint = typeof res.data.blueprint === 'string' 
+            ? res.data.blueprint 
+            : (typeof res.data.prompt === 'string' ? res.data.prompt : undefined);
+          const deliveryStatus = typeof res.data.status === 'string' ? res.data.status : 'COMPLETED';
+
+          if (deliveryJobDefinitionId) {
+            if (jobDefRepo) {
+              try {
+                const workstreamId = existingRequest?.workstreamId || requestId;
+                await jobDefRepo.upsert({
+                  id: deliveryJobDefinitionId,
+                  create: { 
+                    id: deliveryJobDefinitionId, 
+                    name: jobName || 'Unnamed Job', 
+                    enabledTools, 
+                    blueprint, 
+                    workstreamId,
+                    sourceRequestId: requestId,
+                    createdAt: blockTimestamp,
+                    lastInteraction: blockTimestamp,
+                    lastStatus: deliveryStatus,
+                  },
+                  update: { 
+                    name: jobName || 'Unnamed Job', 
+                    enabledTools, 
+                    blueprint, 
+                    sourceRequestId: requestId,
+                    lastInteraction: blockTimestamp,
+                    lastStatus: deliveryStatus,
+                  },
+                });
+              } catch (jdErr: any) {
+                logger.error({ jobDefinitionId: deliveryJobDefinitionId, error: serializeError(jdErr) }, "Failed to backfill job definition in OlasMechColleague Deliver handler");
+              }
+            }
+            await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId, sourceRequestId: requestId } });
+            await requestRepo.upsert({ id: requestId, update: { jobDefinitionId: deliveryJobDefinitionId } });
+          } else {
+            try {
+              const req = await requestRepo.upsert({ id: requestId, update: {} });
+              const maybeReq = (req as any) || {};
+              if (maybeReq && typeof maybeReq.jobDefinitionId === 'string') {
+                await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: maybeReq.jobDefinitionId, sourceRequestId: requestId } });
+              }
+            } catch {}
+          }
+
+          if (Array.isArray(res.data.artifacts) && artifactsRepo) {
+            let requestSourceRequestId: string | undefined = undefined;
+            try {
+              const req = await requestRepo.upsert({ id: requestId, update: {} });
+              const maybeReq = (req as any) || {};
+              requestSourceRequestId = maybeReq && typeof maybeReq.sourceRequestId === 'string' ? maybeReq.sourceRequestId : undefined;
+            } catch {}
+            
+            for (let idx = 0; idx < res.data.artifacts.length; idx++) {
+              const a = res.data.artifacts[idx] || {};
+              const id = `${requestId}:${idx}`;
+              const name = typeof a.name === 'string' ? a.name : `artifact-${idx}`;
+              const cid = String(a.cid || '');
+              const topic = String(a.topic || '');
+              const contentPreview = typeof a.contentPreview === 'string' ? a.contentPreview : undefined;
+              const type = typeof a.type === 'string' ? a.type : undefined;
+              const tags = Array.isArray(a.tags) ? a.tags.map((t: any) => String(t)) : undefined;
+              if (!cid || !topic) continue;
+              const artifactSourceRequestId = requestSourceRequestId || requestId;
+              const artifactPayload: any = { requestId, name, cid, topic, contentPreview, type, tags, sourceRequestId: artifactSourceRequestId, blockTimestamp: event.block.timestamp };
+              if (deliveryJobDefinitionId) {
+                artifactPayload.sourceJobDefinitionId = deliveryJobDefinitionId;
+              } else {
+                try {
+                  const req = await requestRepo.upsert({ id: requestId, update: {} });
+                  const maybeReq = (req as any) || {};
+                  if (maybeReq && typeof maybeReq.sourceJobDefinitionId === 'string') {
+                    artifactPayload.sourceJobDefinitionId = maybeReq.sourceJobDefinitionId;
+                  }
+                } catch {}
+              }
+              await artifactsRepo.upsert({ id, create: artifactPayload, update: artifactPayload });
+
+              if (type === 'SITUATION') {
+                const pool = getVectorDbPool();
+                if (!pool) {
+                  logger.warn('node_embeddings database not configured; skipping situation indexing');
+                  continue;
+                }
+
+                try {
+                  const situationUrl = `${IPFS_GATEWAY_BASE}${cid}`;
+                  const situationRes = await axios.get(situationUrl, { timeout: 8000 });
+                  let situationData = situationRes?.data || {};
+                  
+                  if (situationData.content && typeof situationData.content === 'string') {
+                    try {
+                      situationData = JSON.parse(situationData.content);
+                    } catch (parseError) {
+                      logger.warn({ requestId, cid }, 'Failed to parse artifact content field');
+                    }
+                  }
+                  
+                  const situation = situationData;
+                  const embedding = situation?.embedding;
+                  const vector: number[] | undefined = Array.isArray(embedding?.vector) ? embedding.vector : undefined;
+                  const model: string | undefined = typeof embedding?.model === 'string' ? embedding.model : undefined;
+                  const dim: number | undefined = typeof embedding?.dim === 'number' ? embedding.dim : Array.isArray(embedding?.vector) ? embedding.vector.length : undefined;
+                  const nodeId = typeof situation?.job?.requestId === 'string' ? situation.job.requestId : requestId;
+
+                  if (!vector || vector.length === 0 || !model || !dim) {
+                    logger.warn({ requestId, cid }, 'Situation artifact missing embedding payload');
+                    continue;
+                  }
+
+                  const summary =
+                    truncate(situation?.meta?.summaryText) ||
+                    truncate(situation?.execution?.finalOutputSummary) ||
+                    truncate(situation?.job?.objective) ||
+                    truncate(situation?.job?.jobName);
+
+                  const metaPayload = {
+                    version: situation?.version,
+                    artifactCid: cid,
+                    artifactId: id,
+                    job: situation?.job,
+                    context: situation?.context,
+                    artifacts: situation?.artifacts,
+                    recognition: situation?.meta?.recognition,
+                  };
+
+                  const tableName = process.env.VITEST === 'true' ? 'node_embeddings_test' : 'node_embeddings';
+
+                  const sql = `
+                    INSERT INTO ${tableName} (node_id, model, dim, vec, summary, meta)
+                    VALUES ($1, $2, $3, $4::vector, $5, $6)
+                    ON CONFLICT (node_id)
+                    DO UPDATE SET
+                      model = EXCLUDED.model,
+                      dim = EXCLUDED.dim,
+                      vec = EXCLUDED.vec,
+                      summary = EXCLUDED.summary,
+                      meta = EXCLUDED.meta,
+                      updated_at = NOW();
+                  `;
+
+                  await pool.query(sql, [
+                    nodeId,
+                    model,
+                    dim,
+                    formatVectorLiteral(vector),
+                    summary,
+                    metaPayload,
+                  ]);
+                  logger.info({ requestId: nodeId, cid }, 'Indexed situation embedding from OlasMechColleague');
+                } catch (indexError: any) {
+                  logger.error({ requestId, cid, error: serializeError(indexError) }, 'Failed to index situation embedding from OlasMechColleague');
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      logger.error({ requestId, err: e?.message || String(e) }, 'Failed to resolve delivery artifacts (OlasMechColleague)');
+    }
+
+    logger.info({ requestId, ipfsHash }, "Indexed OlasMechColleague Deliver (delivery ipfs)");
+  } catch (e: any) {
+    logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index OlasMechColleague Deliver");
   }
 });

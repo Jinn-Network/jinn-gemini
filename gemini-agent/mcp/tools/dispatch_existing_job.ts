@@ -194,6 +194,7 @@ export async function dispatchExistingJob(args: unknown) {
   }
 
   const ipfsJsonContents: any[] = [{
+    networkId: 'jinn', // Identify Jinn network requests for Ponder filtering
     blueprint: finalBlueprint,
     jobName: name,
     enabledTools: finalTools,

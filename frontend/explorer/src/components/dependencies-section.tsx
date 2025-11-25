@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getDependencyInfo, getDependents, DependencyInfo, isRequestExpired, Request } from '@/lib/subgraph'
+import { getDependencyInfo, getDependents, DependencyInfo } from '@/lib/subgraph'
+import { StatusIcon, mapDependencyStatusToJobStatus } from '@/components/status-icon'
 
 interface DependenciesSectionProps {
   requestId: string
@@ -60,27 +61,24 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
                 This job requires the following jobs to complete before it can run:
               </div>
               <ul className="space-y-2">
-                {dependencyDetails.map((dep) => (
-                  <Link
-                    key={dep.id}
-                    href={`/job-definitions/${dep.id}`}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      {dep.delivered ? (
-                        <span className="text-green-600">✓</span>
-                      ) : dep.status === 'in_progress' ? (
-                        <span className="text-yellow-600">⏳</span>
-                      ) : (
-                        <span className="text-gray-400">○</span>
-                      )}
-                      <span className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">{dep.jobName}</span>
-                    </div>
-                    <span className="text-xs text-gray-500">
-                      {dep.delivered ? 'Completed' : dep.status === 'in_progress' ? 'In Progress' : 'Pending'}
-                    </span>
-                  </Link>
-                ))}
+                {dependencyDetails.map((dep) => {
+                  const jobStatus = mapDependencyStatusToJobStatus(dep.delivered, dep.status)
+                  return (
+                    <Link
+                      key={dep.id}
+                      href={`/job-definitions/${dep.id}`}
+                      className="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <StatusIcon status={jobStatus} size={16} />
+                        <span className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">{dep.jobName}</span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {dep.delivered ? 'Completed' : dep.status === 'in_progress' ? 'In Progress' : 'Pending'}
+                      </span>
+                    </Link>
+                  )
+                })}
               </ul>
               <p className="text-xs text-gray-500 mt-2">
                 Note: Job will execute only when all requests and child jobs of these job definitions are delivered.
@@ -100,35 +98,37 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
                 The following jobs are waiting for this job to complete:
               </div>
               <ul className="space-y-2">
-                {dependents.map((dep) => (
-                  <li 
-                    key={dep.id} 
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <Link 
-                        href={`/requests/${dep.id}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium block truncate"
-                      >
-                        {dep.jobName || `Request ${dep.id.substring(0, 16)}...`}
-                      </Link>
-                      <div className="text-xs text-gray-500 font-mono mt-1">
-                        {dep.id}
-                      </div>
-                    </div>
-                    <span 
-                      className={`ml-4 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
-                        dep.delivered 
-                          ? 'text-green-700 bg-green-100 border border-green-300'
-                          : (isRequestExpired(dep as Request)
-                              ? 'text-red-700 bg-red-100 border border-red-300'
-                              : 'text-yellow-700 bg-yellow-100 border border-yellow-300')
-                      }`}
+                {dependents.map((dep) => {
+                  const jobStatus = mapDependencyStatusToJobStatus(dep.delivered, dep.status)
+                  return (
+                    <li 
+                      key={dep.id} 
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors"
                     >
-                      {dep.delivered ? '✓ Delivered' : (isRequestExpired(dep as Request) ? '✗ Expired' : '⏳ Pending')}
-                    </span>
-                  </li>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <Link 
+                          href={`/requests/${dep.id}`}
+                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium block truncate"
+                        >
+                          {dep.jobName || `Request ${dep.id.substring(0, 16)}...`}
+                        </Link>
+                        <div className="text-xs text-gray-500 font-mono mt-1">
+                          {dep.id}
+                        </div>
+                      </div>
+                      <span 
+                        className={`ml-4 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
+                          dep.delivered 
+                            ? 'text-green-700 bg-green-100 border border-green-300'
+                            : 'text-yellow-700 bg-yellow-100 border border-yellow-300'
+                        }`}
+                      >
+                        <StatusIcon status={jobStatus} size={14} />
+                        {dep.delivered ? 'Delivered' : 'Pending'}
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}

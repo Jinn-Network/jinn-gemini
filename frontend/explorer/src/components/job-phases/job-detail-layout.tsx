@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, isRequestExpired, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
+import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
 import { RecognitionPhaseCard } from './recognition-phase-card'
 import { WorkerTelemetryCard } from '../worker-telemetry-card'
 import { DependenciesSection } from '../dependencies-section'
@@ -296,7 +296,6 @@ interface Request {
   blockTimestamp?: string
   transactionHash?: string
   delivered?: boolean
-  expired?: boolean
   jobDefinitionId?: string
   sourceRequestId?: string
   sourceJobDefinitionId?: string
@@ -1285,11 +1284,9 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
                       record.delivered
                         ? 'bg-green-50 text-green-700 border-green-200'
-                        : (isRequestExpired(record)
-                            ? 'bg-red-50 text-red-700 border-red-200'
-                            : 'bg-gray-50 text-gray-700 border-gray-200')
+                        : 'bg-gray-50 text-gray-700 border-gray-200'
                     }`}>
-                      {record.delivered ? '✓ Delivered' : (isRequestExpired(record) ? '✗ Expired' : '⏳ Pending')}
+                      {record.delivered ? '✓ Delivered' : '⏳ Pending'}
                     </span>
                   </div>
                 </div>

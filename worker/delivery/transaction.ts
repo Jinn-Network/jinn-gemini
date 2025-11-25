@@ -53,33 +53,57 @@ export async function isUndeliveredOnChain(params: {
   mechAddress: string;
   requestIdHex: string;
   rpcHttpUrl?: string;
+  maxRetries?: number;
 }): Promise<boolean> {
-  const { mechAddress, requestIdHex, rpcHttpUrl } = params;
-  try {
-    if (!rpcHttpUrl) return true; // best-effort: if no RPC provided, don't block delivery
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const agentMechArtifact = await import('@jinn-network/mech-client-ts/dist/abis/AgentMech.json');
-    const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
-    const web3 = new Web3(rpcHttpUrl);
-    const contract = new (web3 as any).eth.Contract(abi, mechAddress);
-    const ids: string[] = await contract.methods.getUndeliveredRequestIds(5000, 0).call();
-    const set = new Set((ids || []).map((x: string) => String(x).toLowerCase()));
-    const isUndelivered = set.has(String(requestIdHex).toLowerCase());
-    
-    if (!isUndelivered) {
-      workerLogger.warn({ 
-        requestIdHex, 
-        totalUndelivered: ids.length,
-        fetchLimit: 5000 
-      }, 'Request not found in on-chain undelivered set (may be outside fetch window)');
+  const { mechAddress, requestIdHex, rpcHttpUrl, maxRetries = 3 } = params;
+  
+  if (!rpcHttpUrl) return true; // best-effort: if no RPC provided, don't block delivery
+  
+  let lastError: Error | undefined;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const agentMechArtifact = await import('@jinn-network/mech-client-ts/dist/abis/AgentMech.json');
+      const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
+      const web3 = new Web3(rpcHttpUrl);
+      const contract = new (web3 as any).eth.Contract(abi, mechAddress);
+      const ids: string[] = await contract.methods.getUndeliveredRequestIds(5000, 0).call();
+      const set = new Set((ids || []).map((x: string) => String(x).toLowerCase()));
+      const isUndelivered = set.has(String(requestIdHex).toLowerCase());
+      
+      if (!isUndelivered) {
+        workerLogger.warn({ 
+          requestIdHex, 
+          totalUndelivered: ids.length,
+          fetchLimit: 5000 
+        }, 'Request not found in on-chain undelivered set (may be outside fetch window or already delivered)');
+      }
+      
+      return isUndelivered;
+    } catch (error: any) {
+      lastError = error;
+      
+      if (attempt < maxRetries) {
+        const backoffMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        workerLogger.warn({ 
+          error: error?.message, 
+          attempt, 
+          maxRetries,
+          backoffMs 
+        }, 'Failed to check on-chain delivery status; retrying');
+        await new Promise(r => setTimeout(r, backoffMs));
+      }
     }
-    
-    return isUndelivered;
-  } catch (error: any) {
-    workerLogger.warn({ error: error?.message }, 'Failed to check on-chain delivery status; assuming undelivered');
-    return true; // don't fail hard on preflight errors
   }
+  
+  // After all retries failed, throw error instead of assuming undelivered
+  workerLogger.error({ 
+    error: lastError?.message,
+    attempts: maxRetries 
+  }, 'Failed to verify on-chain delivery status after all retries');
+  throw new Error(`Unable to verify on-chain delivery status: ${lastError?.message}`);
 }
 
 /**
@@ -265,7 +289,7 @@ export async function deliverViaSafeTransaction(
   } as const;
 
   let delivery: any;
-  const maxRetries = 2;
+  const maxRetries = 1; // Reduce retries since we now have better preflight checks
   let lastError: Error | undefined;
 
   try {
@@ -275,18 +299,23 @@ export async function deliverViaSafeTransaction(
         workerLogger.info({ requestId: context.requestId, attempt, backoffMs }, 'Retrying Safe delivery');
         await new Promise(r => setTimeout(r, backoffMs));
         
-        // Re-check delivery status
+        // Re-check delivery status before retry
         try {
           const isUndelivered = await isUndeliveredOnChain({
               mechAddress: targetMechAddress,
               requestIdHex,
               rpcHttpUrl,
+              maxRetries: 2, // Use fewer retries for retry-check
           });
           if (!isUndelivered) {
                workerLogger.info({ requestId: context.requestId }, 'Request already delivered on retry check');
                return { status: 'confirmed' };
           }
-        } catch (e) { /* ignore check errors */ }
+        } catch (e: any) {
+          // If we can't verify state on retry, fail fast
+          workerLogger.error({ requestId: context.requestId, error: e.message }, 'Cannot verify delivery state on retry; aborting');
+          throw new Error(`Unable to verify delivery state: ${e.message}`);
+        }
       }
 
       try {
@@ -304,13 +333,12 @@ export async function deliverViaSafeTransaction(
         break; // Success
       } catch (e: any) {
         lastError = e;
-        // Only retry on likely transient errors or timeouts - but NOT "Transaction not found" anymore
-        // since we now wait 60s for the receipt
-        if (e.message?.includes('timeout') || e.message?.includes('not mined') || e.message?.includes('nonce too low')) {
-           workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery timeout, transient error, or nonce issue');
+        // Only retry on specific transient errors
+        if (e.message?.includes('nonce too low') || e.message?.includes('replacement transaction underpriced')) {
+           workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery nonce issue; will retry');
            continue;
         }
-        throw e; // Fail fast on other errors
+        throw e; // Fail fast on other errors (no more timeout retries since we have 60s wait)
       }
     }
     

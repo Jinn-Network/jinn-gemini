@@ -4,7 +4,7 @@ import { CollectionName } from '@/lib/types'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { IdLink } from '@/components/id-link'
 import { formatDate } from '@/lib/utils'
-import { isRequestExpired, Request } from '@/lib/subgraph'
+import { StatusIcon } from '@/components/status-icon'
 
 interface RecordListProps {
   records: SubgraphRecord[]
@@ -37,28 +37,43 @@ function getPrimaryIdentifier(record: SubgraphRecord): string {
 }
 
 // Helper function to get status display
-function getStatusDisplay(record: SubgraphRecord): { status: string; className: string } | null {
+function getStatusDisplay(record: SubgraphRecord): { status: string; className: string; showIcon: boolean } | null {
+  // Check if this is a job definition with lastStatus
+  if ('lastStatus' in record && record.lastStatus && typeof record.lastStatus === 'string') {
+    const lastStatus = record.lastStatus
+    const statusColor = lastStatus === 'COMPLETED'
+      ? 'bg-green-100 text-green-800 border-green-200'
+      : lastStatus === 'FAILED'
+      ? 'bg-red-100 text-red-800 border-red-200'
+      : lastStatus === 'DELEGATING'
+      ? 'bg-blue-100 text-blue-800 border-blue-200'
+      : lastStatus === 'WAITING'
+      ? 'bg-purple-100 text-purple-800 border-purple-200'
+      : lastStatus === 'PENDING'
+      ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      : 'bg-gray-100 text-gray-800 border-gray-200'
+    
+    return {
+      status: lastStatus,
+      className: statusColor,
+      showIcon: true
+    }
+  }
+  
   // Check if this is a request and show delivery status
   if ('delivered' in record) {
-    const expired = 'blockTimestamp' in record ? isRequestExpired(record as Request) : false
-    
     if (record.delivered) {
       return {
         status: 'DELIVERED',
-        className: 'text-green-600 bg-green-50 border-green-200'
-      }
-    }
-    
-    if (expired) {
-      return {
-        status: 'EXPIRED',
-        className: 'text-red-600 bg-red-50 border-red-200'
+        className: 'text-green-600 bg-green-50 border-green-200',
+        showIcon: false
       }
     }
     
     return {
       status: 'PENDING',
-      className: 'text-yellow-600 bg-yellow-50 border-yellow-200'
+      className: 'text-yellow-600 bg-yellow-50 border-yellow-200',
+      showIcon: false
     }
   }
   
@@ -176,7 +191,8 @@ export function RecordList({ records, collectionName }: RecordListProps) {
                   </Link>
                   
                   {statusDisplay && (
-                    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${statusDisplay.className}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border ${statusDisplay.className}`}>
+                      {statusDisplay.showIcon && <StatusIcon status={statusDisplay.status} size={14} />}
                       {statusDisplay.status}
                     </span>
                   )}
