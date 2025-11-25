@@ -93,6 +93,7 @@ const databaseConfig = process.env.PONDER_DATABASE_URL
 // ============================================================================
 // RUNTIME CONFIGURATION LOGGING (for debugging test environment issues)
 // Write to both stderr and a debug file (Ponder UI may overwrite stderr)
+// Schema updated: 2025-11-25 - Added networkId filtering and delivery sync
 // ============================================================================
 const rpcUrl = getRpcUrl();
 const isTenderly = rpcUrl.includes('virtual') && rpcUrl.includes('tenderly.co');
