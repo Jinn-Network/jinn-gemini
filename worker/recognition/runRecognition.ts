@@ -228,9 +228,24 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
     const markdown = formatRecognitionMarkdown(learnings);
     workerLogger.info({ requestId, learningsCount: learnings.length }, 'Recognition phase produced learnings');
 
+    // Add review-first reminder if completed children exist
+    let enhancedMarkdown = markdown;
+    const childRequestIds = initialSituation?.context?.childRequestIds || [];
+    const hasCompletedChildren = metadata?.additionalContext?.hierarchy?.some((job: any) => 
+      job.level > 0 && job.status === 'completed'
+    ) || false;
+    const hasWorkProtocolMessage = metadata?.additionalContext?.message && 
+      (typeof metadata.additionalContext.message === 'string' 
+        ? metadata.additionalContext.message.includes('Child job COMPLETED') || metadata.additionalContext.message.includes('Child job completed')
+        : metadata.additionalContext.message.content?.includes('Child job COMPLETED') || metadata.additionalContext.message.content?.includes('Child job completed'));
+
+    if ((childRequestIds.length > 0 || hasCompletedChildren || hasWorkProtocolMessage) && markdown) {
+      enhancedMarkdown = markdown + '\n\n**Note:** You have completed child job(s) in your hierarchy. Before delegating additional work, review their deliverables (artifacts, execution summaries, PR links) and evaluate whether their output satisfies your objective. Only dispatch new child jobs if you can clearly identify remaining gaps.';
+    }
+
     const recognitionResult = {
-      promptPrefix: markdown,
-      learningsMarkdown: markdown,
+      promptPrefix: enhancedMarkdown,
+      learningsMarkdown: enhancedMarkdown,
       rawLearnings: learnings,
       searchQuery: summaryText,
       similarJobs,

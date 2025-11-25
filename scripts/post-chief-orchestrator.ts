@@ -26,9 +26,9 @@ async function main() {
       enabledTools: [
         'dispatch_new_job',
         'dispatch_existing_job', 
-        'get_job_context',
-        'search_jobs',
+        'get_details',
         'search_artifacts',
+        'search_jobs',
         'create_artifact',
         'google_web_search',
         'web_fetch'

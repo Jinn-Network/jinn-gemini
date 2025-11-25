@@ -21,7 +21,6 @@ function sleep(ms: number): Promise<void> {
 function calculateBackoffDelay(attemptNumber: number): number {
   const exponentialDelay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attemptNumber);
   const cappedDelay = Math.min(exponentialDelay, MAX_RETRY_DELAY_MS);
-  // Add jitter (±25%)
   const jitter = cappedDelay * 0.25 * (Math.random() - 0.5);
   return Math.floor(cappedDelay + jitter);
 }
@@ -39,20 +38,15 @@ async function retryWithBackoff<T>(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     lastResult = await fn();
     
-    // If result is successful (shouldn't retry), return immediately
     if (!shouldRetry(lastResult)) {
       return lastResult;
     }
-    
-    // If this was the last attempt, return the result
+
     if (attempt === MAX_RETRIES) {
-      console.warn(`[IPFS] All ${MAX_RETRIES + 1} attempts failed for ${context}`);
       return lastResult;
     }
-    
-    // Calculate delay and wait before next attempt
+
     const delay = calculateBackoffDelay(attempt);
-    console.log(`[IPFS] Attempt ${attempt + 1} failed for ${context}, retrying in ${delay}ms...`);
     await sleep(delay);
   }
   
@@ -61,7 +55,6 @@ async function retryWithBackoff<T>(
 
 function buildCidV1HexCandidates(hexBytes: string): string[] {
   const hexClean = hexBytes.startsWith('0x') ? hexBytes.slice(2) : hexBytes;
-  // Try dag-pb (0x70) and raw (0x55)
   return [
     `f01701220${hexClean}`,
     `f01551220${hexClean}`,
@@ -70,7 +63,8 @@ function buildCidV1HexCandidates(hexBytes: string): string[] {
 
 function isFullCidString(value: string): boolean {
   // Accept base32/base58 CIDs and hex-base16 CIDs (f01...)
-  return /^bafy|^Qm|^f01/i.test(value);
+  // CIDv1 base32 CIDs start with 'b' followed by codec identifier (e.g., bafy, bafkre, bafk, bafz)
+  return /^baf|^Qm|^f01/i.test(value);
 }
 
 function extractDigestHexFromHexCid(hexCid: string): string | null {
@@ -85,108 +79,174 @@ function toDecimalRequestIdStrict(id: string): string {
   return s.startsWith('0x') ? BigInt(s).toString(10) : s;
 }
 
-async function resolveIpfsContentInternal(ipfsHash: string, requestId: string, timeout: number = 10000): Promise<any> {
-  const gatewayUrl = process.env.IPFS_GATEWAY_URL || DEFAULT_IPFS_GATEWAY;
-  const requestIdDec = toDecimalRequestIdStrict(requestId);
-  const isFullCid = isFullCidString(ipfsHash);
-  let candidates = isFullCid ? [ipfsHash] : buildCidV1HexCandidates(ipfsHash);
-
-  if (isFullCid && /^f01/i.test(ipfsHash)) {
-    const digest = extractDigestHexFromHexCid(ipfsHash);
-    if (digest) {
-      const flipped = ipfsHash.toLowerCase().startsWith('f01701220')
-        ? `f01551220${digest}`
-        : `f01701220${digest}`;
-      candidates = [ipfsHash, flipped];
+function hexCidToBase32DagPb(hexCid: string): string | null {
+  try {
+    const digestHex = hexCid.toLowerCase().replace(/^f01551220/i, '');
+    if (digestHex === hexCid.toLowerCase()) {
+      return null;
     }
+
+    const digestBytes: number[] = [];
+    for (let i = 0; i < digestHex.length; i += 2) {
+      digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
+    }
+
+    const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
+    const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
+    let bitBuffer = 0;
+    let bitCount = 0;
+    let out = '';
+
+    for (const b of cidBytes) {
+      bitBuffer = (bitBuffer << 8) | (b & 0xff);
+      bitCount += 8;
+      while (bitCount >= 5) {
+        const idx = (bitBuffer >> (bitCount - 5)) & 0x1f;
+        bitCount -= 5;
+        out += base32Alphabet[idx];
+      }
+    }
+    if (bitCount > 0) {
+      const idx = (bitBuffer << (5 - bitCount)) & 0x1f;
+      out += base32Alphabet[idx];
+    }
+
+    return `b${out}`;
+  } catch (error) {
+    return null;
+  }
+}
+
+function buildCidCandidates(ipfsHash: string, options?: { requestId?: string }): { cidPath: string; context: string }[] {
+  const isFullCid = isFullCidString(ipfsHash);
+  const hasRequestId = Boolean(options?.requestId);
+  let candidates: string[] = [];
+
+  if (hasRequestId && isFullCid && /^f01551220/i.test(ipfsHash)) {
+    const dagPb = hexCidToBase32DagPb(ipfsHash);
+    if (dagPb) {
+      candidates = [dagPb];
+    } else {
+      const digest = extractDigestHexFromHexCid(ipfsHash);
+      candidates = digest ? [`f01701220${digest}`, `f01551220${digest}`] : [ipfsHash];
+    }
+  } else if (isFullCid && /^f01/i.test(ipfsHash)) {
+    if (ipfsHash.toLowerCase().startsWith('f01551220')) {
+      const digest = extractDigestHexFromHexCid(ipfsHash);
+      const dagPb = digest ? `f01701220${digest}` : null;
+      candidates = dagPb ? [ipfsHash, dagPb] : [ipfsHash];
+    } else {
+      const digest = extractDigestHexFromHexCid(ipfsHash);
+      const raw = digest ? `f01551220${digest}` : null;
+      candidates = raw ? [ipfsHash, raw] : [ipfsHash];
+    }
+  } else if (isFullCid) {
+    candidates = [ipfsHash];
+  } else {
+    candidates = buildCidV1HexCandidates(ipfsHash);
   }
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
-    for (const cid of candidates) {
-      const url = `${gatewayUrl}${cid}/${requestIdDec}`;
-      let response = await fetch(url, { signal: controller.signal });
+  const paths = candidates.map((cid) => {
+    if (!hasRequestId) {
+      return { cidPath: cid, context: cid };
+    }
+    const requestSegment = toDecimalRequestIdStrict(options!.requestId!);
+    return { cidPath: `${cid}/${requestSegment}`, context: `${cid}/${requestSegment}` };
+  });
+
+  return paths;
+}
+
+async function fetchFromGateways(
+  cidPath: string,
+  timeout: number,
+  contextLabel: string
+): Promise<{ result: any; success: boolean }> {
+  const gatewayUrl = process.env.IPFS_GATEWAY_URL || DEFAULT_IPFS_GATEWAY;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  const attempt = async (baseUrl: string) => {
+    try {
+      const response = await fetch(`${baseUrl}${cidPath}`, {
+        signal: controller.signal,
+      });
       if (!response.ok) {
-        const fbUrl = `${FALLBACK_IPFS_GATEWAY}${cid}/${requestIdDec}`;
-        try {
-          response = await fetch(fbUrl, { signal: controller.signal });
-        } catch {}
-        if (!response.ok) continue;
+        return null;
       }
-      clearTimeout(timer);
       const contentType = response.headers.get('content-type') || '';
+      let payload: any;
       if (contentType.includes('application/json')) {
         const parsed = await response.json();
-        // Sanitize: JSON.stringify removes undefined values, then parse back
-        return JSON.parse(JSON.stringify(parsed));
+        payload = JSON.parse(JSON.stringify(parsed));
+      } else {
+        const text = await response.text();
+        payload = { contentType, text };
       }
-      const text = await response.text();
-      return { contentType, text };
+      clearTimeout(timer);
+      return { result: payload, success: true };
+    } catch (error: any) {
+      return { result: { error: `Failed to fetch IPFS content: ${error.message}`, status: 500 }, success: false };
     }
-    clearTimeout(timer);
-    return { error: 'IPFS content not found.', status: 404 };
-  } catch (error: any) {
-    return { error: `Failed to fetch IPFS content: ${error.message}`, status: 500 };
+  };
+
+  let attemptResult = await attempt(gatewayUrl);
+  if (attemptResult && attemptResult.success) {
+    return attemptResult;
   }
+
+  attemptResult = await attempt(FALLBACK_IPFS_GATEWAY);
+  if (attemptResult && attemptResult.success) {
+    return attemptResult;
+  }
+
+  clearTimeout(timer);
+  return {
+    result:
+      attemptResult?.result || { error: `IPFS content not found for ${contextLabel}`, status: 404 },
+    success: false,
+  };
+}
+
+async function resolveIpfsContentInternal(ipfsHash: string, requestId: string, timeout: number = 10000): Promise<any> {
+  const candidates = buildCidCandidates(ipfsHash, { requestId });
+  for (const candidate of candidates) {
+    const { result, success } = await fetchFromGateways(candidate.cidPath, timeout, candidate.context);
+    if (success) {
+      return result;
+    }
+  }
+  return { error: 'IPFS content not found.', status: 404 };
 }
 
 export async function resolveIpfsContent(ipfsHash: string, requestId: string, timeout: number = 10000): Promise<any> {
   return retryWithBackoff(
     () => resolveIpfsContentInternal(ipfsHash, requestId, timeout),
-    (result) => result.error !== undefined, // Retry if there's an error
+    (result) => result.error !== undefined,
     `resolveIpfsContent(${ipfsHash.substring(0, 16)}..., ${requestId.substring(0, 16)}...)`
   );
 }
 
 async function resolveRequestIpfsContentInternal(ipfsHash: string, timeout: number = 10000): Promise<any> {
-  const gatewayUrl = process.env.IPFS_GATEWAY_URL || DEFAULT_IPFS_GATEWAY;
-  const isFullCid = isFullCidString(ipfsHash);
-  let candidates = isFullCid ? [ipfsHash] : buildCidV1HexCandidates(ipfsHash);
-
-  if (isFullCid && /^f01/i.test(ipfsHash)) {
-    const digest = extractDigestHexFromHexCid(ipfsHash);
-    if (digest) {
-      const flipped = ipfsHash.toLowerCase().startsWith('f01701220')
-        ? `f01551220${digest}`
-        : `f01701220${digest}`;
-      candidates = [ipfsHash, flipped];
+  const candidates = buildCidCandidates(ipfsHash);
+  for (const candidate of candidates) {
+    const { result, success } = await fetchFromGateways(candidate.cidPath, timeout, candidate.context);
+    if (success) {
+      return result;
     }
   }
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
-    for (const cid of candidates) {
-      const url = `${gatewayUrl}${cid}`;
-      let response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) {
-        const fbUrl = `${FALLBACK_IPFS_GATEWAY}${cid}`;
-        try {
-          response = await fetch(fbUrl, { signal: controller.signal });
-        } catch {}
-        if (!response.ok) continue;
-      }
-      clearTimeout(timer);
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const parsed = await response.json();
-        // Sanitize: JSON.stringify removes undefined values, then parse back
-        return JSON.parse(JSON.stringify(parsed));
-      }
-      const text = await response.text();
-      return { contentType, text };
-    }
-    clearTimeout(timer);
-    return { error: 'IPFS content not found.', status: 404 };
-  } catch (error: any) {
-    return { error: `Failed to fetch IPFS content: ${error.message}`, status: 500 };
-  }
+  return { error: 'IPFS content not found.', status: 404 };
 }
 
 export async function resolveRequestIpfsContent(ipfsHash: string, timeout: number = 10000): Promise<any> {
   return retryWithBackoff(
     () => resolveRequestIpfsContentInternal(ipfsHash, timeout),
-    (result) => result.error !== undefined, // Retry if there's an error
+    (result) => result.error !== undefined,
     `resolveRequestIpfsContent(${ipfsHash.substring(0, 16)}...)`
   );
 }
+
+export const __TEST__ = {
+  buildCidCandidates,
+  toDecimalRequestIdStrict,
+};

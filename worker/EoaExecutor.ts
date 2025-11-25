@@ -31,6 +31,12 @@ import { ExecutionResult } from './types.js';
 import { validateTransaction } from './validation.js';
 import { ITransactionQueue } from './queue/index.js';
 import { updateTransactionStatus } from './control_api_client.js';
+import {
+  getRequiredChainId,
+  getWorkerTxConfirmations,
+  getRequiredRpcUrl,
+  getRequiredWorkerPrivateKey
+} from '../config/index.js';
 
 // Create a child logger for EOA executor operations
 const eoaLogger = logger.child({ component: 'EOA-EXECUTOR' });
@@ -44,20 +50,16 @@ export class EoaExecutor implements ITransactionExecutor {
 
   constructor() {
     // Initialize worker configuration
-    this.chainId = parseInt(process.env.CHAIN_ID || '8453', 10); // Default to Base mainnet
-    this.confirmations = parseInt(process.env.WORKER_TX_CONFIRMATIONS || '3', 10);
-    
+    this.chainId = getRequiredChainId();
+    this.confirmations = getWorkerTxConfirmations();
+
     // Initialize blockchain connection
-    const rpcUrl = process.env.RPC_URL;
-    const privateKey = process.env.WORKER_PRIVATE_KEY;
-    
-    if (!rpcUrl || !privateKey) {
-      throw new Error('Missing RPC_URL or WORKER_PRIVATE_KEY environment variables');
-    }
+    const rpcUrl = getRequiredRpcUrl();
+    const privateKey = getRequiredWorkerPrivateKey();
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.signer = new ethers.Wallet(privateKey, this.provider);
-    
+
     eoaLogger.info('EoaExecutor initialized');
   }
 

@@ -157,7 +157,7 @@ function parseRemoteFromUpstream(upstream?: string): string | undefined {
   return upstream.slice(0, slashIndex);
 }
 
-function normalizeSlug(value: string, maxLength: number = 20): string | undefined {
+function normalizeSlug(value: string, maxLength: number = 50): string | undefined {
   const trimmed = value.trim().toLowerCase();
   if (!trimmed) return undefined;
 

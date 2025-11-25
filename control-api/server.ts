@@ -3,6 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 import fetch from 'cross-fetch';
 import dotenv from 'dotenv';
 import { logger, serializeError } from '../logging/index.js';
+import {
+  getRequiredSupabaseUrl,
+  getRequiredSupabaseServiceRoleKey,
+  getPonderGraphqlUrl,
+  getOptionalControlApiPort
+} from '../config/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -452,10 +458,10 @@ const resolvers = {
 
 const schema = createSchema({ typeDefs, resolvers });
 
-const SUPABASE_URL = process.env.SUPABASE_URL as string;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
-const PORT = parseInt(process.env.CONTROL_API_PORT || '4001', 10);
+const SUPABASE_URL = getRequiredSupabaseUrl();
+const SUPABASE_SERVICE_ROLE_KEY = getRequiredSupabaseServiceRoleKey();
+const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
+const PORT = getOptionalControlApiPort() || 4001;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   logger.fatal('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');

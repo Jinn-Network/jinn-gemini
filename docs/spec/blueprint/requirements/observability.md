@@ -41,7 +41,7 @@ Three-level observability serves different users:
 
 **3. Agentic (MCP Tools):**
 - **get_details**: Retrieve on-chain records by ID
-- **get_job_context**: Retrieve hierarchy context
+- **get_details** and **search_artifacts**: Retrieve hierarchy context and artifacts
 - **inspect_situation**: Inspect memory system
 - **search_similar_situations**: Vector search over situations
 - **search_artifacts**: Search artifacts by criteria
@@ -425,13 +425,13 @@ These scripts provide developer-friendly interfaces to protocol internals.
 ## OBS-007: MCP Introspection Tools
 
 **Assertion:**  
-Agents must have access to MCP tools for self-inspection and learning: `get_details`, `get_job_context`, `inspect_situation`, `search_similar_situations`, `search_artifacts`, `search_jobs`.
+Agents must have access to MCP tools for self-inspection and learning: `get_details`, `inspect_situation`, `search_similar_situations`, `search_artifacts`, `search_jobs`.
 
 **Examples:**
 
 | Do | Don't |
 |---|---|
-| Provide `get_job_context` to understand hierarchy | Hide hierarchy from agents |
+| Provide `get_details` and `search_artifacts` to understand hierarchy | Hide hierarchy from agents |
 | Provide `search_similar_situations` for learning | Require manual memory injection |
 | Provide `inspect_situation` for memory debugging | Make memory system opaque |
 | Return structured JSON from all tools | Return unstructured text |
@@ -452,11 +452,11 @@ get_details({
 - Returns data in requested order
 - Includes metadata and token estimates
 
-**2. get_job_context:**
+**2. search_artifacts:**
 ```javascript
-get_job_context({
-  jobDefinitionId: "uuid",
-  includeArtifacts: true
+search_artifacts({
+  query: "optimization results",
+  include_request_context: true
 })
 ```
 - Returns all runs of job definition

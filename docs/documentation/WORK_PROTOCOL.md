@@ -15,8 +15,8 @@ This document outlines the standard operating procedure for Jinn agents. It prov
 Every agent run begins with a systematic process of gathering information to understand the task and its environment.
 
 1.  **Understand the Goal:** Analyze the job's `prompt` to determine the primary objective of the current run.
-2.  **Survey the Hierarchy:** Use the `get_job_context` tool to get a summary of the job's position in the work hierarchy. This identifies the parent job and the status of any child jobs.
-3.  **Review Prior Work:** Use `get_details` with `resolve_ipfs=true` to fetch and analyze the specific artifacts and outputs from any child jobs that have already completed. This serves as the agent's "inbox" for results from delegated work.
+2.  **Survey the Hierarchy:** Use `get_details` to query job definitions and requests to understand the job's position in the work hierarchy. This identifies the parent job and the status of any child jobs.
+3.  **Review Prior Work:** Use `get_details` with `resolve_ipfs=true` to fetch and analyze the specific artifacts and outputs from any child jobs that have already completed, or use `search_artifacts` to find artifacts from completed children. This serves as the agent's "inbox" for results from delegated work.
 
 ---
 

@@ -15,8 +15,8 @@ const fetchMock = vi.fn();
 vi.mock('cross-fetch', () => ({
   default: fetchMock,
 }));
-
 let encodeSituation: (args: any) => Promise<any>;
+let createInitialSituation: (args: any) => Promise<any>;
 
 const requestResponse = {
   data: {
@@ -27,8 +27,42 @@ const requestResponse = {
       sourceJobDefinitionId: 'job-parent',
       jobName: 'Analyze staking contract performance',
       additionalContext: {
-        objective: 'Inspect staking contract',
-        acceptanceCriteria: 'Produce summary memo',
+        hierarchy: [
+          {
+            jobId: 'job-parent',
+            level: -1,
+            sourceJobDefinitionId: null,
+            requestIds: ['0xparent'],
+            artifactRefs: [],
+          },
+          {
+            jobId: 'job-def-123',
+            level: 0,
+            sourceJobDefinitionId: 'job-parent',
+            requestIds: ['0xabc'],
+            artifactRefs: [],
+          },
+          {
+            jobId: 'job-grandchild-envelope',
+            level: 1,
+            sourceJobDefinitionId: 'job-def-123',
+            requestIds: ['0xchild-envelope'],
+            artifactRefs: [
+              {
+                id: 'artifact-envelope',
+                name: 'envelope-artifact',
+                topic: 'defi-research',
+                cid: 'bafyEnvelope',
+              },
+            ],
+          },
+        ],
+        summary: {
+          totalJobs: 3,
+          completedJobs: 1,
+          activeJobs: 2,
+          totalArtifacts: 1,
+        },
       },
     },
   },
@@ -49,14 +83,17 @@ const jobDefinitionResponse = {
   data: {
     jobDefinition: {
       id: 'job-def-123',
-      promptContent: `# Objective
-Inspect staking contract
-
-# Context
-Review staking flows
-
-# Acceptance Criteria
-Produce summary memo`,
+      blueprint: JSON.stringify({
+        assertions: [{
+          id: 'STK-001',
+          assertion: 'Inspect staking contract and produce summary memo.',
+          examples: {
+            do: ['Review staking flows', 'Document findings'],
+            dont: ['Skip analysis'],
+          },
+          commentary: 'Blueprint for staking contract inspection in unit tests.',
+        }],
+      }),
       enabledTools: ['web_fetch'],
     },
   },
@@ -80,7 +117,7 @@ beforeEach(async () => {
     return { ok: true, json: async () => ({ data: { requests: { items: [] } } }) };
   });
 
-  ({ encodeSituation } = await import('../../../worker/situation_encoder.js'));
+  ({ encodeSituation, createInitialSituation } = await import('../../../worker/situation_encoder.js'));
 });
 
 describe('encodeSituation', () => {
@@ -130,7 +167,11 @@ describe('encodeSituation', () => {
       requestId: '0xparent',
       jobDefinitionId: 'job-parent',
     });
-    expect(situation.context.childRequestIds).toEqual(['0xchild1', '0xchild2']);
+    expect(Array.isArray(situation.context.childRequestIds)).toBe(true);
+    expect(situation.context.childRequestIds.length).toBe(3);
+    expect(situation.context.childRequestIds).toEqual(
+      expect.arrayContaining(['0xchild-envelope', '0xchild1', '0xchild2'])
+    );
     expect(summaryText).toContain('Job 0xabc');
     expect(summaryText).toContain('Status: COMPLETED');
     expect(summaryText).toContain('Artifacts: MEMORY:Gas Optimization');
@@ -167,5 +208,20 @@ describe('encodeSituation', () => {
     expect(situation.context.parent?.requestId).toBe('0xparent');
     expect(summaryText).toContain('Job 0xdead');
     expect(summaryText).toContain('Status: FAILED');
+  });
+});
+
+describe('createInitialSituation with deterministic context', () => {
+  it('seeds child request ids from hierarchy envelope when provided', async () => {
+    const { situation } = await createInitialSituation({
+      requestId: '0xabc',
+      jobName: 'Analyze staking contract performance',
+      jobDefinitionId: 'job-def-123',
+      additionalContext: requestResponse.data.request.additionalContext,
+      model: 'gemini-2.5-flash',
+    });
+
+    expect(situation.context.childRequestIds).toEqual(['0xchild-envelope']);
+    expect(situation.context.children).toEqual(['0xchild-envelope']);
   });
 });

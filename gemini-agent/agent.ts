@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync, statSync } from 'fs';
 import { join, dirname, resolve, isAbsolute, delimiter } from 'path';
 import { fileURLToPath } from 'url';
@@ -225,8 +225,53 @@ export class Agent {
     }
   }
 
+  private async checkGeminiCliVersion(): Promise<void> {
+    try {
+      // Check package.json version
+      const packageJsonPath = join(process.cwd(), 'node_modules', '@google', 'gemini-cli', 'package.json');
+      let packageVersion = 'unknown';
+      if (existsSync(packageJsonPath)) {
+        try {
+          const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+          packageVersion = packageJson.version || 'unknown';
+        } catch (err: any) {
+          agentLogger.debug({ error: err?.message }, 'Failed to read gemini-cli package.json');
+        }
+      }
+
+      // Check actual CLI version by running --version (using pinned version)
+      let cliVersion = 'unknown';
+      try {
+        const versionOutput = execSync('npx @google/gemini-cli@0.11.2 --version', {
+          encoding: 'utf8',
+          timeout: 5000,
+          cwd: this.codeWorkspace || process.cwd(),
+        }).trim();
+        cliVersion = versionOutput;
+      } catch (err: any) {
+        agentLogger.debug({ error: err?.message }, 'Failed to get CLI version via --version flag');
+      }
+
+      // Use warn level to ensure visibility regardless of log level configuration
+      agentLogger.warn(
+        { 
+          packageVersion, 
+          cliVersion,
+          packagePath: packageJsonPath,
+          matches: packageVersion === cliVersion || cliVersion.includes(packageVersion)
+        },
+        'Gemini CLI version check'
+      );
+    } catch (err: any) {
+      agentLogger.debug({ error: err?.message }, 'Version check failed (non-fatal)');
+    }
+  }
+
   private runGeminiWithTelemetry(prompt: string): Promise<{ output: string; telemetryFile: string; stderr: string; exitCode: number }> {
-    return new Promise((resolvePromise) => {
+    return new Promise(async (resolvePromise) => {
+      // Check CLI version before spawning
+      await this.checkGeminiCliVersion();
+
       // Initialize CLI args
       // NOTE: Gemini CLI no longer accepts --approval-mode or --allowed-tools flags
       // Tool permissions are now controlled via MCP settings.json (includeTools/excludeTools)
@@ -347,7 +392,8 @@ export class Agent {
         agentLogger.debug({ error: err.message }, 'Failed to create gemini home directory');
       }
 
-      const geminiProcess = spawn('npx', ['@google/gemini-cli', ...args], {
+      // Temporarily pin to 0.11.2 to test if looping issue is version-related
+      const geminiProcess = spawn('npx', ['@google/gemini-cli@0.11.2', ...args], {
         cwd: this.codeWorkspace,
         env: {
           ...envWithJob,
@@ -852,14 +898,25 @@ export class Agent {
             break;
 
           case 'gemini_cli.tool_call':
-          case 'gemini_cli.function_call':
+          case 'gemini_cli.function_call': {
+            const args =
+              attrs['parameters'] ||
+              attrs['args'] ||
+              attrs['arguments'] ||
+              attrs['function_args'];
+            const resultPayload =
+              attrs['result'] ||
+              attrs['function_response'] ||
+              attrs['response'];
             telemetry.toolCalls.push({
               tool: attrs['function_name'] || attrs['tool_name'] || attrs['name'] || 'unknown',
               success: attrs['success'] !== false,
               duration_ms: attrs['duration_ms'] || 0,
-              args: attrs['parameters'] || attrs['args'] || attrs['arguments']
+              args,
+              result: resultPayload
             });
             break;
+          }
         }
       }
 

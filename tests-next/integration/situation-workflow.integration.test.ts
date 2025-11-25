@@ -129,13 +129,28 @@ describe('situation workflow integration', () => {
     resetConfigForTests();
 
     try {
+    const jobBlueprint = JSON.stringify({
+      assertions: [{
+        id: 'SIT-001',
+        assertion: 'Explain staking reward drop and produce mitigation memo.',
+        examples: {
+          do: [
+            'Analyze validator behavior and reward distribution history.',
+            'Propose concrete remediation steps with timelines.',
+          ],
+          dont: [
+            'Provide speculative explanations without data support.',
+            'Skip documenting mitigation steps.',
+          ],
+        },
+        commentary: 'Blueprint-driven situation test ensuring blueprint metadata propagates through situation artifacts.',
+      }],
+    });
+
     const jobMetadata = {
       jobName: 'Investigate staking rewards variance',
       jobDefinitionId: 'job-def',
-      additionalContext: {
-        objective: 'Explain staking reward drop',
-        acceptanceCriteria: 'Deliver mitigation memo',
-      },
+      blueprint: jobBlueprint,
     };
 
     const result = {
@@ -214,9 +229,21 @@ describe('situation workflow integration', () => {
       artifacts: [],
     };
 
+    const recognitionBlueprint = JSON.stringify({
+      assertions: [{
+        id: 'SIT-002',
+        assertion: 'Harden RPC client with retry logic.',
+        examples: {
+          do: ['Implement exponential backoff with jitter', 'Document retry configuration'],
+          dont: ['Retry indefinitely without fallbacks'],
+        },
+        commentary: 'Recognition scenario blueprint for RPC client hardening.',
+      }],
+    });
+
     await createSituationArtifactForRequest({
       target: { id: '0xbbb', mech: '0xmech', requester: '0xreq' },
-      metadata: { jobName: 'Harden RPC client', jobDefinitionId: 'job-def' },
+      metadata: { jobName: 'Harden RPC client', jobDefinitionId: 'job-def', blueprint: recognitionBlueprint },
       result,
       finalStatus: { status: 'COMPLETED', message: 'ok' },
       recognition,

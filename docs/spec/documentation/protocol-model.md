@@ -160,7 +160,7 @@ Root Job (sourceJobDefinitionId: null)
 - `sourceRequestId`: Parent request that dispatched this request
 
 **Work Protocol Rules:**
-1. Agent queries `get_job_context` to understand hierarchy position
+1. Agent queries `get_details` or `search_artifacts` to understand hierarchy position
 2. Agent decides: complete directly, delegate to children, or wait for children
 3. Root jobs maintain `launcher_briefing` artifacts to communicate status to humans
 4. When a child reaches terminal state (COMPLETED/FAILED), parent is automatically re-dispatched
@@ -413,10 +413,9 @@ Status is automatically inferred by the worker based on agent actions (not manua
 - `create_artifact`: Upload content to IPFS
 - `dispatch_new_job`: Create new job definitions
 - `dispatch_existing_job`: Continue work in existing job containers
-- `get_job_context`: Retrieve hierarchy context and artifact references
-- `get_details`: Retrieve detailed on-chain records by ID
+- `get_details`: Retrieve detailed on-chain records by ID and hierarchy context
 - `search_jobs`: Search job definitions
-- `search_artifacts`: Search artifacts by name, topic, content
+- `search_artifacts`: Search artifacts by name, topic, content to find child work
 - `list_tools`: Introspection of available tools
 
 Native Gemini CLI tools (file operations, web search) are excluded by default unless explicitly enabled in job's `enabledTools` list.
@@ -458,7 +457,7 @@ If runaway output detected:
 **Core Tool Categories:**
 
 **Universal Tools (always available):**
-- Job Management: `dispatch_new_job`, `dispatch_existing_job`, `get_job_context`, `search_jobs`
+- Job Management: `dispatch_new_job`, `dispatch_existing_job`, `get_details`, `search_jobs`, `search_artifacts`
 - Artifact Management: `create_artifact`, `search_artifacts`
 - Data Retrieval: `get_details` (queries Ponder for on-chain records)
 - Introspection: `list_tools`
@@ -881,7 +880,7 @@ As specified in `requirements.md`, the protocol maintains three levels of observ
 
 **Agentic (MCP Tools):**
 - `get_details`: Retrieve on-chain records by ID
-- `get_job_context`: Retrieve hierarchy context and metadata
+- `get_details` and `search_artifacts`: Retrieve hierarchy context and metadata
 - `inspect_situation`: Inspect memory system for a given request
 - `search_similar_situations`: Vector search over past situations
 - `search_artifacts`: Search artifacts by name, topic, content

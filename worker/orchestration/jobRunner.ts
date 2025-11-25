@@ -20,7 +20,7 @@ import { fetchIpfsMetadata } from '../metadata/fetchIpfsMetadata.js';
 import { ensureRepoCloned } from '../git/repoManager.js';
 import { checkoutJobBranch } from '../git/branch.js';
 import { pushJobBranch } from '../git/push.js';
-import { createOrUpdatePullRequest, formatSummaryForPr } from '../git/pr.js';
+import { generateBranchUrl, formatSummaryForPr, createBranchArtifact } from '../git/pr.js';
 import { autoCommitIfNeeded, deriveCommitMessage, extractExecutionSummary } from '../git/autoCommit.js';
 import { runRecognitionPhase } from '../recognition/runRecognition.js';
 import { augmentPromptWithRecognition } from '../recognition/telemetryAugment.js';
@@ -55,7 +55,7 @@ export async function processOnce(
   let reflection: ReflectionResult | null = null;
   let finalStatus: FinalStatus | null = null;
   let executionSummary: ExecutionSummaryDetails | null = null;
-  
+
   const envSnapshot = snapshotEnvironment();
   const telemetry = new WorkerTelemetryService(target.id);
 
@@ -162,7 +162,7 @@ export async function processOnce(
     try {
       result = await runAgentForRequest(target, metadata);
       result = await consolidateArtifacts(result, target.id);
-      
+
       finalStatus = await inferJobStatus({
         requestId: target.id,
         error: null,
@@ -195,7 +195,7 @@ export async function processOnce(
     // Extract status and results from error telemetry if available
     if (e?.telemetry) {
       const parsed = parseTelemetry(result, e);
-      
+
       const extractedOutput = extractOutput(result, e);
       if (extractedOutput) {
         result.output = result.output || extractedOutput;
@@ -329,7 +329,7 @@ export async function processOnce(
       : JSON.stringify(result.output ?? '');
     executionSummary = executionSummary ?? extractExecutionSummary(outputText);
   }
-  
+
   let commitMessageForAutoCommit: string | null = null;
   if (finalStatus?.status === 'COMPLETED' && metadata?.codeMetadata) {
     commitMessageForAutoCommit = deriveCommitMessage(executionSummary, finalStatus, {
@@ -348,7 +348,6 @@ export async function processOnce(
     codeMetadataRepoRoot: process.env.CODE_METADATA_REPO_ROOT,
   };
   workerLogger.info(pushDebugInfo, 'Git push attempt - checking conditions');
-  console.error('[WORKER-PUSH-DEBUG] Git push attempt:', JSON.stringify(pushDebugInfo));
 
   try {
     if (metadata?.codeMetadata?.branch?.name) {
@@ -359,8 +358,7 @@ export async function processOnce(
         hasCommitMessage: !!commitMessageForAutoCommit,
       };
       workerLogger.info(pushProceedInfo, 'Git push conditions met - proceeding with push');
-      console.error('[WORKER-PUSH-DEBUG] Git push conditions met:', JSON.stringify(pushProceedInfo));
-      
+
       if (commitMessageForAutoCommit) {
         await autoCommitIfNeeded(metadata.codeMetadata, commitMessageForAutoCommit);
       }
@@ -373,7 +371,6 @@ export async function processOnce(
         branchName: metadata?.codeMetadata?.branch?.name,
       };
       workerLogger.warn(pushSkippedInfo, 'Git push skipped - branch name missing');
-      console.error('[WORKER-PUSH-DEBUG] Git push skipped:', JSON.stringify(pushSkippedInfo));
     }
   } catch (pushError: any) {
     workerLogger.error({ error: serializeError(pushError) }, 'Failed to push branch');
@@ -384,28 +381,38 @@ export async function processOnce(
     throw pushError;
   }
 
-  // Create PR if completed
+  // Create branch artifact if completed
   try {
     if (finalStatus?.status === 'COMPLETED' && metadata?.codeMetadata) {
       const branchName = metadata.codeMetadata.branch?.name;
       const baseBranch = metadata.codeMetadata.baseBranch || DEFAULT_BASE_BRANCH;
 
       if (branchName) {
-        const summaryBlock = formatSummaryForPr(executionSummary);
-        const prUrl = await createOrUpdatePullRequest({
-          codeMetadata: metadata.codeMetadata,
-          branchName,
-          baseBranch,
-          requestId: target.id,
-          summaryBlock: summaryBlock ?? undefined,
-        });
-        if (prUrl) {
-          result.pullRequestUrl = prUrl;
+        // Generate branch URL for viewing on GitHub/remote
+        const branchUrl = generateBranchUrl(metadata.codeMetadata, branchName);
+
+        if (branchUrl) {
+          const summaryBlock = formatSummaryForPr(executionSummary);
+          const branchArtifactRecord = await createBranchArtifact({
+            requestId: target.id,
+            branchUrl,
+            branchName,
+            baseBranch,
+            title: `[Job ${metadata.codeMetadata.jobDefinitionId}] updates`,
+            summaryBlock: summaryBlock ?? undefined,
+            codeMetadata: metadata.codeMetadata,
+          });
+
+          if (branchArtifactRecord) {
+            result.artifacts = [...(result.artifacts || []), branchArtifactRecord];
+            // Store branch URL for backward compatibility (some code may look for this)
+            result.pullRequestUrl = branchUrl;
+          }
         }
       }
     }
-  } catch (prError: any) {
-    workerLogger.error({ error: serializeError(prError) }, 'Failed to create PR');
+  } catch (branchError: any) {
+    workerLogger.error({ error: serializeError(branchError) }, 'Failed to create branch artifact');
   }
 
   // Store report
@@ -424,9 +431,12 @@ export async function processOnce(
   } finally {
     telemetry.endPhase('reporting');
   }
-  
+
   // Dispatch parent if needed
-  await dispatchParentIfNeeded(finalStatus, metadata!, target.id, result?.output || '', telemetry);
+  await dispatchParentIfNeeded(finalStatus, metadata!, target.id, result?.output || '', {
+    telemetry,
+    artifacts: Array.isArray(result?.artifacts) ? result.artifacts : undefined,
+  });
 
   // Deliver via Safe
   telemetry.startPhase('delivery');
@@ -516,4 +526,3 @@ export async function processOnce(
     telemetry.endPhase('delivery');
   }
 }
-

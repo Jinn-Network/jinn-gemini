@@ -7,9 +7,31 @@ import type { CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
 import { GITHUB_API_URL, DEFAULT_BASE_BRANCH } from '../constants.js';
 import { serializeError } from '../logging/errors.js';
 import { formatSummaryForPr } from './autoCommit.js';
+import { pushJsonToIpfs } from '@jinn-network/mech-client-ts/dist/ipfs.js';
+import { createArtifact } from '../control_api_client.js';
+import { fetchWithRetry } from '../../http/client.js';
+import { getOptionalGithubRepository, getOptionalGithubToken } from '../../config/index.js';
 
 // Re-export for use in other modules
 export { formatSummaryForPr };
+
+/**
+ * Branch artifact metadata structure
+ */
+export interface BranchArtifactContent {
+  branchUrl: string;
+  headBranch: string;
+  baseBranch: string;
+  title: string;
+  summary?: string;
+  requestId: string;
+  jobDefinitionId: string;
+  createdAt: string;
+  mergeStatus?: 'mergeable' | 'conflict' | 'unknown';
+}
+
+// Keep old interface for backward compatibility
+export type PullRequestArtifactContent = BranchArtifactContent;
 
 /**
  * Parse GitHub repository info from remote URL
@@ -25,19 +47,19 @@ function parseGithubRepo(remoteUrl: string | undefined, branchName: string): { o
   const inferRepositoryFromRemote = (url?: string): string | null => {
     if (!url) return null;
 
-    // SSH form: git@host:owner/repo.git
+    // SSH format: git@host:owner/repo.git
     const sshMatch = url.match(/^git@([^:]+?):(.+?)$/);
     if (sshMatch) {
       return normalizeRepository(sshMatch[2]);
     }
 
-    // Handle scp-like shorthand without scheme: host:owner/repo.git
+    // SCP-like shorthand without scheme: host:owner/repo.git
     const scpMatch = url.match(/^([^@]+?):(.+?)$/);
     if (scpMatch && !url.includes('://')) {
       return normalizeRepository(scpMatch[2]);
     }
 
-    // URL forms: https://host/owner/repo.git or ssh://
+    // HTTPS/SSH URL forms: https://host/owner/repo.git or ssh://...
     try {
       const parsed = new URL(url);
       const pathname = parsed.pathname.replace(/^\/+/, '');
@@ -47,12 +69,53 @@ function parseGithubRepo(remoteUrl: string | undefined, branchName: string): { o
     }
   };
 
-  const repository = normalizeRepository(process.env.GITHUB_REPOSITORY) ?? inferRepositoryFromRemote(remoteUrl);
+  const repository = normalizeRepository(getOptionalGithubRepository()) ?? inferRepositoryFromRemote(remoteUrl);
+  if (getOptionalGithubRepository()) {
+    workerLogger.debug({ repository }, 'Using GITHUB_REPOSITORY from environment');
+  } else if (repository) {
+    workerLogger.debug({ repository, remoteUrl }, 'Inferred repository from remote URL');
+  }
   if (!repository) return null;
 
   const [owner, repo] = repository.split('/', 2);
   if (!owner || !repo) return null;
   return { owner, repo, head: `${owner}:${branchName}` };
+}
+
+/**
+ * Generate a branch URL for viewing on the remote (e.g., GitHub)
+ * Converts git remote URL to HTTPS branch URL
+ */
+export function generateBranchUrl(codeMetadata: CodeMetadata, branchName: string): string | null {
+  try {
+    const remoteUrl = codeMetadata.repo?.remoteUrl || codeMetadata.branch?.remoteUrl;
+    if (!remoteUrl) {
+      workerLogger.warn('No remote URL available to generate branch URL');
+      return null;
+    }
+
+    let httpsBase: string;
+
+    // Handle SSH format: git@github.com:owner/repo.git
+    const sshMatch = remoteUrl.match(/^git@([^:]+):(.+?)(\.git)?$/);
+    if (sshMatch) {
+      const [, host, path] = sshMatch;
+      httpsBase = `https://${host}/${path}`;
+    }
+    // Handle HTTPS format: https://github.com/owner/repo.git
+    else if (remoteUrl.startsWith('https://') || remoteUrl.startsWith('http://')) {
+      httpsBase = remoteUrl.replace(/\.git$/, '');
+    }
+    else {
+      workerLogger.warn({ remoteUrl }, 'Unknown git remote URL format');
+      return null;
+    }
+
+    return `${httpsBase}/tree/${branchName}`;
+  } catch (error) {
+    workerLogger.error({ error: serializeError(error) }, 'Failed to generate branch URL');
+    return null;
+  }
 }
 
 /**
@@ -66,7 +129,7 @@ export async function createOrUpdatePullRequest(params: {
   summaryBlock?: string;
 }): Promise<string | null> {
   const { codeMetadata, branchName, baseBranch, requestId, summaryBlock } = params;
-  const token = process.env.GITHUB_TOKEN;
+  const token = getOptionalGithubToken();
   if (!token) {
     workerLogger.warn('Missing GITHUB_TOKEN; skipping PR creation');
     return null;
@@ -86,7 +149,11 @@ export async function createOrUpdatePullRequest(params: {
 
   const searchUrl = `${GITHUB_API_URL}/repos/${repoInfo.owner}/${repoInfo.repo}/pulls?head=${encodeURIComponent(repoInfo.head)}&state=open`;
   try {
-    const res = await fetch(searchUrl, { headers });
+    const res = await fetchWithRetry(searchUrl, { headers }, {
+      timeoutMs: 10000,
+      maxRetries: 2,
+      context: { operation: 'searchPRs', branchName }
+    });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
@@ -110,7 +177,7 @@ export async function createOrUpdatePullRequest(params: {
     '',
     'This PR was generated by the mech worker after successful validation.',
   ];
-  
+
   // Add execution summary if provided
   const formattedSummary = summaryBlock || formatSummaryForPr(null);
   if (formattedSummary) {
@@ -118,19 +185,27 @@ export async function createOrUpdatePullRequest(params: {
   }
 
   try {
-    const res = await fetch(`${GITHUB_API_URL}/repos/${repoInfo.owner}/${repoInfo.repo}/pulls`, {
-      method: 'POST',
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
+    const res = await fetchWithRetry(
+      `${GITHUB_API_URL}/repos/${repoInfo.owner}/${repoInfo.repo}/pulls`,
+      {
+        method: 'POST',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          head: branchName,
+          base: baseBranch,
+          body: bodyLines.join('\n'),
+        }),
       },
-      body: JSON.stringify({
-        title,
-        head: branchName,
-        base: baseBranch,
-        body: bodyLines.join('\n'),
-      }),
-    });
+      {
+        timeoutMs: 15000,
+        maxRetries: 3,
+        context: { operation: 'createPR', branchName, requestId }
+      }
+    );
 
     if (!res.ok) {
       const text = await res.text();
@@ -142,11 +217,198 @@ export async function createOrUpdatePullRequest(params: {
     return prUrl || null;
   } catch (error) {
     workerLogger.error({
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      raw: error
+      error: serializeError(error)
     }, 'Failed to create pull request');
-    return null;
+    throw error;  // Let caller handle PR creation failure
   }
 }
 
+/**
+ * Create a branch artifact for a child job's branch
+ */
+export interface BranchArtifactRecord {
+  cid: string;
+  topic: string;
+  name: string;
+  type: 'GIT_BRANCH';
+  contentPreview?: string;
+  content?: string;
+}
+
+// Keep old interface name for backward compatibility
+export type PullRequestArtifactRecord = BranchArtifactRecord;
+
+export async function createBranchArtifact(params: {
+  requestId: string;
+  branchUrl: string;
+  branchName: string;
+  baseBranch: string;
+  title: string;
+  summaryBlock?: string;
+  codeMetadata: CodeMetadata;
+}): Promise<BranchArtifactRecord | null> {
+  const { requestId, branchUrl, branchName, baseBranch, title, summaryBlock, codeMetadata } = params;
+
+  try {
+    const artifactName = `branch-${branchName}`;
+    const contentPreview = summaryBlock?.slice(0, 100) ?? title.slice(0, 100);
+
+    const artifactPayload = {
+      name: artifactName,
+      topic: 'git/branch',
+      content: JSON.stringify({
+        branchUrl,
+        headBranch: branchName,
+        baseBranch,
+        title,
+        summary: summaryBlock || undefined,
+        requestId,
+        jobDefinitionId: codeMetadata.jobDefinitionId,
+        createdAt: new Date().toISOString(),
+      } as BranchArtifactContent),
+      mimeType: 'application/json',
+      type: 'GIT_BRANCH',
+      tags: ['git-branch', 'git', branchName, baseBranch].filter(Boolean),
+    };
+
+    // Upload to IPFS first; without a CID we can't surface the artifact anywhere else.
+    const [, cid] = await pushJsonToIpfs(artifactPayload);
+
+    const artifactRecord: BranchArtifactRecord = {
+      cid,
+      topic: 'git/branch',
+      name: artifactName,
+      type: 'GIT_BRANCH',
+      contentPreview,
+      content: artifactPayload.content,
+    };
+
+    // Persist through Control API, but don't fail the artifact if persistence flakes.
+    try {
+      await createArtifact(requestId, {
+        cid,
+        topic: 'git/branch',
+        content: null,
+      });
+    } catch (controlApiError: any) {
+      workerLogger.warn(
+        {
+          requestId,
+          branchUrl,
+          error: serializeError(controlApiError),
+        },
+        'Failed to persist branch artifact via Control API'
+      );
+    }
+
+    workerLogger.info(
+      { requestId, branchUrl, branchName, cid },
+      'Created branch artifact'
+    );
+
+    return artifactRecord;
+  } catch (error: any) {
+    workerLogger.error(  // Change warn → error
+      { requestId, branchUrl, error: serializeError(error) },
+      'Failed to create branch artifact'
+    );
+    throw new Error(`Branch artifact creation failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Export backward-compatible function name
+export const createPullRequestArtifact = createBranchArtifact;
+
+/**
+ * Fetch branch details (merge status + diff) using Git-native commands
+ * This removes the dependency on GitHub API for reviewing branches
+ */
+export async function fetchBranchDetails(params: {
+  headBranch: string;
+  baseBranch: string;
+  repoPath: string;
+}): Promise<{
+  mergeStatus: 'mergeable' | 'conflict' | 'unknown';
+  diffSummary: string;
+} | null> {
+  const { headBranch, baseBranch, repoPath } = params;
+
+  try {
+    const { execSync } = await import('node:child_process');
+
+    // 1. Fetch the latest state of both branches from origin
+    try {
+      execSync(`git fetch origin ${headBranch}`, {
+        cwd: repoPath,
+        stdio: 'ignore',
+      });
+      execSync(`git fetch origin ${baseBranch}`, {
+        cwd: repoPath,
+        stdio: 'ignore',
+      });
+    } catch (fetchError) {
+      workerLogger.warn(
+        { error: serializeError(fetchError), headBranch, baseBranch },
+        'Failed to fetch branches from origin'
+      );
+      return null;
+    }
+
+    // 2. Check for merge conflicts using git merge-tree
+    // Git merge-tree returns a single 40-character SHA-1 tree hash if mergeable
+    const GIT_SHA1_LENGTH = 40;
+    let mergeStatus: 'mergeable' | 'conflict' | 'unknown' = 'unknown';
+    try {
+      const mergeTreeOutput = execSync(
+        `git merge-tree --write-tree origin/${baseBranch} origin/${headBranch}`,
+        {
+          cwd: repoPath,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }
+      );
+      // If merge-tree succeeds without conflicts, status is mergeable
+      // The output is just a tree hash if there are no conflicts
+      const mergeTreeHash = mergeTreeOutput.trim();
+      mergeStatus = mergeTreeHash.length === GIT_SHA1_LENGTH && /^[0-9a-f]+$/.test(mergeTreeHash)
+        ? 'mergeable'
+        : 'unknown';
+    } catch (mergeTreeError: any) {
+      // If merge-tree exits with non-zero, there are conflicts
+      if (mergeTreeError.status !== 0) {
+        mergeStatus = 'conflict';
+      }
+    }
+
+    // 3. Generate diff summary
+    let diffSummary = '';
+    try {
+      const diffText = execSync(
+        `git diff origin/${baseBranch}...origin/${headBranch}`,
+        {
+          cwd: repoPath,
+          encoding: 'utf-8',
+          maxBuffer: 5 * 1024 * 1024, // 5MB max
+        }
+      );
+      // Truncate diff if too large (e.g., 2000 chars) to avoid blowing up context
+      diffSummary = diffText.length > 2000
+        ? diffText.slice(0, 2000) + '\n... (diff truncated)'
+        : diffText;
+    } catch (diffError) {
+      workerLogger.warn(
+        { error: serializeError(diffError), headBranch, baseBranch },
+        'Failed to generate diff summary'
+      );
+      diffSummary = '(unable to generate diff)';
+    }
+
+    return { mergeStatus, diffSummary };
+  } catch (error) {
+    workerLogger.warn(
+      { error: serializeError(error), headBranch, baseBranch },
+      'Failed to fetch branch details'
+    );
+    return null;
+  }
+}

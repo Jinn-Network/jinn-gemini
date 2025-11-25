@@ -63,6 +63,15 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
       : (Array.isArray(json?.additionalContext?.dependencies) 
           ? json.additionalContext.dependencies 
           : undefined);
+    const lineage = json?.lineage && typeof json.lineage === 'object'
+      ? {
+          dispatcherRequestId: json.lineage.dispatcherRequestId ? String(json.lineage.dispatcherRequestId) : undefined,
+          dispatcherJobDefinitionId: json.lineage.dispatcherJobDefinitionId ? String(json.lineage.dispatcherJobDefinitionId) : undefined,
+          parentDispatcherRequestId: json.lineage.parentDispatcherRequestId ? String(json.lineage.parentDispatcherRequestId) : undefined,
+          dispatcherBranchName: json.lineage.dispatcherBranchName ? String(json.lineage.dispatcherBranchName) : undefined,
+          dispatcherBaseBranch: json.lineage.dispatcherBaseBranch ? String(json.lineage.dispatcherBaseBranch) : undefined,
+        }
+      : undefined;
     
     return {
       blueprint,
@@ -76,10 +85,10 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
       codeMetadata,
       model,
       dependencies,
+      lineage,
     };
   } catch (e: any) {
     workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');
     return null;
   }
 }
-

@@ -23,6 +23,7 @@ export interface PonderRequest {
   enabledTools?: string[];
   blockNumber?: string;
   blockTimestamp?: string;
+  additionalContext?: any;
 }
 
 export interface PonderJobDefinition {
@@ -116,6 +117,7 @@ export async function getRequest(
         enabledTools
         blockNumber
         blockTimestamp
+        additionalContext
       }
     }
   `);
