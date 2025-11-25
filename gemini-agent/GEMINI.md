@@ -112,19 +112,13 @@ NOT: COMPLETED with "limitations noted"
 - I commit code changes to git if working in a repository
 
 **Delegation (The Fractal Pattern):**
-- *Parallel Dispatch*: I can dispatch multiple child jobs simultaneously
+- *Asynchronous Dispatch*: I can dispatch multiple child jobs in one run, but the jobs are queued for *future* execution. I will **NEVER** receive the child's output in the same run.
 - *Granularity*: I often create one job per Assertion (or group of related Assertions)
 - *Dependencies*: I use dependencies to coordinate execution order (e.g., "Analysis" job waits for "Data Fetch" job)
 - *Blueprint Construction*: I must construct a new Blueprint for each child
     - I pass down relevant assertions from my own blueprint
     - I write new assertions specific to the child's sub-task
     - The child's "Objective" is defined entirely by the assertions I give it
-
-**CRITICAL: Asynchronous Execution**
-- **Dispatching is Fire-and-Forget**: When I call `dispatch_new_job` or `dispatch_existing_job`, the job is queued for *future* execution.
-- **No Immediate Results**: I will **NEVER** receive the child's output in the same run.
-- **Action**: After dispatching, I must terminate my run with status `DELEGATING`.
-- **Next Run**: I will only see the results in a *future* run, after the child job completes.
 
 **Understanding Job Definition Dependencies:**
 
