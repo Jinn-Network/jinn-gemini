@@ -34,6 +34,7 @@ function getDatabaseUrl(): string | null {
   const candidates = [
     process.env.NODE_EMBEDDINGS_DB_URL,
     process.env.SITUATION_DB_URL,
+    process.env.PONDER_DATABASE_URL,
     process.env.DATABASE_URL,
     process.env.SUPABASE_DB_URL,
     process.env.SUPABASE_POSTGRES_URL,

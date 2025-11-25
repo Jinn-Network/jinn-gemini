@@ -21,51 +21,57 @@
     },
     {
       "id": "ANALYSIS-001",
-      "assertion": "Protocol activity must be analyzed in context of broader market movements with statistical quantification",
+      "assertion": "Protocol activity must be analyzed in context of broader market movements with mandatory statistical quantification including historical averages and percentile rankings",
       "examples": {
         "do": [
-          "Compare protocol TVL changes to overall DeFi TVL trends",
-          "Quantify volume as multiple of 7-day average",
-          "Report liquidation events exceeding 95th percentile",
-          "Cross-reference TVL changes with ETH price movements"
+          "Compare protocol TVL changes to overall DeFi TVL trends with percentage comparison",
+          "Quantify volume as multiple of 7-day average (e.g., 'Uniswap 24h volume $378M is 1.8x the 7-day average of $210M')",
+          "Report liquidation events with percentile context (e.g., '$31.6M liquidations exceeds 95th percentile of $20M')",
+          "Cross-reference TVL changes with ETH price movements showing correlation",
+          "Provide historical context for all metrics (7-day average minimum)"
         ],
         "dont": [
-          "Report absolute numbers without context or comparison",
-          "Use subjective terms like 'large' without quantification",
+          "Report absolute numbers without historical context or comparison",
+          "Use subjective terms like 'large' or 'high' without quantification against historical averages",
+          "Provide current metrics without 7-day average comparison",
           "Ignore market-wide trends when analyzing protocol-specific changes",
-          "Fail to distinguish between price-driven and volume-driven changes"
+          "Fail to distinguish between price-driven and volume-driven changes",
+          "Skip percentile analysis for outlier events"
         ]
       },
-      "commentary": "Context and statistical rigor are essential. Activity patterns must be quantified relative to historical norms and broader market conditions."
+      "commentary": "Context and statistical rigor are essential. Activity patterns must be quantified relative to historical norms (minimum 7-day averages) and broader market conditions. Percentile rankings identify truly unusual activity. Every metric needs historical context to be actionable."
     },
     {
       "id": "SCOPE-001",
-      "assertion": "Analysis must focus on major DeFi protocols with significant TVL and trading volume on Ethereum mainnet",
+      "assertion": "Analysis must cover a minimum of 3 major DeFi protocols with >$100M TVL on Ethereum mainnet, providing protocol-specific metrics for each",
       "examples": {
         "do": [
-          "Analyze Uniswap, Aave, Lido, Maker, Curve activity",
-          "Focus on protocols with >$100M TVL",
-          "Include DEX volumes, lending metrics, staking flows",
+          "Analyze minimum 3 of: Uniswap, Aave, Lido, Maker, Curve with protocol-specific data for each",
+          "Provide per-protocol metrics: 'Uniswap: $6.2B TVL, $378M 24h volume. Aave: $12.1B TVL, $89M borrowed. Lido: $33.4B TVL, 15K ETH staked today'",
+          "Focus on protocols with >$100M TVL with quantified metrics",
+          "Include DEX volumes, lending metrics, staking flows per protocol",
           "Prioritize unusual activity patterns that deviate from norms"
         ],
         "dont": [
+          "Analyze fewer than 3 major protocols",
+          "Provide aggregate data without protocol-specific breakdowns",
           "Include small or unverified protocols",
           "Analyze protocols on other chains without clear justification",
           "Spend equal time on all protocols regardless of significance",
           "Report routine activity without notable patterns"
         ]
       },
-      "commentary": "Efficient research requires focus on economically significant protocols. Major DeFi blue-chips drive market dynamics and provide the most actionable signals."
+      "commentary": "Efficient research requires focus on economically significant protocols. Major DeFi blue-chips drive market dynamics and provide the most actionable signals. Minimum 3 protocols ensures comparative analysis and reduces single-protocol bias. Each protocol must have specific metrics, not aggregate data."
     },
     {
       "id": "OUTPUT-001",
-      "assertion": "Deliverable must provide top 3 actionable trade ideas with specific on-chain metrics, clear entry conditions, comprehensive risk parameters, and multi-source validation",
+      "assertion": "Deliverable must provide top 3 actionable trade ideas ranked by explicit conviction level (High/Medium/Low), with each trade citing a minimum of 3 distinct protocol metrics with source URLs",
       "examples": {
         "do": [
-          "Rank ideas by signal strength with explicit conviction levels (High/Medium/Low)",
+          "Rank ideas by signal strength: 'Trade 1 (High Conviction): Long ETH... Trade 2 (Medium Conviction): Short UNI... Trade 3 (Low Conviction): Long AAVE'",
           "Specify numeric entry price or verifiable on-chain trigger (e.g., 'Enter when Uniswap WETH/USDC 24h volume exceeds $500M')",
           "State position sizing as portfolio percentage (e.g., 5%, 10%)",
-          "Cite 3+ specific protocol metrics per trade thesis with source URLs",
+          "Cite minimum 3 distinct protocol metrics per trade with inline URLs: 'Uniswap 24h volume $378M (defillama.com), TVL $6.2B (coingecko.com), fee revenue $2.1M (dune.com/uniswap)'",
           "Define stop-loss using technical levels AND on-chain invalidation criteria",
           "Include expected timeframe for trade thesis to play out",
           "Quantify potential return and risk/reward ratio"
@@ -73,51 +79,77 @@
         "dont": [
           "Present ideas without specific numeric entry triggers",
           "Omit risk management or provide only generic stop-loss guidance",
-          "Make recommendations citing fewer than 3 data sources",
-          "Present all ideas as equally confident regardless of signal quality",
+          "Cite fewer than 3 distinct sources with URLs per trade thesis",
+          "Present all ideas with same conviction level (all High or all Medium)",
+          "List sources generically at document end instead of inline per trade",
           "Provide vague entries like 'buy on dips' or 'accumulate weakness'",
           "Skip timeframe, expected return, or risk/reward quantification"
         ]
       },
-      "commentary": "Trade ideas must be immediately executable by a professional trader. Each recommendation needs concrete entry/exit parameters, quantified risk/reward, multiple confirming data points, and clear thesis invalidation criteria. Institutional-grade alpha requires institutional-grade specificity."
+      "commentary": "Trade ideas must be immediately executable by a professional trader. Each recommendation needs concrete entry/exit parameters, quantified risk/reward, minimum 3 distinct confirming data sources with URLs inline (not footer), explicit conviction ranking (High/Medium/Low), and clear thesis invalidation criteria. Institutional-grade alpha requires institutional-grade specificity and multi-source validation per trade."
     },
     {
       "id": "SYNTHESIS-001",
-      "assertion": "Analysis must synthesize findings into a coherent market narrative connecting protocol activity to trading opportunities",
+      "assertion": "Analysis must synthesize findings into a coherent market narrative connecting protocol activity to trading opportunities, including explicit acknowledgment of alternative scenarios",
       "examples": {
         "do": [
           "Identify convergent patterns across multiple protocols",
           "Connect TVL flows to potential market direction",
           "Link unusual activity to specific trade setups",
-          "Acknowledge alternative scenarios that could invalidate thesis"
+          "Acknowledge alternative scenarios: 'Bull case assumes continued DEX volume growth. Bear case: If Uniswap volume falls below $300M, thesis invalidated'",
+          "Present contrarian view: 'While TVL decline suggests bearish sentiment, rising volume indicates accumulation phase'"
         ],
         "dont": [
           "Present disconnected data points without narrative",
           "Fail to connect observations to actionable conclusions",
           "Ignore contradictory signals or conflicting data",
-          "Present analysis without clear implications for trading"
+          "Present analysis without clear implications for trading",
+          "Omit alternative scenarios that could invalidate thesis",
+          "Present only bullish or only bearish view without acknowledging contrarian case"
         ]
       },
-      "commentary": "Data synthesis creates alpha. The deliverable must weave protocol metrics into a coherent story that informs directional market views and specific trade ideas."
+      "commentary": "Data synthesis creates alpha. The deliverable must weave protocol metrics into a coherent story that informs directional market views and specific trade ideas. Alternative scenarios and thesis invalidation criteria demonstrate intellectual honesty and risk awareness. Markets are probabilistic - acknowledging multiple outcomes strengthens conviction in primary thesis."
     },
     {
       "id": "RIGOR-001",
-      "assertion": "Every quantitative claim must be validated against multiple independent sources with source attribution",
+      "assertion": "Every quantitative claim must be validated against a minimum of 3 distinct independent sources with explicit source URLs provided inline",
       "examples": {
         "do": [
-          "Cross-reference Uniswap volume from DeFiLlama ($378M), CoinGecko ($379M), and Dune Analytics ($381M) - cite all three",
-          "Validate liquidation data from Parsec and compare with on-chain explorer data",
-          "Confirm TVL changes across DeFiLlama, DefiPulse, and protocol-native dashboards",
-          "Flag discrepancies when sources disagree (e.g., 'CoinMarketCap reports $414M vs CoinGecko $378M - 9.5% variance')"
+          "Cross-reference Uniswap volume from DeFiLlama ($378M - defillama.com/protocol/uniswap), CoinGecko ($379M - coingecko.com/en/exchanges/uniswap), and Dune Analytics ($381M - dune.com/uniswap/volume) - cite all three with URLs",
+          "Validate liquidation data from Parsec (parsec.finance) and compare with on-chain explorer data (etherscan.io)",
+          "Confirm TVL changes across DeFiLlama, DefiPulse, and protocol-native dashboards - provide URL for each",
+          "Flag discrepancies when sources disagree by >5% (e.g., 'CoinMarketCap reports $414M (coinmarketcap.com) vs CoinGecko $378M (coingecko.com) - 9.5% variance suggests data aggregation lag')"
         ],
         "dont": [
           "Rely on single source for critical metrics",
           "Report conflicting data without acknowledging discrepancy",
           "Make claims like 'significantly higher' without numeric validation",
-          "Use web search summaries as sole source without verifying original data"
+          "Use web search summaries as sole source without verifying original data",
+          "List sources generically at document end without inline attribution per claim",
+          "Provide fewer than 3 distinct sources for any quantitative claim"
         ]
       },
-      "commentary": "Multi-source validation prevents data errors and strengthens conviction. Professional research requires corroboration. When sources conflict, acknowledge and explain - this builds trust and demonstrates thoroughness."
+      "commentary": "Multi-source validation prevents data errors and strengthens conviction. Professional research requires corroboration. When sources conflict by >5%, acknowledge and explain - this builds trust and demonstrates thoroughness. Each claim must cite minimum 3 distinct sources with URLs inline, not in a generic footer."
+    },
+    {
+      "id": "VERIFICATION-001",
+      "assertion": "Before finalizing work, explicitly enumerate each assertion ID and confirm satisfaction status with supporting evidence",
+      "examples": {
+        "do": [
+          "Create verification checklist: '✓ DATA-001: Satisfied - cited 4 sources with timestamps. ✓ ANALYSIS-001: Satisfied - provided 7-day volume comparison (1.2x average). ✗ SCOPE-001: Unsatisfied - only analyzed Uniswap, missing Aave/Lido/Maker'",
+          "Include verification section in artifact: 'Assertion Verification: DATA-001 (PASS), RIGOR-001 (PASS), OUTPUT-001 (FAIL - only 2 sources per trade)'",
+          "Document specific evidence per assertion: 'SYNTHESIS-001: Satisfied - Market Narrative section connects 3 protocol patterns to 3 trade setups with invalidation scenarios'",
+          "When assertion unsatisfied: 'SCOPE-001: NOT satisfied - requires 5 protocols, only delivered 2. Recommend delegation to child jobs for Aave/Lido/Maker analysis'"
+        ],
+        "dont": [
+          "Finalize without explicit assertion-by-assertion review",
+          "Claim completion when any assertion is unsatisfied",
+          "Skip verification checklist for multi-assertion blueprints",
+          "Mark work complete while documenting gaps",
+          "Assume assertions are satisfied without explicit confirmation"
+        ]
+      },
+      "commentary": "Verification enforcement prevents premature finalization. Agent must explicitly confirm EVERY assertion is satisfied before marking work COMPLETED. If ANY assertion is unsatisfied, agent must delegate remaining work or document blocker. This assertion makes the verification step mandatory and auditable."
     }
   ]
 }

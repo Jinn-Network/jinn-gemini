@@ -34,3 +34,4 @@ This backup contains the complete schema structure. To restore:
 - pg_stat_statements (1.11)
 - supabase_vault (0.3.1)
 
+

@@ -320,3 +320,4 @@
 - Total on-chain indexed rows: ~7,600+
 - Auth/Storage schemas: Standard Supabase schemas (not backed up)
 
+

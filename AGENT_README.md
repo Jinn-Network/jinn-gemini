@@ -287,13 +287,23 @@ dispatchNewJob({
 // 4. Verify all assertions are satisfied in the final deliverable
 ```
 
-**Blueprint Style Guide**: See `docs/spec/blueprint/style-guide.md` for detailed guidance on writing declarative, outcome-focused blueprints.
+**Blueprint Style Guide**: See `docs/spec/blueprint/style-guide.md` for comprehensive guidance on:
+- Writing declarative, outcome-focused blueprints
+- Quantifying vague requirements (e.g., "multiple sources" → "minimum 3 distinct sources")
+- Enforcement patterns (multi-source validation, statistical context, verification assertions)
+- Common pitfalls and anti-patterns
 
 ### Blueprint Design Philosophy
 
 **Blueprints specify WHAT, not HOW:**
 
 Blueprints must define success criteria and outcomes, not implementation steps or strategies. The agent has full autonomy to determine execution approach.
+
+**Key Requirements:**
+- **Quantify Everything**: Replace vague terms with specific numbers ("minimum 3 distinct sources with URLs")
+- **Inline Attribution**: Citations with URLs per claim, not generic footer ("Volume $378M (defillama.com)")
+- **Statistical Context**: All metrics need 7-day average comparison minimum
+- **Verification Assertion**: Add VERIFICATION-001 for blueprints with 3+ assertions
 
 ❌ **Wrong - Prescribes HOW:**
 ```json
