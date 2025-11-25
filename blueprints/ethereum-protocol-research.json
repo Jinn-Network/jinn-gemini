@@ -59,24 +59,27 @@
     },
     {
       "id": "OUTPUT-001",
-      "assertion": "Deliverable must provide top 3 actionable trade ideas with clear entry conditions, risk parameters, and multi-source rationale",
+      "assertion": "Deliverable must provide top 3 actionable trade ideas with specific on-chain metrics, clear entry conditions, comprehensive risk parameters, and multi-source validation",
       "examples": {
         "do": [
-          "Rank ideas by signal strength and conviction level",
-          "Specify entry price or on-chain trigger condition for each idea",
-          "State position sizing recommendation (e.g., 5%, 10% allocation)",
-          "Cite specific protocol metrics supporting each trade thesis",
-          "Define stop-loss levels based on technical or on-chain invalidation"
+          "Rank ideas by signal strength with explicit conviction levels (High/Medium/Low)",
+          "Specify numeric entry price or verifiable on-chain trigger (e.g., 'Enter when Uniswap WETH/USDC 24h volume exceeds $500M')",
+          "State position sizing as portfolio percentage (e.g., 5%, 10%)",
+          "Cite 3+ specific protocol metrics per trade thesis with source URLs",
+          "Define stop-loss using technical levels AND on-chain invalidation criteria",
+          "Include expected timeframe for trade thesis to play out",
+          "Quantify potential return and risk/reward ratio"
         ],
         "dont": [
-          "Present ideas without clear execution parameters",
-          "Omit risk management or position sizing guidance",
-          "Make recommendations without citing supporting data",
-          "Present all ideas as equally confident regardless of signal strength",
-          "Provide vague entries like 'buy on dips' without specific levels"
+          "Present ideas without specific numeric entry triggers",
+          "Omit risk management or provide only generic stop-loss guidance",
+          "Make recommendations citing fewer than 3 data sources",
+          "Present all ideas as equally confident regardless of signal quality",
+          "Provide vague entries like 'buy on dips' or 'accumulate weakness'",
+          "Skip timeframe, expected return, or risk/reward quantification"
         ]
       },
-      "commentary": "Trade ideas must be actionable and risk-managed. Each recommendation needs concrete entry/exit parameters enabling immediate implementation."
+      "commentary": "Trade ideas must be immediately executable by a professional trader. Each recommendation needs concrete entry/exit parameters, quantified risk/reward, multiple confirming data points, and clear thesis invalidation criteria. Institutional-grade alpha requires institutional-grade specificity."
     },
     {
       "id": "SYNTHESIS-001",
@@ -96,6 +99,25 @@
         ]
       },
       "commentary": "Data synthesis creates alpha. The deliverable must weave protocol metrics into a coherent story that informs directional market views and specific trade ideas."
+    },
+    {
+      "id": "RIGOR-001",
+      "assertion": "Every quantitative claim must be validated against multiple independent sources with source attribution",
+      "examples": {
+        "do": [
+          "Cross-reference Uniswap volume from DeFiLlama ($378M), CoinGecko ($379M), and Dune Analytics ($381M) - cite all three",
+          "Validate liquidation data from Parsec and compare with on-chain explorer data",
+          "Confirm TVL changes across DeFiLlama, DefiPulse, and protocol-native dashboards",
+          "Flag discrepancies when sources disagree (e.g., 'CoinMarketCap reports $414M vs CoinGecko $378M - 9.5% variance')"
+        ],
+        "dont": [
+          "Rely on single source for critical metrics",
+          "Report conflicting data without acknowledging discrepancy",
+          "Make claims like 'significantly higher' without numeric validation",
+          "Use web search summaries as sole source without verifying original data"
+        ]
+      },
+      "commentary": "Multi-source validation prevents data errors and strengthens conviction. Professional research requires corroboration. When sources conflict, acknowledge and explain - this builds trust and demonstrates thoroughness."
     }
   ]
 }

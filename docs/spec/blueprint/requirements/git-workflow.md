@@ -192,10 +192,12 @@ Pull request creation enables code review workflow:
 - Parent jobs can link to child PRs in their own PR body
 
 **Hierarchical Review:**
-- Root job PR targets main
-- Child job PRs target parent branch
+- Jobs with no parent (`sourceJobDefinitionId: null`) have PRs that target main
+- Child jobs have PRs that target their parent's branch
 - Can review/merge parent before children complete
 - Enables incremental delivery
+
+**Note:** The branching hierarchy is a structural artifact management feature, not a behavioral difference. All jobs follow the same execution logic regardless of their position in the hierarchy.
 
 **Branch Protection:**
 - Repository branch protection rules apply

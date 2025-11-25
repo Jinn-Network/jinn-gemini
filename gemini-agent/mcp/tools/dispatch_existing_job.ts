@@ -28,7 +28,17 @@ export const dispatchExistingJobParams = dispatchExistingJobParamsBase.refine(
 );
 
 export const dispatchExistingJobSchema = {
-  description: 'Dispatch an existing job definition by ID or name to the marketplace. ONLY use this if you know the job definition already exists in Ponder (e.g., you previously created it with dispatch_new_job). For new job definitions, use dispatch_new_job instead. This tool looks up the job in Ponder and posts a new request anchored to its jobDefinitionId. The job definition must have a blueprint; prompt-based jobs are no longer supported.',
+  description: `Dispatch an existing job definition by ID or name to the marketplace. ONLY use this if you know the job definition already exists in Ponder (e.g., you previously created it with dispatch_new_job). For new job definitions, use dispatch_new_job instead. This tool looks up the job in Ponder and posts a new request anchored to its jobDefinitionId. The job definition must have a blueprint; prompt-based jobs are no longer supported.
+
+WHEN TO USE THIS TOOL:
+- Re-running an existing job definition (iteration/retry)
+- You want multiple requests to share the same job container and workstream
+- Continuing work in an established job context
+- You can reference by job definition ID or job name
+
+WHEN NOT TO USE (use dispatch_new_job instead):
+- Creating a new child job with a different purpose
+- Breaking work into new sub-tasks that don't have job definitions yet`,
   inputSchema: dispatchExistingJobParamsBase.passthrough().shape,
 };
 
@@ -39,7 +49,7 @@ export async function dispatchExistingJob(args: unknown) {
       const r = (createRequire as any)(import.meta.url);
       const resolved = r.resolve('mech-client-ts/dist/marketplace_interact.js');
       console.error('[mcp-debug] mech-client resolve =', resolved);
-    } catch {}
+    } catch { }
   }
   const parse = dispatchExistingJobParams.safeParse(args);
   if (!parse.success) {
@@ -113,7 +123,7 @@ export async function dispatchExistingJob(args: unknown) {
 
   // Build request payload mirroring post_marketplace_job expectations
   const lineageContext: Record<string, any> = {};
-  
+
   // CRITICAL: If workstreamId is explicitly provided, this is a parent re-dispatch.
   // Do NOT include sourceRequestId/sourceJobDefinitionId, as that would make Ponder
   // treat it as a child job and overwrite the explicit workstreamId via traversal.
@@ -174,9 +184,9 @@ export async function dispatchExistingJob(args: unknown) {
 
   const deterministicArtifactCount = Array.isArray(additionalContext.completedChildRuns)
     ? additionalContext.completedChildRuns.reduce((sum: number, run: any) => {
-        if (!Array.isArray(run?.artifacts)) return sum;
-        return sum + run.artifacts.filter((artifact: any) => Boolean(artifact?.cid || artifact?.id)).length;
-      }, 0)
+      if (!Array.isArray(run?.artifacts)) return sum;
+      return sum + run.artifacts.filter((artifact: any) => Boolean(artifact?.cid || artifact?.id)).length;
+    }, 0)
     : 0;
 
   if (deterministicArtifactCount > 0) {
@@ -202,7 +212,7 @@ export async function dispatchExistingJob(args: unknown) {
 
   let branchResult: any = null;
   let codeMetadata: any = null;
-  
+
   try {
     branchResult = await ensureJobBranch({
       jobDefinitionId,
@@ -215,9 +225,9 @@ export async function dispatchExistingJob(args: unknown) {
       parent:
         context.jobDefinitionId || context.requestId
           ? {
-              jobDefinitionId: context.jobDefinitionId || undefined,
-              requestId: context.requestId || undefined,
-            }
+            jobDefinitionId: context.jobDefinitionId || undefined,
+            requestId: context.requestId || undefined,
+          }
           : undefined,
       baseBranch,
       branchName: branchResult.branchName,
@@ -232,17 +242,17 @@ export async function dispatchExistingJob(args: unknown) {
 
   const lineage =
     context.requestId ||
-    context.jobDefinitionId ||
-    context.parentRequestId ||
-    context.branchName ||
-    context.baseBranch
+      context.jobDefinitionId ||
+      context.parentRequestId ||
+      context.branchName ||
+      context.baseBranch
       ? {
-          dispatcherRequestId: context.requestId || undefined,
-          dispatcherJobDefinitionId: context.jobDefinitionId || undefined,
-          parentDispatcherRequestId: context.parentRequestId || undefined,
-          dispatcherBranchName: context.branchName || undefined,
-          dispatcherBaseBranch: context.baseBranch || undefined,
-        }
+        dispatcherRequestId: context.requestId || undefined,
+        dispatcherJobDefinitionId: context.jobDefinitionId || undefined,
+        parentDispatcherRequestId: context.parentRequestId || undefined,
+        dispatcherBranchName: context.branchName || undefined,
+        dispatcherBaseBranch: context.baseBranch || undefined,
+      }
       : undefined;
 
   const ipfsJsonContents: any[] = [{

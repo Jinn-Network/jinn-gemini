@@ -159,12 +159,15 @@ Root Job (sourceJobDefinitionId: null)
 - `sourceJobDefinitionId`: Parent job that created this job (lineage)
 - `sourceRequestId`: Parent request that dispatched this request
 
+**Homomorphic Job Runs:**
+
+Job runs are homomorphic. Root jobs follow the exact same execution logic as child jobs and possess no special responsibilities or distinct behaviors. All jobs, regardless of their position in the hierarchy, follow the same Work Protocol and make autonomous decisions about completion, delegation, or waiting based solely on their blueprint assertions.
+
 **Work Protocol Rules:**
 1. Agent queries `get_details` or `search_artifacts` to understand hierarchy position
 2. Agent decides: complete directly, delegate to children, or wait for children
-3. Root jobs maintain `launcher_briefing` artifacts to communicate status to humans
-4. When a child reaches terminal state (COMPLETED/FAILED), parent is automatically re-dispatched
-5. Parent jobs synthesize child results when all children are delivered
+3. When a child reaches terminal state (COMPLETED/FAILED), parent is automatically re-dispatched
+4. Parent jobs synthesize child results when all children are delivered
 
 **Context Fetching:**
 The worker queries Ponder using `jobDefinitionId_in` (not `sourceJobDefinitionId_in`) to find all requests for the same job definition across re-runs. This ensures root jobs can see completed children when re-running.

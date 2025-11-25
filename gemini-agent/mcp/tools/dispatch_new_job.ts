@@ -44,6 +44,16 @@ IMPORTANT: This tool ALWAYS creates a new job definition with a unique ID and po
 - Each call creates a distinct job instance (node in the work graph)
 - To re-run an existing job, use dispatch_existing_job instead
 
+WHEN TO USE THIS TOOL:
+- Creating a new child job with a different purpose than existing jobs
+- Breaking work into new sub-tasks that don't have job definitions yet
+- Each call creates a brand new job definition with a new UUID
+
+WHEN NOT TO USE (use dispatch_existing_job instead):
+- Re-running an existing job definition (iteration/retry)
+- You want multiple requests to share the same job container and workstream
+- Continuing work in an established job context
+
 BLUEPRINT FORMAT (REQUIRED):
 The blueprint must be a JSON string with the following structure:
 {
@@ -112,7 +122,7 @@ export async function dispatchNewJob(args: unknown) {
         const r = (createRequire as any)(import.meta.url);
         const resolved = r.resolve('mech-client-ts/dist/marketplace_interact.js');
         console.error('[mcp-debug] mech-client resolve =', resolved);
-      } catch {}
+      } catch { }
     }
     const parsed = dispatchNewJobParams.safeParse(args);
     if (!parsed.success) {
@@ -164,10 +174,10 @@ export async function dispatchNewJob(args: unknown) {
           type: 'text' as const,
           text: JSON.stringify({
             data: null,
-            meta: { 
-              ok: false, 
-              code: 'INVALID_BLUEPRINT', 
-              message: `blueprint must be valid JSON: ${error instanceof Error ? error.message : 'Parse error'}` 
+            meta: {
+              ok: false,
+              code: 'INVALID_BLUEPRINT',
+              message: `blueprint must be valid JSON: ${error instanceof Error ? error.message : 'Parse error'}`
             },
           }),
         }],
@@ -181,10 +191,10 @@ export async function dispatchNewJob(args: unknown) {
           type: 'text' as const,
           text: JSON.stringify({
             data: null,
-            meta: { 
-              ok: false, 
-              code: 'INVALID_BLUEPRINT_STRUCTURE', 
-              message: `blueprint structure is invalid: ${blueprintValidation.error.message}` 
+            meta: {
+              ok: false,
+              code: 'INVALID_BLUEPRINT_STRUCTURE',
+              message: `blueprint structure is invalid: ${blueprintValidation.error.message}`
             },
           }),
         }],
@@ -249,9 +259,9 @@ export async function dispatchNewJob(args: unknown) {
           parent:
             context.jobDefinitionId || context.requestId
               ? {
-                  jobDefinitionId: context.jobDefinitionId || undefined,
-                  requestId: context.requestId || undefined,
-                }
+                jobDefinitionId: context.jobDefinitionId || undefined,
+                requestId: context.requestId || undefined,
+              }
               : undefined,
           baseBranch,
           branchName: branchResult.branchName,
@@ -277,17 +287,17 @@ export async function dispatchNewJob(args: unknown) {
 
     const lineage =
       context.requestId ||
-      context.jobDefinitionId ||
-      context.parentRequestId ||
-      context.branchName ||
-      context.baseBranch
+        context.jobDefinitionId ||
+        context.parentRequestId ||
+        context.branchName ||
+        context.baseBranch
         ? {
-            dispatcherRequestId: context.requestId || undefined,
-            dispatcherJobDefinitionId: context.jobDefinitionId || undefined,
-            parentDispatcherRequestId: context.parentRequestId || undefined,
-            dispatcherBranchName: context.branchName || undefined,
-            dispatcherBaseBranch: context.baseBranch || undefined,
-          }
+          dispatcherRequestId: context.requestId || undefined,
+          dispatcherJobDefinitionId: context.jobDefinitionId || undefined,
+          parentDispatcherRequestId: context.parentRequestId || undefined,
+          dispatcherBranchName: context.branchName || undefined,
+          dispatcherBaseBranch: context.baseBranch || undefined,
+        }
         : undefined;
 
     // IPFS metadata structure: blueprint at root level (not prompt)
@@ -308,7 +318,7 @@ export async function dispatchNewJob(args: unknown) {
       // Validate that all dependencies are UUIDs (not job names)
       const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const invalidDeps = dependencies.filter(dep => !UUID_REGEX.test(dep));
-      
+
       if (invalidDeps.length > 0) {
         console.error('[dispatch_new_job] Invalid dependencies - must be UUIDs, not job names:', invalidDeps);
         return {
@@ -325,7 +335,7 @@ export async function dispatchNewJob(args: unknown) {
           }],
         };
       }
-      
+
       ipfsJsonContents[0].dependencies = dependencies;
     }
 
@@ -349,11 +359,11 @@ export async function dispatchNewJob(args: unknown) {
       const mechAddress = getMechAddress();
       const chainConfig = getMechChainConfig();
       const privateKey = getServicePrivateKey();
-      
+
       if (!mechAddress) {
         throw new Error('Service target mech address not configured. Check .operate service config (MECH_TO_CONFIG).');
       }
-      
+
       if (!privateKey) {
         throw new Error('Service agent private key not found. Check .operate/keys directory.');
       }
@@ -429,9 +439,9 @@ export async function dispatchNewJob(args: unknown) {
       return {
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ 
-            data: enriched, 
-            meta: { ok: true } 
+          text: JSON.stringify({
+            data: enriched,
+            meta: { ok: true }
           }),
         }],
       };

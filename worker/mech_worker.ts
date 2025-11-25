@@ -699,38 +699,54 @@ async function processOnce(): Promise<void> {
     }
   }
 
-  // Iterate candidates until we claim one successfully
+  // First pass: Try to claim any fresh (non-stale) request
   let target: UnclaimedRequest | null = null;
   for (const c of candidates) {
-    // Check for staleness before claiming
     const now = Math.floor(Date.now() / 1000);
     const age = now - (c.blockTimestamp || 0);
     
+    // Skip stale requests in the first pass - we want to prioritize fresh requests
     if (c.blockTimestamp && age > STALE_THRESHOLD_SECONDS) {
-      // Don't redispatch requests with dependencies - they're waiting for their deps to complete
-      // Redispatching them would break the dependency chain
-      if (c.dependencies && c.dependencies.length > 0) {
-        workerLogger.info({ requestId: c.id, age, dependencies: c.dependencies }, 'Skipping stale request with dependencies - waiting for deps to complete');
-        continue;
-      }
-      
-      // Attempt to redispatch
-      const dispatched = await redispatchStaleRequest(c);
-      if (dispatched) {
-        // Successfully redispatched - STOP processing this cycle.
-        // The newly created request will be picked up on the next poll.
-        workerLogger.info({ requestId: c.id, age }, 'Redispatched stale request - ending this cycle to allow fresh request to be processed');
-        return; 
-      } else {
-        // Failed to redispatch (or already handled) - skip this request to avoid RevokeRequest
-        workerLogger.warn({ requestId: c.id, age }, 'Skipping stale request that could not be redispatched (or was already handled)');
-        continue;
-      }
+      continue;
     }
 
     const ok = await tryClaim(c, workerAddress);
-    if (ok) { target = c; break; }
+    if (ok) { 
+      target = c; 
+      break; 
+    }
   }
+  
+  // If no fresh request was claimed, try redispatching one stale request
+  if (!target) {
+    for (const c of candidates) {
+      const now = Math.floor(Date.now() / 1000);
+      const age = now - (c.blockTimestamp || 0);
+      
+      if (c.blockTimestamp && age > STALE_THRESHOLD_SECONDS) {
+        // Don't redispatch requests with dependencies - they're waiting for their deps to complete
+        // Redispatching them would break the dependency chain
+        if (c.dependencies && c.dependencies.length > 0) {
+          workerLogger.info({ requestId: c.id, age, dependencies: c.dependencies }, 'Skipping stale request with dependencies - waiting for deps to complete');
+          continue;
+        }
+        
+        // Attempt to redispatch
+        const dispatched = await redispatchStaleRequest(c);
+        if (dispatched) {
+          // Successfully redispatched - STOP processing this cycle.
+          // The newly created request will be picked up on the next poll.
+          workerLogger.info({ requestId: c.id, age }, 'Redispatched stale request - ending this cycle to allow fresh request to be processed');
+          return; 
+        } else {
+          // Failed to redispatch (or already handled) - skip this request to avoid RevokeRequest
+          workerLogger.warn({ requestId: c.id, age }, 'Skipping stale request that could not be redispatched (or was already handled)');
+          continue;
+        }
+      }
+    }
+  }
+  
   if (!target) return;
   
   // Delegate job execution to orchestrator

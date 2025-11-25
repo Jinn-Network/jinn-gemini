@@ -183,6 +183,18 @@ The execution system (agent, worker, orchestrator) has **full autonomy** to dete
 
 Blueprints constrain **what is acceptable**, not **how to get there**.
 
+## Job Homomorphism
+
+All jobs execute with identical logic regardless of their position in the hierarchy. Root jobs (with no parent) and child jobs (with a parent) follow the same Work Protocol, use the same tools, and have status determined the same way.
+
+**Implications for Blueprints:**
+
+- Do not write assertions that assume special "root job" behaviors
+- Do not prescribe different execution paths based on hierarchy position
+- Specialization comes from blueprint content variation, not hierarchy-based conditionals
+
+Any behavioral differences between jobs must be encoded in blueprint assertions, not in the execution system itself.
+
 ## Quality Examples
 
 ### Research Job Blueprint

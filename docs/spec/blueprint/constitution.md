@@ -16,3 +16,6 @@ Choose end-to-end autonomy even if it reduces initial capability. Human-in-the-l
 ### Respect the flows
 The most capable agentic AI systems sit on the most fluid economic rails. Agents will be the dominant consumers of AI inference and require large, reliable capital pipes. Build on crypto primitives to expand and automate funding; in the early phase, design compelling opportunities for traders to seed flow.
 
+### Job homomorphism
+All job runs follow identical execution logic regardless of hierarchy position. Root jobs and child jobs are processed the same way, with the same tools, the same protocol, and the same status determination. Specialization is achieved through blueprint variation, not through hardcoded behavioral differences.
+

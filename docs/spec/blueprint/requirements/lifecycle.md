@@ -69,7 +69,9 @@ The terminal/non-terminal distinction prevents premature parent notifications:
 - Parent job is automatically re-dispatched
 - Job container accumulates this run in its history
 
-This design enables hierarchical work decomposition where root jobs can delegate to children and wait for results before synthesizing a final deliverable. Without this distinction, parents would be overwhelmed with intermediate status updates.
+This design enables hierarchical work decomposition where parent jobs can delegate to children and wait for results before synthesizing a final deliverable. Without this distinction, parents would be overwhelmed with intermediate status updates.
+
+**Note on Job Homomorphism:** While the data structure distinguishes between root jobs (`sourceJobDefinitionId: null`) and child jobs (with a parent), the execution logic is identical for all jobs. Root jobs do not have special behaviors or responsibilities - they follow the same Work Protocol as any other job. The distinction is structural (for tracking hierarchy), not behavioral (for execution differences).
 
 ---
 

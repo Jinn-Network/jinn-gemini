@@ -282,6 +282,14 @@ function tryParseNestedJson(value: any): any {
   return value;
 }
 
+function isRequestExpired(blockTimestamp: string): boolean {
+  const MARKETPLACE_TIMEOUT_SECONDS = 300; // 5 minutes
+  const timestamp = Number(blockTimestamp);
+  const expirationTime = timestamp + MARKETPLACE_TIMEOUT_SECONDS;
+  const currentTime = Math.floor(Date.now() / 1000);
+  return currentTime > expirationTime;
+}
+
 async function resolveRunIpfsReferences(
   run: Request,
   delivery?: Delivery,
@@ -480,9 +488,12 @@ async function main() {
       summary: {
         totalRuns: runs.length,
         completedRuns: runs.filter(r => r.delivered).length,
-        pendingRuns: runs.filter(r => !r.delivered).length,
+        pendingRuns: runs.filter(r => !r.delivered && !isRequestExpired(r.blockTimestamp)).length,
+        expiredRuns: runs.filter(r => !r.delivered && isRequestExpired(r.blockTimestamp)).length,
         totalChildren: childJobs.length,
         completedChildren: childJobs.filter(c => c.delivered).length,
+        pendingChildren: childJobs.filter(c => !c.delivered && !isRequestExpired(c.blockTimestamp)).length,
+        expiredChildren: childJobs.filter(c => !c.delivered && isRequestExpired(c.blockTimestamp)).length,
         totalArtifacts: artifacts.length,
       },
       runs: resolvedRuns,
