@@ -103,9 +103,13 @@ export function registerEventHandlers(
  * Wait for transaction receipt
  * @param txHash Transaction hash
  * @param web3 Web3 instance
+ * @param maxWaitMs Maximum time to wait in milliseconds (default: 60000 = 60 seconds)
  * @returns Transaction receipt
  */
-export async function waitForReceipt(txHash: string, web3: Web3): Promise<any> {
+export async function waitForReceipt(txHash: string, web3: Web3, maxWaitMs: number = 60000): Promise<any> {
+  const startTime = Date.now();
+  const pollIntervalMs = 2000; // Poll every 2 seconds
+  
   while (true) {
     try {
       const receipt = await web3.eth.getTransactionReceipt(txHash);
@@ -115,7 +119,14 @@ export async function waitForReceipt(txHash: string, web3: Web3): Promise<any> {
     } catch (error) {
       // Receipt not ready yet, continue waiting
     }
-    await sleep(1000); // Wait 1 second before retrying
+    
+    // Check if we've exceeded the timeout
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= maxWaitMs) {
+      throw new Error(`Transaction not found after ${Math.floor(elapsed / 1000)}s (txHash: ${txHash})`);
+    }
+    
+    await sleep(pollIntervalMs);
   }
 }
 

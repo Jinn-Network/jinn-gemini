@@ -23,6 +23,7 @@ function getDatabaseUrl(): string | null {
   const candidates = [
     process.env.NODE_EMBEDDINGS_DB_URL,
     process.env.SITUATION_DB_URL,
+    process.env.PONDER_DATABASE_URL,
     process.env.DATABASE_URL,
     process.env.SUPABASE_DB_URL,
     process.env.SUPABASE_POSTGRES_URL,
@@ -293,6 +294,11 @@ export async function inspectSituation(args: unknown) {
     const dbUrl = getDatabaseUrl();
     if (dbUrl) {
       const client = new Client({ connectionString: dbUrl });
+      // Suppress unhandled error events from the client (e.g. unexpected server-side termination)
+      client.on('error', (err) => {
+        mcpLogger.warn({ err: err.message }, 'PG Client encountered error (suppressed)');
+      });
+
       try {
         await client.connect();
 

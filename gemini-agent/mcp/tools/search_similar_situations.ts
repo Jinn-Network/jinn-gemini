@@ -109,6 +109,11 @@ export async function searchSimilarSituations(args: unknown) {
     mcpLogger.info({ model: embedding.model, dim: embedding.dim, vectorLength: embedding.vector.length }, 'Generated embedding for search');
 
     const client = new Client({ connectionString: dbUrl });
+    // Suppress unhandled error events from the client (e.g. unexpected server-side termination)
+    client.on('error', (err) => {
+      mcpLogger.warn({ err: err.message }, 'PG Client encountered error (suppressed)');
+    });
+
     let rows: DbMatchRow[] = [];
     try {
       await client.connect();

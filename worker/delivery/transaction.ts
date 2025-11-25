@@ -26,6 +26,27 @@ export interface DeliveryTransactionContext {
 }
 
 /**
+ * Track pending delivery transactions to prevent duplicates
+ * Maps requestId -> { txHash, timestamp }
+ */
+const pendingDeliveries = new Map<string, { txHash: string; timestamp: number }>();
+
+/**
+ * Clear stale pending deliveries (older than 3 minutes)
+ */
+function clearStalePendingDeliveries(): void {
+  const now = Date.now();
+  const staleThreshold = 180000; // 3 minutes
+  
+  for (const [requestId, delivery] of pendingDeliveries.entries()) {
+    if (now - delivery.timestamp > staleThreshold) {
+      workerLogger.debug({ requestId, staleTxHash: delivery.txHash, ageMs: now - delivery.timestamp }, 'Clearing stale pending delivery');
+      pendingDeliveries.delete(requestId);
+    }
+  }
+}
+
+/**
  * Check if request is undelivered on-chain
  */
 export async function isUndeliveredOnChain(params: {
@@ -164,6 +185,47 @@ export async function deliverViaSafeTransaction(
     ? String(context.requestId)
     : '0x' + BigInt(String(context.requestId)).toString(16);
   
+  // Clear stale pending deliveries before checking
+  clearStalePendingDeliveries();
+  
+  // Check if there's already a pending delivery for this request
+  const pendingDelivery = pendingDeliveries.get(context.requestId);
+  if (pendingDelivery) {
+    const age = Date.now() - pendingDelivery.timestamp;
+    workerLogger.warn({ 
+      requestId: context.requestId, 
+      pendingTxHash: pendingDelivery.txHash,
+      ageSeconds: Math.floor(age / 1000)
+    }, 'Delivery already in progress for this request; will verify on-chain state');
+    
+    // Try to get the transaction receipt to see if it actually succeeded
+    try {
+      const web3 = new Web3(rpcHttpUrl);
+      const receipt = await web3.eth.getTransactionReceipt(pendingDelivery.txHash);
+      if (receipt) {
+        // Transaction completed, clear from pending and check if successful
+        pendingDeliveries.delete(context.requestId);
+        workerLogger.info({ 
+          requestId: context.requestId, 
+          txHash: pendingDelivery.txHash,
+          status: receipt.status 
+        }, 'Previous pending transaction completed');
+        
+        if (receipt.status) {
+          return { tx_hash: pendingDelivery.txHash, status: 'confirmed' };
+        }
+      } else {
+        // Transaction still pending, reject duplicate
+        workerLogger.warn({ requestId: context.requestId, pendingTxHash: pendingDelivery.txHash }, 'Previous transaction still pending');
+        throw new Error('Delivery transaction already pending');
+      }
+    } catch (receiptError: any) {
+      // Couldn't check receipt, be conservative and reject
+      workerLogger.warn({ requestId: context.requestId, error: receiptError?.message }, 'Failed to check pending transaction status');
+      throw new Error('Delivery transaction already pending (status unknown)');
+    }
+  }
+  
   const isUndelivered = await isUndeliveredOnChain({
     mechAddress: targetMechAddress,
     requestIdHex,
@@ -206,62 +268,81 @@ export async function deliverViaSafeTransaction(
   const maxRetries = 2;
   let lastError: Error | undefined;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      const backoffMs = Math.pow(2, attempt) * 5000;
-      workerLogger.info({ requestId: context.requestId, attempt, backoffMs }, 'Retrying Safe delivery');
-      await new Promise(r => setTimeout(r, backoffMs));
-      
-      // Re-check delivery status
-      try {
-        const isUndelivered = await isUndeliveredOnChain({
-            mechAddress: targetMechAddress,
-            requestIdHex,
-            rpcHttpUrl,
-        });
-        if (!isUndelivered) {
-             workerLogger.info({ requestId: context.requestId }, 'Request already delivered on retry check');
-             return { status: 'confirmed' };
-        }
-      } catch (e) { /* ignore check errors */ }
-    }
-
-    try {
-      delivery = await (deliverViaSafe as any)(payload);
-      break; // Success
-    } catch (e: any) {
-      lastError = e;
-      // Only retry on likely transient errors or timeouts
-      if (e.message?.includes('timeout') || e.message?.includes('not mined') || e.message?.includes('Transaction not found') || e.message?.includes('nonce too low')) {
-         workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery timeout, transient error, or nonce issue');
-         continue;
+  try {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        const backoffMs = Math.pow(2, attempt) * 5000;
+        workerLogger.info({ requestId: context.requestId, attempt, backoffMs }, 'Retrying Safe delivery');
+        await new Promise(r => setTimeout(r, backoffMs));
+        
+        // Re-check delivery status
+        try {
+          const isUndelivered = await isUndeliveredOnChain({
+              mechAddress: targetMechAddress,
+              requestIdHex,
+              rpcHttpUrl,
+          });
+          if (!isUndelivered) {
+               workerLogger.info({ requestId: context.requestId }, 'Request already delivered on retry check');
+               return { status: 'confirmed' };
+          }
+        } catch (e) { /* ignore check errors */ }
       }
-      throw e; // Fail fast on other errors
-    }
-  }
-  
-  if (!delivery && lastError) throw lastError;
 
-  workerLogger.info({ requestId: context.requestId, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
-  
-  // Check if the transaction actually revoked the request instead of delivering
-  if (delivery?.tx_hash) {
-    const wasRevoked = await wasRequestRevoked({
-      txHash: delivery.tx_hash,
-      requestIdHex,
-      mechAddress: targetMechAddress,
-      rpcHttpUrl,
-    });
+      try {
+        delivery = await (deliverViaSafe as any)(payload);
+        
+        // Track the transaction hash immediately after submission
+        if (delivery?.tx_hash) {
+          pendingDeliveries.set(context.requestId, {
+            txHash: delivery.tx_hash,
+            timestamp: Date.now()
+          });
+          workerLogger.debug({ requestId: context.requestId, txHash: delivery.tx_hash }, 'Tracking delivery transaction');
+        }
+        
+        break; // Success
+      } catch (e: any) {
+        lastError = e;
+        // Only retry on likely transient errors or timeouts - but NOT "Transaction not found" anymore
+        // since we now wait 60s for the receipt
+        if (e.message?.includes('timeout') || e.message?.includes('not mined') || e.message?.includes('nonce too low')) {
+           workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery timeout, transient error, or nonce issue');
+           continue;
+        }
+        throw e; // Fail fast on other errors
+      }
+    }
     
-    if (wasRevoked) {
-      workerLogger.error({ requestId: context.requestId, tx: delivery.tx_hash }, 'Request was REVOKED instead of delivered - likely contract state issue');
-      throw new Error('Request was revoked by the Mech contract during delivery');
+    if (!delivery && lastError) throw lastError;
+
+    workerLogger.info({ requestId: context.requestId, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
+    
+    // Check if the transaction actually revoked the request instead of delivering
+    if (delivery?.tx_hash) {
+      const wasRevoked = await wasRequestRevoked({
+        txHash: delivery.tx_hash,
+        requestIdHex,
+        mechAddress: targetMechAddress,
+        rpcHttpUrl,
+      });
+      
+      if (wasRevoked) {
+        workerLogger.error({ requestId: context.requestId, tx: delivery.tx_hash }, 'Request was REVOKED instead of delivered - likely contract state issue');
+        throw new Error('Request was revoked by the Mech contract during delivery');
+      }
+    }
+    
+    return {
+      tx_hash: delivery?.tx_hash,
+      status: delivery?.status,
+    };
+  } finally {
+    // Clean up pending delivery tracking on completion (success or failure)
+    if (context.requestId && pendingDeliveries.has(context.requestId)) {
+      pendingDeliveries.delete(context.requestId);
+      workerLogger.debug({ requestId: context.requestId }, 'Cleared pending delivery tracking');
     }
   }
-  
-  return {
-    tx_hash: delivery?.tx_hash,
-    status: delivery?.status,
-  };
 }
 

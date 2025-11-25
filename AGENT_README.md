@@ -34,7 +34,7 @@ yarn install
 2) Create `.env` at repo root (minimal):
 ```env
 # Supabase (required by Control API)
-SUPABASE_URL=https://<your-project-ref>.supabase.co
+SUPABASE_URL=https://clnwgxgvmnrkwqdblqgf.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 
 # Optional; defaults shown
@@ -1475,7 +1475,7 @@ The E2E test suite serves as both validation and documentation of the OLAS integ
 ---
 
 ## Constants
-- Supabase project ID is: kmptsnmabdwgjyctowyz
+- Supabase project ID is: clnwgxgvmnrkwqdblqgf
 - **Tenderly**: Use Virtual Testnets (vnets), NOT deprecated forks. API endpoint: `/testnet/container`
 
 ---
@@ -1584,7 +1584,7 @@ This ensures agents have the foundation they need to make informed decisions and
 2.  **Configure Environment**:
     Create a `.env` file in the root directory with your Supabase credentials:
     ```env
-    SUPABASE_URL=https://your-project-ref.supabase.co
+    SUPABASE_URL=https://clnwgxgvmnrkwqdblqgf.supabase.co
     SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
     ```
 3.  **Gemini CLI Authentication**:

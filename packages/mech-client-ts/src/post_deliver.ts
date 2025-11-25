@@ -467,7 +467,8 @@ export async function deliverViaSafe(options: DeliverViaSafeOptions): Promise<De
     console.log('Waiting for transaction receipt...');
     
     // Wait for receipt with retry loop (handles pending transactions)
-    const receipt = await waitForReceipt(txHash!, web3);
+    // Use 60s timeout for Base/L2 networks (can take 30-45s for confirmation)
+    const receipt = await waitForReceipt(txHash!, web3, 60000);
     
     if (receipt && receipt.status) {
       result.status = 'confirmed';

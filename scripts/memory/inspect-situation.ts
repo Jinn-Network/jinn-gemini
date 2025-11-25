@@ -347,6 +347,10 @@ async function main() {
   }
   
   const client = new Client({ connectionString: dbUrl });
+  // Suppress unhandled error events from the client (e.g. unexpected server-side termination)
+  client.on('error', (err) => {
+    console.warn('⚠️ PG Client encountered error (suppressed):', err.message);
+  });
   
   try {
     await client.connect();
