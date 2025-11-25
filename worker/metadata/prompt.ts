@@ -4,7 +4,19 @@
  * The blueprint IS the job specification and is available directly in GEMINI.md context
  */
 
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type { IpfsMetadata } from '../types.js';
+
+// Read GEMINI.md once at module load
+// This contains the Work Protocol that defines how agents should operate
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const WORK_PROTOCOL = readFileSync(
+  join(__dirname, '../../gemini-agent/GEMINI.md'), 
+  'utf8'
+);
 
 /**
  * Build enhanced prompt with blueprint and additional context
@@ -53,6 +65,9 @@ ${context.hierarchy?.flatMap((job: any) =>
     prompt = contextSummary + prompt;
   }
   
-  return prompt;
+  // Prepend Work Protocol (GEMINI.md content) before all job-specific content
+  // This ensures agents receive the Work Protocol instructions regardless of
+  // whether Gemini CLI's automatic GEMINI.md loading works in non-interactive mode
+  return `${WORK_PROTOCOL}\n\n---\n\n${prompt}`;
 }
 
