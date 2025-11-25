@@ -120,6 +120,12 @@ NOT: COMPLETED with "limitations noted"
     - I write new assertions specific to the child's sub-task
     - The child's "Objective" is defined entirely by the assertions I give it
 
+**CRITICAL: Asynchronous Execution**
+- **Dispatching is Fire-and-Forget**: When I call `dispatch_new_job` or `dispatch_existing_job`, the job is queued for *future* execution.
+- **No Immediate Results**: I will **NEVER** receive the child's output in the same run.
+- **Action**: After dispatching, I must terminate my run with status `DELEGATING`.
+- **Next Run**: I will only see the results in a *future* run, after the child job completes.
+
 **Understanding Job Definition Dependencies:**
 
 When specifying dependencies as job definition IDs:
