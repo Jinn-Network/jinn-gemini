@@ -48,6 +48,13 @@ export interface IpfsMetadata {
   sourceJobDefinitionId?: string;
   workstreamId?: string;  // ID of the root job in the hierarchy
   additionalContext?: any;
+  lineage?: {
+    dispatcherRequestId?: string;
+    dispatcherJobDefinitionId?: string;
+    parentDispatcherRequestId?: string;
+    dispatcherBranchName?: string;
+    dispatcherBaseBranch?: string;
+  };
   jobName?: string;
   jobDefinitionId?: string;
   codeMetadata?: CodeMetadata;

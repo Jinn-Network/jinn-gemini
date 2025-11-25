@@ -98,7 +98,7 @@ async function main() {
     'dispatch_existing_job',
     'create_artifact',
     'get_details',
-    'get_job_context',
+    'search_artifacts',
     'finalize_job',
     'list_tools'
   ];

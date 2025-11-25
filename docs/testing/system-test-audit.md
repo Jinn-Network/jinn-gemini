@@ -254,7 +254,7 @@ Tests that validate component boundaries without running worker:
 
 **Missing Coverage**:
 - Job re-run sees artifacts from previous runs
-- get_job_context shows all runs of job definition
+- get_details and search_artifacts show all runs of job definition
 - Failed runs visible in job history
 - Artifacts accumulate across runs
 

@@ -251,7 +251,6 @@
 | `dispatch_existing_job.ts` | 🟡 | ❌ | ❌ | ✅ | ~15% | P1 |
 | `get-details.ts` | 🟡 | ❌ | ❌ | ✅ | ~15% | P1 |
 | `search-jobs.ts` | 🟡 | ❌ | ❌ | ✅ | ~15% | P1 |
-| `get_job_context.ts` | 🔴 | ❌ | ❌ | ❌ | 0% | P1 |
 | **Artifact Management** | | | | | | |
 | `create_artifact.ts` | 🟡 | ❌ | ❌ | ✅ | ~20% | P1 |
 | `search-artifacts.ts` | 🟡 | ❌ | ❌ | ✅ | ~15% | P1 |

@@ -1,15 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
 
 export interface GitFixture {
   repoPath: string;
+  remoteUrl: string;
   cleanup: () => void;
 }
 
 const TEMPLATE_DIR = path.resolve(process.cwd(), 'tests-next/fixtures/git-template');
-const TMP_ROOT = path.resolve(process.cwd(), 'tests-next', '.tmp', 'git-fixtures');
+const TMP_ROOT = path.join(
+  os.tmpdir(),
+  'jinn-gemini-tests',
+  process.pid.toString(),
+  'git-fixtures'
+);
 
 function assertTemplateRepo(): void {
   if (!fs.existsSync(TEMPLATE_DIR)) {
@@ -20,9 +27,16 @@ function assertTemplateRepo(): void {
   }
 }
 
-function cleanupJobBranches(): void {
+function cleanupJobBranches(remoteUrl: string): void {
+  // For real remote repos, we don't clean up branches here
+  // They'll be cleaned up via GitHub API or left for manual cleanup
+  // This function is kept for backward compatibility but does nothing for remote repos
+  if (!remoteUrl || remoteUrl.includes('github.com') || remoteUrl.includes('git@')) {
+    return;
+  }
+  
+  // Only cleanup local template repo branches
   try {
-    // List all job/* branches and delete them one by one to avoid command-line length limits
     const result = execSync(
       `git -C ${JSON.stringify(TEMPLATE_DIR)} for-each-ref --format='%(refname:short)' 'refs/heads/job/*'`,
       { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
@@ -30,7 +44,6 @@ function cleanupJobBranches(): void {
     
     const branches = result.trim().split('\n').filter((b) => b.length > 0);
 
-    // Delete branches one at a time to avoid command-line length issues
     for (const branch of branches) {
       try {
         execSync(
@@ -38,30 +51,71 @@ function cleanupJobBranches(): void {
           { stdio: 'ignore' }
         );
       } catch (err: any) {
-        // Individual branch deletion failures are non-fatal (branch might not exist)
-        // Continue with other branches
+        // Individual branch deletion failures are non-fatal
       }
     }
   } catch (error: any) {
-    // If there are no branches, for-each-ref exits with non-zero status - that's fine
-    // Only log unexpected errors
     if (error.status !== 0 && error.stderr && !error.stderr.includes('no matching refs')) {
-      // Log but don't throw - we don't want to fail the test if cleanup fails
       console.warn(`Warning: Failed to cleanup job branches in template repo: ${error.message}`);
     }
   }
 }
 
+/**
+ * Get the remote URL for the test repository
+ * Uses TEST_GITHUB_REPO if available, otherwise falls back to template
+ */
+function getTestRemoteUrl(): string {
+  const testRepo = process.env.TEST_GITHUB_REPO;
+  if (testRepo) {
+    return testRepo;
+  }
+  // Fallback to template (for backward compatibility)
+  return TEMPLATE_DIR;
+}
+
 export function createGitFixture(): GitFixture {
+  const remoteUrl = getTestRemoteUrl();
+  const useRemoteRepo = remoteUrl !== TEMPLATE_DIR;
+  
+  if (!useRemoteRepo) {
+    // Legacy path: use template repo
   assertTemplateRepo();
-  // Clean up any leftover job/* branches from previous test runs
-  cleanupJobBranches();
+    cleanupJobBranches(remoteUrl);
+  }
+  
   fs.mkdirSync(TMP_ROOT, { recursive: true });
   const target = path.join(TMP_ROOT, `fixture-${Date.now()}-${randomUUID()}`);
+  
+  // Clone from remote or template
+  if (useRemoteRepo) {
+    // Clone from real GitHub remote
+    // Use HTTPS with token if GITHUB_TOKEN is available
+    const token = process.env.GITHUB_TOKEN;
+    let cloneUrl = remoteUrl;
+    
+    // Clone with token authentication if using HTTPS
+    if (token && cloneUrl.startsWith('https://')) {
+      const url = new URL(cloneUrl);
+      url.username = token;
+      cloneUrl = url.toString();
+    }
+    
+    execSync(`git clone ${JSON.stringify(cloneUrl)} ${JSON.stringify(target)}`, {
+      stdio: ['ignore', 'pipe', 'pipe'],  // Suppress output containing token
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+    });
+    
+    // For HTTPS URLs with token, the remote URL already has the token embedded
+    // No need to update remote URL - git already stored it with the token
+  } else {
+    // Legacy: clone from template
   execSync(`git clone ${JSON.stringify(TEMPLATE_DIR)} ${JSON.stringify(target)}`, { stdio: 'inherit' });
+  }
 
   return {
     repoPath: target,
+    remoteUrl,
     cleanup: () => {
       fs.rmSync(target, { recursive: true, force: true });
     },

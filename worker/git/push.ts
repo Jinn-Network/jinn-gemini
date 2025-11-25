@@ -40,7 +40,6 @@ export async function pushJobBranch(branchName: string, codeMetadata: CodeMetada
     remoteUrl: codeMetadata?.repo?.remoteUrl,
   };
   workerLogger.info(pushInfo, 'Pushing job branch to remote');
-  console.error('[WORKER-PUSH-DEBUG] Pushing job branch:', JSON.stringify(pushInfo));
 
   // Verify remote configuration
   try {
@@ -65,7 +64,6 @@ export async function pushJobBranch(branchName: string, codeMetadata: CodeMetada
       env: process.env as Record<string, string>,
     });
     workerLogger.info({ branchName, remote: remoteName, repoRoot }, 'Successfully pushed branch');
-    console.error('[WORKER-PUSH-DEBUG] Successfully pushed branch:', branchName, 'to', remoteName, 'in', repoRoot);
   } catch (error: any) {
     const errorMessage = `Failed to push branch ${branchName} to ${remoteName}: ${error.stderr || error.message}`;
     workerLogger.error({ branchName, remote: remoteName, error: serializeError(error) }, errorMessage);

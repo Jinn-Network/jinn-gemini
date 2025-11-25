@@ -194,6 +194,9 @@ tests/fixtures/test-repo-*/
 tests/tmp/git-remotes/
 tests/tmp/git-worktrees/
 
+# Test temporary directories (db7 compliance)
+tests-next/.tmp/
+
 # Service backups (moved to ~/Documents)
 service-backups/
 

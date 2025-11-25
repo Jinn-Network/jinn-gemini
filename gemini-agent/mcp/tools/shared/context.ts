@@ -10,6 +10,8 @@ export interface JobContext {
   mechAddress?: string | null;
   baseBranch?: string | null;
   workstreamId?: string | null;
+  parentRequestId?: string | null;
+  branchName?: string | null;
 }
 
 // Canonical: read from environment only
@@ -26,11 +28,24 @@ export function getCurrentJobContext(): JobContext {
     mechAddress: process.env.JINN_MECH_ADDRESS || null,
     baseBranch: process.env.JINN_BASE_BRANCH || null,
     workstreamId: process.env.JINN_WORKSTREAM_ID || null,
+    parentRequestId: process.env.JINN_PARENT_REQUEST_ID || null,
+    branchName: process.env.JINN_BRANCH_NAME || null,
   };
 }
 
 // Back-compat helpers for tests: set/clear via env (still canonical path)
-export function setJobContext(jobId: string | null, jobName: string | null, threadId?: string | null, projectRunId?: string | null, projectDefinitionId?: string | null, jobDefinitionId?: string | null, baseBranch?: string | null) {
+export function setJobContext(
+  jobId: string | null,
+  jobName: string | null,
+  threadId?: string | null,
+  projectRunId?: string | null,
+  projectDefinitionId?: string | null,
+  jobDefinitionId?: string | null,
+  baseBranch?: string | null,
+  parentRequestId?: string | null,
+  branchName?: string | null,
+  workstreamId?: string | null
+) {
   if (jobId) process.env.JINN_JOB_ID = jobId; else delete process.env.JINN_JOB_ID;
   if (jobName) process.env.JINN_JOB_NAME = jobName; else delete process.env.JINN_JOB_NAME;
   if (threadId !== undefined) {
@@ -48,6 +63,15 @@ export function setJobContext(jobId: string | null, jobName: string | null, thre
   if (baseBranch !== undefined) {
     if (baseBranch) process.env.JINN_BASE_BRANCH = baseBranch; else delete process.env.JINN_BASE_BRANCH;
   }
+  if (workstreamId !== undefined) {
+    if (workstreamId) process.env.JINN_WORKSTREAM_ID = workstreamId; else delete process.env.JINN_WORKSTREAM_ID;
+  }
+  if (parentRequestId !== undefined) {
+    if (parentRequestId) process.env.JINN_PARENT_REQUEST_ID = parentRequestId; else delete process.env.JINN_PARENT_REQUEST_ID;
+  }
+  if (branchName !== undefined) {
+    if (branchName) process.env.JINN_BRANCH_NAME = branchName; else delete process.env.JINN_BRANCH_NAME;
+  }
 }
 
 export function clearJobContext() {
@@ -59,6 +83,8 @@ export function clearJobContext() {
   delete process.env.JINN_SOURCE_EVENT_ID;
   delete process.env.JINN_PROJECT_DEFINITION_ID;
   delete process.env.JINN_BASE_BRANCH;
+  delete process.env.JINN_WORKSTREAM_ID;
+  delete process.env.JINN_PARENT_REQUEST_ID;
+  delete process.env.JINN_BRANCH_NAME;
+
 }
-
-

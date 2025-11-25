@@ -38,7 +38,7 @@ The `GEMINI.md` specification defines the agent's "operating system"—the invar
 - Parent jobs synthesize child results
 
 **Work Protocol Phases:**
-1. **Contextualize & Plan**: Use `get_job_context` to understand position in hierarchy
+1. **Contextualize & Plan**: Use `get_details` or `search_artifacts` to understand position in hierarchy
 2. **Decide & Act**: Complete directly, delegate to children, wait for children, or fail
 3. **Report**: Produce execution summary describing accomplishment
 
@@ -259,9 +259,9 @@ const toolsToInclude = [
 
 **Universal Tools (always available):**
 - `dispatch_new_job`, `dispatch_existing_job`
-- `get_job_context`, `search_jobs`
-- `create_artifact`, `search_artifacts`
-- `get_details`, `list_tools`
+- `get_details`, `search_artifacts`, `search_jobs`
+- `create_artifact`
+- `list_tools`
 
 **Conditional Tools (must be explicitly enabled):**
 - Native Gemini CLI tools: `file_*`, `web_search`, `terminal`

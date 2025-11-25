@@ -7,6 +7,7 @@ import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
 import { getCodeMetadataDefaultBaseBranch, getOptionalMechModel } from '../../../config/index.js';
+import { ensureUniversalTools } from './shared/base-tools.js';
 
 // Blueprint assertion schema matching the style guide
 const blueprintAssertionSchema = z.object({
@@ -80,6 +81,28 @@ function ensureUuid(): string {
   throw new Error('crypto.randomUUID not available; cannot generate strict UUID');
 }
 
+function getCompletedChildRequestIdsFromEnv(): string[] {
+  const raw = process.env.JINN_COMPLETED_CHILDREN;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id: unknown) => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function requireChildReviewIfNeeded(): string | null {
+  const completedChildIds = getCompletedChildRequestIdsFromEnv();
+  if (completedChildIds.length === 0) {
+    return null;
+  }
+  if (process.env.JINN_CHILD_WORK_REVIEWED === 'true') {
+    return null;
+  }
+  const previewIds = completedChildIds.slice(0, 3).join(', ');
+  return `Completed child job(s) already exist (${previewIds}). Use the get_details tool with those request IDs (and resolve_ipfs=true) to review their artifacts before dispatching new work.`;
+}
 
 export async function dispatchNewJob(args: unknown) {
   try {
@@ -104,7 +127,20 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { jobName, blueprint, model, enabledTools, message, dependencies, skipBranch, responseTimeout } = parsed.data;
+    const childReviewMessage = requireChildReviewIfNeeded();
+    if (childReviewMessage) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: { ok: false, code: 'CHILD_REVIEW_REQUIRED', message: childReviewMessage },
+          }),
+        }],
+      };
+    }
+
+    const { jobName, blueprint, model, enabledTools: requestedTools, message, dependencies, skipBranch, responseTimeout } = parsed.data;
 
     if (!blueprint) {
       return {
@@ -156,6 +192,7 @@ export async function dispatchNewJob(args: unknown) {
     }
 
     const finalBlueprint = blueprint;
+    const enabledTools = ensureUniversalTools(requestedTools);
 
     const gqlUrl = getPonderGraphqlUrl();
 
@@ -172,19 +209,16 @@ export async function dispatchNewJob(args: unknown) {
     // Blueprint and dependencies are now stored at root level, not in additionalContext
     let additionalContext: Record<string, any> = {};
     if (message) {
-      // Try to parse message as JSON (for structured messages from worker)
       let messageObj: any = null;
       try {
-        const parsed = JSON.parse(message);
-        // If it's already a structured message with content/to/from, use it directly
-        if (parsed && typeof parsed === 'object' && parsed.content) {
-          messageObj = parsed;
+        const parsedMessage = JSON.parse(message);
+        if (parsedMessage && typeof parsedMessage === 'object' && parsedMessage.content) {
+          messageObj = parsedMessage;
         }
       } catch {
-        // Not JSON, treat as plain string
+        // ignore parse error
       }
 
-      // Use parsed structure if available, otherwise create envelope
       additionalContext = {
         message: messageObj || {
           content: message,
@@ -195,7 +229,9 @@ export async function dispatchNewJob(args: unknown) {
     }
 
     const baseBranch =
-      (context as any)?.baseBranch ||
+      context.branchName ||
+      context.baseBranch ||
+      context.branchName ||
       getCodeMetadataDefaultBaseBranch();
 
     let branchResult;
@@ -223,7 +259,6 @@ export async function dispatchNewJob(args: unknown) {
 
         codeMetadata = await collectLocalCodeMetadata(metadataHints);
       } catch (branchError: any) {
-        console.error('[dispatch_new_job] Branch/metadata collection failed:', branchError.message);
         return {
           content: [{
             type: 'text' as const,
@@ -239,6 +274,21 @@ export async function dispatchNewJob(args: unknown) {
         };
       }
     }
+
+    const lineage =
+      context.requestId ||
+      context.jobDefinitionId ||
+      context.parentRequestId ||
+      context.branchName ||
+      context.baseBranch
+        ? {
+            dispatcherRequestId: context.requestId || undefined,
+            dispatcherJobDefinitionId: context.jobDefinitionId || undefined,
+            parentDispatcherRequestId: context.parentRequestId || undefined,
+            dispatcherBranchName: context.branchName || undefined,
+            dispatcherBaseBranch: context.baseBranch || undefined,
+          }
+        : undefined;
 
     // IPFS metadata structure: blueprint at root level (not prompt)
     const ipfsJsonContents: any[] = [{
@@ -279,16 +329,12 @@ export async function dispatchNewJob(args: unknown) {
       ipfsJsonContents[0].dependencies = dependencies;
     }
 
-    console.error('[dispatch_new_job] codeMetadata check:', {
-      hasCodeMetadata: !!codeMetadata,
-      hasBranchResult: !!branchResult,
-      branchName: branchResult?.branchName,
-    });
+    if (lineage) {
+      ipfsJsonContents[0].lineage = lineage;
+    }
 
     if (codeMetadata) {
       ipfsJsonContents[0].codeMetadata = codeMetadata;
-    } else if (!skipBranch) {
-      console.error('[dispatch_new_job] WARNING: No codeMetadata - job will fail in worker!');
     }
 
     if (branchResult) {
@@ -311,20 +357,7 @@ export async function dispatchNewJob(args: unknown) {
       if (!privateKey) {
         throw new Error('Service agent private key not found. Check .operate/keys directory.');
       }
-      
-      console.error('[dispatch_new_job] Calling marketplaceInteract with:', {
-        blueprintLength: finalBlueprint.length,
-        mech: mechAddress,
-        chainConfig,
-        toolsCount: (enabledTools || []).length,
-        hasIpfsContents: !!ipfsJsonContents,
-        hasDependencies: !!(dependencies && dependencies.length > 0),
-        env_MECHX_CHAIN_RPC: process.env.MECHX_CHAIN_RPC,
-        env_RPC_URL: process.env.RPC_URL,
-        env__ENV_LOADED: process.env.__ENV_LOADED,
-        env_VITEST: process.env.VITEST,
-      });
-      
+
       // Note: marketplaceInteract still expects 'prompts' parameter for on-chain data field
       // But the actual job specification comes from blueprint in IPFS metadata
       const result = await marketplaceInteract({
@@ -337,18 +370,8 @@ export async function dispatchNewJob(args: unknown) {
         postOnly: true,
         responseTimeout,
       });
-      console.error('[dispatch_new_job] marketplaceInteract call completed');
-
-      console.error('[dispatch_new_job] marketplaceInteract result:', {
-        hasResult: !!result,
-        requestIdsType: result ? typeof result.request_ids : 'n/a',
-        requestIdsIsArray: result ? Array.isArray(result.request_ids) : false,
-        requestIdsLength: result?.request_ids?.length ?? 0,
-        resultKeys: result ? Object.keys(result) : []
-      });
 
       if (!result || !Array.isArray(result.request_ids) || result.request_ids.length === 0) {
-        console.error('[dispatch_new_job] Failed - result:', result);
         return {
           content: [{
             type: 'text' as const,
@@ -394,7 +417,7 @@ export async function dispatchNewJob(args: unknown) {
           }
         }
       } catch (lookupError) {
-        console.warn('dispatch_new_job: ipfs enrichment failed', lookupError);
+        // IPFS enrichment is best-effort
       }
 
       const enriched = {
@@ -413,13 +436,6 @@ export async function dispatchNewJob(args: unknown) {
         }],
       };
     } catch (error: any) {
-      console.error('[dispatch_new_job] EXECUTION_ERROR caught:', {
-        message: error?.message,
-        stack: error?.stack,
-        code: error?.code,
-        name: error?.name,
-        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
-      });
       return {
         content: [{
           type: 'text' as const,

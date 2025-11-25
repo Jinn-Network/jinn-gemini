@@ -20,6 +20,7 @@ export const REGISTERED_MCP_TOOLS = [
   'get_file_contents',
   'search_code',
   'list_commits',
+  'process_branch',
   'list_tools', // Special tool registered separately
 ] as const;
 
@@ -48,7 +49,7 @@ async function main() {
     // Suppress noisy stdout loggers to protect MCP stdio JSON stream
     // Only allow warnings/errors to reach stderr (Cursor will show those as errors)
     const level = (process.env.MCP_LOG_LEVEL || 'error').toLowerCase();
-    const noop = () => {};
+    const noop = () => { };
     // Always prevent stdout logging
     (console as any).log = noop;
     (console as any).info = noop;
@@ -77,6 +78,7 @@ async function main() {
       { name: 'get_file_contents', schema: tools.getFileContentsSchema, handler: tools.getFileContents },
       { name: 'search_code', schema: tools.searchCodeSchema, handler: tools.searchCode },
       { name: 'list_commits', schema: tools.listCommitsSchema, handler: tools.listCommits },
+      { name: 'process_branch', schema: tools.process_branch_schema, handler: tools.process_branch },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums
