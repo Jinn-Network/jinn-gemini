@@ -217,6 +217,22 @@ ponder.on(
     const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
     const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
+    // CRITICAL: Filter by mech address BEFORE any database operations
+    // Only index requests for OUR mech to prevent database pollution
+    const OUR_MECH_ADDRESS = (process.env.MECH_ADDRESS || '').toLowerCase();
+    if (!OUR_MECH_ADDRESS) {
+      logger.error("MECH_ADDRESS not set, cannot filter MarketplaceRequest events");
+      return;
+    }
+    
+    if (mech.toLowerCase() !== OUR_MECH_ADDRESS) {
+      logger.debug(
+        { requestMech: mech, ourMech: OUR_MECH_ADDRESS, requestIds: requestIds.slice(0, 3) },
+        "Skipping MarketplaceRequest for different mech (not ours)"
+      );
+      return; // Skip entire batch - these are not our requests
+    }
+
     const repo = (context as any).db?.request || (context as any).entities?.request;
     const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
     const messageRepo = (context as any).db?.message || (context as any).entities?.message;
