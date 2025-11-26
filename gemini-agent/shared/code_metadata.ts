@@ -8,7 +8,8 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-const GIT_TIMEOUT_MS = 5_000;
+// Increased timeout for git operations - push to remote can take 10-30 seconds
+const GIT_TIMEOUT_MS = 30_000;
 
 // Helper to get repo root dynamically (for test environment compatibility)
 function getRepoRoot(): string {

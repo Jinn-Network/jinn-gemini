@@ -18,6 +18,7 @@ import {
 import { serializeError } from '../logging/errors.js';
 import type { IpfsMetadata } from '../types.js';
 import { buildProgressCheckpoint, type ProgressCheckpoint } from './progressCheckpoint.js';
+import type { WorkerTelemetryService } from '../worker_telemetry.js';
 
 type RemoteSituationArtifact = {
   id: string;
@@ -30,7 +31,11 @@ type RemoteSituationArtifact = {
 /**
  * Run recognition phase: create initial situation, search similar jobs, fetch artifacts, generate learnings
  */
-export async function runRecognitionPhase(requestId: string, metadata: IpfsMetadata): Promise<RecognitionPhaseResult> {
+export async function runRecognitionPhase(
+  requestId: string,
+  metadata: IpfsMetadata,
+  telemetry?: WorkerTelemetryService
+): Promise<RecognitionPhaseResult> {
   const sections = extractPromptSections(metadata?.blueprint);
   const parentMessage = metadata?.additionalContext?.message?.content || metadata?.additionalContext?.message;
 
@@ -148,10 +153,19 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
         const ipfsUrl = `${gatewayBase}/${situationArtifact.cid}`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
+        const fetchStart = Date.now();
         try {
           const ipfsResponse = await fetch(ipfsUrl, { signal: controller.signal });
+          const fetchDuration = Date.now() - fetchStart;
+
           if (!ipfsResponse.ok) {
             workerLogger.warn({ requestId, cid: situationArtifact.cid, status: ipfsResponse.status }, 'Failed to fetch SITUATION artifact from IPFS');
+            telemetry?.logCheckpoint('recognition', 'ipfs_fetch', {
+              cid: situationArtifact.cid,
+              duration_ms: fetchDuration,
+              success: false,
+              status: ipfsResponse.status,
+            });
             continue;
           }
 
@@ -171,6 +185,12 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
           });
 
           workerLogger.info({ requestId, sourceRequestId: match.nodeId, cid: situationArtifact.cid }, 'Fetched SITUATION artifact for recognition');
+          telemetry?.logCheckpoint('recognition', 'ipfs_fetch', {
+            cid: situationArtifact.cid,
+            duration_ms: fetchDuration,
+            success: true,
+            sourceRequestId: match.nodeId,
+          });
         } finally {
           clearTimeout(timeout);
         }

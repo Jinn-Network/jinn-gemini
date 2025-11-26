@@ -44,7 +44,8 @@ export async function inferJobStatus(params: {
   }
 
   // 3. Check for undelivered children
-  const childJobs = await getChildJobStatus(requestId);
+  const childJobResult = await getChildJobStatus(requestId);
+  const childJobs = childJobResult.childJobs;
   const undeliveredChildren = childJobs.filter(c => !c.delivered);
 
   if (undeliveredChildren.length > 0) {

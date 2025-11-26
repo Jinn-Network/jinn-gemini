@@ -11,14 +11,26 @@ import type { ChildJobStatus } from '../types.js';
 const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
 
 /**
- * Query Ponder for child jobs of this request with retry logic
- * Returns array of {id, delivered} for each child
+ * Result of child job status query including timing info
  */
-export async function getChildJobStatus(requestId: string): Promise<ChildJobStatus[]> {
+export interface ChildJobStatusResult {
+  childJobs: ChildJobStatus[];
+  queryDuration_ms: number;
+  retryAttempts: number;
+}
+
+/**
+ * Query Ponder for child jobs of this request with retry logic
+ * Returns array of {id, delivered} for each child plus timing info
+ */
+export async function getChildJobStatus(requestId: string): Promise<ChildJobStatusResult> {
   const maxAttempts = 3;
   const baseDelayMs = 300;
+  const queryStart = Date.now();
+  let attemptCount = 0;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    attemptCount = attempt;
     try {
       const data = await graphQLRequest<{ requests: { items: Array<{ id: string; delivered: boolean }> } }>({
         url: PONDER_GRAPHQL_URL,
@@ -36,7 +48,11 @@ export async function getChildJobStatus(requestId: string): Promise<ChildJobStat
         context: { operation: 'getChildJobStatus', requestId }
       });
 
-      return data?.requests?.items || [];
+      return {
+        childJobs: data?.requests?.items || [],
+        queryDuration_ms: Date.now() - queryStart,
+        retryAttempts: attempt - 1,
+      };
     } catch (error: any) {
       const serialized = serializeError(error);
       workerLogger.warn({
@@ -63,6 +79,10 @@ export async function getChildJobStatus(requestId: string): Promise<ChildJobStat
     }
   }
 
-  return [];
+  return {
+    childJobs: [],
+    queryDuration_ms: Date.now() - queryStart,
+    retryAttempts: attemptCount - 1,
+  };
 }
 
