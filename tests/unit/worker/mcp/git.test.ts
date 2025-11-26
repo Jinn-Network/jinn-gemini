@@ -328,4 +328,168 @@ describe('process_branch', () => {
             expect(parsed.error).toBe('Failed to fetch branch');
         });
     });
+
+    describe('Compare Action', () => {
+        it('should successfully compare a mergeable branch', async () => {
+            const mockExecSync = vi.mocked(execSync);
+
+            mockExecSync
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin feat/test
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin main
+                .mockReturnValueOnce('abc123def456789012345678901234567890abcd') // git merge-tree
+                .mockReturnValueOnce('diff --git a/src/index.ts b/src/index.ts\n+added line') // git diff
+                .mockReturnValueOnce('3') // git rev-list --count
+                .mockReturnValueOnce('M\tsrc/index.ts') // git diff --name-status
+                .mockReturnValueOnce('abc123def456789012345678901234567890abcd'); // git rev-parse
+
+            const result = await process_branch({
+                branch_name: 'feat/test',
+                action: 'compare',
+                rationale: 'Review changes before merging',
+            });
+
+            const parsed = JSON.parse(result.content[0].text);
+
+            expect(parsed.success).toBe(true);
+            expect(parsed.action).toBe('compare');
+            expect(parsed.details.merge_status).toBe('mergeable');
+            expect(parsed.details.head_branch).toBe('feat/test');
+            expect(parsed.details.base_branch).toBe('main');
+            expect(parsed.details.commit_count).toBe(3);
+            expect(parsed.details.file_stats.modified).toBe(1);
+            expect(parsed.details.diff_summary).toContain('+added line');
+            expect(parsed.next_steps).toContain('mergeable');
+        });
+
+        it('should detect conflicts in compare', async () => {
+            const mockExecSync = vi.mocked(execSync);
+
+            mockExecSync
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin feat/test
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin main
+                .mockImplementationOnce(() => {
+                    // git merge-tree exits with non-zero for conflicts
+                    const error = new Error('Conflict') as any;
+                    error.status = 1;
+                    throw error;
+                })
+                .mockReturnValueOnce('diff content') // git diff
+                .mockReturnValueOnce('2') // git rev-list --count
+                .mockReturnValueOnce('M\tsrc/file.ts') // git diff --name-status
+                .mockReturnValueOnce('def456789012345678901234567890abcdef1234'); // git rev-parse
+
+            const result = await process_branch({
+                branch_name: 'feat/conflicting',
+                action: 'compare',
+                rationale: 'Check for conflicts',
+            });
+
+            const parsed = JSON.parse(result.content[0].text);
+
+            expect(parsed.success).toBe(true);
+            expect(parsed.action).toBe('compare');
+            expect(parsed.details.merge_status).toBe('conflict');
+            expect(parsed.next_steps).toContain('checkout');
+        });
+
+        it('should handle fetch failure gracefully', async () => {
+            const mockExecSync = vi.mocked(execSync);
+
+            mockExecSync
+                .mockImplementationOnce(() => {
+                    throw new Error('Failed to fetch');
+                });
+
+            const result = await process_branch({
+                branch_name: 'feat/nonexistent',
+                action: 'compare',
+                rationale: 'Try to compare',
+            });
+
+            const parsed = JSON.parse(result.content[0].text);
+
+            expect(parsed.success).toBe(false);
+            expect(parsed.error).toBe('Failed to fetch branches');
+        });
+
+        it('should return full diff without truncation', async () => {
+            const mockExecSync = vi.mocked(execSync);
+            const largeDiff = 'diff --git a/file.ts\n' + 'x'.repeat(10000);
+
+            mockExecSync
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin feat/test
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin main
+                .mockReturnValueOnce('abc123def456789012345678901234567890abcd') // git merge-tree
+                .mockReturnValueOnce(largeDiff) // git diff (full, no truncation)
+                .mockReturnValueOnce('1') // git rev-list --count
+                .mockReturnValueOnce('A\tsrc/newfile.ts') // git diff --name-status
+                .mockReturnValueOnce('abc123def456789012345678901234567890abcd'); // git rev-parse
+
+            const result = await process_branch({
+                branch_name: 'feat/large-changes',
+                action: 'compare',
+                rationale: 'Review large diff',
+            });
+
+            const parsed = JSON.parse(result.content[0].text);
+
+            expect(parsed.success).toBe(true);
+            expect(parsed.details.diff_summary.length).toBeGreaterThan(10000);
+            expect(parsed.details.diff_summary).not.toContain('truncated');
+            expect(parsed.details.file_stats.added).toBe(1);
+        });
+
+        it('should count file stats correctly', async () => {
+            const mockExecSync = vi.mocked(execSync);
+
+            mockExecSync
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin feat/test
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin main
+                .mockReturnValueOnce('abc123def456789012345678901234567890abcd') // git merge-tree
+                .mockReturnValueOnce('diff content') // git diff
+                .mockReturnValueOnce('5') // git rev-list --count
+                .mockReturnValueOnce('A\tsrc/new.ts\nM\tsrc/modified.ts\nD\tsrc/deleted.ts\nM\tsrc/also-modified.ts') // git diff --name-status
+                .mockReturnValueOnce('abc123def456789012345678901234567890abcd'); // git rev-parse
+
+            const result = await process_branch({
+                branch_name: 'feat/multi-file',
+                action: 'compare',
+                rationale: 'Review multi-file changes',
+            });
+
+            const parsed = JSON.parse(result.content[0].text);
+
+            expect(parsed.success).toBe(true);
+            expect(parsed.details.file_stats.added).toBe(1);
+            expect(parsed.details.file_stats.modified).toBe(2);
+            expect(parsed.details.file_stats.deleted).toBe(1);
+            expect(parsed.details.commit_count).toBe(5);
+        });
+
+        it('should handle renamed and copied files in stats', async () => {
+            const mockExecSync = vi.mocked(execSync);
+
+            mockExecSync
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin feat/test
+                .mockReturnValueOnce(Buffer.from('')) // git fetch origin main
+                .mockReturnValueOnce('abc123def456789012345678901234567890abcd') // git merge-tree
+                .mockReturnValueOnce('diff content') // git diff
+                .mockReturnValueOnce('2') // git rev-list --count
+                .mockReturnValueOnce('R100\tsrc/old.ts\tsrc/new.ts\nC100\tsrc/file.ts\tsrc/copy.ts\nM\tsrc/modified.ts') // git diff --name-status (renamed, copied, modified)
+                .mockReturnValueOnce('abc123def456789012345678901234567890abcd'); // git rev-parse
+
+            const result = await process_branch({
+                branch_name: 'feat/rename-files',
+                action: 'compare',
+                rationale: 'Review renamed files',
+            });
+
+            const parsed = JSON.parse(result.content[0].text);
+
+            expect(parsed.success).toBe(true);
+            expect(parsed.details.file_stats.added).toBe(0);
+            expect(parsed.details.file_stats.modified).toBe(3); // R, C, and M all count as modified
+            expect(parsed.details.file_stats.deleted).toBe(0);
+        });
+    });
 });

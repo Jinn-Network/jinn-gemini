@@ -10,7 +10,7 @@ import { getCurrentJobContext } from '../../../gemini-agent/mcp/tools/shared/con
 
 interface ProcessBranchArgs {
     branch_name: string;
-    action: 'merge' | 'reject' | 'checkout';
+    action: 'merge' | 'reject' | 'checkout' | 'compare';
     rationale: string;
 }
 
@@ -78,7 +78,7 @@ function branchExistsOnRemote(repoPath: string, branchName: string): boolean {
 // Zod schema for process_branch parameters (defined before function to ensure availability)
 export const process_branch_params = z.object({
     branch_name: z.string().min(1).describe('The full name of the child branch to process (e.g., \'job/abc-123-feature-name\')'),
-    action: z.enum(['merge', 'reject', 'checkout']).describe('The action to take: merge (integrate), reject (delete), or checkout (switch to branch for edits)'),
+    action: z.enum(['merge', 'reject', 'checkout', 'compare']).describe('The action to take: merge (integrate), reject (delete), checkout (switch to branch for edits), or compare (view diff without changing state)'),
     rationale: z.string().min(1).describe('A brief explanation of why you are taking this action (required for audit trail)'),
 });
 
@@ -138,6 +138,9 @@ export async function process_branch(args: unknown) {
                 break;
             case 'checkout':
                 result = await handleCheckout(branch_name, repoPath);
+                break;
+            case 'compare':
+                result = await handleCompare(branch_name, repoPath, baseBr);
                 break;
             default:
                 result = JSON.stringify({
@@ -466,17 +469,157 @@ async function handleCheckout(
     return JSON.stringify(result);
 }
 
+/**
+ * Handle the 'compare' action - compare branch against base without modifying state
+ */
+async function handleCompare(
+    branchName: string,
+    repoPath: string,
+    baseBranch: string
+): Promise<string> {
+    // Fetch latest state of both branches
+    try {
+        execSync(`git fetch origin ${branchName}`, {
+            cwd: repoPath,
+            stdio: 'ignore',
+        });
+        execSync(`git fetch origin ${baseBranch}`, {
+            cwd: repoPath,
+            stdio: 'ignore',
+        });
+    } catch (fetchError) {
+        return JSON.stringify({
+            success: false,
+            action: 'compare',
+            error: 'Failed to fetch branches',
+            message: `Could not fetch '${branchName}' or '${baseBranch}' from origin. Ensure both branches exist on remote.`,
+        });
+    }
+
+    // Check merge status using git merge-tree
+    const GIT_SHA1_LENGTH = 40;
+    let mergeStatus: 'mergeable' | 'conflict' | 'unknown' = 'unknown';
+    try {
+        const mergeTreeOutput = execSync(
+            `git merge-tree --write-tree origin/${baseBranch} origin/${branchName}`,
+            {
+                cwd: repoPath,
+                encoding: 'utf-8',
+                stdio: ['pipe', 'pipe', 'pipe'],
+            }
+        );
+        const mergeTreeHash = mergeTreeOutput.trim();
+        mergeStatus = mergeTreeHash.length === GIT_SHA1_LENGTH && /^[0-9a-f]+$/.test(mergeTreeHash)
+            ? 'mergeable'
+            : 'unknown';
+    } catch (mergeTreeError: any) {
+        if (mergeTreeError.status !== 0) {
+            mergeStatus = 'conflict';
+        }
+    }
+
+    // Generate full diff (no truncation)
+    let diffSummary = '';
+    try {
+        diffSummary = execSync(
+            `git diff origin/${baseBranch}...origin/${branchName}`,
+            {
+                cwd: repoPath,
+                encoding: 'utf-8',
+                maxBuffer: 50 * 1024 * 1024, // 50MB max buffer
+            }
+        );
+    } catch (diffError) {
+        workerLogger.warn(
+            { error: serializeError(diffError), branchName, baseBranch },
+            'Failed to generate diff summary'
+        );
+        return JSON.stringify({
+            success: false,
+            action: 'compare',
+            error: 'Failed to generate diff',
+            message: `Could not generate diff between '${branchName}' and '${baseBranch}'.`,
+        });
+    }
+
+    // Gather additional stats
+    let commitCount = 0;
+    const fileStats = { added: 0, modified: 0, deleted: 0 };
+    let headSha = '';
+
+    try {
+        // Get commit count
+        const commitCountOutput = execSync(
+            `git rev-list --count origin/${baseBranch}..origin/${branchName}`,
+            { cwd: repoPath, encoding: 'utf-8' }
+        );
+        commitCount = parseInt(commitCountOutput.trim(), 10) || 0;
+
+        // Get file stats using name-status
+        const nameStatusOutput = execSync(
+            `git diff --name-status origin/${baseBranch}...origin/${branchName}`,
+            { cwd: repoPath, encoding: 'utf-8' }
+        );
+        const statusLines = nameStatusOutput.trim().split('\n').filter(Boolean);
+        for (const line of statusLines) {
+            const status = line.charAt(0);
+            if (status === 'A') fileStats.added++;
+            else if (status === 'D') fileStats.deleted++;
+            else if (status === 'M' || status === 'R' || status === 'C') fileStats.modified++;
+        }
+
+        // Get head SHA
+        headSha = execSync(
+            `git rev-parse origin/${branchName}`,
+            { cwd: repoPath, encoding: 'utf-8' }
+        ).trim();
+    } catch (statsError) {
+        // Non-fatal: continue with basic details
+        workerLogger.warn(
+            { error: serializeError(statsError), branchName, baseBranch },
+            'Failed to gather extended stats for compare'
+        );
+    }
+
+    const result: ProcessBranchResult = {
+        success: true,
+        action: 'compare',
+        message: `Compared '${branchName}' against '${baseBranch}'.`,
+        details: {
+            head_branch: branchName,
+            base_branch: baseBranch,
+            merge_status: mergeStatus,
+            commit_count: commitCount,
+            file_stats: fileStats,
+            head_sha: headSha ? headSha.slice(0, 8) : '',
+            diff_summary: diffSummary,
+        },
+        next_steps: mergeStatus === 'mergeable'
+            ? `Branch is mergeable. Use process_branch({ branch_name: '${branchName}', action: 'merge', rationale: '...' }) to integrate, or action: 'reject' to discard.`
+            : mergeStatus === 'conflict'
+            ? `Branch has merge conflicts. Use process_branch({ branch_name: '${branchName}', action: 'checkout', rationale: '...' }) to resolve conflicts before merging.`
+            : `Merge status unknown. Review the diff and decide whether to merge, reject, or checkout for manual review.`,
+    };
+
+    return JSON.stringify(result);
+}
+
 // Export tool schema for MCP registration
 export const process_branch_schema = {
     name: 'process_branch',
-    description: `Process a child job's branch by merging, rejecting, or checking out for manual intervention.
+    description: `Process a child job's branch by comparing, merging, rejecting, or checking out for manual intervention.
 
 WORKFLOW:
-1. Review the branch diff (provided in your context as "Rich Context")
+1. Compare the branch (if Rich Context is stale or unavailable)
 2. Decide: merge (approve), reject (delete), or checkout (fix issues)
 3. Call this tool with your decision
 
 ACTIONS:
+
+• compare: View the diff and merge status without modifying any state.
+  - Use when: You need fresh diff information, or the Rich Context is stale/unavailable.
+  - Result: Returns merge status (mergeable/conflict/unknown), full diff, commit count, and file stats.
+  - Note: This is a read-only operation. No branches are modified.
 
 • merge: Merge the child branch into the base branch and delete the child branch.
   - Use when: The diff looks good and is ready to integrate.
@@ -495,7 +638,7 @@ ACTIONS:
 
 PARAMETERS:
 - branch_name: The full name of the child branch (e.g., 'job/abc-123-feature-name')
-- action: Your decision (merge, reject, checkout)
+- action: Your decision (compare, merge, reject, checkout)
 - rationale: A brief explanation of why you're taking this action (for audit trail)`,
     inputSchema: process_branch_params.shape,
 };
