@@ -217,22 +217,6 @@ ponder.on(
     const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
     const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
-    // CRITICAL: Filter by mech address BEFORE any database operations
-    // Only index requests for OUR mech to prevent database pollution
-    const OUR_MECH_ADDRESS = (process.env.MECH_ADDRESS || '').toLowerCase();
-    if (!OUR_MECH_ADDRESS) {
-      logger.error("MECH_ADDRESS not set, cannot filter MarketplaceRequest events");
-      return;
-    }
-    
-    if (mech.toLowerCase() !== OUR_MECH_ADDRESS) {
-      logger.debug(
-        { requestMech: mech, ourMech: OUR_MECH_ADDRESS, requestIds: requestIds.slice(0, 3) },
-        "Skipping MarketplaceRequest for different mech (not ours)"
-      );
-      return; // Skip entire batch - these are not our requests
-    }
-
     const repo = (context as any).db?.request || (context as any).entities?.request;
     const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
     const messageRepo = (context as any).db?.message || (context as any).entities?.message;
@@ -301,30 +285,6 @@ ponder.on(
         // Skip enrichment and continue to next request in batch
         continue;
       }
-
-      // TASK 2: Filter by networkId to only index Jinn jobs
-      const networkId = typeof content.networkId === 'string' ? content.networkId : undefined;
-      
-      // Decision logic:
-      // - networkId === 'jinn' → INDEX (explicit Jinn marker)
-      // - networkId === undefined → INDEX (legacy Jinn, backward compatibility)
-      // - networkId === something else → SKIP (non-Jinn tenant)
-      if (networkId !== undefined && networkId !== 'jinn') {
-        logger.info(
-          { requestId: id, networkId },
-          "Skipping non-Jinn request (networkId mismatch)"
-        );
-        // Delete the pre-seeded row since this is not a Jinn request
-        try {
-          await repo.delete({ id });
-          logger.debug({ requestId: id }, "Deleted pre-seeded row for non-Jinn request");
-        } catch (deleteError: any) {
-          logger.warn({ requestId: id, error: serializeError(deleteError) }, "Failed to delete pre-seeded non-Jinn row");
-        }
-        continue; // Skip to next request
-      }
-      
-      logger.debug({ requestId: id, networkId: networkId || 'legacy' }, "Request identified as Jinn job, proceeding with indexing");
 
       let jobName: string | undefined;
       let enabledTools: string[] | undefined;
@@ -551,117 +511,7 @@ ponder.on(
   }
 });
 
-// TASK 3: Add MechMarketplace:MarketplaceDelivery handler to sync delivered status
-// This ensures Jinn requests are marked delivered when ANY mech delivers them via marketplace
-ponder.on(
-  "MechMarketplace:MarketplaceDelivery",
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
-  try {
-    const deliveryMech: string = String(event.args.deliveryMech);
-    const requestIds: string[] = toStringArray((event.args as any).requestIds);
-    const deliveredRequests: boolean[] = Array.isArray((event.args as any).deliveredRequests)
-      ? ((event.args as any).deliveredRequests as any[]).map((val: any) => Boolean(val))
-      : [];
-    const txHash: string = String(event.transaction.hash);
-    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
-    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
-
-    const requestRepo = (context as any).db?.request || (context as any).entities?.request;
-    if (!requestRepo) {
-      logger.error("No repository for 'request' in MarketplaceDelivery handler. Skipping.");
-      return;
-    }
-
-    logger.info(
-      { deliveryMech, requestIdsCount: requestIds.length, txHash },
-      "Processing MarketplaceDelivery event"
-    );
-
-    // Iterate over each request in the delivery batch
-    for (let i = 0; i < requestIds.length; i++) {
-      const requestId = requestIds[i];
-      const wasDelivered = deliveredRequests[i] !== false; // Default true if not present
-
-      if (!wasDelivered) {
-        logger.debug(
-          { requestId, deliveryMech },
-          "Request was revoked in marketplace (deliveredRequests[i] = false), skipping"
-        );
-        continue;
-      }
-
-      // Check if this request exists in our database (i.e., is it a Jinn request?)
-      let existingRequest: any = null;
-      try {
-        existingRequest = await requestRepo.findUnique({ id: requestId });
-      } catch (findError: any) {
-        logger.error(
-          { requestId, error: serializeError(findError) },
-          "Failed to check request existence in MarketplaceDelivery handler"
-        );
-        continue;
-      }
-
-      if (!existingRequest) {
-        logger.debug(
-          { requestId, deliveryMech },
-          "Request not found in database (non-Jinn request or created before indexing start), skipping"
-        );
-        continue;
-      }
-
-      // This is a Jinn request that has been delivered by ANY mech via the marketplace
-      // Update the request to mark it as delivered with marketplace delivery info
-      try {
-        await requestRepo.upsert({
-          id: requestId,
-          create: {
-            // Safety fallback - should never execute since we verified existence above
-            mech: existingRequest.mech || "0x0000000000000000000000000000000000000000",
-            sender: existingRequest.sender || "0x0000000000000000000000000000000000000000",
-            workstreamId: existingRequest.workstreamId || requestId,
-            transactionHash: existingRequest.transactionHash || txHash,
-            blockNumber: existingRequest.blockNumber || blockNumber,
-            blockTimestamp: existingRequest.blockTimestamp || blockTimestamp,
-            delivered: true,
-            deliveryMech: deliveryMech,
-            deliveryTxHash: txHash,
-            deliveryBlockNumber: blockNumber,
-            deliveryBlockTimestamp: blockTimestamp,
-          },
-          update: {
-            // Update delivery status and marketplace delivery metadata
-            delivered: true,
-            deliveryMech: deliveryMech,
-            deliveryTxHash: txHash,
-            deliveryBlockNumber: blockNumber,
-            deliveryBlockTimestamp: blockTimestamp,
-          },
-        });
-
-        logger.info(
-          { requestId, deliveryMech, txHash },
-          "Marked Jinn request as delivered via MarketplaceDelivery"
-        );
-      } catch (updateError: any) {
-        logger.error(
-          { requestId, deliveryMech, error: serializeError(updateError) },
-          "Failed to update request in MarketplaceDelivery handler"
-        );
-      }
-    }
-
-    logger.info(
-      { deliveryMech, processedCount: requestIds.length },
-      "Completed MarketplaceDelivery event processing"
-    );
-  } catch (e: any) {
-    logger.error(
-      { err: e?.message || String(e), stack: e?.stack },
-      "Failed to index MarketplaceDelivery"
-    );
-  }
-});
+// Removed MechMarketplace delivery handlers in favor of OlasMech:Deliver
 
 
 // Fallback path: index AgentMech (OlasMech) Deliver events which include raw delivery data bytes
@@ -987,8 +837,3 @@ ponder.on(
     logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index OlasMech Deliver");
   }
 });
-
-// Note: We deliberately do NOT index colleague mechs' Deliver events here.
-// The MarketplaceDelivery handler already tracks when ANY mech delivers a request
-// via the deliveryMech field. Indexing colleague mechs would create duplicate
-// request entries and pollute the frontend with requests we didn't create.

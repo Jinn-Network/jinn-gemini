@@ -93,7 +93,6 @@ const databaseConfig = process.env.PONDER_DATABASE_URL
 // ============================================================================
 // RUNTIME CONFIGURATION LOGGING (for debugging test environment issues)
 // Write to both stderr and a debug file (Ponder UI may overwrite stderr)
-// Schema updated: 2025-11-25 - Added networkId filtering and delivery sync (rebuild v2)
 // ============================================================================
 const rpcUrl = getRpcUrl();
 const isTenderly = rpcUrl.includes('virtual') && rpcUrl.includes('tenderly.co');
@@ -178,9 +177,6 @@ export default createConfig({
       startBlock,
       endBlock,
     },
-    // Note: We don't index colleague mechs here. The MarketplaceDelivery handler
-    // already tracks deliveries from ANY mech via the deliveryMech field.
-    // Indexing colleague mechs would pollute the frontend with their requests.
   },
 });
 
