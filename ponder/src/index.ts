@@ -217,6 +217,19 @@ ponder.on(
     const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
     const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
+    // Filter by mech address BEFORE any processing
+    // MechMarketplace emits MarketplaceRequest for ALL mechs, we only want OUR mech's requests
+    const OUR_MECH_ADDRESS = (process.env.MECH_ADDRESS || '').toLowerCase();
+    if (!OUR_MECH_ADDRESS) {
+      logger.error("MECH_ADDRESS not set, cannot filter MarketplaceRequest events");
+      return;
+    }
+    
+    if (mech.toLowerCase() !== OUR_MECH_ADDRESS) {
+      // Silent skip - this is normal (many requests for other mechs)
+      return;
+    }
+
     const repo = (context as any).db?.request || (context as any).entities?.request;
     const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
     const messageRepo = (context as any).db?.message || (context as any).entities?.message;
