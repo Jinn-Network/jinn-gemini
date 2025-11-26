@@ -68,6 +68,10 @@ export interface ChildJobInfo {
   jobName?: string;
   status: 'COMPLETED' | 'ACTIVE' | 'FAILED';
   summary?: string;
+  /** Branch name where this child job worked (for parent review) */
+  branchName?: string;
+  /** Base branch the child branched from */
+  baseBranch?: string;
 }
 
 /**

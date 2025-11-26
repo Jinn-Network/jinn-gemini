@@ -52,36 +52,94 @@ export class JobContextProvider implements ContextProvider {
 
   /**
    * Extract hierarchy information from additionalContext
+   * Combines data from both `hierarchy` array and `completedChildRuns` array
    */
   private extractHierarchy(additionalContext: AdditionalContext): HierarchyContext | undefined {
     const summary = additionalContext.summary;
     const hierarchyJobs = additionalContext.hierarchy;
+    const completedChildRuns = additionalContext.completedChildRuns;
 
-    if (!summary && !hierarchyJobs) {
+    if (!summary && !hierarchyJobs && !completedChildRuns) {
       return undefined;
     }
 
     // Extract children from the hierarchy
     const children: ChildJobInfo[] = [];
+    const seenRequestIds = new Set<string>();
 
+    // First, process completedChildRuns (most recent child completion data)
+    // This contains branchName/baseBranch directly from the dispatching child
+    if (Array.isArray(completedChildRuns)) {
+      for (const run of completedChildRuns) {
+        if (!run.requestId) continue;
+        seenRequestIds.add(run.requestId);
+
+        // Extract branch info from run or from GIT_BRANCH artifact
+        let branchName = (run as any).branchName;
+        let baseBranch = (run as any).baseBranch;
+
+        // Check artifacts for GIT_BRANCH if not directly on run
+        if (!branchName && Array.isArray((run as any).artifacts)) {
+          const branchArtifact = (run as any).artifacts.find(
+            (a: any) => a.type === 'GIT_BRANCH' || a.topic === 'git/branch'
+          );
+          if (branchArtifact?.details) {
+            branchName = branchArtifact.details.headBranch;
+            baseBranch = baseBranch || branchArtifact.details.baseBranch;
+          }
+        }
+
+        children.push({
+          requestId: run.requestId,
+          jobName: (run as any).jobName,
+          status: this.mapJobStatus((run as any).status || 'completed'),
+          summary: (run as any).summary,
+          branchName,
+          baseBranch,
+        });
+      }
+    }
+
+    // Then process hierarchy array (may have additional jobs)
     if (Array.isArray(hierarchyJobs)) {
       for (const job of hierarchyJobs) {
+        const requestId = job.requestId || job.id || '';
+        // Skip if already added from completedChildRuns
+        if (seenRequestIds.has(requestId)) continue;
+
         // Map job status to our simplified status
         const status = this.mapJobStatus(job.status);
 
+        // Extract branch info from job or from GIT_BRANCH artifact
+        let branchName = job.branchName;
+        let baseBranch = job.baseBranch;
+
+        // If not directly on job, check artifactRefs for GIT_BRANCH artifact
+        if (!branchName && Array.isArray(job.artifactRefs)) {
+          const branchArtifact = job.artifactRefs.find(
+            (a) => a.type === 'GIT_BRANCH' || a.topic === 'git/branch'
+          );
+          if (branchArtifact?.details) {
+            branchName = branchArtifact.details.headBranch;
+            baseBranch = baseBranch || branchArtifact.details.baseBranch;
+          }
+        }
+
         children.push({
-          requestId: job.requestId || job.id || '',
+          requestId,
           jobName: job.name || job.jobName,
           status,
           summary: job.summary || job.deliverySummary,
+          branchName,
+          baseBranch,
         });
       }
     }
 
     return {
-      totalJobs: summary?.totalJobs || 0,
-      completedJobs: summary?.completedJobs || 0,
-      activeJobs: summary?.activeJobs || 0,
+      totalJobs: summary?.totalJobs || children.length,
+      completedJobs: summary?.completedJobs || children.filter((c) => c.status === 'COMPLETED').length,
+      activeJobs: summary?.activeJobs || children.filter((c) => c.status === 'ACTIVE').length,
       children,
     };
   }

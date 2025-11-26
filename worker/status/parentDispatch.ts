@@ -189,11 +189,22 @@ export async function dispatchParentIfNeeded(
       from: requestId
     };
 
+    // Extract branch info from metadata or GIT_BRANCH artifact
+    let childBranchName: string | undefined;
+    let childBaseBranch: string | undefined;
+
+    // First check metadata for branch info
+    childBranchName = metadata?.codeMetadata?.branch?.name;
+    childBaseBranch = metadata?.codeMetadata?.baseBranch;
+
     const deterministicChildRun = {
       requestId,
       jobDefinitionId: metadata?.jobDefinitionId,
+      jobName: metadata?.jobName,
       status: finalStatus?.status,
       summary: finalStatus?.message,
+      branchName: childBranchName,
+      baseBranch: childBaseBranch,
       artifacts: await Promise.all((options?.artifacts || []).map(async (artifact, index) => {
         let details = undefined;
         if (artifact.type === 'GIT_BRANCH' || artifact.topic === 'git/branch') {
@@ -203,6 +214,15 @@ export async function dispatchParentIfNeeded(
               const parsed = JSON.parse((artifact as any).content);
               const headBranch = parsed.headBranch;
               const baseBranch = parsed.baseBranch;
+
+              // Use artifact branch info if not already set from metadata
+              if (!childBranchName && headBranch) {
+                childBranchName = headBranch;
+              }
+              if (!childBaseBranch && baseBranch) {
+                childBaseBranch = baseBranch;
+              }
+
               if (headBranch && baseBranch) {
                 const repoPath = metadata?.codeMetadata?.repoRoot || process.env.CODE_METADATA_REPO_ROOT;
                 if (repoPath) {
@@ -224,6 +244,14 @@ export async function dispatchParentIfNeeded(
         };
       })),
     };
+
+    // Update branchName/baseBranch after artifact processing (may have been extracted from GIT_BRANCH artifact)
+    if (childBranchName && !deterministicChildRun.branchName) {
+      (deterministicChildRun as any).branchName = childBranchName;
+    }
+    if (childBaseBranch && !deterministicChildRun.baseBranch) {
+      (deterministicChildRun as any).baseBranch = childBaseBranch;
+    }
 
     const deterministicContext =
       deterministicChildRun.requestId || deterministicChildRun.artifacts.length > 0
