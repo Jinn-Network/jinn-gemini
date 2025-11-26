@@ -69,16 +69,42 @@ export async function isUndeliveredOnChain(params: {
       const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
       const web3 = new Web3(rpcHttpUrl);
       const contract = new (web3 as any).eth.Contract(abi, mechAddress);
-      const ids: string[] = await contract.methods.getUndeliveredRequestIds(5000, 0).call();
-      const set = new Set((ids || []).map((x: string) => String(x).toLowerCase()));
-      const isUndelivered = set.has(String(requestIdHex).toLowerCase());
+      // Fetch undelivered IDs in batches to avoid RPC/gas limits
+      const BATCH_SIZE = 100;
+      let offset = 0;
+      let isUndelivered = false;
+      let totalFetched = 0;
+
+      while (true) {
+        const ids: string[] = await contract.methods.getUndeliveredRequestIds(BATCH_SIZE, offset).call();
+        const batchSize = ids ? ids.length : 0;
+        totalFetched += batchSize;
+
+        const set = new Set((ids || []).map((x: string) => String(x).toLowerCase()));
+        if (set.has(String(requestIdHex).toLowerCase())) {
+          isUndelivered = true;
+          break;
+        }
+
+        // If we got fewer items than requested, we've reached the end of the list
+        if (batchSize < BATCH_SIZE) {
+          break;
+        }
+
+        offset += BATCH_SIZE;
+        
+        // Safety cap to prevent infinite loops or excessive scanning
+        if (offset > 20000) {
+          workerLogger.warn({ requestIdHex, offset }, 'Exceeded safety limit while paging undelivered requests; assuming delivered');
+          break;
+        }
+      }
       
       if (!isUndelivered) {
         workerLogger.warn({ 
           requestIdHex, 
-          totalUndelivered: ids.length,
-          fetchLimit: 5000 
-        }, 'Request not found in on-chain undelivered set (may be outside fetch window or already delivered)');
+          totalChecked: totalFetched
+        }, 'Request not found in on-chain undelivered set (already delivered)');
       }
       
       return isUndelivered;
