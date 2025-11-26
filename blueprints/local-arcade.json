@@ -1,0 +1,250 @@
+{
+  "vision": {
+    "mission": "Create a self-contained Local Arcade with three classic games (Snake, 2048, Minesweeper) that can be played offline by opening a single entry point on a modern desktop machine.",
+    "vision": "A delightful, durable arcade product that showcases an autonomous system's ability to design, build, test, and document a small but non-trivial software experience end-to-end without external dependencies."
+  },
+  "constitution": [
+    {
+      "principle": "Player-Centric Fun",
+      "description": "The arcade exists to be enjoyable and approachable for human players. Clarity, responsiveness, and discoverability take precedence over clever implementation tricks."
+    },
+    {
+      "principle": "Local-First Autonomy",
+      "description": "Everything runs locally and offline. The system must not rely on external APIs, services, or accounts, and must autonomously handle all design and implementation decisions needed to ship a complete arcade."
+    },
+    {
+      "principle": "Single-Artifact Simplicity",
+      "description": "A non-technical user should be able to receive the arcade, open a single obvious entry point, and start playing within seconds, without installing tools or running commands."
+    },
+    {
+      "principle": "Explainable Engineering",
+      "description": "The system must leave behind understandable documentation explaining what was built and how to use it, so a human can reason about, extend, or modify the arcade."
+    },
+    {
+      "principle": "Robustness Over Fragility",
+      "description": "The arcade should degrade gracefully when something goes wrong (e.g. corrupted saved data) and never trap users in broken or confusing states."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "SCOPE-001",
+      "assertion": "The arcade must ship exactly three games: Snake, 2048, and Minesweeper, each recognizably faithful to the classic gameplay.",
+      "examples": {
+        "do": [
+          "Include a reflex-based Snake game where a continuously moving snake eats items, grows, and can collide with walls or itself to end the game.",
+          "Include a 2048 sliding-tile puzzle with a grid where identical tiles merge into higher-valued tiles, and the game ends when no moves remain.",
+          "Include a Minesweeper logic puzzle with hidden mines, numerical hints, and a win condition based on revealing all safe cells.",
+          "Ensure that players familiar with the original games immediately recognize the mechanics and objectives."
+        ],
+        "dont": [
+          "Replace one of the required games with a different game or a variant that changes the core mechanics.",
+          "Implement only partial or significantly altered versions of these games that no longer feel like Snake, 2048, or Minesweeper.",
+          "Ship placeholder prototypes that lack win/loss conditions or scoring."
+        ]
+      },
+      "commentary": "The arcade is a three-game product, not an open-ended playground. These specific games provide a clear benchmark for correctness and user expectations."
+    },
+    {
+      "id": "ARCADE-001",
+      "assertion": "The arcade must provide a single, clear home screen that acts as the hub for all three games.",
+      "examples": {
+        "do": [
+          "Present an initial screen titled as the arcade home with the names and short descriptions of Snake, 2048, and Minesweeper.",
+          "Offer obvious actions (e.g. buttons, tiles) to start each game in one step from the home screen.",
+          "Show at least minimal global information, such as each game's best score or total games played, on or from the home screen.",
+          "Provide a consistent way to return from any game back to the arcade home without restarting the entire arcade."
+        ],
+        "dont": [
+          "Require players to open separate files or windows manually to access each game.",
+          "Hide games behind non-obvious navigation or multiple layers of menus.",
+          "Force a full restart of the arcade application to switch from one game to another."
+        ]
+      },
+      "commentary": "The arcade should feel like one cohesive product with a central hub, not three unrelated demos stitched together."
+    },
+    {
+      "id": "RUN-001",
+      "assertion": "The arcade must be runnable by a non-technical user via a single obvious entry point on a modern desktop environment, with no additional installation steps.",
+      "examples": {
+        "do": [
+          "Provide one main file or shortcut that a user can open directly to access the arcade home.",
+          "Support running the arcade on a typical modern desktop browser without requiring command-line tools or package managers.",
+          "Assume only common end-user capabilities like double-clicking a file or opening it via a file explorer."
+        ],
+        "dont": [
+          "Require the user to install runtimes, frameworks, or developer tooling before playing.",
+          "Depend on command-line commands, build steps, or environment setup that a non-technical user would not understand.",
+          "Assume the presence of specialized software beyond a standard modern browser."
+        ]
+      },
+      "commentary": "The primary goal is to evaluate the system's engineering, not the user's. The launch experience must be as simple as opening a document."
+    },
+    {
+      "id": "OFFLINE-001",
+      "assertion": "The arcade must be fully functional offline, without any reliance on network connectivity or external services.",
+      "examples": {
+        "do": [
+          "Allow all three games to be played with the device in airplane mode.",
+          "Ensure that best scores and stats are stored and retrieved locally on the user's device.",
+          "Bundle any assets required for the experience within the arcade itself."
+        ],
+        "dont": [
+          "Fetch game logic, assets, or data from remote servers at runtime.",
+          "Require user accounts, logins, or online profiles to access or save progress.",
+          "Break or disable features when internet connectivity is unavailable."
+        ]
+      },
+      "commentary": "This venture is explicitly local-first. External dependencies would undermine both reliability and the evaluation of the system's self-contained engineering."
+    },
+    {
+      "id": "PERSIST-001",
+      "assertion": "The arcade must persist each game's best results and basic play history locally, surviving closure and reopening.",
+      "examples": {
+        "do": [
+          "Remember each game's best score across sessions so that returning tomorrow shows the same best values.",
+          "Track simple per-game stats, such as number of games played or most recent completion time, and surface them in the arcade.",
+          "Handle the absence of prior data gracefully on first run and after a deliberate reset."
+        ],
+        "dont": [
+          "Forget all scores and stats every time the arcade is closed and reopened.",
+          "Rely on cloud storage or remote services to remember player progress.",
+          "Silently fail or crash when previously stored data is missing or malformed."
+        ]
+      },
+      "commentary": "Persisted scores and stats make the arcade feel like a product the player can grow with, and exercise the system's ability to manage local state robustly."
+    },
+    {
+      "id": "UX-001",
+      "assertion": "Every game must clearly communicate its objective, controls, and current status to the player without requiring external documentation.",
+      "examples": {
+        "do": [
+          "Display or provide easy access to a short description of what the player is trying to achieve in Snake, 2048, and Minesweeper.",
+          "Show or expose the basic controls (e.g. which keys or mouse actions are used) in a way that is easy to discover from within the game.",
+          "Continuously display current score and clearly define how a game ends (win or loss state).",
+          "Provide visible options to start a new game or return to the arcade home."
+        ],
+        "dont": [
+          "Expect players to know how to play purely from prior knowledge without any in-product hints.",
+          "Hide controls behind obscure gestures or multi-step menus.",
+          "End games abruptly without indicating why or what the outcome means.",
+          "Require players to read external README files or source code comments to learn how to play."
+        ]
+      },
+      "commentary": "This blueprint tests product sense, not just correctness of code. A human player should be able to understand the experience through the interface itself."
+    },
+    {
+      "id": "SNAKE-001",
+      "assertion": "Snake must be implemented as a continuously progressing game where the player steers a growing entity to collect items and avoid collisions.",
+      "examples": {
+        "do": [
+          "Continuously move the snake over time without requiring the player to trigger each step manually.",
+          "Increase the snake's length and the player's score when an item is collected.",
+          "End the game when the snake hits a boundary or its own body, and clearly show that the run is over.",
+          "Allow the player to quickly start a new run after a game over."
+        ],
+        "dont": [
+          "Turn Snake into a turn-based puzzle where nothing moves unless the player acts.",
+          "Ignore collisions, allowing the snake to overlap itself or pass through boundaries without consequences.",
+          "Hide the score or make it unclear what actions lead to higher scores.",
+          "Force players to navigate back through multiple screens just to try again."
+        ]
+      },
+      "commentary": "Snake should feel like a classic reflex game: simple, responsive, and immediately understandable, while still obeying the familiar rules."
+    },
+    {
+      "id": "GAME2048-001",
+      "assertion": "2048 must be implemented as a deterministic sliding-tile puzzle where tiles of equal value merge and the board eventually fills up.",
+      "examples": {
+        "do": [
+          "Use a fixed-size grid where tiles slide in the chosen direction until they can't move further.",
+          "Merge tiles of equal value when they collide as part of a move, and increase the player's score when this happens.",
+          "Introduce new tiles after valid moves in empty spaces so the grid can eventually fill.",
+          "End the game when there are no valid moves left and clearly show that the board is blocked."
+        ],
+        "dont": [
+          "Change the game into a random tile-clicker that does not respect the 2048 mechanics.",
+          "Allow tiles to move or merge in inconsistent ways that break player expectations.",
+          "Continue the game indefinitely even when no valid moves remain.",
+          "Fail to show the current score and best score for 2048."
+        ]
+      },
+      "commentary": "2048 is a planning and pattern-recognition game. Faithfulness to its core rules is essential to be recognizable and satisfying."
+    },
+    {
+      "id": "MINE-001",
+      "assertion": "Minesweeper must be implemented as a hidden-information logic game where players reveal safe cells and avoid mines using numerical hints.",
+      "examples": {
+        "do": [
+          "Present a grid of covered cells, some of which contain hidden mines.",
+          "Allow the player to reveal cells and to mark suspected mines.",
+          "Show numbers in revealed cells indicating how many neighboring cells contain mines.",
+          "Cascade the reveal of neighboring cells when a safe cell with no adjacent mines is uncovered.",
+          "Treat revealing a mine as an immediate loss and communicate this clearly.",
+          "Treat revealing all non-mine cells as a win and communicate this clearly."
+        ],
+        "dont": [
+          "Reveal mines randomly without giving the player enough information to reason about risk.",
+          "Omit numerical hints, preventing players from using logic to deduce safe cells.",
+          "Allow games to continue after a mine has been revealed without acknowledging the loss.",
+          "Leave the win condition ambiguous or fail to signal when all safe cells are revealed."
+        ]
+      },
+      "commentary": "Minesweeper showcases reasoning over incomplete information. Correct win/loss logic and numerical hints are central to the experience."
+    },
+    {
+      "id": "ROBUST-001",
+      "assertion": "The arcade must handle unexpected or corrupted local state gracefully, preferring clear recovery over crashes or silent failure.",
+      "examples": {
+        "do": [
+          "Detect when previously stored scores or stats are unusable and reset them with a brief explanation or silent safe default.",
+          "Allow the player to reset their progress if something seems wrong with scores or history.",
+          "Keep the arcade and all games playable even if some saved data cannot be read."
+        ],
+        "dont": [
+          "Crash, hang, or become unusable when stored data is missing or malformed.",
+          "Display confusing error messages that a non-technical user cannot act on.",
+          "Silently ignore serious issues while leaving the arcade in an inconsistent or broken state."
+        ]
+      },
+      "commentary": "Real-world environments are messy. The system must show resilience to imperfect local data and prioritize preserving playability."
+    },
+    {
+      "id": "AUTONOMY-001",
+      "assertion": "The system must independently derive the technical design, implement the arcade, and verify its correctness without being given low-level implementation instructions.",
+      "examples": {
+        "do": [
+          "Translate these high-level product requirements into its own internal specification and architecture.",
+          "Choose appropriate technologies, structures, and patterns that respect the constraints (local, offline, single entry point).",
+          "Design and run its own checks or tests to confirm that game rules and scoring behave as intended.",
+          "Adjust its implementation if its own checks reveal errors or inconsistencies."
+        ],
+        "dont": [
+          "Request or rely on external guidance for concrete file layouts, frameworks, or code-level decisions.",
+          "Ignore obvious inconsistencies between the intended game behavior and the actual implementation.",
+          "Treat the blueprint as a suggestion rather than a binding contract for functionality and constraints."
+        ]
+      },
+      "commentary": "This blueprint evaluates the system's ability to go from high-level requirements to a working, tested implementation and internal design without being spoon-fed lower-level instructions."
+    },
+    {
+      "id": "DOCS-001",
+      "assertion": "The arcade must ship with human-readable documentation describing what was built, how to run it, and how each game works.",
+      "examples": {
+        "do": [
+          "Provide a short overview document explaining the purpose of the Local Arcade and listing the included games.",
+          "Explain how a user should start the arcade and what environment they need (e.g. a modern desktop browser).",
+          "Describe the basic rules and objectives of Snake, 2048, and Minesweeper for players who are unfamiliar with them.",
+          "Offer a brief, high-level explanation of how the arcade is structured, in language accessible to technically curious readers."
+        ],
+        "dont": [
+          "Ship only source code with no descriptive documentation.",
+          "Hide all information about how to run or use the arcade inside comments or internal notes.",
+          "Write documentation that contradicts the actual behavior of the arcade or is obviously outdated.",
+          "Rely solely on external links for essential information about running or understanding the arcade."
+        ]
+      },
+      "commentary": "Documentation turns a code artifact into a product. It also reveals the system's ability to reflect on and explain its own work."
+    }
+  ]
+}
+
