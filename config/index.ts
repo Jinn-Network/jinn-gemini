@@ -355,6 +355,33 @@ const devTestingSchema = z.object({
 });
 
 /**
+ * Blueprint builder configuration schema
+ * Controls how the centralized prompt building system operates
+ */
+const blueprintBuilderSchema = z.object({
+  // BLUEPRINT_BUILDER_DEBUG: Enable debug logging for blueprint building
+  BLUEPRINT_BUILDER_DEBUG: z.coerce.boolean().optional(),
+
+  // BLUEPRINT_LOG_PROVIDERS: Log which providers contribute to each blueprint
+  BLUEPRINT_LOG_PROVIDERS: z.coerce.boolean().optional(),
+
+  // BLUEPRINT_ENABLE_SYSTEM: Enable static system assertions from system-blueprint.json
+  BLUEPRINT_ENABLE_SYSTEM: z.coerce.boolean().optional(),
+
+  // BLUEPRINT_ENABLE_CONTEXT_ASSERTIONS: Enable dynamic context-aware assertions
+  BLUEPRINT_ENABLE_CONTEXT_ASSERTIONS: z.coerce.boolean().optional(),
+
+  // BLUEPRINT_ENABLE_RECOGNITION: Enable prescriptive learnings from similar jobs
+  BLUEPRINT_ENABLE_RECOGNITION: z.coerce.boolean().optional(),
+
+  // BLUEPRINT_ENABLE_JOB_CONTEXT: Enable job hierarchy context
+  BLUEPRINT_ENABLE_JOB_CONTEXT: z.coerce.boolean().optional(),
+
+  // BLUEPRINT_ENABLE_PROGRESS: Enable progress checkpoint context
+  BLUEPRINT_ENABLE_PROGRESS: z.coerce.boolean().optional(),
+});
+
+/**
  * Complete configuration schema
  * Combines all domain schemas
  */
@@ -371,6 +398,7 @@ const configSchema = z.object({
   ...jobContextSchema.shape,
   ...gitWorkflowSchema.shape,
   ...devTestingSchema.shape,
+  ...blueprintBuilderSchema.shape,
 });
 
 type ConfigType = z.infer<typeof configSchema>;
@@ -971,4 +999,36 @@ export function getRequiredGitAuthorEmail(): string {
     throw new Error('GIT_AUTHOR_EMAIL is required for agent git operations but not configured');
   }
   return value;
+}
+
+// ============================================================================
+// Public API: Blueprint Builder Configuration
+// ============================================================================
+
+export function getBlueprintBuilderDebug(): boolean {
+  return getConfig().BLUEPRINT_BUILDER_DEBUG ?? false;
+}
+
+export function getBlueprintLogProviders(): boolean {
+  return getConfig().BLUEPRINT_LOG_PROVIDERS ?? false;
+}
+
+export function getBlueprintEnableSystem(): boolean {
+  return getConfig().BLUEPRINT_ENABLE_SYSTEM ?? true;
+}
+
+export function getBlueprintEnableContextAssertions(): boolean {
+  return getConfig().BLUEPRINT_ENABLE_CONTEXT_ASSERTIONS ?? true;
+}
+
+export function getBlueprintEnableRecognition(): boolean {
+  return getConfig().BLUEPRINT_ENABLE_RECOGNITION ?? true;
+}
+
+export function getBlueprintEnableJobContext(): boolean {
+  return getConfig().BLUEPRINT_ENABLE_JOB_CONTEXT ?? true;
+}
+
+export function getBlueprintEnableProgress(): boolean {
+  return getConfig().BLUEPRINT_ENABLE_PROGRESS ?? true;
 }

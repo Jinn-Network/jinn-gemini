@@ -25,6 +25,88 @@ export interface ExecutionSummaryDetails {
 }
 
 /**
+ * Job in the hierarchy (from additionalContext.hierarchy array)
+ */
+export interface HierarchyJob {
+  id?: string;
+  requestId?: string;
+  name?: string;
+  jobName?: string;
+  level?: number;
+  status?: 'completed' | 'active' | 'failed' | 'delivered' | 'success' | 'error';
+  jobId?: string;
+  sourceJobDefinitionId?: string;
+  summary?: string;
+  deliverySummary?: string;
+  artifactRefs?: Array<{
+    name?: string;
+    topic?: string;
+    cid: string;
+    id?: string;
+    type?: string;
+  }>;
+  requestIds?: string[];
+}
+
+/**
+ * Aggregated summary of job hierarchy
+ */
+export interface HierarchySummary {
+  totalJobs: number;
+  completedJobs: number;
+  activeJobs: number;
+  totalArtifacts?: number;
+  hasErrors?: boolean;
+}
+
+/**
+ * Work Protocol message structure
+ */
+export interface WorkProtocolMessage {
+  content: string;
+  to?: string;
+  from?: string;
+}
+
+/**
+ * Completed child run tracking for deterministic context
+ */
+export interface CompletedChildRun {
+  artifacts?: Array<{
+    cid?: string;
+    id?: string;
+  }>;
+}
+
+/**
+ * Additional context structure attached to IPFS metadata
+ * Contains job hierarchy, messages, and legacy compatibility fields
+ */
+export interface AdditionalContext {
+  /** Work Protocol messaging */
+  message?: WorkProtocolMessage | string;
+
+  /** Job hierarchy information */
+  hierarchy?: HierarchyJob[];
+
+  /** Aggregated summary of job hierarchy */
+  summary?: HierarchySummary;
+
+  /** Backward compatibility: blueprint stored in additionalContext (prefer root-level) */
+  blueprint?: string;
+
+  /** Backward compatibility: dependencies stored here (prefer root-level) */
+  dependencies?: string[];
+
+  /** Additional context from parent jobs */
+  objective?: string;
+  acceptanceCriteria?: string;
+
+  /** Completed child run tracking */
+  completedChildRuns?: CompletedChildRun[];
+}
+
+/**
  * Unclaimed request from Ponder/on-chain
  */
 export interface UnclaimedRequest {
@@ -47,7 +129,7 @@ export interface IpfsMetadata {
   sourceRequestId?: string;
   sourceJobDefinitionId?: string;
   workstreamId?: string;  // ID of the root job in the hierarchy
-  additionalContext?: any;
+  additionalContext?: AdditionalContext;
   lineage?: {
     dispatcherRequestId?: string;
     dispatcherJobDefinitionId?: string;

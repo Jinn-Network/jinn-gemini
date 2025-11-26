@@ -4,10 +4,10 @@
 
 import { Agent } from '../../gemini-agent/agent.js';
 import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
-import { buildEnhancedPrompt } from '../metadata/prompt.js';
+import { createBlueprintBuilder } from '../prompt/index.js';
 import { setJobContext, clearJobContext, snapshotJobContext, restoreJobContext } from '../metadata/jobContext.js';
 import { didDispatchChild } from '../status/dispatchUtils.js';
-import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult } from '../types.js';
+import type { UnclaimedRequest, IpfsMetadata, AdditionalContext, AgentExecutionResult } from '../types.js';
 
 /**
  * Execution context for agent run
@@ -24,8 +24,8 @@ export interface ExecutionContext {
  * The Agent class computes MCP include/exclude lists and CLI whitelists
  * based on the enabledTools passed here, ensuring consistency across the system.
  */
-function extractCompletedChildRequestIds(additionalContext: any): string[] {
-  if (!additionalContext || typeof additionalContext !== 'object') {
+function extractCompletedChildRequestIds(additionalContext: AdditionalContext | undefined): string[] {
+  if (!additionalContext) {
     return [];
   }
   const hierarchy = Array.isArray(additionalContext.hierarchy)
@@ -33,10 +33,10 @@ function extractCompletedChildRequestIds(additionalContext: any): string[] {
     : [];
   const ids = new Set<string>();
   hierarchy
-    .filter((job: any) => job && job.level > 0 && job.status === 'completed')
-    .forEach((job: any) => {
+    .filter((job) => job && job.level && job.level > 0 && job.status === 'completed')
+    .forEach((job) => {
       if (Array.isArray(job.requestIds)) {
-        job.requestIds.forEach((id: any) => {
+        job.requestIds.forEach((id) => {
           if (typeof id === 'string' && id.length > 0) {
             ids.add(id);
           }
@@ -73,12 +73,10 @@ export async function runAgentForRequest(
     codeWorkspace
   );
 
-  // Build enhanced prompt from blueprint and context
-  // Fallback to generic prompt if no blueprint exists (shouldn't happen in normal flow)
-  const prompt = buildEnhancedPrompt(
-    metadata,
-    `Process request ${request.id} for mech ${request.mech}`
-  );
+  // Build unified prompt from BlueprintBuilder
+  // Recognition is attached to metadata.recognition by jobRunner before calling this
+  const blueprintBuilder = createBlueprintBuilder();
+  const prompt = await blueprintBuilder.buildPrompt(request.id, metadata, metadata.recognition);
 
   // Snapshot and set job context for downstream tools
   const prevContext = snapshotJobContext();

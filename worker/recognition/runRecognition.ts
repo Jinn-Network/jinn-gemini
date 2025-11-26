@@ -37,7 +37,8 @@ export async function runRecognitionPhase(
   telemetry?: WorkerTelemetryService
 ): Promise<RecognitionPhaseResult> {
   const sections = extractPromptSections(metadata?.blueprint);
-  const parentMessage = metadata?.additionalContext?.message?.content || metadata?.additionalContext?.message;
+  const message = metadata?.additionalContext?.message;
+  const parentMessage = typeof message === 'string' ? message : message?.content;
 
   const jobOverviewLines = [
     `Request ID: ${requestId}`,

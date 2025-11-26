@@ -4,5 +4,4 @@
 
 export * from './fetchIpfsMetadata.js';
 export * from './jobContext.js';
-export * from './prompt.js';
 
