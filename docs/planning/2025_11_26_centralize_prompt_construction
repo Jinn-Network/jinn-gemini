@@ -1,0 +1,319 @@
+# JINN-266: Centralized Prompt Building with Homomorphic System Blueprint
+
+## Overview
+
+Replace the fragmented prompt building system with a **unified blueprint** architecture where:
+1. GEMINI.md is replaced by a **System Blueprint** (assertions format)
+2. Instructions use homomorphic assertion format; context uses structured data
+3. **Context-aware assertions** dynamically embed specific context values
+4. The final "prompt" IS a unified blueprint with `assertions` + `context` sections
+
+## Core Principle
+
+The agent receives a unified blueprint with two sections:
+
+**Assertions** (instructions with embedded context where applicable):
+- **System assertions** (`system`): Protocol, identity, behavioral rules
+- **Context assertions** (`context`): Dynamic assertions that embed specific context data
+- **Recognition assertions** (`recognition`): Prescriptive learnings from similar jobs
+- **Job assertions** (`job`): Work requirements
+
+**Context** (structured reference data):
+- `hierarchy`: Job tree, children, parent relationships
+- `progress`: What was done in prior runs
+- `artifacts`: Available data with CIDs
+
+## Key Innovation: Context-Aware Assertions
+
+Instead of generic rules like "review context.hierarchy.children", we generate **dynamic assertions with embedded context**:
+
+```json
+// Static system assertion (generic rule)
+{
+  "id": "SYS-PROTOCOL-001",
+  "category": "system",
+  "assertion": "I follow the three-phase Work Protocol: Contextualize → Execute & Delegate → Report",
+  "examples": { "do": [...], "dont": [...] },
+  "commentary": "..."
+}
+
+// Dynamic context-aware assertion (specific to this job)
+{
+  "id": "CTX-CHILDREN-001",
+  "category": "context",
+  "assertion": "You MUST review and incorporate work from these completed child jobs: 'data-fetch' (Fetched 100 Ethereum protocol records)",
+  "examples": {
+    "do": ["Read the data-fetch output before proceeding", "Build upon the fetched records"],
+    "dont": ["Re-fetch the same data", "Ignore the child's work"]
+  },
+  "commentary": "Child job 0x456 completed successfully"
+}
+```
+
+## Type Definitions
+
+```typescript
+// Categories for assertions
+type AssertionCategory = 'system' | 'context' | 'recognition' | 'job';
+
+// Assertion: an instruction, rule, or requirement
+interface BlueprintAssertion {
+  id: string;
+  category: AssertionCategory;
+  assertion: string;
+  examples: { do: string[]; dont: string[] };
+  commentary: string;
+}
+
+// Context: structured reference data
+interface BlueprintContext {
+  hierarchy?: {
+    totalJobs: number;
+    completedJobs: number;
+    activeJobs: number;
+    children: Array<{
+      requestId: string;
+      jobName?: string;
+      status: 'COMPLETED' | 'ACTIVE' | 'FAILED';
+      summary?: string;
+    }>;
+  };
+  progress?: {
+    summary: string;
+    completedPhases?: string[];
+  };
+  artifacts?: Array<{
+    name: string;
+    cid: string;
+    type?: string;
+  }>;
+}
+
+// The unified blueprint
+interface UnifiedBlueprint {
+  assertions: BlueprintAssertion[];
+  context: BlueprintContext;
+  metadata: {
+    generatedAt: string;
+    requestId: string;
+    providers: string[];
+  };
+}
+```
+
+## Provider Architecture
+
+Two-phase execution ensures context-aware assertions have access to built context:
+
+```typescript
+// Phase 1: Context providers run first
+interface ContextProvider {
+  name: string;
+  enabled: (config: BlueprintBuilderConfig) => boolean;
+  provide: (ctx: BuildContext) => Promise<Partial<BlueprintContext>>;
+}
+
+// Phase 2: Assertion providers run second (with access to built context)
+interface AssertionProvider {
+  name: string;
+  category: AssertionCategory;
+  enabled: (config: BlueprintBuilderConfig) => boolean;
+  provide: (ctx: BuildContext, builtContext: BlueprintContext) => Promise<BlueprintAssertion[]>;
+}
+```
+
+## BlueprintBuilder
+
+```typescript
+class BlueprintBuilder {
+  private contextProviders: ContextProvider[] = [];
+  private assertionProviders: AssertionProvider[] = [];
+
+  async build(ctx: BuildContext): Promise<UnifiedBlueprint> {
+    // Phase 1: Build context first
+    const context: BlueprintContext = {};
+    for (const provider of this.contextProviders) {
+      if (!provider.enabled(this.config)) continue;
+      Object.assign(context, await provider.provide(ctx));
+    }
+
+    // Phase 2: Build assertions with access to context
+    const assertions: BlueprintAssertion[] = [];
+    for (const provider of this.assertionProviders) {
+      if (!provider.enabled(this.config)) continue;
+      assertions.push(...await provider.provide(ctx, context));
+    }
+
+    return { assertions, context, metadata: {...} };
+  }
+}
+```
+
+## Built-in Providers
+
+**Context Providers** (Phase 1):
+| Provider | Output |
+|----------|--------|
+| JobContextProvider | `context.hierarchy`, `context.artifacts` |
+| ProgressCheckpointProvider | `context.progress` |
+
+**Assertion Providers** (Phase 2):
+| Provider | Category | Output |
+|----------|----------|--------|
+| SystemBlueprintProvider | system | Static protocol assertions from system-blueprint.json |
+| ChildWorkAssertionProvider | context | Dynamic assertions for each completed child |
+| ProgressAssertionProvider | context | Dynamic assertions about prior work |
+| ArtifactAssertionProvider | context | Dynamic assertions about available artifacts |
+| RecognitionProvider | recognition | Prescriptive learnings |
+| JobBlueprintProvider | job | Job-specific requirements |
+
+## Example: Final Unified Blueprint
+
+```json
+{
+  "assertions": [
+    // Static system assertions
+    { "id": "SYS-IDENTITY-001", "category": "system", "assertion": "I am a Jinn agent...", "examples": {...}, "commentary": "..." },
+    { "id": "SYS-PROTOCOL-001", "category": "system", "assertion": "I follow the Work Protocol...", "examples": {...}, "commentary": "..." },
+
+    // Dynamic context-aware assertions (generated from context data)
+    {
+      "id": "CTX-CHILD-001",
+      "category": "context",
+      "assertion": "You MUST review completed child 'data-fetch': Fetched 100 Ethereum protocol records",
+      "examples": {
+        "do": ["Build upon the fetched records", "Reference data-fetch outputs"],
+        "dont": ["Re-fetch the same data"]
+      },
+      "commentary": "Child job 0x456 completed successfully"
+    },
+    {
+      "id": "CTX-PROGRESS-001",
+      "category": "context",
+      "assertion": "Prior run completed data-collection phase. You MUST NOT repeat this work.",
+      "examples": {
+        "do": ["Continue from analysis phase"],
+        "dont": ["Re-run data collection"]
+      },
+      "commentary": "Historical progress from workstream"
+    },
+    {
+      "id": "CTX-ARTIFACT-001",
+      "category": "context",
+      "assertion": "Artifact 'research-data' (QmXyz...) is available. Use it instead of regenerating.",
+      "examples": {
+        "do": ["Fetch artifact via CID"],
+        "dont": ["Regenerate the same data"]
+      },
+      "commentary": "Available from prior job execution"
+    },
+
+    // Recognition assertions
+    { "id": "REC-001", "category": "recognition", "assertion": "Use exponential backoff for API calls...", "examples": {...}, "commentary": "..." },
+
+    // Job assertions
+    { "id": "DATA-001", "category": "job", "assertion": "Research must use authoritative sources...", "examples": {...}, "commentary": "..." }
+  ],
+
+  "context": {
+    "hierarchy": {
+      "totalJobs": 5,
+      "completedJobs": 2,
+      "children": [
+        { "requestId": "0x456", "jobName": "data-fetch", "status": "COMPLETED", "summary": "Fetched 100 records" }
+      ]
+    },
+    "progress": {
+      "summary": "Prior run completed data-collection phase",
+      "completedPhases": ["data-collection"]
+    },
+    "artifacts": [
+      { "name": "research-data", "cid": "QmXyz...", "type": "json" }
+    ]
+  },
+
+  "metadata": {
+    "generatedAt": "2025-01-15T10:30:00Z",
+    "requestId": "0x123abc",
+    "providers": ["job-context", "progress-checkpoint", "system-blueprint", "child-work-assertions", "progress-assertions", "job-blueprint"]
+  }
+}
+```
+
+## Files to Create
+
+```
+worker/prompt/
+├── types.ts
+├── config.ts
+├── BlueprintBuilder.ts
+├── system-blueprint.json
+├── index.ts
+└── providers/
+    ├── context/
+    │   ├── JobContextProvider.ts
+    │   └── ProgressCheckpointProvider.ts
+    └── assertions/
+        ├── SystemBlueprintProvider.ts      # Static system assertions
+        ├── ChildWorkAssertionProvider.ts   # Dynamic: "You MUST review child X"
+        ├── ProgressAssertionProvider.ts    # Dynamic: "Prior run completed X"
+        ├── ArtifactAssertionProvider.ts    # Dynamic: "Artifact X available"
+        ├── RecognitionProvider.ts
+        └── JobBlueprintProvider.ts
+```
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `worker/execution/runAgent.ts` | Use BlueprintBuilder.buildPrompt() |
+| `worker/orchestration/jobRunner.ts` | Pass recognition to builder |
+| `worker/metadata/prompt.ts` | Deprecate buildEnhancedPrompt |
+| `worker/recognition/telemetryAugment.ts` | Deprecate augmentPromptWithRecognition |
+| `worker/git/repoManager.ts` | Remove copyGeminiMdToRepo() |
+
+## Files to Delete
+
+- `gemini-agent/GEMINI.md` - Replaced by system-blueprint.json
+
+## Implementation Steps
+
+### Phase 1: Core Infrastructure
+1. Create types.ts with BlueprintAssertion, BlueprintContext, provider interfaces
+2. Create config.ts with BlueprintBuilderConfig
+3. Create BlueprintBuilder.ts with two-phase execution
+4. Create index.ts exports
+
+### Phase 2: Context Providers
+5. Create JobContextProvider - outputs hierarchy and artifacts
+6. Create ProgressCheckpointProvider - outputs progress
+
+### Phase 3: Static Assertion Providers
+7. Create system-blueprint.json with static system assertions
+8. Create SystemBlueprintProvider - loads static assertions
+9. Create JobBlueprintProvider - passes through job assertions
+10. Create RecognitionProvider - prescriptive learnings
+
+### Phase 4: Dynamic Context-Aware Assertion Providers
+11. Create ChildWorkAssertionProvider - generates assertions per completed child
+12. Create ProgressAssertionProvider - generates assertions from progress data
+13. Create ArtifactAssertionProvider - generates assertions for available artifacts
+
+### Phase 5: Integration
+14. Update runAgentForRequest() to use BlueprintBuilder
+15. Update jobRunner.ts to pass recognition to builder
+16. Remove copyGeminiMdToRepo() from repoManager.ts
+
+### Phase 6: Cleanup
+17. Deprecate old functions
+18. Write tests
+19. Delete gemini-agent/GEMINI.md
+
+## Benefits
+
+1. **Self-Contained Instructions**: Context-aware assertions include the specific data, making them actionable
+2. **Clean Separation**: Structured context still available for querying, assertions for instructions
+3. **Homomorphic Format**: All assertions (static and dynamic) share the same structure
+4. **Traceability**: Each assertion has id, category - trace any instruction to its source
+5. **Configurability**: Enable/disable providers independently
+6. **Debuggability**: metadata.providers shows what contributed

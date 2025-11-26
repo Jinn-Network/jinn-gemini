@@ -57,12 +57,17 @@ async function main() {
 
     try {
         const blueprint = await loadBlueprint('prediction-market-fund.json');
+        const message = process.argv[2];
 
         console.log('\n📋 Dispatching initial job...');
+        if (message) {
+            console.log(`   Message: "${message}"`);
+        }
 
         const result = await dispatchNewJob({
             jobName: 'prediction-market-fund-initial',
             blueprint,
+            message,
             model: 'gemini-2.5-pro',
             enabledTools: [
                 'web_search',

@@ -33,7 +33,11 @@ export const UNIVERSAL_TOOLS = [
   'read_file',
   'search_file_content',
   'glob',
-  'read_many_files'
+  'read_many_files',
+  // Write/coding tools (always available)
+  'write_file',
+  'replace',
+  'run_shell_command'
 ] as const;
 
 /**

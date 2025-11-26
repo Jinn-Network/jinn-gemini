@@ -40,6 +40,108 @@ const CORE_CLI_TOOLS: ToolInfo[] = [
       'Search for specific information: {"query": "best practices for TypeScript error handling"}'
     ]
   },
+  {
+    name: 'list_directory',
+    description: 'Lists the contents of a directory.',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The path to the directory to list.',
+        required: true
+      }
+    }
+  },
+  {
+    name: 'read_file',
+    description: 'Reads the content of a file.',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The path to the file to read.',
+        required: true
+      }
+    }
+  },
+  {
+    name: 'write_file',
+    description: 'Writes content to a file.',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The path to the file to write.',
+        required: true
+      },
+      content: {
+        type: 'string',
+        description: 'The content to write to the file.',
+        required: true
+      }
+    }
+  },
+  {
+    name: 'search_file_content',
+    description: 'Searches for a pattern in a file.',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The path to the file to search.',
+        required: true
+      },
+      pattern: {
+        type: 'string',
+        description: 'The pattern to search for.',
+        required: true
+      }
+    }
+  },
+  {
+    name: 'glob',
+    description: 'Finds files matching a glob pattern.',
+    parameters: {
+      pattern: {
+        type: 'string',
+        description: 'The glob pattern to match.',
+        required: true
+      },
+      path: {
+        type: 'string',
+        description: 'The root path to start searching from.',
+        required: false
+      }
+    }
+  },
+  {
+    name: 'replace',
+    description: 'Replaces content in a file.',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The path to the file.',
+        required: true
+      },
+      pattern: {
+        type: 'string',
+        description: 'The pattern to replace.',
+        required: true
+      },
+      replacement: {
+        type: 'string',
+        description: 'The replacement text.',
+        required: true
+      }
+    }
+  },
+  {
+    name: 'run_shell_command',
+    description: 'Runs a shell command.',
+    parameters: {
+      command: {
+        type: 'string',
+        description: 'The shell command to run.',
+        required: true
+      }
+    }
+  }
 ];
 
 export const listToolsParams = z.object({
