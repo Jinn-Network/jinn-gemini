@@ -107,7 +107,7 @@ describe('JobDefinitionsTable', () => {
     it('displays dash when enabledTools is null', () => {
       const records = [
         createMockJobDefinition({
-          enabledTools: null as any,
+          enabledTools: null as unknown as string[],
         }),
       ];
 

@@ -7,7 +7,7 @@ import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import { RequestsTable } from './requests-table'
 import { RequestsTableSkeleton } from './loading-skeleton'
-import { getRequest, queryRequests, type Request } from '@/lib/subgraph'
+import { queryRequests, type Request } from '@/lib/subgraph'
 import { StatusIcon } from '@/components/status-icon'
 
 interface JobDefinition {

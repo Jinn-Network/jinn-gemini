@@ -102,7 +102,7 @@ function ParentDispatchIndicator({
         </span>
       </div>
       <p className="text-sm text-blue-700">
-        This job's <Badge variant="outline" className="mx-1">{jobStatus}</Badge> status triggered parent job{' '}
+        This job&apos;s <Badge variant="outline" className="mx-1">{jobStatus}</Badge> status triggered parent job{' '}
         {parentJobDef && (
           <Link 
             href={`/job-definitions/${sourceJobDefinitionId}`} 
@@ -119,7 +119,7 @@ function ParentDispatchIndicator({
               href={`/requests/${newParentRequestId}`}
               className="font-medium underline hover:text-blue-900"
             >
-              View parent's new run →
+              View parent&apos;s new run →
             </Link>
           </>
         )}
@@ -140,7 +140,15 @@ function ParentReRunField({
   sourceJobDefinitionId: string | null
   jobStatus: string | null
   delivered: boolean
-  workerTelemetry: any
+  workerTelemetry: {
+    events?: Array<{
+      phase?: string
+      event?: string
+      metadata?: {
+        newRequestId?: string
+      }
+    }>
+  } | null
 }) {
   const [newRequestId, setNewRequestId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -169,7 +177,7 @@ function ParentReRunField({
         // First, try to get newRequestId from worker telemetry (most reliable)
         if (workerTelemetry?.events) {
           const dispatchSuccessEvent = workerTelemetry.events.find(
-            (e: any) => e.phase === 'parent_dispatch' && e.event === 'dispatch_success'
+            (e) => e.phase === 'parent_dispatch' && e.event === 'dispatch_success'
           )
           if (dispatchSuccessEvent?.metadata?.newRequestId) {
             setNewRequestId(dispatchSuccessEvent.metadata.newRequestId)
@@ -434,9 +442,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
   // Get workstream ID from Ponder (already indexed and computed)
   useEffect(() => {
     setLoadingWorkstream(true)
+    const requestRecord = record
     // Use the workstreamId field from the request if available
-    if ('workstreamId' in record && record.workstreamId) {
-      setWorkstreamId(record.workstreamId as string)
+    if ('workstreamId' in requestRecord && requestRecord.workstreamId) {
+      setWorkstreamId(requestRecord.workstreamId as string)
+      setLoadingWorkstream(false)
     } else {
       // Fallback to own ID if workstreamId not available (shouldn't happen)
       setWorkstreamId(record.id)
@@ -1080,7 +1090,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                       <ParentDispatchIndicator 
                         requestId={record.id}
                         sourceJobDefinitionId={record.sourceJobDefinitionId || null}
-                        jobStatus={deliveryData?.finalStatus?.status || null}
+                        jobStatus={executionData?.status || null}
                       />
                     </>
                   ) : (

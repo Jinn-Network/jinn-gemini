@@ -39,7 +39,7 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
   const briefing = await getWorkstreamArtifact(workstreamId, 'launcher_briefing')
   
   // Fetch briefing content from IPFS if available
-  let briefingWithContent = briefing
+  let briefingWithContent: (typeof briefing & { content?: string }) | null = briefing
   if (briefing?.cid) {
     const ipfsContent = await fetchIpfsContent(briefing.cid)
     if (ipfsContent) {
@@ -54,6 +54,7 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
   const jobDefinitionMap = new Map<string, {
     id: string
     name: string
+    enabledTools: string[]
     lastInteraction: string
     lastStatus: string
     runCount: number
@@ -74,6 +75,7 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
         jobDefinitionMap.set(job.jobDefinitionId, {
           id: job.jobDefinitionId,
           name: jobDef?.name || job.jobName || 'Unnamed Job',
+          enabledTools: jobDef?.enabledTools || [],
           lastInteraction: job.blockTimestamp,
           lastStatus: jobDef?.lastStatus || (job.delivered ? 'COMPLETED' : 'PENDING'),
           runCount: 1
@@ -85,6 +87,7 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
   // Convert to array for table display
   const uniqueJobDefinitions = Array.from(jobDefinitionMap.values()).map(def => ({
     id: def.id,
+    enabledTools: def.enabledTools,
     name: def.name,
     lastInteraction: def.lastInteraction,
     lastStatus: def.lastStatus,
@@ -101,19 +104,19 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
     })
   }
 
-  const formatRelativeTime = (timestamp: string) => {
-    const date = new Date(Number(timestamp) * 1000)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMins / 60)
-    const diffDays = Math.floor(diffHours / 24)
-
-    if (diffMins < 1) return 'just now'
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    return `${diffDays}d ago`
-  }
+  // const formatRelativeTime = (timestamp: string) => {
+  //   const date = new Date(Number(timestamp) * 1000)
+  //   const now = new Date()
+  //   const diffMs = now.getTime() - date.getTime()
+  //   const diffMins = Math.floor(diffMs / 60000)
+  //   const diffHours = Math.floor(diffMins / 60)
+  //   const diffDays = Math.floor(diffHours / 24)
+  //
+  //   if (diffMins < 1) return 'just now'
+  //   if (diffMins < 60) return `${diffMins}m ago`
+  //   if (diffHours < 24) return `${diffHours}h ago`
+  //   return `${diffDays}d ago`
+  // }
 
   return (
     <div className="space-y-6">

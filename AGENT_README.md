@@ -2303,10 +2303,10 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - Added schema fields: `deliveryMech`, `deliveryTxHash`, `deliveryBlockNumber`, `deliveryBlockTimestamp`
 - Syncs Ponder's `delivered` status with marketplace truth, regardless of which mech won
 
-**Part 3: Colleague Mech Telemetry (Optional)**
-- Added `OlasMechColleague` contract tracking in Ponder config (`0xe535D7AcDEeD905dddcb5443f41980436833cA2B`)
-- Duplicated `OlasMech:Deliver` handler for colleague's mech to index their deliveries and artifacts
-- Provides richer telemetry on competing mech activity without requiring marketplace handler
+**Part 3: Clean Separation of Concerns**
+- Ponder ONLY indexes requests for OUR mech (filtered by `mech` field in MarketplaceRequest)
+- MarketplaceDelivery handler tracks when ANY mech delivers via `deliveryMech` field
+- Frontend shows OUR requests with accurate delivery status, no pollution from colleague mechs
 
 **Impact**: 
 - Workers stop selecting requests after marketplace marks them delivered (any mech)

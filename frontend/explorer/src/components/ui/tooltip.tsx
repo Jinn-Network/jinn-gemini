@@ -36,7 +36,7 @@ export function Tooltip({ children }: TooltipProps) {
   )
 }
 
-export function TooltipTrigger({ children, asChild }: TooltipTriggerProps) {
+export function TooltipTrigger({ children }: TooltipTriggerProps) {
   const { setIsOpen } = React.useContext(TooltipContext)
   
   return (

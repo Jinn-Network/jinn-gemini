@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { buildJobGraph, JobGraph, GraphQueryOptions, consolidateByJobDefinition } from '@/lib/graph-queries'
+import { buildJobGraph, JobGraph, GraphQueryOptions } from '@/lib/graph-queries'
 import { Node, Edge } from 'reactflow'
 import { layoutGraph } from '@/lib/graph-layout'
 import { toast } from 'sonner'

@@ -135,7 +135,7 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
   const cid = 'cid' in record ? record.cid : null
   const requestId = 'requestId' in record ? record.requestId : null
   const blockTimestamp = 'blockTimestamp' in record ? record.blockTimestamp : null
-  const contentPreview = 'contentPreview' in record ? record.contentPreview : null
+  // const contentPreview = 'contentPreview' in record ? record.contentPreview : null
   
   // DB-specific fields
   const status = 'status' in record ? record.status : null
@@ -212,7 +212,7 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
                   </div>
                   <div className="text-sm">
                     {/* Special handling for thread_id */}
-                    {key === 'thread_id' && value ? (
+                    {key === 'thread_id' && value && typeof value === 'string' ? (
                       <IdLink id={value} fieldName="thread_id" />
                     ) : /* Special handling for different data types */
                     typeof value === 'boolean' ? (

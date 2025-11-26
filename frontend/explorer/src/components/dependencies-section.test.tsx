@@ -18,7 +18,7 @@ vi.mock('@/lib/subgraph', () => ({
 
 // Mock next/link
 vi.mock('next/link', () => ({
-  default: ({ children, href }: any) => <a href={href}>{children}</a>,
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 describe('DependenciesSection', () => {
@@ -28,8 +28,8 @@ describe('DependenciesSection', () => {
 
   describe('Loading state', () => {
     it('shows loading message while fetching data', () => {
-      (getDependencyInfo as any).mockImplementation(() => new Promise(() => {})); // Never resolves
-      (getDependents as any).mockImplementation(() => new Promise(() => {}));
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise(() => {})); // Never resolves
+      (getDependents as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise(() => {}));
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={['dep-1']} />);
 
@@ -39,8 +39,8 @@ describe('DependenciesSection', () => {
 
   describe('Empty state', () => {
     it('shows "No dependencies" message when no dependencies exist', async () => {
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue([]);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
 
@@ -70,8 +70,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
-      (getDependents as any).mockResolvedValue([]);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={['job-def-1', 'job-def-2']} />);
 
@@ -106,8 +106,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
-      (getDependents as any).mockResolvedValue([]);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       render(
         <DependenciesSection
@@ -141,8 +141,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
-      (getDependents as any).mockResolvedValue([]);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={['job-def-123']} />);
 
@@ -164,14 +164,14 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
-      (getDependents as any).mockResolvedValue([]);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={['job-def-1']} />);
 
       await waitFor(() => {
         expect(
-          screen.getByText((content, element) =>
+          screen.getByText((content) =>
             content.includes('Job will execute only when all requests and child jobs')
           )
         ).toBeInTheDocument();
@@ -188,8 +188,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
-      (getDependents as any).mockResolvedValue([]);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={['job-def-1']} />);
 
@@ -216,8 +216,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue(mockDependents);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependents);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
 
@@ -240,8 +240,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue(mockDependents);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependents);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
 
@@ -266,8 +266,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue(mockDependents);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependents);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
 
@@ -289,8 +289,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue(mockDependents);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependents);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
 
@@ -312,8 +312,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue(mockDependents);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependents);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
 
@@ -332,8 +332,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue(mockDependents);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependents);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
 
@@ -363,8 +363,8 @@ describe('DependenciesSection', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
-      (getDependents as any).mockResolvedValue(mockDependents);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependents);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={['job-def-1']} />);
 
@@ -380,8 +380,8 @@ describe('DependenciesSection', () => {
 
   describe('Error handling', () => {
     it('handles API errors gracefully', async () => {
-      (getDependencyInfo as any).mockRejectedValue(new Error('API error'));
-      (getDependents as any).mockRejectedValue(new Error('API error'));
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API error'));
+      (getDependents as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API error'));
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={['dep-1']} />);
@@ -397,8 +397,8 @@ describe('DependenciesSection', () => {
 
   describe('API call behavior', () => {
     it('calls getDependencyInfo only when dependencies exist', async () => {
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue([]);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       // No dependencies
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
@@ -420,8 +420,8 @@ describe('DependenciesSection', () => {
     });
 
     it('always calls getDependents', async () => {
-      (getDependencyInfo as any).mockResolvedValue([]);
-      (getDependents as any).mockResolvedValue([]);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getDependents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       render(<DependenciesSection requestId="0xRequest1" dependencies={[]} />);
 
@@ -433,13 +433,13 @@ describe('DependenciesSection', () => {
     it('calls both APIs in parallel', async () => {
       const startTimes: number[] = [];
 
-      (getDependencyInfo as any).mockImplementation(async () => {
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockImplementation(async () => {
         startTimes.push(Date.now());
         await new Promise((resolve) => setTimeout(resolve, 10));
         return [];
       });
 
-      (getDependents as any).mockImplementation(async () => {
+      (getDependents as ReturnType<typeof vi.fn>).mockImplementation(async () => {
         startTimes.push(Date.now());
         await new Promise((resolve) => setTimeout(resolve, 10));
         return [];

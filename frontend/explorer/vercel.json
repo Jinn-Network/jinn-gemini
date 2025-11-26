@@ -1,0 +1,10 @@
+{
+  "buildCommand": "yarn build",
+  "outputDirectory": ".next",
+  "installCommand": "yarn install",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_SUBGRAPH_URL": "https://jinn-gemini-production.up.railway.app/graphql"
+  }
+}
+

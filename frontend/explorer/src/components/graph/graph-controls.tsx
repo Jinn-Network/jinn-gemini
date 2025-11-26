@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { ArrowUp, ArrowDown, ArrowLeftRight, ArrowUpDown, RefreshCw } from 'lucide-react'
+import { ArrowLeftRight, ArrowUpDown, RefreshCw } from 'lucide-react'
 
 interface GraphControlsProps {
   onZoomIn: () => void

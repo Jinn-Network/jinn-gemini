@@ -18,7 +18,7 @@ vi.mock('@/lib/subgraph', () => ({
 
 // Mock next/link
 vi.mock('next/link', () => ({
-  default: ({ children, href }: any) => <a href={href}>{children}</a>,
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 // Mock utils
@@ -101,7 +101,7 @@ describe('RequestsTable', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
 
       const records: SubgraphRecord[] = [
         {
@@ -161,7 +161,7 @@ describe('RequestsTable', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
 
       const records: SubgraphRecord[] = [
         {
@@ -198,7 +198,7 @@ describe('RequestsTable', () => {
 
     it('shows loading state while fetching dependency info', async () => {
       // Mock a delayed response
-      (getDependencyInfo as any).mockImplementation(
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockImplementation(
         () => new Promise((resolve) => setTimeout(() => resolve([]), 100))
       );
 
@@ -236,7 +236,7 @@ describe('RequestsTable', () => {
         status: i < 3 ? 'completed' : 'pending',
       }));
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
 
       const records: SubgraphRecord[] = [
         {
@@ -280,7 +280,7 @@ describe('RequestsTable', () => {
         },
       ];
 
-      (getDependencyInfo as any).mockResolvedValue(mockDependencyInfo);
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockResolvedValue(mockDependencyInfo);
 
       const records: SubgraphRecord[] = [
         {
@@ -315,7 +315,7 @@ describe('RequestsTable', () => {
     });
 
     it('handles API errors gracefully', async () => {
-      (getDependencyInfo as any).mockRejectedValue(new Error('API error'));
+      (getDependencyInfo as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API error'));
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const records: SubgraphRecord[] = [

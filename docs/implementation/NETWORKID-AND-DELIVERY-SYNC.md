@@ -56,18 +56,19 @@ Workers were repeatedly attempting to deliver requests that had already been del
 - `ponder/ponder.schema.ts` - Added delivery tracking fields
 - `ponder/src/index.ts` - Added MarketplaceDelivery handler
 
-### Part 3: Colleague Mech Telemetry (Optional)
+### Part 3: Clean Separation of Concerns
 
-**Objective**: Index deliveries from competing mechs for richer telemetry.
+**Objective**: Keep Ponder focused on OUR mech's requests only.
 
 **Implementation**:
-- Added `OlasMechColleague` contract to Ponder config (`0xe535D7AcDEeD905dddcb5443f41980436833cA2B`)
-- Duplicated `OlasMech:Deliver` handler for colleague's mech
-- Indexes artifacts, job definitions, and SITUATION embeddings from colleague deliveries
+- Ponder only indexes requests for OUR mech (via `mech` field filter in MarketplaceRequest)
+- MarketplaceDelivery handler provides visibility into competing mech deliveries via `deliveryMech` field
+- Frontend sees OUR requests with accurate delivery status, regardless of which mech delivered
 
-**Files Modified**:
-- `ponder/ponder.config.ts` - Added colleague mech contract
-- `ponder/src/index.ts` - Added OlasMechColleague:Deliver handler
+**Why NOT index colleague mechs**:
+- Would create duplicate request entries (one per mech that claims the request)
+- Would pollute frontend with requests we didn't create
+- MarketplaceDelivery handler already provides all needed telemetry via `deliveryMech` field
 
 ## Data Flow
 

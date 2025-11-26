@@ -178,14 +178,9 @@ export default createConfig({
       startBlock,
       endBlock,
     },
-    // TASK 5: Add colleague's mech for richer telemetry on competing deliveries
-    OlasMechColleague: {
-      network: "base",
-      address: "0xe535D7AcDEeD905dddcb5443f41980436833cA2B",
-      abi: (AgentMechAbi as any)?.abi || (AgentMechAbi as any),
-      startBlock,
-      endBlock,
-    },
+    // Note: We don't index colleague mechs here. The MarketplaceDelivery handler
+    // already tracks deliveries from ANY mech via the deliveryMech field.
+    // Indexing colleague mechs would pollute the frontend with their requests.
   },
 });
 

@@ -78,6 +78,8 @@
     "restake:service": "cd olas-operate-middleware && poetry run python operate/quickstart/run_service.py",
     "qa:jinn-179": "bash scripts/qa-jinn-179.sh",
     "inspect-job-run": "tsx scripts/inspect-job-run.ts",
+    "mech:check-rate": "tsx scripts/mech/check-max-delivery-rate.ts",
+    "mech:update-rate": "tsx scripts/mech/update-max-delivery-rate.ts",
     "inspect-job": "tsx scripts/inspect-job.ts",
     "inspect-workstream": "tsx scripts/inspect-workstream.ts",
     "lint:spec": "./codespec/scripts/detect-violations.sh --diff",
