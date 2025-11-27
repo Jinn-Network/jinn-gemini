@@ -2,7 +2,6 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import Link from 'next/link'
 import {
   Clock,
   AlertCircle,
@@ -76,7 +75,7 @@ function getPhaseIcon(phase: string) {
 }
 
 /** Get icon for event type */
-function getEventIcon(event: string, _metadata?: Record<string, unknown>) {
+function getEventIcon(event: string) {
   if (event === 'repo_clone') return <FolderGit className="w-3 h-3" />
   if (event === 'branch_checkout') return <GitBranch className="w-3 h-3" />
   if (event === 'auto_commit') return <GitCommit className="w-3 h-3" />
@@ -88,7 +87,7 @@ function getEventIcon(event: string, _metadata?: Record<string, unknown>) {
 }
 
 /** Format metadata for specific event types */
-function formatEventMetadata(event: string, metadata: Record<string, unknown>): React.ReactNode {
+function formatEventMetadata(event: string, metadata: Record<string, unknown>): React.ReactElement | null {
   // Git clone event
   if (event === 'repo_clone') {
     return (
@@ -96,7 +95,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
         <Badge variant="outline" className="text-xs">
           {metadata.wasAlreadyCloned ? 'Already cloned' : 'Fresh clone'}
         </Badge>
-        {metadata.fetchPerformed && (
+        {!!metadata.fetchPerformed && (
           <Badge variant="outline" className="text-xs">Fetch performed</Badge>
         )}
       </div>
@@ -114,7 +113,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
           {metadata.checkoutMethod === 'new_from_base' ? 'Created new' :
            metadata.checkoutMethod === 'remote_tracking' ? 'From remote' : 'Local'}
         </Badge>
-        {metadata.baseBranch && (
+        {!!metadata.baseBranch && (
           <span className="text-xs text-gray-500">base: {String(metadata.baseBranch)}</span>
         )}
       </div>
@@ -125,7 +124,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'auto_commit') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.commitHash && (
+        {!!metadata.commitHash && (
           <Badge variant="outline" className="text-xs font-mono">
             {String(metadata.commitHash).slice(0, 7)}
           </Badge>
@@ -143,7 +142,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
         <CheckCircle className="w-3 h-3 text-green-500" />
         <span className="text-xs text-green-600">Pushed to remote</span>
-        {metadata.branchUrl && (
+        {!!metadata.branchUrl && (
           <a
             href={String(metadata.branchUrl)}
             target="_blank"
@@ -154,7 +153,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
-        {metadata.branchName && (
+        {!!metadata.branchName && (
           <Badge variant="outline" className="text-xs font-mono">
             {String(metadata.branchName)}
           </Badge>
@@ -178,7 +177,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'ipfs_fetch') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.cid && (
+        {!!metadata.cid && (
           <span className="text-xs font-mono text-gray-500">
             {String(metadata.cid).slice(0, 12)}...
           </span>
@@ -200,13 +199,13 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'metadata_fetched') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.hasJobName && (
+        {!!metadata.hasJobName && (
           <Badge variant="outline" className="text-xs">Has job name</Badge>
         )}
-        {metadata.hasBlueprint && (
+        {!!metadata.hasBlueprint && (
           <Badge variant="outline" className="text-xs">Has blueprint</Badge>
         )}
-        {metadata.hasCodeMetadata && (
+        {!!metadata.hasCodeMetadata && (
           <Badge variant="outline" className="text-xs">Has code metadata</Badge>
         )}
       </div>
@@ -255,13 +254,13 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             {metadata.toolCalls} tool calls
           </Badge>
         )}
-        {metadata.inferredStatus && (
+        {!!metadata.inferredStatus && (
           <Badge variant="outline" className={`text-xs ${
             metadata.inferredStatus === 'COMPLETED' ? 'text-green-600' :
             metadata.inferredStatus === 'FAILED' ? 'text-red-600' :
             'text-gray-600'
           }`}>
-            Status: {metadata.inferredStatus}
+            Status: {String(metadata.inferredStatus)}
           </Badge>
         )}
       </div>
@@ -272,7 +271,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'reflection_complete') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.hasMemoryArtifacts && (
+        {!!metadata.hasMemoryArtifacts && (
           <CheckCircle className="w-3 h-3 text-green-500" />
         )}
         {metadata.hasMemoryArtifacts ? (
@@ -293,7 +292,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'situation_artifact_created') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.cid && (
+        {!!metadata.cid && (
           <a
             href={`https://gateway.autonolas.tech/ipfs/${metadata.cid}`}
             target="_blank"
@@ -304,7 +303,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
-        {metadata.hasEmbedding && (
+        {!!metadata.hasEmbedding && (
           <Badge variant="outline" className="text-xs text-green-600">
             Embedding created
           </Badge>
@@ -317,7 +316,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'branch_artifact_created') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.branchUrl && (
+        {!!metadata.branchUrl && (
           <a
             href={String(metadata.branchUrl)}
             target="_blank"
@@ -328,15 +327,15 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
-        {metadata.branchName && (
+        {!!metadata.branchName && (
           <Badge variant="outline" className="text-xs font-mono">
             {String(metadata.branchName)}
           </Badge>
         )}
-        {metadata.baseBranch && (
+        {!!metadata.baseBranch && (
           <span className="text-xs text-gray-500">base: {String(metadata.baseBranch)}</span>
         )}
-        {metadata.cid && (
+        {!!metadata.cid && (
           <span className="text-xs font-mono text-gray-500">
             CID: {String(metadata.cid).slice(0, 12)}...
           </span>
@@ -351,7 +350,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
         <span className="text-xs text-gray-600">
-          Delivering {metadata.artifactCount || artifactCids.length} artifact{(metadata.artifactCount || artifactCids.length) === 1 ? '' : 's'}
+          Delivering {Number(metadata.artifactCount) || artifactCids.length} artifact{(Number(metadata.artifactCount) || artifactCids.length) === 1 ? '' : 's'}
         </span>
         {artifactCids.length > 0 && (
           <details className="text-xs text-gray-500">
@@ -381,7 +380,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
     const status = metadata.status
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {txHash && (
+        {!!txHash && (
           <a
             href={`https://basescan.org/tx/${txHash}`}
             target="_blank"
@@ -392,7 +391,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
-        {status && (
+        {!!status && (
           <Badge variant="outline" className={`text-xs ${
             status === 'confirmed' || status === 'delivered' || status === 'DELIVERED' ? 'text-green-600' :
             status === 'reverted' ? 'text-red-600' :
@@ -420,7 +419,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'report_stored') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.status && (
+        {!!metadata.status && (
           <Badge variant="outline" className={`text-xs ${
             metadata.status === 'COMPLETED' ? 'text-green-600' :
             metadata.status === 'FAILED' ? 'text-red-600' :
@@ -439,7 +438,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'dispatching_parent') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.parentJobDefId && (
+        {!!metadata.parentJobDefId && (
           <a
             href={`/job-definitions/${metadata.parentJobDefId}`}
             className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
@@ -447,7 +446,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             Parent: {String(metadata.parentJobDefId).slice(0, 8)}...
           </a>
         )}
-        {metadata.childStatus && (
+        {!!metadata.childStatus && (
           <Badge variant="outline" className={`text-xs ${
             metadata.childStatus === 'COMPLETED' ? 'text-green-600' :
             metadata.childStatus === 'FAILED' ? 'text-red-600' :
@@ -456,7 +455,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             Child: {String(metadata.childStatus)}
           </Badge>
         )}
-        {metadata.reason && (
+        {!!metadata.reason && (
           <span className="text-xs text-gray-500">{String(metadata.reason)}</span>
         )}
       </div>
@@ -467,7 +466,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'dispatch_success') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.newRequestId && (
+        {!!metadata.newRequestId && (
           <a
             href={`/requests/${metadata.newRequestId}`}
             className="text-xs text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
@@ -486,7 +485,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
   if (event === 'artifact_saved') {
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        {metadata.cid && (
+        {!!metadata.cid && (
           <a
             href={`https://gateway.autonolas.tech/ipfs/${metadata.cid}`}
             target="_blank"
@@ -497,9 +496,9 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
-        {metadata.events && (
+        {!!metadata.events && (
           <Badge variant="outline" className="text-xs">
-            {metadata.events} events
+            {String(metadata.events)} events
           </Badge>
         )}
         <span className="text-xs text-gray-600">
@@ -639,7 +638,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
                     <div className="px-4 pb-4 pt-2 border-t border-gray-100">
                       <div className="space-y-2">
                         {events.map((event, eventIdx) => {
-                          const eventIcon = getEventIcon(event.event, event.metadata)
+                          const eventIcon = getEventIcon(event.event)
                           const formattedMetadata = event.metadata && Object.keys(event.metadata).length > 0
                             ? formatEventMetadata(event.event, event.metadata)
                             : null

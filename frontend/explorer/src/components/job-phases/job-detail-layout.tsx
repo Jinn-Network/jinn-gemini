@@ -844,11 +844,15 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                       // Use IPFS-sourced enabledTools as primary source, fallback to record.enabledTools
                       let tools: string[] = ipfsEnabledTools.length > 0 
                         ? ipfsEnabledTools 
-                        : (record.enabledTools || [])
+                        : []
                       
-                      // Handle case where record.enabledTools might be a string
-                      if (tools.length === 0 && record.enabledTools && typeof record.enabledTools === 'string') {
-                        tools = record.enabledTools.split(',').map((t: string) => t.trim()).filter(Boolean)
+                      // Fallback to record.enabledTools if IPFS didn't provide tools
+                      if (tools.length === 0 && record.enabledTools) {
+                        if (typeof record.enabledTools === 'string') {
+                          tools = record.enabledTools.split(',').map((t: string) => t.trim()).filter(Boolean)
+                        } else if (Array.isArray(record.enabledTools)) {
+                          tools = record.enabledTools
+                        }
                       }
                       
                       if (tools.length === 0) {
