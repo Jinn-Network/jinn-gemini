@@ -253,9 +253,8 @@ async function main() {
     for (const req of requests) {
       const delivery = deliveryMap.get(req.id);
       const reqArtifacts = artifactMap.get(req.id) || [];
-      const expired = !req.delivered && isRequestExpired(req.blockTimestamp);
       
-      let status: WorkstreamNode['status'] = req.delivered ? 'COMPLETED' : (expired ? 'EXPIRED' : 'PENDING');
+      let status: WorkstreamNode['status'] = req.delivered ? 'COMPLETED' : 'PENDING';
       let summary: string | undefined;
       let error: string | undefined;
       let actualFinalStatus: string | undefined;
@@ -305,8 +304,7 @@ async function main() {
         artifacts: reqArtifacts.map(a => ({ name: a.name, topic: a.topic, type: a.type })),
         _debug: { 
           delivered: req.delivered, 
-          hasDelivery: !!delivery, 
-          expired,
+          hasDelivery: !!delivery,
           finalStatus: actualFinalStatus
         }
       });
@@ -342,8 +340,7 @@ async function main() {
       stats: {
         totalJobs: requests.length,
         completed: requests.filter(r => r.delivered).length,
-        pending: requests.filter(r => !r.delivered && !isRequestExpired(r.blockTimestamp)).length,
-        expired: requests.filter(r => !r.delivered && isRequestExpired(r.blockTimestamp)).length,
+        pending: requests.filter(r => !r.delivered).length,
         totalArtifacts: artifacts.length
       },
       tree: rootNodes.length === 1 ? rootNodes[0] : rootNodes

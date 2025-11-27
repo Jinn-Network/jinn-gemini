@@ -196,13 +196,6 @@ function tryParseNestedJson(value: any): any {
   return value;
 }
 
-function isRequestExpired(blockTimestamp: string): boolean {
-  const MARKETPLACE_TIMEOUT_SECONDS = 300; // 5 minutes
-  const timestamp = Number(blockTimestamp);
-  const expirationTime = timestamp + MARKETPLACE_TIMEOUT_SECONDS;
-  const currentTime = Math.floor(Date.now() / 1000);
-  return currentTime > expirationTime;
-}
 
 async function resolveIpfsReferences(data: JobRunData): Promise<any> {
   const resolved: any = {
@@ -300,14 +293,9 @@ async function main() {
       recognitionResult: response.recognitionResult.items[0]
     };
     
-    const expired = jobRunData.request && !jobRunData.request.delivered 
-      ? isRequestExpired(jobRunData.request.blockTimestamp)
-      : false;
-    
     console.error(`\n✅ Found request data:`);
     console.error(`   Job Name: ${jobRunData.request?.jobName || 'N/A'}`);
     console.error(`   Delivered: ${jobRunData.request?.delivered ? 'Yes' : 'No'}`);
-    console.error(`   Expired: ${expired ? 'Yes' : 'No'}`);
     console.error(`   Artifacts: ${jobRunData.artifacts.length}`);
     console.error(`   Recognition Result: ${jobRunData.recognitionResult ? 'Yes' : 'No'}`);
     console.error(`\nResolving IPFS references...\n`);

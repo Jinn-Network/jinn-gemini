@@ -2210,7 +2210,6 @@ The legacy tag-based memory system has been replaced with a situation-centric le
   - Default jobs: 3600s (1 hour) - covers recognition/reflection phases
   - Complex research: 7200s (2 hours) - for jobs with extensive web fetches and retries
   - Simple jobs: 600s (10 minutes) minimum
-- **On-Chain Behavior**: When timeout expires, marketplace considers request "undeliverable". Late delivery attempts are rejected with `RevokeRequest`, funds remain locked (no automatic refund mechanism in deployed balance tracker).
 
 ### Ponder OlasMech:Deliver Failures (Fixed 2025-11-20)
 
