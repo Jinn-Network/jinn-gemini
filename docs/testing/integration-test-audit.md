@@ -108,7 +108,7 @@
 
 2. **Worker Job Context Retrieval Integration**
    - Real Ponder with seeded job hierarchy
-   - Test: get_job_context MCP tool → Queries Ponder → Returns parent/sibling/child context
+   - Test: get_details and search_artifacts MCP tools → Queries Ponder → Returns parent/sibling/child context
    - Validates: Hierarchy queries, completed children detection, artifact accumulation
    - Runtime: ~2s
 
@@ -414,7 +414,7 @@
    - Runtime: ~1s
 
 3. **Job Context Accumulation Integration**
-   - Real get_job_context tool
+   - Real get_details and search_artifacts tools
    - Mock Ponder with multiple runs of same job
    - Test: Query job context → Returns all runs → Shows completed children → Includes artifacts
    - Validates: Context accumulation across runs, artifact access

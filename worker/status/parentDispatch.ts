@@ -4,11 +4,15 @@
 
 import { workerLogger } from '../../logging/index.js';
 import { dispatchExistingJob } from '../../gemini-agent/mcp/tools/dispatch_existing_job.js';
+import { withJobContext } from '../mcp/tools.js';
 import { safeParseToolResponse } from '../tool_utils.js';
 import type { FinalStatus, ParentDispatchDecision } from '../types.js';
-import type { WorkerTelemetryService } from '../worker_telemetry.js';
+import { fetchBranchDetails } from '../git/pr.js';
+import type { ExtractedArtifact } from '../artifacts.js';
 import { graphQLRequest } from '../../http/client.js';
 import { getPonderGraphqlUrl } from '../../gemini-agent/mcp/tools/shared/env.js';
+import type { WorkerTelemetryService } from '../worker_telemetry.js';
+import { serializeError } from '../logging/errors.js';
 
 const DISPATCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes - long enough for jobs to process
 
@@ -17,13 +21,12 @@ const DISPATCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes - long enough for jobs 
  * This survives worker restarts, unlike in-memory tracking.
  */
 async function wasRecentlyDispatched(
-  parentJobDefId: string, 
+  parentJobDefId: string,
   childRequestId: string
 ): Promise<boolean> {
   try {
     const ponderUrl = getPonderGraphqlUrl();
     
-    // Query for recent requests of this parent that were triggered by this child
     const response = await graphQLRequest<{ 
       requests: { items: Array<{ id: string; blockTimestamp: string }> } 
     }>({
@@ -54,7 +57,6 @@ async function wasRecentlyDispatched(
     const recentRequest = response?.requests?.items?.[0];
     if (!recentRequest) return false;
 
-    // Already dispatched from this child within cooldown period
     const dispatchTime = Number(recentRequest.blockTimestamp) * 1000;
     const timeSince = Date.now() - dispatchTime;
 
@@ -70,8 +72,8 @@ async function wasRecentlyDispatched(
 
     return false;
   } catch (error) {
-    workerLogger.warn({ error, parentJobDefId, childRequestId }, 'Failed to check recent dispatch, allowing dispatch (fail-open)');
-    return false; // Fail open - allow dispatch on query error
+    workerLogger.warn({ error: serializeError(error), parentJobDefId, childRequestId }, 'Failed to check recent dispatch, allowing dispatch (fail-open)');
+    return false;
   }
 }
 
@@ -90,7 +92,6 @@ export function shouldDispatchParent(
     };
   }
 
-  // Get parent job ID from metadata
   const parentJobDefId = metadata?.sourceJobDefinitionId;
   if (!parentJobDefId) {
     return {
@@ -113,24 +114,25 @@ export async function dispatchParentIfNeeded(
   metadata: any,
   requestId: string,
   output: string,
-  telemetry?: WorkerTelemetryService
+  options?: {
+    telemetry?: WorkerTelemetryService;
+    artifacts?: ExtractedArtifact[];
+  }
 ): Promise<void> {
   const decision = shouldDispatchParent(finalStatus, metadata);
-  
+
   if (!decision.shouldDispatch) {
     workerLogger.debug(`Not dispatching parent - ${decision.reason}`);
     return;
   }
 
   const parentJobDefId = decision.parentJobDefId!;
-  
-  // Check for duplicate dispatch using on-chain state (survives worker restarts)
+
   if (await wasRecentlyDispatched(parentJobDefId, requestId)) {
     workerLogger.info({ parentJobDefId, childRequestId: requestId }, 'Skipping duplicate parent dispatch (found recent on-chain dispatch from this child)');
     return;
   }
-  
-  // Query child request's workstreamId to preserve it in parent re-dispatch
+
   let workstreamId: string | undefined;
   try {
     const ponderUrl = getPonderGraphqlUrl();
@@ -149,10 +151,10 @@ export async function dispatchParentIfNeeded(
       workerLogger.debug({ requestId, workstreamId }, 'Retrieved workstream ID from child request');
     }
   } catch (error) {
-    workerLogger.warn({ requestId, error }, 'Failed to query child workstream ID, will proceed without it');
+    workerLogger.warn({ requestId, error: serializeError(error) }, 'Failed to query child workstream ID, will proceed without it');
   }
-  
-  // Track in telemetry
+
+  const telemetry = options?.telemetry;
   if (telemetry) {
     telemetry.startPhase('parent_dispatch');
     telemetry.logCheckpoint('parent_dispatch', 'dispatching_parent', {
@@ -165,19 +167,21 @@ export async function dispatchParentIfNeeded(
   }
   
   try {
-    // Log detailed dispatch decision
-    workerLogger.info({ 
-      parentJobDefId, 
-      childRequestId: requestId,
-      childStatus: finalStatus!.status, 
-      workstreamId,
-      dispatchReason: 'Child job reached terminal state'
-    }, `Dispatching parent job ${parentJobDefId} after child ${finalStatus!.status}`);
-    
-    // Create message with child results using standard format
-    const messageContent = `Child job ${finalStatus!.status}: ${finalStatus!.message}. Output: ${
-      output.length > 500 ? output.substring(0, 500) + '...' : output
-    }`;
+    const lineageInfo = metadata?.lineage;
+    if (!lineageInfo) {
+      throw new Error('Lineage metadata missing from job; cannot auto-dispatch parent');
+    }
+
+    const lineageRequestId = lineageInfo.parentDispatcherRequestId || undefined;
+    const baseBranch =
+      lineageInfo.dispatcherBranchName ||
+      lineageInfo.dispatcherBaseBranch ||
+      metadata?.codeMetadata?.baseBranch ||
+      metadata?.codeMetadata?.branch?.name ||
+      undefined;
+    const mechAddress = metadata?.workerAddress || metadata?.mech || undefined;
+
+    const messageContent = `Child job ${finalStatus!.status}: ${finalStatus!.message}. Output: ${output.length > 500 ? output.substring(0, 500) + '...' : output}`;
     
     const message = {
       content: messageContent,
@@ -185,10 +189,78 @@ export async function dispatchParentIfNeeded(
       from: requestId
     };
 
-    // Dispatch parent job
-    let result;
+    // Extract branch info from metadata or GIT_BRANCH artifact
+    let childBranchName: string | undefined;
+    let childBaseBranch: string | undefined;
+
+    // First check metadata for branch info
+    childBranchName = metadata?.codeMetadata?.branch?.name;
+    childBaseBranch = metadata?.codeMetadata?.baseBranch;
+
+    const deterministicChildRun = {
+      requestId,
+      jobDefinitionId: metadata?.jobDefinitionId,
+      jobName: metadata?.jobName,
+      status: finalStatus?.status,
+      summary: finalStatus?.message,
+      branchName: childBranchName,
+      baseBranch: childBaseBranch,
+      artifacts: await Promise.all((options?.artifacts || []).map(async (artifact, index) => {
+        let details = undefined;
+        if (artifact.type === 'GIT_BRANCH' || artifact.topic === 'git/branch') {
+          // Parse the artifact content to extract branch information
+          if ((artifact as any).content) {
+            try {
+              const parsed = JSON.parse((artifact as any).content);
+              const headBranch = parsed.headBranch;
+              const baseBranch = parsed.baseBranch;
+
+              // Use artifact branch info if not already set from metadata
+              if (!childBranchName && headBranch) {
+                childBranchName = headBranch;
+              }
+              if (!childBaseBranch && baseBranch) {
+                childBaseBranch = baseBranch;
+              }
+
+              if (headBranch && baseBranch) {
+                const repoPath = metadata?.codeMetadata?.repoRoot || process.env.CODE_METADATA_REPO_ROOT;
+                if (repoPath) {
+                  details = await fetchBranchDetails({ headBranch, baseBranch, repoPath });
+                }
+              }
+            } catch (e) {
+              workerLogger.warn({ error: serializeError(e), artifact: artifact.name }, 'Failed to parse PR artifact content');
+            }
+          }
+        }
+
+        return {
+          id: `${requestId}:${index}`,
+          name: artifact.name || `artifact-${index + 1}`,
+          topic: artifact.topic,
+          cid: artifact.cid,
+          details,
+        };
+      })),
+    };
+
+    // Update branchName/baseBranch after artifact processing (may have been extracted from GIT_BRANCH artifact)
+    if (childBranchName && !deterministicChildRun.branchName) {
+      (deterministicChildRun as any).branchName = childBranchName;
+    }
+    if (childBaseBranch && !deterministicChildRun.baseBranch) {
+      (deterministicChildRun as any).baseBranch = childBaseBranch;
+    }
+
+    const deterministicContext =
+      deterministicChildRun.requestId || deterministicChildRun.artifacts.length > 0
+        ? { completedChildRuns: [deterministicChildRun] }
+        : undefined;
+
     const maxRetries = 3;
-    
+    let dispatchResult: ReturnType<typeof safeParseToolResponse> | undefined;
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       if (attempt > 0) {
         const backoffMs = Math.pow(2, attempt) * 2000;
@@ -197,32 +269,42 @@ export async function dispatchParentIfNeeded(
       }
 
       try {
-        result = await dispatchExistingJob({
-          jobId: parentJobDefId,
-          message: JSON.stringify(message),
-          workstreamId
-        });
-        
-        const check = safeParseToolResponse(result);
-        if (check.ok) break; // Success
-        
-        // If not ok, check if it's a recoverable error
-        if (check.message?.includes('Transaction not found') || check.message?.includes('timeout')) {
-            workerLogger.warn({ parentJobDefId, error: check.message }, 'Parent dispatch transient failure');
-            continue;
+        const rawResult = await withJobContext(
+          {
+            requestId: lineageRequestId,
+            jobDefinitionId: parentJobDefId,
+            baseBranch,
+            mechAddress,
+            branchName: lineageInfo.dispatcherBranchName || undefined,
+          },
+          async () =>
+            dispatchExistingJob({
+              jobId: parentJobDefId,
+              message: JSON.stringify(message),
+              workstreamId,
+              ...(deterministicContext ? { additionalContext: deterministicContext } : {}),
+            })
+        );
+
+        dispatchResult = safeParseToolResponse(rawResult);
+        if (dispatchResult.ok) {
+          break;
         }
-        
-        // Not recoverable (e.g. validation error, subgraph error that isn't transient)
+
+        // Check for transient blockchain errors that warrant retry
+        if (dispatchResult.message?.includes('Transaction not found') || dispatchResult.message?.includes('timeout')) {
+          workerLogger.warn({ parentJobDefId, error: dispatchResult.message }, 'Parent dispatch transient failure');
+          continue;
+        }
+
         break;
       } catch (e) {
-         // Should not happen as tool catches errors, but safe guard
-         workerLogger.warn({ parentJobDefId, error: e }, 'Parent dispatch execution error');
-         if (attempt < maxRetries - 1) continue;
+        workerLogger.warn({ parentJobDefId, error: serializeError(e) }, 'Parent dispatch execution error');
+        if (attempt < maxRetries - 1) continue;
       }
     }
-    
-    const dispatchResult = safeParseToolResponse(result);
-    if (dispatchResult.ok) {
+
+    if (dispatchResult?.ok) {
       if (telemetry) {
         telemetry.logCheckpoint('parent_dispatch', 'dispatch_success', {
           parentJobDefId,
@@ -237,23 +319,23 @@ export async function dispatchParentIfNeeded(
       }, `Parent job ${parentJobDefId} dispatched successfully`);
     } else {
       if (telemetry) {
-        telemetry.logError('parent_dispatch', dispatchResult.message || 'Unknown error');
+        telemetry.logError('parent_dispatch', dispatchResult?.message || 'Unknown error');
       }
       workerLogger.error({ 
         parentJobDefId, 
         childRequestId: requestId,
-        error: dispatchResult.message 
-      }, `Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult.message}`);
+        error: dispatchResult?.message 
+      }, `Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult?.message}`);
     }
   } catch (e) {
     if (telemetry) {
       telemetry.logError('parent_dispatch', e instanceof Error ? e.message : String(e));
     }
-    workerLogger.error({ error: e, parentJobDefId }, `Error dispatching parent job ${parentJobDefId}`);
+    workerLogger.error({ error: serializeError(e), parentJobDefId }, `Error dispatching parent job ${parentJobDefId}`);
+    throw e;  // Propagate Work Protocol failure
   } finally {
     if (telemetry) {
       telemetry.endPhase('parent_dispatch');
     }
   }
 }
-

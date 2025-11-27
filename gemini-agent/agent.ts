@@ -39,6 +39,8 @@ interface ToolCall {
 interface JobTelemetry {
   requestText?: any[];
   responseText?: any[];
+  inputTokens?: number;
+  outputTokens?: number;
   totalTokens: number;
   toolCalls: ToolCall[];
   duration: number;
@@ -841,9 +843,13 @@ export class Agent {
               telemetry.totalTokens = Math.max(telemetry.totalTokens, attrs['total_token_count']);
             }
             if (attrs['input_token_count']) {
+              // Promote to top-level field and keep in raw for backwards compatibility
+              telemetry.inputTokens = (telemetry.inputTokens || 0) + attrs['input_token_count'];
               telemetry.raw.inputTokens = attrs['input_token_count'];
             }
             if (attrs['output_token_count']) {
+              // Promote to top-level field and keep in raw for backwards compatibility
+              telemetry.outputTokens = (telemetry.outputTokens || 0) + attrs['output_token_count'];
               telemetry.raw.outputTokens = attrs['output_token_count'];
             }
             if (attrs['duration_ms']) {
@@ -861,7 +867,7 @@ export class Agent {
               tool: attrs['function_name'] || attrs['tool_name'] || attrs['name'] || 'unknown',
               success: attrs['success'] !== false,
               duration_ms: attrs['duration_ms'] || 0,
-              args: attrs['parameters'] || attrs['args'] || attrs['arguments']
+              args: attrs['function_args'] || attrs['parameters'] || attrs['args'] || attrs['arguments']
             });
             break;
         }

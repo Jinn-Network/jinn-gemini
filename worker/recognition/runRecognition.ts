@@ -18,6 +18,7 @@ import {
 import { serializeError } from '../logging/errors.js';
 import type { IpfsMetadata } from '../types.js';
 import { buildProgressCheckpoint, type ProgressCheckpoint } from './progressCheckpoint.js';
+import type { WorkerTelemetryService } from '../worker_telemetry.js';
 
 type RemoteSituationArtifact = {
   id: string;
@@ -30,9 +31,14 @@ type RemoteSituationArtifact = {
 /**
  * Run recognition phase: create initial situation, search similar jobs, fetch artifacts, generate learnings
  */
-export async function runRecognitionPhase(requestId: string, metadata: IpfsMetadata): Promise<RecognitionPhaseResult> {
+export async function runRecognitionPhase(
+  requestId: string,
+  metadata: IpfsMetadata,
+  telemetry?: WorkerTelemetryService
+): Promise<RecognitionPhaseResult> {
   const sections = extractPromptSections(metadata?.blueprint);
-  const parentMessage = metadata?.additionalContext?.message?.content || metadata?.additionalContext?.message;
+  const message = metadata?.additionalContext?.message;
+  const parentMessage = typeof message === 'string' ? message : message?.content;
 
   const jobOverviewLines = [
     `Request ID: ${requestId}`,
@@ -148,10 +154,19 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
         const ipfsUrl = `${gatewayBase}/${situationArtifact.cid}`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
+        const fetchStart = Date.now();
         try {
           const ipfsResponse = await fetch(ipfsUrl, { signal: controller.signal });
+          const fetchDuration = Date.now() - fetchStart;
+
           if (!ipfsResponse.ok) {
             workerLogger.warn({ requestId, cid: situationArtifact.cid, status: ipfsResponse.status }, 'Failed to fetch SITUATION artifact from IPFS');
+            telemetry?.logCheckpoint('recognition', 'ipfs_fetch', {
+              cid: situationArtifact.cid,
+              duration_ms: fetchDuration,
+              success: false,
+              status: ipfsResponse.status,
+            });
             continue;
           }
 
@@ -171,6 +186,12 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
           });
 
           workerLogger.info({ requestId, sourceRequestId: match.nodeId, cid: situationArtifact.cid }, 'Fetched SITUATION artifact for recognition');
+          telemetry?.logCheckpoint('recognition', 'ipfs_fetch', {
+            cid: situationArtifact.cid,
+            duration_ms: fetchDuration,
+            success: true,
+            sourceRequestId: match.nodeId,
+          });
         } finally {
           clearTimeout(timeout);
         }
@@ -228,9 +249,24 @@ export async function runRecognitionPhase(requestId: string, metadata: IpfsMetad
     const markdown = formatRecognitionMarkdown(learnings);
     workerLogger.info({ requestId, learningsCount: learnings.length }, 'Recognition phase produced learnings');
 
+    // Add review-first reminder if completed children exist
+    let enhancedMarkdown = markdown;
+    const childRequestIds = initialSituation?.context?.childRequestIds || [];
+    const hasCompletedChildren = metadata?.additionalContext?.hierarchy?.some((job: any) => 
+      job.level > 0 && job.status === 'completed'
+    ) || false;
+    const hasWorkProtocolMessage = metadata?.additionalContext?.message && 
+      (typeof metadata.additionalContext.message === 'string' 
+        ? metadata.additionalContext.message.includes('Child job COMPLETED') || metadata.additionalContext.message.includes('Child job completed')
+        : metadata.additionalContext.message.content?.includes('Child job COMPLETED') || metadata.additionalContext.message.content?.includes('Child job completed'));
+
+    if ((childRequestIds.length > 0 || hasCompletedChildren || hasWorkProtocolMessage) && markdown) {
+      enhancedMarkdown = markdown + '\n\n**Note:** You have completed child job(s) in your hierarchy. Before delegating additional work, review their deliverables (artifacts, execution summaries, PR links) and evaluate whether their output satisfies your objective. Only dispatch new child jobs if you can clearly identify remaining gaps.';
+    }
+
     const recognitionResult = {
-      promptPrefix: markdown,
-      learningsMarkdown: markdown,
+      promptPrefix: enhancedMarkdown,
+      learningsMarkdown: enhancedMarkdown,
       rawLearnings: learnings,
       searchQuery: summaryText,
       similarJobs,

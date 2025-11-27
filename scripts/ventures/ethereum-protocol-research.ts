@@ -73,8 +73,13 @@ async function main() {
       enabledTools: [
         'web_search',
         'create_artifact',
+        'write_file',
+        'read_file',
+        'replace',
+        'list_directory',
+        'run_shell_command',
       ],
-      skipBranch: true, // Research job, no code changes
+      skipBranch: false, // Enable code changes
     });
     
     const { jobDefinitionId, requestId } = parseDispatchResponse(result);

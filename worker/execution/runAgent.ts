@@ -4,10 +4,10 @@
 
 import { Agent } from '../../gemini-agent/agent.js';
 import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
-import { buildEnhancedPrompt } from '../metadata/prompt.js';
+import { createBlueprintBuilder } from '../prompt/index.js';
 import { setJobContext, clearJobContext, snapshotJobContext, restoreJobContext } from '../metadata/jobContext.js';
 import { didDispatchChild } from '../status/dispatchUtils.js';
-import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult } from '../types.js';
+import type { UnclaimedRequest, IpfsMetadata, AdditionalContext, AgentExecutionResult } from '../types.js';
 
 /**
  * Execution context for agent run
@@ -24,13 +24,36 @@ export interface ExecutionContext {
  * The Agent class computes MCP include/exclude lists and CLI whitelists
  * based on the enabledTools passed here, ensuring consistency across the system.
  */
+function extractCompletedChildRequestIds(additionalContext: AdditionalContext | undefined): string[] {
+  if (!additionalContext) {
+    return [];
+  }
+  const hierarchy = Array.isArray(additionalContext.hierarchy)
+    ? additionalContext.hierarchy
+    : [];
+  const ids = new Set<string>();
+  hierarchy
+    .filter((job) => job && job.level && job.level > 0 && job.status === 'completed')
+    .forEach((job) => {
+      if (Array.isArray(job.requestIds)) {
+        job.requestIds.forEach((id) => {
+          if (typeof id === 'string' && id.length > 0) {
+            ids.add(id);
+          }
+        });
+      }
+    });
+  return Array.from(ids);
+}
+
 export async function runAgentForRequest(
   request: UnclaimedRequest,
   metadata: IpfsMetadata
 ): Promise<AgentExecutionResult> {
-  // Default to flash for faster execution
-  const model = metadata?.model || 'gemini-2.5-flash';
+  // Prefer explicit model, then environment default, otherwise flash for speed
+  const model = metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
+  const completedChildRequestIds = extractCompletedChildRequestIds(metadata?.additionalContext);
   
   // For artifact-only jobs (no code), pass null to prevent loading external repos
   const codeWorkspace = metadata?.codeMetadata ? undefined : null;
@@ -50,12 +73,10 @@ export async function runAgentForRequest(
     codeWorkspace
   );
 
-  // Build enhanced prompt from blueprint and context
-  // Fallback to generic prompt if no blueprint exists (shouldn't happen in normal flow)
-  const prompt = buildEnhancedPrompt(
-    metadata,
-    `Process request ${request.id} for mech ${request.mech}`
-  );
+  // Build unified prompt from BlueprintBuilder
+  // Recognition is attached to metadata.recognition by jobRunner before calling this
+  const blueprintBuilder = createBlueprintBuilder();
+  const prompt = await blueprintBuilder.buildPrompt(request.id, metadata, metadata.recognition);
 
   // Snapshot and set job context for downstream tools
   const prevContext = snapshotJobContext();
@@ -65,10 +86,13 @@ export async function runAgentForRequest(
       mechAddress: request.mech,
       jobDefinitionId: metadata?.jobDefinitionId || undefined,
       baseBranch:
-        metadata?.codeMetadata?.branch?.name ||
         metadata?.codeMetadata?.baseBranch ||
+        metadata?.codeMetadata?.branch?.name ||
         undefined,
       workstreamId: metadata?.workstreamId || request.id, // Fallback to requestId for root jobs
+      parentRequestId: metadata?.sourceRequestId || undefined,
+      branchName: metadata?.codeMetadata?.branch?.name || undefined,
+      completedChildRequestIds,
     });
     
     const result = await agent.run(prompt);
@@ -84,4 +108,3 @@ export async function runAgentForRequest(
     restoreJobContext(prevContext);
   }
 }
-

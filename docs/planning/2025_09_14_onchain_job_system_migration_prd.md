@@ -118,7 +118,8 @@ A minimal service with the following GraphQL mutations. The API will derive the 
 #### 4.4. MCP Tools
 
 - `post_marketplace_job(prompt: String!, priorityMech: String!, tools: [String!]!, parentRequestId: ID)`: Posts a new job to the marketplace. Embeds the full job definition (prompt, tools) and the `parentRequestId` into the IPFS metadata.
-- `get_job_context(requestId: ID!)`: Queries the Ponder GraphQL API for the full context of a job, including its request, report, artifacts, and parent/child relationships.
+- `get_details(ids: [ID!]!)`: Queries the Ponder GraphQL API for detailed on-chain records by ID, including requests, artifacts, and parent/child relationships.
+- `search_artifacts(query: String!)`: Searches artifacts by name, topic, and content to find child work and completed outputs.
 - `create_artifact(topic: String!, content: String!)`: Uploads content to IPFS, then calls the `createArtifact` mutation on the Control API.
 
 ### 5. Non-Goals
@@ -248,7 +249,7 @@ A minimal service with the following GraphQL mutations. The API will derive the 
 
 - Schema/source alignment: keep marketplace subgraph `Request`/`Deliver` fields verbatim
 - Claiming robustness: reclaim stale `IN_PROGRESS` by `claimed_at` age
-- Baseline prompt: always include `get_job_context` results + Supabase rows by `request_id`
+- Baseline prompt: always include `get_details` and `search_artifacts` results + Supabase rows by `request_id`
 - Security: validate `request_id` exists in subgraph before claim; restrict `request_claims` writes
 - Rate limits/backoff: reuse worker’s retry scaffolding
 

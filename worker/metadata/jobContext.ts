@@ -11,8 +11,20 @@ export function setJobContext(params: {
   baseBranch?: string;
   mechAddress?: string;
   workstreamId?: string;
+  parentRequestId?: string;
+  branchName?: string;
+  completedChildRequestIds?: string[];
 }): void {
-  const { requestId, jobDefinitionId, baseBranch, mechAddress, workstreamId } = params;
+  const {
+    requestId,
+    jobDefinitionId,
+    baseBranch,
+    mechAddress,
+    workstreamId,
+    parentRequestId,
+    branchName,
+    completedChildRequestIds,
+  } = params;
   
   if (requestId) {
     process.env.JINN_REQUEST_ID = requestId;
@@ -29,9 +41,30 @@ export function setJobContext(params: {
   if (mechAddress) {
     process.env.JINN_MECH_ADDRESS = mechAddress;
   }
-  
+
   if (workstreamId) {
     process.env.JINN_WORKSTREAM_ID = workstreamId;
+  }
+
+  if (parentRequestId) {
+    process.env.JINN_PARENT_REQUEST_ID = parentRequestId;
+  }
+
+  if (branchName) {
+    process.env.JINN_BRANCH_NAME = branchName;
+  }
+
+  if (Array.isArray(completedChildRequestIds)) {
+    if (completedChildRequestIds.length > 0) {
+      process.env.JINN_COMPLETED_CHILDREN = JSON.stringify(completedChildRequestIds);
+      process.env.JINN_CHILD_WORK_REVIEWED = 'false';
+    } else {
+      process.env.JINN_COMPLETED_CHILDREN = '[]';
+      process.env.JINN_CHILD_WORK_REVIEWED = 'true';
+    }
+  } else {
+    delete process.env.JINN_COMPLETED_CHILDREN;
+    delete process.env.JINN_CHILD_WORK_REVIEWED;
   }
 }
 
@@ -44,6 +77,10 @@ export function clearJobContext(): void {
   delete process.env.JINN_BASE_BRANCH;
   delete process.env.JINN_MECH_ADDRESS;
   delete process.env.JINN_WORKSTREAM_ID;
+  delete process.env.JINN_PARENT_REQUEST_ID;
+  delete process.env.JINN_BRANCH_NAME;
+  delete process.env.JINN_COMPLETED_CHILDREN;
+  delete process.env.JINN_CHILD_WORK_REVIEWED;
 }
 
 /**
@@ -55,6 +92,10 @@ export function snapshotJobContext(): {
   baseBranch?: string;
   mechAddress?: string;
   workstreamId?: string;
+  parentRequestId?: string;
+  branchName?: string;
+  completedChildRequestIds?: string[];
+  childWorkReviewed?: string;
 } {
   return {
     requestId: process.env.JINN_REQUEST_ID,
@@ -62,6 +103,18 @@ export function snapshotJobContext(): {
     baseBranch: process.env.JINN_BASE_BRANCH,
     mechAddress: process.env.JINN_MECH_ADDRESS,
     workstreamId: process.env.JINN_WORKSTREAM_ID,
+    parentRequestId: process.env.JINN_PARENT_REQUEST_ID,
+    branchName: process.env.JINN_BRANCH_NAME,
+    completedChildRequestIds: process.env.JINN_COMPLETED_CHILDREN
+      ? (() => {
+          try {
+            return JSON.parse(process.env.JINN_COMPLETED_CHILDREN as string);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined,
+    childWorkReviewed: process.env.JINN_CHILD_WORK_REVIEWED,
   };
 }
 
@@ -74,8 +127,23 @@ export function restoreJobContext(snapshot: {
   baseBranch?: string;
   mechAddress?: string;
   workstreamId?: string;
+  parentRequestId?: string;
+  branchName?: string;
+  completedChildRequestIds?: string[];
+  childWorkReviewed?: string;
 }): void {
   clearJobContext();
-  setJobContext(snapshot);
+  setJobContext({
+    requestId: snapshot.requestId,
+    jobDefinitionId: snapshot.jobDefinitionId,
+    baseBranch: snapshot.baseBranch,
+    mechAddress: snapshot.mechAddress,
+    workstreamId: snapshot.workstreamId,
+    parentRequestId: snapshot.parentRequestId,
+    branchName: snapshot.branchName,
+    completedChildRequestIds: snapshot.completedChildRequestIds,
+  });
+  if (snapshot.childWorkReviewed) {
+    process.env.JINN_CHILD_WORK_REVIEWED = snapshot.childWorkReviewed;
+  }
 }
-

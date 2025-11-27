@@ -8,7 +8,8 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-const GIT_TIMEOUT_MS = 5_000;
+// Increased timeout for git operations - push to remote can take 10-30 seconds
+const GIT_TIMEOUT_MS = 30_000;
 
 // Helper to get repo root dynamically (for test environment compatibility)
 function getRepoRoot(): string {
@@ -157,7 +158,7 @@ function parseRemoteFromUpstream(upstream?: string): string | undefined {
   return upstream.slice(0, slashIndex);
 }
 
-function normalizeSlug(value: string, maxLength: number = 20): string | undefined {
+function normalizeSlug(value: string, maxLength: number = 50): string | undefined {
   const trimmed = value.trim().toLowerCase();
   if (!trimmed) return undefined;
 

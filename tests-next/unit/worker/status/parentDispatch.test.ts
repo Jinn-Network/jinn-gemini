@@ -18,11 +18,42 @@ import type { FinalStatus, ParentDispatchDecision } from '../../../../worker/typ
 
 // Mock dependencies
 vi.mock('../../../../logging/index.js', () => ({
+  logger: {
+    child: vi.fn(() => ({
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    })),
+  },
   workerLogger: {
     debug: vi.fn(),
     info: vi.fn(),
     error: vi.fn(),
+    warn: vi.fn(),
   },
+  configLogger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock('../../../../http/client.js', () => ({
+  graphQLRequest: vi.fn(async () => ({ 
+    requests: { items: [] },
+    request: { workstreamId: undefined }
+  })),
+}));
+
+vi.mock('../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+  getPonderGraphqlUrl: vi.fn(() => 'http://example.com/graphql'),
+  getOptionalControlApiUrl: vi.fn(() => undefined),
+}));
+
+vi.mock('../../../../worker/mcp/tools.js', () => ({
+  withJobContext: vi.fn(async (_ctx: any, fn: any) => fn()),
 }));
 
 vi.mock('../../../../gemini-agent/mcp/tools/dispatch_existing_job.js', () => ({
@@ -36,10 +67,31 @@ vi.mock('../../../../worker/tool_utils.js', () => ({
 import { workerLogger } from '../../../../logging/index.js';
 import { dispatchExistingJob } from '../../../../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import { safeParseToolResponse } from '../../../../worker/tool_utils.js';
+import { graphQLRequest } from '../../../../http/client.js';
+import { withJobContext } from '../../../../worker/mcp/tools.js';
 
 describe('parentDispatch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (graphQLRequest as any).mockResolvedValue({ 
+      requests: { items: [] },
+      request: { workstreamId: undefined }
+    });
+    (withJobContext as any).mockImplementation(async (_ctx: any, fn: any) => fn());
+  });
+
+  const makeMetadata = (parentId: string) => ({
+    sourceJobDefinitionId: parentId,
+    lineage: {
+      dispatcherBranchName: 'main',
+      dispatcherBaseBranch: 'main',
+      parentDispatcherRequestId: 'req-parent',
+    },
+    codeMetadata: {
+      baseBranch: 'main',
+      branch: { name: 'main' },
+      repoRoot: '/tmp/repo',
+    },
   });
 
   describe('shouldDispatchParent', () => {
@@ -205,21 +257,35 @@ describe('parentDispatch', () => {
           status: 'COMPLETED',
           message: 'All tasks done',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent123',
-        };
+        const metadata = makeMetadata('0xparent123');
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild456', 'Task output');
 
         expect(workerLogger.info).toHaveBeenCalledWith(
-          expect.stringContaining('Dispatching parent job 0xparent123')
+          expect.objectContaining({
+            parentJobDefId: '0xparent123',
+            childRequestId: '0xchild456',
+          }),
+          expect.stringContaining('dispatched successfully')
         );
-        expect(dispatchExistingJob).toHaveBeenCalledWith({
-          jobId: '0xparent123',
-          message: expect.stringContaining('Child job COMPLETED'),
-        });
+        expect(dispatchExistingJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobId: '0xparent123',
+            message: expect.stringContaining('Child job COMPLETED'),
+            workstreamId: undefined,
+            additionalContext: expect.objectContaining({
+              completedChildRuns: expect.arrayContaining([
+                expect.objectContaining({
+                  requestId: '0xchild456',
+                  status: 'COMPLETED',
+                  summary: 'All tasks done',
+                }),
+              ]),
+            }),
+          })
+        );
       });
 
       it('dispatches parent on FAILED', async () => {
@@ -227,18 +293,28 @@ describe('parentDispatch', () => {
           status: 'FAILED',
           message: 'Job failed: timeout',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent789',
-        };
+        const metadata = makeMetadata('0xparent789');
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'Error output');
 
-        expect(dispatchExistingJob).toHaveBeenCalledWith({
-          jobId: '0xparent789',
-          message: expect.stringContaining('Child job FAILED'),
-        });
+        expect(dispatchExistingJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobId: '0xparent789',
+            message: expect.stringContaining('Child job FAILED'),
+            workstreamId: undefined,
+            additionalContext: expect.objectContaining({
+              completedChildRuns: expect.arrayContaining([
+                expect.objectContaining({
+                  requestId: '0xchild',
+                  status: 'FAILED',
+                  summary: 'Job failed: timeout',
+                }),
+              ]),
+            }),
+          })
+        );
       });
 
       it('includes status message in dispatch', async () => {
@@ -246,18 +322,17 @@ describe('parentDispatch', () => {
           status: 'COMPLETED',
           message: 'All 3 children delivered',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent',
-        };
+        const metadata = makeMetadata('0xparent');
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'output');
 
-        expect(dispatchExistingJob).toHaveBeenCalledWith({
-          jobId: '0xparent',
-          message: expect.stringContaining('All 3 children delivered'),
-        });
+        const call = (dispatchExistingJob as any).mock.calls[0][0];
+        const messageContent = JSON.parse(call.message).content;
+        expect(messageContent).toContain('All 3 children delivered');
+        expect(call.jobId).toBe('0xparent');
+        expect(call.workstreamId).toBeUndefined();
       });
 
       it('includes child output in dispatch', async () => {
@@ -265,19 +340,18 @@ describe('parentDispatch', () => {
           status: 'COMPLETED',
           message: 'Done',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent',
-        };
+        const metadata = makeMetadata('0xparent');
         const output = 'Generated report with 50 records';
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', output);
 
-        expect(dispatchExistingJob).toHaveBeenCalledWith({
-          jobId: '0xparent',
-          message: expect.stringContaining('Generated report with 50 records'),
-        });
+        const call = (dispatchExistingJob as any).mock.calls[0][0];
+        const messageContent = JSON.parse(call.message).content;
+        expect(messageContent).toContain('Generated report with 50 records');
+        expect(call.jobId).toBe('0xparent');
+        expect(call.workstreamId).toBeUndefined();
       });
 
       it('truncates long output to 500 chars', async () => {
@@ -285,9 +359,7 @@ describe('parentDispatch', () => {
           status: 'COMPLETED',
           message: 'Done',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent',
-        };
+        const metadata = makeMetadata('0xparent');
         const longOutput = 'x'.repeat(600);
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
@@ -306,9 +378,7 @@ describe('parentDispatch', () => {
           status: 'COMPLETED',
           message: 'Done',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent',
-        };
+        const metadata = makeMetadata('0xparent');
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
@@ -329,16 +399,19 @@ describe('parentDispatch', () => {
           status: 'COMPLETED',
           message: 'Done',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent',
-        };
+        const metadata = makeMetadata('0xparent');
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
-        (safeParseToolResponse as any).mockReturnValue({ ok: true });
+        (safeParseToolResponse as any).mockReturnValue({ ok: true, data: { request_ids: ['req-new'] } });
 
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'output');
 
         expect(workerLogger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            parentJobDefId: '0xparent',
+            childRequestId: '0xchild',
+            newRequestId: 'req-new',
+          }),
           expect.stringContaining('dispatched successfully')
         );
       });
@@ -348,9 +421,7 @@ describe('parentDispatch', () => {
           status: 'COMPLETED',
           message: 'Done',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent',
-        };
+        const metadata = makeMetadata('0xparent');
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: false });
         (safeParseToolResponse as any).mockReturnValue({
@@ -361,6 +432,11 @@ describe('parentDispatch', () => {
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'output');
 
         expect(workerLogger.error).toHaveBeenCalledWith(
+          expect.objectContaining({
+            parentJobDefId: '0xparent',
+            childRequestId: '0xchild',
+            error: 'Invalid job ID',
+          }),
           expect.stringContaining('Failed to dispatch parent job')
         );
       });
@@ -370,22 +446,32 @@ describe('parentDispatch', () => {
           status: 'COMPLETED',
           message: 'Done',
         };
-        const metadata = {
-          sourceJobDefinitionId: '0xparent',
-        };
+        const metadata = makeMetadata('0xparent');
 
-        (dispatchExistingJob as any).mockRejectedValue(new Error('Network error'));
+        // Mock withJobContext to throw on all attempts
+        // The retry loop will retry 3 times with backoff (2s, 4s) = ~6s minimum
+        // Then the error is caught in the outer catch block
+        let callCount = 0;
+        (withJobContext as any).mockImplementation(async () => {
+          callCount++;
+          throw new Error('Network error');
+        });
 
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'output');
 
+        // Verify it was called multiple times (retry loop)
+        expect(callCount).toBeGreaterThan(1);
+        
+        // The error is caught in the inner catch block, and after retries exhaust,
+        // dispatchResult is undefined, so error is logged with undefined message
         expect(workerLogger.error).toHaveBeenCalledWith(
           expect.objectContaining({
-            error: expect.any(Error),
             parentJobDefId: '0xparent',
+            childRequestId: '0xchild',
           }),
-          expect.stringContaining('Error dispatching parent job')
+          expect.stringContaining('Failed to dispatch parent job')
         );
-      });
+      }, 20000); // Increase timeout to accommodate retry loop with backoff (2s + 4s = 6s minimum)
     });
   });
 });

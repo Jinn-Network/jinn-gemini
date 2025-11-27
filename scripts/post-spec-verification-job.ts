@@ -61,7 +61,7 @@ Access via: get_file_contents(owner='oaksprout', repo='jinn-gemini', path='<file
 - Call finalize_job with status: DELEGATING
 
 **WAITING** (Active jobs > 0, some children not delivered):
-- Call get_job_context to review child job status
+- Use get_details or search_artifacts to review child job status
 - Document which children are pending
 - Call finalize_job with status: WAITING
 

@@ -7,7 +7,7 @@ import { getRepoRoot } from '../../shared/repo_utils.js';
 import type { CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
 import { GIT_STATUS_TIMEOUT_MS, GIT_COMMIT_TIMEOUT_MS } from '../constants.js';
 import { serializeError } from '../logging/errors.js';
-import { hasUncommittedChanges, stageAllChanges } from './workingTree.js';
+import { hasUncommittedChanges, stageAllChanges, getGitStatus } from './workingTree.js';
 import type { FinalStatus, ExecutionSummaryDetails } from '../types.js';
 
 /**
@@ -120,9 +120,12 @@ export function formatSummaryForPr(summary: ExecutionSummaryDetails | null): str
 
 /**
  * Auto-commit pending changes if any exist
- * Returns true if a commit was made, false if no changes were present
+ * Returns object with commit info if a commit was made, null if no changes were present
  */
-export async function autoCommitIfNeeded(codeMetadata: CodeMetadata, commitMessage: string): Promise<boolean> {
+export async function autoCommitIfNeeded(
+  codeMetadata: CodeMetadata, 
+  commitMessage: string
+): Promise<{ commitHash: string; filesChanged: number } | null> {
   if (!commitMessage || !commitMessage.trim()) {
     throw new Error('Cannot auto-commit changes: commit message is empty');
   }
@@ -135,8 +138,12 @@ export async function autoCommitIfNeeded(codeMetadata: CodeMetadata, commitMessa
     const hasChanges = await hasUncommittedChanges(codeMetadata);
     if (!hasChanges) {
       workerLogger.debug({ repoRoot }, 'No pending changes detected before push');
-      return false;
+      return null;
     }
+
+    // Count files changed before staging
+    const statusOutput = await getGitStatus(codeMetadata);
+    const filesChanged = statusOutput.split('\n').filter(line => line.trim().length > 0).length;
 
     workerLogger.info({ repoRoot }, 'Auto-committing pending changes before push');
     
@@ -151,8 +158,18 @@ export async function autoCommitIfNeeded(codeMetadata: CodeMetadata, commitMessa
       timeout: GIT_COMMIT_TIMEOUT_MS,
       env: process.env as Record<string, string>,
     });
-    workerLogger.info({ repoRoot, commitMessage }, 'Auto-commit completed');
-    return true;
+    
+    // Get commit hash
+    const commitHash = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: repoRoot,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: GIT_COMMIT_TIMEOUT_MS,
+      env: process.env as Record<string, string>,
+    }).trim();
+    
+    workerLogger.info({ repoRoot, commitMessage, commitHash, filesChanged }, 'Auto-commit completed');
+    return { commitHash, filesChanged };
   } catch (error: any) {
     workerLogger.error({
       repoRoot,

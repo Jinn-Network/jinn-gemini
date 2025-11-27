@@ -372,9 +372,10 @@ describe('Worker blueprint processing flow integration', () => {
         model: 'gemini-2.5-flash',
       };
 
-      // Empty string is falsy, should use fallback
+      // Empty string is falsy, should use fallback with blueprint preface
       const prompt = buildEnhancedPrompt(ipfsMetadata, 'fallback prompt');
-      expect(prompt).toBe('fallback prompt');
+      expect(prompt).toContain('Blueprint (required):');
+      expect(prompt).toContain('fallback prompt');
     });
 
     it('should handle missing all specification fields', () => {

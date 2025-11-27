@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "metacog": {
-      "command": "/Users/gcd/Repositories/main/jinn-cli-agents/node_modules/.bin/tsx",
+      "command": "/Users/adrianobradley/jinn-gemini/node_modules/.bin/tsx",
       "args": [
-        "/Users/gcd/Repositories/main/jinn-cli-agents/gemini-agent/mcp/server.ts"
+        "/Users/adrianobradley/jinn-gemini/gemini-agent/mcp/server.ts"
       ],
       "trust": true,
       "includeTools": [
@@ -17,6 +17,7 @@
         "search_artifacts",
         "google_web_search",
         "web_fetch",
+        "process_branch",
         "list_directory",
         "read_file",
         "search_file_content",

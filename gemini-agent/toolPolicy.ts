@@ -26,12 +26,18 @@ export const UNIVERSAL_TOOLS = [
   'search_artifacts',
   'google_web_search',
   'web_fetch',
+  // Git workflow tools (branch management for child job integration)
+  'process_branch',
   // Read-only native file tools (always available)
   'list_directory',
   'read_file',
   'search_file_content',
   'glob',
-  'read_many_files'
+  'read_many_files',
+  // Write/coding tools (always available)
+  'write_file',
+  'replace',
+  'run_shell_command'
 ] as const;
 
 /**

@@ -32,6 +32,77 @@ interface InitialSituationInput {
   additionalContext?: any;
 }
 
+/**
+ * Extract deterministic context from additionalContext envelope (hierarchy data)
+ * Returns child/sibling request IDs and related data if available
+ */
+function extractDeterministicContext(
+  additionalContext: any,
+  currentJobDefinitionId?: string
+): {
+  childRequestIds: string[];
+  siblingRequestIds: string[];
+  childArtifacts: Array<{ id: string; name: string; topic: string; cid: string }>;
+} {
+  const result = {
+    childRequestIds: [] as string[],
+    siblingRequestIds: [] as string[],
+    childArtifacts: [] as Array<{ id: string; name: string; topic: string; cid: string }>,
+  };
+
+  if (!additionalContext || typeof additionalContext !== 'object') {
+    return result;
+  }
+
+  const hierarchy = additionalContext.hierarchy;
+  if (!Array.isArray(hierarchy) || !currentJobDefinitionId) {
+    return result;
+  }
+
+  // Find the current job in the hierarchy (level 0)
+  const currentJob = hierarchy.find(
+    (item: any) => item.jobId === currentJobDefinitionId && item.level === 0
+  );
+  if (!currentJob) {
+    return result;
+  }
+
+  // Children are nodes whose parent is the current job
+  const children = hierarchy.filter(
+    (item: any) =>
+      item.level > 0 && item.sourceJobDefinitionId === currentJobDefinitionId
+  );
+  for (const child of children) {
+    if (Array.isArray(child.requestIds)) {
+      result.childRequestIds.push(...child.requestIds);
+    }
+    if (Array.isArray(child.artifactRefs)) {
+      result.childArtifacts.push(...child.artifactRefs);
+    }
+  }
+
+  // Siblings share the same parent but are different jobs
+  const parentId = currentJob.sourceJobDefinitionId;
+  if (parentId) {
+    const siblings = hierarchy.filter(
+      (item: any) =>
+        item.level === 0 &&
+        item.sourceJobDefinitionId === parentId &&
+        item.jobId !== currentJobDefinitionId
+    );
+    for (const sibling of siblings) {
+      if (Array.isArray(sibling.requestIds)) {
+        result.siblingRequestIds.push(...sibling.requestIds);
+      }
+    }
+  }
+
+  result.childRequestIds = [...new Set(result.childRequestIds)];
+  result.siblingRequestIds = [...new Set(result.siblingRequestIds)];
+
+  return result;
+}
+
 interface InitialSituationResult {
   situation: Omit<Situation, 'embedding' | 'execution' | 'artifacts'>;
   summaryText: string;
@@ -279,9 +350,22 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
 
   const parentRequestId = requestRecord?.sourceRequestId || undefined;
   const parentJobDefinitionId = requestRecord?.sourceJobDefinitionId || undefined;
-  const siblingRequestIds = parentRequestId
+
+  // Resolve job identity early to align with deterministic context
+  const jobName = input.jobName || requestRecord?.jobName || undefined;
+  const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
+
+  const deterministicContext = extractDeterministicContext(
+    input.additionalContext ?? requestRecord?.additionalContext,
+    jobDefinitionId
+  );
+
+  const siblingRequestIdsFromQuery = parentRequestId
     ? await fetchRelatedRequestIds(parentRequestId, input.requestId).catch(() => [])
     : [];
+  const siblingRequestIds = Array.from(
+    new Set([...(deterministicContext.siblingRequestIds || []), ...siblingRequestIdsFromQuery])
+  );
 
   // Extract blueprint for metadata (objective/acceptanceCriteria extracted later from prompt on line 318)
   const blueprint = (input.additionalContext ?? requestRecord?.additionalContext)?.blueprint 
@@ -296,14 +380,11 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
           jobDefinitionId: parentJobDefinitionId,
         }
       : undefined,
-    childRequestIds: [], // Empty initially, will be populated post-execution
-    children: [],
+    childRequestIds: deterministicContext.childRequestIds || [],
+    children: deterministicContext.childRequestIds || [],
     siblingRequestIds,
     siblings: siblingRequestIds,
   };
-
-  const jobName = input.jobName || requestRecord?.jobName || undefined;
-  const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
 
   // Fetch job definition to enrich with blueprint and enabled tools
   let jobBlueprint: string | undefined;
@@ -348,8 +429,14 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
 }
 
 export async function enrichSituation(input: EnrichSituationInput): Promise<SituationEncoderResult> {
-  // Fetch child requests that may have been spawned during execution
-  const childRequestIds = await fetchRelatedRequestIds(input.initialSituation.job.requestId).catch(() => []) || [];
+  const existingChildIds =
+    input.initialSituation.context.childRequestIds ||
+    input.initialSituation.context.children ||
+    [];
+
+  const childRequestIdsFromQuery =
+    (await fetchRelatedRequestIds(input.initialSituation.job.requestId).catch(() => [])) || [];
+  const childRequestIds = Array.from(new Set([...existingChildIds, ...childRequestIdsFromQuery]));
 
   const executionTrace = buildExecutionTrace(input.telemetry);
   const status: SituationExecution['status'] =
@@ -408,7 +495,22 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
   const requestRecord = await fetchRequestRecord(input.requestId);
 
   const parentRequestId = requestRecord?.sourceRequestId || undefined;
-  const childRequestIds = await fetchRelatedRequestIds(input.requestId).catch(() => []) || [];
+  const jobName = input.jobName || requestRecord?.jobName || undefined;
+  const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
+
+  const effectiveAdditionalContext =
+    input.additionalContext ?? requestRecord?.additionalContext;
+  const deterministicContext = extractDeterministicContext(
+    effectiveAdditionalContext,
+    jobDefinitionId
+  );
+
+  const childRequestIdsFromEnvelope = deterministicContext.childRequestIds || [];
+  const childRequestIdsFromQuery =
+    (await fetchRelatedRequestIds(input.requestId).catch(() => [])) || [];
+  const childRequestIds = Array.from(
+    new Set([...childRequestIdsFromEnvelope, ...childRequestIdsFromQuery])
+  );
   const siblingRequestIds = parentRequestId
     ? await fetchRelatedRequestIds(parentRequestId, input.requestId).catch(() => [])
     : [];
@@ -438,8 +540,6 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
     siblings: siblingRequestIds,
   };
 
-  const jobName = input.jobName || requestRecord?.jobName || undefined;
-  const jobDefinitionId = input.jobDefinitionId || requestRecord?.jobDefinitionId || undefined;
   let jobBlueprint: string | undefined;
   let enabledTools: string[] | undefined;
   if (jobDefinitionId) {

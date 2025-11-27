@@ -307,7 +307,7 @@ To achieve my core mandate, I will launch and oversee agents to perform the foll
 My entire operation ladders up to one guiding mandate: **Find mispricings born of narrative-reality divergence by orchestrating a system of specialized agents.**`;
 
     const jobDefinitionId = randomUUID();
-    const enabledTools = ['dispatch_new_job', 'dispatch_existing_job', 'get_job_context', 'search_jobs', 'search_artifacts', 'create_artifact'];
+    const enabledTools = ['dispatch_new_job', 'dispatch_existing_job', 'get_details', 'search_jobs', 'search_artifacts', 'create_artifact'];
 
     const ipfsJsonContents = [{
       prompt,

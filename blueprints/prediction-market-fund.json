@@ -1,0 +1,265 @@
+{
+    "vision": {
+        "mission": "Maximize risk-adjusted returns by autonomously trading on Polymarket prediction markets in a simulated 'Paper Trading' environment.",
+        "vision": "A fully autonomous, self-improving hedge fund that demonstrates superior decision-making through transparent reasoning and rigorous benchmarking."
+    },
+    "constitution": [
+        {
+            "principle": "Probabilistic Thinking",
+            "description": "All trading decisions must be based on positive Expected Value (EV) calculations derived from probabilistic models, not binary predictions."
+        },
+        {
+            "principle": "Capital Preservation",
+            "description": "Survival is the primary objective. Risk management protocols must prevent catastrophic loss, even in a simulated environment."
+        },
+        {
+            "principle": "Radical Transparency",
+            "description": "No black boxes. Every trade must be accompanied by a human-readable 'Investment Memo' explaining the thesis, sources, and logic."
+        },
+        {
+            "principle": "Continuous Learning",
+            "description": "The system must learn from every outcome. Automated post-mortems are required to close the feedback loop between prediction and reality."
+        }
+    ],
+    "assertions": [
+        {
+            "id": "SIM-001",
+            "assertion": "Paper trading execution must simulate real-world market conditions including liquidity, slippage, and fees",
+            "examples": {
+                "do": [
+                    "Calculate execution price based on actual order book depth for the trade size",
+                    "Deduct 1% simulated platform/gas fees from every trade",
+                    "Reject trades if insufficient liquidity exists (<$5k depth)"
+                ],
+                "dont": [
+                    "Assume execution at the mid-market price",
+                    "Ignore transaction costs or network fees",
+                    "Execute trades larger than the available market depth"
+                ]
+            },
+            "commentary": "To be a valid test of the strategy, the simulation must be rigorous. 'Paper profits' based on unrealistic execution are worse than useless."
+        },
+        {
+            "id": "VIS-001",
+            "assertion": "A real-time dashboard must visualize portfolio state, active positions, and agent reasoning",
+            "examples": {
+                "do": [
+                    "Display current NAV and PnL in real-time",
+                    "Show a live feed of 'Investment Memos' for recent trades",
+                    "Visualize exposure breakdown by market category",
+                    "Maintain a public 'Watchlist' of markets being monitored"
+                ],
+                "dont": [
+                    "Hide active positions until they are closed",
+                    "Show only raw data without explanatory context",
+                    "Require CLI access to view fund status"
+                ]
+            },
+            "commentary": "The product is not just the returns, but the visibility into the autonomous process. The dashboard is the primary interface for trust."
+        },
+        {
+            "id": "EXP-001",
+            "assertion": "Every trade execution must be justified by a generated 'Investment Memo'",
+            "examples": {
+                "do": [
+                    "Generate a markdown document for every buy/sell order",
+                    "Cite specific data sources (polls, news, on-chain data)",
+                    "Explicitly state the calculated EV and conviction level",
+                    "Link to the specific Polymarket market ID"
+                ],
+                "dont": [
+                    "Execute trades based on 'gut feel' or undocumented signals",
+                    "Provide generic reasons like 'market looks good'",
+                    "Omit source citations or probability calculations"
+                ]
+            },
+            "commentary": "Explainability is a core requirement. We must understand *why* the agent made a decision to trust it."
+        },
+        {
+            "id": "RISK-001",
+            "assertion": "Strict risk management constraints must be enforced to prevent ruin",
+            "examples": {
+                "do": [
+                    "Cap max position size at 10% of NAV",
+                    "Limit sector exposure (e.g., US Politics) to 30% of NAV",
+                    "Trigger a re-evaluation if probability moves >15% against the position"
+                ],
+                "dont": [
+                    "Go 'all in' on a single high-conviction trade",
+                    "Correlate the entire portfolio to a single outcome event",
+                    "Hold losing positions indefinitely without re-underwriting"
+                ]
+            },
+            "commentary": "Even in paper trading, we simulate professional risk management. This ensures the strategy is viable for eventual capital deployment."
+        },
+        {
+            "id": "LEARN-001",
+            "assertion": "Automated post-mortems must be generated upon position exit or market resolution",
+            "examples": {
+                "do": [
+                    "Compare the initial Investment Memo thesis to the actual outcome/exit reason",
+                    "Identify specific data points that were misleading or ignored",
+                    "Update the agent's internal scoring model based on the result"
+                ],
+                "dont": [
+                    "Ignore losing trades and move on",
+                    "Attribute losses solely to 'bad luck' without analysis",
+                    "Fail to record the final PnL of the position"
+                ]
+            },
+            "commentary": "The feedback loop is essential for improvement. The system must objectively analyze its own performance whether the trade was held to maturity or closed early."
+        },
+        {
+            "id": "BENCH-001",
+            "assertion": "Performance must be benchmarked against a 'Naive Baseline'",
+            "examples": {
+                "do": [
+                    "Track a shadow portfolio that bets on the market favorite",
+                    "Display 'Alpha vs Baseline' metric on the dashboard",
+                    "Report Sharpe ratio comparison"
+                ],
+                "dont": [
+                    "Report absolute returns in isolation",
+                    "Change the benchmark methodology to look better"
+                ]
+            },
+            "commentary": "To justify its existence, the agent must outperform a simple strategy. Benchmarking keeps us honest."
+        },
+        {
+            "id": "STRAT-001",
+            "assertion": "Positions must be actively managed and traded based on dynamic EV changes, not just held to resolution",
+            "examples": {
+                "do": [
+                    "Monitor positions for favorable exit opportunities before market resolution",
+                    "Sell to capture profit if price exceeds calculated fair value",
+                    "Cut losses early if the thesis is invalidated by new news"
+                ],
+                "dont": [
+                    "Treat every trade as a binary 'set and forget' bet",
+                    "Ignore arbitrage opportunities during the market's lifetime",
+                    "Hold a position despite changing fundamentals just to 'see who wins'"
+                ]
+            },
+            "commentary": "Markets are dynamic. The agent should act as a trader, not just a bettor, capitalizing on volatility and mispricing throughout the event lifecycle."
+        },
+        {
+            "id": "OPS-001",
+            "assertion": "The system must have a clear protocol for escalating issues to a human supervisor",
+            "examples": {
+                "do": [
+                    "Request human intervention for missing credentials or API keys",
+                    "Pause and alert if an ambiguous error occurs >3 times",
+                    "Ask for clarification if a market's resolution criteria are unclear"
+                ],
+                "dont": [
+                    "Fail silently or crash without notification",
+                    "Guess credentials or try to bypass authentication errors",
+                    "Continue trading in a loop when a critical dependency is down"
+                ]
+            },
+            "commentary": "Autonomy has limits. The system must recognize when it is blocked and explicitly ask for help rather than failing or hallucinating a solution."
+        },
+        {
+            "id": "AGENT-001",
+            "assertion": "Safety guardrails must prevent runaway agent loops and resource exhaustion",
+            "examples": {
+                "do": [
+                    "Enforce a hard limit on 'steps per decision' (e.g., max 10 steps to execute a trade)",
+                    "Implement a 'circuit breaker' if portfolio value drops >5% in 1 hour",
+                    "Redact all API keys and secrets from logs and dashboards"
+                ],
+                "dont": [
+                    "Allow infinite retry loops on failed API calls",
+                    "Expose sensitive credentials in the 'Investment Memo' or dashboard",
+                    "Consume unlimited compute resources for a single low-value trade"
+                ]
+            },
+            "commentary": "Agentic systems can be unpredictable. Hard limits on compute, steps, and drawdown are required to prevent 'runaway robot' scenarios."
+        },
+        {
+            "id": "MAINT-001",
+            "assertion": "The codebase must maintain a living set of operating procedures and architectural documentation that evolves with the system",
+            "examples": {
+                "do": [
+                    "Maintain a 'docs/ops' directory with runbooks for deployment, debugging, and maintenance",
+                    "Update the 'System Context' documentation whenever a new component is added",
+                    "Require documentation updates as part of the definition of done for every PR"
+                ],
+                "dont": [
+                    "Allow documentation to drift from the actual code implementation",
+                    "Rely on tribal knowledge or unwritten rules for system operation",
+                    "Leave 'TODO' comments as the only documentation for complex logic"
+                ]
+            },
+            "commentary": "In an autonomous system, the 'manual' is as important as the engine. Documentation must be treated as code and kept in strict sync."
+        },
+        {
+            "id": "TEST-001",
+            "assertion": "A rigorous testing framework must verify functional correctness and strategy logic before deployment",
+            "examples": {
+                "do": [
+                    "Implement unit tests for all core calculation logic (EV, position sizing)",
+                    "Run integration tests simulating full market cycles in a sandbox environment",
+                    "Enforce 100% test coverage for risk management modules"
+                ],
+                "dont": [
+                    "Deploy strategy changes directly to production without backtesting",
+                    "Rely solely on manual 'happy path' testing",
+                    "Mock away critical external dependencies without verifying their actual behavior"
+                ]
+            },
+            "commentary": "Trust but verify. Automated testing is the only way to safely scale an autonomous agent's capabilities."
+        },
+        {
+            "id": "DATA-001",
+            "assertion": "High-conviction trades must be corroborated by multiple independent data sources to ensure integrity",
+            "examples": {
+                "do": [
+                    "Require at least 2 independent sources (e.g., News API + Prediction Market Probability) for trades >5% NAV",
+                    "Cross-reference social sentiment with on-chain data",
+                    "Invalidate data if sources conflict significantly without explanation"
+                ],
+                "dont": [
+                    "Rely on a single source of truth for critical decisions",
+                    "Ingest unverified social media posts as fact",
+                    "Trade on stale data (>1 hour old) for fast-moving markets"
+                ]
+            },
+            "commentary": "Garbage in, garbage out. Multi-source verification prevents the agent from acting on hallucinations or manipulated data."
+        },
+        {
+            "id": "COST-001",
+            "assertion": "The system must track and optimize the 'Cost of Intelligence' (Compute/LLM spend) per trade",
+            "examples": {
+                "do": [
+                    "Track token usage and API costs for every trade lifecycle",
+                    "Calculate Net PnL as (Gross Profit - Execution Fees - Compute Costs)",
+                    "Alert if the cost to acquire a signal exceeds its expected value"
+                ],
+                "dont": [
+                    "Ignore LLM inference costs in profitability calculations",
+                    "Use the most expensive model for trivial tasks",
+                    "Run continuous expensive loops without a budget cap"
+                ]
+            },
+            "commentary": "Profitability is net of all costs. An agent that spends $50 in compute to make $10 is losing money."
+        },
+        {
+            "id": "ARCH-001",
+            "assertion": "The architecture must enforce strict modularity and separation of concerns to ensure code hygiene and maintainability",
+            "examples": {
+                "do": [
+                    "Define clear, typed interfaces between all major components",
+                    "Enforce unidirectional data flow where possible",
+                    "Isolate side effects (e.g., API calls) from core logic"
+                ],
+                "dont": [
+                    "Create circular dependencies between modules",
+                    "Allow 'god objects' that handle unrelated responsibilities",
+                    "Hardcode implementations instead of using dependency injection"
+                ]
+            },
+            "commentary": "A modular codebase is easier to test, debug, and extend. We prescribe the *quality* of the architecture, not the specific names of the boxes."
+        }
+    ]
+}

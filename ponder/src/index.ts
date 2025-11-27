@@ -325,15 +325,15 @@ ponder.on(
         typeof (content as any).sourceJobDefinitionId === "string"
           ? (content as any).sourceJobDefinitionId
           : undefined;
-      additionalContext = (content as any).additionalContext || undefined;
-      if (additionalContext?.message) {
-        messageContent = additionalContext.message;
-      }
+            additionalContext = (content as any).additionalContext || undefined;
+            if (additionalContext?.message) {
+              messageContent = additionalContext.message;
+            }
       if (content.codeMetadata && typeof content.codeMetadata === "object") {
-        try {
+              try {
           codeMetadata = safeJsonClone(content.codeMetadata);
         } catch {
-          codeMetadata = content.codeMetadata;
+                codeMetadata = content.codeMetadata;
         }
       }
       // Extract dependencies array if present
