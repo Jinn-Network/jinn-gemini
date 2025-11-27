@@ -8,7 +8,7 @@ BASE_RPC_URL: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c3
 Resolved RPC URL: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c31d04025de6c556a6eb1145a801657a7/
 Is Tenderly VNet: false
 Finality Block Count: 30
-Start Block: 38738824
+Start Block: 38739321
 End Block: none (realtime)
 Database Mode: postgres
 Database URL: postgresql://postgres:****@db.clnwgxgvmnrkwqdblqgf.supabase.co:5432/postgres
@@ -17,5 +17,5 @@ OPERATE_PROFILE_DIR: not set
 PORT: not set
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Timestamp: 2025-11-27T18:13:16.017Z
+Timestamp: 2025-11-27T18:29:50.658Z
 CWD: /Users/gcd/Repositories/main/jinn-cli-agents/ponder

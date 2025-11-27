@@ -8,6 +8,7 @@ import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
 import { getCodeMetadataDefaultBaseBranch, getOptionalMechModel } from '../../../config/index.js';
 import { ensureUniversalTools } from './shared/base-tools.js';
+import { getJobContextForDispatch } from './shared/job-context-utils.js';
 
 // Blueprint assertion schema matching the style guide
 const blueprintAssertionSchema = z.object({
@@ -215,9 +216,24 @@ export async function dispatchNewJob(args: unknown) {
     if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
     if (context.workstreamId) lineageContext.workstreamId = context.workstreamId;
 
-    // Build additionalContext with message if provided
+    // Fetch job context for hierarchy tracking (enables job-centric status inference)
+    // This is critical for the worker to see all children across all runs of this job
+    const jobContext = await getJobContextForDispatch(jobDefinitionId, 3);
+
+    // Build additionalContext with hierarchy, summary, and message
     // Blueprint and dependencies are now stored at root level, not in additionalContext
     let additionalContext: Record<string, any> = {};
+    
+    // Add hierarchy and summary from job context
+    if (jobContext) {
+      if (jobContext.hierarchy) {
+        additionalContext.hierarchy = jobContext.hierarchy;
+      }
+      if (jobContext.summary) {
+        additionalContext.summary = jobContext.summary;
+      }
+    }
+
     if (message) {
       let messageObj: any = null;
       try {
@@ -229,12 +245,10 @@ export async function dispatchNewJob(args: unknown) {
         // ignore parse error
       }
 
-      additionalContext = {
-        message: messageObj || {
-          content: message,
-          to: jobDefinitionId,
-          from: context.jobDefinitionId || undefined,
-        }
+      additionalContext.message = messageObj || {
+        content: message,
+        to: jobDefinitionId,
+        from: context.jobDefinitionId || undefined,
       };
     }
 

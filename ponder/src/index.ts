@@ -1,4 +1,4 @@
-import { ponder } from "@/generated";
+import { ponder } from "ponder:registry";
 import fetch from "cross-fetch";
 import axios from "axios";
 import { logger, serializeError } from "../../logging/index.js";

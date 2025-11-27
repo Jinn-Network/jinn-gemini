@@ -152,10 +152,10 @@ export default createConfig({
   // and enables parallel test execution without database conflicts
   database: databaseConfig,
 
-  networks: {
+  chains: {
     base: {
-      chainId: 8453,
-      transport: http(getRpcUrl()), // Call function to get RPC URL at runtime
+      id: 8453,
+      rpc: getRpcUrl(), // Call function to get RPC URL at runtime
       pollingInterval: 6_000,
       maxRequestsPerSecond: 2,
       finalityBlockCount: getFinalityBlockCount(), // Call function to get finality count at runtime
@@ -163,7 +163,7 @@ export default createConfig({
   },
   contracts: {
     MechMarketplace: {
-      network: "base",
+      chain: "base",
       address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
       // Reuse ABI from mech-client-ts to avoid duplication during dev
       abi: MechMarketplaceAbi,
@@ -171,7 +171,7 @@ export default createConfig({
       endBlock,
     },
     OlasMech: {
-      network: "base",
+      chain: "base",
       address: MECH_ADDRESS,
       abi: (AgentMechAbi as any)?.abi || (AgentMechAbi as any),
       startBlock,
