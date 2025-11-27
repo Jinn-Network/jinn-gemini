@@ -73,6 +73,7 @@ interface WorkstreamNode {
     delivered: boolean;
     hasDelivery: boolean;
     expired: boolean;
+    finalStatus?: string; // The actual finalStatus.status from delivery for debugging
   };
 }
 
@@ -265,14 +266,28 @@ async function main() {
       let status: WorkstreamNode['status'] = req.delivered ? 'COMPLETED' : (expired ? 'EXPIRED' : 'PENDING');
       let summary: string | undefined;
       let error: string | undefined;
+      let actualFinalStatus: string | undefined;
 
       // Try to fetch delivery content for summary/status if delivered
       if (req.delivered && delivery?.ipfsHash) {
         // We only fetch key delivery data to keep it light
         const content = await fetchIpfsContent(delivery.ipfsHash, req.id);
         if (content) {
-            // Check for explicit error
-            if (content.error || content.errorMessage) {
+            // Use status field from delivery payload (job-centric status)
+            if (content.status) {
+                actualFinalStatus = content.status;
+                const finalStatusValue = content.status.toUpperCase();
+                if (finalStatusValue === 'COMPLETED') {
+                    status = 'COMPLETED';
+                } else if (finalStatusValue === 'FAILED') {
+                    status = 'FAILED';
+                    error = content.statusMessage || content.errorMessage || content.error || "Job failed";
+                } else if (finalStatusValue === 'WAITING' || finalStatusValue === 'DELEGATING') {
+                    status = 'PENDING'; // Map WAITING/DELEGATING to PENDING for workstream view
+                }
+            }
+            // Fallback: Check for explicit error
+            else if (content.error || content.errorMessage) {
                 status = 'FAILED';
                 error = content.errorMessage || content.error || "Unknown error";
             }
@@ -296,7 +311,12 @@ async function main() {
         error,
         children: [],
         artifacts: reqArtifacts.map(a => ({ name: a.name, topic: a.topic, type: a.type })),
-        _debug: { delivered: req.delivered, hasDelivery: !!delivery, expired }
+        _debug: { 
+          delivered: req.delivered, 
+          hasDelivery: !!delivery, 
+          expired,
+          finalStatus: actualFinalStatus
+        }
       });
     }
 

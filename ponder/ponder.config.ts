@@ -2,7 +2,7 @@ import '../env/index.js';
 import { getMechAddress } from '../env/operate-profile.js';
 import MechMarketplaceAbi from './abis/MechMarketplace.json';
 import AgentMechAbi from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
-import { createConfig } from "@ponder/core";
+import { createConfig } from "ponder";
 import { http } from "viem";
 import fetch from 'cross-fetch';
 
