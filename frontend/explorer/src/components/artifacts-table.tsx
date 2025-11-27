@@ -2,6 +2,7 @@ import React from 'react'
 import Link from 'next/link'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
+import { TruncatedId } from '@/components/truncated-id'
 
 interface ArtifactsTableProps {
   records: SubgraphRecord[]
@@ -45,7 +46,7 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
             
             const cid = 'cid' in record && record.cid 
               ? record.cid 
-              : '-'
+              : null
             
             const topic = 'topic' in record && record.topic 
               ? record.topic 
@@ -53,7 +54,7 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
             
             const requestId = 'requestId' in record && record.requestId 
               ? record.requestId 
-              : '-'
+              : null
 
             return (
               <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -72,14 +73,14 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
                   {timestamp}
                 </td>
                 <td className="px-4 py-3">
-                  {cid !== '-' ? (
+                  {cid ? (
                     <a
                       href={`https://gateway.autonolas.tech/ipfs/${cid}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono"
+                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono inline-flex items-center gap-1.5"
                     >
-                      {cid.slice(0, 12)}...
+                      <TruncatedId value={cid} copyable={false} />
                     </a>
                   ) : (
                     <span className="text-sm text-gray-400">-</span>
@@ -89,13 +90,11 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
                   {topic}
                 </td>
                 <td className="px-4 py-3">
-                  {requestId !== '-' ? (
-                    <Link
-                      href={`/requests/${requestId}`}
-                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono"
-                    >
-                      {requestId.toString().substring(0, 12)}...
-                    </Link>
+                  {requestId ? (
+                    <TruncatedId 
+                      value={requestId}
+                      linkTo={`/requests/${requestId}`}
+                    />
                   ) : (
                     <span className="text-sm text-gray-400">-</span>
                   )}

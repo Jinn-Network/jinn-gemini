@@ -6,6 +6,7 @@ import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
 import { getDependencyInfo, DependencyInfo, getJobDefinition } from '@/lib/subgraph'
 import { StatusIcon, mapDependencyStatusToJobStatus } from '@/components/status-icon'
+import { TruncatedId } from '@/components/truncated-id'
 
 interface RequestsTableProps {
   records: SubgraphRecord[]
@@ -140,21 +141,19 @@ export function RequestsTable({ records }: RequestsTableProps) {
               : 'text-yellow-600 bg-yellow-50 border-yellow-200'
             
             // Get workstream ID from Ponder (always use the indexed field)
-            const workstreamId = 'workstreamId' in record && record.workstreamId 
-              ? record.workstreamId 
-              : record.id
+            const workstreamId = 'workstreamId' in record ? record.workstreamId : null
             
             const mech = 'mech' in record && record.mech 
-              ? record.mech.slice(0, 10) + '...' 
-              : '-'
+              ? record.mech 
+              : null
             
             const timestamp = 'blockTimestamp' in record && record.blockTimestamp 
               ? formatDate(record.blockTimestamp) 
               : '-'
 
             const jobDefId = 'jobDefinitionId' in record && record.jobDefinitionId
-              ? record.jobDefinitionId.toString().substring(0, 12) + '...'
-              : '-'
+              ? record.jobDefinitionId
+              : null
 
             const dependencies = 'dependencies' in record ? record.dependencies as string[] : undefined
 
@@ -169,7 +168,7 @@ export function RequestsTable({ records }: RequestsTableProps) {
                   </Link>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-sm text-gray-600 font-mono">{record.id.toString().substring(0, 12) + '...'}</span>
+                  <TruncatedId value={record.id} />
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${statusClass}`}>
@@ -180,23 +179,23 @@ export function RequestsTable({ records }: RequestsTableProps) {
                   <DependencyCell dependencies={dependencies} />
                 </td>
                 <td className="px-4 py-3">
-                  <Link
-                    href={`/workstreams/${workstreamId}`}
-                    className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono"
-                  >
-                    {workstreamId.toString().substring(0, 12)}...
-                  </Link>
+                  {workstreamId ? (
+                    <TruncatedId 
+                      value={workstreamId} 
+                      linkTo={`/workstreams/${workstreamId}`}
+                    />
+                  ) : (
+                    <span className="text-gray-400 text-sm">-</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
-                  {'jobDefinitionId' in record && record.jobDefinitionId ? (
+                  {jobDefId ? (
                     <div className="flex items-center gap-2">
                       <JobDefStatusCell jobDefId={record.jobDefinitionId} />
-                      <Link
-                        href={`/jobDefinitions/${record.jobDefinitionId}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono"
-                      >
-                        {jobDefId}
-                      </Link>
+                      <TruncatedId 
+                        value={jobDefId}
+                        linkTo={`/jobDefinitions/${jobDefId}`}
+                      />
                     </div>
                   ) : (
                     <span className="text-gray-400 text-sm">-</span>
@@ -205,8 +204,12 @@ export function RequestsTable({ records }: RequestsTableProps) {
                 <td className="px-4 py-3 text-right text-sm text-gray-600">
                   {timestamp}
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600 font-mono">
-                  {mech}
+                <td className="px-4 py-3">
+                  {mech ? (
+                    <TruncatedId value={mech} />
+                  ) : (
+                    <span className="text-gray-400 text-sm">-</span>
+                  )}
                 </td>
               </tr>
             )

@@ -23,7 +23,7 @@ import { pushJobBranch } from '../git/push.js';
 import { generateBranchUrl, formatSummaryForPr, createBranchArtifact } from '../git/pr.js';
 import { autoCommitIfNeeded, deriveCommitMessage, extractExecutionSummary } from '../git/autoCommit.js';
 import { runRecognitionPhase } from '../recognition/runRecognition.js';
-import { augmentPromptWithRecognition } from '../recognition/telemetryAugment.js';
+// Recognition augmentation now handled by BlueprintBuilder's RecognitionProvider
 import { runAgentForRequest, consolidateArtifacts, parseTelemetry, extractOutput, mergeTelemetry, extractArtifactsFromError } from '../execution/index.js';
 import { runReflection } from '../reflection/runReflection.js';
 import { inferJobStatus, dispatchParentIfNeeded } from '../status/index.js';
@@ -135,25 +135,8 @@ export async function processOnce(
     telemetry.startPhase('recognition');
     try {
       recognition = await runRecognitionPhase(target.id, metadata, telemetry);
-      metadata = augmentPromptWithRecognition(metadata, recognition);
-      if (recognition?.promptPrefix) {
-        const prefix = recognition.promptPrefix.trim();
-        if (prefix.length > 0) {
-          const rawLearnings = Array.isArray(recognition.rawLearnings) ? recognition.rawLearnings : [];
-          workerLogger.info({ 
-            requestId: target.id, 
-            prefixLength: prefix.length,
-            learningsCount: rawLearnings.length,
-            similarJobsCount: recognition.similarJobs?.length || 0,
-            promptPreview: prefix.substring(0, 200)
-          }, 'Augmented prompt with recognition learnings');
-          telemetry.logCheckpoint('recognition', 'prompt_augmented', {
-            prefixLength: prefix.length,
-            hasLearnings: !!recognition.learningsMarkdown,
-            learningsCount: rawLearnings.length,
-          });
-        }
-      }
+      // Recognition learnings are now handled by BlueprintBuilder's RecognitionProvider
+      // Do NOT augment metadata.blueprint here - it must remain valid JSON for BlueprintBuilder
       metadata.recognition = recognition;
     } catch (recognitionError: any) {
       telemetry.logError('recognition', recognitionError);

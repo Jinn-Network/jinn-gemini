@@ -77,16 +77,24 @@ export class SystemBlueprintProvider implements AssertionProvider {
   }
 
   async provide(
-    _ctx: BuildContext,
+    ctx: BuildContext,
     _builtContext: BlueprintContext
   ): Promise<BlueprintAssertion[]> {
     const blueprint = loadSystemBlueprint();
 
-    // Return all system assertions with category set
-    return blueprint.assertions.map((assertion) => ({
+    let assertions = blueprint.assertions.map((assertion) => ({
       ...assertion,
       category: 'system' as const,
     }));
+
+    // If this is an artifact-only job (no code metadata), exclude coding-specific system assertions
+    // that mandate git workflows (branches, commits, process_branch)
+    if (!ctx.metadata.codeMetadata) {
+      const CODING_ASSERTIONS = ['SYS-GIT-001', 'SYS-PARENT-ROLE-001'];
+      assertions = assertions.filter((a) => !CODING_ASSERTIONS.includes(a.id));
+    }
+
+    return assertions;
   }
 }
 

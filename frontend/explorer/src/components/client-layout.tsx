@@ -3,6 +3,8 @@
 import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { RealtimeStatusIndicator } from "@/components/realtime-status-indicator";
+import { useRealtimeData } from "@/hooks/use-realtime-data";
 
 interface ClientLayoutProps {
   children: React.ReactNode;
@@ -10,6 +12,7 @@ interface ClientLayoutProps {
 
 export function ClientLayout({ children }: ClientLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { status: realtimeStatus } = useRealtimeData(undefined, { enabled: true });
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
@@ -29,6 +32,14 @@ export function ClientLayout({ children }: ClientLayoutProps) {
             ☰
           </Button>
           <h1 className="text-lg font-semibold">Jinn Explorer</h1>
+          <div className="ml-auto">
+            <RealtimeStatusIndicator status={realtimeStatus} />
+          </div>
+        </header>
+        
+        {/* Desktop header with real-time status indicator */}
+        <header className="hidden md:flex bg-card border-b p-4 items-center justify-end">
+          <RealtimeStatusIndicator status={realtimeStatus} />
         </header>
         
         {/* Main content area with responsive padding */}

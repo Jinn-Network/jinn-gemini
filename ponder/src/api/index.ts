@@ -1,0 +1,12 @@
+import { db } from "ponder:api";
+import schema from "ponder:schema";
+import { Hono } from "hono";
+import { client } from "@ponder/core";
+
+const app = new Hono();
+
+// Enable SQL over HTTP (includes SSE support for client.live())
+app.use("/sql/*", client({ db, schema }));
+
+export default app;
+

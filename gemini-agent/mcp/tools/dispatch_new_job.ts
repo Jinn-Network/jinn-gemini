@@ -31,7 +31,7 @@ const dispatchNewJobParamsBase = z.object({
   enabledTools: z.array(z.string()).optional().describe('Array of tool names to enable for this job'),
   message: z.string().optional().describe('Optional message to include in the job request'),
   dependencies: z.array(z.string()).optional().describe('Array of job definition UUIDs (not job names) that must have at least one delivered request before this job can execute. Use get_details or search_jobs to find job definition IDs. Example: ["4eac1570-7980-4e2b-afc7-3f5159e99ea5"]'),
-  skipBranch: z.boolean().optional().default(false).describe('If true, skip branch creation and code metadata collection (for artifact-only jobs)'),
+  skipBranch: z.boolean().optional().default(false).describe('If true, skip branch creation and code metadata collection. Auto-detected: branches are automatically skipped when CODE_METADATA_REPO_ROOT is not set and no parent branch context exists (artifact-only mode).'),
   responseTimeout: z.number().optional().default(300).describe('Response timeout in seconds for marketplace request. Defaults to 300 (5 minutes). Maximum allowed by marketplace is 300 seconds.'),
 });
 
@@ -238,15 +238,22 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
+    // Auto-detect whether to skip branch creation:
+    // 1. If skipBranch explicitly set, respect it
+    // 2. If CODE_METADATA_REPO_ROOT not set AND no parent branch context, skip branches (artifact-only mode)
+    // 3. If inside a job with codeMetadata, inherit parent context (can create child branches)
+    const hasRepoRoot = Boolean(process.env.CODE_METADATA_REPO_ROOT);
+    const hasParentBranchContext = Boolean(context.branchName || context.baseBranch);
+    const shouldSkipBranch = skipBranch || (!hasRepoRoot && !hasParentBranchContext);
+
     const baseBranch =
       context.branchName ||
       context.baseBranch ||
-      context.branchName ||
       getCodeMetadataDefaultBaseBranch();
 
     let branchResult;
     let codeMetadata;
-    if (!skipBranch) {
+    if (!shouldSkipBranch) {
       try {
         branchResult = await ensureJobBranch({
           jobDefinitionId,

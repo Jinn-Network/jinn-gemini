@@ -11,10 +11,10 @@
  */
 
 /**
- * Universal tools that every agent gets automatically
- * These ensure all agents can plan projects, create jobs, manage artifacts, etc.
+ * Base universal tools available to all agents
+ * These include job management, artifacts, search, and read-only file tools
  */
-export const UNIVERSAL_TOOLS = [
+export const BASE_UNIVERSAL_TOOLS = [
   // MCP server tools (job management, artifacts, search)
   'list_tools',
   'get_details',
@@ -26,18 +26,32 @@ export const UNIVERSAL_TOOLS = [
   'search_artifacts',
   'google_web_search',
   'web_fetch',
-  // Git workflow tools (branch management for child job integration)
-  'process_branch',
-  // Read-only native file tools (always available)
+  // Read-only native file tools
   'list_directory',
   'read_file',
   'search_file_content',
   'glob',
   'read_many_files',
-  // Write/coding tools (always available)
+] as const;
+
+/**
+ * Coding tools available only to coding jobs
+ * These include git workflow and file write/edit operations
+ */
+export const CODING_UNIVERSAL_TOOLS = [
+  'process_branch',
   'write_file',
   'replace',
   'run_shell_command'
+] as const;
+
+/**
+ * Universal tools that every coding agent gets automatically
+ * For artifact-only jobs, use BASE_UNIVERSAL_TOOLS instead
+ */
+export const UNIVERSAL_TOOLS = [
+  ...BASE_UNIVERSAL_TOOLS,
+  ...CODING_UNIVERSAL_TOOLS
 ] as const;
 
 /**
@@ -77,14 +91,26 @@ export interface ToolPolicyResult {
 }
 
 /**
- * Compute tool policy for a job based on its enabled tools
+ * Compute tool policy for a job based on its enabled tools and job type
  * 
  * @param jobEnabledTools - Tools explicitly enabled by the job definition (may be empty)
+ * @param options - Configuration options including whether this is a coding job
  * @returns Tool policy result with MCP and CLI configurations
  */
-export function computeToolPolicy(jobEnabledTools: string[] = []): ToolPolicyResult {
+export function computeToolPolicy(
+  jobEnabledTools: string[] = [],
+  options?: { isCodingJob?: boolean }
+): ToolPolicyResult {
+  // Determine if this is a coding job (default to true for backward compatibility)
+  const isCodingJob = options?.isCodingJob !== false;
+  
+  // Select the appropriate universal tools based on job type
+  const effectiveUniversalTools = isCodingJob 
+    ? UNIVERSAL_TOOLS 
+    : BASE_UNIVERSAL_TOOLS;
+  
   // Merge universal tools with job-specific tools, removing duplicates
-  const allTools = [...UNIVERSAL_TOOLS, ...jobEnabledTools];
+  const allTools = [...effectiveUniversalTools, ...jobEnabledTools];
   const uniqueTools = [...new Set(allTools)];
 
   // MCP include: all tools the agent should have access to

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
+import { useRealtimeData } from '@/hooks/use-realtime-data'
 import { RecognitionPhaseCard } from './recognition-phase-card'
 import { WorkerTelemetryCard } from '../worker-telemetry-card'
 import { DependenciesSection } from '../dependencies-section'
@@ -482,25 +483,37 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
   }, [record.id, record.delivered])
 
   // Fetch artifacts from subgraph
-  useEffect(() => {
-    const fetchArtifacts = async () => {
-      try {
-        setLoadingArtifacts(true)
-        const artifactsResponse = await queryArtifacts({
-          where: { requestId: record.id },
-          orderBy: 'blockTimestamp',
-          orderDirection: 'desc'
-        })
-        setArtifacts(artifactsResponse.items)
-      } catch (error) {
-        console.error('Error fetching artifacts:', error)
-      } finally {
-        setLoadingArtifacts(false)
-      }
+  const fetchArtifacts = async () => {
+    try {
+      setLoadingArtifacts(true)
+      const artifactsResponse = await queryArtifacts({
+        where: { requestId: record.id },
+        orderBy: 'blockTimestamp',
+        orderDirection: 'desc'
+      })
+      setArtifacts(artifactsResponse.items)
+    } catch (error) {
+      console.error('Error fetching artifacts:', error)
+    } finally {
+      setLoadingArtifacts(false)
     }
+  }
 
+  useEffect(() => {
     fetchArtifacts()
   }, [record.id])
+
+  // Real-time updates for all relevant data
+  const { isConnected: isRealtimeConnected } = useRealtimeData(
+    undefined, // Listen to all tables
+    {
+      enabled: true,
+      onEvent: () => {
+        console.log('[JobDetailLayout] Real-time update detected')
+        fetchArtifacts()
+      }
+    }
+  )
 
   // Fetch worker telemetry artifact
   useEffect(() => {

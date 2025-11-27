@@ -14,7 +14,7 @@ export { loadMcpServer, stopMcpServer } from './shared/mcp-bootstrap.js';
 // GitHub tools
 export { getFileContents, getFileContentsParams, getFileContentsSchema, searchCode, searchCodeParams, searchCodeSchema, listCommits, listCommitsParams, listCommitsSchema } from './github_tools.js';
 
-// Git tools
+// Git tools (from worker/mcp)
 export { process_branch, process_branch_schema } from '../../../worker/mcp/tools/git.js';
 
 // Export database functions

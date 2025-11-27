@@ -22,6 +22,7 @@ export const REGISTERED_MCP_TOOLS = [
   'list_commits',
   'process_branch',
   'list_tools', // Special tool registered separately
+  'verify_trade_ideas',
 ] as const;
 
 async function main() {

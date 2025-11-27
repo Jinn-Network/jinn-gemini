@@ -55,8 +55,11 @@ export async function runAgentForRequest(
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const completedChildRequestIds = extractCompletedChildRequestIds(metadata?.additionalContext);
   
+  // Determine if this is a coding job based on presence of code metadata
+  const isCodingJob = !!metadata?.codeMetadata;
+  
   // For artifact-only jobs (no code), pass null to prevent loading external repos
-  const codeWorkspace = metadata?.codeMetadata ? undefined : null;
+  const codeWorkspace = isCodingJob ? undefined : null;
   
   const agent = new Agent(
     model,
@@ -70,7 +73,8 @@ export async function runAgentForRequest(
       sourceEventId: null,
       projectDefinitionId: null
     },
-    codeWorkspace
+    codeWorkspace,
+    { isCodingJob }
   );
 
   // Build unified prompt from BlueprintBuilder

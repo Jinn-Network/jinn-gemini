@@ -64,6 +64,7 @@ export class Agent {
   private lastTelemetryFile: string | null = null;
   private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
   private cachedToolPolicy: ToolPolicyResult | null = null;
+  private isCodingJob: boolean;
   
   // Stdout protection limits (configurable via environment variables)
   private readonly MAX_STDOUT_SIZE = parseInt(process.env.AGENT_MAX_STDOUT_SIZE || '5242880'); // 5MB default
@@ -79,11 +80,22 @@ export class Agent {
     model: string, 
     enabledTools: string[], 
     jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null },
-    codeWorkspace?: string | null
+    codeWorkspace?: string | null,
+    options?: { isCodingJob?: boolean }
   ) {
     this.model = model;
     this.enabledTools = enabledTools || [];
     this.jobContext = jobContext;
+    
+    // Determine if this is a coding job
+    // Primary source: explicit option, fallback to inferring from codeWorkspace
+    if (options?.isCodingJob !== undefined) {
+      this.isCodingJob = options.isCodingJob;
+    } else {
+      // Infer from codeWorkspace: null means explicitly non-coding, empty string means no workspace
+      this.isCodingJob = codeWorkspace !== null && codeWorkspace !== '';
+    }
+    
     // agentRoot must point to the actual gemini-agent directory containing config files
     // Resolve relative to this file's location for reliable path resolution
     // This ensures agentRoot is correct regardless of CODE_METADATA_REPO_ROOT or process.cwd()
@@ -236,7 +248,7 @@ export class Agent {
       
       // Use cached tool policy (computed in generateJobSpecificSettings)
       // This ensures tool access is properly restricted via MCP settings
-      const toolPolicy = this.cachedToolPolicy || computeToolPolicy(this.enabledTools);
+      const toolPolicy = this.cachedToolPolicy || computeToolPolicy(this.enabledTools, { isCodingJob: this.isCodingJob });
       
       // Make sure Gemini CLI treats the job repo as part of the workspace to allow write_file
       const includeDirectories = new Set<string>();
@@ -584,7 +596,7 @@ export class Agent {
       // Compute tool policy using centralized logic
       // This ensures MCP include/exclude and CLI whitelist are consistent
       // Cache it for reuse in runGeminiWithTelemetry to avoid double computation
-      this.cachedToolPolicy = computeToolPolicy(this.enabledTools);
+      this.cachedToolPolicy = computeToolPolicy(this.enabledTools, { isCodingJob: this.isCodingJob });
       const toolPolicy = this.cachedToolPolicy;
 
       // Include the merged tool set (universal + job-specific)

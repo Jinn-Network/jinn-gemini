@@ -6,6 +6,7 @@ import { ArrowUpDown, ArrowDown, ArrowUp } from 'lucide-react'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
 import { StatusIcon } from '@/components/status-icon'
+import { TruncatedId } from '@/components/truncated-id'
 
 interface JobDefinitionsTableProps {
   records: SubgraphRecord[]
@@ -94,9 +95,6 @@ export function JobDefinitionsTable({ records, onSort, sortColumn = '', sortAsce
               : lastStatus === 'PENDING'
               ? 'bg-yellow-100 text-yellow-800'
               : 'bg-gray-100 text-gray-800'
-            
-            const fullId = record.id.toString()
-            const displayId = fullId.length > 16 ? fullId.substring(0, 16) + '...' : fullId
 
             return (
               <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -117,8 +115,8 @@ export function JobDefinitionsTable({ records, onSort, sortColumn = '', sortAsce
                     {lastStatus}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600 font-mono truncate" title={fullId}>
-                  {displayId}
+                <td className="px-4 py-3">
+                  <TruncatedId value={record.id} />
                 </td>
               </tr>
             )

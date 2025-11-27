@@ -869,6 +869,7 @@ const queryWorkstreamRequests = `
         blockTimestamp
         delivered
         jobDefinitionId
+        workstreamId
       }
       pageInfo {
         hasNextPage

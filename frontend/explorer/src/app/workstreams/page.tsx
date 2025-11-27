@@ -1,5 +1,6 @@
 import { getWorkstreams } from '@/lib/subgraph'
 import Link from 'next/link'
+import { TruncatedId } from '@/components/truncated-id'
 
 // Force dynamic rendering to avoid build-time data fetching
 export const dynamic = 'force-dynamic'
@@ -55,8 +56,8 @@ export default async function WorkstreamsPage() {
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {formatTimestamp(workstream.blockTimestamp)}
                   </td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-600 font-mono">
-                    {workstream.id.substring(0, 12)}...
+                  <td className="px-4 py-3 text-right">
+                    <TruncatedId value={workstream.id} />
                   </td>
                 </tr>
               ))}

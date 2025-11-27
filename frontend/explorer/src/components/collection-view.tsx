@@ -13,6 +13,7 @@ import { RecordListSkeleton, RequestsTableSkeleton, ArtifactsTableSkeleton, JobD
 import { getCollectionLabel } from '@/lib/utils'
 import { useSubgraphCollection } from '@/hooks/use-subgraph-collection'
 import { getRequest, Request } from '@/lib/subgraph'
+import { TruncatedId } from '@/components/truncated-id'
 
 interface CollectionViewProps {
   collectionName: CollectionName
@@ -150,19 +151,18 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
             <span className="text-blue-700">
               Filtered by workstream
             </span>
-            <a
-              href={`/workstreams/${workstreamFilter}`}
-              className="text-blue-600 hover:text-blue-800 underline font-mono text-xs"
-            >
-              {workstreamFilter.substring(0, 16)}...
-            </a>
+            <TruncatedId 
+              value={workstreamFilter}
+              linkTo={`/workstreams/${workstreamFilter}`}
+              className="text-xs"
+            />
             <button
               onClick={() => {
                 const params = new URLSearchParams(searchParams.toString())
                 params.delete('workstream')
                 router.push(`?${params.toString()}`)
               }}
-              className="text-blue-600 hover:text-blue-800 ml-1"
+              className="text-blue-600 hover:text-blue-800 ml-1 cursor-pointer"
             >
               ✕
             </button>

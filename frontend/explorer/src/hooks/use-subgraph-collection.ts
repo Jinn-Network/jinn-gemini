@@ -16,6 +16,7 @@ import {
   QueryOptions
 } from '@/lib/subgraph'
 import { toast } from 'sonner'
+import { useRealtimeData, type ConnectionStatus } from './use-realtime-data'
 
 export type SubgraphRecord = JobDefinition | Request | Delivery | Artifact | Message
 
@@ -43,6 +44,7 @@ interface UseSubgraphCollectionReturn {
   setSorting: (column: string, ascending: boolean) => void
   sortColumn: string
   sortAscending: boolean
+  realtimeStatus: ConnectionStatus
 }
 
 export function useSubgraphCollection({
@@ -64,6 +66,7 @@ export function useSubgraphCollection({
   const [hasPreviousPage, setHasPreviousPage] = useState(false)
   const [currentSortColumn, setCurrentSortColumn] = useState<string>(sortColumn || '')
   const [currentSortAscending, setCurrentSortAscending] = useState<boolean>(sortAscending)
+  const [realtimeStatus, setRealtimeStatus] = useState<ConnectionStatus>('disconnected')
   
   // Track cursors for each page
   const cursorsRef = useRef<Map<number, { after?: string; before?: string }>>(new Map())
@@ -152,8 +155,18 @@ export function useSubgraphCollection({
     }
   }, [collectionName, pageSize, getQueryFunction, getDefaultSortColumn, currentSortAscending, whereFilter])
 
-  // Set up polling
+  // Set up polling only as fallback when SSE is not connected
   useEffect(() => {
+    // If realtime is connected, disable polling
+    if (isRealtimeConnected) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      return
+    }
+
+    // Fallback to polling if SSE is not connected
     if (!enablePolling) {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
@@ -167,7 +180,7 @@ export function useSubgraphCollection({
     }
     
     pollingIntervalRef.current = setInterval(() => {
-      console.log(`Polling for ${collectionName} updates...`)
+      console.log(`[useSubgraphCollection] Polling for ${collectionName} updates (SSE fallback)`)
       fetchRecords(currentPage, false)
     }, pollingInterval)
     
@@ -177,12 +190,32 @@ export function useSubgraphCollection({
         pollingIntervalRef.current = null
       }
     }
-  }, [enablePolling, pollingInterval, currentPage, fetchRecords, collectionName])
+  }, [enablePolling, pollingInterval, currentPage, fetchRecords, collectionName, isRealtimeConnected])
 
   // Manual refresh function
   const refresh = useCallback(() => {
     fetchRecords(currentPage, false)
   }, [fetchRecords, currentPage])
+
+  // Use Ponder native SSE via client.live()
+  const { isConnected: isRealtimeConnected, status: rtStatus } = useRealtimeData(
+    collectionName,
+    {
+      enabled: true,
+      onEvent: () => {
+        console.log(`[useSubgraphCollection] Real-time update for ${collectionName}`)
+        fetchRecords(currentPage, false) // Silent refresh
+      },
+      onError: (error) => {
+        console.error('[useSubgraphCollection] Real-time connection error:', error)
+      }
+    }
+  )
+
+  // Update realtime status
+  useEffect(() => {
+    setRealtimeStatus(rtStatus)
+  }, [rtStatus])
 
   // Function to update sorting
   const setSorting = useCallback((column: string, ascending: boolean) => {
@@ -223,6 +256,7 @@ export function useSubgraphCollection({
     hasPreviousPage,
     setSorting,
     sortColumn: currentSortColumn,
-    sortAscending: currentSortAscending
+    sortAscending: currentSortAscending,
+    realtimeStatus
   }
 }

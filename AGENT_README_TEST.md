@@ -147,6 +147,7 @@ yarn start:all              # Start both services
   - `enabledTools`: Array of tool names
   - `dependencies`: Array of job definition UUIDs (must complete before this job)
   - `responseTimeout`: Max 300 seconds (marketplace enforces 5-minute limit)
+  - `skipBranch`: Auto-detected (no need to specify) - branches skipped when CODE_METADATA_REPO_ROOT unset
 
 **Tool Behavior:**
 - Tools do NOT write directly to database
@@ -246,6 +247,46 @@ STAKING_PROGRAM=<program>
 
 ---
 
+## Real-Time Updates (Ponder Native SSE)
+
+**Architecture:** Frontend uses Ponder's built-in `client.live()` API for real-time updates  
+**Endpoint:** `/sql/*` on same port as GraphQL (42069)  
+**Protocol:** Server-Sent Events (SSE) via Ponder's native implementation
+
+**Key Features:**
+- Zero additional infrastructure (no separate realtime server)
+- Automatic updates when blockchain data changes
+- Polling fallback when SSE disconnected
+- Connection status indicator in UI
+
+**Implementation:**
+```typescript
+// Frontend hook usage
+import { useRealtimeData } from '@/hooks/use-realtime-data'
+
+const { status, isConnected } = useRealtimeData(
+  'requests', // Collection name (or undefined for all)
+  {
+    enabled: true,
+    onEvent: () => refetchData(), // Called on any update
+    onError: (error) => console.error(error)
+  }
+)
+```
+
+**No Configuration Required:**
+- Frontend automatically derives SSE URL from `NEXT_PUBLIC_SUBGRAPH_URL`
+- Replaces `/graphql` with `/sql` for Ponder client endpoint
+- No separate environment variables needed
+
+**Status Indicator:**
+- 🟢 Green "Live" → SSE connected
+- 🟡 Yellow "Connecting" → Attempting connection
+- ⚫ Gray "Polling" → Disconnected, using fallback
+- 🔴 Red "Fallback" → Error state
+
+---
+
 ## Workstream Filtering
 
 **What is a Workstream?**
@@ -306,6 +347,32 @@ yarn dev:mech --workstream=0x0447dd1e... --single
 **CRITICAL:** Each service deployment creates NEW Safe (even with same Master Wallet)  
 **Recovery:** Agent keys in `/.operate/keys/` survive service deletion  
 **Details:** `docs/documentation/OLAS_ARCHITECTURE_GUIDE.md`
+
+### 8. Branch Creation Auto-Detection
+**Behavior:** `dispatch_new_job` auto-skips branch creation when `CODE_METADATA_REPO_ROOT` not set  
+**Logic:**
+1. If `CODE_METADATA_REPO_ROOT` unset AND no parent branch context → Skip branches (artifact-only)
+2. If inside job with parent branch context → Inherit context, create child branches
+3. If `skipBranch: true` explicitly set → Always skip (override)
+
+**Use Cases:**
+- Research/analysis jobs with no code changes → artifact-only mode (no repo needed)
+- Code-changing jobs inside ventures → set `CODE_METADATA_REPO_ROOT` via worker
+- Child jobs inherit parent's repo context automatically
+
+**No Manual Config:** Don't specify `skipBranch: true` explicitly - let auto-detection handle it  
+**Error Prevention:** Eliminates "CODE_METADATA_REPO_ROOT must be set" failures for research jobs
+
+**Artifact-Only Mode:**
+When no code metadata is present (pure research/analysis jobs), the system automatically adapts:
+
+- **Blueprint Filtering:** Git-related assertions (`SYS-GIT-001`, `SYS-PARENT-ROLE-001`) are removed from the system prompt
+- **Tool Filtering:** Coding and git tools are excluded from the agent's available toolset:
+  - Removed: `process_branch`, `write_file`, `replace`, `run_shell_command`
+  - Available: Job management, artifacts, search, web fetch, read-only file tools
+- **Workspace Isolation:** No code directories are mounted, preventing file system access
+
+This ensures artifact-only agents cannot attempt code modifications and focus solely on research, analysis, and artifact creation.
 
 ---
 

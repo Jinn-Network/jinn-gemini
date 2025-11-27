@@ -1,5 +1,5 @@
-import Link from 'next/link'
 import React from 'react'
+import { TruncatedId } from './truncated-id'
 
 interface IdLinkPropsWithField {
   id: string | null | undefined
@@ -24,14 +24,10 @@ const fieldToCollectionMap: Record<string, string> = {
   'source_event_id': 'events',
 };
 
-// Helper function to truncate UUID for display
-function truncateId(id: string, showFull: boolean = false): string {
-  if (showFull || id.length <= 12) {
-    return id
-  }
-  return `${id.substring(0, 8)}...`
-}
-
+/**
+ * @deprecated Use TruncatedId component directly instead
+ * This component is maintained for backward compatibility
+ */
 export function IdLink(props: IdLinkProps) {
   const { id, className = '', showFullId = false } = props;
   
@@ -52,20 +48,23 @@ export function IdLink(props: IdLinkProps) {
   // If we don't know where this field should link, just display the ID
   if (!targetCollection) {
     return (
-      <span className={`font-mono text-sm text-gray-700 ${className}`} title={id}>
-        {truncateId(id, showFullId)}
-      </span>
+      <TruncatedId 
+        value={id}
+        showFull={showFullId}
+        className={className}
+        copyable={true}
+      />
     )
   }
 
-  // Create the link
+  // Create the link using TruncatedId
   return (
-    <Link 
-      href={`/${targetCollection}/${id}`}
-      className={`text-blue-600 hover:text-blue-800 underline font-mono text-sm ${className}`}
-      title={`Go to ${targetCollection}: ${id}`}
-    >
-      {truncateId(id, showFullId)}
-    </Link>
+    <TruncatedId 
+      value={id}
+      linkTo={`/${targetCollection}/${id}`}
+      showFull={showFullId}
+      className={className}
+      copyable={true}
+    />
   )
 }

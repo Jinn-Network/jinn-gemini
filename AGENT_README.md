@@ -2175,7 +2175,7 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Location**: `worker/orchestration/jobRunner.ts` recognition phase
 
 **System Gotchas for Recognition:**
-- **CODE_METADATA_REPO_ROOT errors**: For research-only jobs (no code changes), always use `skipBranch: true` in dispatch_new_job
+- **Branch creation auto-detection**: dispatch_new_job automatically skips branch creation when CODE_METADATA_REPO_ROOT is not set (artifact-only mode). No need to specify skipBranch explicitly for research jobs.
 - **Transaction not found**: Blockchain RPC transient errors - retry dispatch calls that fail with this error
 - **Duplicate dispatch counting**: System tracks unique job definitions, not total attempts - retries are expected and normal
 

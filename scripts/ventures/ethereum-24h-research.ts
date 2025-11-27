@@ -62,7 +62,7 @@ async function dispatchRootJob(): Promise<DispatchResult> {
       'get_details',
       'create_artifact',
     ],
-    skipBranch: true, // Research venture, no code changes
+    // skipBranch auto-detected: research venture, no CODE_METADATA_REPO_ROOT
   });
   
   const { jobDefinitionId, requestId } = parseDispatchResponse(result);
@@ -88,7 +88,6 @@ async function dispatchProtocolAnalysis(): Promise<DispatchResult> {
       'web_search',
       'create_artifact',
     ],
-    skipBranch: true,
     updateExisting: false,
   });
   
@@ -115,7 +114,6 @@ async function dispatchWhaleAnalysis(): Promise<DispatchResult> {
       'web_search',
       'create_artifact',
     ],
-    skipBranch: true,
     updateExisting: false,
   });
   
@@ -142,7 +140,6 @@ async function dispatchSmartContractEvents(): Promise<DispatchResult> {
       'web_search',
       'create_artifact',
     ],
-    skipBranch: true,
     updateExisting: false,
   });
   
@@ -174,7 +171,6 @@ async function dispatchSynthesis(dependencies: string[]): Promise<DispatchResult
       'create_artifact',
     ],
     dependencies, // Depends on all 3 research tracks
-    skipBranch: true,
     updateExisting: false,
   });
   

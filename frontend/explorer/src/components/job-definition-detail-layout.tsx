@@ -9,6 +9,7 @@ import { RequestsTable } from './requests-table'
 import { RequestsTableSkeleton } from './loading-skeleton'
 import { queryRequests, type Request } from '@/lib/subgraph'
 import { StatusIcon } from '@/components/status-icon'
+import { TruncatedId } from '@/components/truncated-id'
 
 interface JobDefinition {
   id: string
@@ -168,12 +169,10 @@ export function JobDefinitionDetailLayout({ record }: JobDefinitionDetailLayoutP
               ) : workstreamId ? (
                 <div>
                   <div className="text-sm font-medium text-gray-700 mb-1">Workstream</div>
-                  <Link
-                    href={`/workstreams/${workstreamId}`}
-                    className="text-blue-600 hover:text-blue-800 hover:underline text-sm break-all"
-                  >
-                    {workstreamId.substring(0, 16)}...
-                  </Link>
+                  <TruncatedId 
+                    value={workstreamId}
+                    linkTo={`/workstreams/${workstreamId}`}
+                  />
                 </div>
               ) : null}
 
@@ -181,12 +180,10 @@ export function JobDefinitionDetailLayout({ record }: JobDefinitionDetailLayoutP
               {record.sourceJobDefinitionId && (
                 <div>
                   <div className="text-sm font-medium text-gray-700 mb-1">Source Job Definition</div>
-                  <Link
-                    href={`/jobDefinitions/${record.sourceJobDefinitionId}`}
-                    className="text-blue-600 hover:text-blue-800 hover:underline text-sm break-all"
-                  >
-                    {record.sourceJobDefinitionId.substring(0, 16)}...
-                  </Link>
+                  <TruncatedId 
+                    value={record.sourceJobDefinitionId}
+                    linkTo={`/jobDefinitions/${record.sourceJobDefinitionId}`}
+                  />
                 </div>
               )}
 
@@ -194,12 +191,10 @@ export function JobDefinitionDetailLayout({ record }: JobDefinitionDetailLayoutP
               {record.sourceRequestId && (
                 <div>
                   <div className="text-sm font-medium text-gray-700 mb-1">Source Job Execution</div>
-                  <Link
-                    href={`/requests/${record.sourceRequestId}`}
-                    className="text-blue-600 hover:text-blue-800 hover:underline text-sm break-all"
-                  >
-                    {record.sourceRequestId.substring(0, 16)}...
-                  </Link>
+                  <TruncatedId 
+                    value={record.sourceRequestId}
+                    linkTo={`/requests/${record.sourceRequestId}`}
+                  />
                 </div>
               )}
             </div>

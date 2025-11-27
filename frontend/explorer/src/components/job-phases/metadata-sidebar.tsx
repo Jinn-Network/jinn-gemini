@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import Link from 'next/link'
+import { TruncatedId } from '@/components/truncated-id'
 
 interface MetadataSidebarProps {
   requestId: string
@@ -34,15 +35,6 @@ export function MetadataSidebar({
     return date.toLocaleString()
   }
 
-  const truncateAddress = (address?: string) => {
-    if (!address) return 'N/A'
-    return `${address.slice(0, 6)}...${address.slice(-4)}`
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-  }
-
   return (
     <div className="space-y-4 sticky top-4">
       <Card>
@@ -52,15 +44,7 @@ export function MetadataSidebar({
         <CardContent className="space-y-3">
           <div>
             <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Request ID</h4>
-            <div className="flex items-center gap-2">
-              <code className="text-xs bg-gray-100 p-2 rounded flex-1 truncate">{requestId}</code>
-              <button
-                onClick={() => copyToClipboard(requestId)}
-                className="text-xs text-blue-600 hover:text-blue-800"
-              >
-                Copy
-              </button>
-            </div>
+            <TruncatedId value={requestId} showFull={true} className="text-xs bg-gray-100 p-2 rounded block" />
           </div>
 
           {delivered !== undefined && (
@@ -79,14 +63,14 @@ export function MetadataSidebar({
           {mech && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Mech Address</h4>
-              <code className="text-xs bg-gray-100 p-2 rounded block truncate">{truncateAddress(mech)}</code>
+              <TruncatedId value={mech} className="text-xs bg-gray-100 p-2 rounded block" />
             </div>
           )}
 
           {sender && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Sender Address</h4>
-              <code className="text-xs bg-gray-100 p-2 rounded block truncate">{truncateAddress(sender)}</code>
+              <TruncatedId value={sender} className="text-xs bg-gray-100 p-2 rounded block" />
             </div>
           )}
 
@@ -108,7 +92,7 @@ export function MetadataSidebar({
           {transactionHash && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Transaction Hash</h4>
-              <code className="text-xs bg-gray-100 p-2 rounded block truncate">{truncateAddress(transactionHash)}</code>
+              <TruncatedId value={transactionHash} className="text-xs bg-gray-100 p-2 rounded block" />
             </div>
           )}
         </CardContent>
@@ -129,9 +113,11 @@ export function MetadataSidebar({
           {sourceRequestId && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Parent Request</h4>
-              <Link href={`/requests/${sourceRequestId}`} className="text-xs text-blue-600 hover:underline block truncate">
-                {truncateAddress(sourceRequestId)}
-              </Link>
+              <TruncatedId 
+                value={sourceRequestId}
+                linkTo={`/requests/${sourceRequestId}`}
+                className="text-xs"
+              />
             </div>
           )}
 

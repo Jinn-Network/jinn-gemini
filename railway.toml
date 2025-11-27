@@ -1,0 +1,7 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "cd ponder && concurrently \"ponder start --port $PORT\" \"tsx realtime-server.ts\" --names \"ponder,realtime\" --prefix-colors \"cyan,magenta\""
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

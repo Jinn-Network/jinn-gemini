@@ -79,7 +79,7 @@ async function main() {
         'list_directory',
         'run_shell_command',
       ],
-      skipBranch: false, // Enable code changes
+      // skipBranch auto-detected: no CODE_METADATA_REPO_ROOT = artifact-only mode
     });
     
     const { jobDefinitionId, requestId } = parseDispatchResponse(result);

@@ -5,6 +5,7 @@ import { buildJobGraph, JobGraph, GraphQueryOptions } from '@/lib/graph-queries'
 import { Node, Edge } from 'reactflow'
 import { layoutGraph } from '@/lib/graph-layout'
 import { toast } from 'sonner'
+import { useRealtimeData } from './use-realtime-data'
 
 interface UseJobGraphOptions {
   rootId: string
@@ -102,22 +103,46 @@ export function useJobGraph({
     fetchGraph()
   }, [fetchGraph])
 
-  // Set up polling for real-time updates
+  // Use Ponder native SSE via client.live()
+  const { isConnected: isRealtimeConnected } = useRealtimeData(
+    undefined, // Listen to all tables
+    {
+      enabled: true,
+      onEvent: () => {
+        console.log('[useJobGraph] Real-time update detected, refetching graph')
+        fetchGraph(true) // Silent refresh
+      }
+    }
+  )
+
+  // Polling only as fallback when SSE is not connected
   useEffect(() => {
+    // If realtime is connected, disable polling
+    if (isRealtimeConnected) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      return
+    }
+    
+    // Fallback to polling if SSE is not connected
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current)
     }
     
     pollingIntervalRef.current = setInterval(() => {
+      console.log('[useJobGraph] Polling for updates (SSE fallback)')
       fetchGraph(true) // Silent poll
-    }, 10000) // Poll every 10 seconds
+    }, 30000) // Poll every 30 seconds
     
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
       }
     }
-  }, [fetchGraph])
+  }, [fetchGraph, isRealtimeConnected])
 
   const updateDepth = useCallback((newDepth: number) => {
     setDepth(newDepth)
