@@ -69,7 +69,7 @@ async function main() {
     const result = await dispatchNewJob({
       jobName: 'ethereum-protocol-research',
       blueprint,
-      model: 'gemini-2.5-pro',
+      model: 'gemini-2.5-flash',
       enabledTools: [
         'web_search',
         'create_artifact',
@@ -85,7 +85,7 @@ async function main() {
     console.log(`   Job Name: ethereum-protocol-research`);
     console.log(`   Job Definition ID: ${jobDefinitionId}`);
     console.log(`   Request ID: ${requestId}`);
-    console.log(`   Model: gemini-2.5-pro`);
+    console.log(`   Model: gemini-2.5-flash`);
     
     console.log('\n\n🔧 Next Steps:');
     console.log('\n1. Start worker to process the job:');

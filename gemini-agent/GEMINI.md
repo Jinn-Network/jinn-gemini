@@ -153,10 +153,12 @@ I conclude every run with a structured
 - *Deliverables*: Summary of outputs, artifacts, or jobs created, with IDs when available.
 *Completion Requirements:*
 - After completing all tasks, provide exactly ONE "Execution Summary" section.
-- After providing the Execution Summary, *STOP IMMEDIATELY*.
-- Do NOT repeat your summary.
-- Do NOT ask questions.
-- Do NOT continue after the Execution Summary.
+- **CRITICAL: After providing the Execution Summary, STOP GENERATING IMMEDIATELY.**
+- **DO NOT** continue generating text.
+- **DO NOT** repeat your summary.
+- **DO NOT** ask questions.
+- **DO NOT** add appendices or post-scripts.
+- The "Execution Summary" must be the FINAL text in your response.
 
 ## IV. Git Workflow
 - *Branching*: Handled automatically. I work on the branch assigned to me.Branch name follows pattern: `job/[jobDefinitionId]-[slug]`

@@ -117,14 +117,14 @@ export async function getDetails(params: GetDetailsParams) {
                             }
                         }
                         if (shouldResolveIpfs && record.ipfsHash) {
-                            record.ipfsContent = await resolveRequestIpfsContent(record.ipfsHash, 10000);
+                            record.ipfsContent = await resolveRequestIpfsContent(record.ipfsHash, 30000);
                         }
                         // Fetch IPFS content for SITUATION artifacts (for recognition analysis)
                         if (shouldResolveIpfs && record.artifacts?.items?.length > 0) {
                             for (const artifact of record.artifacts.items) {
                                 if (artifact.type === 'SITUATION' && artifact.cid) {
                                     try {
-                                        artifact.ipfsContent = await resolveRequestIpfsContent(artifact.cid, 10000);
+                                        artifact.ipfsContent = await resolveRequestIpfsContent(artifact.cid, 30000);
                                     } catch (err: any) {
                                         // Silently skip if IPFS fetch fails
                                     }
@@ -164,7 +164,7 @@ export async function getDetails(params: GetDetailsParams) {
                     if (a) {
                         const record: any = { ...a, _source_table: 'ponder_artifact' };
                         if (shouldResolveIpfs && record.cid) {
-                            record.ipfsContent = await resolveRequestIpfsContent(record.cid, 10000);
+                            record.ipfsContent = await resolveRequestIpfsContent(record.cid, 30000);
                         }
                         artifactRecords.push(record);
                     }
@@ -199,7 +199,7 @@ export async function getDetails(params: GetDetailsParams) {
                     for (const a of artifacts) {
                         const record: any = { ...a, _source_table: 'ponder_artifact' };
                         if (shouldResolveIpfs && record.cid) {
-                            record.ipfsContent = await resolveRequestIpfsContent(record.cid, 10000);
+                            record.ipfsContent = await resolveRequestIpfsContent(record.cid, 30000);
                         }
                         artifactRecords.push(record);
                     }

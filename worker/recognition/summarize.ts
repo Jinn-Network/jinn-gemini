@@ -47,7 +47,7 @@ export async function summarizeWorkstreamProgress(
       })
       .join('\n---\n\n');
 
-    const prompt = `You are a progress summarization agent. Your task is to analyze completed work in a venture workstream and create a concise, relevant summary for the next job in the sequence.
+    const prompt = `You are a progress summarization agent. Your task is to analyze completed work in a venture workstream and create a concise summary of accomplishments that helps the next job avoid duplicating work.
 
 ## Current Job Context
 
@@ -64,12 +64,12 @@ ${jobSummariesText}
 
 ## Your Task
 
-Create a concise summary (300-500 words) that:
+Create a concise summary (300-500 words) focusing purely on **what has been achieved**. Your goal is to help the next agent understand what work already exists, so they don't duplicate efforts.
 
-1. **Highlights key accomplishments** - What major work has been done?
-2. **Identifies patterns and decisions** - What approaches were taken? What worked?
-3. **Surfaces relevant context** - What information from prior work is most relevant to "${currentJobObjective}"?
-4. **Notes dependencies and building blocks** - What artifacts, decisions, or components from prior work should inform the current job?
+1. **Highlight concrete deliverables** - What artifacts, child jobs, or code changes were created?
+2. **Note successful approaches** - What strategies or patterns worked well?
+3. **Surface relevant outputs** - What from prior work is most relevant to "${currentJobObjective}"?
+4. **List available building blocks** - What can the next agent leverage or build upon?
 
 ## Output Format
 
@@ -77,28 +77,39 @@ Structure your summary as markdown with these sections:
 
 ### Workstream Progress Summary
 
-[Brief overview of what's been accomplished in 2-3 sentences]
+[Brief overview in 2-3 sentences focusing on what was successfully produced]
 
 ### Key Accomplishments
 
-- [Bullet point 1]
-- [Bullet point 2]
+- [Concrete deliverable 1 - e.g., "Created artifact 'Analysis Report' (CID: bafkrei...)"]
+- [Concrete deliverable 2 - e.g., "Dispatched child job for data validation (Job ID: 4149b6a8...)"]
 - [etc.]
 
 ### Relevant Context for Current Job
 
-[Paragraph explaining what from the prior work is most relevant to the current objective: "${currentJobObjective}"]
+[Paragraph explaining what outputs from prior work are most relevant to "${currentJobObjective}"]
 
 ### Building Blocks Available
 
-- [Artifacts, components, or decisions that can be leveraged]
+- [Artifacts, components, or decisions that can be leveraged - list CIDs, job IDs, file paths]
 
 ---
 
-**Important:** 
-- Be concise. Focus on information that will help the agent execute "${currentJobObjective}" effectively. Omit irrelevant details.
-- This is HISTORICAL CONTEXT ONLY. The agent receiving this summary must NOT poll for updates or check child status.
-- Frame all information as completed facts from prior runs.`;
+**CRITICAL GUIDANCE:** 
+- **Report only facts**: Focus on concrete deliverables (artifacts created, jobs dispatched, code committed). 
+- **Omit failure analysis**: If a job failed, skip it or note only what it produced before failing. Do NOT describe errors, tool failures, or why things didn't work.
+- **No speculation about state**: Never claim resources are "available", "missing", "working", or "broken". Just list what was created (e.g., "Artifact 'Data' (CID: bafkrei...)" not "Artifact content is missing from IPFS").
+- **Examples of GOOD summaries**:
+  - "Performed web research and created consolidated data artifact (CID: bafkrei...)"
+  - "Dispatched analysis job (Job Def ID: 4149b6a8-4801-4ab2-bfa1-94e730874362)"
+  - "Gathered data on 5 DeFi protocols: Uniswap, Aave, Lido, MakerDAO, Curve"
+- **Examples of BAD summaries**:
+  - "Tool call failed with error X" ❌
+  - "Artifact content was not found on IPFS" ❌
+  - "Unable to proceed due to missing data" ❌
+  - "Persistent CODE_METADATA_REPO_ROOT error blocked progress" ❌
+
+Your summary enables the next agent to verify current state with their own tools, not inherit assumptions from past failures.`;
 
     const summarizationAgent = new Agent(
       'gemini-2.5-flash',  // Always use flash for summarization

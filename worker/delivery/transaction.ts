@@ -364,6 +364,28 @@ export async function deliverViaSafeTransaction(
            workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery nonce issue; will retry');
            continue;
         }
+
+        // Handle "Transaction not found" - check if it actually succeeded on-chain
+        if (e.message?.includes('Transaction not found')) {
+           workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Transaction not found error; verifying on-chain status');
+           try {
+             const stillUndelivered = await isUndeliveredOnChain({
+               mechAddress: targetMechAddress,
+               requestIdHex,
+               rpcHttpUrl,
+               maxRetries: 2,
+             });
+             
+             if (!stillUndelivered) {
+               workerLogger.info({ requestId: context.requestId }, 'Recovered from Transaction not found - request is marked delivered on-chain');
+               // We don't have the hash, but we know it succeeded
+               return { status: 'confirmed', tx_hash: undefined }; 
+             }
+           } catch (verifyErr: any) {
+             workerLogger.warn({ requestId: context.requestId, error: verifyErr.message }, 'Failed to verify status after Transaction not found');
+           }
+        }
+
         throw e; // Fail fast on other errors (no more timeout retries since we have 60s wait)
       }
     }

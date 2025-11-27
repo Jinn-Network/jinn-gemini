@@ -14,6 +14,7 @@ import { ExternalLink, FileText, GitBranch, ArrowRight, ArrowLeft, Wrench, Zap, 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { RequestsTable } from '../requests-table'
 import { RequestsTableSkeleton } from '../loading-skeleton'
+import { StatusIcon } from '../status-icon'
 
 // Component for showing parent dispatch trigger
 function ParentDispatchIndicator({ 
@@ -1376,29 +1377,36 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     />
                   </div>
 
-                  {/* State Update - moved from Execution/Delivery card */}
+                  {/* Status Update - moved from Execution/Delivery card */}
                   <div>
                     <div className="flex items-center gap-1 mb-1">
-                      <div className="text-sm font-medium text-gray-700">State Update</div>
+                      <div className="text-sm font-medium text-gray-700">Status Update</div>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p className="max-w-xs">Job definition state after this run (COMPLETED, FAILED, DELEGATING, or WAITING)</p>
+                            <p className="max-w-xs">Job definition status after this run (COMPLETED, FAILED, DELEGATING, or WAITING)</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </div>
                     {(deliveryData || executionData) && executionData?.status ? (
-                      <span className={`inline-flex items-center px-3 py-1 rounded-md text-sm border ${
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                         executionData.status === 'COMPLETED' 
-                          ? 'bg-green-50 text-green-700 border-green-200'
+                          ? 'bg-green-100 text-green-800'
                           : executionData.status === 'FAILED'
-                          ? 'bg-red-50 text-red-700 border-red-200'
-                          : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          ? 'bg-red-100 text-red-800'
+                          : executionData.status === 'DELEGATING'
+                          ? 'bg-blue-100 text-blue-800'
+                          : executionData.status === 'WAITING'
+                          ? 'bg-purple-100 text-purple-800'
+                          : executionData.status === 'PENDING'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-gray-100 text-gray-800'
                       }`}>
+                        <StatusIcon status={executionData.status} size={14} />
                         {executionData.status}
                       </span>
                     ) : (

@@ -6,7 +6,7 @@ import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
-import { getCodeMetadataDefaultBaseBranch, getOptionalMechModel } from '../../../config/index.js';
+import { getCodeMetadataDefaultBaseBranch, getOptionalMechModel, getOptionalCodeMetadataRepoRoot } from '../../../config/index.js';
 
 // Blueprint assertion schema matching the style guide
 const blueprintAssertionSchema = z.object({
@@ -200,7 +200,12 @@ export async function dispatchNewJob(args: unknown) {
 
     let branchResult;
     let codeMetadata;
-    if (!skipBranch) {
+
+    // If no repo root is configured, we must skip branch creation regardless of the skipBranch parameter
+    const hasRepoRoot = !!getOptionalCodeMetadataRepoRoot();
+    const shouldSkipBranch = skipBranch || !hasRepoRoot;
+
+    if (!shouldSkipBranch) {
       try {
         branchResult = await ensureJobBranch({
           jobDefinitionId,
@@ -288,7 +293,7 @@ export async function dispatchNewJob(args: unknown) {
 
     if (codeMetadata) {
       ipfsJsonContents[0].codeMetadata = codeMetadata;
-    } else if (!skipBranch) {
+    } else if (!shouldSkipBranch) {
       console.error('[dispatch_new_job] WARNING: No codeMetadata - job will fail in worker!');
     }
 

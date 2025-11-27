@@ -26,6 +26,15 @@ export function countSuccessfulDispatchCalls(telemetry: any): number {
     if (!call || !call.success) {
       return;
     }
+
+    // Check if the tool execution result was actually successful (application level)
+    // MCP tools return meta.ok in the result
+    const metaOk = call.result?.meta?.ok;
+    // If meta.ok exists and is false, this was a failed dispatch (even if tool execution succeeded)
+    if (metaOk === false) {
+      return;
+    }
+
     const toolName = typeof call.tool === 'string' ? call.tool : '';
     if (toolName && DISPATCH_TOOL_NAMES.has(toolName)) {
       // Extract job definition ID from result
@@ -34,10 +43,8 @@ export function countSuccessfulDispatchCalls(telemetry: any): number {
                        call.result?.jobDefinitionId;
       if (jobDefId) {
         uniqueJobDefs.add(jobDefId);
-      } else {
-        // Fallback: count as unique if no ID (shouldn't happen in practice)
-        uniqueJobDefs.add(`unknown-${Math.random()}`);
       }
+      // Do NOT count unknown IDs as successful dispatches
     }
   });
   
