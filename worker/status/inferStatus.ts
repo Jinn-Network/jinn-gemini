@@ -12,8 +12,8 @@ import type { FinalStatus, IpfsMetadata, HierarchyJob } from '../types.js';
 function extractChildrenFromHierarchy(
   hierarchy: HierarchyJob[] | undefined,
   currentJobDefinitionId: string | undefined
-): { active: HierarchyJob[]; expired: HierarchyJob[]; failed: HierarchyJob[]; completed: HierarchyJob[] } {
-  const result = { active: [] as HierarchyJob[], expired: [] as HierarchyJob[], failed: [] as HierarchyJob[], completed: [] as HierarchyJob[] };
+): { active: HierarchyJob[]; failed: HierarchyJob[]; completed: HierarchyJob[] } {
+  const result = { active: [] as HierarchyJob[], failed: [] as HierarchyJob[], completed: [] as HierarchyJob[] };
   
   if (!hierarchy || !Array.isArray(hierarchy) || !currentJobDefinitionId) {
     return result;
@@ -29,11 +29,10 @@ function extractChildrenFromHierarchy(
     
     if (status === 'completed' || status === 'delivered' || status === 'success') {
       result.completed.push(child);
-    } else if (status === 'expired') {
-      result.expired.push(child);
     } else if (status === 'failed' || status === 'error') {
       result.failed.push(child);
-    } else if (status === 'active' || status === 'waiting' || status === 'pending') {
+    } else {
+      // Everything else is active (waiting, pending, etc.)
       result.active.push(child);
     }
   }
@@ -47,7 +46,7 @@ function extractChildrenFromHierarchy(
  * Job-centric rule: A job is COMPLETED only if all its children (across all runs) are complete.
  * - FAILED: Error occurred
  * - DELEGATING: Dispatched children this run
- * - WAITING: Has undelivered/expired/failed children (job-level view)
+ * - WAITING: Has undelivered/failed children (job-level view)
  * - COMPLETED: No outstanding children (either never delegated, or all delivered)
  */
 export async function inferJobStatus(params: {
@@ -87,26 +86,6 @@ export async function inferJobStatus(params: {
     // Job-centric view: check all children across all runs of this job
     const children = extractChildrenFromHierarchy(hierarchy, jobDefinitionId);
     
-    // Block completion if there are active children
-    if (children.active.length > 0) {
-      return {
-        status: 'WAITING',
-        message: `Waiting for ${children.active.length} active child job(s) to complete`
-      };
-    }
-
-    // Block completion if there are expired children (require remediation)
-    if (children.expired.length > 0) {
-      const expiredJobNames = children.expired
-        .map(j => j.jobName || j.name || 'unknown')
-        .slice(0, 3)
-        .join(', ');
-      return {
-        status: 'WAITING',
-        message: `${children.expired.length} child job(s) expired and need remediation: ${expiredJobNames}`
-      };
-    }
-
     // Block completion if there are failed children (require remediation)
     if (children.failed.length > 0) {
       const failedJobNames = children.failed
@@ -116,6 +95,14 @@ export async function inferJobStatus(params: {
       return {
         status: 'WAITING',
         message: `${children.failed.length} child job(s) failed and need remediation: ${failedJobNames}`
+      };
+    }
+
+    // Block completion if there are active children
+    if (children.active.length > 0) {
+      return {
+        status: 'WAITING',
+        message: `Waiting for ${children.active.length} active child job(s) to complete`
       };
     }
 
@@ -132,7 +119,7 @@ export async function inferJobStatus(params: {
 
   // 4. Fallback: Use legacy per-request child checking (for older runs without hierarchy)
   const childJobResult = await getChildJobStatus(requestId);
-  const childJobs = childJobResult.childJobs;
+  const childJobs = childJobResult.childJobs || [];
   const undeliveredChildren = childJobs.filter(c => !c.delivered);
 
   if (undeliveredChildren.length > 0) {

@@ -40,10 +40,18 @@ export class ChildWorkAssertionProvider implements AssertionProvider {
     const assertions: BlueprintAssertion[] = [];
     let assertionIndex = 1;
 
-    // Generate assertions for completed children
+    // Classify children by status
     const completedChildren = hierarchy.children.filter(
       (child) => child.status === 'COMPLETED'
     );
+    const failedChildren = hierarchy.children.filter(
+      (child) => child.status === 'FAILED'
+    );
+
+    // CRITICAL: Add assertions for failed children first (highest priority)
+    if (failedChildren.length > 0) {
+      assertions.push(this.createFailedChildrenAssertion(failedChildren));
+    }
 
     // Check if any completed children have branches to review
     const childrenWithBranches = completedChildren.filter((c) => c.branchName);
@@ -66,6 +74,36 @@ export class ChildWorkAssertionProvider implements AssertionProvider {
     }
 
     return assertions;
+  }
+
+  /**
+   * Create a critical assertion about failed children requiring remediation
+   */
+  private createFailedChildrenAssertion(failedChildren: ChildJobInfo[]): BlueprintAssertion {
+    const failedNames = failedChildren
+      .map((c) => c.jobName || c.requestId.slice(0, 8))
+      .join(', ');
+
+    return {
+      id: 'CTX-FAILED-CHILDREN',
+      category: 'context',
+      assertion: `CRITICAL: ${failedChildren.length} child job(s) failed and need remediation: ${failedNames}. You MUST either retry them with corrected blueprints or explicitly document why they are superseded before marking this job COMPLETED.`,
+      examples: {
+        do: [
+          'Review failed child summaries to understand the failure reason',
+          'Use dispatch_new_job with improved blueprints to retry failed work',
+          'Document in your execution summary why failed children are superseded (if you handle their work directly)',
+          'Adjust your delegation strategy based on failure patterns',
+        ],
+        dont: [
+          'Ignore failed children and mark job COMPLETED',
+          'Retry with identical blueprints that already failed',
+          'Proceed without understanding why children failed',
+          'Claim completion while failed children represent unfinished requirements',
+        ],
+      },
+      commentary: `Child jobs failed during execution. The system will block completion until you either retry with corrected blueprints or explicitly supersede them with documented rationale. This ensures failure patterns are addressed.`,
+    };
   }
 
   /**

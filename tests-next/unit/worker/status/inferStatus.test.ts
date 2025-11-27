@@ -28,7 +28,7 @@ describe('inferJobStatus', () => {
   describe('FAILED status', () => {
     it('infers FAILED when error is present', async () => {
       const error = new Error('Execution failed');
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -44,7 +44,7 @@ describe('inferJobStatus', () => {
 
     it('infers FAILED with string error', async () => {
       const error = 'Network timeout';
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -58,7 +58,7 @@ describe('inferJobStatus', () => {
 
     it('infers FAILED with error object without message', async () => {
       const error = { code: 500 };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -76,9 +76,11 @@ describe('inferJobStatus', () => {
       const telemetry = {
         toolCalls: [{ tool: 'dispatch_new_job', success: true }],
       };
-      (getChildJobStatus as any).mockResolvedValue([
-        { id: '0xchild1', delivered: false },
-      ]);
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [{ id: '0xchild1', delivered: false }],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -94,10 +96,10 @@ describe('inferJobStatus', () => {
     it('infers DELEGATING with dispatch_new_job calls', async () => {
       const telemetry = {
         toolCalls: [
-          { tool: 'dispatch_new_job', success: true },
+          { tool: 'dispatch_new_job', success: true, result: { data: { jobDefinitionId: 'test-id' }, meta: { ok: true } } },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -114,10 +116,14 @@ describe('inferJobStatus', () => {
     it('infers DELEGATING with dispatch_existing_job calls', async () => {
       const telemetry = {
         toolCalls: [
-          { tool: 'dispatch_existing_job', success: true },
+          { 
+            tool: 'dispatch_existing_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'existing-job-1' } }
+          },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -148,7 +154,7 @@ describe('inferJobStatus', () => {
           },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -173,7 +179,7 @@ describe('inferJobStatus', () => {
           },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -209,7 +215,7 @@ describe('inferJobStatus', () => {
           },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -263,7 +269,7 @@ describe('inferJobStatus', () => {
           },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -280,10 +286,14 @@ describe('inferJobStatus', () => {
     it('handles snake_case tool_calls field', async () => {
       const telemetry = {
         tool_calls: [
-          { tool: 'dispatch_new_job', success: true },
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'job-1' } }
+          },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -296,7 +306,7 @@ describe('inferJobStatus', () => {
 
     it('handles missing toolCalls/tool_calls fields', async () => {
       const telemetry = {};
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -314,7 +324,7 @@ describe('inferJobStatus', () => {
           { tool: 'write_file', success: true },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -326,7 +336,7 @@ describe('inferJobStatus', () => {
     });
 
     it('uses delegated flag when telemetry is missing', async () => {
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -345,9 +355,11 @@ describe('inferJobStatus', () => {
   describe('WAITING status', () => {
     it('infers WAITING when child jobs are undelivered', async () => {
       const telemetry = { toolCalls: [] };
-      (getChildJobStatus as any).mockResolvedValue([
-        { id: '0xchild1', delivered: false },
-      ]);
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [{ id: '0xchild1', delivered: false }],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -363,11 +375,15 @@ describe('inferJobStatus', () => {
 
     it('infers WAITING with multiple undelivered children', async () => {
       const telemetry = { toolCalls: [] };
-      (getChildJobStatus as any).mockResolvedValue([
-        { id: '0xchild1', delivered: false },
-        { id: '0xchild2', delivered: false },
-        { id: '0xchild3', delivered: false },
-      ]);
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [
+          { id: '0xchild1', delivered: false },
+          { id: '0xchild2', delivered: false },
+          { id: '0xchild3', delivered: false },
+        ],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -383,11 +399,15 @@ describe('inferJobStatus', () => {
 
     it('infers WAITING when some children delivered but not all', async () => {
       const telemetry = { toolCalls: [] };
-      (getChildJobStatus as any).mockResolvedValue([
-        { id: '0xchild1', delivered: true },
-        { id: '0xchild2', delivered: false },
-        { id: '0xchild3', delivered: true },
-      ]);
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [
+          { id: '0xchild1', delivered: true },
+          { id: '0xchild2', delivered: false },
+          { id: '0xchild3', delivered: true },
+        ],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -405,9 +425,11 @@ describe('inferJobStatus', () => {
       const telemetry = {
         toolCalls: [{ tool: 'read_file', success: true }],
       };
-      (getChildJobStatus as any).mockResolvedValue([
-        { id: '0xchild1', delivered: false },
-      ]);
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [{ id: '0xchild1', delivered: false }],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -423,10 +445,14 @@ describe('inferJobStatus', () => {
   describe('COMPLETED status', () => {
     it('infers COMPLETED when all children delivered', async () => {
       const telemetry = { toolCalls: [] };
-      (getChildJobStatus as any).mockResolvedValue([
-        { id: '0xchild1', delivered: true },
-        { id: '0xchild2', delivered: true },
-      ]);
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [
+          { id: '0xchild1', delivered: true },
+          { id: '0xchild2', delivered: true },
+        ],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -442,7 +468,7 @@ describe('inferJobStatus', () => {
 
     it('infers COMPLETED when no children exist', async () => {
       const telemetry = { toolCalls: [] };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -463,7 +489,7 @@ describe('inferJobStatus', () => {
           { tool: 'write_file', success: true },
         ],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -477,7 +503,7 @@ describe('inferJobStatus', () => {
 
     it('infers COMPLETED with empty telemetry', async () => {
       const telemetry = {};
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -490,7 +516,7 @@ describe('inferJobStatus', () => {
 
     it('infers COMPLETED with null telemetry', async () => {
       const telemetry = null;
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -508,7 +534,7 @@ describe('inferJobStatus', () => {
       const telemetry = {
         toolCalls: [{ tool: 'dispatch_new_job', success: true }],
       };
-      (getChildJobStatus as any).mockResolvedValue([]);
+      (getChildJobStatus as any).mockResolvedValue({ childJobs: [], queryDuration_ms: 10, retryAttempts: 0 });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -522,9 +548,11 @@ describe('inferJobStatus', () => {
     it('FAILED takes precedence over WAITING', async () => {
       const error = new Error('Error');
       const telemetry = {};
-      (getChildJobStatus as any).mockResolvedValue([
-        { id: '0xchild1', delivered: false },
-      ]);
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [{ id: '0xchild1', delivered: false }],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
 
       const result = await inferJobStatus({
         requestId: '0x123',
@@ -538,11 +566,21 @@ describe('inferJobStatus', () => {
     it('DELEGATING takes precedence over WAITING', async () => {
       // This run dispatched jobs, even though old children still pending
       const telemetry = {
-        toolCalls: [{ tool: 'dispatch_new_job', success: true }],
+        toolCalls: [
+          { 
+            tool: 'dispatch_new_job', 
+            success: true,
+            result: { data: { jobDefinitionId: 'new-job-1' } }
+          }
+        ],
       };
-      (getChildJobStatus as any).mockResolvedValue([
-        { id: '0xoldchild', delivered: false },
-      ]);
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [
+          { id: '0xoldchild', delivered: false },
+        ],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
 
       const result = await inferJobStatus({
         requestId: '0x123',

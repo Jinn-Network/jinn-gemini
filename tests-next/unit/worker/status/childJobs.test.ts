@@ -51,7 +51,11 @@ describe('getChildJobStatus', () => {
 
       const result = await getChildJobStatus('0xparent123');
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({
+        childJobs: [],
+        queryDuration_ms: expect.any(Number),
+        retryAttempts: 0
+      });
     });
 
     it('returns child job statuses', async () => {
@@ -66,10 +70,14 @@ describe('getChildJobStatus', () => {
 
       const result = await getChildJobStatus('0xparent123');
 
-      expect(result).toEqual([
-        { id: '0xchild1', delivered: false },
-        { id: '0xchild2', delivered: true },
-      ]);
+      expect(result).toEqual({
+        childJobs: [
+          { id: '0xchild1', delivered: false },
+          { id: '0xchild2', delivered: true },
+        ],
+        queryDuration_ms: expect.any(Number),
+        retryAttempts: 0
+      });
     });
 
     it('queries with correct GraphQL structure', async () => {
@@ -107,9 +115,13 @@ describe('getChildJobStatus', () => {
 
       const result = await getChildJobStatus('0xparent');
 
-      expect(result).toEqual([
-        { id: '0xchild1', delivered: true, jobName: 'child-job', blockTimestamp: 123456 },
-      ]);
+      expect(result).toEqual({
+        childJobs: [
+          { id: '0xchild1', delivered: true, jobName: 'child-job', blockTimestamp: 123456 },
+        ],
+        queryDuration_ms: expect.any(Number),
+        retryAttempts: 0
+      });
     });
 
     it('handles multiple children', async () => {
@@ -126,7 +138,7 @@ describe('getChildJobStatus', () => {
 
       const result = await getChildJobStatus('0xparent');
 
-      expect(result).toHaveLength(4);
+      expect(result.childJobs).toHaveLength(4);
     });
   });
 
@@ -151,7 +163,11 @@ describe('getChildJobStatus', () => {
       const result = await promise;
 
       expect(graphQLRequest).toHaveBeenCalledTimes(2);
-      expect(result).toEqual([{ id: '0xchild1', delivered: true }]);
+      expect(result).toEqual({
+        childJobs: [{ id: '0xchild1', delivered: true }],
+        queryDuration_ms: expect.any(Number),
+        retryAttempts: 1
+      });
     });
 
     it('retries on second failure', async () => {
@@ -167,7 +183,11 @@ describe('getChildJobStatus', () => {
       const result = await promise;
 
       expect(graphQLRequest).toHaveBeenCalledTimes(3);
-      expect(result).toEqual([]);
+      expect(result).toEqual({
+        childJobs: [],
+        queryDuration_ms: expect.any(Number),
+        retryAttempts: 2
+      });
     });
 
     it('waits between retries with exponential backoff', async () => {
@@ -284,7 +304,11 @@ describe('getChildJobStatus', () => {
 
       const result = await getChildJobStatus('0xparent');
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({
+        childJobs: [],
+        queryDuration_ms: expect.any(Number),
+        retryAttempts: 0
+      });
     });
 
     it('handles missing items array', async () => {
@@ -294,7 +318,11 @@ describe('getChildJobStatus', () => {
 
       const result = await getChildJobStatus('0xparent');
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({
+        childJobs: [],
+        queryDuration_ms: expect.any(Number),
+        retryAttempts: 0
+      });
     });
 
     it('handles undefined response', async () => {
@@ -302,7 +330,11 @@ describe('getChildJobStatus', () => {
 
       const result = await getChildJobStatus('0xparent');
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({
+        childJobs: [],
+        queryDuration_ms: expect.any(Number),
+        retryAttempts: 0
+      });
     });
 
     it('handles string error', async () => {

@@ -100,14 +100,14 @@ export class JobContextProvider implements ContextProvider {
       }
     }
 
-    // Then process hierarchy array (may have additional jobs, including expired/failed ones)
+    // Then process hierarchy array (may have additional jobs, including failed/active ones)
     if (Array.isArray(hierarchyJobs)) {
       for (const job of hierarchyJobs) {
         const requestId = job.requestId || job.id || '';
         // Skip if already added from completedChildRuns
         if (seenRequestIds.has(requestId)) continue;
 
-        // Map job status to our simplified status (includes expired/failed)
+        // Map job status to our simplified status
         const status = this.mapJobStatus(job.status);
 
         // Extract branch info from job or from GIT_BRANCH artifact
