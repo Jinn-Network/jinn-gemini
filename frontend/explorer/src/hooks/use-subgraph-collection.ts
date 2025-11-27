@@ -72,6 +72,26 @@ export function useSubgraphCollection({
   const cursorsRef = useRef<Map<number, { after?: string; before?: string }>>(new Map())
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   
+  // Use Ponder native SSE via client.live() - MUST be initialized early
+  const { isConnected: isRealtimeConnected, status: rtStatus } = useRealtimeData(
+    collectionName,
+    {
+      enabled: true,
+      onEvent: () => {
+        console.log(`[useSubgraphCollection] Real-time update for ${collectionName}`)
+        // Will trigger refresh via effect below
+      },
+      onError: (error) => {
+        console.error('[useSubgraphCollection] Real-time connection error:', error)
+      }
+    }
+  )
+
+  // Update realtime status
+  useEffect(() => {
+    setRealtimeStatus(rtStatus)
+  }, [rtStatus])
+  
   // Get the appropriate query function for the collection
   const getQueryFunction = useCallback(() => {
     switch (collectionName) {
@@ -197,25 +217,12 @@ export function useSubgraphCollection({
     fetchRecords(currentPage, false)
   }, [fetchRecords, currentPage])
 
-  // Use Ponder native SSE via client.live()
-  const { isConnected: isRealtimeConnected, status: rtStatus } = useRealtimeData(
-    collectionName,
-    {
-      enabled: true,
-      onEvent: () => {
-        console.log(`[useSubgraphCollection] Real-time update for ${collectionName}`)
-        fetchRecords(currentPage, false) // Silent refresh
-      },
-      onError: (error) => {
-        console.error('[useSubgraphCollection] Real-time connection error:', error)
-      }
-    }
-  )
-
-  // Update realtime status
+  // Trigger refresh when realtime data changes
   useEffect(() => {
-    setRealtimeStatus(rtStatus)
-  }, [rtStatus])
+    if (isRealtimeConnected) {
+      fetchRecords(currentPage, false) // Silent refresh
+    }
+  }, [isRealtimeConnected, currentPage, fetchRecords])
 
   // Function to update sorting
   const setSorting = useCallback((column: string, ascending: boolean) => {
