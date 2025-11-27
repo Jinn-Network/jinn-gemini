@@ -6,7 +6,7 @@ export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'er
 
 export interface RealtimeEvent {
   type: string
-  data: any
+  data: Record<string, unknown>
   timestamp: string
 }
 
@@ -20,7 +20,7 @@ export interface UseRealtimeDataOptions {
 export interface UseRealtimeDataReturn {
   status: ConnectionStatus
   lastEvent: RealtimeEvent | null
-  subscribe: (eventType: string, handler: (data: any) => void) => () => void
+  subscribe: (eventType: string, handler: (data: Record<string, unknown>) => void) => () => void
 }
 
 /**
@@ -38,12 +38,12 @@ export function useRealtimeData(options: UseRealtimeDataOptions = {}): UseRealti
   const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null)
   
   const eventSourceRef = useRef<EventSource | null>(null)
-  const handlersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map())
+  const handlersRef = useRef<Map<string, Set<(data: Record<string, unknown>) => void>>>(new Map())
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
 
   // Subscribe to specific event types
-  const subscribe = useCallback((eventType: string, handler: (data: any) => void) => {
+  const subscribe = useCallback((eventType: string, handler: (data: Record<string, unknown>) => void) => {
     if (!handlersRef.current.has(eventType)) {
       handlersRef.current.set(eventType, new Set())
     }
