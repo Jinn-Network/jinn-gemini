@@ -61,7 +61,7 @@ interface WorkstreamNode {
   id: string; // requestId
   jobName?: string;
   jobDefinitionId?: string;
-  status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'EXPIRED' | 'UNKNOWN';
+  status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'UNKNOWN';
   timestamp: string;
   duration?: number;
   summary?: string; // Short summary from delivery or inference
@@ -72,7 +72,6 @@ interface WorkstreamNode {
   _debug?: {
     delivered: boolean;
     hasDelivery: boolean;
-    expired: boolean;
     finalStatus?: string; // The actual finalStatus.status from delivery for debugging
   };
 }
@@ -189,13 +188,6 @@ function truncate(str: string, maxLength: number = 100): string {
   return str.substring(0, maxLength) + '...';
 }
 
-function isRequestExpired(blockTimestamp: string): boolean {
-  const MARKETPLACE_TIMEOUT_SECONDS = 300; // 5 minutes
-  const timestamp = Number(blockTimestamp);
-  const expirationTime = timestamp + MARKETPLACE_TIMEOUT_SECONDS;
-  const currentTime = Math.floor(Date.now() / 1000);
-  return currentTime > expirationTime;
-}
 
 // --- Main ---
 

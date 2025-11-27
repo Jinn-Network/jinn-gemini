@@ -1,125 +1,130 @@
-import { createSchema } from "ponder";
+import { onchainTable, index } from "ponder";
 
-export default createSchema((p: any) => ({
-  jobDefinition: p.createTable(
-    {
-      id: p.string(),
-      name: p.string(),
-      enabledTools: p.string().list().optional(),
-      blueprint: p.string().optional(),
-      workstreamId: p.string().optional(),
-      sourceJobDefinitionId: p.string().optional(),
-      sourceRequestId: p.string().optional(),
-      codeMetadata: p.json().optional(),
-      createdAt: p.bigint().optional(),
-      lastInteraction: p.bigint().optional(),
-      lastStatus: p.string().optional(),
-    },
-    {
-      nameIdx: p.index("name"),
-      workstreamIdIdx: p.index("workstreamId"),
-      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
-      sourceReqIdx: p.index("sourceRequestId"),
-      lastInteractionIdx: p.index("lastInteraction").desc(),
-    }
-  ),
-  request: p.createTable(
-    {
-      id: p.string(),
-      mech: p.hex(),
-      sender: p.hex(),
-      workstreamId: p.string().optional(),
-      jobDefinitionId: p.string().optional(),
-      sourceRequestId: p.string().optional(),
-      sourceJobDefinitionId: p.string().optional(),
-      requestData: p.string().optional(),
-      ipfsHash: p.string().optional(),
-      deliveryIpfsHash: p.string().optional(),
-      transactionHash: p.string().optional(),
-      blockNumber: p.bigint(),
-      blockTimestamp: p.bigint(),
-      delivered: p.boolean(),
-      jobName: p.string().optional(),
-      enabledTools: p.string().list().optional(),
-      additionalContext: p.json().optional(),
-      dependencies: p.string().list().optional(),
-    },
-    {
-      ts: p.index("blockTimestamp").desc(),
-      mechIdx: p.index("mech"),
-      senderIdx: p.index("sender"),
-      workstreamIdIdx: p.index("workstreamId"),
-      jobDefIdx: p.index("jobDefinitionId"),
-      sourceReqIdx: p.index("sourceRequestId"),
-      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
-    }
-  ),
-  delivery: p.createTable(
-    {
-      id: p.string(),
-      requestId: p.string(),
-      sourceRequestId: p.string().optional(),
-      sourceJobDefinitionId: p.string().optional(),
-      mech: p.hex(),
-      mechServiceMultisig: p.hex(),
-      deliveryRate: p.bigint(),
-      ipfsHash: p.string().optional(),
-      transactionHash: p.string(),
-      blockNumber: p.bigint(),
-      blockTimestamp: p.bigint(),
-    },
-    {
-      ts: p.index("blockTimestamp").desc(),
-      mechIdx: p.index("mech"),
-      requestIdIdx: p.index("requestId"),
-      sourceReqIdx: p.index("sourceRequestId"),
-      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
-    }
-  ),
-  artifact: p.createTable(
-    {
-      id: p.string(),
-      requestId: p.string(),
-      sourceRequestId: p.string().optional(),
-      sourceJobDefinitionId: p.string().optional(),
-      name: p.string(),
-      cid: p.string(),
-      topic: p.string(),
-      contentPreview: p.string().optional(),
-      blockTimestamp: p.bigint(),
-      type: p.string().optional(),           // NEW: 'MEMORY', 'RESEARCH_REPORT', etc.
-      tags: p.string().list().optional(),    // NEW: ['staking', 'bug-fix', 'optimization']
-      utilityScore: p.int().optional(),      // NEW: cumulative rating score
-      accessCount: p.int().optional(),       // NEW: how many times accessed
-    },
-    {
-      requestIdIdx: p.index("requestId"),
-      sourceReqIdx: p.index("sourceRequestId"),
-      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
-      topicIdx: p.index("topic"),
-      timestampIdx: p.index("blockTimestamp"),
-      typeIdx: p.index("type"),              // NEW: filter by type
-      utilityIdx: p.index("utilityScore"),   // NEW: rank by utility
-    }
-  ),
-  message: p.createTable(
-    {
-      id: p.string(),
-      requestId: p.string(),
-      sourceRequestId: p.string().optional(),
-      sourceJobDefinitionId: p.string().optional(),
-      to: p.string().optional(),
-      content: p.string(),
-      blockTimestamp: p.bigint(),
-    },
-    {
-      requestIdx: p.index("requestId"),
-      sourceReqIdx: p.index("sourceRequestId"),
-      sourceJobDefIdx: p.index("sourceJobDefinitionId"),
-      toIdx: p.index("to"),
-      ts: p.index("blockTimestamp").desc(),
-    }
-  ),
-}));
+export const jobDefinition = onchainTable(
+  "job_definition",
+  (t) => ({
+    id: t.text().primaryKey(),
+    name: t.text(),
+    enabledTools: t.text().array(),
+    blueprint: t.text(),
+    workstreamId: t.text(),
+    sourceJobDefinitionId: t.text(),
+    sourceRequestId: t.text(),
+    codeMetadata: t.json(),
+    createdAt: t.bigint(),
+    lastInteraction: t.bigint(),
+    lastStatus: t.text(),
+  }),
+  (table) => ({
+    nameIdx: index().on(table.name),
+    workstreamIdIdx: index().on(table.workstreamId),
+    sourceJobDefIdx: index().on(table.sourceJobDefinitionId),
+    sourceReqIdx: index().on(table.sourceRequestId),
+    lastInteractionIdx: index().on(table.lastInteraction),
+  })
+);
 
+export const request = onchainTable(
+  "request",
+  (t) => ({
+    id: t.text().primaryKey(),
+    mech: t.hex().notNull(),
+    sender: t.hex().notNull(),
+    workstreamId: t.text(),
+    jobDefinitionId: t.text(),
+    sourceRequestId: t.text(),
+    sourceJobDefinitionId: t.text(),
+    requestData: t.text(),
+    ipfsHash: t.text(),
+    deliveryIpfsHash: t.text(),
+    transactionHash: t.text(),
+    blockNumber: t.bigint().notNull(),
+    blockTimestamp: t.bigint().notNull(),
+    delivered: t.boolean().notNull(),
+    jobName: t.text(),
+    enabledTools: t.text().array(),
+    additionalContext: t.json(),
+    dependencies: t.text().array(),
+  }),
+  (table) => ({
+    ts: index().on(table.blockTimestamp),
+    mechIdx: index().on(table.mech),
+    senderIdx: index().on(table.sender),
+    workstreamIdIdx: index().on(table.workstreamId),
+    jobDefIdx: index().on(table.jobDefinitionId),
+    sourceReqIdx: index().on(table.sourceRequestId),
+    sourceJobDefIdx: index().on(table.sourceJobDefinitionId),
+  })
+);
 
+export const delivery = onchainTable(
+  "delivery",
+  (t) => ({
+    id: t.text().primaryKey(),
+    requestId: t.text().notNull(),
+    sourceRequestId: t.text(),
+    sourceJobDefinitionId: t.text(),
+    mech: t.hex().notNull(),
+    mechServiceMultisig: t.hex().notNull(),
+    deliveryRate: t.bigint().notNull(),
+    ipfsHash: t.text(),
+    transactionHash: t.text().notNull(),
+    blockNumber: t.bigint().notNull(),
+    blockTimestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    ts: index().on(table.blockTimestamp),
+    mechIdx: index().on(table.mech),
+    requestIdIdx: index().on(table.requestId),
+    sourceReqIdx: index().on(table.sourceRequestId),
+    sourceJobDefIdx: index().on(table.sourceJobDefinitionId),
+  })
+);
+
+export const artifact = onchainTable(
+  "artifact",
+  (t) => ({
+    id: t.text().primaryKey(),
+    requestId: t.text().notNull(),
+    sourceRequestId: t.text(),
+    sourceJobDefinitionId: t.text(),
+    name: t.text().notNull(),
+    cid: t.text().notNull(),
+    topic: t.text().notNull(),
+    contentPreview: t.text(),
+    blockTimestamp: t.bigint().notNull(),
+    type: t.text(),
+    tags: t.text().array(),
+    utilityScore: t.integer(),
+    accessCount: t.integer(),
+  }),
+  (table) => ({
+    requestIdIdx: index().on(table.requestId),
+    sourceReqIdx: index().on(table.sourceRequestId),
+    sourceJobDefIdx: index().on(table.sourceJobDefinitionId),
+    topicIdx: index().on(table.topic),
+    timestampIdx: index().on(table.blockTimestamp),
+    typeIdx: index().on(table.type),
+    utilityIdx: index().on(table.utilityScore),
+  })
+);
+
+export const message = onchainTable(
+  "message",
+  (t) => ({
+    id: t.text().primaryKey(),
+    requestId: t.text().notNull(),
+    sourceRequestId: t.text(),
+    sourceJobDefinitionId: t.text(),
+    to: t.text(),
+    content: t.text().notNull(),
+    blockTimestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    requestIdx: index().on(table.requestId),
+    sourceReqIdx: index().on(table.sourceRequestId),
+    sourceJobDefIdx: index().on(table.sourceJobDefinitionId),
+    toIdx: index().on(table.to),
+    ts: index().on(table.blockTimestamp),
+  })
+);
