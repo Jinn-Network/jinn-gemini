@@ -158,6 +158,7 @@ export async function processOnce(
         error: null,
         telemetry: result.telemetry || {},
         delegatedThisRun: result.delegated,
+        metadata,
       });
 
       workerLogger.info({
@@ -211,6 +212,7 @@ export async function processOnce(
           error: e,
           telemetry: parsed.telemetry || result?.telemetry || {},
           delegatedThisRun: result.delegated,
+          metadata,
         });
       }
 
@@ -222,6 +224,7 @@ export async function processOnce(
               error: null,
               telemetry: parsed.telemetry,
               delegatedThisRun: result.delegated,
+              metadata,
             });
           } catch (statusInferenceError) {
             workerLogger.warn(
@@ -470,6 +473,7 @@ export async function processOnce(
         error,
         telemetry: result?.telemetry || {},
         delegatedThisRun: result.delegated,
+        metadata,
       });
     }
     await storeOnchainReport(target, workerAddress, result, finalStatus, error, metadata!);
