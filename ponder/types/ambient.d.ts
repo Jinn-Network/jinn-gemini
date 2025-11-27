@@ -1,4 +1,4 @@
-declare module '@ponder/core' {
+declare module 'ponder' {
   export const createConfig: any;
   export const createSchema: any;
   export type Context = any;
