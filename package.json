@@ -94,7 +94,7 @@
   "dependencies": {
     "@jinn-network/mech-client-ts": "^0.0.6",
     "@modelcontextprotocol/sdk": "^1.11.0",
-    "@ponder/core": "^0.6.1",
+    "@ponder/core": "^0.7.17",
     "@safe-global/protocol-kit": "^6.1.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.53.0",
