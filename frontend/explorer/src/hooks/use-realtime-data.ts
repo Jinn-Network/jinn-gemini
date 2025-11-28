@@ -20,9 +20,12 @@ export interface UseRealtimeDataReturn {
 /**
  * Hook to subscribe to Ponder table changes using client.live()
  * 
- * Uses raw SQL queries to avoid schema import issues.
+ * Ponder's createClient multiplexes all live queries over a SINGLE SSE connection,
+ * so multiple subscriptions don't create multiple connections.
  * 
- * @param collectionName - Optional collection name to filter events ('requests', 'artifacts', etc.)
+ * This hook now subscribes ONLY to the specific table needed by the component.
+ * 
+ * @param collectionName - Collection name to subscribe to ('requests', 'artifacts', etc.)
  * @param options - Configuration options
  */
 export function useRealtimeData(
@@ -33,108 +36,53 @@ export function useRealtimeData(
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !collectionName) {
+      setStatus('disconnected')
+      return
+    }
+
+    // Map collection name to table name
+    const tableNameMap: Record<string, string> = {
+      'jobDefinitions': 'job_definition',
+      'requests': 'request',
+      'deliveries': 'delivery',
+      'artifacts': 'artifact',
+      'messages': 'message'
+    }
+
+    const tableName = tableNameMap[collectionName]
+    if (!tableName) {
+      console.error(`[useRealtimeData] Unknown collection: ${collectionName}`)
+      setStatus('error')
+      return
+    }
 
     setStatus('connecting')
 
-    // Subscribe to all relevant tables using raw SQL
-    const unsubscribers: Array<() => void> = []
-
     try {
-      // Subscribe to requests table
-      const { unsubscribe: unsubRequests } = ponderClient.live(
-        () => sql`SELECT * FROM "request" LIMIT 1`,
+      // Subscribe to ONLY this specific table
+      // Ponder client multiplexes all queries over a single SSE connection
+      const { unsubscribe } = ponderClient.live(
+        (db) => db.execute(sql`SELECT id FROM "${sql.raw(tableName)}" ORDER BY id DESC LIMIT 1`),
         () => {
           setStatus('connected')
-          if (collectionName === 'requests' || !collectionName) {
-            onEvent?.()
-          }
+          onEvent?.()
         },
         (error) => {
-          console.error('[useRealtimeData] Error in requests subscription:', error)
+          console.error(`[useRealtimeData] Error in ${tableName} subscription:`, error)
           setStatus('error')
           onError?.(error)
         }
       )
-      unsubscribers.push(unsubRequests)
 
-      // Subscribe to artifacts table
-      const { unsubscribe: unsubArtifacts } = ponderClient.live(
-        () => sql`SELECT * FROM "artifact" LIMIT 1`,
-        () => {
-          setStatus('connected')
-          if (collectionName === 'artifacts' || !collectionName) {
-            onEvent?.()
-          }
-        },
-        (error) => {
-          console.error('[useRealtimeData] Error in artifacts subscription:', error)
-          setStatus('error')
-          onError?.(error)
-        }
-      )
-      unsubscribers.push(unsubArtifacts)
-
-      // Subscribe to deliveries table
-      const { unsubscribe: unsubDeliveries } = ponderClient.live(
-        () => sql`SELECT * FROM "delivery" LIMIT 1`,
-        () => {
-          setStatus('connected')
-          if (collectionName === 'deliveries' || !collectionName) {
-            onEvent?.()
-          }
-        },
-        (error) => {
-          console.error('[useRealtimeData] Error in deliveries subscription:', error)
-          setStatus('error')
-          onError?.(error)
-        }
-      )
-      unsubscribers.push(unsubDeliveries)
-
-      // Subscribe to job definitions table
-      const { unsubscribe: unsubJobDefs } = ponderClient.live(
-        () => sql`SELECT * FROM "job_definition" LIMIT 1`,
-        () => {
-          setStatus('connected')
-          if (collectionName === 'jobDefinitions' || !collectionName) {
-            onEvent?.()
-          }
-        },
-        (error) => {
-          console.error('[useRealtimeData] Error in job definitions subscription:', error)
-          setStatus('error')
-          onError?.(error)
-        }
-      )
-      unsubscribers.push(unsubJobDefs)
-
-      // Subscribe to messages table
-      const { unsubscribe: unsubMessages } = ponderClient.live(
-        () => sql`SELECT * FROM "message" LIMIT 1`,
-        () => {
-          setStatus('connected')
-          if (collectionName === 'messages' || !collectionName) {
-            onEvent?.()
-          }
-        },
-        (error) => {
-          console.error('[useRealtimeData] Error in messages subscription:', error)
-          setStatus('error')
-          onError?.(error)
-        }
-      )
-      unsubscribers.push(unsubMessages)
-
+      return () => {
+        unsubscribe()
+        setStatus('disconnected')
+      }
     } catch (error) {
-      console.error('[useRealtimeData] Error setting up subscriptions:', error)
+      console.error('[useRealtimeData] Error setting up subscription:', error)
       setStatus('error')
       onError?.(error as Error)
-    }
-
-    return () => {
-      unsubscribers.forEach(unsubscribe => unsubscribe())
-      setStatus('disconnected')
     }
   }, [enabled, collectionName, onEvent, onError])
 

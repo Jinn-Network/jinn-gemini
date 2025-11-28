@@ -2390,3 +2390,30 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - `ponder/ponder.schema.ts` - Added delivery tracking fields
 - `ponder/ponder.config.ts` - Added colleague mech contract
 - `ponder/src/index.ts` - Added networkId filtering, MarketplaceDelivery handler, colleague mech handler
+
+### Ponder v0.15 Migration & SSE Connection Fix (Fixed 2025-11-28)
+
+**Issue**: Frontend hammering Railway backend with excessive SSE connections causing:
+- Nginx 499 errors (client canceled requests)
+- 5 separate SSE connections per component (one per table)
+- 8-26 second connection times
+- Rapid reconnection attempts on failure
+- Empty frontend despite backend having indexed data
+
+**Root Cause**: `useRealtimeData` hook was subscribing to ALL 5 tables (`request`, `artifact`, `delivery`, `job_definition`, `message`) regardless of which collection the component actually needed. Multiple components using `useSubgraphCollection` multiplied these unnecessary subscriptions.
+
+**Fix**:
+- Modified `useRealtimeData` to subscribe ONLY to the specific table needed by each component
+- Leverages Ponder client's built-in SSE connection multiplexing (per docs: "Each createClient instance multiplexes all live queries over a single SSE connection")
+- Changed from `SELECT * LIMIT 1` to `SELECT id ORDER BY id DESC LIMIT 1` for efficiency
+- Removed need for custom SSE manager since Ponder client already provides singleton behavior
+
+**Impact**:
+- Reduced SSE subscriptions from 5× per component to 1× per component
+- Single SSE connection multiplexes all live queries (Ponder client feature)
+- Eliminated connection hammering and 499 errors
+- Faster page loads, proper real-time updates
+
+**Related Files**:
+- `frontend/explorer/src/hooks/use-realtime-data.ts` - Fixed to subscribe only to needed table
+- `frontend/explorer/src/hooks/use-subgraph-collection.ts` - Already correct (uses useRealtimeData)

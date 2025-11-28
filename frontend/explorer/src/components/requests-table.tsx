@@ -191,7 +191,7 @@ export function RequestsTable({ records }: RequestsTableProps) {
                 <td className="px-4 py-3">
                   {jobDefId ? (
                     <div className="flex items-center gap-2">
-                      <JobDefStatusCell jobDefId={record.jobDefinitionId} />
+                      <JobDefStatusCell jobDefId={jobDefId} />
                       <TruncatedId 
                         value={jobDefId}
                         linkTo={`/jobDefinitions/${jobDefId}`}
