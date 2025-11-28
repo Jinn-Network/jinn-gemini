@@ -3,21 +3,53 @@ import fetch from "cross-fetch";
 import axios from "axios";
 import { logger, serializeError } from "../../logging/index.js";
 import { Pool } from "pg";
+import { jobDefinition, request, delivery, artifact, message } from "ponder:schema";
 
-// Minimal local types to avoid implicit any in handler params
+// Minimal local types to avoid implicit any in handler params and align with Ponder 0.7+ DB API
 type Repository = {
-  upsert: (args: unknown) => Promise<unknown>;
+  upsert: (args: { id: string; create?: Record<string, any>; update?: Record<string, any> }) => Promise<any>;
+  findUnique: (args: { id: string }) => Promise<any | null>;
 };
 
 interface PonderContextShape {
-  db?: Record<string, Repository>;
-  entities?: Record<string, Repository>;
+  db?: {
+    insert: (table: any) => { values: (value: any | any[]) => Promise<any> };
+    update: (table: any, where: Record<string, any>) => { set: (value: Record<string, any>) => Promise<any> };
+    find: (table: any, where: Record<string, any>) => Promise<any | null>;
+  };
 }
 
 interface PonderEventShape {
   args: Record<string, unknown>;
   transaction: { hash: string };
   block: { number: number | bigint | string; timestamp: number | bigint | string };
+}
+
+function createRepository(db: NonNullable<PonderContextShape["db"]>, table: any, tableName: string): Repository {
+  return {
+    async upsert({ id, create, update }: { id: string; create?: Record<string, any>; update?: Record<string, any> }) {
+      const existing = await db.find(table, { id });
+
+      if (existing) {
+        if (update && Object.keys(update).length > 0) {
+          await db.update(table, { id }).set(update);
+        }
+        return await db.find(table, { id });
+      }
+
+      if (!create) {
+        logger.error({ table: tableName, id }, "Attempted upsert without create payload for missing row");
+        return null;
+      }
+
+      await db.insert(table).values({ ...create, id });
+      return await db.find(table, { id });
+    },
+
+    async findUnique({ id }: { id: string }) {
+      return db.find(table, { id });
+    },
+  };
 }
 
 // Helpers for safe coercion from unknown shapes
@@ -172,7 +204,7 @@ async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promi
  */
 async function findWorkstreamRoot(
   startRequestId: string,
-  requestRepo: any,
+  requestRepo: Repository,
 ): Promise<string> {
   let currentId = startRequestId;
   const visited = new Set<string>();
@@ -209,6 +241,12 @@ ponder.on(
   "MechMarketplace:MarketplaceRequest",
   async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
   try {
+    const db = (context as any).db;
+    if (!db) {
+      logger.error("Ponder context.db is not available; cannot index MarketplaceRequest");
+      return;
+    }
+
     const mech: string = String(event.args.priorityMech);
     const sender: string = String(event.args.requester);
     const requestIds: string[] = toStringArray((event.args as any).requestIds);
@@ -230,13 +268,9 @@ ponder.on(
       return;
     }
 
-    const repo = (context as any).db?.request || (context as any).entities?.request;
-    const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
-    const messageRepo = (context as any).db?.message || (context as any).entities?.message;
-    if (!repo) {
-      logger.error("No repository for 'request' (neither context.db nor context.entities). Skipping upsert.");
-      return;
-    }
+    const repo: Repository = createRepository(db, request, "request");
+    const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
+    const messageRepo: Repository = createRepository(db, message, "message");
 
     for (let i = 0; i < requestIds.length; i++) {
       const id = requestIds[i];
@@ -532,20 +566,21 @@ ponder.on(
   "OlasMech:Deliver",
   async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
   try {
+    const db = (context as any).db;
+    if (!db) {
+      logger.error("Ponder context.db is not available; cannot index OlasMech Deliver");
+      return;
+    }
     const requestId: string = String(event.args.requestId);
     const dataBytes: string | undefined = event.args.data ? String(event.args.data) : undefined;
     const txHash: string = String(event.transaction.hash);
     const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
     const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
-    const deliveryRepo = (context as any).db?.delivery || (context as any).entities?.delivery;
-    const requestRepo = (context as any).db?.request || (context as any).entities?.request;
-    const artifactsRepo = (context as any).db?.artifact || (context as any).entities?.artifact;
-    const jobDefRepo = (context as any).db?.jobDefinition || (context as any).entities?.jobDefinition;
-    if (!deliveryRepo || !requestRepo) {
-      logger.error("No repository for 'delivery' or 'request'. Skipping OlasMech Deliver handler.");
-      return;
-    }
+    const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
+    const requestRepo: Repository = createRepository(db, request, "request");
+    const artifactsRepo: Repository = createRepository(db, artifact, "artifact");
+    const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
 
     // Check if request exists - it should have been pre-seeded by MarketplaceRequest handler
     // If indexing from a later start block, we may see Deliver events for requests that were
