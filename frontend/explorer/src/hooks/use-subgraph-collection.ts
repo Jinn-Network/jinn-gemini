@@ -71,16 +71,20 @@ export function useSubgraphCollection({
   // Track cursors for each page
   const cursorsRef = useRef<Map<number, { after?: string; before?: string }>>(new Map())
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [realtimeUpdateTrigger, setRealtimeUpdateTrigger] = useState(0)
+  
+  // Callback to trigger refresh when SSE event arrives
+  const handleRealtimeEvent = useCallback(() => {
+    console.log(`[useSubgraphCollection] Real-time update for ${collectionName}`)
+    setRealtimeUpdateTrigger(prev => prev + 1)
+  }, [collectionName])
   
   // Use Ponder native SSE via client.live() - MUST be initialized early
   const { isConnected: isRealtimeConnected, status: rtStatus } = useRealtimeData(
     collectionName,
     {
       enabled: true,
-      onEvent: () => {
-        console.log(`[useSubgraphCollection] Real-time update for ${collectionName}`)
-        // Will trigger refresh via effect below
-      },
+      onEvent: handleRealtimeEvent,
       onError: (error) => {
         console.error('[useSubgraphCollection] Real-time connection error:', error)
       }
@@ -217,12 +221,12 @@ export function useSubgraphCollection({
     fetchRecords(currentPage, false)
   }, [fetchRecords, currentPage])
 
-  // Trigger refresh when realtime data changes
+  // Trigger refresh when realtime events arrive
   useEffect(() => {
-    if (isRealtimeConnected) {
+    if (isRealtimeConnected && realtimeUpdateTrigger > 0) {
       fetchRecords(currentPage, false) // Silent refresh
     }
-  }, [isRealtimeConnected, currentPage, fetchRecords])
+  }, [isRealtimeConnected, realtimeUpdateTrigger, currentPage, fetchRecords])
 
   // Function to update sorting
   const setSorting = useCallback((column: string, ascending: boolean) => {

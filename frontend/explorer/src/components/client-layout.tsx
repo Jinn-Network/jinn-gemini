@@ -12,7 +12,8 @@ interface ClientLayoutProps {
 
 export function ClientLayout({ children }: ClientLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { status: realtimeStatus } = useRealtimeData(undefined, { enabled: true });
+  // Subscribe to 'requests' as a canary for global SSE status
+  const { status: realtimeStatus } = useRealtimeData('requests', { enabled: true });
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
