@@ -60,16 +60,22 @@ export function useRealtimeData(
     setStatus('connecting')
 
     try {
-      // Subscribe to ONLY this specific table
+      // Subscribe to ONLY this specific table using raw SQL
       // Ponder client multiplexes all queries over a single SSE connection
+      // Query a single row to detect any table changes
       const { unsubscribe } = ponderClient.live(
-        (db) => db.execute(sql`SELECT id FROM "${sql.raw(tableName)}" ORDER BY id DESC LIMIT 1`),
+        async (db) => {
+          const result = await db.execute(
+            sql.raw(`SELECT COUNT(*) as count FROM "${tableName}" LIMIT 1`)
+          )
+          return result
+        },
         () => {
           setStatus('connected')
           onEvent?.()
         },
         (error) => {
-          console.error(`[useRealtimeData] Error in ${tableName} subscription:`, error)
+          console.error(`[useRealtimeData] Error in ${collectionName} subscription:`, error)
           setStatus('error')
           onError?.(error)
         }
