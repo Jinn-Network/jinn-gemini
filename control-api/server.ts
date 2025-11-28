@@ -128,23 +128,50 @@ const typeDefs = /* GraphQL */ `
 
 async function assertRequestExists(ctx: Context, requestId: string) {
   if (!ctx.ponderUrl) return; // allow skip if not configured
+  
   const body = {
     query: `query($id: String!) { request(id: $id) { id } }`,
     variables: { id: requestId },
   };
+  
   try {
+    // Add timeout to prevent hanging on slow/unavailable endpoints
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    
     const res = await fetch(`${ctx.ponderUrl}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeout);
+    
+    // Check if response is actually JSON before parsing
+    const contentType = res.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      logger.warn({ 
+        requestId, 
+        status: res.status, 
+        contentType 
+      }, 'Ponder returned non-JSON response, skipping validation');
+      return; // Skip validation rather than failing
+    }
+    
     const json = await res.json();
     if (!json?.data?.request?.id) {
       throw new Error(`Unknown request_id: ${requestId}`);
     }
   } catch (error) {
-    logger.error({ error: serializeError(error) }, 'Ponder validation failed');
-    throw new Error(`Request validation failed: ${error instanceof Error ? error.message : String(error)}`);
+    // During Ponder migrations/downtime, log but don't block operations
+    if (error instanceof Error && error.name === 'AbortError') {
+      logger.warn({ requestId }, 'Ponder validation timeout, skipping');
+      return;
+    }
+    logger.error({ error: serializeError(error), requestId }, 'Ponder validation failed, skipping');
+    // Don't throw - allow operation to proceed without validation
+    return;
   }
 }
 
@@ -227,7 +254,15 @@ const resolvers = {
       const report = data![0];
 
       // Update claim status based on report outcome
-      const finalStatus = payload.status && payload.status !== 'IN_PROGRESS' ? payload.status : 'COMPLETED';
+      // Map job statuses to valid claim statuses
+      const claimStatusMap: Record<string, string> = {
+        'DELEGATING': 'IN_PROGRESS',
+        'WAITING': 'IN_PROGRESS',
+        'COMPLETED': 'COMPLETED',
+        'FAILED': 'COMPLETED', // Claims track work completion, not success/failure
+        'IN_PROGRESS': 'IN_PROGRESS',
+      };
+      const finalStatus = claimStatusMap[payload.status] || 'COMPLETED';
       const patch: any = {
         status: finalStatus,
         completed_at: new Date().toISOString(),

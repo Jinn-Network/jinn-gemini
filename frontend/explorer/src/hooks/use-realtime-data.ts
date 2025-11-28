@@ -94,7 +94,7 @@ export function useRealtimeData(
 
       // Subscribe to job definitions table
       const { unsubscribe: unsubJobDefs } = ponderClient.live(
-        () => sql`SELECT * FROM "jobDefinition" LIMIT 1`,
+        () => sql`SELECT * FROM "job_definition" LIMIT 1`,
         () => {
           setStatus('connected')
           if (collectionName === 'jobDefinitions' || !collectionName) {

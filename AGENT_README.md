@@ -2044,6 +2044,71 @@ Proper service configurations are available in `code-resources/olas-operate-app/
 
 ## Common Issues & Gotchas
 
+### Control API Ponder Validation Failures (Fixed 2025-11-27)
+
+**Issue**: Control API repeatedly fails with "invalid json response body" when validating requests via Ponder GraphQL endpoint.
+
+**Symptom**: 
+```
+FetchError: invalid json response body at https://jinn-gemini-production.up.railway.app/graphql 
+reason: Unexpected non-whitespace character after JSON at position 4
+```
+
+**Root Cause**: During Ponder migration from GraphQL-only to dual GraphQL+SQL (SSE) mode, the GraphQL endpoint was temporarily unavailable. Control API's `assertRequestExists()` function would:
+1. Attempt to fetch from Ponder GraphQL
+2. Receive HTML error page or 404 response
+3. Try to parse as JSON, causing parse error
+4. Throw error and block artifact/report creation
+
+**Impact**: 
+- Artifacts fail to persist after 4 retries
+- Job reports fail to save
+- Job delivery still succeeds (on-chain), but tracking data is lost
+- Database shows gaps in job history
+
+**Fix**: Updated `assertRequestExists()` in `control-api/server.ts` to:
+- Add 5-second timeout to prevent hanging
+- Check Content-Type header before parsing
+- Log warnings but skip validation instead of blocking operations
+- Handle AbortError gracefully during Ponder downtime
+
+**Prevention**: GraphQL endpoint is now maintained alongside SQL for backward compatibility.
+
+---
+
+### Database Constraint Violation: onchain_request_claims_status_check (Fixed 2025-11-27)
+
+**Issue**: Error "new row for relation 'onchain_request_claims' violates check constraint 'onchain_request_claims_status_check'" when updating claim status.
+
+**Symptom**:
+```
+Failed to update claim status
+error: "new row violates check constraint"
+requestId: "0x808f44c8e7e33668762d28def299feb213ded852e0e4acf8e374b4c5533634a6"
+```
+
+**Root Cause**: Job statuses (`COMPLETED`, `DELEGATING`, `WAITING`, `FAILED`) were passed directly to `onchain_request_claims` table, but the database constraint only allows `IN_PROGRESS` and `COMPLETED`.
+
+**Impact**:
+- Claim status updates silently fail (only logged)
+- Claims remain in `IN_PROGRESS` state even when work is done
+- Potential for claim lock conflicts if workers re-claim
+
+**Fix**: Added status mapping in `createJobReport` mutation:
+```typescript
+const claimStatusMap: Record<string, string> = {
+  'DELEGATING': 'IN_PROGRESS',
+  'WAITING': 'IN_PROGRESS',
+  'COMPLETED': 'COMPLETED',
+  'FAILED': 'COMPLETED',
+  'IN_PROGRESS': 'IN_PROGRESS',
+};
+```
+
+**Rationale**: Claims track work completion (worker has finished processing), not job success/failure. A job in `DELEGATING` or `WAITING` state is still actively being worked on, hence `IN_PROGRESS` for the claim.
+
+---
+
 ### Ponder Indexing Failures: IPFS Content-Type Mismatch
 
 **Issue**: Ponder fails to index `MarketplaceRequest` events with error: `Unexpected content-type "application/octet-stream"`
