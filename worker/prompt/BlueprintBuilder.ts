@@ -123,6 +123,19 @@ export class BlueprintBuilder {
       }
     }
 
+    // Log hierarchy status for verification (plan step 5)
+    if (context.hierarchy?.children && context.hierarchy.children.length > 0) {
+      const completedChildren = context.hierarchy.children.filter(c => c.status === 'COMPLETED');
+      workerLogger.info(
+        {
+          totalChildren: context.hierarchy.children.length,
+          completedChildren: completedChildren.length,
+          completedIds: completedChildren.map(c => ({ id: c.requestId.slice(0, 8), name: c.jobName }))
+        },
+        'Hierarchy status verification: completed children detected'
+      );
+    }
+
     // Phase 2: Build assertions from assertion providers (with access to context)
     const assertions: BlueprintAssertion[] = [];
     for (const provider of this.assertionProviders) {
@@ -144,6 +157,20 @@ export class BlueprintBuilder {
               { provider: provider.name, count: providerAssertions.length },
               'Assertion provider contributed'
             );
+          }
+
+          // Log CTX assertions from ChildWorkAssertionProvider (plan step 6)
+          if (provider.name === 'child-work-assertions') {
+            const ctxAssertions = providerAssertions.filter(a => a.id.startsWith('CTX-CHILD-'));
+            if (ctxAssertions.length > 0) {
+              workerLogger.info(
+                {
+                  ctxAssertionCount: ctxAssertions.length,
+                  assertionIds: ctxAssertions.map(a => a.id)
+                },
+                'CTX-CHILD assertions generated for completed children'
+              );
+            }
           }
         }
       } catch (error) {
@@ -195,7 +222,23 @@ export class BlueprintBuilder {
     recognition?: RecognitionPhaseResult | null
   ): Promise<string> {
     const { blueprint } = await this.build(requestId, metadata, recognition);
-    return JSON.stringify(blueprint, null, 2);
+    const promptString = JSON.stringify(blueprint, null, 2);
+    
+    // Verify assertions reach agent prompt (plan step 7)
+    const ctxAssertions = blueprint.assertions.filter(a => a.id.startsWith('CTX-CHILD-'));
+    if (ctxAssertions.length > 0) {
+      workerLogger.info(
+        {
+          requestId,
+          ctxAssertionCount: ctxAssertions.length,
+          promptLength: promptString.length,
+          sample: ctxAssertions[0]?.assertion.slice(0, 80)
+        },
+        'Blueprint prompt contains CTX-CHILD assertions for agent'
+      );
+    }
+    
+    return promptString;
   }
 
   /**

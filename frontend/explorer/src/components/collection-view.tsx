@@ -7,7 +7,6 @@ import { RecordList } from '@/components/record-list'
 import { RequestsTable } from '@/components/requests-table'
 import { ArtifactsTable } from '@/components/artifacts-table'
 import { JobDefinitionsTable } from '@/components/job-definitions-table'
-import { AutoRefreshToggle } from '@/components/auto-refresh-toggle'
 import { Pagination } from '@/components/pagination'
 import { RecordListSkeleton, RequestsTableSkeleton, ArtifactsTableSkeleton, JobDefinitionsTableSkeleton } from '@/components/loading-skeleton'
 import { getCollectionLabel } from '@/lib/utils'
@@ -39,9 +38,6 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // Initialize from URL search params
-  // Auto-refresh is enabled by default for requests
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(collectionName === 'requests')
   const workstreamFilter = searchParams.get('workstream')
   const [rootRequest, setRootRequest] = useState<Request | null>(null)
   const pageSize = 100
@@ -70,7 +66,6 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     loading,
     totalRecords,
     currentPage,
-    lastUpdate,
     setCurrentPage,
     refresh,
     error,
@@ -82,7 +77,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   } = useSubgraphCollection({
     collectionName,
     pageSize,
-    enablePolling: autoRefreshEnabled,
+    enablePolling: true,
     pollingInterval: 10000, // 10 seconds
     sortColumn: sortConfig.column,
     sortAscending: sortConfig.ascending,
@@ -175,20 +170,12 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
           Showing {displayRecords.length} records (Page {currentPage})
         </p>
         
-        <div className="flex items-center gap-4">
-          <AutoRefreshToggle
-            enabled={autoRefreshEnabled}
-            onToggle={setAutoRefreshEnabled}
-            interval={10000}
-            lastUpdate={lastUpdate}
-          />
-          <button
-            onClick={refresh}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Refresh
-          </button>
-        </div>
+        <button
+          onClick={refresh}
+          className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Refresh
+        </button>
       </div>
       
       {collectionName === 'requests' ? (

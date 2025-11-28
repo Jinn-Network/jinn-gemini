@@ -289,11 +289,17 @@ ${artifactsContext}
 ### Your Task
 Analyze the execution traces, tool usage patterns, and outcomes above. Synthesize concrete, actionable learnings that would help the current job succeed.
 
+**CRITICAL: Frame your learnings as HISTORICAL OBSERVATIONS, not generic advice.**
+
 Focus on:
-- **Strategies that worked or failed:** What approaches led to success or failure?
+- **Observed Tool Usage:** Which specific tools were CALLED (not "should be called")? In what sequence? How many times?
+- **Observed Patterns that Worked:** What did successful jobs DO (actual tool calls, not narratives)?
+- **Observed Patterns that Failed:** What did failed jobs DO that should be avoided?
 - **Common pitfalls:** What edge cases or errors were encountered?
-- **Tool usage patterns:** Which tools were used, in what order, with what parameters?
 - **Deliverable formats:** What artifacts were created? What format worked well?
+
+**DO NOT give generic advice like "Use dispatch_new_job to create child jobs".**
+**DO describe what actually happened: "Called dispatch_new_job 3 times before any web_fetch calls"**
 
 ### System Gotchas
 Common issues encountered in past runs:
@@ -309,10 +315,10 @@ Common issues encountered in past runs:
   "learnings": [
     {
       "sourceRequestId": "0x...",
-      "title": "Short headline for the learning",
-      "insight": "Actionable guidance grounded in the past run",
-      "actions": ["Specific recommended action 1", "Optional follow-up action 2"],
-      "warnings": ["Potential pitfall or risk to avoid"],
+      "title": "Short headline describing what was observed",
+      "insight": "What happened in past jobs (e.g., 'These jobs called dispatch_new_job early and succeeded')",
+      "actions": ["Observed behavior (e.g., 'Called dispatch_new_job twice', 'Created artifact before dispatching')", "Another observed pattern"],
+      "warnings": ["Observed failure pattern to avoid (e.g., 'Jobs that only described delegation failed')"],
       "confidence": "high | medium | low",
       "artifactCid": "bafy..."
     }
@@ -320,6 +326,8 @@ Common issues encountered in past runs:
 }
 \`\`\`
 - If no actionable patterns emerge from the similar jobs, return \`{"learnings": []}\`.
-- Prioritize clarity and actionable specificity over generic advice.
+- **CRITICAL**: The "actions" field must describe OBSERVED TOOL CALLS from past jobs, not generic recommendations.
+- Example GOOD action: "Called dispatch_new_job 3 times in sequence before finalization"
+- Example BAD action: "Use dispatch_new_job to create child jobs"
 `.trim();
 }

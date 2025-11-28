@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { ponderClient } from '@/lib/ponder-client'
-import { sql } from '@ponder/client'
+import * as schema from '@/lib/schema'
+import { count } from 'drizzle-orm'
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'error'
 
@@ -36,22 +37,27 @@ export function useRealtimeData(
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
 
   useEffect(() => {
-    if (!enabled || !collectionName) {
+    if (!enabled) {
       setStatus('disconnected')
       return
     }
 
-    // Map collection name to table name
-    const tableNameMap: Record<string, string> = {
-      'jobDefinitions': 'job_definition',
-      'requests': 'request',
-      'deliveries': 'delivery',
-      'artifacts': 'artifact',
-      'messages': 'message'
+    // Map collection name to table schema
+    const tableSchemaMap: Record<string, typeof schema.request> = {
+      'jobDefinitions': schema.jobDefinition,
+      'requests': schema.request,
+      'deliveries': schema.delivery,
+      'artifacts': schema.artifact,
+      'messages': schema.message
     }
 
-    const tableName = tableNameMap[collectionName]
-    if (!tableName) {
+    // If no collection specified, subscribe to all tables
+    const tablesToSubscribe = collectionName 
+      ? [tableSchemaMap[collectionName]]
+      : Object.values(tableSchemaMap)
+
+    // Check if all tables are valid
+    if (tablesToSubscribe.some(t => !t)) {
       console.error(`[useRealtimeData] Unknown collection: ${collectionName}`)
       setStatus('error')
       return
@@ -60,29 +66,29 @@ export function useRealtimeData(
     setStatus('connecting')
 
     try {
-      // Subscribe to ONLY this specific table using raw SQL
+      // Subscribe to table(s) changes using Drizzle query builder
       // Ponder client multiplexes all queries over a single SSE connection
-      // Query a single row to detect any table changes
-      const { unsubscribe } = ponderClient.live(
-        async (db) => {
-          const result = await db.execute(
-            sql.raw(`SELECT COUNT(*) as count FROM "${tableName}" LIMIT 1`)
-          )
-          return result
-        },
-        () => {
-          setStatus('connected')
-          onEvent?.()
-        },
-        (error) => {
-          console.error(`[useRealtimeData] Error in ${collectionName} subscription:`, error)
-          setStatus('error')
-          onError?.(error)
-        }
-      )
+      // Create subscriptions for each table
+      const unsubscribers = tablesToSubscribe.map((table) => {
+        const { unsubscribe } = ponderClient.live(
+          (db) => db.select({ count: count() }).from(table),
+          (result) => {
+            const tableName = collectionName || 'all tables'
+            console.log(`[useRealtimeData] SSE event received for ${tableName}:`, result)
+            setStatus('connected')
+            onEvent?.()
+          },
+          (error) => {
+            console.error(`[useRealtimeData] Error in ${collectionName || 'all tables'} subscription:`, error)
+            setStatus('error')
+            onError?.(error)
+          }
+        )
+        return unsubscribe
+      })
 
       return () => {
-        unsubscribe()
+        unsubscribers.forEach(unsub => unsub())
         setStatus('disconnected')
       }
     } catch (error) {

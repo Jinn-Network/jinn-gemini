@@ -112,12 +112,13 @@ export class RecognitionProvider implements AssertionProvider {
 
     const assertionText = assertionParts.join('. ');
 
-    // Build do examples from actions
+    // Build do examples from actions - prefix with [Historical Pattern] to make temporal framing clear
     const doExamples: string[] = [];
     if (learning.actions && learning.actions.length > 0) {
-      doExamples.push(...learning.actions);
+      // Prefix each action to make it clear these are observations, not instructions
+      doExamples.push(...learning.actions.map((action) => `[Historical Pattern] ${action}`));
     } else {
-      doExamples.push('Apply this learning from similar jobs');
+      doExamples.push('[Historical Pattern] Apply this learning from similar jobs');
     }
 
     // Build don't examples from warnings
@@ -128,8 +129,12 @@ export class RecognitionProvider implements AssertionProvider {
       dontExamples.push('Ignore learnings from similar jobs');
     }
 
-    // Build commentary
+    // Build commentary with anti-mimicry warning
     const commentaryParts: string[] = [];
+    
+    // Add critical warning first
+    commentaryParts.push('CRITICAL: You must EXECUTE the corresponding tool calls. Stating "I dispatched" without calling dispatch_new_job is a failure');
+    
     if (learning.title) {
       commentaryParts.push(`Learning: ${learning.title}`);
     }
@@ -140,10 +145,7 @@ export class RecognitionProvider implements AssertionProvider {
       commentaryParts.push(`Confidence: ${learning.confidence}`);
     }
 
-    const commentary =
-      commentaryParts.length > 0
-        ? commentaryParts.join('. ')
-        : 'Extracted from recognition of similar jobs';
+    const commentary = commentaryParts.join('. ');
 
     return {
       id: `REC-${String(index).padStart(3, '0')}`,

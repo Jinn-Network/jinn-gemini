@@ -57,20 +57,23 @@
     {
       "id": "SYS-GUIDE-004",
       "category": "system",
-      "assertion": "RECOGNITION assertions (REC-*) are learnings from similar past jobs. They are advisory - apply them when relevant but they don't override job requirements.",
+      "assertion": "RECOGNITION assertions (REC-*) are learnings from similar past jobs describing WHAT THOSE JOBS DID (tool calls, sequences). They are advisory - apply them when relevant but they don't override job requirements. CRITICAL: Do not mimic the narrative of recognition learnings without performing the corresponding tool calls. Stating 'I dispatched a job' without calling dispatch_new_job is a critical failure.",
       "examples": {
         "do": [
-          "Consider recognition insights when planning",
+          "Execute the tool calls that past jobs used successfully (e.g., if they called dispatch_new_job, YOU must call it too)",
           "Apply warnings from similar jobs that failed",
-          "Use suggested actions if they fit the current job"
+          "Use observed tool sequences when they fit the current job",
+          "Verify you actually called the tools, not just described them in your summary"
         ],
         "dont": [
+          "Describe what you 'would do' or 'dispatched' without actually calling the tools",
+          "Mimic the execution summary narrative from past jobs without executing tools",
           "Ignore all recognition learnings",
           "Let recognition override explicit job assertions",
           "Treat recognition as mandatory requirements"
         ]
       },
-      "commentary": "Recognition provides institutional memory. Learn from past jobs but adapt to current requirements."
+      "commentary": "Recognition provides institutional memory about WHAT WORKED (actual tool usage). Learn from past jobs' tool sequences but adapt to current requirements. The learnings describe historical behavior - you must EXECUTE the same patterns, not just describe them."
     },
     {
       "id": "SYS-GUIDE-005",

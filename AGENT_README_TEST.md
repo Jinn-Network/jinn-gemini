@@ -374,6 +374,24 @@ When no code metadata is present (pure research/analysis jobs), the system autom
 
 This ensures artifact-only agents cannot attempt code modifications and focus solely on research, analysis, and artifact creation.
 
+### 9. Job Status from Ponder
+**Architecture:** Job status comes from `job_definition.lastStatus` field in Ponder (extracted from delivery payloads)  
+**Never Infer:** Don't check individual requests to guess status - Ponder already has the correct value  
+**Status Flow:** `lastStatus` (Ponder) → `job-context-utils` (lowercase) → `JobContextProvider.mapJobStatus()` (uppercase) → `ChildWorkAssertionProvider` (CTX assertions)  
+**Verification:** Check logs for "Hierarchy status verification" and "CTX-CHILD assertions generated"  
+**Implementation:** `gemini-agent/mcp/tools/shared/job-context-utils.ts` line 238-255
+
+### 10. Recognition Learning Mimicry (2025-11-28)
+**Issue:** Agents mimicking delegation narratives without executing tool calls  
+**Root Cause:** Recognition learnings framed as imperative instructions ("Use dispatch_new_job") instead of historical observations ("Called dispatch_new_job 3 times")  
+**Symptom:** Execution summary claims "Dispatched child jobs" but telemetry shows zero dispatch_new_job calls  
+**Fix Applied:** 
+- Recognition prompt now emphasizes "OBSERVED TOOL USAGE" not generic advice
+- RecognitionProvider prefixes actions with "[Historical Pattern]" 
+- System blueprint (SYS-GUIDE-004) warns: "Stating 'I dispatched' without calling dispatch_new_job is a critical failure"
+**Files Changed:** `worker/recognition_helpers.ts`, `worker/prompt/providers/assertions/RecognitionProvider.ts`, `worker/prompt/system-blueprint.json`  
+**Prevention:** Recognition learnings must describe WHAT PAST JOBS DID (tool sequences), not WHAT CURRENT JOB SHOULD DO
+
 ---
 
 ## Documentation Map

@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Artifact } from '@/lib/subgraph'
+import { useRealtimeData } from '@/hooks/use-realtime-data'
 
 interface WorkstreamBriefingProps {
   rootRequestId: string
@@ -16,14 +17,10 @@ export function WorkstreamBriefing({ rootRequestId, initialBriefing }: Workstrea
   const [lastUpdated, setLastUpdated] = useState<string | null>(
     initialBriefing?.blockTimestamp || null
   )
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchBriefing = useCallback(async (silent: boolean = false) => {
     if (!silent) {
       setLoading(true)
-    } else {
-      setIsRefreshing(true)
     }
     
     try {
@@ -76,7 +73,6 @@ export function WorkstreamBriefing({ rootRequestId, initialBriefing }: Workstrea
       }
     } finally {
       setLoading(false)
-      setIsRefreshing(false)
     }
   }, [rootRequestId])
 
@@ -109,18 +105,17 @@ export function WorkstreamBriefing({ rootRequestId, initialBriefing }: Workstrea
     }
   }, [initialBriefing, fetchBriefing])
 
-  // Set up 10-second polling
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      fetchBriefing(true)
-    }, 10000)
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
+  // Use SSE for real-time updates to artifacts
+  useRealtimeData(
+    'artifacts',
+    {
+      enabled: true,
+      onEvent: () => {
+        console.log('[WorkstreamBriefing] Real-time artifact update detected, refetching briefing')
+        fetchBriefing(true)
       }
     }
-  }, [rootRequestId, fetchBriefing])
+  )
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(Number(timestamp) * 1000)
@@ -169,21 +164,12 @@ export function WorkstreamBriefing({ rootRequestId, initialBriefing }: Workstrea
 
   return (
     <div className="space-y-3">
-      {/* Refresh indicator and timestamp */}
-      <div className="flex items-center justify-between text-xs text-gray-500">
-        <div className="flex items-center gap-2">
-          {isRefreshing && (
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span>Refreshing...</span>
-            </div>
-          )}
-          {lastUpdated && (
-            <span>Last updated: {formatTimestamp(lastUpdated)}</span>
-          )}
+      {/* Timestamp */}
+      {lastUpdated && (
+        <div className="text-xs text-gray-500">
+          Last updated: {formatTimestamp(lastUpdated)}
         </div>
-        <span className="text-gray-400">Auto-refresh: 10s</span>
-      </div>
+      )}
 
       {/* Main content */}
       <div className="prose prose-sm max-w-none bg-white p-6 rounded-lg border border-gray-200">

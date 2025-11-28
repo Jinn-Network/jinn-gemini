@@ -9,6 +9,17 @@ import { getOptionalMechChainConfig, getRequiredRpcUrl } from '../../gemini-agen
 import { getServiceSafeAddress, getServicePrivateKey } from '../../env/operate-profile.js';
 import type { UnclaimedRequest, AgentExecutionResult, FinalStatus, IpfsMetadata, RecognitionPhaseResult, ReflectionResult } from '../types.js';
 import { buildDeliveryPayload } from './payload.js';
+import { checkDeliveryStatusViaPonder } from './ponderVerification.js';
+
+/**
+ * Custom error for RPC verification failures
+ */
+export class RpcVerificationError extends Error {
+  constructor(message: string, public metadata: Record<string, any>) {
+    super(message);
+    this.name = 'RpcVerificationError';
+  }
+}
 
 /**
  * Delivery context for transaction
@@ -55,7 +66,7 @@ export async function isUndeliveredOnChain(params: {
   rpcHttpUrl?: string;
   maxRetries?: number;
 }): Promise<boolean> {
-  const { mechAddress, requestIdHex, rpcHttpUrl, maxRetries = 3 } = params;
+  const { mechAddress, requestIdHex, rpcHttpUrl, maxRetries = 5 } = params; // Increase default retries
   
   if (!rpcHttpUrl) return true; // best-effort: if no RPC provided, don't block delivery
   
@@ -69,7 +80,7 @@ export async function isUndeliveredOnChain(params: {
       const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
       const web3 = new Web3(rpcHttpUrl);
       const contract = new (web3 as any).eth.Contract(abi, mechAddress);
-      // Fetch undelivered IDs in batches to avoid RPC/gas limits
+      
       const BATCH_SIZE = 100;
       let offset = 0;
       let isUndelivered = false;
@@ -86,14 +97,9 @@ export async function isUndeliveredOnChain(params: {
           break;
         }
 
-        // If we got fewer items than requested, we've reached the end of the list
-        if (batchSize < BATCH_SIZE) {
-          break;
-        }
-
-        offset += BATCH_SIZE;
+        if (batchSize < BATCH_SIZE) break;
         
-        // Safety cap to prevent infinite loops or excessive scanning
+        offset += BATCH_SIZE;
         if (offset > 20000) {
           workerLogger.warn({ requestIdHex, offset }, 'Exceeded safety limit while paging undelivered requests; assuming delivered');
           break;
@@ -101,10 +107,7 @@ export async function isUndeliveredOnChain(params: {
       }
       
       if (!isUndelivered) {
-        workerLogger.warn({ 
-          requestIdHex, 
-          totalChecked: totalFetched
-        }, 'Request not found in on-chain undelivered set (already delivered)');
+        workerLogger.info({ requestIdHex, totalChecked: totalFetched }, 'RPC check: request not in undelivered set');
       }
       
       return isUndelivered;
@@ -112,24 +115,33 @@ export async function isUndeliveredOnChain(params: {
       lastError = error;
       
       if (attempt < maxRetries) {
-        const backoffMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        // Exponential backoff with jitter: 1s, 2s, 4s, 8s, 16s
+        const baseBackoff = Math.pow(2, attempt - 1) * 1000;
+        const jitter = Math.random() * 500; // Add 0-500ms jitter
+        const backoffMs = baseBackoff + jitter;
+        
         workerLogger.warn({ 
           error: error?.message, 
           attempt, 
           maxRetries,
           backoffMs 
-        }, 'Failed to check on-chain delivery status; retrying');
+        }, 'RPC delivery check failed; retrying with backoff');
+        
         await new Promise(r => setTimeout(r, backoffMs));
       }
     }
   }
   
-  // After all retries failed, throw error instead of assuming undelivered
+  // After RPC retries exhausted, don't throw yet - let caller decide fallback strategy
   workerLogger.error({ 
     error: lastError?.message,
     attempts: maxRetries 
-  }, 'Failed to verify on-chain delivery status after all retries');
-  throw new Error(`Unable to verify on-chain delivery status: ${lastError?.message}`);
+  }, 'RPC verification failed after all retries');
+  
+  throw new RpcVerificationError(
+    `RPC verification failed: ${lastError?.message}`,
+    { attempts: maxRetries, lastError }
+  );
 }
 
 /**
@@ -195,6 +207,64 @@ export async function wasRequestRevoked(params: {
   } catch (e: any) {
     workerLogger.warn({ txHash, error: e?.message }, 'Failed to check for RevokeRequest event');
     return false;
+  }
+}
+
+/**
+ * Verify delivery using multiple strategies: RPC (fast) + Ponder (authoritative)
+ * Returns true if request is still undelivered, false if already delivered
+ */
+async function verifyUndeliveredStatus(params: {
+  mechAddress: string;
+  requestIdHex: string;
+  requestId: string;
+  rpcHttpUrl?: string;
+}): Promise<boolean> {
+  const { mechAddress, requestIdHex, requestId, rpcHttpUrl } = params;
+  
+  // Strategy 1: Try RPC first (faster)
+  try {
+    const isUndelivered = await isUndeliveredOnChain({
+      mechAddress,
+      requestIdHex,
+      rpcHttpUrl,
+      maxRetries: 5,
+    });
+    
+    workerLogger.info({ requestId, isUndelivered, method: 'rpc' }, 
+      'Delivery status verified via RPC');
+    return isUndelivered;
+    
+  } catch (error: any) {
+    if (error instanceof RpcVerificationError) {
+      workerLogger.warn({ requestId, error: error.message }, 
+        'RPC verification failed; falling back to Ponder');
+      
+      // Strategy 2: Fallback to Ponder
+      try {
+        const ponderResult = await checkDeliveryStatusViaPonder({
+          requestId,
+          maxRetries: 3,
+        });
+        
+        if (ponderResult.error) {
+          workerLogger.error({ requestId, error: ponderResult.error }, 
+            'Ponder verification also failed');
+          throw new Error(`Both RPC and Ponder verification failed. RPC: ${error.message}, Ponder: ${ponderResult.error}`);
+        }
+        
+        const isUndelivered = !ponderResult.delivered;
+        workerLogger.info({ requestId, isUndelivered, method: 'ponder', txHash: ponderResult.txHash }, 
+          'Delivery status verified via Ponder (fallback)');
+        return isUndelivered;
+        
+      } catch (ponderError: any) {
+        workerLogger.error({ requestId, rpcError: error.message, ponderError: ponderError.message }, 
+          'Both RPC and Ponder verification failed');
+        throw new Error(`Unable to verify delivery status via any method`);
+      }
+    }
+    throw error;
   }
 }
 
@@ -276,9 +346,10 @@ export async function deliverViaSafeTransaction(
     }
   }
   
-  const isUndelivered = await isUndeliveredOnChain({
+  const isUndelivered = await verifyUndeliveredStatus({
     mechAddress: targetMechAddress,
     requestIdHex,
+    requestId: context.requestId,
     rpcHttpUrl,
   });
   
@@ -327,11 +398,11 @@ export async function deliverViaSafeTransaction(
         
         // Re-check delivery status before retry
         try {
-          const isUndelivered = await isUndeliveredOnChain({
+          const isUndelivered = await verifyUndeliveredStatus({
               mechAddress: targetMechAddress,
               requestIdHex,
+              requestId: context.requestId,
               rpcHttpUrl,
-              maxRetries: 2, // Use fewer retries for retry-check
           });
           if (!isUndelivered) {
                workerLogger.info({ requestId: context.requestId }, 'Request already delivered on retry check');
@@ -369,20 +440,21 @@ export async function deliverViaSafeTransaction(
         if (e.message?.includes('Transaction not found')) {
            workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Transaction not found error; verifying on-chain status');
            try {
-             const stillUndelivered = await isUndeliveredOnChain({
+             const stillUndelivered = await verifyUndeliveredStatus({
                mechAddress: targetMechAddress,
                requestIdHex,
+               requestId: context.requestId,
                rpcHttpUrl,
-               maxRetries: 2,
              });
              
              if (!stillUndelivered) {
-               workerLogger.info({ requestId: context.requestId }, 'Recovered from Transaction not found - request is marked delivered on-chain');
+               workerLogger.info({ requestId: context.requestId }, 'Recovered from Transaction not found - verified delivered via hybrid check');
                // We don't have the hash, but we know it succeeded
                return { status: 'confirmed', tx_hash: undefined }; 
              }
            } catch (verifyErr: any) {
-             workerLogger.warn({ requestId: context.requestId, error: verifyErr.message }, 'Failed to verify status after Transaction not found');
+             workerLogger.error({ requestId: context.requestId, error: verifyErr.message }, 'Hybrid verification failed after Transaction not found');
+             throw verifyErr; // Propagate the error instead of continuing
            }
         }
 

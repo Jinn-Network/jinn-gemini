@@ -2414,6 +2414,19 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - Eliminated connection hammering and 499 errors
 - Faster page loads, proper real-time updates
 
+### Job Definition Status Icons Not Auto-Updating (Fixed 2025-11-28)
+
+**Issue**: In requests table, job definition status icons (Job ID column) did not update when job definitions changed status. Component fetched status once on mount with no SSE subscription.
+
+**Fix**: Added SSE listeners at table level (not per-row):
+- `RequestsTable` component creates single subscription to `jobDefinitions` table
+- Also subscribes to `requests` and `deliveries` for dependency status updates
+- Increments `refetchTrigger` prop when SSE events arrive
+- All child components (`JobDefStatusCell`, `DependencyCell`) receive the trigger and refetch their data
+- Avoids creating 100+ subscriptions (one per row)
+
+**Pattern**: Create ONE SSE subscription per table at the parent/container level, pass refetch triggers to children. Do not create subscriptions in row-level components - causes subscription explosion
+
 **Related Files**:
 - `frontend/explorer/src/hooks/use-realtime-data.ts` - Fixed to subscribe only to needed table
 - `frontend/explorer/src/hooks/use-subgraph-collection.ts` - Already correct (uses useRealtimeData)

@@ -29,6 +29,7 @@ interface BatchedJobData {
         name: string;
         blueprint?: string;
         sourceJobDefinitionId?: string;
+        lastStatus?: string;
     }>;
     requests: Array<{
         id: string;
@@ -66,6 +67,7 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
                     name
                     blueprint
                     sourceJobDefinitionId
+                    lastStatus
                 }
             }
             requests(where: { jobDefinitionId_in: $jobIds }, limit: 1000) {
@@ -109,6 +111,7 @@ async function fetchBatchedJobData(jobIds: string[], PONDER_GRAPHQL_URL: string)
             name: string;
             blueprint?: string;
             sourceJobDefinitionId?: string;
+            lastStatus?: string;
         }> };
         requests: { items: Array<{
             id: string;
@@ -232,17 +235,23 @@ export async function fetchJobHierarchy(rootJobId: string, maxDepth: number = 3)
                 const children = childrenByJob.get(jobId) || [];
                 const messages = messagesByJob.get(jobId) || [];
 
-                // Determine job status based on requests
+                // Use lastStatus from Ponder (already accurate from delivery payloads)
+                const rawStatus = job.lastStatus?.toUpperCase();
                 let status: 'active' | 'completed' | 'failed' | 'unknown' = 'unknown';
-                if (requests.length > 0) {
-                    const hasDelivered = requests.some(r => r.delivered);
-                    const hasUndelivered = requests.some(r => !r.delivered);
-                    
-                    if (hasDelivered && !hasUndelivered) {
-                        status = 'completed';
-                    } else if (hasUndelivered) {
-                        status = 'active';
-                    }
+                
+                if (rawStatus === 'COMPLETED') {
+                    status = 'completed';
+                } else if (rawStatus === 'FAILED') {
+                    status = 'failed';
+                } else if (rawStatus === 'DELEGATING' || rawStatus === 'WAITING' || rawStatus === 'PENDING') {
+                    status = 'active';
+                } else if (rawStatus) {
+                    // Unknown status string from Ponder
+                    mcpLogger.warn({ 
+                        tool: 'job_context_utils', 
+                        jobId, 
+                        rawStatus 
+                    }, `Unrecognized lastStatus value: ${rawStatus}`);
                 }
 
                 // Add to hierarchy

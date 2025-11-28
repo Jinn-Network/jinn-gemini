@@ -35,7 +35,6 @@ interface UseSubgraphCollectionReturn {
   loading: boolean
   totalRecords: number
   currentPage: number
-  lastUpdate: Date
   setCurrentPage: (page: number) => void
   refresh: () => void
   error: string | null
@@ -50,7 +49,7 @@ interface UseSubgraphCollectionReturn {
 export function useSubgraphCollection({
   collectionName,
   pageSize = 100,
-  enablePolling = false,
+  enablePolling = true,
   pollingInterval = 10000,
   sortColumn,
   sortAscending = false,
@@ -60,7 +59,6 @@ export function useSubgraphCollection({
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalRecords, setTotalRecords] = useState(0)
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [error, setError] = useState<string | null>(null)
   const [hasNextPage, setHasNextPage] = useState(false)
   const [hasPreviousPage, setHasPreviousPage] = useState(false)
@@ -168,8 +166,6 @@ export function useSubgraphCollection({
       // If there's a next page, add 1 to show there are more
       const currentEnd = (page - 1) * pageSize + response.items.length
       setTotalRecords(response.pageInfo.hasNextPage ? currentEnd + 1 : currentEnd)
-      
-      setLastUpdate(new Date())
     } catch (fetchError) {
       console.error(`Error fetching ${collectionName} records:`, fetchError)
       setError(fetchError instanceof Error ? fetchError.message : 'Failed to fetch records')
@@ -259,7 +255,6 @@ export function useSubgraphCollection({
     loading,
     totalRecords,
     currentPage,
-    lastUpdate,
     setCurrentPage,
     refresh,
     error,

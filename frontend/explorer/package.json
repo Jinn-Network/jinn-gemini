@@ -16,13 +16,14 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
-    "@ponder/client": "^0.6.0",
+    "@ponder/client": "^0.15.12",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
+    "drizzle-orm": "^0.44.7",
     "graphql": "^16.11.0",
     "graphql-request": "^7.2.0",
     "lucide-react": "^0.536.0",

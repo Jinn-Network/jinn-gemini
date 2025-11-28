@@ -1,32 +1,33 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
 import { getDependencyInfo, DependencyInfo, getJobDefinition } from '@/lib/subgraph'
 import { StatusIcon, mapDependencyStatusToJobStatus } from '@/components/status-icon'
 import { TruncatedId } from '@/components/truncated-id'
+import { useRealtimeData } from '@/hooks/use-realtime-data'
 
 interface RequestsTableProps {
   records: SubgraphRecord[]
 }
 
 // Component to display dependency count with tooltip
-function DependencyCell({ dependencies }: { dependencies?: string[] }) {
+function DependencyCell({ dependencies, refetchTrigger }: { dependencies?: string[]; refetchTrigger: number }) {
   const [dependencyDetails, setDependencyDetails] = useState<DependencyInfo[]>([])
   const [isHovering, setIsHovering] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    if (isHovering && dependencies && dependencies.length > 0 && dependencyDetails.length === 0) {
+    if (isHovering && dependencies && dependencies.length > 0) {
       setIsLoading(true)
       getDependencyInfo(dependencies)
         .then(setDependencyDetails)
         .catch(console.error)
         .finally(() => setIsLoading(false))
     }
-  }, [isHovering, dependencies, dependencyDetails.length])
+  }, [isHovering, dependencies, refetchTrigger])
 
   if (!dependencies || dependencies.length === 0) {
     return <span className="text-gray-400 text-sm">-</span>
@@ -78,7 +79,7 @@ function DependencyCell({ dependencies }: { dependencies?: string[] }) {
 }
 
 // Component to display job definition status icon with tooltip
-function JobDefStatusCell({ jobDefId }: { jobDefId?: string }) {
+function JobDefStatusCell({ jobDefId, refetchTrigger }: { jobDefId?: string; refetchTrigger: number }) {
   const [status, setStatus] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -94,7 +95,7 @@ function JobDefStatusCell({ jobDefId }: { jobDefId?: string }) {
         .catch(console.error)
         .finally(() => setIsLoading(false))
     }
-  }, [jobDefId])
+  }, [jobDefId, refetchTrigger])
 
   if (!jobDefId) return null
   if (isLoading) return null
@@ -103,6 +104,33 @@ function JobDefStatusCell({ jobDefId }: { jobDefId?: string }) {
 }
 
 export function RequestsTable({ records }: RequestsTableProps) {
+  const [refetchTrigger, setRefetchTrigger] = useState(0)
+
+  // Single SSE listener for jobDefinitions updates (shared by all rows)
+  const handleJobDefUpdate = useCallback(() => {
+    setRefetchTrigger(prev => prev + 1)
+  }, [])
+
+  useRealtimeData('jobDefinitions', {
+    enabled: true,
+    onEvent: handleJobDefUpdate
+  })
+
+  // Single SSE listener for requests/deliveries updates (for dependencies)
+  const handleDependencyUpdate = useCallback(() => {
+    setRefetchTrigger(prev => prev + 1)
+  }, [])
+
+  useRealtimeData('requests', {
+    enabled: true,
+    onEvent: handleDependencyUpdate
+  })
+
+  useRealtimeData('deliveries', {
+    enabled: true,
+    onEvent: handleDependencyUpdate
+  })
+
   if (records.length === 0) {
     return (
       <div className="text-center py-12 text-gray-500">
@@ -176,7 +204,7 @@ export function RequestsTable({ records }: RequestsTableProps) {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <DependencyCell dependencies={dependencies} />
+                  <DependencyCell dependencies={dependencies} refetchTrigger={refetchTrigger} />
                 </td>
                 <td className="px-4 py-3">
                   {workstreamId ? (
@@ -191,7 +219,7 @@ export function RequestsTable({ records }: RequestsTableProps) {
                 <td className="px-4 py-3">
                   {jobDefId ? (
                     <div className="flex items-center gap-2">
-                      <JobDefStatusCell jobDefId={jobDefId} />
+                      <JobDefStatusCell jobDefId={jobDefId} refetchTrigger={refetchTrigger} />
                       <TruncatedId 
                         value={jobDefId}
                         linkTo={`/jobDefinitions/${jobDefId}`}
