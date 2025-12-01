@@ -392,6 +392,50 @@ This ensures artifact-only agents cannot attempt code modifications and focus so
 **Files Changed:** `worker/recognition_helpers.ts`, `worker/prompt/providers/assertions/RecognitionProvider.ts`, `worker/prompt/system-blueprint.json`  
 **Prevention:** Recognition learnings must describe WHAT PAST JOBS DID (tool sequences), not WHAT CURRENT JOB SHOULD DO
 
+### 11. Job Definitions and Workstream Queries (2025-11-29)
+**Issue:** Querying `job_definition.workstreamId` returns incomplete results  
+**Root Cause:** Job definitions can be reused across workstreams, so `workstreamId` only stores the FIRST workstream  
+**Solution:** Query `requests` table by `workstreamId`, extract unique `jobDefinitionId` values, then batch-fetch definitions  
+**Prevention:**
+```typescript
+// ❌ Wrong:
+const jobs = await query('jobDefinitions', { where: { workstreamId } })
+
+// ✅ Correct:
+const requests = await query('requests', { where: { workstreamId } })
+const jobDefIds = [...new Set(requests.map(r => r.jobDefinitionId))]
+const jobs = await query('jobDefinitions', { where: { id_in: jobDefIds } })
+```
+
+### 12. Stale Hierarchy in Status Inference (2025-12-01) [FIXED]
+**Issue:** Jobs cycle through WAITING status multiple times instead of COMPLETED after children finish  
+
+**Root Cause CONFIRMED:** `inferJobStatus()` used `metadata.additionalContext.hierarchy` which is a frozen snapshot from dispatch time. When parent executes 2-5 minutes later, child statuses in hierarchy are stale (show "active" even though Ponder has "delivered").
+
+**Evidence from Test (2025-12-01):**
+- Test job: Trade Idea Generation & Synthesis (23783b40-2ba3-4a21-a998-3ce233ef497c)
+- Live Ponder query showed: 3 children, ALL delivered
+- Job status in Ponder: WAITING (incorrect)
+- Discrepancy: Hierarchy snapshot outdated, live query proves all children complete
+
+**Solution Implemented:**
+Query live child delivery status from Ponder during `inferJobStatus()` instead of trusting hierarchy snapshot. Hierarchy still used for agent context but NOT for completion logic.
+
+**Code Changes:**
+- `worker/status/childJobs.ts`: Added `getAllChildrenForJobDefinition()` to query fresh data across all job runs
+- `worker/status/inferStatus.ts`: Live query path with hierarchy comparison logging
+- Added `[STATUS_INFERENCE]` logging markers for debugging
+- Decision logic: Always prefer live Ponder data, fall back to hierarchy only if query fails
+
+**Testing:**
+- Test script: `scripts/test-waiting-fix.sh` (includes integrated dispatch)
+- Full analysis: `WAITING_CYCLES_ANALYSIS.md`
+- ✅ **Fix verified in production** (2025-12-01): Job transitioned WAITING → COMPLETED using live query
+- Test evidence: Request 0x034f18be..., Tx 0xba971e60...
+
+**Prevention:**
+Never rely on `hierarchy.status` for terminal state decisions. Always query Ponder directly for child delivery status. Hierarchy is for context/planning only.
+
 ---
 
 ## Documentation Map

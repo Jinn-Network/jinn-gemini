@@ -42,6 +42,15 @@ const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/gra
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = getUseControlApi();
 
+// Parse --runs=<N> flag for controlled execution cycles
+const MAX_RUNS = (() => {
+  if (SINGLE_SHOT) return 1; // --single is equivalent to --runs=1
+  const arg = process.argv.find(arg => arg.startsWith('--runs='));
+  if (!arg) return undefined; // Infinite loop (default behavior)
+  const value = parseInt(arg.split('=')[1], 10);
+  return isNaN(value) || value < 1 ? undefined : value;
+})();
+
 // Workstream filtering: parse --workstream=<id> flag
 const WORKSTREAM_FILTER = (() => {
   const arg = process.argv.find(arg => arg.startsWith('--workstream='));
@@ -717,12 +726,23 @@ async function main() {
     await processOnce();
     return;
   }
+  
+  let runCount = 0;
   for (;;) {
     try {
       // Check for completed chains and repost if needed
       await checkAndRepostCompletedChains();
       
       await processOnce();
+      
+      // Check if we've reached the max runs limit
+      if (MAX_RUNS !== undefined) {
+        runCount++;
+        if (runCount >= MAX_RUNS) {
+          workerLogger.info({ totalRuns: runCount, maxRuns: MAX_RUNS }, 'Reached maximum runs - stopping worker');
+          return;
+        }
+      }
     } catch (e: any) {
       workerLogger.error({ error: serializeError(e) }, 'Error in mech loop');
     }

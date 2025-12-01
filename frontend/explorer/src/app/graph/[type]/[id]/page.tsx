@@ -1,6 +1,6 @@
 import { JobGraphView } from '@/components/graph/job-graph-view'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { SiteHeader } from '@/components/site-header'
 
 interface GraphPageProps {
   params: Promise<{
@@ -18,23 +18,16 @@ export default async function GraphPage({ params }: GraphPageProps) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Link
-            href={`/requests/${id}`}
-            className="text-blue-600 hover:text-blue-800 text-sm inline-flex items-center gap-1"
-          >
-            <span>←</span>
-            <span>Back to detail view</span>
-          </Link>
-          <h1 className="text-2xl font-bold mt-2">Job Graph Visualization</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Explore job relationships and execution flows
-          </p>
-        </div>
-      </div>
+    <>
+      <SiteHeader 
+        title="Job Graph Visualization"
+        subtitle="Explore job relationships and execution flows"
+        backLink={{
+          href: `/requests/${id}`,
+          label: 'Back to detail view'
+        }}
+      />
+      <div className="p-4 md:p-6 space-y-6">
 
       {/* Graph */}
       <JobGraphView rootId={id} />
@@ -109,6 +102,7 @@ export default async function GraphPage({ params }: GraphPageProps) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

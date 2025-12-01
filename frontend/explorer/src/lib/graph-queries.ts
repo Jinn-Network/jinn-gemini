@@ -118,9 +118,8 @@ async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobG
         if (req.delivered) stats.deliveredCount++
         
         // Update status based on most recent request
-        // (Simple heuristic: if any request is active, job is active)
-        if (!req.delivered) stats.lastStatus = 'active'
-        else if (stats.lastStatus === 'active' && req.delivered) stats.lastStatus = 'completed'
+        // Note: Don't override lastStatus from job definition unless we need to
+        // The lastStatus from Ponder is the source of truth
       } else {
         // Request has jobDefinitionId but we didn't find the definition in the workstream query.
         // This might happen if the job definition itself doesn't have the workstreamId set correctly
@@ -139,14 +138,15 @@ async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobG
   const nodes: GraphNode[] = jobDefs.map(jd => {
     const stats = statsByJobDef.get(jd.id)!
     
-    // Determine status enum
+    // Determine status enum from Ponder's lastStatus (source of truth)
     let status: GraphNode['status'] = 'unknown'
     const statusLower = stats.lastStatus.toLowerCase()
     if (statusLower === 'completed' || statusLower === 'delivered') status = 'completed'
     else if (statusLower === 'failed') status = 'failed'
     else if (statusLower === 'waiting') status = 'waiting'
     else if (statusLower === 'delegating') status = 'delegating'
-    else status = 'active'
+    else if (statusLower === 'pending') status = 'pending'
+    else status = 'pending' // Default to pending instead of 'active'
 
     return {
       id: jd.id,
@@ -235,7 +235,7 @@ function createEdgeId(source: string, target: string, type: string): string {
 
 function determineRequestStatus(request: Request): GraphNode['status'] {
   if (request.delivered) return 'completed'
-  return 'active'
+  return 'pending' // Use 'pending' instead of 'active' to match on-chain status
 }
 
 function createGraphNode(
@@ -254,7 +254,7 @@ function createGraphNode(
       else if (statusLower === 'delegating') status = 'delegating'
       else if (statusLower === 'waiting') status = 'waiting'
       else if (statusLower === 'pending') status = 'pending'
-      else status = 'active'
+      else status = 'pending' // Default to pending instead of 'active'
     }
     
     return {

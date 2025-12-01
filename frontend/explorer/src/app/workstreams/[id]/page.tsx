@@ -1,4 +1,5 @@
-import { getRequest, getWorkstreamRequests, getWorkstreamArtifact, fetchIpfsContent, getJobDefinition } from '@/lib/subgraph'
+import { getRequest, getWorkstreamRequests, getWorkstreamArtifact, fetchIpfsContent } from '@/lib/subgraph'
+import { request } from 'graphql-request'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,6 +7,8 @@ import { ArtifactDetailView } from '@/components/artifact-detail-view'
 import { JobGraphView } from '@/components/graph/job-graph-view'
 import { JobDefinitionsTable } from '@/components/job-definitions-table'
 import { RequestsTable } from '@/components/requests-table'
+import { WorkstreamTreeList } from '@/components/workstream-tree-list'
+import { SiteHeader } from '@/components/site-header'
 
 // Force dynamic rendering to avoid build-time data fetching
 export const dynamic = 'force-dynamic'
@@ -50,7 +53,41 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
     }
   }
   
-  // Aggregate jobs by jobDefinitionId to create unique job list
+  // Extract unique job definition IDs
+  const uniqueJobDefIds = [...new Set(
+    allJobs
+      .map(job => job.jobDefinitionId)
+      .filter((id): id is string => !!id)
+  )]
+  
+  // Batch-fetch all job definitions at once (efficient!)
+  const jobDefsQuery = `
+    query GetJobDefinitions($ids: [String!]!) {
+      jobDefinitions(where: { id_in: $ids }) {
+        items {
+          id
+          name
+          enabledTools
+          lastStatus
+        }
+      }
+    }
+  `
+  
+  const jobDefsResponse = await request<{ jobDefinitions: { items: Array<{
+    id: string
+    name: string
+    enabledTools: string[]
+    lastStatus?: string
+  }> } }>(process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://jinn-gemini-production.up.railway.app/graphql', jobDefsQuery, {
+    ids: uniqueJobDefIds
+  })
+  
+  const jobDefsById = new Map(
+    jobDefsResponse.jobDefinitions.items.map(jd => [jd.id, jd])
+  )
+  
+  // Aggregate jobs by jobDefinitionId with batch-fetched data
   const jobDefinitionMap = new Map<string, {
     id: string
     name: string
@@ -70,8 +107,7 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
           existing.lastInteraction = job.blockTimestamp
         }
       } else {
-        // Fetch job definition to get name and status
-        const jobDef = await getJobDefinition(job.jobDefinitionId)
+        const jobDef = jobDefsById.get(job.jobDefinitionId)
         jobDefinitionMap.set(job.jobDefinitionId, {
           id: job.jobDefinitionId,
           name: jobDef?.name || job.jobName || 'Unnamed Job',
@@ -119,19 +155,20 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
   // }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <Link href="/workstreams" className="text-blue-600 hover:text-blue-800 text-sm">
-          ← Back to Workstreams
-        </Link>
-        <h1 className="text-3xl font-bold">
-          {rootRequest.jobName || 'Unnamed Workstream'}
-        </h1>
-        <p className="text-gray-600">
-          Started {formatTimestamp(rootRequest.blockTimestamp)}
-        </p>
-      </div>
+    <>
+      <SiteHeader 
+        title={rootRequest.jobName || 'Unnamed Workstream'}
+      />
+      <div className="p-4 md:p-6 space-y-6">
+        {/* Workstream Tree List - Full Width */}
+      <Card className="py-0 gap-0">
+        <CardHeader className="border-b py-6">
+          <CardTitle>Workstream Tree</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <WorkstreamTreeList rootId={workstreamId} />
+        </CardContent>
+      </Card>
 
       {/* Workstream Graph - Full Width */}
       <Card>
@@ -157,10 +194,10 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
         </Card>
       )}
 
-      {/* Jobs - Full Width */}
+      {/* Jobs Table - Full Width */}
       <Card>
         <CardHeader>
-          <CardTitle>Jobs ({uniqueJobDefinitions.length})</CardTitle>
+          <CardTitle>Job Definitions Table ({uniqueJobDefinitions.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {uniqueJobDefinitions.length === 0 ? (
@@ -192,7 +229,8 @@ export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   )
 }
 

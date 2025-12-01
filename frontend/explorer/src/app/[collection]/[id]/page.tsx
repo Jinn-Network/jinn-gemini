@@ -2,7 +2,7 @@ import { RecordPageProps, collectionNames } from '@/lib/types'
 import { SubgraphDetailView } from '@/components/subgraph-detail-view'
 import { getCollectionLabel } from '@/lib/utils'
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
+import { SiteHeader } from '@/components/site-header'
 import { 
   getJobDefinition, 
   getRequest, 
@@ -75,51 +75,44 @@ export default async function RecordPage({ params }: RecordPageProps) {
     const recordTitle = getRecordTitle(record, resolvedParams.collection)
 
     return (
-      <div>
-        <div className="mb-6">
-          <Link 
-            href={`/${resolvedParams.collection}`}
-            className="text-blue-600 hover:text-blue-800 text-sm"
-          >
-            ← Back to {collectionLabel}
-          </Link>
+      <>
+        <SiteHeader 
+          title={recordTitle}
+          backLink={{
+            href: `/${resolvedParams.collection}`,
+            label: `Back to ${collectionLabel}`
+          }}
+        />
+        <div className="p-4 md:p-6">
+          <SubgraphDetailView record={record} collectionName={resolvedParams.collection} />
         </div>
-        
-        <h1 className="text-2xl font-bold mb-6" title={`Record ID: ${decodedId} in ${resolvedParams.collection}`}>
-          {recordTitle}
-        </h1>
-        
-        <SubgraphDetailView record={record} collectionName={resolvedParams.collection} />
-      </div>
+      </>
     )
   } catch (error) {
     return (
-      <div className="p-4">
-        <div className="mb-6">
-          <Link 
-            href={`/${resolvedParams.collection}`}
-            className="text-blue-600 hover:text-blue-800 text-sm"
-          >
-            ← Back to {collectionLabel}
-          </Link>
+      <>
+        <SiteHeader 
+          title="Error loading record"
+          backLink={{
+            href: `/${resolvedParams.collection}`,
+            label: `Back to ${collectionLabel}`
+          }}
+        />
+        <div className="p-4 md:p-6">
+          <p className="text-gray-600">
+            Unable to fetch record {decodedId} from the {resolvedParams.collection} collection. 
+            Please check the subgraph connection and try again.
+          </p>
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm text-gray-500">
+              Error details
+            </summary>
+            <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
+              {error instanceof Error ? error.message : 'Unknown error'}
+            </pre>
+          </details>
         </div>
-        
-        <h1 className="text-2xl font-bold mb-4 text-red-600">
-          Error loading record
-        </h1>
-        <p className="text-gray-600">
-          Unable to fetch record {decodedId} from the {resolvedParams.collection} collection. 
-          Please check the subgraph connection and try again.
-        </p>
-        <details className="mt-4">
-          <summary className="cursor-pointer text-sm text-gray-500">
-            Error details
-          </summary>
-          <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
-            {error instanceof Error ? error.message : 'Unknown error'}
-          </pre>
-        </details>
-      </div>
+      </>
     )
   }
 }

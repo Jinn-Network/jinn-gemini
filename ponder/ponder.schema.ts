@@ -128,3 +128,25 @@ export const message = onchainTable(
     ts: index().on(table.blockTimestamp),
   })
 );
+
+export const workstream = onchainTable(
+  "workstream",
+  (t) => ({
+    id: t.text().primaryKey(), // workstreamId (same as root request ID)
+    rootRequestId: t.text().notNull(),
+    jobName: t.text(),
+    mech: t.hex().notNull(),
+    sender: t.hex().notNull(),
+    blockTimestamp: t.bigint().notNull(),
+    lastActivity: t.bigint().notNull(),
+    childRequestCount: t.integer().notNull(),
+    hasLauncherBriefing: t.boolean().notNull(),
+    delivered: t.boolean().notNull(),
+  }),
+  (table) => ({
+    timestampIdx: index().on(table.blockTimestamp),
+    lastActivityIdx: index().on(table.lastActivity),
+    mechIdx: index().on(table.mech),
+    senderIdx: index().on(table.sender),
+  })
+);

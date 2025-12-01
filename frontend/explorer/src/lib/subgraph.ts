@@ -87,6 +87,10 @@ export interface Workstream {
   mech: string
   sender: string
   jobDefinitionId?: string
+  childRequestCount?: number
+  hasLauncherBriefing?: boolean
+  delivered?: boolean
+  lastActivity?: string
 }
 
 export interface PageInfo {
@@ -812,24 +816,22 @@ export async function fetchIpfsContent(
 // Workstream queries
 const queryWorkstreams = `
   query Workstreams($limit: Int, $orderBy: String, $orderDirection: String) {
-    requests(
-      where: { 
-        AND: [
-          { sourceRequestId: null },
-          { sourceJobDefinitionId: null }
-        ]
-      }
+    workstreams(
       orderBy: $orderBy
       orderDirection: $orderDirection
       limit: $limit
     ) {
       items {
         id
+        rootRequestId
         jobName
         blockTimestamp
+        lastActivity
+        childRequestCount
+        hasLauncherBriefing
+        delivered
         mech
         sender
-        jobDefinitionId
       }
       pageInfo {
         hasNextPage
@@ -844,15 +846,44 @@ const queryWorkstreams = `
 export async function getWorkstreams(options: QueryOptions = {}): Promise<WorkstreamsResponse> {
   const { limit = 50, orderBy = 'blockTimestamp', orderDirection = 'desc' } = options
   
-  const data = await request<WorkstreamsResponse>(SUBGRAPH_URL, queryWorkstreams, {
+  // Define the raw response shape from the workstreams table
+  type WorkstreamRaw = {
+    id: string
+    rootRequestId: string
+    jobName: string
+    blockTimestamp: string
+    lastActivity: string
+    childRequestCount: number
+    hasLauncherBriefing: boolean
+    delivered: boolean
+    mech: string
+    sender: string
+  }
+
+  const data = await request<{ workstreams: { items: WorkstreamRaw[], pageInfo: PageInfo } }>(SUBGRAPH_URL, queryWorkstreams, {
     limit,
     orderBy,
     orderDirection
   })
   
-  // Return all root jobs as unique workstreams
-  // Each root request (sourceRequestId = null AND sourceJobDefinitionId = null) is its own workstream
-  return data
+  // Map workstream items to Workstream format
+  return {
+    requests: {
+      items: data.workstreams.items.map(ws => ({
+        id: ws.id,
+        jobName: ws.jobName,
+        blockTimestamp: ws.blockTimestamp,
+        mech: ws.mech,
+        sender: ws.sender,
+        workstreamId: ws.id,
+        childRequestCount: ws.childRequestCount,
+        hasLauncherBriefing: ws.hasLauncherBriefing,
+        delivered: ws.delivered,
+        lastActivity: ws.lastActivity
+      })),
+      pageInfo: data.workstreams.pageInfo
+    }
+  }
 }
 
 const queryWorkstreamRequests = `

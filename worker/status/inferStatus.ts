@@ -2,8 +2,10 @@
  * Status inference: pure function to infer final status from telemetry and child jobs
  */
 
-import { getChildJobStatus } from './childJobs.js';
+import { getChildJobStatus, getAllChildrenForJobDefinition, type JobLevelChildStatusResult } from './childJobs.js';
 import { countSuccessfulDispatchCalls } from './dispatchUtils.js';
+import { workerLogger } from '../../logging/index.js';
+import { serializeError } from '../logging/errors.js';
 import type { FinalStatus, IpfsMetadata, HierarchyJob } from '../types.js';
 
 /**
@@ -78,13 +80,130 @@ export async function inferJobStatus(params: {
     };
   }
 
-  // 3. Check for undelivered children using job-level hierarchy if available
+  // 3. Check for undelivered children - ALWAYS query live from Ponder first
   const hierarchy = metadata?.additionalContext?.hierarchy;
   const jobDefinitionId = metadata?.jobDefinitionId;
 
+  // ============================================================
+  // NEW: Query live child status from Ponder (single source of truth)
+  // ============================================================
+  let liveChildStatus: JobLevelChildStatusResult | null = null;
+  if (jobDefinitionId) {
+    try {
+      liveChildStatus = await getAllChildrenForJobDefinition(jobDefinitionId);
+      
+      workerLogger.info({
+        requestId,
+        jobDefinitionId,
+        totalChildren: liveChildStatus.totalChildren,
+        undeliveredChildren: liveChildStatus.undeliveredChildren,
+        queryDuration_ms: liveChildStatus.queryDuration_ms,
+        allChildrenDetails: liveChildStatus.allChildren.map(c => ({
+          id: c.id,
+          delivered: c.delivered,
+          fromRequestId: c.requestId
+        }))
+      }, '[STATUS_INFERENCE] Live Ponder query for all children across all runs');
+    } catch (error) {
+      workerLogger.warn({
+        requestId,
+        jobDefinitionId,
+        error: serializeError(error)
+      }, '[STATUS_INFERENCE] Failed to query live child status, will use hierarchy fallback');
+    }
+  }
+
   if (hierarchy && jobDefinitionId) {
-    // Job-centric view: check all children across all runs of this job
+    // ============================================================
+    // Logging: show hierarchy data we're about to use
+    // ============================================================
+    workerLogger.info({
+      requestId,
+      jobDefinitionId,
+      hierarchyPresent: true,
+      hierarchyLength: hierarchy.length,
+      hierarchyJobIds: hierarchy.map(h => h.jobId || h.id).filter(Boolean)
+    }, '[STATUS_INFERENCE] Hierarchy data available in metadata');
+    
     const children = extractChildrenFromHierarchy(hierarchy, jobDefinitionId);
+    
+    workerLogger.info({
+      requestId,
+      jobDefinitionId,
+      activeChildren: children.active.map(c => ({
+        id: c.id || c.jobId,
+        name: c.name || c.jobName,
+        status: c.status,
+        level: c.level
+      })),
+      activeChildrenCount: children.active.length,
+      completedChildrenCount: children.completed.length,
+      failedChildrenCount: children.failed.length
+    }, '[STATUS_INFERENCE] Extracted children from hierarchy (snapshot data)');
+    
+    // ============================================================
+    // NEW: Compare hierarchy vs live data and make decision
+    // ============================================================
+    if (liveChildStatus) {
+      workerLogger.info({
+        requestId,
+        jobDefinitionId,
+        comparison: {
+          hierarchyActive: children.active.length,
+          hierarchyCompleted: children.completed.length,
+          hierarchyFailed: children.failed.length,
+          liveTotal: liveChildStatus.totalChildren,
+          liveUndelivered: liveChildStatus.undeliveredChildren,
+          liveDelivered: liveChildStatus.totalChildren - liveChildStatus.undeliveredChildren,
+          discrepancy: children.active.length !== liveChildStatus.undeliveredChildren
+        }
+      }, '[STATUS_INFERENCE] Comparison: hierarchy snapshot vs live Ponder query');
+      
+      // ============================================================
+      // DECISION: Always use live data when available
+      // ============================================================
+      if (liveChildStatus.undeliveredChildren > 0) {
+        workerLogger.info({
+          requestId,
+          jobDefinitionId,
+          decision: 'WAITING',
+          reason: 'live_query_shows_undelivered_children',
+          undeliveredCount: liveChildStatus.undeliveredChildren,
+          undeliveredIds: liveChildStatus.allChildren
+            .filter(c => !c.delivered)
+            .map(c => c.id)
+        }, '[STATUS_INFERENCE] DECISION: Using live query result → WAITING');
+        
+        return {
+          status: 'WAITING',
+          message: `Waiting for ${liveChildStatus.undeliveredChildren} child job(s) to deliver (live query)`
+        };
+      }
+      
+      workerLogger.info({
+        requestId,
+        jobDefinitionId,
+        decision: 'COMPLETED',
+        reason: 'live_query_shows_all_delivered',
+        totalChildren: liveChildStatus.totalChildren
+      }, '[STATUS_INFERENCE] DECISION: Using live query result → COMPLETED');
+      
+      return {
+        status: 'COMPLETED',
+        message: liveChildStatus.totalChildren > 0
+          ? `All ${liveChildStatus.totalChildren} child job(s) delivered (live query)`
+          : 'Job completed direct work'
+      };
+    }
+    
+    // ============================================================
+    // Fallback: Use hierarchy if live query failed
+    // ============================================================
+    workerLogger.warn({
+      requestId,
+      jobDefinitionId,
+      reason: 'live_query_failed_using_hierarchy'
+    }, '[STATUS_INFERENCE] Falling back to hierarchy snapshot');
     
     // Block completion if there are failed children (require remediation)
     if (children.failed.length > 0) {

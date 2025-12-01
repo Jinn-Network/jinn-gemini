@@ -1,7 +1,7 @@
 'use client'
 
 import { type ConnectionStatus } from '@/hooks/use-realtime-data'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface RealtimeStatusIndicatorProps {
   status: ConnectionStatus
@@ -55,19 +55,17 @@ export function RealtimeStatusIndicator({ status, className = '' }: RealtimeStat
   }
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className={`flex items-center gap-2 text-sm ${className}`}>
-            <div className={`w-2 h-2 rounded-full ${getStatusColor()}`} />
-            <span className="text-gray-600">{getStatusLabel()}</span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p className="text-xs">{getStatusText()}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className={`flex items-center gap-2 text-sm ${className}`}>
+          <div className={`w-2 h-2 rounded-full ${getStatusColor()}`} />
+          <span className="text-gray-600">{getStatusLabel()}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="text-xs">{getStatusText()}</p>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

@@ -3,7 +3,7 @@ import fetch from "cross-fetch";
 import axios from "axios";
 import { logger, serializeError } from "../../logging/index.js";
 import { Pool } from "pg";
-import { jobDefinition, request, delivery, artifact, message } from "ponder:schema";
+import { jobDefinition, request, delivery, artifact, message, workstream } from "ponder:schema";
 
 // Minimal local types to avoid implicit any in handler params and align with Ponder 0.7+ DB API
 type Repository = {
@@ -550,6 +550,45 @@ ponder.on(
           });
         }
       }
+
+      // Update workstream table
+      const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
+      
+      // If this is a root request (sourceRequestId is null), create a workstream entry
+      if (!sourceRequestId) {
+        await workstreamRepo.upsert({
+          id: workstreamId,
+          create: {
+            rootRequestId: id,
+            jobName,
+            mech,
+            sender,
+            blockTimestamp,
+            lastActivity: blockTimestamp,
+            childRequestCount: 0,
+            hasLauncherBriefing: false,
+            delivered: false,
+          },
+          update: {
+            lastActivity: blockTimestamp,
+          },
+        });
+        logger.debug({ workstreamId, requestId: id }, "Created/updated workstream entry for root request");
+      } else {
+        // This is a child request, increment the child count in the workstream
+        const workstreamRecord = await workstreamRepo.findUnique({ id: workstreamId });
+        if (workstreamRecord) {
+          const currentCount = typeof workstreamRecord.childRequestCount === 'number' ? workstreamRecord.childRequestCount : 0;
+          await workstreamRepo.upsert({
+            id: workstreamId,
+            update: {
+              childRequestCount: currentCount + 1,
+              lastActivity: blockTimestamp,
+            },
+          });
+          logger.debug({ workstreamId, requestId: id, newCount: currentCount + 1 }, "Incremented child request count for workstream");
+        }
+      }
     }
 
     logger.info({ mech, sender, requestIds }, "Indexed MarketplaceRequest");
@@ -625,7 +664,7 @@ ponder.on(
     // Update request with delivery info, preserving existing fields from pre-seeded row
     // The create path should never execute since we verified existence above, but include
     // existing fields as safety fallback
-    await requestRepo.upsert({
+    const updatedRequest = await requestRepo.upsert({
       id: requestId,
       create: {
         // Include existing fields if available (safety fallback)
@@ -646,6 +685,31 @@ ponder.on(
         // as they come from MarketplaceRequest event
       },
     });
+
+    // If this is a root request (no sourceRequestId), mark the workstream as delivered
+    const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
+    const requestWorkstreamId = (updatedRequest as any)?.workstreamId || existingRequest?.workstreamId;
+    const requestSourceRequestId = (updatedRequest as any)?.sourceRequestId || existingRequest?.sourceRequestId;
+    
+    if (requestWorkstreamId && !requestSourceRequestId) {
+      // This is a root request, mark workstream as delivered
+      await workstreamRepo.upsert({
+        id: requestWorkstreamId,
+        update: {
+          delivered: true,
+          lastActivity: blockTimestamp,
+        },
+      });
+      logger.debug({ workstreamId: requestWorkstreamId, requestId }, "Marked workstream as delivered");
+    } else if (requestWorkstreamId) {
+      // Child request delivered, update lastActivity
+      await workstreamRepo.upsert({
+        id: requestWorkstreamId,
+        update: {
+          lastActivity: blockTimestamp,
+        },
+      });
+    }
 
     // Attempt to resolve artifacts from delivery JSON
     try {
@@ -792,6 +856,23 @@ ponder.on(
                 } catch {}
               }
               await artifactsRepo.upsert({ id, create: artifactPayload, update: artifactPayload });
+
+              // If this is a launcher_briefing artifact, update the workstream
+              if (topic === 'launcher_briefing') {
+                const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
+                const workstreamId = artifactSourceRequestId; // The sourceRequestId is the root workstream ID
+                const workstreamRecord = await workstreamRepo.findUnique({ id: workstreamId });
+                if (workstreamRecord) {
+                  await workstreamRepo.upsert({
+                    id: workstreamId,
+                    update: {
+                      hasLauncherBriefing: true,
+                      lastActivity: blockTimestamp,
+                    },
+                  });
+                  logger.debug({ workstreamId, artifactId: id }, "Marked workstream as having launcher briefing");
+                }
+              }
 
               if (type === 'SITUATION') {
                 const pool = getVectorDbPool();

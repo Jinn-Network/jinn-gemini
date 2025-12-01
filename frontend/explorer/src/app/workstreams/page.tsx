@@ -1,6 +1,7 @@
 import { getWorkstreams } from '@/lib/subgraph'
 import Link from 'next/link'
 import { TruncatedId } from '@/components/truncated-id'
+import { SiteHeader } from '@/components/site-header'
 
 // Force dynamic rendering to avoid build-time data fetching
 export const dynamic = 'force-dynamic'
@@ -20,13 +21,12 @@ export default async function WorkstreamsPage() {
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Workstreams</h1>
-        <p className="text-gray-600 text-sm mt-2">
-          Top-level job executions and their entire downstream graphs
-        </p>
-      </div>
+    <>
+      <SiteHeader 
+        title="Workstreams"
+        subtitle="Top-level job executions and their entire downstream graphs"
+      />
+      <div className="p-4 md:p-6">
 
       {requests.items.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
@@ -65,7 +65,8 @@ export default async function WorkstreamsPage() {
           </table>
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }
 

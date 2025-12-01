@@ -13,6 +13,7 @@ import { getCollectionLabel } from '@/lib/utils'
 import { useSubgraphCollection } from '@/hooks/use-subgraph-collection'
 import { getRequest, Request } from '@/lib/subgraph'
 import { TruncatedId } from '@/components/truncated-id'
+import { SiteHeader } from '@/components/site-header'
 
 interface CollectionViewProps {
   collectionName: CollectionName
@@ -111,33 +112,32 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     }
     
     return (
-      <div>
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-2">{getCollectionLabel(collectionName)}</h1>
+      <>
+        <SiteHeader title={getCollectionLabel(collectionName)} />
+        <div className="p-4 md:p-6">
+          {getSkeletonForCollection()}
         </div>
-        {getSkeletonForCollection()}
-      </div>
+      </>
     )
   }
 
   if (error) {
     return (
-      <div>
-        <h1 className="text-2xl font-bold mb-4">
-          {getCollectionLabel(collectionName)}
-        </h1>
-        <div className="text-red-500 p-4 border border-red-200 rounded bg-red-50">
-          Error loading {collectionName}: {error}
+      <>
+        <SiteHeader title={getCollectionLabel(collectionName)} />
+        <div className="p-4 md:p-6">
+          <div className="text-red-500 p-4 border border-red-200 rounded bg-red-50">
+            Error loading {collectionName}: {error}
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-4">
-        {getCollectionLabel(collectionName)}
-      </h1>
+    <>
+      <SiteHeader title={getCollectionLabel(collectionName)} />
+      <div className="p-4 md:p-6">
       
       {/* Workstream filter badge */}
       {workstreamFilter && (
@@ -201,6 +201,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
         hasNextPage={hasNextPage}
         hasPreviousPage={hasPreviousPage}
       />
-    </div>
+      </div>
+    </>
   )
 }

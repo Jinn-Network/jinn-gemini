@@ -99,6 +99,20 @@ const WORKSTREAM_QUERY = gql`
   }
 `;
 
+const JOB_DEFINITIONS_QUERY = gql`
+  query GetJobDefinitions($jobDefIds: [String!]!) {
+    jobDefinitions(where: { id_in: $jobDefIds }) {
+      items {
+        id
+        name
+        lastStatus
+        lastInteraction
+        sourceJobDefinitionId
+      }
+    }
+  }
+`;
+
 const DELIVERIES_QUERY = gql`
   query GetDeliveries($requestIds: [String!]!) {
     deliverys(where: { requestId_in: $requestIds }) {
@@ -210,7 +224,7 @@ async function main() {
   const client = new GraphQLClient(PONDER_GRAPHQL_URL);
 
   try {
-    // 1. Fetch Requests
+    // 1. First fetch all requests in the workstream
     console.error('Fetching requests...');
     const requestsRes = await client.request<{ requests: { items: Request[] } }>(WORKSTREAM_QUERY, { workstreamId });
     const requests = requestsRes.requests.items;
@@ -219,11 +233,22 @@ async function main() {
       console.error('❌ No requests found for this workstream ID.');
       process.exit(1);
     }
-    console.error(`✅ Found ${requests.length} requests`);
+    
+    // 2. Extract unique job definition IDs from requests
+    const uniqueJobDefIds = [...new Set(requests.map(r => r.jobDefinitionId).filter(Boolean))];
+    
+    console.error(`Fetching ${uniqueJobDefIds.length} job definitions for ${requests.length} requests...`);
+    const jobDefsRes = await client.request<{ jobDefinitions: { items: Array<{ id: string; name: string; lastStatus: string; lastInteraction: string; sourceJobDefinitionId: string }> } }>(
+      JOB_DEFINITIONS_QUERY, 
+      { jobDefIds: uniqueJobDefIds }
+    );
+    
+    const jobDefinitions = jobDefsRes.jobDefinitions.items;
+    console.error(`✅ Found ${jobDefinitions.length} unique jobs with ${requests.length} total job runs`);
 
     const requestIds = requests.map(r => r.id);
 
-    // 2. Fetch Deliveries & Artifacts
+    // 3. Fetch Deliveries & Artifacts
     console.error('Fetching deliveries and artifacts...');
     const [deliveriesRes, artifactsRes] = await Promise.all([
       client.request<{ deliverys: { items: Delivery[] } }>(DELIVERIES_QUERY, { requestIds }),
@@ -235,7 +260,7 @@ async function main() {
 
     console.error(`✅ Found ${deliveries.length} deliveries and ${artifacts.length} artifacts`);
 
-    // 3. Map Data
+    // 4. Map Data
     const deliveryMap = new Map<string, Delivery>();
     deliveries.forEach(d => deliveryMap.set(d.requestId, d));
 
@@ -245,7 +270,7 @@ async function main() {
       artifactMap.get(a.requestId)!.push(a);
     });
 
-    // 4. Build Tree Nodes (Flat Map first)
+    // 5. Build Tree Nodes (Flat Map first)
     console.error('\nResolving node details (this may take a moment)...');
     
     const nodeMap = new Map<string, WorkstreamNode>();
@@ -310,7 +335,7 @@ async function main() {
       });
     }
 
-    // 5. Assemble Tree
+    // 6. Assemble Tree
     const rootNodes: WorkstreamNode[] = [];
     
     for (const req of requests) {
@@ -334,15 +359,41 @@ async function main() {
       }
     }
 
-    // 6. Output
+    // 6. Build job execution summary
+    const jobRunsByDefinition = new Map<string, Request[]>();
+    requests.forEach(req => {
+      if (!req.jobDefinitionId) return;
+      if (!jobRunsByDefinition.has(req.jobDefinitionId)) {
+        jobRunsByDefinition.set(req.jobDefinitionId, []);
+      }
+      jobRunsByDefinition.get(req.jobDefinitionId)!.push(req);
+    });
+
+    const jobExecutionSummary = jobDefinitions.map(jobDef => ({
+      id: jobDef.id,
+      name: jobDef.name,
+      lastStatus: jobDef.lastStatus,
+      executionCount: jobRunsByDefinition.get(jobDef.id)?.length || 0,
+      runs: jobRunsByDefinition.get(jobDef.id)?.map(r => ({
+        requestId: r.id,
+        delivered: r.delivered,
+        timestamp: new Date(Number(r.blockTimestamp) * 1000).toISOString()
+      })) || []
+    }));
+
+    // 7. Output
     const result = {
       workstreamId,
       stats: {
-        totalJobs: requests.length,
-        completed: requests.filter(r => r.delivered).length,
-        pending: requests.filter(r => !r.delivered).length,
-        totalArtifacts: artifacts.length
+        uniqueJobs: jobDefinitions.length,
+        totalJobRuns: requests.length,
+        completedRuns: requests.filter(r => r.delivered).length,
+        pendingRuns: requests.filter(r => !r.delivered).length,
+        totalArtifacts: artifacts.length,
+        jobsInWaiting: jobDefinitions.filter(j => j.lastStatus === 'WAITING').length,
+        jobsCompleted: jobDefinitions.filter(j => j.lastStatus === 'COMPLETED').length
       },
+      jobs: jobExecutionSummary,
       tree: rootNodes.length === 1 ? rootNodes[0] : rootNodes
     };
 
