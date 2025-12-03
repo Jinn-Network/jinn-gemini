@@ -1,12 +1,11 @@
 'use client'
 
-import React, { useMemo, useState, useEffect } from 'react'
-import { useSubgraphCollection, SubgraphRecord } from '@/hooks/use-subgraph-collection'
+import React, { useMemo, useEffect } from 'react'
+import { useSubgraphCollection } from '@/hooks/use-subgraph-collection'
 import { JobDefinitionsTable } from '@/components/job-definitions-table'
 import { RequestsTable } from '@/components/requests-table'
 import { Request, JobDefinition } from '@/lib/subgraph'
-import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 
 interface WorkstreamJobListsProps {
   workstreamId: string

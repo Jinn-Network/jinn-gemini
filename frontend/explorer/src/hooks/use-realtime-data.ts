@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { ponderClient } from '@/lib/ponder-client'
 import * as schema from '@/lib/schema'
-import { count } from 'drizzle-orm'
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'error'
 
@@ -43,7 +42,7 @@ export function useRealtimeData(
     }
 
     // Map collection name to table schema
-    const tableSchemaMap: Record<string, typeof schema.request> = {
+    const tableSchemaMap: Record<string, typeof schema.request | typeof schema.jobDefinition | typeof schema.delivery | typeof schema.artifact | typeof schema.message> = {
       'jobDefinitions': schema.jobDefinition,
       'requests': schema.request,
       'deliveries': schema.delivery,
@@ -69,9 +68,10 @@ export function useRealtimeData(
       // Subscribe to table(s) changes using Drizzle query builder
       // Ponder client multiplexes all queries over a single SSE connection
       // Create subscriptions for each table
-      const unsubscribers = tablesToSubscribe.map((table) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const unsubscribers = tablesToSubscribe.map((table: any) => {
         const { unsubscribe } = ponderClient.live(
-          (db) => db.select({ count: count() }).from(table),
+          (db) => db.select().from(table).limit(1),
           (result) => {
             const tableName = collectionName || 'all tables'
             console.log(`[useRealtimeData] SSE event received for ${tableName}:`, result)

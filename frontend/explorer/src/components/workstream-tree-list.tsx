@@ -1,12 +1,14 @@
 'use client'
 
+'use client'
+
 import { useJobGraph } from '@/hooks/use-job-graph'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
 import Link from 'next/link'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ChevronRight, ChevronDown, X, ExternalLink, Clock } from 'lucide-react'
 import { GraphNode, GraphEdge } from '@/lib/graph-queries'
-import { StatusIcon, JobStatus } from '@/components/status-icon'
+import { StatusIcon } from '@/components/status-icon'
 import { getJobDefinition, type JobDefinition, queryRequests } from '@/lib/subgraph'
 import { JobDefinitionDetailLayout } from '@/components/job-definition-detail-layout'
 import { Button } from '@/components/ui/button'
@@ -18,34 +20,6 @@ interface WorkstreamTreeListProps {
 interface TreeNode {
   node: GraphNode
   children: TreeNode[]
-}
-
-// Check if a job's dependencies are met (all dependency jobs have delivered requests)
-function checkJobDependenciesMet(node: GraphNode, allNodes: GraphNode[]): boolean {
-  // Extract dependencies from metadata
-  const dependencies = node.metadata.dependencies as string[] | undefined
-  
-  // If no dependencies, job is ready
-  if (!dependencies || dependencies.length === 0) {
-    return true
-  }
-  
-  // Check each dependency - it can be a job name or UUID
-  for (const depIdentifier of dependencies) {
-    // Find the dependency node by ID or name
-    const depNode = allNodes.find(n => 
-      n.id === depIdentifier || 
-      n.label === depIdentifier ||
-      n.metadata.name === depIdentifier
-    )
-    
-    // If dependency not found or not delivered, dependencies not met
-    if (!depNode || !depNode.metadata.delivered) {
-      return false
-    }
-  }
-  
-  return true
 }
 
 // Build a tree structure from flat nodes and edges

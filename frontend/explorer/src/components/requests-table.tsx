@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
