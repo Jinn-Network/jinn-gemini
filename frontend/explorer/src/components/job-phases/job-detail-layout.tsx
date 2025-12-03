@@ -16,6 +16,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { RequestsTable } from '../requests-table'
 import { RequestsTableSkeleton } from '../loading-skeleton'
 import { StatusIcon } from '../status-icon'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 // Component for showing parent dispatch trigger
 function ParentDispatchIndicator({ 
@@ -96,19 +104,19 @@ function ParentDispatchIndicator({
   if (loading || !parentDispatched || !sourceJobDefinitionId) return null
   
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 mt-4">
+    <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 mt-4">
       <div className="flex items-center gap-2 mb-2">
-        <ArrowUp className="h-5 w-5 text-blue-600" />
-        <span className="font-medium text-blue-900">
+        <ArrowUp className="h-5 w-5 text-primary" />
+        <span className="font-medium text-foreground">
           Parent Job Re-Triggered
         </span>
       </div>
-      <p className="text-sm text-blue-700">
+      <p className="text-sm text-primary">
         This job&apos;s <Badge variant="outline" className="mx-1">{jobStatus}</Badge> status triggered parent job{' '}
         {parentJobDef && (
           <Link 
             href={`/job-definitions/${sourceJobDefinitionId}`} 
-            className="font-medium underline hover:text-blue-900"
+            className="font-medium underline hover:text-foreground"
           >
             {parentJobDef.name}
           </Link>
@@ -119,7 +127,7 @@ function ParentDispatchIndicator({
             {' '}
             <Link 
               href={`/requests/${newParentRequestId}`}
-              className="font-medium underline hover:text-blue-900"
+              className="font-medium underline hover:text-foreground"
             >
               View parent&apos;s new run →
             </Link>
@@ -242,7 +250,7 @@ function ParentReRunField({
   return (
     <Link
       href={`/requests/${newRequestId}`}
-      className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all flex items-center gap-1"
+      className="text-primary hover:text-primary hover:underline text-sm font-mono break-all flex items-center gap-1"
     >
       <span className="break-all">{newRequestId}</span>
       <ArrowRight className="w-3 h-3 flex-shrink-0" />
@@ -282,7 +290,7 @@ function ChildJobsSection({ parentRequestId }: { parentRequestId: string }) {
 
   return (
     <div>
-      <div className="text-sm font-medium text-gray-700 mb-2">
+      <div className="text-sm font-medium text-gray-400 mb-2">
         Child Jobs Spawned ({childJobs.length})
       </div>
       {loading ? (
@@ -765,7 +773,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
               <CardContent>
                 <div className="space-y-4">
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-2">Blueprint</div>
+                    <div className="text-sm font-medium text-gray-400 mb-2">Blueprint</div>
                     {promptContent ? (
                       (() => {
                         try {
@@ -785,7 +793,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                   {blueprintParsed.assertions.map((assertion: { id: string; assertion?: string; description?: string; commentary?: string; examples?: { do?: string[]; dont?: string[] } }, idx: number) => (
                                     <div key={idx} className="border border-gray-200 rounded-lg p-4 bg-white">
                                       <div className="flex items-start gap-2 mb-2">
-                                        <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                        <span className="text-xs font-mono bg-primary/20 text-primary px-2 py-1 rounded">
                                           {assertion.id}
                                         </span>
                                         <p className="text-sm font-medium text-gray-900 flex-1">
@@ -798,7 +806,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                           {assertion.examples.do && assertion.examples.do.length > 0 && (
                                             <div>
                                               <div className="text-xs font-semibold text-green-700 mb-1">✓ Do:</div>
-                                              <ul className="text-xs text-gray-700 space-y-1 ml-4">
+                                              <ul className="text-xs text-gray-400 space-y-1 ml-4">
                                                 {assertion.examples.do.map((item: string, i: number) => (
                                                   <li key={i} className="list-disc">{item}</li>
                                                 ))}
@@ -808,7 +816,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                           {assertion.examples.dont && assertion.examples.dont.length > 0 && (
                                             <div>
                                               <div className="text-xs font-semibold text-red-700 mb-1">✗ Don&apos;t:</div>
-                                              <ul className="text-xs text-gray-700 space-y-1 ml-4">
+                                              <ul className="text-xs text-gray-400 space-y-1 ml-4">
                                                 {assertion.examples.dont.map((item: string, i: number) => (
                                                   <li key={i} className="list-disc">{item}</li>
                                                 ))}
@@ -820,7 +828,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                       
                                       {assertion.commentary && (
                                         <div className="mt-3 pt-3 border-t border-gray-100">
-                                          <p className="text-xs text-gray-600 italic">{assertion.commentary}</p>
+                                          <p className="text-xs text-gray-400 italic">{assertion.commentary}</p>
                                         </div>
                                       )}
                                     </div>
@@ -852,7 +860,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     )}
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-2">Enabled Tools</div>
+                    <div className="text-sm font-medium text-gray-400 mb-2">Enabled Tools</div>
                     {(() => {
                       // Use IPFS-sourced enabledTools as primary source, fallback to record.enabledTools
                       let tools: string[] = ipfsEnabledTools.length > 0 
@@ -877,7 +885,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           {tools.map((tool, idx) => (
                             <span
                               key={idx}
-                              className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                              className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30"
                             >
                               {tool}
                             </span>
@@ -907,7 +915,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     <>
                       {executionData?.finalOutput && (
                         <div>
-                          <div className="text-sm font-medium text-gray-700 mb-2">Final Output</div>
+                          <div className="text-sm font-medium text-gray-400 mb-2">Final Output</div>
                           <div className="bg-gray-50 p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
                             <ReactMarkdown>
                               {deliveryData?.structuredSummary || executionData.finalOutput}
@@ -915,7 +923,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           </div>
                           {deliveryData?.structuredSummary && deliveryData.structuredSummary !== executionData.finalOutput && (
                             <details className="mt-2">
-                              <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
+                              <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-800">
                                 View full raw output
                               </summary>
                               <div className="mt-2 bg-gray-50 p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
@@ -927,7 +935,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                       )}
 
                       <div>
-                        <div className="text-sm font-medium text-gray-700 mb-3">Agentic Task Trace</div>
+                        <div className="text-sm font-medium text-gray-400 mb-3">Agentic Task Trace</div>
                         
                         {executionData?.telemetry ? (
                           <>
@@ -935,7 +943,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           <div className="grid grid-cols-4 gap-3 mb-4">
                             {/* Model */}
                             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+                              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                                 <Cpu className="w-3 h-3" />
                                 <span>Model</span>
                               </div>
@@ -946,7 +954,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                             
                             {/* Input Tokens */}
                             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+                              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                                 <Zap className="w-3 h-3" />
                                 <span>Input Tokens</span>
                               </div>
@@ -957,7 +965,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                             
                             {/* Total Tokens */}
                             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+                              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                                 <Zap className="w-3 h-3" />
                                 <span>Total Tokens</span>
                               </div>
@@ -968,7 +976,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                             
                             {/* Duration */}
                             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+                              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                                 <Clock className="w-3 h-3" />
                                 <span>Duration</span>
                               </div>
@@ -980,15 +988,15 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                           {/* Tool Metrics Summary */}
                           {toolMetrics && (
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                              <div className="flex items-center gap-2 text-sm font-medium text-blue-800 mb-3">
+                            <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 mb-4">
+                              <div className="flex items-center gap-2 text-sm font-medium text-primary mb-3">
                                 <Wrench className="w-4 h-4" />
                                 <span>Tool Call Metrics</span>
                               </div>
                               <div className="grid grid-cols-3 gap-4 mb-3">
                                 <div>
-                                  <div className="text-xs text-blue-600">Total Calls</div>
-                                  <div className="text-lg font-semibold text-blue-900">
+                                  <div className="text-xs text-primary">Total Calls</div>
+                                  <div className="text-lg font-semibold text-foreground">
                                     {toolMetrics.totalCalls}
                                   </div>
                                 </div>
@@ -1007,7 +1015,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                               </div>
                               {Object.keys(toolMetrics.byTool).length > 0 && (
                                 <details>
-                                  <summary className="text-xs text-blue-600 cursor-pointer hover:text-blue-800">
+                                  <summary className="text-xs text-primary cursor-pointer hover:text-primary">
                                     View breakdown by tool
                                   </summary>
                                   <div className="mt-2 space-y-1">
@@ -1015,9 +1023,9 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                       .sort(([, a], [, b]) => b.calls - a.calls)
                                       .map(([tool, stats]) => (
                                         <div key={tool} className="flex items-center justify-between text-xs bg-white/50 rounded px-2 py-1">
-                                          <span className="font-mono text-blue-800">{tool}</span>
+                                          <span className="font-mono text-primary">{tool}</span>
                                           <div className="flex items-center gap-3">
-                                            <span className="text-gray-600">{stats.calls} calls</span>
+                                            <span className="text-gray-400">{stats.calls} calls</span>
                                             {stats.failures > 0 && (
                                               <span className="text-red-600">{stats.failures} failed</span>
                                             )}
@@ -1059,14 +1067,14 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                 let icon = null
                                 let label = ''
                                 let content = null
-                                let colorClass = 'text-gray-600'
+                                let colorClass = 'text-gray-400'
                                 
                                 if (eventType === 'user_prompt') {
                                   icon = <FileText className="w-4 h-4" />
                                   label = 'User Prompt'
                                   content = requestText[userPromptIndex]
                                   userPromptIndex++
-                                  colorClass = 'text-blue-600'
+                                  colorClass = 'text-primary'
                                 } else if (eventType === 'api_request') {
                                   icon = <ArrowRight className="w-4 h-4" />
                                   label = `API Request #${apiPairIndex + 1}`
@@ -1106,17 +1114,17 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                         <div className="space-y-3">
                                           <div className="grid grid-cols-2 gap-3 text-xs">
                                             <div>
-                                              <span className="text-gray-600">Tool:</span>
+                                              <span className="text-gray-400">Tool:</span>
                                               <span className="ml-2 font-medium">{content.tool}</span>
                                             </div>
                                             <div>
-                                              <span className="text-gray-600">Duration:</span>
+                                              <span className="text-gray-400">Duration:</span>
                                               <span className="ml-2 font-medium">{content.duration_ms}ms</span>
                                             </div>
                                           </div>
                                           {content.args !== undefined && (
                                             <div>
-                                              <div className="text-xs text-gray-600 mb-1">Arguments:</div>
+                                              <div className="text-xs text-gray-400 mb-1">Arguments:</div>
                                               <pre className="bg-gray-50 p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
                                                 {typeof content.args === 'object' ? JSON.stringify(content.args, null, 2) : String(content.args)}
                                               </pre>
@@ -1124,7 +1132,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                           )}
                                           {content.result !== undefined && (
                                             <div>
-                                              <div className="text-xs text-gray-600 mb-1">Result:</div>
+                                              <div className="text-xs text-gray-400 mb-1">Result:</div>
                                               <pre className="bg-gray-50 p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
                                                 {typeof content.result === 'object' ? JSON.stringify(content.result, null, 2) : String(content.result)}
                                               </pre>
@@ -1157,7 +1165,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                           {/* Full Telemetry JSON */}
                           <details className="mt-4">
-                            <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
+                            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-800">
                               View full telemetry JSON
                             </summary>
                             <pre className="mt-2 bg-gray-50 p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
@@ -1174,7 +1182,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                       {/* Artifacts */}
                       <div>
-                        <div className="text-sm font-medium text-gray-700 mb-2">Artifacts</div>
+                        <div className="text-sm font-medium text-gray-400 mb-2">Artifacts</div>
                         {(() => {
                           const filteredArtifacts = artifacts.filter(
                             (a) => a.topic !== 'MEMORY' && a.topic !== 'SITUATION' && a.topic !== 'WORKER_TELEMETRY'
@@ -1189,38 +1197,38 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           }
 
                           return (
-                            <div className="border border-gray-200 rounded-lg overflow-hidden">
-                              <table className="w-full border-collapse text-sm">
-                                <thead>
-                                  <tr className="bg-gray-50 border-b border-gray-200">
-                                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-700">Name</th>
-                                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-700">Topic</th>
-                                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-700">Preview</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
+                            <div className="rounded-md border overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead>Topic</TableHead>
+                                    <TableHead>Preview</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                   {filteredArtifacts.map((artifact) => (
-                                    <tr key={artifact.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                      <td className="px-3 py-2">
+                                    <TableRow key={artifact.id}>
+                                      <TableCell>
                                         <Link
                                           href={`/artifacts/${artifact.id}`}
-                                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                                          className="text-primary hover:text-primary hover:underline"
                                         >
                                           {artifact.name || 'Unnamed'}
                                         </Link>
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-600">{artifact.topic || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-600 text-xs">
+                                      </TableCell>
+                                      <TableCell className="text-muted-foreground">{artifact.topic || '-'}</TableCell>
+                                      <TableCell className="text-muted-foreground text-xs">
                                         {artifact.contentPreview 
                                           ? (artifact.contentPreview.length > 50 
                                               ? artifact.contentPreview.substring(0, 50) + '...' 
                                               : artifact.contentPreview)
                                           : '-'}
-                                      </td>
-                                    </tr>
+                                      </TableCell>
+                                    </TableRow>
                                   ))}
-                                </tbody>
-                              </table>
+                                </TableBody>
+                              </Table>
                             </div>
                           )
                         })()}
@@ -1252,7 +1260,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                 {record.delivered ? (
                   <div className="space-y-4">
                     <div>
-                      <div className="text-sm font-medium text-gray-700 mb-2">Memory Artifacts</div>
+                      <div className="text-sm font-medium text-gray-400 mb-2">Memory Artifacts</div>
                       {(() => {
                         // Try to get memory artifacts from multiple sources:
                         // 1. From Ponder artifacts (on-chain)
@@ -1293,7 +1301,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                     href={`https://gateway.autonolas.tech/ipfs/${artifact.cid}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 hover:underline text-sm inline-flex items-center gap-1"
+                                    className="text-primary hover:text-primary hover:underline text-sm inline-flex items-center gap-1"
                                   >
                                     {artifact.name || 'Unnamed Memory Artifact'}
                                     <ExternalLink className="w-3 h-3" />
@@ -1301,7 +1309,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                 ) : (
                                   <Link
                                     href={`/artifacts/${artifact.id}`}
-                                    className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
+                                    className="text-primary hover:text-primary hover:underline text-sm"
                                   >
                                     {artifact.name || 'Unnamed Memory Artifact'}
                                   </Link>
@@ -1316,8 +1324,8 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     {memoryData?.hasSituation ? (
                       <>
                         <div>
-                          <div className="text-sm font-medium text-gray-700 mb-2">Situation Data</div>
-                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <div className="text-sm font-medium text-gray-400 mb-2">Situation Data</div>
+                          <div className="flex items-center gap-4 text-sm text-gray-400">
                             <div className="flex items-center gap-2">
                               <Check className="w-4 h-4 text-green-600" />
                               <span>JSON created</span>
@@ -1330,7 +1338,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                         </div>
 
                         <details className="mt-4">
-                          <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
+                          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-800">
                             Show raw JSON
                           </summary>
                           <pre className="mt-2 bg-gray-50 p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
@@ -1339,11 +1347,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                         </details>
                       </>
                     ) : (
-                      <div className="text-sm text-gray-600">Situation data not available</div>
+                      <div className="text-sm text-gray-400">Situation data not available</div>
                     )}
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-600">Job not yet delivered</div>
+                  <div className="text-sm text-gray-400">Job not yet delivered</div>
                 )}
               </CardContent>
             </Card>
@@ -1371,7 +1379,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     <div className="pb-2 border-b">
                       <Link
                         href={`/workstreams/${workstreamId}`}
-                        className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-primary hover:underline"
                       >
                         <GitBranch className="w-4 h-4" />
                         View in Workstream
@@ -1380,19 +1388,19 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   ) : null}
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Requested Time</div>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm font-medium text-gray-400 mb-1">Requested Time</div>
+                    <div className="text-sm text-gray-400">
                       {new Date(Number(record.blockTimestamp) * 1000).toLocaleString()}
                     </div>
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Requested Block</div>
+                    <div className="text-sm font-medium text-gray-400 mb-1">Requested Block</div>
                     <a
                       href={`https://basescan.org/block/${record.blockNumber}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-sm"
+                      className="inline-flex items-center gap-1 text-primary hover:text-primary hover:underline text-sm"
                     >
                       {record.blockNumber}
                       <ExternalLink className="w-3 h-3" />
@@ -1400,19 +1408,19 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Job Run ID</div>
-                    <div className="text-sm text-gray-600 font-mono break-all">
+                    <div className="text-sm font-medium text-gray-400 mb-1">Job Run ID</div>
+                    <div className="text-sm text-gray-400 font-mono break-all">
                       {record.id}
                     </div>
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Mech Address</div>
+                    <div className="text-sm font-medium text-gray-400 mb-1">Mech Address</div>
                     <a
                       href={`https://basescan.org/address/${record.mech}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-start gap-1 text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
+                      className="inline-flex items-start gap-1 text-primary hover:text-primary hover:underline text-sm font-mono break-all"
                     >
                       <span className="break-all">{record.mech}</span>
                       <ExternalLink className="w-3 h-3 flex-shrink-0 mt-0.5" />
@@ -1420,12 +1428,12 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Sender Address</div>
+                    <div className="text-sm font-medium text-gray-400 mb-1">Sender Address</div>
                     <a
                       href={`https://basescan.org/address/${record.sender}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-start gap-1 text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
+                      className="inline-flex items-start gap-1 text-primary hover:text-primary hover:underline text-sm font-mono break-all"
                     >
                       <span className="break-all">{record.sender}</span>
                       <ExternalLink className="w-3 h-3 flex-shrink-0 mt-0.5" />
@@ -1433,11 +1441,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Delivered Status</div>
+                    <div className="text-sm font-medium text-gray-400 mb-1">Delivered Status</div>
                     <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
                       record.delivered
                         ? 'bg-green-50 text-green-700 border-green-200'
-                        : 'bg-gray-50 text-gray-700 border-gray-200'
+                        : 'bg-gray-50 text-gray-400 border-gray-200'
                     }`}>
                       {record.delivered ? '✓ Delivered' : '⏳ Pending'}
                     </span>
@@ -1454,11 +1462,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
               <CardContent>
                 <div className="space-y-4">
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Job ID</div>
+                    <div className="text-sm font-medium text-gray-400 mb-1">Job ID</div>
                     {record.jobDefinitionId ? (
                       <Link
                         href={`/jobDefinitions/${record.jobDefinitionId}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
+                        className="text-primary hover:text-primary hover:underline text-sm font-mono break-all"
                       >
                         {record.jobDefinitionId}
                       </Link>
@@ -1468,11 +1476,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Source Job Run ID</div>
+                    <div className="text-sm font-medium text-gray-400 mb-1">Source Job Run ID</div>
                     {record.sourceRequestId ? (
                       <Link
                         href={`/requests/${record.sourceRequestId}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
+                        className="text-primary hover:text-primary hover:underline text-sm font-mono break-all"
                       >
                         {record.sourceRequestId}
                       </Link>
@@ -1482,11 +1490,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Source Job ID</div>
+                    <div className="text-sm font-medium text-gray-400 mb-1">Source Job ID</div>
                     {record.sourceJobDefinitionId ? (
                       <Link
                         href={`/jobDefinitions/${record.sourceJobDefinitionId}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono break-all"
+                        className="text-primary hover:text-primary hover:underline text-sm font-mono break-all"
                       >
                         {record.sourceJobDefinitionId}
                       </Link>
@@ -1498,11 +1506,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   {/* Parent Re-Run Status - NEW */}
                   <div>
                     <div className="flex items-center gap-1 mb-1">
-                      <div className="text-sm font-medium text-gray-700">Parent Re-Run</div>
+                      <div className="text-sm font-medium text-gray-400">Parent Re-Run</div>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-gray-400 cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent>
                             <p className="max-w-xs">New parent job run triggered by this completion (COMPLETED/FAILED status automatically re-dispatches parent)</p>
@@ -1522,11 +1530,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   {/* Status Update - moved from Execution/Delivery card */}
                   <div>
                     <div className="flex items-center gap-1 mb-1">
-                      <div className="text-sm font-medium text-gray-700">Status Update</div>
+                      <div className="text-sm font-medium text-gray-400">Status Update</div>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
+                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-gray-400 cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent>
                             <p className="max-w-xs">Job definition status after this run (COMPLETED, FAILED, DELEGATING, or WAITING)</p>
@@ -1541,7 +1549,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           : executionData.status === 'FAILED'
                           ? 'bg-red-100 text-red-800'
                           : executionData.status === 'DELEGATING'
-                          ? 'bg-blue-100 text-blue-800'
+                          ? 'bg-primary/20 text-primary'
                           : executionData.status === 'WAITING'
                           ? 'bg-purple-100 text-purple-800'
                           : executionData.status === 'PENDING'
@@ -1575,7 +1583,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
           <Card>
             <CardHeader>
               <CardTitle>Job Data</CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-gray-400 mt-1">
                 Composite record from Ponder&apos;s <code className="text-xs bg-gray-100 px-1 rounded">request</code> table. 
                 Combines the original <code className="text-xs bg-gray-100 px-1 rounded">MarketplaceRequest</code> event data 
                 with enrichments from the <code className="text-xs bg-gray-100 px-1 rounded">OlasMech:Deliver</code> event 
@@ -1595,7 +1603,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Job Definition Record</CardTitle>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <p className="text-sm text-gray-400 mt-1">
                     Record from Ponder&apos;s <code className="text-xs bg-gray-100 px-1 rounded">jobDefinition</code> table, 
                     referenced by <code className="text-xs bg-gray-100 px-1 rounded">request.jobDefinitionId</code>
                   </p>
@@ -1603,7 +1611,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                 {record.jobDefinitionId && (
                   <Link 
                     href={`/jobDefinitions/${record.jobDefinitionId}`}
-                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                    className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
                   >
                     View Full →
                   </Link>
@@ -1627,7 +1635,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
           <Card>
             <CardHeader>
               <CardTitle>Request IPFS Content</CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-gray-400 mt-1">
                 Fetched from <code className="text-xs bg-gray-100 px-1 rounded">request.ipfsHash</code> - 
                 the blueprint specification uploaded when posting the <code className="text-xs bg-gray-100 px-1 rounded">MarketplaceRequest</code> event
               </p>
@@ -1651,7 +1659,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Source Request Record</CardTitle>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <p className="text-sm text-gray-400 mt-1">
                     Parent request record from Ponder&apos;s <code className="text-xs bg-gray-100 px-1 rounded">request</code> table, 
                     referenced by <code className="text-xs bg-gray-100 px-1 rounded">request.sourceRequestId</code> (for Work Protocol jobs)
                   </p>
@@ -1659,7 +1667,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                 {record.sourceRequestId && (
                   <Link 
                     href={`/requests/${record.sourceRequestId}`}
-                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                    className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
                   >
                     View Full →
                   </Link>
@@ -1685,7 +1693,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Source Job Definition Record</CardTitle>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <p className="text-sm text-gray-400 mt-1">
                     Parent job definition record from Ponder&apos;s <code className="text-xs bg-gray-100 px-1 rounded">jobDefinition</code> table, 
                     referenced by <code className="text-xs bg-gray-100 px-1 rounded">request.sourceJobDefinitionId</code> (for Work Protocol jobs)
                   </p>
@@ -1693,7 +1701,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                 {record.sourceJobDefinitionId && (
                   <Link 
                     href={`/jobDefinitions/${record.sourceJobDefinitionId}`}
-                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                    className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
                   >
                     View Full →
                   </Link>
@@ -1717,7 +1725,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
           <Card>
             <CardHeader>
               <CardTitle>Delivery IPFS Content</CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-gray-400 mt-1">
                 Fetched from <code className="text-xs bg-gray-100 px-1 rounded">request.deliveryIpfsHash</code> - 
                 the result payload uploaded when the worker delivered via the <code className="text-xs bg-gray-100 px-1 rounded">OlasMech:Deliver</code> event
               </p>
@@ -1745,7 +1753,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
           <Card>
             <CardHeader>
               <CardTitle>Memory System Data</CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-gray-400 mt-1">
                 Reflection artifacts (<code className="text-xs bg-gray-100 px-1 rounded">MEMORY</code>, <code className="text-xs bg-gray-100 px-1 rounded">SITUATION</code>) 
                 and recognition phase data fetched from artifact IPFS content and enriched with embeddings
               </p>

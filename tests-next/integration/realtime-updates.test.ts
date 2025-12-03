@@ -3,6 +3,12 @@
  * 
  * These tests verify that the SSE real-time update system correctly
  * notifies the frontend when Ponder data changes.
+ * 
+ * Tests run conditionally:
+ * - When REALTIME_URL is set: Tests execute against live endpoint (e.g., Railway)
+ * - When REALTIME_URL is not set: Tests are skipped (no local server required)
+ * 
+ * Usage: REALTIME_URL=https://your-app.railway.app/sql/live yarn test:integration:next
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -13,6 +19,7 @@ global.EventSource = EventSource as any;
 
 const SSE_URL = process.env.REALTIME_URL || 'http://localhost:42070/events';
 const PONDER_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'http://localhost:42069/graphql';
+const REALTIME_TESTS_ENABLED = !!process.env.REALTIME_URL;
 
 describe('Real-time SSE Updates', () => {
   let eventSource: EventSource | null = null;
@@ -23,7 +30,7 @@ describe('Real-time SSE Updates', () => {
     }
   });
 
-  it('should connect to SSE endpoint', async () => {
+  it.skipIf(!REALTIME_TESTS_ENABLED)('should connect to SSE endpoint', async () => {
     return new Promise<void>((resolve, reject) => {
       eventSource = new EventSource(SSE_URL);
 
@@ -49,7 +56,7 @@ describe('Real-time SSE Updates', () => {
     });
   }, 15000);
 
-  it('should receive heartbeat messages', async () => {
+  it.skipIf(!REALTIME_TESTS_ENABLED)('should receive heartbeat messages', async () => {
     return new Promise<void>((resolve, reject) => {
       if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
         eventSource = new EventSource(SSE_URL);
@@ -69,7 +76,7 @@ describe('Real-time SSE Updates', () => {
     });
   }, 40000);
 
-  it('should maintain connection status', () => {
+  it.skipIf(!REALTIME_TESTS_ENABLED)('should maintain connection status', () => {
     expect(eventSource).toBeDefined();
     expect(eventSource?.readyState).toBe(EventSource.OPEN);
     console.log('✓ Connection status: OPEN');
@@ -114,7 +121,7 @@ describe('Frontend Integration', () => {
 });
 
 describe('Health Check', () => {
-  it('should respond to health endpoint', async () => {
+  it.skipIf(!REALTIME_TESTS_ENABLED)('should respond to health endpoint', async () => {
     const healthUrl = SSE_URL.replace('/events', '/health');
     const response = await fetch(healthUrl);
     expect(response.ok).toBe(true);

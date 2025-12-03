@@ -126,10 +126,18 @@ describe('env-controller', () => {
     });
 
     it('throws error when required secrets are missing', async () => {
+      // Clear all required secrets
+      delete process.env.TENDERLY_ACCESS_KEY;
+      delete process.env.TENDERLY_ACCOUNT_SLUG;
+      delete process.env.TENDERLY_PROJECT_SLUG;
+
       mockDotenvConfig.mockImplementation(() => {
         // Don't set required secrets
         return {};
       });
+
+      // Force re-bootstrap by calling the exported reset function
+      envControllerModule.resetBootstrap();
 
       await expect(
         envControllerModule.withTestEnv(async () => {

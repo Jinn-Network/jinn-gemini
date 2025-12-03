@@ -156,10 +156,6 @@ export function useJobGraph({
     setLayout(prev => prev === 'TB' ? 'LR' : 'TB')
   }, [])
 
-  const refresh = useCallback(() => {
-    fetchGraph()
-  }, [fetchGraph])
-
   return {
     graph,
     nodes,
@@ -172,6 +168,5 @@ export function useJobGraph({
     updateDepth,
     updateDirection,
     toggleLayout,
-    refresh,
   }
 }

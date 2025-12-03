@@ -68,7 +68,6 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     totalRecords,
     currentPage,
     setCurrentPage,
-    refresh,
     error,
     hasNextPage,
     hasPreviousPage,
@@ -142,8 +141,8 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
       {/* Workstream filter badge */}
       {workstreamFilter && (
         <div className="mb-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-md text-sm">
-            <span className="text-blue-700">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-md text-sm">
+            <span className="text-primary">
               Filtered by workstream
             </span>
             <TruncatedId 
@@ -157,26 +156,13 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
                 params.delete('workstream')
                 router.push(`?${params.toString()}`)
               }}
-              className="text-blue-600 hover:text-blue-800 ml-1 cursor-pointer"
+              className="text-primary hover:text-primary ml-1 cursor-pointer"
             >
               ✕
             </button>
           </div>
         </div>
       )}
-      
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-gray-600">
-          Showing {displayRecords.length} records (Page {currentPage})
-        </p>
-        
-        <button
-          onClick={refresh}
-          className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          Refresh
-        </button>
-      </div>
       
       {collectionName === 'requests' ? (
         <RequestsTable records={displayRecords} />

@@ -1,4 +1,12 @@
-import { Button } from '@/components/ui/button'
+import {
+  Pagination as PaginationRoot,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
 
 interface PaginationProps {
   currentPage: number
@@ -21,59 +29,93 @@ export function Pagination({ currentPage, totalRecords, pageSize, onPageChange, 
   const startRecord = ((currentPage - 1) * pageSize) + 1
   const endRecord = Math.min(currentPage * pageSize, totalRecords)
   
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages: (number | 'ellipsis')[] = []
+    const maxVisible = 5
+    
+    if (totalPages <= maxVisible) {
+      // Show all pages
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i)
+      }
+    } else {
+      // Always show first page
+      pages.push(1)
+      
+      if (currentPage > 3) {
+        pages.push('ellipsis')
+      }
+      
+      // Show pages around current page
+      const start = Math.max(2, currentPage - 1)
+      const end = Math.min(totalPages - 1, currentPage + 1)
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i)
+      }
+      
+      if (currentPage < totalPages - 2) {
+        pages.push('ellipsis')
+      }
+      
+      // Always show last page
+      pages.push(totalPages)
+    }
+    
+    return pages
+  }
+  
   return (
-    <div className="flex items-center justify-between px-2 py-4">
-      <div className="text-sm text-gray-700">
+    <div className="flex items-center justify-between px-2 py-4 gap-4">
+      <div className="text-sm text-muted-foreground whitespace-nowrap flex-shrink-0">
         Showing {startRecord} to {endRecord}{hasNextPage ? '+' : ''} of {hasNextPage ? `${totalRecords}+` : totalRecords} records
       </div>
       
-      <div className="flex items-center space-x-2">
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={!hasPrev}
-        >
-          Previous
-        </Button>
-        
-        <div className="flex items-center space-x-1">
-          {/* Show page numbers around current page */}
-          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-            let pageNum: number
-            if (totalPages <= 5) {
-              pageNum = i + 1
-            } else if (currentPage <= 3) {
-              pageNum = i + 1
-            } else if (currentPage >= totalPages - 2) {
-              pageNum = totalPages - 4 + i
-            } else {
-              pageNum = currentPage - 2 + i
-            }
-            
-            return (
-              <Button
-                key={pageNum}
-                variant={pageNum === currentPage ? "default" : "outline"}
-                size="sm"
-                onClick={() => onPageChange(pageNum)}
-                className="min-w-[32px]"
-              >
-                {pageNum}
-              </Button>
-            )
-          })}
-        </div>
-        
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={!hasNext}
-        >
-          Next
-        </Button>
-      </div>
+      <PaginationRoot className="ml-auto">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              onClick={(e) => {
+                e.preventDefault()
+                if (hasPrev) onPageChange(currentPage - 1)
+              }}
+              aria-disabled={!hasPrev}
+              className={!hasPrev ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+            />
+          </PaginationItem>
+          
+          {getPageNumbers().map((page, index) => (
+            <PaginationItem key={`${page}-${index}`}>
+              {page === 'ellipsis' ? (
+                <PaginationEllipsis />
+              ) : (
+                <PaginationLink
+                  onClick={(e) => {
+                    e.preventDefault()
+                    onPageChange(page)
+                  }}
+                  isActive={page === currentPage}
+                  className="cursor-pointer"
+                >
+                  {page}
+                </PaginationLink>
+              )}
+            </PaginationItem>
+          ))}
+          
+          <PaginationItem>
+            <PaginationNext
+              onClick={(e) => {
+                e.preventDefault()
+                if (hasNext) onPageChange(currentPage + 1)
+              }}
+              aria-disabled={!hasNext}
+              className={!hasNext ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </PaginationRoot>
     </div>
   )
 }

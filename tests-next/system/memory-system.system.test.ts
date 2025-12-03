@@ -320,13 +320,6 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                   console.log('[TEST] Using control API:', controlUrl);
                   console.log('[TEST] Using GraphQL:', gqlUrl);
 
-                  // Wait for Ponder to finish historical sync and reach realtime status
-                  // This prevents race conditions where requests are dispatched before
-                  // Ponder has caught up to the current block
-                  console.log('[TEST] Waiting for Ponder to reach realtime status...');
-                  await waitForPonderRealtime(gqlUrl, { timeoutMs: 120000 });
-                  console.log('[TEST] Ponder is ready for realtime indexing ✓');
-
                   // ==================================================                  // SECTION 1: Create Parent Job For Lineage
                   // ==================================================
                   console.log('\n[TEST] Bootstrapping parent job for lineage...');

@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChevronRight, Workflow, Briefcase, FileText } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 import {
   Sidebar,
@@ -108,8 +109,11 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <div className="flex items-center px-2 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 [&_span]:group-data-[collapsible=icon]:hidden">
-          <RealtimeStatusIndicator status={realtimeStatus} />
+        <div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          <div className="flex items-center [&_span]:group-data-[collapsible=icon]:hidden">
+            <RealtimeStatusIndicator status={realtimeStatus} />
+          </div>
+          <ThemeToggle />
         </div>
       </SidebarFooter>
       <SidebarRail />

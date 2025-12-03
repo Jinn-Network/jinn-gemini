@@ -74,6 +74,7 @@ export function deepTruncateStrings(value: any, maxChars: number): any {
     perFieldMaxChars?: number;             // global clamp for any string field (e.g., 10k). Applied after policy/generic.
     enforceHardPageBudget?: boolean;       // ensure a page never exceeds the budget (default true)
     enforceHardFieldClamp?: boolean;       // ensure no single string field exceeds perFieldMaxChars (default true)
+    upstreamLimit?: number;                // database result limit (prevents false has_more when offset >= limit)
   }
   
   export interface BuildSinglePageResult {
@@ -132,7 +133,14 @@ export function buildSinglePageFromItems(
   }
 
   const nextOffset = startOffset + page.length;
-  const hasMore = nextOffset < allItems.length;
+  let hasMore = nextOffset < allItems.length;
+  
+  // If upstreamLimit is set, check if we've exhausted the database results
+  // This prevents false has_more signals when client token budget < database page size
+  if (opts.upstreamLimit !== undefined && nextOffset >= opts.upstreamLimit) {
+    hasMore = false;
+  }
+  
   const nextCursor = hasMore ? encodeCursor({ offset: nextOffset }) : undefined;
 
   return {

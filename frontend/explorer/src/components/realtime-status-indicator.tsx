@@ -59,7 +59,7 @@ export function RealtimeStatusIndicator({ status, className = '' }: RealtimeStat
       <TooltipTrigger asChild>
         <div className={`flex items-center gap-2 text-sm ${className}`}>
           <div className={`w-2 h-2 rounded-full ${getStatusColor()}`} />
-          <span className="text-gray-600">{getStatusLabel()}</span>
+          <span className="text-gray-400">{getStatusLabel()}</span>
         </div>
       </TooltipTrigger>
       <TooltipContent>

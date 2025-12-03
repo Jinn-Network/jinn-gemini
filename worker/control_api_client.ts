@@ -83,12 +83,9 @@ export async function claimRequest(requestId: string): Promise<{ request_id: str
   try {
     const json = await fetchWithRetry({ query, variables: { requestId } }, headers);
     const claim = json.data.claimRequest;
-    // Check if this is a stale claim (claimed more than 1 minute ago and still IN_PROGRESS)
-    const claimedAt = claim.claimed_at ? new Date(claim.claimed_at).getTime() : 0;
-    const now = Date.now();
-    const ageMs = now - claimedAt;
-    const isStale = claim.status === 'IN_PROGRESS' && ageMs > 60000; // 1 minute
-    return { ...claim, alreadyClaimed: isStale };
+    // Control API now handles stale claim detection and re-claiming
+    // Return with alreadyClaimed=false for freshly claimed jobs
+    return { ...claim, alreadyClaimed: false };
   } catch (e: any) {
     const msg = String(e?.message || e);
     if (msg.toLowerCase().includes('already claimed')) {

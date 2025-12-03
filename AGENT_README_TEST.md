@@ -436,6 +436,53 @@ Query live child delivery status from Ponder during `inferJobStatus()` instead o
 **Prevention:**
 Never rely on `hierarchy.status` for terminal state decisions. Always query Ponder directly for child delivery status. Hierarchy is for context/planning only.
 
+### 13. Double Execution via Ponder Latency (2025-12-02) [FIXED]
+**Issue:** Worker claims same job twice because Ponder indexer lags behind chain delivery
+**Root Cause:** Ponder says `delivered: false` while chain has 0 undelivered requests. Worker loop previously trusted Ponder when RPC returned empty set.
+**Solution:** `worker/mech_worker.ts` now distinguishes between RPC error (null) and empty set. If RPC confirms 0 undelivered requests, we trust chain and filter out Ponder's stale candidates.
+**Fix Applied:** Updated `filterUnclaimed` to trust empty on-chain sets.
+
+### 14. Stale Claim Blocking (2025-12-02) [FIXED]
+**Issue:** Worker skips jobs stuck IN_PROGRESS for hours, never re-attempts them
+**Root Cause:** Control API returned existing IN_PROGRESS claims indefinitely (line 204-206). Worker client added `alreadyClaimed` logic but inverted the handling - treated stale as "skip" instead of "retry".
+**Evidence:** Request `0x486db...be542` stuck IN_PROGRESS for 643 minutes, worker kept skipping it
+**Solution:** Control API now detects stale claims (>5 minutes) and allows re-claiming with fresh timestamp. Worker client simplified to trust Control API's decision.
+**Fix Applied:** 
+- `control-api/server.ts`: Added age check (300s threshold) before returning existing claim
+- `worker/control_api_client.ts`: Removed confusing client-side stale detection
+**Prevention:** Control API is single source of truth for claim staleness, using 5-minute threshold
+
+---
+
+## Test Infrastructure Gotchas
+
+### Git Fixtures Must Have Main Branch
+**Issue:** Test git fixtures need `main` branch with initial commit for `dispatch_new_job` to create job branches
+**Solution:** `tests-next/helpers/git-fixture.ts` verifies and creates `main` branch after clone if missing
+**Error Message:** `code_metadata.ts` now provides explicit instructions when base branch doesn't exist
+**Prevention:** Ensure test git templates have commits on `main` branch
+
+### Git Clone from Local Path Needs --no-hardlinks
+**Issue:** `git clone` from local directory creates hardlinks by default, which can cause empty clones with no commits
+**Solution:** Use `git clone --no-hardlinks` when cloning from local template directories
+**Prevention:** Always use `--no-hardlinks` flag for local repository clones in tests
+
+### Mocking pg.Client Requires EventEmitter
+**Issue:** `pg.Client` extends `EventEmitter`, code registers error listeners via `client.on('error', ...)`
+**Solution:** Test mocks must extend `EventEmitter` from `node:events`
+**Prevention:** When mocking third-party libraries, check full interface including inherited classes
+
+### Blueprint Format Changed to JSON
+**Issue:** Tests expecting old GEMINI.md markdown format fail when `buildPrompt()` returns JSON
+**Solution:** Parse JSON output and check structure fields: `parsed.context`, `parsed.assertions`, etc.
+**Prevention:** When changing output formats, search for all test assertions using old format
+
+### Ponder Startup Requires Valid RPC URL
+**Issue:** Ponder config calls `getStartBlock()` which makes RPC call during initialization. Invalid/unreachable RPC causes 30s timeout before Ponder starts
+**Symptom:** Tests with `rpcUrl: 'http://127.0.0.1:8545'` hang for 30s during `withProcessHarness` before any test code runs
+**Solution:** Always use real RPC (Tenderly VNet) or set `PONDER_START_BLOCK` env var to skip RPC call
+**Prevention:** Use `withTenderlyVNet` for all tests that need Ponder, even if not dispatching transactions
+
 ---
 
 ## Documentation Map

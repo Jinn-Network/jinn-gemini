@@ -16,9 +16,10 @@ import type { FinalStatus, ChildJobStatus } from '../../../../worker/types.js';
 // Mock childJobs module
 vi.mock('../../../../worker/status/childJobs.js', () => ({
   getChildJobStatus: vi.fn(),
+  getAllChildrenForJobDefinition: vi.fn(),
 }));
 
-import { getChildJobStatus } from '../../../../worker/status/childJobs.js';
+import { getChildJobStatus, getAllChildrenForJobDefinition } from '../../../../worker/status/childJobs.js';
 
 describe('inferJobStatus', () => {
   beforeEach(() => {
@@ -589,6 +590,275 @@ describe('inferJobStatus', () => {
       });
 
       expect(result.status).toBe('DELEGATING');
+    });
+  });
+
+  describe('job-level child status (hierarchy with getAllChildrenForJobDefinition)', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('infers WAITING when getAllChildrenForJobDefinition shows undelivered children', async () => {
+      const telemetry = { toolCalls: [] };
+      const metadata = {
+        jobDefinitionId: 'job-def-123',
+        additionalContext: {
+          hierarchy: [
+            { id: 'child1', level: 1, sourceJobDefinitionId: 'job-def-123', status: 'pending' }
+          ]
+        }
+      };
+
+      (getAllChildrenForJobDefinition as any).mockResolvedValue({
+        allChildren: [
+          { id: '0xchild1', delivered: false, requestId: '0xparent' }
+        ],
+        totalChildren: 1,
+        undeliveredChildren: 1,
+        activeChildren: 0,
+        queryDuration_ms: 100
+      });
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+        metadata
+      });
+
+      expect(getAllChildrenForJobDefinition).toHaveBeenCalledWith('job-def-123');
+      expect(result.status).toBe('WAITING');
+      expect(result.message).toContain('1 child job(s) to deliver (live query)');
+    });
+
+    it('infers WAITING when children delivered but have DELEGATING status', async () => {
+      const telemetry = { toolCalls: [] };
+      const metadata = {
+        jobDefinitionId: 'job-def-123',
+        additionalContext: {
+          hierarchy: [
+            { id: 'child1', level: 1, sourceJobDefinitionId: 'job-def-123', status: 'completed' }
+          ]
+        }
+      };
+
+      (getAllChildrenForJobDefinition as any).mockResolvedValue({
+        allChildren: [
+          { 
+            id: '0xchild1', 
+            delivered: true, 
+            requestId: '0xparent',
+            jobDefinitionId: 'child-job-def-1',
+            jobStatus: 'DELEGATING'
+          }
+        ],
+        totalChildren: 1,
+        undeliveredChildren: 0,
+        activeChildren: 1, // Child is delivered but still DELEGATING
+        queryDuration_ms: 100
+      });
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+        metadata
+      });
+
+      expect(result.status).toBe('WAITING');
+      expect(result.message).toContain('1 child job(s) with non-terminal status');
+    });
+
+    it('infers WAITING when children delivered but have WAITING status', async () => {
+      const telemetry = { toolCalls: [] };
+      const metadata = {
+        jobDefinitionId: 'job-def-123',
+        additionalContext: {
+          hierarchy: []
+        }
+      };
+
+      (getAllChildrenForJobDefinition as any).mockResolvedValue({
+        allChildren: [
+          { 
+            id: '0xchild1', 
+            delivered: true, 
+            requestId: '0xparent',
+            jobDefinitionId: 'child-job-def-1',
+            jobStatus: 'WAITING'
+          }
+        ],
+        totalChildren: 1,
+        undeliveredChildren: 0,
+        activeChildren: 1,
+        queryDuration_ms: 100
+      });
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+        metadata
+      });
+
+      expect(result.status).toBe('WAITING');
+    });
+
+    it('infers COMPLETED when all children delivered with terminal status', async () => {
+      const telemetry = { toolCalls: [] };
+      const metadata = {
+        jobDefinitionId: 'job-def-123',
+        additionalContext: {
+          hierarchy: [
+            { id: 'child1', level: 1, sourceJobDefinitionId: 'job-def-123', status: 'active' }
+          ]
+        }
+      };
+
+      (getAllChildrenForJobDefinition as any).mockResolvedValue({
+        allChildren: [
+          { 
+            id: '0xchild1', 
+            delivered: true, 
+            requestId: '0xparent',
+            jobDefinitionId: 'child-job-def-1',
+            jobStatus: 'COMPLETED'
+          }
+        ],
+        totalChildren: 1,
+        undeliveredChildren: 0,
+        activeChildren: 0,
+        queryDuration_ms: 100
+      });
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+        metadata
+      });
+
+      expect(result.status).toBe('COMPLETED');
+      expect(result.message).toContain('All 1 child job(s) complete');
+    });
+
+    it('falls back to hierarchy when getAllChildrenForJobDefinition fails', async () => {
+      const telemetry = { toolCalls: [] };
+      const metadata = {
+        jobDefinitionId: 'job-def-123',
+        additionalContext: {
+          hierarchy: [
+            { id: 'child1', level: 1, sourceJobDefinitionId: 'job-def-123', status: 'completed', jobDefinitionId: 'child-def-1' }
+          ]
+        }
+      };
+
+      (getAllChildrenForJobDefinition as any).mockRejectedValue(new Error('Network error'));
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+        metadata
+      });
+
+      // Should fall back to hierarchy and infer COMPLETED
+      expect(result.status).toBe('COMPLETED');
+    });
+
+    it('uses job-level query only when jobDefinitionId present', async () => {
+      const telemetry = { toolCalls: [] };
+      const metadata = {
+        // No jobDefinitionId
+        additionalContext: {
+          hierarchy: []
+        }
+      };
+
+      (getChildJobStatus as any).mockResolvedValue({
+        childJobs: [],
+        queryDuration_ms: 10,
+        retryAttempts: 0
+      });
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+        metadata
+      });
+
+      // Should use legacy per-request child query
+      expect(getAllChildrenForJobDefinition).not.toHaveBeenCalled();
+      expect(getChildJobStatus).toHaveBeenCalledWith('0x123');
+      expect(result.status).toBe('COMPLETED');
+    });
+
+    it('logs hierarchy vs live data comparison', async () => {
+      const telemetry = { toolCalls: [] };
+      const metadata = {
+        jobDefinitionId: 'job-def-123',
+        additionalContext: {
+          hierarchy: [
+            { id: 'child1', level: 1, sourceJobDefinitionId: 'job-def-123', status: 'active' }
+          ]
+        }
+      };
+
+      (getAllChildrenForJobDefinition as any).mockResolvedValue({
+        allChildren: [
+          { id: '0xchild1', delivered: true, requestId: '0xparent' }
+        ],
+        totalChildren: 1,
+        undeliveredChildren: 0,
+        activeChildren: 0,
+        queryDuration_ms: 100
+      });
+
+      await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+        metadata
+      });
+
+      // Verify comparison logging occurs (checking workerLogger is not part of this test file's scope,
+      // but the function should call it)
+      expect(getAllChildrenForJobDefinition).toHaveBeenCalledWith('job-def-123');
+    });
+
+    it('detects discrepancy between hierarchy and live data', async () => {
+      const telemetry = { toolCalls: [] };
+      const metadata = {
+        jobDefinitionId: 'job-def-123',
+        additionalContext: {
+          hierarchy: [
+            // Hierarchy says child is active (stale data)
+            { id: 'child1', level: 1, sourceJobDefinitionId: 'job-def-123', status: 'pending' }
+          ]
+        }
+      };
+
+      // Live data shows child is actually delivered
+      (getAllChildrenForJobDefinition as any).mockResolvedValue({
+        allChildren: [
+          { id: '0xchild1', delivered: true, requestId: '0xparent', jobStatus: 'COMPLETED' }
+        ],
+        totalChildren: 1,
+        undeliveredChildren: 0,
+        activeChildren: 0,
+        queryDuration_ms: 100
+      });
+
+      const result = await inferJobStatus({
+        requestId: '0x123',
+        error: null,
+        telemetry,
+        metadata
+      });
+
+      // Should trust live data and infer COMPLETED
+      expect(result.status).toBe('COMPLETED');
     });
   });
 });

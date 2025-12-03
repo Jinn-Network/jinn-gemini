@@ -100,6 +100,7 @@ export async function searchArtifacts(params: SearchArtifactsParams) {
       truncateChars: 800, // Moderate truncation for artifact content
       perFieldMaxChars: 3000,
       pageTokenBudget: 10000, // 10k token budget per page
+      upstreamLimit: 100, // Database limit - prevents false has_more when offset >= database page
       requestedMeta: { cursor, query, include_request_context }
     });
 

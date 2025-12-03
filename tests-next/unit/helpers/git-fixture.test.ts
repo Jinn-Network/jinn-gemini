@@ -75,8 +75,8 @@ describe('git-fixture', () => {
 
       mockExecSync.mockImplementation((command: string) => {
         if (typeof command === 'string' && command.includes('git clone')) {
-          // Verify clone URL includes token
-          expect(command).toContain('https://test-token@github.com/owner/repo.git');
+          // Verify clone URL includes token (GitHub format with x-access-token)
+          expect(command).toContain('https://x-access-token:test-token@github.com/owner/repo.git');
           return '';
         }
         return '';

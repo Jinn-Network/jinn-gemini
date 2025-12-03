@@ -99,7 +99,7 @@ function TriggeredJobsList({ artifactId, isDbArtifact }: { artifactId: string; i
               <span className={`px-2 py-1 rounded text-xs font-medium ${
                 job.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                 job.status === 'FAILED' ? 'bg-red-100 text-red-800' :
-                job.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                job.status === 'IN_PROGRESS' ? 'bg-primary/20 text-primary' :
                 'bg-yellow-100 text-yellow-800'
               }`}>
                 {job.status}

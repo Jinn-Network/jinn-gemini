@@ -73,7 +73,7 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
       }
       
       return (
-        <div className="font-mono text-sm break-all text-gray-700">{value}</div>
+        <div className="font-mono text-sm break-all text-gray-400">{value}</div>
       )
     }
 
@@ -139,7 +139,7 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
                   <span className="text-gray-400 font-mono text-xs mt-0.5">{index + 1}.</span>
                   <span className="flex-1">
                     {typeof item === 'object' ? (
-                      <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+                      <pre className="text-xs text-gray-400 whitespace-pre-wrap">
                         {JSON.stringify(item, null, 2)}
                       </pre>
                     ) : (
@@ -169,19 +169,19 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
           <table className="w-full text-sm">
             <thead className="bg-gray-100">
               <tr>
-                <th className="text-left px-3 py-2 font-medium text-gray-700 text-xs">Property</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-700 text-xs">Value</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-400 text-xs">Property</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-400 text-xs">Value</th>
               </tr>
             </thead>
             <tbody>
               {keys.map((key, index) => (
                 <tr key={key} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-600 border-r border-gray-200">
+                  <td className="px-3 py-2 font-mono text-xs text-gray-400 border-r border-gray-200">
                     {key}
                   </td>
                   <td className="px-3 py-2 text-xs">
                     {typeof value === 'object' && value !== null && key in value && typeof (value as Record<string, unknown>)[key] === 'object' ? (
-                      <pre className="whitespace-pre-wrap text-gray-600">
+                      <pre className="whitespace-pre-wrap text-gray-400">
                         {JSON.stringify((value as Record<string, unknown>)[key], null, 2)}
                       </pre>
                     ) : (
@@ -246,7 +246,7 @@ function ContentDisplay({ value }: { value: unknown }) {
                 <span className="text-gray-400 font-mono text-xs mt-0.5">{index + 1}.</span>
                 <span className="flex-1">
                   {typeof item === 'object' ? (
-                    <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+                    <pre className="text-xs text-gray-400 whitespace-pre-wrap">
                       {JSON.stringify(item, null, 2)}
                     </pre>
                   ) : (
@@ -273,19 +273,19 @@ function ContentDisplay({ value }: { value: unknown }) {
         <table className="w-full text-sm">
           <thead className="bg-gray-100">
             <tr>
-              <th className="text-left px-3 py-2 font-medium text-gray-700 text-xs">Property</th>
-              <th className="text-left px-3 py-2 font-medium text-gray-700 text-xs">Value</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-400 text-xs">Property</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-400 text-xs">Value</th>
             </tr>
           </thead>
           <tbody>
             {keys.map((key, index) => (
               <tr key={key} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}>
-                <td className="px-3 py-2 font-mono text-xs text-gray-600 border-r border-gray-200">
+                <td className="px-3 py-2 font-mono text-xs text-gray-400 border-r border-gray-200">
                   {key}
                 </td>
                 <td className="px-3 py-2 text-xs">
                   {typeof value === 'object' && value !== null && key in value && typeof (value as Record<string, unknown>)[key] === 'object' ? (
-                    <pre className="whitespace-pre-wrap text-gray-600">
+                    <pre className="whitespace-pre-wrap text-gray-400">
                       {JSON.stringify((value as Record<string, unknown>)[key], null, 2)}
                     </pre>
                   ) : (

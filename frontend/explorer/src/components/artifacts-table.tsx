@@ -3,7 +3,14 @@ import Link from 'next/link'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
 import { TruncatedId } from '@/components/truncated-id'
-
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 interface ArtifactsTableProps {
   records: SubgraphRecord[]
 }
@@ -18,19 +25,19 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-lg">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Name</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Preview</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Timestamp</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">CID</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Topic</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Request</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Preview</TableHead>
+            <TableHead>Timestamp</TableHead>
+            <TableHead>CID</TableHead>
+            <TableHead>Topic</TableHead>
+            <TableHead>Request</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {records.map((record) => {
             const name = 'name' in record && record.name
               ? (record.name.length > 40 ? record.name.substring(0, 40) + '...' : record.name)
@@ -57,53 +64,53 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
               : null
 
             return (
-              <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3">
+              <TableRow key={record.id}>
+                <TableCell>
                   <Link 
                     href={`/artifacts/${record.id}`}
-                    className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                    className="text-primary hover:text-primary hover:underline font-medium"
                   >
                     {name}
                   </Link>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">
+                </TableCell>
+                <TableCell className="text-muted-foreground">
                   {preview}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">
+                </TableCell>
+                <TableCell className="text-muted-foreground">
                   {timestamp}
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   {cid ? (
                     <a
                       href={`https://gateway.autonolas.tech/ipfs/${cid}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-mono inline-flex items-center gap-1.5"
+                      className="text-primary hover:text-primary hover:underline font-mono inline-flex items-center gap-1.5"
                     >
                       <TruncatedId value={cid} copyable={false} />
                     </a>
                   ) : (
-                    <span className="text-sm text-gray-400">-</span>
+                    <span className="text-muted-foreground">-</span>
                   )}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">
+                </TableCell>
+                <TableCell className="text-muted-foreground">
                   {topic}
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   {requestId ? (
                     <TruncatedId 
                       value={requestId}
                       linkTo={`/requests/${requestId}`}
                     />
                   ) : (
-                    <span className="text-sm text-gray-400">-</span>
+                    <span className="text-muted-foreground">-</span>
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

@@ -51,7 +51,7 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
       }
       
       return (
-        <div className="font-mono text-sm break-all text-gray-700">{value}</div>
+        <div className="font-mono text-sm break-all text-gray-400">{value}</div>
       )
     }
 
@@ -93,7 +93,7 @@ function StatusBadge({ status }: { status: string }) {
   const getStatusColors = (status: string) => {
     switch (status.toLowerCase()) {
       case 'open':
-        return 'bg-blue-100 text-blue-800 border-blue-200'
+        return 'bg-primary/20 text-primary border-primary/30'
       case 'completed':
         return 'bg-green-100 text-green-800 border-green-200'
       case 'closed':
@@ -143,7 +143,7 @@ export function ThreadDetailsSidebar({ record }: ThreadDetailsSidebarProps) {
               <div className="font-medium text-gray-900 text-sm mb-1">
                 Objective:
               </div>
-              <div className="text-sm text-gray-700">
+              <div className="text-sm text-gray-400">
                 {objective}
               </div>
             </div>
@@ -169,7 +169,7 @@ export function ThreadDetailsSidebar({ record }: ThreadDetailsSidebarProps) {
             <div>
               <a 
                 href={`/threads/${record.id}/timeline`}
-                className="text-blue-600 hover:text-blue-800 text-sm underline"
+                className="text-primary hover:text-primary text-sm underline"
               >
                 View Event Timeline →
               </a>

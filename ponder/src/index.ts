@@ -255,19 +255,6 @@ ponder.on(
     const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
     const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
-    // Filter by mech address BEFORE any processing
-    // MechMarketplace emits MarketplaceRequest for ALL mechs, we only want OUR mech's requests
-    const OUR_MECH_ADDRESS = (process.env.MECH_ADDRESS || '').toLowerCase();
-    if (!OUR_MECH_ADDRESS) {
-      logger.error("MECH_ADDRESS not set, cannot filter MarketplaceRequest events");
-      return;
-    }
-    
-    if (mech.toLowerCase() !== OUR_MECH_ADDRESS) {
-      // Silent skip - this is normal (many requests for other mechs)
-      return;
-    }
-
     const repo: Repository = createRepository(db, request, "request");
     const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
     const messageRepo: Repository = createRepository(db, message, "message");
@@ -779,6 +766,15 @@ ponder.on(
               try {
                 // Inherit workstreamId from the request (or default to requestId if root)
                 const workstreamId = existingRequest?.workstreamId || requestId;
+                
+                // LIMITATION: lastStatus reflects the status of the most recent run only.
+                // It does NOT account for undelivered children from previous runs.
+                // Consumers should query child requests directly via sourceJobDefinitionId
+                // to determine true job-level completion status across all runs.
+                //
+                // The worker's inferStatus() already does this correctly by querying live
+                // children before each run, preventing premature COMPLETED transitions.
+                // This field is a convenience snapshot only.
                 
                 await jobDefRepo.upsert({
                   id: deliveryJobDefinitionId,

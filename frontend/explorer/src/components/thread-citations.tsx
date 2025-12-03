@@ -43,13 +43,13 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
           <div className="flex items-center gap-2 mb-1">
             <Link 
               href={`/artifacts/${artifact.id}`}
-              className="text-blue-600 hover:text-blue-800 hover:underline font-medium truncate"
+              className="text-primary hover:text-primary hover:underline font-medium truncate"
             >
               {getTitle()}
             </Link>
             {/* Removed RAW status label */}
           </div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-gray-400">
             {artifact.created_at && (
               <span>Created: {new Date(artifact.created_at).toLocaleDateString()}</span>
             )}

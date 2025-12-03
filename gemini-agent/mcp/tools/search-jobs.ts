@@ -98,6 +98,7 @@ export async function searchJobs(params: SearchJobsParams) {
       truncateChars: 1000, // Reduced since we're including more data
       perFieldMaxChars: 5000,
       pageTokenBudget: 10000, // 10k token budget per page
+      upstreamLimit: 100, // Database limit - prevents false has_more when offset >= database page
       requestedMeta: { cursor, query, include_requests, max_requests_per_job }
     });
 

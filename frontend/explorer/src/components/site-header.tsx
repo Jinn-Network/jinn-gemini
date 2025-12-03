@@ -22,7 +22,7 @@ export function SiteHeader({ title, subtitle, backLink }: SiteHeaderProps) {
         {backLink && (
           <Link 
             href={backLink.href} 
-            className="text-xs text-blue-600 hover:text-blue-800"
+            className="text-xs text-primary hover:text-primary"
           >
             ← {backLink.label}
           </Link>

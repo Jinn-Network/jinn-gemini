@@ -97,7 +97,8 @@ export function createGitFixture(): GitFixture {
     // Clone with token authentication if using HTTPS
     if (token && cloneUrl.startsWith('https://')) {
       const url = new URL(cloneUrl);
-      url.username = token;
+      url.username = 'x-access-token';  // GitHub requires this as username
+      url.password = token;              // Token goes in password field
       cloneUrl = url.toString();
     }
     
@@ -110,7 +111,96 @@ export function createGitFixture(): GitFixture {
     // No need to update remote URL - git already stored it with the token
   } else {
     // Legacy: clone from template
-  execSync(`git clone ${JSON.stringify(TEMPLATE_DIR)} ${JSON.stringify(target)}`, { stdio: 'inherit' });
+    // Use --no-hardlinks to ensure a proper copy, not hardlinks to template
+    execSync(`git clone --no-hardlinks ${JSON.stringify(TEMPLATE_DIR)} ${JSON.stringify(target)}`, { stdio: 'inherit' });
+  }
+
+  // Ensure the cloned repo has main branch checked out (critical for dispatch_new_job)
+  console.log(`\n[git-fixture] 🔍 Debugging git fixture at: ${target}`);
+  
+  try {
+    // Check what we have immediately after clone
+    console.log('[git-fixture] Listing all branches after clone:');
+    const allBranches = execSync('git branch -a', {
+      cwd: target,
+      encoding: 'utf8'
+    });
+    console.log(allBranches);
+    
+    console.log('[git-fixture] Current HEAD:');
+    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: target,
+      encoding: 'utf8'
+    }).trim();
+    console.log(`  Current branch: ${currentBranch}`);
+    
+    console.log('[git-fixture] Checking if main exists locally:');
+    const mainExists = execSync('git rev-parse --verify main 2>/dev/null || echo "no"', {
+      cwd: target,
+      encoding: 'utf8'
+    }).trim();
+    console.log(`  Main exists check result: "${mainExists}"`);
+    
+    if (mainExists === 'no') {
+      console.log('[git-fixture] ⚠️  Main branch does not exist locally');
+      // Main doesn't exist - create it from HEAD if HEAD exists
+      try {
+        const headExists = execSync('git rev-parse HEAD 2>/dev/null || echo "no"', {
+          cwd: target,
+          encoding: 'utf8'
+        }).trim();
+        console.log(`  HEAD exists check: "${headExists}"`);
+        
+        if (headExists !== 'no') {
+          // Create main from HEAD
+          console.log('[git-fixture] Creating main branch from HEAD...');
+          execSync('git checkout -b main', { cwd: target, stdio: 'inherit' });
+          console.log('[git-fixture] ✅ Created and checked out main branch');
+        } else {
+          // No commits at all - create initial commit
+          console.log('[git-fixture] No commits found, creating main with initial commit...');
+          execSync('git checkout -b main', { cwd: target, stdio: 'inherit' });
+          execSync('git commit --allow-empty -m "Initial commit"', { cwd: target, stdio: 'inherit' });
+          console.log('[git-fixture] ✅ Created main branch with initial commit');
+        }
+      } catch (createError) {
+        console.error(`[git-fixture] ❌ Failed to create main branch in ${target}:`, createError);
+      }
+    } else {
+      // Main exists - just check it out if not already on it
+      console.log(`[git-fixture] ✅ Main branch exists (hash: ${mainExists.substring(0, 8)})`);
+      
+      if (currentBranch !== 'main') {
+        console.log(`[git-fixture] Switching from ${currentBranch} to main...`);
+        execSync('git checkout main', { cwd: target, stdio: 'inherit' });
+        console.log('[git-fixture] ✅ Checked out main branch');
+      } else {
+        console.log('[git-fixture] ✅ Already on main branch');
+      }
+    }
+    
+    // Final verification
+    console.log('[git-fixture] Final state verification:');
+    const finalBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: target,
+      encoding: 'utf8'
+    }).trim();
+    const finalHash = execSync('git rev-parse HEAD', {
+      cwd: target,
+      encoding: 'utf8'
+    }).trim();
+    console.log(`  Current branch: ${finalBranch}`);
+    console.log(`  Current commit: ${finalHash.substring(0, 8)}`);
+    
+    const finalMainCheck = execSync('git rev-parse --verify main 2>/dev/null || echo "no"', {
+      cwd: target,
+      encoding: 'utf8'
+    }).trim();
+    console.log(`  Main branch exists: ${finalMainCheck !== 'no' ? '✅ YES' : '❌ NO'}`);
+    console.log('[git-fixture] 🏁 Git fixture setup complete\n');
+    
+  } catch (error) {
+    console.error(`[git-fixture] ❌ Error during main branch setup in ${target}:`, error);
   }
 
   return {

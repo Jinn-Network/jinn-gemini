@@ -1,15 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import Link from 'next/link'
-import ReactMarkdown from 'react-markdown'
-import { RequestsTable } from './requests-table'
-import { RequestsTableSkeleton } from './loading-skeleton'
-import { queryRequests, type Request } from '@/lib/subgraph'
-import { StatusIcon } from '@/components/status-icon'
-import { TruncatedId } from '@/components/truncated-id'
+import { LayoutDashboard, Info, FileCode, Play, FileText } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { JobDefinitionOverview } from './job-definition-sections/overview'
+import { JobDefinitionDetails } from './job-definition-sections/details'
+import { JobDefinitionBlueprintTools } from './job-definition-sections/blueprint-tools'
+import { JobDefinitionJobRuns } from './job-definition-sections/job-runs'
+import { JobDefinitionArtifacts } from './job-definition-sections/artifacts'
 
 interface JobDefinition {
   id: string
@@ -28,252 +25,48 @@ interface JobDefinitionDetailLayoutProps {
 }
 
 export function JobDefinitionDetailLayout({ record }: JobDefinitionDetailLayoutProps) {
-  const [workstreamId, setWorkstreamId] = useState<string | null>(null)
-  const [loadingWorkstream, setLoadingWorkstream] = useState(true)
-  const [jobRuns, setJobRuns] = useState<Request[]>([])
-  const [loadingRuns, setLoadingRuns] = useState(true)
-
-  // Fetch runs and workstream once on mount
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch all runs for this job definition
-        const runsResponse = await queryRequests({
-          where: { jobDefinitionId: record.id },
-          orderBy: 'blockTimestamp',
-          orderDirection: 'desc',
-        })
-        
-        setJobRuns(runsResponse.items)
-        setLoadingRuns(false)
-
-        // Get workstream from first run (all runs in same job definition share same workstream)
-        if (runsResponse.items.length > 0) {
-          const latestRun = runsResponse.items[0]
-          // Use the indexed workstreamId field from Ponder
-          setWorkstreamId(latestRun.workstreamId || latestRun.id)
-        }
-      } catch (error) {
-        console.error('Error fetching job runs:', error)
-        setLoadingRuns(false)
-      } finally {
-        setLoadingWorkstream(false)
-      }
-    }
-
-    fetchData()
-  }, [record.id])
-
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      {/* Main Content Area - 8/12 columns */}
-      <div className="lg:col-span-8 space-y-6">
-        {/* Blueprint Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Blueprint</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Blueprint Content */}
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Blueprint</div>
-              {record.blueprint || record.promptContent ? (
-                (() => {
-                  const blueprintContent = record.blueprint || record.promptContent || ''
-                  
-                  // Try to parse as JSON to check if it's structured
-                  try {
-                    const parsed = JSON.parse(blueprintContent)
-                    
-                    // If it has assertions, render them nicely
-                    if (parsed.assertions && Array.isArray(parsed.assertions)) {
-                      return (
-                        <div className="space-y-4">
-                          {parsed.assertions.map((assertion: {
-                            id: string
-                            assertion?: string
-                            description?: string
-                            commentary?: string
-                            examples?: { do?: string[]; dont?: string[] }
-                          }, idx: number) => (
-                            <div key={assertion.id || idx} className="bg-gray-50 p-4 rounded border">
-                              <div className="font-medium text-sm mb-2">{assertion.id}</div>
-                              {assertion.assertion && (
-                                <p className="text-sm text-gray-700 mb-3">{assertion.assertion}</p>
-                              )}
-                              {assertion.description && (
-                                <p className="text-sm text-gray-700 mb-3">{assertion.description}</p>
-                              )}
-                              {assertion.examples && (
-                                <div className="space-y-2 text-xs">
-                                  {assertion.examples.do && assertion.examples.do.length > 0 && (
-                                    <div>
-                                      <div className="font-medium text-green-700 mb-1">✓ Do:</div>
-                                      <ul className="list-disc list-inside text-gray-600 space-y-0.5">
-                                        {assertion.examples.do.map((item, i) => (
-                                          <li key={i}>{item}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                  {assertion.examples.dont && assertion.examples.dont.length > 0 && (
-                                    <div>
-                                      <div className="font-medium text-red-700 mb-1">✗ Don&apos;t:</div>
-                                      <ul className="list-disc list-inside text-gray-600 space-y-0.5">
-                                        {assertion.examples.dont.map((item, i) => (
-                                          <li key={i}>{item}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {assertion.commentary && (
-                                <div className="mt-3 pt-3 border-t border-gray-200">
-                                  <p className="text-xs text-gray-600 italic">{assertion.commentary}</p>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    }
-                    
-                    // Otherwise render as markdown
-                    return (
-                      <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
-                        <ReactMarkdown>{typeof blueprintContent === 'string' ? blueprintContent : JSON.stringify(parsed, null, 2)}</ReactMarkdown>
-                      </div>
-                    )
-                  } catch {
-                    // If not JSON, render as markdown
-                    return (
-                      <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
-                        <ReactMarkdown>{blueprintContent}</ReactMarkdown>
-                      </div>
-                    )
-                  }
-                })()
-              ) : (
-                <div className="text-gray-500">[No blueprint content available]</div>
-              )}
-            </div>
+    <div className="h-full overflow-auto p-4">
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="mb-2 border">
+          <TabsTrigger value="overview" className="gap-2">
+            <LayoutDashboard className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="details" className="gap-2">
+            <Info className="h-4 w-4" />
+            Details
+          </TabsTrigger>
+          <TabsTrigger value="blueprint" className="gap-2">
+            <FileCode className="h-4 w-4" />
+            Blueprint & Tools
+          </TabsTrigger>
+          <TabsTrigger value="runs" className="gap-2">
+            <Play className="h-4 w-4" />
+            Job Runs
+          </TabsTrigger>
+          <TabsTrigger value="artifacts" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Artifacts
+          </TabsTrigger>
+        </TabsList>
 
-            {/* Enabled Tools */}
-            {record.enabledTools && record.enabledTools.length > 0 && (
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">Enabled Tools</div>
-                <div className="flex flex-wrap gap-2">
-                  {record.enabledTools.map((tool, index) => (
-                    <Badge key={index} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                      {tool}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Runs Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Runs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingRuns ? (
-              <RequestsTableSkeleton />
-            ) : jobRuns.length > 0 ? (
-              <RequestsTable records={jobRuns} />
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                No runs found for this job definition
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Sidebar - 4/12 columns */}
-      <div className="lg:col-span-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Info</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Job Definition ID */}
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-1">ID</div>
-                <div className="text-sm text-gray-600 font-mono break-all">
-                  {record.id}
-                </div>
-              </div>
-
-              {/* Status */}
-              {record.lastStatus && (
-                <div>
-                  <div className="text-sm font-medium text-gray-700 mb-1">Status</div>
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-                    record.lastStatus === 'COMPLETED'
-                      ? 'bg-green-100 text-green-800'
-                      : record.lastStatus === 'FAILED'
-                      ? 'bg-red-100 text-red-800'
-                      : record.lastStatus === 'DELEGATING'
-                      ? 'bg-blue-100 text-blue-800'
-                      : record.lastStatus === 'WAITING'
-                      ? 'bg-purple-100 text-purple-800'
-                      : record.lastStatus === 'PENDING'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    <StatusIcon status={record.lastStatus} size={14} />
-                    {record.lastStatus}
-                  </span>
-                </div>
-              )}
-
-              {/* Workstream Link */}
-              {loadingWorkstream ? (
-                <div>
-                  <div className="text-sm font-medium text-gray-700 mb-1">Workstream</div>
-                  <div className="text-sm text-gray-500">Loading...</div>
-                </div>
-              ) : workstreamId ? (
-                <div>
-                  <div className="text-sm font-medium text-gray-700 mb-1">Workstream</div>
-                  <TruncatedId 
-                    value={workstreamId}
-                    linkTo={`/workstreams/${workstreamId}`}
-                  />
-                </div>
-              ) : null}
-
-              {/* Source Job Definition */}
-              {record.sourceJobDefinitionId && (
-                <div>
-                  <div className="text-sm font-medium text-gray-700 mb-1">Source Job Definition</div>
-                  <TruncatedId 
-                    value={record.sourceJobDefinitionId}
-                    linkTo={`/jobDefinitions/${record.sourceJobDefinitionId}`}
-                  />
-                </div>
-              )}
-
-              {/* Source Request */}
-              {record.sourceRequestId && (
-                <div>
-                  <div className="text-sm font-medium text-gray-700 mb-1">Source Job Execution</div>
-                  <TruncatedId 
-                    value={record.sourceRequestId}
-                    linkTo={`/requests/${record.sourceRequestId}`}
-                  />
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="overview" className="mt-0">
+          <JobDefinitionOverview jobDefinition={record} />
+        </TabsContent>
+        <TabsContent value="details" className="mt-0">
+          <JobDefinitionDetails jobDefinition={record} />
+        </TabsContent>
+        <TabsContent value="blueprint" className="mt-0">
+          <JobDefinitionBlueprintTools jobDefinition={record} />
+        </TabsContent>
+        <TabsContent value="runs" className="mt-0">
+          <JobDefinitionJobRuns jobDefinition={record} />
+        </TabsContent>
+        <TabsContent value="artifacts" className="mt-0">
+          <JobDefinitionArtifacts jobDefinition={record} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

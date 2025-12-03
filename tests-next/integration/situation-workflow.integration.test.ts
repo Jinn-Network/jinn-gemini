@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { resetConfigForTests } from '../../config/index.js';
 import { formatRecognitionMarkdown, normalizeLearnings } from '../../worker/recognition_helpers.js';
 
@@ -40,13 +41,14 @@ beforeEach(async () => {
   process.env.NODE_EMBEDDINGS_DB_URL = 'postgres://local-test';
 
   vi.doMock('pg', () => {
-    class FakeClient {
+    class FakeClient extends EventEmitter {
       async connect() {}
       async query(sql: string, params: unknown[] = []) {
         if (sql.includes('COUNT(*)')) {
           return { rows: [{ count: dbRows.length }] };
         }
-        if (!sql.includes('SELECT node_id')) {
+        // Handle both simple and subquery patterns
+        if (!sql.includes('node_id')) {
           throw new Error(`Unexpected SQL executed in test: ${sql}`);
         }
         const vectorLiteral = typeof params[0] === 'string' ? params[0] : String(params[0] ?? '[]');
@@ -80,14 +82,19 @@ beforeEach(async () => {
   });
 
   vi.doMock('../../gemini-agent/mcp/tools/embed_text.js', () => ({
-    embedText: embedMock.mockImplementation(async () => ({
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({ data: { model: 'test', dim: 3, vector: [1, 0, 0] }, meta: { ok: true } }),
-        },
-      ],
-    })),
+    embedText: embedMock.mockImplementation(async () => {
+      // Generate a 256-dimensional vector to match search_similar_situations expectations
+      const vector = Array(256).fill(0);
+      vector[0] = 1; // Set first component to 1 for test
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ data: { model: 'test', dim: 256, vector }, meta: { ok: true } }),
+          },
+        ],
+      };
+    }),
   }));
 
   vi.doMock('../../gemini-agent/mcp/tools/create_artifact.js', () => ({
@@ -188,6 +195,12 @@ describe('situation workflow integration', () => {
 
     const response = await searchSimilarSituations({ query_text: 'staking reward investigation', k: 1 });
     const parsed = JSON.parse(response.content[0].text);
+    
+    // Debug output if test fails
+    if (!parsed.meta.ok) {
+      console.error('[Test Debug] Search failed:', parsed.meta);
+    }
+    
     expect(parsed.meta.ok).toBe(true);
     expect(parsed.data).toHaveLength(1);
     expect(parsed.data[0].nodeId).toBe('0xaaa');
@@ -260,6 +273,14 @@ describe('situation workflow integration', () => {
 
     const response = await searchSimilarSituations({ query_text: 'rpc retry strategy', k: 1 });
     const parsed = JSON.parse(response.content[0].text);
+    
+    // Debug output if test fails
+    if (!parsed.meta.ok || !parsed.data || parsed.data.length === 0) {
+      console.error('[Test Debug] Search failed or no data:', parsed);
+    }
+    
+    expect(parsed.data).toBeDefined();
+    expect(parsed.data.length).toBeGreaterThan(0);
     expect(parsed.data[0].nodeId).toBe('0xbbb');
     expect(parsed.data[0].meta.recognition.markdown).toContain('Recognition Learnings');
   });

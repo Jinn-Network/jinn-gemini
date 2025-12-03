@@ -136,7 +136,7 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-gray-400">
               No memory data available for this request.
             </div>
             <div className="text-xs text-gray-500">
@@ -164,7 +164,7 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
                   {data.recognition.similarSituations.map((situation, index) => (
                     <div key={index} className="border rounded p-3 bg-gray-50">
                       <div className="flex justify-between items-start mb-1">
-                        <span className="text-sm font-medium text-blue-600">
+                        <span className="text-sm font-medium text-primary">
                           {situation.jobName || situation.requestId.slice(0, 10)}
                         </span>
                         <span className="text-xs text-gray-500">
@@ -172,7 +172,7 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
                         </span>
                       </div>
                       {situation.summary && (
-                        <p className="text-xs text-gray-600 mt-1">{situation.summary}</p>
+                        <p className="text-xs text-gray-400 mt-1">{situation.summary}</p>
                       )}
                     </div>
                   ))}
@@ -183,7 +183,7 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
             {data.recognition.learnings && (
               <div>
                 <h3 className="text-sm font-semibold mb-2">Synthesized Learnings</h3>
-                <div className="text-sm text-gray-700 bg-blue-50 p-3 rounded border border-blue-200 whitespace-pre-wrap">
+                <div className="text-sm text-gray-400 bg-primary/10 p-3 rounded border border-primary/30 whitespace-pre-wrap">
                   {data.recognition.learnings}
                 </div>
               </div>
@@ -222,10 +222,10 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {data.situation.execution.trace.slice(0, 5).map((step, index) => (
                     <div key={index} className="border-l-2 border-gray-300 pl-3 text-xs">
-                      <div className="font-medium text-gray-700">
+                      <div className="font-medium text-gray-400">
                         Step {index + 1}: {step.tool}
                       </div>
-                      <div className="text-gray-600 mt-1">
+                      <div className="text-gray-400 mt-1">
                         {step.result_summary.slice(0, 150)}
                         {step.result_summary.length > 150 ? '...' : ''}
                       </div>
@@ -243,7 +243,7 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
             {data.situation.execution.finalOutputSummary && (
               <div>
                 <h3 className="text-sm font-semibold mb-2">Final Output Summary</h3>
-                <div className="text-sm text-gray-700 bg-green-50 p-3 rounded border border-green-200 max-h-48 overflow-y-auto">
+                <div className="text-sm text-gray-400 bg-green-50 p-3 rounded border border-green-200 max-h-48 overflow-y-auto">
                   {data.situation.execution.finalOutputSummary.slice(0, 600)}
                   {data.situation.execution.finalOutputSummary.length > 600 ? '...' : ''}
                 </div>

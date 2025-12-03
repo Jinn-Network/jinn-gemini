@@ -94,7 +94,7 @@ function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fiel
             <div className="space-y-4">
               {metadataFields.map(([key, value]) => (
                 <div key={key} className="border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
-                  <div className="text-sm font-medium text-gray-700 mb-1">
+                  <div className="text-sm font-medium text-gray-400 mb-1">
                     {getFieldLabel(key, 'artifacts')}
                   </div>
                   <div className="text-sm break-words overflow-hidden">
@@ -296,17 +296,17 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
 
       {/* Telemetry Field - rendered as inline badges */}
       <div data-field="telemetry" className="flex flex-wrap gap-3">
-        <span className="inline-flex items-center px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-sm">
-          <span className="text-gray-600">Tokens:</span>
+        <span className="inline-flex items-center px-3 py-1 rounded-md bg-primary/10 border border-primary/30 text-sm">
+          <span className="text-gray-400">Tokens:</span>
           <strong className="ml-1 text-gray-900">{telemetry.totalTokens?.toLocaleString() || 0}</strong>
         </span>
         <span className="inline-flex items-center px-3 py-1 rounded-md bg-green-50 border border-green-200 text-sm">
-          <span className="text-gray-600">Duration:</span>
+          <span className="text-gray-400">Duration:</span>
           <strong className="ml-1 text-gray-900">{durationSec}s</strong>
         </span>
         {(typeof raw?.model === 'string') && (
           <span className="inline-flex items-center px-3 py-1 rounded-md bg-purple-50 border border-purple-200 text-sm">
-            <span className="text-gray-600">Model:</span>
+            <span className="text-gray-400">Model:</span>
             <strong className="ml-1 text-gray-900">{raw.model}</strong>
           </span>
         )}
@@ -362,13 +362,13 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
                 </div>
                 {jobDefinitionId && (
                   <div className="text-xs">
-                    <span className="text-gray-600">Job Definition: </span>
+                    <span className="text-gray-400">Job Definition: </span>
                     <IdLink id={jobDefinitionId} collection="jobDefinitions" showFullId={false} />
                   </div>
                 )}
                 {requestIds.length > 0 && (
                   <div className="text-xs">
-                    <span className="text-gray-600">Job Execution: </span>
+                    <span className="text-gray-400">Job Execution: </span>
                     <IdLink id={requestIds[0]} collection="requests" showFullId={false} />
                   </div>
                 )}
@@ -378,7 +378,7 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
                       href={(result.transaction_url as string) || `https://basescan.org/tx/${txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 underline"
+                      className="text-primary hover:text-primary underline"
                     >
                       View Transaction
                     </a>
@@ -393,7 +393,7 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
       {/* Raw JSON Field - always present but collapsed */}
       <div data-field="rawJson">
         <details className="text-xs">
-          <summary className="cursor-pointer text-gray-600 hover:text-gray-900">View Raw JSON</summary>
+          <summary className="cursor-pointer text-gray-400 hover:text-gray-900">View Raw JSON</summary>
           <pre className="mt-2 p-3 bg-muted rounded border overflow-auto max-h-96">
             {JSON.stringify(parsed, null, 2)}
           </pre>
@@ -446,7 +446,7 @@ function RequestContentDisplay({ cid }: { cid: string }) {
 
       {/* Raw JSON Toggle for debugging */}
       <details className="text-xs">
-        <summary className="cursor-pointer text-gray-600 hover:text-gray-900">View Raw JSON</summary>
+        <summary className="cursor-pointer text-gray-400 hover:text-gray-900">View Raw JSON</summary>
         <pre className="mt-2 p-3 bg-muted rounded border overflow-auto max-h-96">
           {JSON.stringify(parsed, null, 2)}
         </pre>
@@ -494,7 +494,7 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
     // Handle Ethereum addresses
     if ((fieldName === 'mech' || fieldName === 'sender' || fieldName === 'mechServiceMultisig') && value.startsWith('0x')) {
       return (
-        <div className="font-mono text-sm break-all text-gray-700">
+        <div className="font-mono text-sm break-all text-gray-400">
           {value}
         </div>
       )
@@ -503,7 +503,7 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
     // Handle transaction hashes
     if (fieldName === 'transactionHash' && value.startsWith('0x')) {
       return (
-        <div className="font-mono text-sm break-all text-gray-700">
+        <div className="font-mono text-sm break-all text-gray-400">
           {value}
         </div>
       )
@@ -536,12 +536,12 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
     if (fieldName === 'cid') {
       return (
         <div className="space-y-1">
-          <div className="font-mono text-sm text-gray-700" title={value}>{value.slice(0, 20)}...{value.slice(-8)}</div>
+          <div className="font-mono text-sm text-gray-400" title={value}>{value.slice(0, 20)}...{value.slice(-8)}</div>
           <a
             href={`https://gateway.autonolas.tech/ipfs/${value}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 underline text-xs inline-block"
+            className="text-primary hover:text-primary underline text-xs inline-block"
           >
             View on Gateway
           </a>

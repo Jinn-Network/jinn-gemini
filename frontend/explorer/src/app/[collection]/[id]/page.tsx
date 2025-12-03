@@ -99,7 +99,7 @@ export default async function RecordPage({ params }: RecordPageProps) {
           }}
         />
         <div className="p-4 md:p-6">
-          <p className="text-gray-600">
+          <p className="text-gray-400">
             Unable to fetch record {decodedId} from the {resolvedParams.collection} collection. 
             Please check the subgraph connection and try again.
           </p>

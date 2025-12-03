@@ -32,7 +32,7 @@ export function getStatusIconConfig(status: string): {
     case 'DELEGATING':
       return {
         Icon: ArrowRight,
-        colorClass: 'text-blue-600'
+        colorClass: 'text-primary'
       }
     case 'WAITING':
       return {
@@ -47,7 +47,7 @@ export function getStatusIconConfig(status: string): {
     default:
       return {
         Icon: AlertCircle,
-        colorClass: 'text-gray-600'
+        colorClass: 'text-gray-400'
       }
   }
 }

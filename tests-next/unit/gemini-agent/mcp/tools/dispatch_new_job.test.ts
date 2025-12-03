@@ -80,6 +80,9 @@ describe('dispatchNewJob', () => {
     console.error = vi.fn();
     console.warn = vi.fn();
 
+    // Set CODE_METADATA_REPO_ROOT so branch creation is enabled
+    process.env.CODE_METADATA_REPO_ROOT = '/tmp/test-repo';
+
     // Default mock implementations
     (getCurrentJobContext as any).mockReturnValue({
       requestId: '0xParent123',
@@ -98,6 +101,10 @@ describe('dispatchNewJob', () => {
       if (query.includes('jobDefinitions')) {
         return { jobDefinitions: { items: [] } };
       }
+      if (query.includes('jobDefinition(id:')) {
+        // Return null for jobDefinition queries (job doesn't exist yet)
+        return { jobDefinition: null };
+      }
       if (query.includes('request(id:')) {
         return { request: { ipfsHash: 'QmTestIpfsHash' } };
       }
@@ -112,6 +119,7 @@ describe('dispatchNewJob', () => {
   afterEach(() => {
     console.error = originalError;
     console.warn = originalWarn;
+    delete process.env.CODE_METADATA_REPO_ROOT;
   });
 
   describe('validation', () => {
@@ -176,12 +184,17 @@ describe('dispatchNewJob', () => {
         model: 'gemini-2.5-pro',
         enabledTools: ['read_file', 'write_file'],
         message: 'Please start working on this',
-        dependencies: ['job-def-uuid-1', 'job-def-uuid-2'],
+        dependencies: ['4eac1570-7980-4e2b-afc7-3f5159e99ea5', 'b2c3d4e5-6789-4abc-def0-123456789abc'],
         skipBranch: false,
       };
 
       const result = await dispatchNewJob(args);
       const response = JSON.parse(result.content[0].text);
+
+      // Debug: Log response if failed
+      if (!response.meta.ok) {
+        console.log('Dispatch failed:', response.meta);
+      }
 
       expect(response.meta.ok).toBe(true);
       expect(marketplaceInteract).toHaveBeenCalled();
@@ -273,13 +286,13 @@ describe('dispatchNewJob', () => {
       const args = {
         jobName: 'test-job',
         blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
-        dependencies: ['job-def-uuid-1', 'job-def-uuid-2'],
+        dependencies: ['4eac1570-7980-4e2b-afc7-3f5159e99ea5', 'b2c3d4e5-6789-4abc-def0-123456789abc'],
       };
 
       await dispatchNewJob(args);
 
       const call = (marketplaceInteract as any).mock.calls[0][0];
-      expect(call.ipfsJsonContents[0].dependencies).toEqual(['job-def-uuid-1', 'job-def-uuid-2']);
+      expect(call.ipfsJsonContents[0].dependencies).toEqual(['4eac1570-7980-4e2b-afc7-3f5159e99ea5', 'b2c3d4e5-6789-4abc-def0-123456789abc']);
     });
 
     it('omits dependencies when empty array provided', async () => {

@@ -1,29 +1,38 @@
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 export function DataTableSkeleton() {
   return (
-    <div className="rounded-md border">
-      <div className="p-4">
-        {/* Header skeleton */}
-        <div className="flex space-x-4 mb-4">
-          <Skeleton className="h-4 w-20" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-28" />
-        </div>
-        
-        {/* Row skeletons */}
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="flex space-x-4 mb-3">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-4 w-28" />
-          </div>
-        ))}
-      </div>
+    <div className="rounded-md border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead><Skeleton className="h-4 w-20" /></TableHead>
+            <TableHead><Skeleton className="h-4 w-24" /></TableHead>
+            <TableHead><Skeleton className="h-4 w-32" /></TableHead>
+            <TableHead><Skeleton className="h-4 w-16" /></TableHead>
+            <TableHead><Skeleton className="h-4 w-28" /></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <TableRow key={i}>
+              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }
@@ -85,125 +94,125 @@ export function RecordListSkeleton() {
 
 export function RequestsTableSkeleton() {
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-lg">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Name</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Status</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Workstream</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Mech</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Sender</th>
-            <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700">Timestamp</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="rounded-md border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Job Name</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Workstream</TableHead>
+            <TableHead>Mech</TableHead>
+            <TableHead>Sender</TableHead>
+            <TableHead className="text-right">Timestamp</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {Array.from({ length: 10 }).map((_, i) => (
-            <tr key={i} className="border-b border-gray-100">
-              <td className="px-4 py-3">
+            <TableRow key={i}>
+              <TableCell>
                 <Skeleton className="h-4 w-48" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-6 w-20" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-24" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-20" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-20" />
-              </td>
-              <td className="px-4 py-3 text-right">
+              </TableCell>
+              <TableCell className="text-right">
                 <Skeleton className="h-4 w-32 ml-auto" />
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }
 
 export function ArtifactsTableSkeleton() {
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-lg">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Name</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Preview</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Timestamp</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">CID</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Topic</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Request</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="rounded-md border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Preview</TableHead>
+            <TableHead>Timestamp</TableHead>
+            <TableHead>CID</TableHead>
+            <TableHead>Topic</TableHead>
+            <TableHead>Request</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {Array.from({ length: 10 }).map((_, i) => (
-            <tr key={i} className="border-b border-gray-100">
-              <td className="px-4 py-3">
+            <TableRow key={i}>
+              <TableCell>
                 <Skeleton className="h-4 w-40" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-64" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-32" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-28" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-32" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-24" />
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }
 
 export function JobDefinitionsTableSkeleton() {
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-lg">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Name</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Description</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Created</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Source Job</th>
-            <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700">ID</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="rounded-md border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Description</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead>Source Job</TableHead>
+            <TableHead className="text-right">ID</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {Array.from({ length: 10 }).map((_, i) => (
-            <tr key={i} className="border-b border-gray-100">
-              <td className="px-4 py-3">
+            <TableRow key={i}>
+              <TableCell>
                 <Skeleton className="h-4 w-48" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-64" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-32" />
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-24" />
-              </td>
-              <td className="px-4 py-3 text-right">
+              </TableCell>
+              <TableCell className="text-right">
                 <Skeleton className="h-4 w-24 ml-auto" />
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

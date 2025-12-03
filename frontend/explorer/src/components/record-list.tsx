@@ -5,6 +5,7 @@ import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { IdLink } from '@/components/id-link'
 import { formatDate } from '@/lib/utils'
 import { StatusIcon } from '@/components/status-icon'
+import { Badge } from '@/components/ui/badge'
 
 interface RecordListProps {
   records: SubgraphRecord[]
@@ -46,7 +47,7 @@ function getStatusDisplay(record: SubgraphRecord): { status: string; className: 
       : lastStatus === 'FAILED'
       ? 'bg-red-100 text-red-800 border-red-200'
       : lastStatus === 'DELEGATING'
-      ? 'bg-blue-100 text-blue-800 border-blue-200'
+      ? 'bg-primary/20 text-primary border-primary/30'
       : lastStatus === 'WAITING'
       ? 'bg-purple-100 text-purple-800 border-purple-200'
       : lastStatus === 'PENDING'
@@ -185,21 +186,28 @@ export function RecordList({ records, collectionName }: RecordListProps) {
                 <div className="flex items-center gap-3 mb-2">
                   <Link 
                     href={`/${collectionName}/${record.id}`}
-                    className="text-blue-600 hover:text-blue-800 hover:underline font-medium truncate"
+                    className="text-primary hover:text-primary hover:underline font-medium truncate"
                   >
                     {primaryId}
                   </Link>
                   
                   {statusDisplay && (
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border ${statusDisplay.className}`}>
+                    <Badge 
+                      variant={
+                        statusDisplay.status === 'COMPLETED' || statusDisplay.status === 'DELIVERED' ? 'default' :
+                        statusDisplay.status === 'FAILED' ? 'destructive' :
+                        'secondary'
+                      }
+                      className="gap-1.5"
+                    >
                       {statusDisplay.showIcon && <StatusIcon status={statusDisplay.status} size={14} />}
                       {statusDisplay.status}
-                    </span>
+                    </Badge>
                   )}
                 </div>
                 
                 {secondaryInfo.length > 0 && (
-                  <div className="text-sm text-gray-600 space-y-1">
+                  <div className="text-sm text-gray-400 space-y-1">
                     {secondaryInfo.map((info, index) => (
                       <div key={index}>{info}</div>
                     ))}

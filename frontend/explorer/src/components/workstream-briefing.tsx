@@ -150,11 +150,11 @@ export function WorkstreamBriefing({ rootRequestId, initialBriefing }: Workstrea
 
   if (!content) {
     return (
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-        <p className="text-sm text-blue-800 font-medium mb-2">
+      <div className="p-4 bg-primary/10 border border-primary/30 rounded-md">
+        <p className="text-sm text-primary font-medium mb-2">
           No launcher briefing available yet
         </p>
-        <p className="text-xs text-blue-600">
+        <p className="text-xs text-primary">
           The launcher briefing will appear after the root job completes its first execution and delivers results.
           This workstream may still be initializing or waiting to run.
         </p>

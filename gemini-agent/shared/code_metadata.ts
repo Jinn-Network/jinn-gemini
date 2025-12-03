@@ -212,6 +212,20 @@ async function createBranchLocal(branchName: string, baseBranch: string): Promis
     } else {
       debugLog(`Using existing parent branch ${baseBranch} as base`);
     }
+  } else {
+    // For non-job branches (e.g., main, master), verify they exist
+    const branchRefExists = await runGit(['rev-parse', '--verify', baseBranch]);
+    
+    if (!branchRefExists) {
+      throw new Error(
+        `Cannot create branch ${branchName}: base branch '${baseBranch}' does not exist.\n\n` +
+        `💡 This repository needs a '${baseBranch}' branch to branch from.\n` +
+        `   Please create it with:\n` +
+        `   git checkout -b ${baseBranch}\n` +
+        `   git commit --allow-empty -m "Initial commit"\n` +
+        `   git push -u origin ${baseBranch}\n`
+      );
+    }
   }
 
   await runGit(['branch', branchName, baseRef], { throwOnError: true });

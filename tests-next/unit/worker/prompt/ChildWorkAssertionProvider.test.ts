@@ -212,12 +212,17 @@ describe('ChildWorkAssertionProvider', () => {
 
       const assertions = await provider.provide(ctx, builtContext);
 
-      // Only 1 completed child + summary = 2 assertions
-      expect(assertions).toHaveLength(2);
+      // Summary + failed children + completed child = 3 assertions
+      // Order: unshift places summary first, then failed, then completed
+      expect(assertions).toHaveLength(3);
+      // First assertion: Summary (added via unshift)
       expect(assertions[0].assertion).toContain('1 completed child job');
-      expect(assertions[1].assertion).toContain('completed');
-      expect(assertions[1].assertion).not.toContain('active');
-      expect(assertions[1].assertion).not.toContain('failed');
+      // Second assertion: Failed children assertion (highest priority after summary)
+      expect(assertions[1].assertion).toContain('CRITICAL');
+      expect(assertions[1].assertion).toContain('failed');
+      // Third assertion: Individual completed child
+      expect(assertions[2].assertion).toContain('completed');
+      expect(assertions[2].assertion).not.toContain('active');
     });
   });
 });

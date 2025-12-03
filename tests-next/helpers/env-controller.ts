@@ -8,8 +8,8 @@ const REQUIRED_SECRETS = [
   'TENDERLY_ACCESS_KEY',
   'TENDERLY_ACCOUNT_SLUG',
   'TENDERLY_PROJECT_SLUG',
-  'TEST_GITHUB_REPO',
-  'GITHUB_TOKEN',
+  // 'TEST_GITHUB_REPO',  // Optional: uses local template if not set
+  // 'GITHUB_TOKEN',      // Optional: only needed for remote repo
 ];
 
 export interface TestEnvOverrides {
@@ -29,6 +29,12 @@ export interface EnvSnapshot {
 
 let bootstrapped = false;
 let cachedSnapshot: EnvSnapshot | null = null;
+
+// Exported for testing purposes only
+export function resetBootstrap() {
+  bootstrapped = false;
+  cachedSnapshot = null;
+}
 
 function resolveOperateFixture(): string {
   const fixturePath = path.resolve(process.cwd(), 'tests-next/fixtures/operate-profile');

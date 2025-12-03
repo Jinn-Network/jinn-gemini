@@ -105,17 +105,27 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
   it('blocks claim when requestId not found in Ponder', async () => {
     await withSuiteEnv(async () => {
       await withTestEnv(async () => {
-        await withProcessHarness(
-          {
-            rpcUrl: 'http://127.0.0.1:8545', // Mock RPC (no VNet needed, empty Ponder)
-            startWorker: false
-          },
-          async (ctx) => {
+        // Use Tenderly VNet even though we don't dispatch - avoids Ponder startup timeout
+        // The test just needs Ponder to be empty (no requests), which it will be
+        await withTenderlyVNet(async (tenderly) => {
+          await withProcessHarness(
+            {
+              rpcUrl: tenderly.rpcUrl,
+              startWorker: false
+            },
+            async (ctx) => {
+          console.log('[Test 1] Starting test: blocks claim when requestId not found');
+          console.log('[Test 1] Ponder GQL URL:', ctx.gqlUrl);
+          console.log('[Test 1] Control API URL:', ctx.controlUrl);
+          
           // 1. Wait for Ponder to be ready (but empty - no requests seeded)
-          await waitForPonderReady(ctx.gqlUrl);
+          console.log('[Test 1] Waiting for Ponder to be ready...');
+          await waitForPonderReady(ctx.gqlUrl, { timeoutMs: 10000 });
+          console.log('[Test 1] ✅ Ponder is ready');
 
           // 2. Attempt to claim a request that doesn't exist in Ponder
           const invalidRequestId = `0x${randomUUID().replace(/-/g, '')}`;
+          console.log('[Test 1] Attempting to claim invalid request:', invalidRequestId);
 
           const result = await callControlApi(
             ctx.controlUrl,
@@ -129,6 +139,7 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
               }
             `
           );
+          console.log('[Test 1] Control API response:', JSON.stringify(result, null, 2));
 
           // 3. Assert: Control API returned error
           expect(result.errors).toBeDefined();
@@ -136,6 +147,7 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
           // Control API returns generic "Unexpected error." for validation failures
           // The actual validation error is logged but not exposed to client
           expect(result.errors[0].message).toBeDefined();
+          console.log('[Test 1] ✅ Control API correctly blocked invalid request');
 
           // 4. Assert: NO write occurred in Supabase
           const supabase = getSupabaseClient();
@@ -145,11 +157,13 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
             .eq('request_id', invalidRequestId);
 
           expect(claims).toHaveLength(0); // Critical: No database pollution!
-          }
-        );
+          console.log('[Test 1] ✅ No database pollution - test passed!');
+            }
+          );
+        });
       });
     });
-  }, 60000); // 60s timeout for Ponder startup
+  }, 30000); // 30s timeout (reduced from 60s for faster feedback)
 
   /**
    * Test 2: Control API ALLOWS writes when requestId exists in Ponder
@@ -380,6 +394,225 @@ describe.sequential('Control API: Validation Gateway Integration', () => {
             console.log('[Test 4] Verified: Lineage fields injected correctly!');
             console.log(`  - request_id: ${claim.request_id}`);
             console.log(`  - worker_address: ${claim.worker_address}`);
+            }
+          );
+        });
+      });
+    });
+  }, 240000); // 240s timeout
+
+  /**
+   * Test 5: Control API allows re-claiming stale jobs (>5 minutes old)
+   *
+   * Validates that jobs stuck IN_PROGRESS for >5 minutes can be reclaimed by another worker.
+   * Tests fix for JINN-xxx: Stale claim detection and re-claiming.
+   */
+  it('allows re-claiming stale jobs (IN_PROGRESS >5 minutes)', async () => {
+    await withSuiteEnv(async () => {
+      await withTestEnv(async () => {
+        await withTenderlyVNet(async (tenderly) => {
+          await withProcessHarness(
+            {
+              rpcUrl: tenderly.rpcUrl,
+              startWorker: false
+            },
+            async (ctx) => {
+            // 1. Wait for Ponder to be ready
+            await waitForPonderReady(ctx.gqlUrl, { timeoutMs: 60000 });
+
+            // 2. Create a real test job via MCP
+            const { requestId, jobDefId } = await createTestJob({
+              blueprint: JSON.stringify({
+                assertions: [{
+                  id: 'TEST-004',
+                  assertion: 'Test Control API allows re-claiming stale jobs',
+                  examples: { do: ['Test stale detection'], dont: ['Block re-claims'] },
+                  commentary: 'Integration test for stale claim handling - Jobs stuck >5 minutes can be reclaimed'
+                }]
+              })
+            });
+
+            console.log(`[Test 5] Created test job: ${jobDefId}, request: ${requestId}`);
+
+            // 3. Wait for Ponder to index the request
+            await waitForRequestIndexed(ctx.gqlUrl, requestId, { timeoutMs: 45000 });
+
+            const supabase = getSupabaseClient();
+
+            // 4. Manually insert a stale claim (>5 minutes old, IN_PROGRESS)
+            const STALE_WORKER = '0x9999999999999999999999999999999999999999';
+            const FIVE_MINUTES_AGO = new Date(Date.now() - 5.5 * 60 * 1000).toISOString(); // 5.5 minutes ago
+
+            const { error: insertError } = await supabase
+              .from('onchain_request_claims')
+              .upsert({
+                request_id: requestId,
+                worker_address: STALE_WORKER,
+                status: 'IN_PROGRESS',
+                claimed_at: FIVE_MINUTES_AGO,
+                completed_at: null
+              }, { onConflict: 'request_id' });
+
+            expect(insertError).toBeNull();
+            console.log('[Test 5] Inserted stale claim (>5 min old)');
+
+            // 5. Verify stale claim exists
+            const { data: beforeClaim } = await supabase
+              .from('onchain_request_claims')
+              .select('*')
+              .eq('request_id', requestId)
+              .single();
+
+            expect(beforeClaim).toBeTruthy();
+            expect(beforeClaim!.worker_address).toBe(STALE_WORKER);
+            expect(beforeClaim!.status).toBe('IN_PROGRESS');
+            console.log(`[Test 5] Confirmed stale claim: worker=${STALE_WORKER}, age=${Math.floor((Date.now() - new Date(beforeClaim!.claimed_at).getTime()) / 60000)} minutes`);
+
+            // 6. Attempt to claim with NEW worker (should succeed for stale claims)
+            const NEW_WORKER = '0x8888888888888888888888888888888888888888';
+            const result = await callControlApi(
+              ctx.controlUrl,
+              `
+                mutation {
+                  claimRequest(requestId: "${requestId}") {
+                    request_id
+                    worker_address
+                    status
+                    claimed_at
+                  }
+                }
+              `,
+              NEW_WORKER
+            );
+
+            // 7. Assert: Control API accepted re-claim (no "already claimed" error)
+            expect(result.errors).toBeUndefined();
+            expect(result.data?.claimRequest).toBeDefined();
+            expect(result.data.claimRequest.request_id).toBe(requestId);
+            expect(result.data.claimRequest.worker_address).toBe(NEW_WORKER);
+            console.log('[Test 5] Re-claim succeeded!');
+
+            // 8. Assert: Supabase record updated with new worker and fresh claimed_at
+            const { data: afterClaim, error: fetchError } = await supabase
+              .from('onchain_request_claims')
+              .select('*')
+              .eq('request_id', requestId)
+              .single();
+
+            expect(fetchError).toBeNull();
+            expect(afterClaim).toBeTruthy();
+            expect(afterClaim!.worker_address).toBe(NEW_WORKER);
+            expect(afterClaim!.status).toBe('IN_PROGRESS');
+
+            // 9. Assert: claimed_at was updated to a fresh timestamp
+            const newClaimedAt = new Date(afterClaim!.claimed_at);
+            const oldClaimedAt = new Date(FIVE_MINUTES_AGO);
+            expect(newClaimedAt.getTime()).toBeGreaterThan(oldClaimedAt.getTime());
+            expect(Date.now() - newClaimedAt.getTime()).toBeLessThan(60000); // Claimed within last minute
+
+            console.log('[Test 5] Verified: Stale job successfully reclaimed!');
+            console.log(`  - Old worker: ${STALE_WORKER}`);
+            console.log(`  - New worker: ${NEW_WORKER}`);
+            console.log(`  - Old claimed_at: ${oldClaimedAt.toISOString()}`);
+            console.log(`  - New claimed_at: ${newClaimedAt.toISOString()}`);
+            }
+          );
+        });
+      });
+    });
+  }, 240000); // 240s timeout
+
+  /**
+   * Test 6: Control API blocks re-claiming fresh jobs (<5 minutes)
+   *
+   * Validates that jobs claimed recently (<5 minutes) cannot be stolen by another worker.
+   * Ensures the 5-minute threshold is enforced correctly.
+   */
+  it('blocks re-claiming fresh jobs (IN_PROGRESS <5 minutes)', async () => {
+    await withSuiteEnv(async () => {
+      await withTestEnv(async () => {
+        await withTenderlyVNet(async (tenderly) => {
+          await withProcessHarness(
+            {
+              rpcUrl: tenderly.rpcUrl,
+              startWorker: false
+            },
+            async (ctx) => {
+            // 1. Wait for Ponder to be ready
+            await waitForPonderReady(ctx.gqlUrl, { timeoutMs: 60000 });
+
+            // 2. Create a real test job via MCP
+            const { requestId, jobDefId } = await createTestJob({
+              blueprint: JSON.stringify({
+                assertions: [{
+                  id: 'TEST-005',
+                  assertion: 'Test Control API blocks stealing fresh jobs',
+                  examples: { do: ['Test fresh claim protection'], dont: ['Allow job theft'] },
+                  commentary: 'Integration test for fresh claim protection - Jobs <5 minutes cannot be stolen'
+                }]
+              })
+            });
+
+            console.log(`[Test 6] Created test job: ${jobDefId}, request: ${requestId}`);
+
+            // 3. Wait for Ponder to index the request
+            await waitForRequestIndexed(ctx.gqlUrl, requestId, { timeoutMs: 45000 });
+
+            // 4. Claim the job with FIRST worker
+            const FIRST_WORKER = '0x7777777777777777777777777777777777777777';
+            const result1 = await callControlApi(
+              ctx.controlUrl,
+              `
+                mutation {
+                  claimRequest(requestId: "${requestId}") {
+                    request_id
+                    worker_address
+                    status
+                  }
+                }
+              `,
+              FIRST_WORKER
+            );
+
+            expect(result1.errors).toBeUndefined();
+            expect(result1.data?.claimRequest?.worker_address).toBe(FIRST_WORKER);
+            console.log('[Test 6] First worker claimed job');
+
+            // 5. Attempt to claim with SECOND worker (should return existing claim)
+            const SECOND_WORKER = '0x6666666666666666666666666666666666666666';
+            const result2 = await callControlApi(
+              ctx.controlUrl,
+              `
+                mutation {
+                  claimRequest(requestId: "${requestId}") {
+                    request_id
+                    worker_address
+                    status
+                  }
+                }
+              `,
+              SECOND_WORKER
+            );
+
+            // 6. Assert: Control API returned existing claim (not an error, but not reassigned)
+            expect(result2.errors).toBeUndefined();
+            expect(result2.data?.claimRequest).toBeDefined();
+            expect(result2.data.claimRequest.worker_address).toBe(FIRST_WORKER); // Still owned by FIRST_WORKER
+
+            // 7. Verify in Supabase
+            const supabase = getSupabaseClient();
+            const { data: claim } = await supabase
+              .from('onchain_request_claims')
+              .select('*')
+              .eq('request_id', requestId)
+              .single();
+
+            expect(claim).toBeTruthy();
+            expect(claim!.worker_address).toBe(FIRST_WORKER); // Not reassigned
+
+            console.log('[Test 6] Verified: Fresh job protected from theft!');
+            console.log(`  - Owner: ${FIRST_WORKER}`);
+            console.log(`  - Attempted thief: ${SECOND_WORKER} (blocked)`);
             }
           );
         });

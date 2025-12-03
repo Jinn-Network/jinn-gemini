@@ -1,6 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { useEffect, useState } from 'react'
 
 interface InitialPromptCardProps {
@@ -46,7 +47,7 @@ export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPr
   }, [ipfsHash])
 
   return (
-    <Card className="border-blue-200 bg-blue-50/50">
+    <Card className="border-primary/30 bg-primary/10/50">
       <CardHeader>
         <CardTitle className="text-xl flex items-center gap-2">
           📝 Initial Blueprint
@@ -68,7 +69,7 @@ export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPr
             {/* Show full blueprint if available (new architecture) */}
             {blueprintData.blueprint && (
               <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-1">Blueprint</h4>
+                <h4 className="text-sm font-semibold text-gray-400 mb-1">Blueprint</h4>
                 <div className="text-sm text-gray-900 bg-white p-3 rounded border whitespace-pre-wrap font-mono text-xs">
                   {blueprintData.blueprint}
                 </div>
@@ -80,29 +81,29 @@ export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPr
               <>
                 {blueprintData.objective && (
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Objective</h4>
+                    <h4 className="text-sm font-semibold text-gray-400 mb-1">Objective</h4>
                     <p className="text-sm text-gray-900 bg-white p-3 rounded border">{blueprintData.objective}</p>
                   </div>
                 )}
 
                 {blueprintData.context && (
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Context</h4>
-                    <p className="text-sm text-gray-700 bg-white p-3 rounded border whitespace-pre-wrap">{blueprintData.context}</p>
+                    <h4 className="text-sm font-semibold text-gray-400 mb-1">Context</h4>
+                    <p className="text-sm text-gray-400 bg-white p-3 rounded border whitespace-pre-wrap">{blueprintData.context}</p>
                   </div>
                 )}
 
                 {blueprintData.acceptanceCriteria && (
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Acceptance Criteria</h4>
-                    <p className="text-sm text-gray-700 bg-white p-3 rounded border whitespace-pre-wrap">{blueprintData.acceptanceCriteria}</p>
+                    <h4 className="text-sm font-semibold text-gray-400 mb-1">Acceptance Criteria</h4>
+                    <p className="text-sm text-gray-400 bg-white p-3 rounded border whitespace-pre-wrap">{blueprintData.acceptanceCriteria}</p>
                   </div>
                 )}
 
                 {blueprintData.deliverables && (
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Deliverables</h4>
-                    <p className="text-sm text-gray-700 bg-white p-3 rounded border">{blueprintData.deliverables}</p>
+                    <h4 className="text-sm font-semibold text-gray-400 mb-1">Deliverables</h4>
+                    <p className="text-sm text-gray-400 bg-white p-3 rounded border">{blueprintData.deliverables}</p>
                   </div>
                 )}
               </>
@@ -112,12 +113,12 @@ export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPr
 
         {enabledTools && enabledTools.length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">Enabled Tools</h4>
+            <h4 className="text-sm font-semibold text-gray-400 mb-2">Enabled Tools</h4>
             <div className="flex flex-wrap gap-2">
               {enabledTools.map((tool, index) => (
-                <span key={index} className="inline-block px-3 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                <Badge key={index} variant="secondary" className="bg-primary/20 text-primary">
                   {tool}
-                </span>
+                </Badge>
               ))}
             </div>
           </div>

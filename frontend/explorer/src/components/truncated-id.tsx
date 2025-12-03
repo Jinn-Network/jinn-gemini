@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 interface TruncatedIdProps {
   value: string | number | null | undefined
@@ -83,18 +84,20 @@ export function TruncatedId({
         {displayValue}
       </span>
       {copyable && (
-        <button
+        <Button
           onClick={handleCopy}
-          className="inline-flex items-center justify-center w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 cursor-pointer"
+          variant="ghost"
+          size="icon"
+          className="h-4 w-4 p-0 hover:bg-transparent"
           title="Copy to clipboard"
           type="button"
         >
           {copied ? (
             <Check className="w-3 h-3 text-green-600" />
           ) : (
-            <Copy className="w-3 h-3" />
+            <Copy className="w-3 h-3 text-muted-foreground hover:text-foreground transition-colors" />
           )}
-        </button>
+        </Button>
       )}
     </>
   )
@@ -103,7 +106,7 @@ export function TruncatedId({
     return (
       <Link 
         href={linkTo}
-        className={`${baseClasses} text-blue-600 hover:text-blue-800 hover:underline`}
+        className={`${baseClasses} text-primary hover:text-primary hover:underline`}
       >
         {content}
       </Link>
@@ -111,7 +114,7 @@ export function TruncatedId({
   }
   
   return (
-    <span className={`${baseClasses} text-gray-700`}>
+    <span className={`${baseClasses} text-gray-400`}>
       {content}
     </span>
   )

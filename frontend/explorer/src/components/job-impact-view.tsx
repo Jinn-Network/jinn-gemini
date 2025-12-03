@@ -2,6 +2,7 @@
 
 import { JobImpactReport, CreatedRecord } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { IdLink } from './id-link';
 import { useState, useEffect } from 'react';
 
@@ -9,7 +10,7 @@ function DetailItem({ label, children }: { label: string; children: React.ReactN
   return (
     <div className="border-b border-gray-100 pb-3">
       <div className="font-medium text-gray-900 text-sm mb-1">{label}:</div>
-      <div className="text-sm text-gray-700">{children}</div>
+      <div className="text-sm text-gray-400">{children}</div>
     </div>
   );
 }
@@ -103,7 +104,7 @@ function CausalChainView({ jobId }: { jobId: string }) {
             <div className="space-y-3">
               <DetailItem label="Source Artifact">
                 <IdLink collection="artifacts" id={causalData.source_artifact.id} />
-                <span className="ml-2 text-sm text-gray-600">({causalData.source_artifact.topic})</span>
+                <span className="ml-2 text-sm text-gray-400">({causalData.source_artifact.topic})</span>
               </DetailItem>
               <DetailItem label="Created At">
                 {new Date(causalData.source_artifact.created_at).toLocaleString()}
@@ -135,13 +136,13 @@ function CausalChainView({ jobId }: { jobId: string }) {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <IdLink collection="artifacts" id={artifact.id} />
-                      <span className="text-sm font-medium text-gray-700">{artifact.topic}</span>
+                      <span className="text-sm font-medium text-gray-400">{artifact.topic}</span>
                     </div>
                     <span className="text-xs text-gray-500">
                       {new Date(artifact.created_at).toLocaleString()}
                     </span>
                   </div>
-                  <div className="text-sm text-gray-600 bg-white p-2 rounded max-h-16 overflow-y-auto">
+                  <div className="text-sm text-gray-400 bg-white p-2 rounded max-h-16 overflow-y-auto">
                     {typeof artifact.content === 'string' 
                       ? artifact.content.substring(0, 150) + (artifact.content.length > 150 ? '...' : '')
                       : JSON.stringify(artifact.content).substring(0, 150) + '...'
@@ -168,14 +169,15 @@ function CausalChainView({ jobId }: { jobId: string }) {
                     <div className="flex items-center gap-2">
                       <IdLink collection="job_board" id={job.id} />
                       <span className="font-medium">{job.job_name}</span>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        job.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                        job.status === 'FAILED' ? 'bg-red-100 text-red-800' :
-                        job.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
+                      <Badge 
+                        variant={
+                          job.status === 'COMPLETED' ? 'default' :
+                          job.status === 'FAILED' ? 'destructive' :
+                          'secondary'
+                        }
+                      >
                         {job.status}
-                      </span>
+                      </Badge>
                     </div>
                     <span className="text-xs text-gray-500">
                       {new Date(job.created_at).toLocaleString()}

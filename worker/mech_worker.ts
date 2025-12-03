@@ -142,7 +142,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
   }
 }
 
-async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: string; size?: number; offset?: number }): Promise<Set<string>> {
+async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: string; size?: number; offset?: number }): Promise<Set<string> | null> {
   const { mechAddress, rpcHttpUrl, size = 1000, offset = 0 } = params;
   try {
     if (!rpcHttpUrl) return new Set<string>();
@@ -191,8 +191,8 @@ async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: str
     
     return undeliveredSet;
   } catch (err) {
-    workerLogger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to get undelivered set; returning empty');
-    return new Set<string>();
+    workerLogger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to get undelivered set; returning null');
+    return null;
   }
 }
 
@@ -204,7 +204,7 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
   // Intersect with on-chain undelivered for additional safety (Control API will enforce atomic claim)
   try {
     const rpcHttpUrl = getRequiredRpcUrl();
-    const mechToSet = new Map<string, Set<string>>();
+    const mechToSet = new Map<string, Set<string> | null>();
     for (const r of notDelivered) {
       const key = r.mech.toLowerCase();
       if (!mechToSet.has(key)) {
@@ -214,9 +214,13 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
     }
     const filtered = notDelivered.filter(r => {
       const set = mechToSet.get(r.mech.toLowerCase());
-      // If we failed to get the set (or empty), we default to TRUSTING Ponder (return true)
+      
+      // If we failed to get the set (null), we default to TRUSTING Ponder (return true)
       // This prevents blocking if RPC is flaky, but might cause a revert on claim if actually delivered.
-      if (!set || set.size === 0) return true;
+      if (set === null) {
+        workerLogger.debug({ requestId: r.id }, 'RPC check failed (null set), falling back to Ponder status (keeping request)');
+        return true;
+      }
       
       const idHex = String(r.id).startsWith('0x') ? String(r.id).toLowerCase() : ('0x' + BigInt(String(r.id)).toString(16)).toLowerCase();
       const inSet = set.has(idHex);
@@ -226,7 +230,7 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
           requestId: r.id, 
           mech: r.mech,
           onChainSetSize: set.size 
-        }, 'Request filtered out - not found in on-chain undelivered set (may be already delivered)');
+        }, 'Request filtered out - not found in on-chain undelivered set (already delivered)');
       }
       
       return inSet;

@@ -164,14 +164,9 @@ async function assertRequestExists(ctx: Context, requestId: string) {
       throw new Error(`Unknown request_id: ${requestId}`);
     }
   } catch (error) {
-    // During Ponder migrations/downtime, log but don't block operations
-    if (error instanceof Error && error.name === 'AbortError') {
-      logger.warn({ requestId }, 'Ponder validation timeout, skipping');
-      return;
-    }
-    logger.error({ error: serializeError(error), requestId }, 'Ponder validation failed, skipping');
-    // Don't throw - allow operation to proceed without validation
-    return;
+    // Validation failures must be thrown to prevent invalid writes
+    logger.error({ error: serializeError(error), requestId }, 'Ponder validation failed');
+    throw error;
   }
 }
 
@@ -201,9 +196,23 @@ const resolvers = {
         .maybeSingle();
       if (exErr) throw new Error(exErr.message);
 
-      // If already claimed and not completed, return existing (do not re-claim)
+      // If already claimed and not completed, check if stale
       if (existing && existing.status !== 'COMPLETED') {
-        return existing;
+        const claimedAt = existing.claimed_at ? new Date(existing.claimed_at).getTime() : 0;
+        const ageMs = Date.now() - claimedAt;
+        const isStale = existing.status === 'IN_PROGRESS' && ageMs > 300000; // 5 minutes
+        
+        // Allow re-claiming stale jobs (stuck for >5 minutes)
+        if (!isStale) {
+          return existing;
+        }
+        
+        logger.info({ 
+          requestId: args.requestId, 
+          ageMinutes: Math.floor(ageMs / 60000),
+          oldWorker: existing.worker_address,
+          newWorker: worker
+        }, 'Re-claiming stale job');
       }
 
       // Otherwise, (re)claim for this worker

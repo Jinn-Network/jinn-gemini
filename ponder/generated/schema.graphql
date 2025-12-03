@@ -1,20 +1,45 @@
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+scalar BigInt
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type ViewPageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+}
+
+type Meta {
+  status: JSON
+}
+
 type Query {
   jobDefinition(id: String!): jobDefinition
-  jobDefinitions(where: jobDefinitionFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): jobDefinitionPage!
+  jobDefinitions(where: jobDefinitionFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): jobDefinitionPage!
   request(id: String!): request
-  requests(where: requestFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): requestPage!
+  requests(where: requestFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): requestPage!
   delivery(id: String!): delivery
-  deliverys(where: deliveryFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): deliveryPage!
+  deliverys(where: deliveryFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): deliveryPage!
   artifact(id: String!): artifact
-  artifacts(where: artifactFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): artifactPage!
+  artifacts(where: artifactFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): artifactPage!
   message(id: String!): message
-  messages(where: messageFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int): messagePage!
-  _meta: _meta
+  messages(where: messageFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): messagePage!
+  workstream(id: String!): workstream
+  workstreams(where: workstreamFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): workstreamPage!
+  _meta: Meta
 }
 
 type jobDefinition {
   id: String!
-  name: String!
+  name: String
   enabledTools: [String!]
   blueprint: String
   workstreamId: String
@@ -26,23 +51,10 @@ type jobDefinition {
   lastStatus: String
 }
 
-"""
-The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
-"""
-scalar JSON
-
-scalar BigInt
-
 type jobDefinitionPage {
   items: [jobDefinition!]!
   pageInfo: PageInfo!
-}
-
-type PageInfo {
-  hasNextPage: Boolean!
-  hasPreviousPage: Boolean!
-  startCursor: String
-  endCursor: String
+  totalCount: Int!
 }
 
 input jobDefinitionFilter {
@@ -164,6 +176,7 @@ type request {
 type requestPage {
   items: [request!]!
   pageInfo: PageInfo!
+  totalCount: Int!
 }
 
 input requestFilter {
@@ -183,18 +196,22 @@ input requestFilter {
   mech_not: String
   mech_in: [String]
   mech_not_in: [String]
-  mech_gt: String
-  mech_lt: String
-  mech_gte: String
-  mech_lte: String
+  mech_contains: String
+  mech_not_contains: String
+  mech_starts_with: String
+  mech_ends_with: String
+  mech_not_starts_with: String
+  mech_not_ends_with: String
   sender: String
   sender_not: String
   sender_in: [String]
   sender_not_in: [String]
-  sender_gt: String
-  sender_lt: String
-  sender_gte: String
-  sender_lte: String
+  sender_contains: String
+  sender_not_contains: String
+  sender_starts_with: String
+  sender_ends_with: String
+  sender_not_starts_with: String
+  sender_not_ends_with: String
   workstreamId: String
   workstreamId_not: String
   workstreamId_in: [String]
@@ -332,6 +349,7 @@ type delivery {
 type deliveryPage {
   items: [delivery!]!
   pageInfo: PageInfo!
+  totalCount: Int!
 }
 
 input deliveryFilter {
@@ -381,18 +399,22 @@ input deliveryFilter {
   mech_not: String
   mech_in: [String]
   mech_not_in: [String]
-  mech_gt: String
-  mech_lt: String
-  mech_gte: String
-  mech_lte: String
+  mech_contains: String
+  mech_not_contains: String
+  mech_starts_with: String
+  mech_ends_with: String
+  mech_not_starts_with: String
+  mech_not_ends_with: String
   mechServiceMultisig: String
   mechServiceMultisig_not: String
   mechServiceMultisig_in: [String]
   mechServiceMultisig_not_in: [String]
-  mechServiceMultisig_gt: String
-  mechServiceMultisig_lt: String
-  mechServiceMultisig_gte: String
-  mechServiceMultisig_lte: String
+  mechServiceMultisig_contains: String
+  mechServiceMultisig_not_contains: String
+  mechServiceMultisig_starts_with: String
+  mechServiceMultisig_ends_with: String
+  mechServiceMultisig_not_starts_with: String
+  mechServiceMultisig_not_ends_with: String
   deliveryRate: BigInt
   deliveryRate_not: BigInt
   deliveryRate_in: [BigInt]
@@ -458,6 +480,7 @@ type artifact {
 type artifactPage {
   items: [artifact!]!
   pageInfo: PageInfo!
+  totalCount: Int!
 }
 
 input artifactFilter {
@@ -596,6 +619,7 @@ type message {
 type messagePage {
   items: [message!]!
   pageInfo: PageInfo!
+  totalCount: Int!
 }
 
 input messageFilter {
@@ -671,6 +695,108 @@ input messageFilter {
   blockTimestamp_lte: BigInt
 }
 
-type _meta {
-  status: JSON
+type workstream {
+  id: String!
+  rootRequestId: String!
+  jobName: String
+  mech: String!
+  sender: String!
+  blockTimestamp: BigInt!
+  lastActivity: BigInt!
+  childRequestCount: Int!
+  hasLauncherBriefing: Boolean!
+  delivered: Boolean!
+}
+
+type workstreamPage {
+  items: [workstream!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input workstreamFilter {
+  AND: [workstreamFilter]
+  OR: [workstreamFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  rootRequestId: String
+  rootRequestId_not: String
+  rootRequestId_in: [String]
+  rootRequestId_not_in: [String]
+  rootRequestId_contains: String
+  rootRequestId_not_contains: String
+  rootRequestId_starts_with: String
+  rootRequestId_ends_with: String
+  rootRequestId_not_starts_with: String
+  rootRequestId_not_ends_with: String
+  jobName: String
+  jobName_not: String
+  jobName_in: [String]
+  jobName_not_in: [String]
+  jobName_contains: String
+  jobName_not_contains: String
+  jobName_starts_with: String
+  jobName_ends_with: String
+  jobName_not_starts_with: String
+  jobName_not_ends_with: String
+  mech: String
+  mech_not: String
+  mech_in: [String]
+  mech_not_in: [String]
+  mech_contains: String
+  mech_not_contains: String
+  mech_starts_with: String
+  mech_ends_with: String
+  mech_not_starts_with: String
+  mech_not_ends_with: String
+  sender: String
+  sender_not: String
+  sender_in: [String]
+  sender_not_in: [String]
+  sender_contains: String
+  sender_not_contains: String
+  sender_starts_with: String
+  sender_ends_with: String
+  sender_not_starts_with: String
+  sender_not_ends_with: String
+  blockTimestamp: BigInt
+  blockTimestamp_not: BigInt
+  blockTimestamp_in: [BigInt]
+  blockTimestamp_not_in: [BigInt]
+  blockTimestamp_gt: BigInt
+  blockTimestamp_lt: BigInt
+  blockTimestamp_gte: BigInt
+  blockTimestamp_lte: BigInt
+  lastActivity: BigInt
+  lastActivity_not: BigInt
+  lastActivity_in: [BigInt]
+  lastActivity_not_in: [BigInt]
+  lastActivity_gt: BigInt
+  lastActivity_lt: BigInt
+  lastActivity_gte: BigInt
+  lastActivity_lte: BigInt
+  childRequestCount: Int
+  childRequestCount_not: Int
+  childRequestCount_in: [Int]
+  childRequestCount_not_in: [Int]
+  childRequestCount_gt: Int
+  childRequestCount_lt: Int
+  childRequestCount_gte: Int
+  childRequestCount_lte: Int
+  hasLauncherBriefing: Boolean
+  hasLauncherBriefing_not: Boolean
+  hasLauncherBriefing_in: [Boolean]
+  hasLauncherBriefing_not_in: [Boolean]
+  delivered: Boolean
+  delivered_not: Boolean
+  delivered_in: [Boolean]
+  delivered_not_in: [Boolean]
 }

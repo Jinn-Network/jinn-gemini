@@ -39,9 +39,19 @@ vi.mock('web3', () => {
 });
 
 vi.mock('../../../../logging/index.js', () => ({
+  logger: {
+    child: vi.fn(() => ({
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    })),
+  },
   workerLogger: {
     warn: vi.fn(),
     info: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 

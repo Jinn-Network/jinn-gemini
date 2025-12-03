@@ -33,9 +33,9 @@ export default async function GraphPage({ params }: GraphPageProps) {
       <JobGraphView rootId={id} />
 
       {/* Help Section */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h3 className="font-semibold text-blue-900 mb-3">How to Navigate</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-blue-800">
+      <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
+        <h3 className="font-semibold text-foreground mb-3">How to Navigate</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-primary">
           <div>
             <strong>Click nodes</strong> to view full details
           </div>
@@ -68,7 +68,7 @@ export default async function GraphPage({ params }: GraphPageProps) {
             </div>
             <div>
               <div className="font-medium">Spawned Job</div>
-              <div className="text-xs text-gray-600">Job created another job type</div>
+              <div className="text-xs text-gray-400">Job created another job type</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -78,7 +78,7 @@ export default async function GraphPage({ params }: GraphPageProps) {
             </div>
             <div>
               <div className="font-medium">Child Job</div>
-              <div className="text-xs text-gray-600">Direct child job execution</div>
+              <div className="text-xs text-gray-400">Direct child job execution</div>
             </div>
           </div>
         </div>

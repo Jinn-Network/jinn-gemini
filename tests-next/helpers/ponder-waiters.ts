@@ -227,9 +227,16 @@ export async function waitForPonderReady(
   const pollIntervalMs = options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL;
   const start = Date.now();
   let lastError: Error | null = null;
+  let attemptCount = 0;
+
+  console.log(`[waitForPonderReady] Starting wait for ${gqlUrl} (timeout: ${timeoutMs}ms)`);
 
   while (Date.now() - start < timeoutMs) {
+    attemptCount++;
+    const elapsed = Date.now() - start;
+    
     try {
+      console.log(`[waitForPonderReady] Attempt ${attemptCount} (${elapsed}ms elapsed)`);
       const result = await fetch(gqlUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -238,22 +245,31 @@ export async function waitForPonderReady(
         })
       });
 
+      console.log(`[waitForPonderReady] Response status: ${result.status}`);
+      
       if (result.ok) {
         const data = await result.json();
+        console.log(`[waitForPonderReady] Response data:`, JSON.stringify(data).substring(0, 200));
+        
         if (!data.errors) {
+          console.log(`[waitForPonderReady] ✅ Ponder is ready! (took ${elapsed}ms, ${attemptCount} attempts)`);
           return; // Ponder is ready!
         }
         lastError = new Error(`GraphQL error: ${JSON.stringify(data.errors)}`);
+        console.log(`[waitForPonderReady] GraphQL errors:`, data.errors);
       } else {
         lastError = new Error(`HTTP ${result.status}`);
+        console.log(`[waitForPonderReady] HTTP error: ${result.status}`);
       }
     } catch (err) {
       lastError = err as Error;
+      console.log(`[waitForPonderReady] Fetch error:`, err.message);
     }
 
     await sleep(pollIntervalMs);
   }
 
+  console.log(`[waitForPonderReady] ❌ Timeout after ${attemptCount} attempts`);
   throw lastError ?? new Error(`Timeout waiting for Ponder to become ready (${timeoutMs}ms)`);
 }
 

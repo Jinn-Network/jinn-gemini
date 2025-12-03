@@ -30,18 +30,17 @@ export function DataTable({ records, collectionName }: DataTableProps) {
   const headers = Object.keys(records[0])
 
   return (
-    <div className="rounded-md border overflow-hidden">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {headers.map((header) => (
-                <TableHead key={header} className="font-medium whitespace-nowrap">
-                  {header}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {headers.map((header) => (
+              <TableHead key={header} className="font-medium">
+                {header}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
           <TableBody>
             {records.map((record, index) => (
               <TableRow key={record.id || index}>
@@ -50,7 +49,7 @@ export function DataTable({ records, collectionName }: DataTableProps) {
                     {header === 'id' ? (
                       <Link 
                         href={`/${collectionName}/${record.id}`}
-                        className="text-blue-600 hover:text-blue-800 underline block truncate"
+                        className="text-primary hover:text-primary underline block truncate"
                       >
                         {record.id}
                       </Link>
@@ -65,7 +64,6 @@ export function DataTable({ records, collectionName }: DataTableProps) {
             ))}
           </TableBody>
         </Table>
-      </div>
     </div>
   )
 }

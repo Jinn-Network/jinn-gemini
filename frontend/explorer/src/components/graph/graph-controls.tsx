@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { ArrowLeftRight, ArrowUpDown, RefreshCw } from 'lucide-react'
+import { ArrowLeftRight, ArrowUpDown } from 'lucide-react'
 
 interface GraphControlsProps {
   onZoomIn: () => void
@@ -13,7 +13,6 @@ interface GraphControlsProps {
   onDepthChange: (depth: number) => void
   direction: 'upstream' | 'downstream' | 'both'
   onDirectionChange: (direction: 'upstream' | 'downstream' | 'both') => void
-  onRefresh: () => void
 }
 
 export function GraphControls({
@@ -26,13 +25,12 @@ export function GraphControls({
   onDepthChange,
   direction,
   onDirectionChange,
-  onRefresh,
 }: GraphControlsProps) {
   return (
     <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 space-y-4 z-10 min-w-[200px]">
       {/* Zoom controls */}
       <div className="space-y-2">
-        <div className="text-xs font-semibold text-gray-700 uppercase">View</div>
+        <div className="text-xs font-semibold text-gray-400 uppercase">View</div>
         <div className="flex gap-2">
           <Button onClick={onZoomIn} size="sm" variant="outline" className="flex-1">
             +
@@ -48,8 +46,8 @@ export function GraphControls({
 
       {/* Depth slider */}
       <div className="space-y-2">
-        <div className="text-xs font-semibold text-gray-700 uppercase">
-          Depth: <span className="text-blue-600">{currentDepth}</span>
+        <div className="text-xs font-semibold text-gray-400 uppercase">
+          Depth: <span className="text-primary">{currentDepth}</span>
         </div>
         <input
           type="range"
@@ -67,7 +65,7 @@ export function GraphControls({
 
       {/* Direction select */}
       <div className="space-y-2">
-        <div className="text-xs font-semibold text-gray-700 uppercase">Direction</div>
+        <div className="text-xs font-semibold text-gray-400 uppercase">Direction</div>
         <select
           value={direction}
           onChange={(e) => onDirectionChange(e.target.value as typeof direction)}
@@ -81,7 +79,7 @@ export function GraphControls({
 
       {/* Layout toggle */}
       <div className="space-y-2">
-        <div className="text-xs font-semibold text-gray-700 uppercase">Layout</div>
+        <div className="text-xs font-semibold text-gray-400 uppercase">Layout</div>
         <Button onClick={onToggleLayout} size="sm" variant="outline" className="w-full justify-start gap-2">
           {layout === 'TB' ? (
             <>
@@ -94,14 +92,6 @@ export function GraphControls({
               Switch to Vertical
             </>
           )}
-        </Button>
-      </div>
-
-      {/* Refresh button */}
-      <div className="pt-2 border-t">
-        <Button onClick={onRefresh} size="sm" variant="outline" className="w-full justify-start gap-2">
-          <RefreshCw className="w-4 h-4" />
-          Refresh Graph
         </Button>
       </div>
     </div>

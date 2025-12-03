@@ -150,6 +150,25 @@
         ]
       },
       "commentary": "Verification enforcement prevents premature finalization. Agent must explicitly confirm EVERY assertion is satisfied before marking work COMPLETED. If ANY assertion is unsatisfied, agent must delegate remaining work or document blocker. This assertion makes the verification step mandatory and auditable."
+    },
+    {
+      "id": "CTX-SEARCH",
+      "assertion": "When reviewing prior work via search_artifacts or search_jobs, SAMPLE first page only. Do NOT paginate through all results.",
+      "examples": {
+        "do": [
+          "Call search_artifacts ONCE without cursor to sample recent artifacts",
+          "Review first 5-10 artifacts to identify patterns and key deliverables",
+          "Use search query refinement to find specific artifacts instead of pagination",
+          "Delegate child job if exhaustive artifact analysis required"
+        ],
+        "dont": [
+          "Paginate through all artifacts using cursor parameter",
+          "Attempt to fetch every artifact from large workstreams (50+ artifacts)",
+          "Make more than 2-3 search_artifacts calls per job execution",
+          "Reason repeatedly about pagination without actually calling the tool"
+        ]
+      },
+      "commentary": "Artifact sampling provides sufficient context for synthesis. Exhaustive retrieval is unnecessary (wastes tokens) and risks pagination loops (cognitive loops where agent says 'now paginating' repeatedly without making tool calls). First page contains most recent/relevant work. If deeper analysis needed, delegate to focused child job."
     }
   ]
 }

@@ -85,10 +85,10 @@ function getStatusColor(status: string): string {
   const statusUpper = status.toUpperCase()
   if (statusUpper === 'COMPLETED') return 'bg-green-100 text-green-800'
   if (statusUpper === 'FAILED') return 'bg-red-100 text-red-800'
-  if (statusUpper === 'DELEGATING') return 'bg-blue-100 text-blue-800'
+  if (statusUpper === 'DELEGATING') return 'bg-primary/20 text-primary'
   if (statusUpper === 'WAITING') return 'bg-purple-100 text-purple-800'
   if (statusUpper === 'PENDING') return 'bg-yellow-100 text-yellow-800'
-  return 'bg-gray-100 text-gray-800'
+  return 'bg-muted text-muted-foreground'
 }
 
 // Recursive component to render tree nodes
@@ -97,13 +97,15 @@ function TreeNodeItem({
   depth = 0, 
   onSelectJob,
   allNodes,
-  nextJobId
+  nextJobId,
+  selectedJobId
 }: { 
   treeNode: TreeNode; 
   depth?: number;
   onSelectJob: (jobId: string) => void;
   allNodes: GraphNode[];
   nextJobId: string | null;
+  selectedJobId: string | null;
 }) {
   const { node, children } = treeNode
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -115,13 +117,18 @@ function TreeNodeItem({
   // Check if this is the next job in queue
   const isNextInQueue = node.id === nextJobId
   
+  // Check if this is the currently selected job
+  const isSelected = node.id === selectedJobId
+  
   return (
     <div>
       <div 
         className={`py-2 px-3 rounded transition-colors cursor-pointer ${
-          isNextInQueue 
-            ? 'bg-blue-50 border-l-4 border-blue-500 hover:bg-blue-100' 
-            : 'hover:bg-gray-50'
+          isSelected 
+            ? 'bg-muted border-l-4 border-primary/50 hover:bg-accent' 
+            : isNextInQueue 
+              ? 'bg-primary/10 border-l-4 border-blue-500 hover:bg-primary/20' 
+              : 'hover:bg-accent/50'
         }`}
         style={{ paddingLeft: `${depth * 1.5 + 0.75}rem` }}
         onClick={() => onSelectJob(node.id)}
@@ -134,13 +141,13 @@ function TreeNodeItem({
                 e.stopPropagation()
                 setIsCollapsed(!isCollapsed)
               }}
-              className="mt-0.5 p-0.5 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+              className="mt-0.5 p-0.5 hover:bg-accent rounded transition-colors flex-shrink-0"
               aria-label={isCollapsed ? 'Expand' : 'Collapse'}
             >
               {isCollapsed ? (
-                <ChevronRight className="w-4 h-4 text-gray-500" />
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
               ) : (
-                <ChevronDown className="w-4 h-4 text-gray-500" />
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
               )}
             </button>
           ) : (
@@ -150,12 +157,12 @@ function TreeNodeItem({
           {/* Job Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <div className="font-medium text-sm hover:text-blue-600 block truncate">
+              <div className="font-medium text-sm hover:text-primary block truncate">
                 {node.label || 'Unnamed Job'}
               </div>
               {/* Next in Queue Indicator */}
               {isNextInQueue && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/20 dark:bg-blue-900/30 text-primary dark:text-primary-foreground border border-primary/30 dark:border-primary/50">
                   <Clock className="w-3 h-3" />
                   Next
                 </span>
@@ -169,7 +176,7 @@ function TreeNodeItem({
                 {displayStatus}
               </span>
               {node.metadata.runCount !== undefined && node.metadata.runCount > 0 && (
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-muted-foreground">
                   {node.metadata.runCount} {node.metadata.runCount === 1 ? 'run' : 'runs'}
                 </span>
               )}
@@ -189,6 +196,7 @@ function TreeNodeItem({
               onSelectJob={onSelectJob}
               allNodes={allNodes}
               nextJobId={nextJobId}
+              selectedJobId={selectedJobId}
             />
           ))}
         </div>
@@ -329,7 +337,7 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
       <div className="flex items-center justify-center py-8">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-          <div className="text-sm text-gray-600">Loading jobs...</div>
+          <div className="text-sm text-muted-foreground">Loading jobs...</div>
         </div>
       </div>
     )
@@ -338,14 +346,14 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
   if (error) {
     return (
       <div className="text-center py-8">
-        <div className="text-red-600 text-sm">{error}</div>
+        <div className="text-destructive text-sm">{error}</div>
       </div>
     )
   }
 
   if (!graph || graph.nodes.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500 text-sm">
+      <div className="text-center py-8 text-muted-foreground text-sm">
         No jobs found
       </div>
     )
@@ -372,6 +380,7 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
           onSelectJob={handleSelectJob} 
           allNodes={graph.nodes}
           nextJobId={nextJobDefinitionId}
+          selectedJobId={selectedJobId}
         />
       </div>
 
@@ -382,12 +391,12 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
           style={{ overflowY: 'scroll' }}
         >
           {/* Panel Header */}
-          <div className="flex items-center justify-between px-6 py-3 sticky top-0 bg-white border-b z-10">
+          <div className="flex items-center justify-between px-6 py-3 sticky top-0 bg-background border-b z-10">
             <div className="flex items-center gap-3">
               <h3 className="font-semibold text-lg">{selectedJob?.name || 'Job Details'}</h3>
               <Link
                 href={`/jobDefinitions/${selectedJobId}`}
-                className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                className="text-sm text-primary hover:text-primary flex items-center gap-1"
               >
                 View Full <ExternalLink className="w-3 h-3" />
               </Link>
@@ -408,7 +417,7 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
               <div className="flex items-center justify-center py-12">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                  <div className="text-sm text-gray-600">Loading job details...</div>
+                  <div className="text-sm text-muted-foreground">Loading job details...</div>
                 </div>
               </div>
             ) : jobError ? (

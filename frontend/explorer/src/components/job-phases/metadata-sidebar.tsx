@@ -84,7 +84,7 @@ export function MetadataSidebar({
           {blockTimestamp && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Timestamp</h4>
-              <p className="text-xs text-gray-700">{formatTimestamp(blockTimestamp)}</p>
+              <p className="text-xs text-gray-400">{formatTimestamp(blockTimestamp)}</p>
               <p className="text-xs text-gray-500 mt-1">Raw: {blockTimestamp}</p>
             </div>
           )}
@@ -131,7 +131,7 @@ export function MetadataSidebar({
           <div className="pt-2 mt-2 border-t">
             <Link 
               href={`/graph/workstream/${requestId}`}
-              className="block w-full px-4 py-2 text-sm font-medium text-center text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+              className="block w-full px-4 py-2 text-sm font-medium text-center text-primary bg-primary/10 border border-primary/30 rounded hover:bg-primary/20 transition-colors"
             >
               🔗 Work Graph
             </Link>

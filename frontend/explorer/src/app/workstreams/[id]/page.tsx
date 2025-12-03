@@ -1,236 +1,168 @@
-import { getRequest, getWorkstreamRequests, getWorkstreamArtifact, fetchIpfsContent } from '@/lib/subgraph'
-import { request } from 'graphql-request'
-import { notFound } from 'next/navigation'
-import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { getRequest, getWorkstreamArtifact, fetchIpfsContent, type Artifact } from '@/lib/subgraph'
+import { Card, CardContent } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ArtifactDetailView } from '@/components/artifact-detail-view'
 import { JobGraphView } from '@/components/graph/job-graph-view'
-import { JobDefinitionsTable } from '@/components/job-definitions-table'
-import { RequestsTable } from '@/components/requests-table'
 import { WorkstreamTreeList } from '@/components/workstream-tree-list'
 import { SiteHeader } from '@/components/site-header'
-
-// Force dynamic rendering to avoid build-time data fetching
-export const dynamic = 'force-dynamic'
+import { WorkstreamJobDefinitionsList, WorkstreamJobRunsList } from '@/components/workstream-job-lists'
+import { Network, GitBranch, Play, FileCode, FileText } from 'lucide-react'
 
 interface WorkstreamPageProps {
   params: Promise<{ id: string }>
 }
 
-export default async function WorkstreamPage({ params }: WorkstreamPageProps) {
-  const resolvedParams = await params
-  const workstreamId = decodeURIComponent(resolvedParams.id)
+interface RootRequest {
+  jobName?: string
+}
 
-  // Fetch root request
-  let rootRequest
-  try {
-    rootRequest = await getRequest(workstreamId)
-    if (!rootRequest) {
-      notFound()
-    }
-  } catch {
-    notFound()
-  }
+export default function WorkstreamPage({ params }: WorkstreamPageProps) {
+  const [workstreamId, setWorkstreamId] = useState<string>('')
+  const [rootRequest, setRootRequest] = useState<RootRequest | null>(null)
+  const [briefingWithContent, setBriefingWithContent] = useState<(Artifact & { content?: string }) | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [definitionsCount, setDefinitionsCount] = useState<number>(0)
+  const [runsCount, setRunsCount] = useState<number>(0)
 
-  // Fetch all jobs in workstream (increase limit to get comprehensive data)
-  // Note: getWorkstreamRequests already includes the root request in results
-  const { requests: workstreamRequests } = await getWorkstreamRequests(workstreamId, 500)
-  
-  const allJobs = workstreamRequests.items
+  useEffect(() => {
+    async function loadData() {
+      const resolvedParams = await params
+      const id = decodeURIComponent(resolvedParams.id)
+      setWorkstreamId(id)
 
-  // Fetch launcher briefing artifact
-  const briefing = await getWorkstreamArtifact(workstreamId, 'launcher_briefing')
-  
-  // Fetch briefing content from IPFS if available
-  let briefingWithContent: (typeof briefing & { content?: string }) | null = briefing
-  if (briefing?.cid) {
-    const ipfsContent = await fetchIpfsContent(briefing.cid)
-    if (ipfsContent) {
-      briefingWithContent = {
-        ...briefing,
-        content: ipfsContent.content
-      }
-    }
-  }
-  
-  // Extract unique job definition IDs
-  const uniqueJobDefIds = [...new Set(
-    allJobs
-      .map(job => job.jobDefinitionId)
-      .filter((id): id is string => !!id)
-  )]
-  
-  // Batch-fetch all job definitions at once (efficient!)
-  const jobDefsQuery = `
-    query GetJobDefinitions($ids: [String!]!) {
-      jobDefinitions(where: { id_in: $ids }) {
-        items {
-          id
-          name
-          enabledTools
-          lastStatus
+      try {
+        const request = await getRequest(id)
+        if (!request) {
+          setLoading(false)
+          return
         }
-      }
-    }
-  `
-  
-  const jobDefsResponse = await request<{ jobDefinitions: { items: Array<{
-    id: string
-    name: string
-    enabledTools: string[]
-    lastStatus?: string
-  }> } }>(process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://jinn-gemini-production.up.railway.app/graphql', jobDefsQuery, {
-    ids: uniqueJobDefIds
-  })
-  
-  const jobDefsById = new Map(
-    jobDefsResponse.jobDefinitions.items.map(jd => [jd.id, jd])
-  )
-  
-  // Aggregate jobs by jobDefinitionId with batch-fetched data
-  const jobDefinitionMap = new Map<string, {
-    id: string
-    name: string
-    enabledTools: string[]
-    lastInteraction: string
-    lastStatus: string
-    runCount: number
-  }>()
-  
-  for (const job of allJobs) {
-    if (job.jobDefinitionId) {
-      const existing = jobDefinitionMap.get(job.jobDefinitionId)
-      if (existing) {
-        existing.runCount++
-        // Update with most recent interaction (numeric comparison for timestamps)
-        if (BigInt(job.blockTimestamp) > BigInt(existing.lastInteraction)) {
-          existing.lastInteraction = job.blockTimestamp
+        setRootRequest(request)
+
+        const briefing = await getWorkstreamArtifact(id, 'launcher_briefing')
+        
+        if (briefing?.cid) {
+          const ipfsContent = await fetchIpfsContent(briefing.cid)
+          if (ipfsContent) {
+            setBriefingWithContent({
+              ...briefing,
+              content: ipfsContent.content
+            })
+          } else {
+            setBriefingWithContent(briefing)
+          }
+        } else if (briefing) {
+          setBriefingWithContent(briefing)
         }
-      } else {
-        const jobDef = jobDefsById.get(job.jobDefinitionId)
-        jobDefinitionMap.set(job.jobDefinitionId, {
-          id: job.jobDefinitionId,
-          name: jobDef?.name || job.jobName || 'Unnamed Job',
-          enabledTools: jobDef?.enabledTools || [],
-          lastInteraction: job.blockTimestamp,
-          lastStatus: jobDef?.lastStatus || (job.delivered ? 'COMPLETED' : 'PENDING'),
-          runCount: 1
-        })
+      } catch (error) {
+        console.error('Failed to load workstream data:', error)
+      } finally {
+        setLoading(false)
       }
     }
-  }
-  
-  // Convert to array for table display
-  const uniqueJobDefinitions = Array.from(jobDefinitionMap.values()).map(def => ({
-    id: def.id,
-    enabledTools: def.enabledTools,
-    name: def.name,
-    lastInteraction: def.lastInteraction,
-    lastStatus: def.lastStatus,
-  }))
 
-  const formatTimestamp = (timestamp: string) => {
-    const date = new Date(Number(timestamp) * 1000)
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    loadData()
+  }, [params])
+
+  if (loading) {
+    return (
+      <>
+        <SiteHeader title="Loading..." />
+        <div className="p-4 md:p-6">
+          <p>Loading workstream...</p>
+        </div>
+      </>
+    )
   }
 
-  // const formatRelativeTime = (timestamp: string) => {
-  //   const date = new Date(Number(timestamp) * 1000)
-  //   const now = new Date()
-  //   const diffMs = now.getTime() - date.getTime()
-  //   const diffMins = Math.floor(diffMs / 60000)
-  //   const diffHours = Math.floor(diffMins / 60)
-  //   const diffDays = Math.floor(diffHours / 24)
-  //
-  //   if (diffMins < 1) return 'just now'
-  //   if (diffMins < 60) return `${diffMins}m ago`
-  //   if (diffHours < 24) return `${diffHours}h ago`
-  //   return `${diffDays}d ago`
-  // }
+  if (!rootRequest) {
+    return (
+      <>
+        <SiteHeader title="Not Found" />
+        <div className="p-4 md:p-6">
+          <p>Workstream not found</p>
+        </div>
+      </>
+    )
+  }
 
   return (
     <>
       <SiteHeader 
         title={rootRequest.jobName || 'Unnamed Workstream'}
       />
-      <div className="p-4 md:p-6 space-y-6">
-        {/* Workstream Tree List - Full Width */}
-      <Card className="py-0 gap-0">
-        <CardHeader className="border-b py-6">
-          <CardTitle>Workstream Tree</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <WorkstreamTreeList rootId={workstreamId} />
-        </CardContent>
-      </Card>
+      <div className="p-4 md:p-6">
+        <Tabs defaultValue="tree" className="w-full">
+          <TabsList className="mb-4 border">
+            <TabsTrigger value="tree" className="gap-2">
+              <GitBranch className="h-4 w-4" />
+              Tree
+            </TabsTrigger>
+            <TabsTrigger value="graph" className="gap-2">
+              <Network className="h-4 w-4" />
+              Graph
+            </TabsTrigger>
+            {briefingWithContent && (
+              <TabsTrigger value="briefing" className="gap-2">
+                <FileText className="h-4 w-4" />
+                Briefing
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="definitions" className="gap-2">
+              <FileCode className="h-4 w-4" />
+              Job Definitions {definitionsCount > 0 && `(${definitionsCount})`}
+            </TabsTrigger>
+            <TabsTrigger value="runs" className="gap-2">
+              <Play className="h-4 w-4" />
+              Job Runs {runsCount > 0 && `(${runsCount})`}
+            </TabsTrigger>
+          </TabsList>
 
-      {/* Workstream Graph - Full Width */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Workstream Graph</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 border-t">
-          <div className="h-[600px] overflow-hidden">
-            <JobGraphView rootId={workstreamId} groupByDefinition={true} />
-          </div>
-        </CardContent>
-      </Card>
+          <TabsContent value="tree" className="mt-0">
+            <Card className="py-0 gap-0">
+              <CardContent className="p-0">
+                <WorkstreamTreeList rootId={workstreamId} />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-      {/* Launcher Briefing - Full Width */}
-      {briefingWithContent && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Launcher Briefing</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ArtifactDetailView record={briefingWithContent} />
-          </CardContent>
-        </Card>
-      )}
+          <TabsContent value="graph" className="mt-0">
+            <Card>
+              <CardContent className="p-0 border-t">
+                <div className="h-[600px] overflow-hidden">
+                  <JobGraphView rootId={workstreamId} groupByDefinition={true} />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-      {/* Jobs Table - Full Width */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Job Definitions Table ({uniqueJobDefinitions.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {uniqueJobDefinitions.length === 0 ? (
-            <p className="text-gray-500 text-sm">No job definitions found in this workstream yet</p>
-          ) : (
-            <JobDefinitionsTable records={uniqueJobDefinitions} />
+          {briefingWithContent && (
+            <TabsContent value="briefing" className="mt-0">
+              <Card>
+                <CardContent className="pt-6">
+                  <ArtifactDetailView record={briefingWithContent} />
+                </CardContent>
+              </Card>
+            </TabsContent>
           )}
-        </CardContent>
-      </Card>
 
-      {/* Job Runs - Full Width */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Job Runs ({allJobs.length})</CardTitle>
-            <Link 
-              href={`/requests?workstream=${workstreamId}`}
-              className="text-sm text-blue-600 hover:text-blue-800"
-            >
-              See all →
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {allJobs.length === 0 ? (
-            <p className="text-gray-500 text-sm">No job runs found in this workstream yet</p>
-          ) : (
-            <RequestsTable records={allJobs} />
-          )}
-        </CardContent>
-      </Card>
+          <TabsContent value="definitions" className="mt-0">
+            <WorkstreamJobDefinitionsList 
+              workstreamId={workstreamId} 
+              onCountUpdate={setDefinitionsCount}
+            />
+          </TabsContent>
+
+          <TabsContent value="runs" className="mt-0">
+            <WorkstreamJobRunsList 
+              workstreamId={workstreamId}
+              onCountUpdate={setRunsCount}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   )
 }
-

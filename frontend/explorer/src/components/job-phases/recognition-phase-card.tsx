@@ -49,7 +49,7 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
         {/* Workstream Progress Summary */}
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <h4 className="text-sm font-semibold text-gray-700">Workstream Progress Summary</h4>
+            <h4 className="text-sm font-semibold text-gray-400">Workstream Progress Summary</h4>
             {recognitionData?.progressCheckpoint?.stats && (
               <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
                 {recognitionData.progressCheckpoint.stats.completedJobs} completed
@@ -75,7 +75,7 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
         {/* Initial Situation Section */}
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <h4 className="text-sm font-semibold text-gray-700">Initial Situation (Vector Search Context)</h4>
+            <h4 className="text-sm font-semibold text-gray-400">Initial Situation (Vector Search Context)</h4>
             {recognitionData?.embeddingStatus && (
               <Badge 
                 variant={recognitionData.embeddingStatus === 'success' ? 'default' : 'destructive'}
@@ -109,18 +109,18 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
 
         {/* Similar Jobs Section */}
         <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">Similar Jobs Found</h4>
+          <h4 className="text-sm font-semibold text-gray-400 mb-2">Similar Jobs Found</h4>
           {recognitionData?.similarJobs && recognitionData.similarJobs.length > 0 ? (
             <div className="space-y-2">
               {recognitionData.similarJobs.map((job) => (
                 <div key={job.requestId} className="flex items-center justify-between bg-white p-3 rounded border border-gray-200 hover:border-blue-300 transition-colors">
                   <Link
                     href={`/requests/${job.requestId}`}
-                    className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-sm flex-1"
+                    className="text-primary hover:text-primary hover:underline font-medium text-sm flex-1"
                   >
                     {job.jobName || `${job.requestId.slice(0, 12)}...`}
                   </Link>
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
                     {(job.score * 100).toFixed(0)}% match
                   </Badge>
                 </div>
@@ -133,7 +133,7 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
 
         {/* Synthesized Learnings */}
         <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">Synthesized Learnings</h4>
+          <h4 className="text-sm font-semibold text-gray-400 mb-2">Synthesized Learnings</h4>
           {recognitionData?.learnings ? (
             <div className="bg-gray-50 p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
               {typeof recognitionData.learnings === 'string' ? (

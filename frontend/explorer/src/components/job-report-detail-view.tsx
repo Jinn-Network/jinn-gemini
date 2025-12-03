@@ -264,7 +264,7 @@ export function JobReportDetailView({ record }: JobReportDetailViewProps) {
                 <div className="space-y-4">
                   {(request_text as unknown[]).map((req: unknown, index: number) => (
                     <div key={index} className="border rounded p-3">
-                      <h4 className="font-medium mb-2 text-sm text-gray-600">
+                      <h4 className="font-medium mb-2 text-sm text-gray-400">
                         Request {index + 1}
                       </h4>
                       <MarkdownField 

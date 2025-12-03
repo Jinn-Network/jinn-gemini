@@ -180,18 +180,40 @@ export async function inferJobStatus(params: {
         };
       }
       
+      // Check for active children (delivered but still DELEGATING/WAITING)
+      // A child that delivered with non-terminal status means work is still in progress
+      if (liveChildStatus.activeChildren > 0) {
+        const activeChildDetails = liveChildStatus.allChildren
+          .filter(c => c.delivered && c.jobStatus && (c.jobStatus === 'DELEGATING' || c.jobStatus === 'WAITING'))
+          .map(c => ({ id: c.id, status: c.jobStatus }));
+        
+        workerLogger.info({
+          requestId,
+          jobDefinitionId,
+          decision: 'WAITING',
+          reason: 'children_delivered_but_still_delegating',
+          activeChildrenCount: liveChildStatus.activeChildren,
+          activeChildren: activeChildDetails
+        }, '[STATUS_INFERENCE] DECISION: Children delivered but have non-terminal status → WAITING');
+        
+        return {
+          status: 'WAITING',
+          message: `Waiting for ${liveChildStatus.activeChildren} child job(s) with non-terminal status (DELEGATING/WAITING) to complete`
+        };
+      }
+      
       workerLogger.info({
         requestId,
         jobDefinitionId,
         decision: 'COMPLETED',
-        reason: 'live_query_shows_all_delivered',
+        reason: 'live_query_shows_all_children_complete',
         totalChildren: liveChildStatus.totalChildren
       }, '[STATUS_INFERENCE] DECISION: Using live query result → COMPLETED');
       
       return {
         status: 'COMPLETED',
         message: liveChildStatus.totalChildren > 0
-          ? `All ${liveChildStatus.totalChildren} child job(s) delivered (live query)`
+          ? `All ${liveChildStatus.totalChildren} child job(s) complete (delivered with terminal status)`
           : 'Job completed direct work'
       };
     }

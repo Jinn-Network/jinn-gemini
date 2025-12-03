@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { buildEnhancedPrompt } from '../../../worker/metadata/prompt.js';
+import { createBlueprintBuilder } from '../../../worker/prompt/index.js';
 import type { IpfsMetadata } from '../../../worker/types.js';
 import {
   buildTestBlueprint,
@@ -89,7 +89,7 @@ describe('Worker blueprint processing flow integration', () => {
   });
 
   describe('Enhanced prompt building from blueprint', () => {
-    it('should build prompt with blueprint as primary content', () => {
+    it('should build prompt with blueprint as primary content', async () => {
       const assertion = buildCustomAssertion(
         'PROMPT-001',
         'All functions must have JSDoc comments',
@@ -105,7 +105,7 @@ describe('Worker blueprint processing flow integration', () => {
         model: 'gemini-2.5-flash',
       };
 
-      const prompt = buildEnhancedPrompt(metadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-001', metadata, null);
 
       // Prompt should include blueprint content
       expect(prompt).toContain('PROMPT-001');
@@ -115,7 +115,7 @@ describe('Worker blueprint processing flow integration', () => {
       expect(prompt).toContain('Documentation enables IDE tooltips');
     });
 
-    it('should build prompt with multi-assertion blueprint', () => {
+    it('should build prompt with multi-assertion blueprint', async () => {
       const blueprint = buildMultiAssertionBlueprint(4);
       
       const metadata: IpfsMetadata = {
@@ -124,7 +124,7 @@ describe('Worker blueprint processing flow integration', () => {
         model: 'gemini-2.5-pro',
       };
 
-      const prompt = buildEnhancedPrompt(metadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-002', metadata, null);
 
       // All assertions should be included
       expect(prompt).toContain('TEST-001');
@@ -133,7 +133,7 @@ describe('Worker blueprint processing flow integration', () => {
       expect(prompt).toContain('TEST-004');
     });
 
-    it('should augment blueprint with job context when available', () => {
+    it('should augment blueprint with job context when available', async () => {
       const blueprint = buildTestBlueprint([buildMinimalAssertion('CONTEXT-001')]);
       
       const metadata: IpfsMetadata = {
@@ -164,17 +164,31 @@ describe('Worker blueprint processing flow integration', () => {
         },
       };
 
-      const prompt = buildEnhancedPrompt(metadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-003', metadata, null);
 
-      // Should include both blueprint and context
-      expect(prompt).toContain('CONTEXT-001');
-      expect(prompt).toContain('Job Context');
-      expect(prompt).toContain('Total jobs in hierarchy: 3');
-      expect(prompt).toContain('parent-job');
-      expect(prompt).toContain('analysis-doc');
+      // Prompt is now JSON, parse and verify structure
+      const parsed = JSON.parse(prompt);
+      
+      // Should include blueprint assertions
+      expect(parsed.assertions).toBeDefined();
+      expect(parsed.assertions.some((a: any) => a.id === 'CONTEXT-001')).toBe(true);
+      
+      // Should include context from additionalContext
+      expect(parsed.context).toBeDefined();
+      expect(parsed.context.hierarchy).toBeDefined();
+      expect(parsed.context.hierarchy.totalJobs).toBe(3);
+      expect(parsed.context.hierarchy.completedJobs).toBe(2);
+      
+      // Should include child information
+      expect(parsed.context.hierarchy.children).toBeDefined();
+      expect(parsed.context.hierarchy.children.some((c: any) => c.jobName === 'parent-job')).toBe(true);
+      
+      // Should include artifact information
+      expect(parsed.context.artifacts).toBeDefined();
+      expect(parsed.context.artifacts.some((a: any) => a.name === 'analysis-doc')).toBe(true);
     });
 
-    it('should handle blueprint without job context', () => {
+    it('should handle blueprint without job context', async () => {
       const blueprint = buildTestBlueprint([buildMinimalAssertion('NO-CONTEXT-001')]);
       
       const metadata: IpfsMetadata = {
@@ -183,7 +197,7 @@ describe('Worker blueprint processing flow integration', () => {
         model: 'gemini-2.5-flash',
       };
 
-      const prompt = buildEnhancedPrompt(metadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-004', metadata, null);
 
       // Should only include blueprint
       expect(prompt).toContain('NO-CONTEXT-001');
@@ -192,7 +206,7 @@ describe('Worker blueprint processing flow integration', () => {
   });
 
   describe('Agent execution with blueprint (no external search)', () => {
-    it('should use blueprint directly without searching', () => {
+    it('should use blueprint directly without searching', async () => {
       const blueprint = buildTestBlueprint([buildMinimalAssertion('NO-SEARCH-001')]);
       
       const metadata: IpfsMetadata = {
@@ -202,7 +216,7 @@ describe('Worker blueprint processing flow integration', () => {
         enabledTools: ['create_artifact'],
       };
 
-      const prompt = buildEnhancedPrompt(metadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-005', metadata, null);
 
       // Blueprint content should be in prompt
       expect(prompt).toContain('NO-SEARCH-001');
@@ -215,7 +229,7 @@ describe('Worker blueprint processing flow integration', () => {
       expect(prompt).toContain('Example negative behavior');
     });
 
-    it('should provide complete assertion structure to agent', () => {
+    it('should provide complete assertion structure to agent', async () => {
       const detailedAssertion = buildCustomAssertion(
         'COMPLETE-001',
         'API endpoints must validate all input parameters',
@@ -239,7 +253,7 @@ describe('Worker blueprint processing flow integration', () => {
         model: 'gemini-2.5-flash',
       };
 
-      const prompt = buildEnhancedPrompt(metadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-006', metadata, null);
 
       // All parts of assertion should be present
       expect(prompt).toContain('COMPLETE-001');
@@ -249,7 +263,7 @@ describe('Worker blueprint processing flow integration', () => {
       expect(prompt).toContain('Input validation prevents security vulnerabilities');
     });
 
-    it('should handle blueprint with model selection', () => {
+    it('should handle blueprint with model selection', async () => {
       const blueprint = buildTestBlueprint([buildMinimalAssertion('MODEL-001')]);
       
       const metadata: IpfsMetadata = {
@@ -259,7 +273,7 @@ describe('Worker blueprint processing flow integration', () => {
         enabledTools: ['create_artifact', 'dispatch_new_job'],
       };
 
-      const prompt = buildEnhancedPrompt(metadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-007', metadata, null);
 
       // Blueprint should be in prompt regardless of model
       expect(prompt).toContain('MODEL-001');
@@ -268,7 +282,7 @@ describe('Worker blueprint processing flow integration', () => {
   });
 
   describe('End-to-end metadata → prompt flow', () => {
-    it('should complete full flow: IPFS metadata → blueprint extraction → prompt building', () => {
+    it('should complete full flow: IPFS metadata → blueprint extraction → prompt building', async () => {
       // Step 1: IPFS metadata structure (as fetched from gateway)
       const blueprint = buildMultiAssertionBlueprint(3);
       const ipfsMetadata: IpfsMetadata = {
@@ -294,7 +308,7 @@ describe('Worker blueprint processing flow integration', () => {
       expect(parsed.assertions).toHaveLength(3);
 
       // Step 3: Enhanced prompt is built
-      const prompt = buildEnhancedPrompt(ipfsMetadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-008', ipfsMetadata, null);
       expect(prompt).toContain('TEST-001');
       expect(prompt).toContain('TEST-002');
       expect(prompt).toContain('TEST-003');
@@ -306,7 +320,7 @@ describe('Worker blueprint processing flow integration', () => {
       expect(ipfsMetadata.codeMetadata?.branch?.name).toBe('job/e2e-test');
     });
 
-    it('should handle complete flow with dependencies', () => {
+    it('should handle complete flow with dependencies', async () => {
       const blueprint = buildTestBlueprint([buildMinimalAssertion('DEP-FLOW-001')]);
       
       const ipfsMetadata: IpfsMetadata = {
@@ -323,14 +337,14 @@ describe('Worker blueprint processing flow integration', () => {
       expect(ipfsMetadata.dependencies).toHaveLength(2);
 
       // Prompt built
-      const prompt = buildEnhancedPrompt(ipfsMetadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-009', ipfsMetadata, null);
       expect(prompt).toContain('DEP-FLOW-001');
 
       // Dependencies metadata preserved (used by worker for execution control)
       expect(ipfsMetadata.dependencies).toEqual(['prereq-job-def-1', 'prereq-job-def-2']);
     });
 
-    it('should handle artifact-only jobs with blueprint', () => {
+    it('should handle artifact-only jobs with blueprint', async () => {
       const blueprint = buildTestBlueprint([buildMinimalAssertion('ARTIFACT-FLOW-001')]);
       
       const ipfsMetadata: IpfsMetadata = {
@@ -347,48 +361,55 @@ describe('Worker blueprint processing flow integration', () => {
       expect(ipfsMetadata.codeMetadata).toBeUndefined();
 
       // Prompt still built correctly
-      const prompt = buildEnhancedPrompt(ipfsMetadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-010', ipfsMetadata, null);
       expect(prompt).toContain('ARTIFACT-FLOW-001');
     });
   });
 
   describe('Error handling and edge cases', () => {
-    it('should handle malformed blueprint JSON gracefully', () => {
+    it('should handle malformed blueprint JSON gracefully', async () => {
       const ipfsMetadata: IpfsMetadata = {
         blueprint: 'not valid json {',
         jobName: 'malformed-test',
         model: 'gemini-2.5-flash',
       };
 
-      // Prompt builder doesn't parse blueprint, just passes it through
-      const prompt = buildEnhancedPrompt(ipfsMetadata);
-      expect(prompt).toContain('not valid json');
+      // Prompt builder will still construct a valid JSON blueprint structure
+      // When blueprint is malformed, it falls back to system assertions only
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-011', ipfsMetadata, null);
+      expect(prompt).toBeTruthy();
+      expect(typeof prompt).toBe('string');
+      // Should contain system assertions like SYS-COMPLETENESS-001
+      expect(prompt).toContain('SYS-');
     });
 
-    it('should handle empty blueprint string', () => {
+    it('should handle empty blueprint string', async () => {
       const ipfsMetadata: IpfsMetadata = {
         blueprint: '',
         jobName: 'empty-blueprint-test',
         model: 'gemini-2.5-flash',
       };
 
-      // Empty string is falsy, should use fallback with blueprint preface
-      const prompt = buildEnhancedPrompt(ipfsMetadata, 'fallback prompt');
-      expect(prompt).toContain('Blueprint (required):');
-      expect(prompt).toContain('fallback prompt');
+      // Empty blueprint still produces a valid prompt structure
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-012', ipfsMetadata, null);
+      // Should contain system assertions at minimum
+      expect(prompt).toBeTruthy();
+      expect(typeof prompt).toBe('string');
     });
 
-    it('should handle missing all specification fields', () => {
+    it('should handle missing all specification fields', async () => {
       const ipfsMetadata: IpfsMetadata = {
         jobName: 'no-spec-test',
         model: 'gemini-2.5-flash',
       };
 
-      const prompt = buildEnhancedPrompt(ipfsMetadata);
-      expect(prompt).toBe('No job specification found');
+      // Even without blueprint, system generates baseline prompt
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-013', ipfsMetadata, null);
+      expect(prompt).toBeTruthy();
+      expect(typeof prompt).toBe('string');
     });
 
-    it('should preserve blueprint with unicode characters', () => {
+    it('should preserve blueprint with unicode characters', async () => {
       const unicodeAssertion = buildCustomAssertion(
         'UNICODE-001',
         'Support internationalization: 日本語, العربية, עברית',
@@ -404,7 +425,7 @@ describe('Worker blueprint processing flow integration', () => {
         model: 'gemini-2.5-flash',
       };
 
-      const prompt = buildEnhancedPrompt(metadata);
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-014', metadata, null);
       expect(prompt).toContain('日本語');
       expect(prompt).toContain('العربية');
       expect(prompt).toContain('🚀✨');

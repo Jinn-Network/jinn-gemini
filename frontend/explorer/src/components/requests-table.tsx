@@ -8,6 +8,14 @@ import { getDependencyInfo, DependencyInfo, getJobDefinition } from '@/lib/subgr
 import { StatusIcon, mapDependencyStatusToJobStatus } from '@/components/status-icon'
 import { TruncatedId } from '@/components/truncated-id'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 interface RequestsTableProps {
   records: SubgraphRecord[]
@@ -30,7 +38,7 @@ function DependencyCell({ dependencies, refetchTrigger }: { dependencies?: strin
   }, [isHovering, dependencies, refetchTrigger])
 
   if (!dependencies || dependencies.length === 0) {
-    return <span className="text-gray-400 text-sm">-</span>
+    return <span className="text-muted-foreground">-</span>
   }
 
   const displayCount = dependencies.length
@@ -41,17 +49,17 @@ function DependencyCell({ dependencies, refetchTrigger }: { dependencies?: strin
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      <span className="text-sm font-medium text-gray-700 cursor-help">
+      <span className="font-medium text-muted-foreground cursor-help">
         {displayCount}
       </span>
       
       {isHovering && (
-        <div className="absolute z-50 left-0 top-full mt-1 w-64 p-3 bg-white border border-gray-200 rounded-lg shadow-lg">
+        <div className="absolute z-50 left-0 top-full mt-1 w-64 p-3 bg-popover border rounded-lg shadow-lg">
           {isLoading ? (
-            <div className="text-xs text-gray-500">Loading...</div>
+            <div className="text-xs text-muted-foreground">Loading...</div>
           ) : (
             <div className="space-y-2">
-              <div className="text-xs font-semibold text-gray-700 mb-2">
+              <div className="text-xs font-semibold text-muted-foreground mb-2">
                 Depends on:
               </div>
               {dependencyDetails.slice(0, 5).map((dep) => {
@@ -66,7 +74,7 @@ function DependencyCell({ dependencies, refetchTrigger }: { dependencies?: strin
                 )
               })}
               {dependencies.length > 5 && (
-                <div className="text-xs text-gray-500 italic mt-1">
+                <div className="text-xs text-muted-foreground italic mt-1">
                   +{dependencies.length - 5} more...
                 </div>
               )}
@@ -133,28 +141,28 @@ export function RequestsTable({ records }: RequestsTableProps) {
 
   if (records.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
+      <div className="text-center py-12 text-muted-foreground">
         No records found
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-lg">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job Name</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">ID</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Status</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Dependencies</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Workstream</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Job ID</th>
-            <th className="text-right px-4 py-3 text-sm font-semibold text-gray-700">Timestamp</th>
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Mech</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Job Name</TableHead>
+            <TableHead>ID</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Dependencies</TableHead>
+            <TableHead>Workstream</TableHead>
+            <TableHead>Job ID</TableHead>
+            <TableHead className="text-right">Timestamp</TableHead>
+            <TableHead>Mech</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {records.map((record) => {
             const jobName = 'jobName' in record && record.jobName 
               ? (record.jobName.length > 60 ? record.jobName.substring(0, 60) + '...' : record.jobName)
@@ -186,37 +194,37 @@ export function RequestsTable({ records }: RequestsTableProps) {
             const dependencies = 'dependencies' in record ? record.dependencies as string[] : undefined
 
             return (
-              <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3">
+              <TableRow key={record.id}>
+                <TableCell>
                   <Link 
                     href={`/requests/${record.id}`}
-                    className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                    className="text-primary hover:text-primary hover:underline font-medium"
                   >
                     {jobName}
                   </Link>
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   <TruncatedId value={record.id} />
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${statusClass}`}>
                     {statusText}
                   </span>
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   <DependencyCell dependencies={dependencies} refetchTrigger={refetchTrigger} />
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   {workstreamId ? (
                     <TruncatedId 
                       value={workstreamId} 
                       linkTo={`/workstreams/${workstreamId}`}
                     />
                   ) : (
-                    <span className="text-gray-400 text-sm">-</span>
+                    <span className="text-muted-foreground">-</span>
                   )}
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   {jobDefId ? (
                     <div className="flex items-center gap-2">
                       <JobDefStatusCell jobDefId={jobDefId} refetchTrigger={refetchTrigger} />
@@ -226,24 +234,24 @@ export function RequestsTable({ records }: RequestsTableProps) {
                       />
                     </div>
                   ) : (
-                    <span className="text-gray-400 text-sm">-</span>
+                    <span className="text-muted-foreground">-</span>
                   )}
-                </td>
-                <td className="px-4 py-3 text-right text-sm text-gray-600">
+                </TableCell>
+                <TableCell className="text-right text-muted-foreground">
                   {timestamp}
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   {mech ? (
                     <TruncatedId value={mech} />
                   ) : (
-                    <span className="text-gray-400 text-sm">-</span>
+                    <span className="text-muted-foreground">-</span>
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

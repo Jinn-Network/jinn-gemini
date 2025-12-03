@@ -2256,6 +2256,29 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - **Issue**: Agents enter polling loops after dispatching child jobs, repeatedly checking child status instead of finalizing immediately
 - **Symptom**: Agent dispatches child via `dispatch_new_job`, then enters loop: check status → update `launcher_briefing` → repeat
 - **Root Cause**: Agent confusion between DELEGATING vs WAITING states. After dispatching child, agent checked status, saw "undelivered child", and concluded it was in WAITING state (which permits status checking). Agent didn't understand DELEGATING means "just dispatched THIS RUN, exit immediately" vs WAITING means "dispatched in PRIOR run, being re-run to check status".
+
+**Identical Chunk Loop Detection / Pagination Loops (2025-12-02):**
+- **Issue**: Agent enters infinite pagination loop on `search_artifacts` MCP tool, repeatedly outputting identical text chunks until loop protection kills the process
+- **Symptom**: Agent outputs "Okay, artifacts retrieved. Now paginating to the next batch using the cursor to complete the data set." 10+ consecutive times with no tool calls between outputs
+- **Root Cause**: Agent attempts to paginate through large artifact sets (26+ completed jobs in workstream with 100+ artifacts), but:
+  1. **Pagination design**: `search_artifacts` returns ALL matching results (limit: 100) from Ponder, then applies token-budget pagination client-side via `composeSinglePageResponse` (10k token budget)
+  2. **Single-page overflow**: When full result set exceeds 10k tokens, only first few artifacts fit in page. Agent receives `has_more: true` and `next_cursor` (offset-based)
+  3. **Cognitive loop**: Agent calls tool with cursor, gets same results (offset advances but still within first database page), produces same output, repeats
+  4. **Loop protection triggers**: After 10 identical stdout chunks (`MAX_IDENTICAL_CHUNKS=10`), agent process is killed with `SIGTERM`
+- **Impact**: Job fails after wasting ~9 minutes and ~40k tokens on repetitive pagination attempts. Workstream state is preserved but job marked FAILED.
+- **Detection**: Loop protection in `gemini-agent/agent.ts` lines 418-431:
+  - Tracks last 10 stdout chunks in sliding window
+  - Kills process when identical chunk appears 10+ times
+  - Preserves partial output and telemetry for debugging
+- **Two Distinct Problems**:
+  1. **Agent behavior**: Should NOT attempt exhaustive artifact retrieval in single job. Should sample artifacts (no pagination) or delegate child job for artifact analysis
+  2. **Tool design**: `search_artifacts` pagination is offset-based but operates on pre-filtered database results (limit: 100). When client-side token budget is smaller than database page, cursor advances within same page → same results
+- **Solutions**:
+  - **Short-term (agent prompting)**: Add assertion to blueprint: "Do NOT paginate through all artifacts. Sample first page only or delegate child job for exhaustive review."
+  - **Medium-term (tool improvement)**: Make `composeSinglePageResponse` aware of upstream limit. If `next_cursor.offset >= database_limit`, return `has_more: false` to prevent false pagination signal
+  - **Long-term (architecture)**: Replace offset-based pagination with keyset pagination (e.g., `last_id`) to avoid overlapping windows when token budget < database page size
+- **Workaround**: For jobs with 50+ artifacts, use `search_artifacts` without pagination or dispatch dedicated child job for artifact analysis
+- **Related**: Similar issue could affect `search_jobs` (also uses `composeSinglePageResponse` with 10k budget and database limit: 100)
 - **Fix Applied**: 
   1. Added explicit "FINALIZE IMMEDIATELY after dispatching" instruction to GEMINI.md delegation section
   2. Clarified DELEGATING vs WAITING distinction: DELEGATING = just dispatched → exit; WAITING = dispatched previously → check status and exit
@@ -2430,3 +2453,60 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 **Related Files**:
 - `frontend/explorer/src/hooks/use-realtime-data.ts` - Fixed to subscribe only to needed table
 - `frontend/explorer/src/hooks/use-subgraph-collection.ts` - Already correct (uses useRealtimeData)
+
+---
+
+## Known Limitations & Gotchas
+
+### Job-Level Status Ignored Child Job Status (Fixed 2025-12-02)
+
+**Issue**: `jobDefinition.lastStatus` showed COMPLETED when direct children had `delivered: true` but `lastStatus: "DELEGATING"`, causing premature completion while descendants were still spawning work.
+
+**Root Cause**: Status inference checked only the `delivered` boolean on child requests, not the child job definition's `lastStatus`. A child that delivered with DELEGATING/WAITING status means work is still in progress (child spawned grandchildren).
+
+**Example**: 
+- Root job "ethereum-protocol-research" ran at Dec 2 09:14
+- Child job "Sophisticated, Less Visible Trading Activities" (02eb7ffc) had `delivered: true` + `lastStatus: "DELEGATING"` 
+- Root saw "all children delivered" and marked itself COMPLETED
+- Child's grandchildren (spawned Dec 2 17:58-18:31) remained pending
+- Root incorrectly showed COMPLETED with 14 pending descendants
+
+**Fix (2025-12-02)**:
+- Modified `getAllChildrenForJobDefinition` to query child job definitions and check `lastStatus`
+- Added `activeChildren` count: delivered children with DELEGATING/WAITING status
+- `inferStatus` now returns WAITING if any children have non-terminal status, even if delivered
+- Parent jobs won't complete until all children reach COMPLETED or FAILED status
+
+**Impact**:
+- Work Protocol now correctly enforces: parent waits for all descendants to fully complete
+- Prevents premature workstream completion when delegation cascades multiple levels
+- `lastStatus` field now accurately reflects job-level state including child status
+
+**Related Files**:
+- `worker/status/inferStatus.ts` - Added check for activeChildren (delivered but DELEGATING/WAITING)
+- `worker/status/childJobs.ts` - Queries child job definitions to get `lastStatus` field
+- `ponder/src/index.ts` - Line 794: `lastStatus` set from delivery (per-run snapshot remains for indexing)
+
+---
+
+### Stale Claim Blocking (Fixed 2025-12-02)
+
+**Issue**: Worker skipped jobs stuck IN_PROGRESS for hours, never re-attempting them. Request `0x486db...be542` remained stuck IN_PROGRESS for 643 minutes (10+ hours) while worker repeatedly skipped it.
+
+**Root Cause**: Control API's `claimRequest` mutation returned existing IN_PROGRESS claims indefinitely without checking staleness (line 204-206). Worker client added `alreadyClaimed` logic attempting to detect stale claims (>1 minute), but inverted the handling - treated stale claims as "skip" instead of "retry".
+
+**Fix (2025-12-02)**:
+- **Control API** (`control-api/server.ts`): Added age check before returning existing claim. If claim is IN_PROGRESS and >5 minutes old (300s threshold), allows re-claiming with fresh timestamp.
+- **Worker Client** (`worker/control_api_client.ts`): Removed confusing client-side stale detection. Now trusts Control API's decision on claimability.
+
+**Verification**:
+- Before fix: Claim at `2025-12-02T09:17:33.006Z`, age 643 minutes, worker skipped
+- After fix: Control API logged "Re-claiming stale job", updated claim to `2025-12-02T20:03:36.229Z`
+- Worker successfully claimed and began processing
+
+**Prevention**: Control API is single source of truth for claim staleness. 5-minute threshold balances recovery speed vs. avoiding double-work during legitimate long-running jobs.
+
+**Related Files**:
+- `control-api/server.ts` - Lines 204-221: Stale claim detection and re-claiming logic
+- `worker/control_api_client.ts` - Lines 80-99: Simplified claim response handling
+- `scripts/reset-claim.ts` - Utility script for inspecting and manually resetting stale claims

@@ -142,9 +142,10 @@ export async function queryRequestsByJobDefinition(
  * This queries Ponder for fresh data, not relying on hierarchy snapshots
  */
 export interface JobLevelChildStatusResult {
-  allChildren: Array<{ id: string; delivered: boolean; requestId: string }>;
+  allChildren: Array<{ id: string; delivered: boolean; requestId: string; jobDefinitionId?: string; jobStatus?: string }>;
   totalChildren: number;
   undeliveredChildren: number;
+  activeChildren: number; // delivered but still DELEGATING/WAITING
   queryDuration_ms: number;
 }
 
@@ -167,7 +168,7 @@ export async function getAllChildrenForJobDefinition(
   );
   
   // Step 3: Flatten and deduplicate by child request ID
-  const allChildrenMap = new Map<string, { id: string; delivered: boolean; requestId: string }>();
+  const allChildrenMap = new Map<string, { id: string; delivered: boolean; requestId: string; jobDefinitionId?: string; jobStatus?: string }>();
   
   for (let i = 0; i < allRequests.length; i++) {
     const parentRequestId = allRequests[i].id;
@@ -188,17 +189,103 @@ export async function getAllChildrenForJobDefinition(
   const allChildren = Array.from(allChildrenMap.values());
   const undeliveredChildren = allChildren.filter(c => !c.delivered).length;
   
+  // Step 4: For delivered children, query their job definitions to check status
+  // A child that delivered with DELEGATING/WAITING means work is still in progress
+  const deliveredChildren = allChildren.filter(c => c.delivered);
+  
+  if (deliveredChildren.length > 0) {
+    try {
+      // Query job definitions for delivered children to get their lastStatus
+      const childJobDefIds = new Set<string>();
+      const jobDefQueryResult = await graphQLRequest<{
+        requests: { items: Array<{ id: string; jobDefinitionId: string }> }
+      }>({
+        url: PONDER_GRAPHQL_URL,
+        query: `
+          query GetChildJobDefinitions($requestIds: [String!]!) {
+            requests(where: { id_in: $requestIds }) {
+              items {
+                id
+                jobDefinitionId
+              }
+            }
+          }
+        `,
+        variables: { requestIds: deliveredChildren.map(c => c.id) },
+        context: { operation: 'getChildJobDefinitions', jobDefinitionId }
+      });
+      
+      // Map request IDs to their job definition IDs
+      const requestToJobDefMap = new Map<string, string>();
+      for (const req of jobDefQueryResult?.requests?.items || []) {
+        if (req.jobDefinitionId) {
+          requestToJobDefMap.set(req.id, req.jobDefinitionId);
+          childJobDefIds.add(req.jobDefinitionId);
+        }
+      }
+      
+      // Query the job definitions to get their lastStatus
+      if (childJobDefIds.size > 0) {
+        const jobDefsResult = await graphQLRequest<{
+          jobDefinitions: { items: Array<{ id: string; lastStatus: string }> }
+        }>({
+          url: PONDER_GRAPHQL_URL,
+          query: `
+            query GetJobDefinitionStatus($jobDefIds: [String!]!) {
+              jobDefinitions(where: { id_in: $jobDefIds }) {
+                items {
+                  id
+                  lastStatus
+                }
+              }
+            }
+          `,
+          variables: { jobDefIds: Array.from(childJobDefIds) },
+          context: { operation: 'getJobDefinitionStatus', jobDefinitionId }
+        });
+        
+        const jobDefStatusMap = new Map<string, string>();
+        for (const jobDef of jobDefsResult?.jobDefinitions?.items || []) {
+          jobDefStatusMap.set(jobDef.id, jobDef.lastStatus);
+        }
+        
+        // Update allChildren with job definition info
+        for (const child of allChildren) {
+          const childJobDefId = requestToJobDefMap.get(child.id);
+          if (childJobDefId) {
+            child.jobDefinitionId = childJobDefId;
+            child.jobStatus = jobDefStatusMap.get(childJobDefId);
+          }
+        }
+      }
+    } catch (error) {
+      workerLogger.warn({
+        jobDefinitionId,
+        error: serializeError(error)
+      }, 'Failed to query child job definition statuses, will treat all delivered children as complete');
+    }
+  }
+  
+  // Count "active" children: delivered but with non-terminal status
+  const activeChildren = allChildren.filter(c => 
+    c.delivered && 
+    c.jobStatus && 
+    (c.jobStatus === 'DELEGATING' || c.jobStatus === 'WAITING')
+  ).length;
+  
   workerLogger.debug({
     jobDefinitionId,
     totalChildren: allChildren.length,
     undeliveredChildren,
+    activeChildren,
     queryDuration_ms: Date.now() - queryStart
-  }, 'Aggregated all children for job definition');
+  }, 'Aggregated all children for job definition with status check');
   
   return {
     allChildren,
     totalChildren: allChildren.length,
     undeliveredChildren,
+    activeChildren,
     queryDuration_ms: Date.now() - queryStart
   };
 }

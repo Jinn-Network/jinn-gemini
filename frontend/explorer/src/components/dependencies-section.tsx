@@ -52,12 +52,12 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
           {hasDependencies && dependencyDetails.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <h4 className="text-sm font-semibold text-gray-700">Depends On</h4>
+                <h4 className="text-sm font-semibold text-gray-400">Depends On</h4>
                 <span className="text-xs text-gray-500">
                   ({dependencyDetails.length} {dependencyDetails.length === 1 ? 'job' : 'jobs'})
                 </span>
               </div>
-              <div className="text-sm text-gray-600 mb-3">
+              <div className="text-sm text-gray-400 mb-3">
                 This job requires the following jobs to complete before it can run:
               </div>
               <ul className="space-y-2">
@@ -71,7 +71,7 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
                     >
                       <div className="flex items-center gap-2">
                         <StatusIcon status={jobStatus} size={16} />
-                        <span className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">{dep.jobName}</span>
+                        <span className="text-sm font-medium text-primary hover:text-primary hover:underline">{dep.jobName}</span>
                       </div>
                       <span className="text-xs text-gray-500">
                         {dep.delivered ? 'Completed' : dep.status === 'in_progress' ? 'In Progress' : 'Pending'}
@@ -89,12 +89,12 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
           {hasDependents && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <h4 className="text-sm font-semibold text-gray-700">Required By</h4>
+                <h4 className="text-sm font-semibold text-gray-400">Required By</h4>
                 <span className="text-xs text-gray-500">
                   ({dependents.length} {dependents.length === 1 ? 'job' : 'jobs'})
                 </span>
               </div>
-              <div className="text-sm text-gray-600 mb-3">
+              <div className="text-sm text-gray-400 mb-3">
                 The following jobs are waiting for this job to complete:
               </div>
               <ul className="space-y-2">
@@ -108,7 +108,7 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
                       <div className="flex-1 min-w-0">
                         <Link 
                           href={`/requests/${dep.id}`}
-                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium block truncate"
+                          className="text-primary hover:text-primary hover:underline font-medium block truncate"
                         >
                           {dep.jobName || `Request ${dep.id.substring(0, 16)}...`}
                         </Link>
@@ -140,7 +140,7 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
   if (renderAsSubsection) {
     return (
       <div className="space-y-4 pt-4 border-t border-gray-200">
-        <h4 className="text-sm font-medium text-gray-700">Dependencies</h4>
+        <h4 className="text-sm font-medium text-gray-400">Dependencies</h4>
         {content}
       </div>
     )

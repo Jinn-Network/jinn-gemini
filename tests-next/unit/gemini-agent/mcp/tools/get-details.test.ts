@@ -281,7 +281,7 @@ describe('get-details MCP tool', () => {
 
       await getDetails(params as any);
 
-      expect(resolveRequestIpfsContent).toHaveBeenCalledWith('QmRequestHash', 10000);
+      expect(resolveRequestIpfsContent).toHaveBeenCalledWith('QmRequestHash', 30000);
       expect(composeSinglePageResponse).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({
@@ -327,7 +327,7 @@ describe('get-details MCP tool', () => {
 
       await getDetails(params as any);
 
-      expect(resolveRequestIpfsContent).toHaveBeenCalledWith('QmArtifactCid', 10000);
+      expect(resolveRequestIpfsContent).toHaveBeenCalledWith('QmArtifactCid', 30000);
       expect(composeSinglePageResponse).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({

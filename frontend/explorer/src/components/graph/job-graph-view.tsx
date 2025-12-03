@@ -47,7 +47,6 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
     updateDepth,
     updateDirection,
     toggleLayout,
-    refresh,
   } = useJobGraph({ rootId, groupByDefinition })
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -75,7 +74,7 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
       <div className="flex items-center justify-center h-[700px] border rounded-lg bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <div className="text-gray-600">Loading graph...</div>
+          <div className="text-gray-400">Loading graph...</div>
         </div>
       </div>
     )
@@ -88,12 +87,6 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
           <AlertTriangle className="w-12 h-12 mx-auto mb-4" />
           <div className="font-semibold text-lg">Error loading graph</div>
           <div className="text-sm mt-2">{error}</div>
-          <button
-            onClick={refresh}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-          >
-            Try Again
-          </button>
         </div>
       </div>
     )
@@ -102,7 +95,7 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
   if (!graph || graph.nodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-[700px] border rounded-lg bg-gray-50">
-        <div className="text-center text-gray-600 p-8">
+        <div className="text-center text-gray-400 p-8">
           <Search className="w-12 h-12 mx-auto mb-4" />
           <div className="font-semibold text-lg">No relationships found</div>
           <div className="text-sm mt-2">
@@ -141,7 +134,7 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
             {/* Statistics Panel */}
             <Panel position="top-left" className="bg-white p-4 rounded-lg shadow-md">
               <h3 className="font-semibold text-sm mb-2">Graph Statistics</h3>
-              <div className="text-xs text-gray-600 space-y-1">
+              <div className="text-xs text-gray-400 space-y-1">
                 <div className="flex justify-between gap-4">
                   <span>Jobs:</span>
                   <span className="font-semibold">{graph?.stats.totalNodes || 0}</span>
@@ -168,7 +161,6 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
               onDepthChange={updateDepth}
               direction={direction}
               onDirectionChange={updateDirection}
-              onRefresh={refresh}
             />
           </>
         )}
@@ -182,9 +174,9 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
             aria-label={showOverlays ? 'Hide overlays' : 'Show overlays'}
           >
             {showOverlays ? (
-              <EyeOff className="w-5 h-5 text-gray-700" />
+              <EyeOff className="w-5 h-5 text-gray-400" />
             ) : (
-              <Eye className="w-5 h-5 text-gray-700" />
+              <Eye className="w-5 h-5 text-gray-400" />
             )}
           </button>
         </Panel>

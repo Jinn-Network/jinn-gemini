@@ -36,7 +36,6 @@ interface UseSubgraphCollectionReturn {
   totalRecords: number
   currentPage: number
   setCurrentPage: (page: number) => void
-  refresh: () => void
   error: string | null
   hasNextPage: boolean
   hasPreviousPage: boolean
@@ -212,11 +211,6 @@ export function useSubgraphCollection({
     }
   }, [enablePolling, pollingInterval, currentPage, fetchRecords, collectionName, isRealtimeConnected])
 
-  // Manual refresh function
-  const refresh = useCallback(() => {
-    fetchRecords(currentPage, false)
-  }, [fetchRecords, currentPage])
-
   // Trigger refresh when realtime events arrive
   useEffect(() => {
     if (isRealtimeConnected && realtimeUpdateTrigger > 0) {
@@ -256,7 +250,6 @@ export function useSubgraphCollection({
     totalRecords,
     currentPage,
     setCurrentPage,
-    refresh,
     error,
     hasNextPage,
     hasPreviousPage,

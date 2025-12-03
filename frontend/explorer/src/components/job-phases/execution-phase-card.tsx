@@ -1,6 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { RequestsTable } from '../requests-table'
 import { RequestsTableSkeleton } from '../loading-skeleton'
 import { useState, useEffect } from 'react'
@@ -73,7 +74,7 @@ export function ExecutionPhaseCard({
       case 'FAILED':
         return 'bg-red-100 text-red-800 border-red-300'
       case 'RUNNING':
-        return 'bg-blue-100 text-blue-800 border-blue-300'
+        return 'bg-primary/20 text-primary border-blue-300'
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300'
     }
@@ -85,9 +86,16 @@ export function ExecutionPhaseCard({
         <CardTitle className="text-xl flex items-center gap-2">
           ⚙️ Execution Phase
           {status && (
-            <span className={`ml-auto text-xs font-semibold px-3 py-1 rounded-full border ${getStatusColor(status)}`}>
+            <Badge 
+              variant={
+                status.toUpperCase() === 'COMPLETED' ? 'default' :
+                status.toUpperCase() === 'FAILED' ? 'destructive' :
+                'secondary'
+              }
+              className="ml-auto"
+            >
               {status}
-            </span>
+            </Badge>
           )}
         </CardTitle>
       </CardHeader>
@@ -96,13 +104,13 @@ export function ExecutionPhaseCard({
           <div className="flex gap-4 text-sm">
             {tokens !== undefined && (
               <div className="bg-white px-3 py-2 rounded border">
-                <span className="text-gray-600">Tokens:</span>{' '}
+                <span className="text-gray-400">Tokens:</span>{' '}
                 <span className="font-semibold text-gray-900">{tokens.toLocaleString()}</span>
               </div>
             )}
             {duration !== undefined && (
               <div className="bg-white px-3 py-2 rounded border">
-                <span className="text-gray-600">Duration:</span>{' '}
+                <span className="text-gray-400">Duration:</span>{' '}
                 <span className="font-semibold text-gray-900">{(duration / 1000).toFixed(1)}s</span>
               </div>
             )}
@@ -111,7 +119,7 @@ export function ExecutionPhaseCard({
 
         {trace && trace.length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">
+            <h4 className="text-sm font-semibold text-gray-400 mb-2">
               Execution Trace ({trace.length} steps)
             </h4>
             <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -121,7 +129,7 @@ export function ExecutionPhaseCard({
                     <span className="text-xs font-semibold text-gray-500">Step {index + 1}</span>
                     <span className="text-sm font-medium text-gray-900">{step.tool}</span>
                   </div>
-                  <div className="text-xs text-gray-600">
+                  <div className="text-xs text-gray-400">
                     {step.result_summary.slice(0, 200)}
                     {step.result_summary.length > 200 ? '...' : ''}
                   </div>
@@ -133,7 +141,7 @@ export function ExecutionPhaseCard({
 
         {finalOutputSummary && (
           <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">Final Output</h4>
+            <h4 className="text-sm font-semibold text-gray-400 mb-2">Final Output</h4>
             <div className="text-sm text-gray-900 bg-white p-4 rounded border max-h-64 overflow-y-auto whitespace-pre-wrap">
               {finalOutputSummary}
             </div>
@@ -142,28 +150,28 @@ export function ExecutionPhaseCard({
 
         {artifacts && artifacts.length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">Artifacts Created</h4>
+            <h4 className="text-sm font-semibold text-gray-400 mb-2">Artifacts Created</h4>
             <div className="space-y-2">
               {artifacts.map((artifact, index) => (
                 <div key={index} className="bg-white p-3 rounded border border-green-200">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded">
+                    <Badge variant="secondary" className="text-green-700 bg-green-100">
                       {artifact.topic}
-                    </span>
+                    </Badge>
                     <span className="text-sm font-medium text-gray-900 flex-1">{artifact.name}</span>
                     {artifact.cid && (
                       <a
                         href={`https://gateway.autonolas.tech/ipfs/${artifact.cid}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                        className="text-xs text-primary hover:text-primary hover:underline"
                       >
                         IPFS ↗
                       </a>
                     )}
                   </div>
                   {artifact.contentPreview && (
-                    <p className="text-xs text-gray-600 truncate">{artifact.contentPreview}</p>
+                    <p className="text-xs text-gray-400 truncate">{artifact.contentPreview}</p>
                   )}
                 </div>
               ))}
@@ -173,7 +181,7 @@ export function ExecutionPhaseCard({
 
         {childRequestIds && childRequestIds.length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">
+            <h4 className="text-sm font-semibold text-gray-400 mb-2">
               Child Jobs Spawned ({childRequestIds.length})
             </h4>
             {loadingChildren ? (

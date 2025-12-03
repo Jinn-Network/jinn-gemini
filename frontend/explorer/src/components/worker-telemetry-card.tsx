@@ -147,7 +147,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             href={String(metadata.branchUrl)}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+            className="text-xs text-primary hover:text-primary hover:underline inline-flex items-center gap-1"
           >
             View branch
             <ExternalLink className="w-3 h-3" />
@@ -258,7 +258,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
           <Badge variant="outline" className={`text-xs ${
             metadata.inferredStatus === 'COMPLETED' ? 'text-green-600' :
             metadata.inferredStatus === 'FAILED' ? 'text-red-600' :
-            'text-gray-600'
+            'text-gray-400'
           }`}>
             Status: {String(metadata.inferredStatus)}
           </Badge>
@@ -297,7 +297,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             href={`https://gateway.autonolas.tech/ipfs/${metadata.cid}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-mono text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+            className="text-xs font-mono text-primary hover:text-primary hover:underline inline-flex items-center gap-1"
           >
             {String(metadata.cid).slice(0, 12)}...
             <ExternalLink className="w-3 h-3" />
@@ -321,7 +321,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             href={String(metadata.branchUrl)}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+            className="text-xs text-primary hover:text-primary hover:underline inline-flex items-center gap-1"
           >
             View branch
             <ExternalLink className="w-3 h-3" />
@@ -349,12 +349,12 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
     const artifactCids: string[] = Array.isArray(metadata.artifactCids) ? metadata.artifactCids : []
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
-        <span className="text-xs text-gray-600">
+        <span className="text-xs text-gray-400">
           Delivering {Number(metadata.artifactCount) || artifactCids.length} artifact{(Number(metadata.artifactCount) || artifactCids.length) === 1 ? '' : 's'}
         </span>
         {artifactCids.length > 0 && (
           <details className="text-xs text-gray-500">
-            <summary className="cursor-pointer hover:text-gray-700">Artifact CIDs</summary>
+            <summary className="cursor-pointer hover:text-gray-400">Artifact CIDs</summary>
             <div className="mt-1 ml-2 space-y-1">
               {artifactCids.map((cid: string) => (
                 <a
@@ -362,7 +362,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
                   href={`https://gateway.autonolas.tech/ipfs/${cid}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block font-mono text-blue-600 hover:text-blue-800 hover:underline"
+                  className="block font-mono text-primary hover:text-primary hover:underline"
                 >
                   {cid.slice(0, 18)}...
                 </a>
@@ -385,7 +385,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             href={`https://basescan.org/tx/${txHash}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-mono text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+            className="text-xs font-mono text-primary hover:text-primary hover:underline inline-flex items-center gap-1"
           >
             {String(txHash).slice(0, 10)}...
             <ExternalLink className="w-3 h-3" />
@@ -395,7 +395,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
           <Badge variant="outline" className={`text-xs ${
             status === 'confirmed' || status === 'delivered' || status === 'DELIVERED' ? 'text-green-600' :
             status === 'reverted' ? 'text-red-600' :
-            'text-gray-600'
+            'text-gray-400'
           }`}>
             {String(status)}
           </Badge>
@@ -423,7 +423,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
           <Badge variant="outline" className={`text-xs ${
             metadata.status === 'COMPLETED' ? 'text-green-600' :
             metadata.status === 'FAILED' ? 'text-red-600' :
-            'text-gray-600'
+            'text-gray-400'
           }`}>
             Status: {String(metadata.status)}
           </Badge>
@@ -441,7 +441,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
         {!!metadata.parentJobDefId && (
           <a
             href={`/job-definitions/${metadata.parentJobDefId}`}
-            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+            className="text-xs text-primary hover:text-primary hover:underline"
           >
             Parent: {String(metadata.parentJobDefId).slice(0, 8)}...
           </a>
@@ -450,7 +450,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
           <Badge variant="outline" className={`text-xs ${
             metadata.childStatus === 'COMPLETED' ? 'text-green-600' :
             metadata.childStatus === 'FAILED' ? 'text-red-600' :
-            'text-gray-600'
+            'text-gray-400'
           }`}>
             Child: {String(metadata.childStatus)}
           </Badge>
@@ -469,7 +469,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
         {!!metadata.newRequestId && (
           <a
             href={`/requests/${metadata.newRequestId}`}
-            className="text-xs text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+            className="text-xs text-primary hover:text-primary hover:underline inline-flex items-center gap-1"
           >
             New request: {String(metadata.newRequestId).slice(0, 8)}...
             <ExternalLink className="w-3 h-3" />
@@ -490,7 +490,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             href={`https://gateway.autonolas.tech/ipfs/${metadata.cid}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-mono text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+            className="text-xs font-mono text-primary hover:text-primary hover:underline inline-flex items-center gap-1"
           >
             {String(metadata.cid).slice(0, 12)}...
             <ExternalLink className="w-3 h-3" />
@@ -501,7 +501,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
             {String(metadata.events)} events
           </Badge>
         )}
-        <span className="text-xs text-gray-600">
+        <span className="text-xs text-gray-400">
           Saved worker telemetry {metadata.name ? `(${metadata.name})` : ''}
         </span>
       </div>
@@ -563,7 +563,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
           {/* Summary Stats */}
           <div className="grid grid-cols-4 gap-3">
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                 <Clock className="w-3 h-3" />
                 <span>Total Duration</span>
               </div>
@@ -573,7 +573,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
             </div>
 
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                 <Activity className="w-3 h-3" />
                 <span>Events</span>
               </div>
@@ -583,7 +583,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
             </div>
 
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                 <CheckCircle className="w-3 h-3" />
                 <span>Phases</span>
               </div>
@@ -593,7 +593,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
             </div>
 
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                 <AlertCircle className="w-3 h-3" />
                 <span>Errors</span>
               </div>
@@ -606,7 +606,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
 
           {/* Phase Timeline */}
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-3">Execution Timeline</div>
+            <div className="text-sm font-medium text-gray-400 mb-3">Execution Timeline</div>
             <div className="space-y-3">
               {telemetryLog.summary.phases.map((phase, idx) => {
                 const events = phaseGroups[phase] || []
@@ -650,7 +650,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
                                   {new Date(event.timestamp).toLocaleTimeString()}
                                 </span>
                                 {eventIcon && <span className="text-gray-500">{eventIcon}</span>}
-                                <span className={`font-medium ${event.event === 'error' ? 'text-red-600' : 'text-gray-700'}`}>
+                                <span className={`font-medium ${event.event === 'error' ? 'text-red-600' : 'text-gray-400'}`}>
                                   {event.event.replace(/_/g, ' ')}
                                 </span>
                                 {event.duration_ms && (
@@ -671,7 +671,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
                               {/* Fallback raw metadata for unknown event types */}
                               {event.metadata && Object.keys(event.metadata).length > 0 && !formattedMetadata && (
                                 <details className="mt-1 ml-4">
-                                  <summary className="text-gray-500 cursor-pointer hover:text-gray-700">
+                                  <summary className="text-gray-500 cursor-pointer hover:text-gray-400">
                                     View metadata
                                   </summary>
                                   <pre className="mt-1 bg-gray-50 p-2 rounded text-xs overflow-auto">
@@ -692,7 +692,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
 
           {/* Raw JSON */}
           <details>
-            <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
+            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-800">
               View full telemetry JSON
             </summary>
             <pre className="mt-2 bg-gray-50 p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
