@@ -96,7 +96,7 @@ describe('parentDispatch', () => {
 
   describe('shouldDispatchParent', () => {
     describe('should dispatch', () => {
-      it('dispatches when status is COMPLETED and parent exists', () => {
+      it('dispatches when all children are COMPLETED', async () => {
         const finalStatus: FinalStatus = {
           status: 'COMPLETED',
           message: 'Job completed',
@@ -105,7 +105,17 @@ describe('parentDispatch', () => {
           sourceJobDefinitionId: '0xparent123',
         };
 
-        const result = shouldDispatchParent(finalStatus, metadata);
+        // Mock Ponder query to return all children as COMPLETED
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: [
+              { id: 'child1', name: 'Child 1', lastStatus: 'COMPLETED' },
+              { id: 'child2', name: 'Child 2', lastStatus: 'COMPLETED' }
+            ]
+          }
+        });
+
+        const result = await shouldDispatchParent(finalStatus, metadata);
 
         expect(result).toEqual({
           shouldDispatch: true,
@@ -113,26 +123,60 @@ describe('parentDispatch', () => {
         });
       });
 
-      it('dispatches when status is FAILED and parent exists', () => {
+      it('dispatches when all children are in terminal states (COMPLETED or FAILED)', async () => {
         const finalStatus: FinalStatus = {
-          status: 'FAILED',
-          message: 'Job failed',
+          status: 'COMPLETED',
+          message: 'Job completed',
         };
         const metadata = {
           sourceJobDefinitionId: '0xparent456',
         };
 
-        const result = shouldDispatchParent(finalStatus, metadata);
+        // Mix of COMPLETED and FAILED (both terminal)
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: [
+              { id: 'child1', name: 'Child 1', lastStatus: 'COMPLETED' },
+              { id: 'child2', name: 'Child 2', lastStatus: 'FAILED' }
+            ]
+          }
+        });
+
+        const result = await shouldDispatchParent(finalStatus, metadata);
 
         expect(result).toEqual({
           shouldDispatch: true,
           parentJobDefId: '0xparent456',
         });
       });
+
+      it('dispatches when no children exist (fallback safety)', async () => {
+        const finalStatus: FinalStatus = {
+          status: 'COMPLETED',
+          message: 'Job completed',
+        };
+        const metadata = {
+          sourceJobDefinitionId: '0xparent789',
+        };
+
+        // No children found
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: []
+          }
+        });
+
+        const result = await shouldDispatchParent(finalStatus, metadata);
+
+        expect(result).toEqual({
+          shouldDispatch: true,
+          parentJobDefId: '0xparent789',
+        });
+      });
     });
 
     describe('should not dispatch', () => {
-      it('does not dispatch when status is WAITING', () => {
+      it('does not dispatch when status is WAITING', async () => {
         const finalStatus: FinalStatus = {
           status: 'WAITING',
           message: 'Waiting for children',
@@ -141,13 +185,13 @@ describe('parentDispatch', () => {
           sourceJobDefinitionId: '0xparent123',
         };
 
-        const result = shouldDispatchParent(finalStatus, metadata);
+        const result = await shouldDispatchParent(finalStatus, metadata);
 
         expect(result.shouldDispatch).toBe(false);
         expect(result.reason).toContain('not terminal');
       });
 
-      it('does not dispatch when status is DELEGATING', () => {
+      it('does not dispatch when status is DELEGATING', async () => {
         const finalStatus: FinalStatus = {
           status: 'DELEGATING',
           message: 'Dispatched children',
@@ -156,49 +200,119 @@ describe('parentDispatch', () => {
           sourceJobDefinitionId: '0xparent123',
         };
 
-        const result = shouldDispatchParent(finalStatus, metadata);
+        const result = await shouldDispatchParent(finalStatus, metadata);
 
         expect(result.shouldDispatch).toBe(false);
         expect(result.reason).toContain('not terminal');
       });
 
-      it('does not dispatch when finalStatus is null', () => {
+      it('does not dispatch when any child has WAITING status', async () => {
+        const finalStatus: FinalStatus = {
+          status: 'COMPLETED',
+          message: 'Job completed',
+        };
         const metadata = {
           sourceJobDefinitionId: '0xparent123',
         };
 
-        const result = shouldDispatchParent(null, metadata);
+        // One child COMPLETED, one WAITING
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: [
+              { id: 'child1', name: 'Child 1', lastStatus: 'COMPLETED' },
+              { id: 'child2', name: 'Child 2', lastStatus: 'WAITING' }
+            ]
+          }
+        });
+
+        const result = await shouldDispatchParent(finalStatus, metadata);
+
+        expect(result.shouldDispatch).toBe(false);
+        expect(result.reason).toContain('Waiting for');
+        expect(result.reason).toContain('children to complete');
+      });
+
+      it('does not dispatch when any child has DELEGATING status', async () => {
+        const finalStatus: FinalStatus = {
+          status: 'COMPLETED',
+          message: 'Job completed',
+        };
+        const metadata = {
+          sourceJobDefinitionId: '0xparent456',
+        };
+
+        // One child COMPLETED, one DELEGATING
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: [
+              { id: 'child1', name: 'Child 1', lastStatus: 'COMPLETED' },
+              { id: 'child2', name: 'Child 2', lastStatus: 'DELEGATING' }
+            ]
+          }
+        });
+
+        const result = await shouldDispatchParent(finalStatus, metadata);
+
+        expect(result.shouldDispatch).toBe(false);
+        expect(result.reason).toContain('Waiting for');
+        expect(result.reason).toContain('children to complete');
+      });
+
+      it('does not dispatch when Ponder query fails (fail-safe)', async () => {
+        const finalStatus: FinalStatus = {
+          status: 'COMPLETED',
+          message: 'Job completed',
+        };
+        const metadata = {
+          sourceJobDefinitionId: '0xparent789',
+        };
+
+        // Mock query failure
+        (graphQLRequest as any).mockRejectedValue(new Error('Network error'));
+
+        const result = await shouldDispatchParent(finalStatus, metadata);
+
+        expect(result.shouldDispatch).toBe(false);
+        expect(result.reason).toContain('Failed to verify');
+      });
+
+      it('does not dispatch when finalStatus is null', async () => {
+        const metadata = {
+          sourceJobDefinitionId: '0xparent123',
+        };
+
+        const result = await shouldDispatchParent(null, metadata);
 
         expect(result.shouldDispatch).toBe(false);
         expect(result.reason).toContain('not terminal');
       });
 
-      it('does not dispatch when parent job ID is missing', () => {
+      it('does not dispatch when parent job ID is missing', async () => {
         const finalStatus: FinalStatus = {
           status: 'COMPLETED',
           message: 'Job completed',
         };
         const metadata = {};
 
-        const result = shouldDispatchParent(finalStatus, metadata);
+        const result = await shouldDispatchParent(finalStatus, metadata);
 
         expect(result.shouldDispatch).toBe(false);
         expect(result.reason).toBe('No parent job in metadata');
       });
 
-      it('does not dispatch when metadata is null', () => {
+      it('does not dispatch when metadata is null', async () => {
         const finalStatus: FinalStatus = {
           status: 'COMPLETED',
           message: 'Job completed',
         };
 
-        const result = shouldDispatchParent(finalStatus, null);
+        const result = await shouldDispatchParent(finalStatus, null);
 
         expect(result.shouldDispatch).toBe(false);
         expect(result.reason).toBe('No parent job in metadata');
       });
 
-      it('does not dispatch when sourceJobDefinitionId is undefined', () => {
+      it('does not dispatch when sourceJobDefinitionId is undefined', async () => {
         const finalStatus: FinalStatus = {
           status: 'COMPLETED',
           message: 'Job completed',
@@ -207,7 +321,7 @@ describe('parentDispatch', () => {
           sourceJobDefinitionId: undefined,
         };
 
-        const result = shouldDispatchParent(finalStatus, metadata);
+        const result = await shouldDispatchParent(finalStatus, metadata);
 
         expect(result.shouldDispatch).toBe(false);
         expect(result.reason).toBe('No parent job in metadata');
@@ -252,12 +366,22 @@ describe('parentDispatch', () => {
         (safeParseToolResponse as any).mockReturnValue({ ok: true });
       });
 
-      it('dispatches parent on COMPLETED', async () => {
+      it('dispatches parent on COMPLETED when all children complete', async () => {
         const finalStatus: FinalStatus = {
           status: 'COMPLETED',
           message: 'All tasks done',
         };
         const metadata = makeMetadata('0xparent123');
+
+        // Mock all children as complete
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: [
+              { id: 'child1', name: 'Child 1', lastStatus: 'COMPLETED' }
+            ]
+          },
+          request: { workstreamId: undefined }
+        });
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
@@ -288,12 +412,22 @@ describe('parentDispatch', () => {
         );
       });
 
-      it('dispatches parent on FAILED', async () => {
+      it('dispatches parent on FAILED when all children complete', async () => {
         const finalStatus: FinalStatus = {
           status: 'FAILED',
           message: 'Job failed: timeout',
         };
         const metadata = makeMetadata('0xparent789');
+
+        // Mock all children as complete
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: [
+              { id: 'child1', name: 'Child 1', lastStatus: 'COMPLETED' }
+            ]
+          },
+          request: { workstreamId: undefined }
+        });
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
@@ -324,6 +458,14 @@ describe('parentDispatch', () => {
         };
         const metadata = makeMetadata('0xparent');
 
+        // Mock all children as complete
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: []
+          },
+          request: { workstreamId: undefined }
+        });
+
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'output');
@@ -342,6 +484,14 @@ describe('parentDispatch', () => {
         };
         const metadata = makeMetadata('0xparent');
         const output = 'Generated report with 50 records';
+
+        // Mock all children as complete
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: []
+          },
+          request: { workstreamId: undefined }
+        });
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
@@ -362,6 +512,14 @@ describe('parentDispatch', () => {
         const metadata = makeMetadata('0xparent');
         const longOutput = 'x'.repeat(600);
 
+        // Mock all children as complete
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: []
+          },
+          request: { workstreamId: undefined }
+        });
+
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', longOutput);
@@ -379,6 +537,14 @@ describe('parentDispatch', () => {
           message: 'Done',
         };
         const metadata = makeMetadata('0xparent');
+
+        // Mock all children as complete
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: []
+          },
+          request: { workstreamId: undefined }
+        });
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
 
@@ -401,6 +567,14 @@ describe('parentDispatch', () => {
         };
         const metadata = makeMetadata('0xparent');
 
+        // Mock all children as complete
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: []
+          },
+          request: { workstreamId: undefined }
+        });
+
         (dispatchExistingJob as any).mockResolvedValue({ ok: true });
         (safeParseToolResponse as any).mockReturnValue({ ok: true, data: { request_ids: ['req-new'] } });
 
@@ -422,6 +596,14 @@ describe('parentDispatch', () => {
           message: 'Done',
         };
         const metadata = makeMetadata('0xparent');
+
+        // Mock all children as complete
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: {
+            items: []
+          },
+          request: { workstreamId: undefined }
+        });
 
         (dispatchExistingJob as any).mockResolvedValue({ ok: false });
         (safeParseToolResponse as any).mockReturnValue({
@@ -447,6 +629,24 @@ describe('parentDispatch', () => {
           message: 'Done',
         };
         const metadata = makeMetadata('0xparent');
+
+        // Mock all children as complete
+        let graphQLCallCount = 0;
+        (graphQLRequest as any).mockImplementation(async () => {
+          graphQLCallCount++;
+          // First call is for shouldDispatchParent check
+          if (graphQLCallCount === 1) {
+            return {
+              jobDefinitions: {
+                items: []
+              }
+            };
+          }
+          // Second call is for workstream query
+          return {
+            request: { workstreamId: undefined }
+          };
+        });
 
         // Mock withJobContext to throw on all attempts
         // The retry loop will retry 3 times with backoff (2s, 4s) = ~6s minimum

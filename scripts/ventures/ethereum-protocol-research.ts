@@ -61,14 +61,18 @@ async function main() {
   try {
     const blueprint = await loadBlueprint('ethereum-protocol-research.json');
     
-    console.log('📊 Dispatching: Ethereum Protocol Activity Research\n');
-    console.log('   Scope: Last 24H on Ethereum mainnet');
+    console.log('📊 Dispatching: Ethereum Protocol Daily Brief\n');
+    console.log('   Scope: 00:00 UTC Dec 1, 2025 → 00:00 UTC Dec 2, 2025');
     console.log('   Focus: Major DeFi protocols (Uniswap, Aave, Lido, Maker, Curve)');
-    console.log('   Output: Top 3 actionable trade ideas\n');
+    console.log('   Output: Structured Daily Report (Markdown Artifact)\n');
     
+    // Inject the specific date scope into the blueprint instructions
+    const dateScope = "TARGET DATE SCOPE: 00:00 UTC December 1, 2025 to 00:00 UTC December 2, 2025. All research must be strictly limited to this window.";
+    const finalBlueprint = blueprint.replace('"assertions": [', `"context": "${dateScope}",\n  "assertions": [`);
+
     const result = await dispatchNewJob({
       jobName: 'ethereum-protocol-research',
-      blueprint,
+      blueprint: finalBlueprint,
       model: 'gemini-2.5-flash',
       enabledTools: [
         'web_search',
@@ -112,11 +116,11 @@ async function main() {
     console.log('\n\n📝 Validation Checklist:');
     console.log('   [ ] Phase 1: Agent processes blueprint assertions');
     console.log('   [ ] Phase 2: Agent makes autonomous delegation decisions');
-    console.log('   [ ] All 5 blueprint assertions satisfied in final output');
-    console.log('   [ ] Output: Analysis covers major DeFi protocols');
-    console.log('   [ ] Output: Data from last 24 hours with sources cited');
-    console.log('   [ ] Output: Top 3 trade ideas with entry/exit/sizing');
-    console.log('   [ ] Output: Statistical quantification (not just subjective terms)');
+    console.log('   [ ] All blueprint assertions satisfied in final output');
+    console.log('   [ ] Output: "Ethereum Daily Brief" Artifact created');
+    console.log('   [ ] Output: 5 Required Sections (Exec Summary, Metrics, Protocols, Anomalies, Synthesis)');
+    console.log('   [ ] Output: Data strictly from Dec 1-2, 2025 window');
+    console.log('   [ ] Output: Quantitative metrics for at least 3 protocols');
     
   } catch (error) {
     console.error('\n❌ Failed to dispatch job:', error);

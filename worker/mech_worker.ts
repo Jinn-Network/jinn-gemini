@@ -322,19 +322,20 @@ async function resolveJobDefinitionId(
  * If children are critical, the parent waits for them before delivering.
  * Dependencies just need to know "did this job finish?" (delivered = yes).
  */
-async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean> {
+export async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean> {
   try {
-    // Query delivered requests for this job definition
+    // Query job definition's lastStatus from Ponder
     const query = `query CheckJobDefCompletion($jobDefId: String!) {
-      requests(where: { jobDefinitionId: $jobDefId, delivered: true }) {
+      jobDefinitions(where: { id: $jobDefId }) {
         items {
           id
+          lastStatus
         }
       }
     }`;
 
     const data = await graphQLRequest<{
-      requests: { items: Array<{ id: string }> };
+      jobDefinitions: { items: Array<{ id: string; lastStatus: string }> };
     }>({
       url: PONDER_GRAPHQL_URL,
       query,
@@ -342,16 +343,22 @@ async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean
       context: { operation: 'isJobDefinitionComplete', jobDefinitionId }
     });
 
-    const deliveredRequests = data?.requests?.items || [];
+    const jobDef = data?.jobDefinitions?.items?.[0];
     
-    // Job definition is complete if it has at least one delivered request
-    const isComplete = deliveredRequests.length > 0;
+    if (!jobDef) {
+      workerLogger.debug({ jobDefinitionId }, 'Job definition not found');
+      return false;
+    }
+    
+    // Job definition is complete only if lastStatus is terminal (COMPLETED/FAILED)
+    // DELEGATING and WAITING mean work is still in progress
+    const isComplete = jobDef.lastStatus === 'COMPLETED' || jobDef.lastStatus === 'FAILED';
     
     workerLogger.debug({ 
       jobDefinitionId, 
-      deliveredCount: deliveredRequests.length,
+      lastStatus: jobDef.lastStatus,
       isComplete 
-    }, 'Job definition completion check (shallow)');
+    }, 'Job definition completion check (status-based)');
     
     return isComplete;
   } catch (e: any) {

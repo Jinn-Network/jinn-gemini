@@ -12,28 +12,55 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 // Mock dependencies
-vi.mock('../../env/index.js', () => ({}));
-vi.mock('../../http/client.js', () => ({
+vi.mock('../../../env/index.js', () => ({
+  default: {}
+}));
+
+vi.mock('../../../http/client.js', () => ({
   graphQLRequest: vi.fn()
 }));
-vi.mock('../../gemini-agent/mcp/tools/shared/env.js', () => ({
-  getPonderGraphqlUrl: vi.fn().mockReturnValue('http://localhost:42069/graphql')
-}));
-vi.mock('../../logging/index.js', () => ({
-  workerLogger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn()
-  }
+
+vi.mock('../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+  getPonderGraphqlUrl: vi.fn().mockReturnValue('http://localhost:42069/graphql'),
+  getOptionalControlApiUrl: vi.fn().mockReturnValue('http://localhost:8000'),
+  getUseControlApi: vi.fn().mockReturnValue(false),
+  getEnableAutoRepost: vi.fn().mockReturnValue(false),
+  getRequiredRpcUrl: vi.fn().mockReturnValue('http://localhost:8545'),
+  getOptionalMechTargetRequestId: vi.fn().mockReturnValue(undefined)
 }));
 
-import { graphQLRequest } from '../../http/client.js';
-import { workerLogger } from '../../logging/index.js';
+vi.mock('../../../logging/index.js', async (importOriginal) => {
+  const actual = await importOriginal() as any;
+  return {
+    ...actual,
+    workerLogger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn(() => ({
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn()
+      }))
+    },
+    configLogger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn()
+    }
+  };
+});
+
+import { graphQLRequest } from '../../../http/client.js';
+import { workerLogger } from '../../../logging/index.js';
+import { isJobDefinitionComplete } from '../../../worker/mech_worker.js';
 
 /**
- * Test helper functions that mirror worker/mech_worker.ts internal logic
- * These are simplified versions for testing purposes
+ * Test helper function that mirrors worker/mech_worker.ts internal logic
+ * This is a simplified version for testing purposes
  */
 
 async function resolveJobDefinitionId(
@@ -65,22 +92,6 @@ async function resolveJobDefinitionId(
     return identifier;
   } catch (e) {
     return identifier;
-  }
-}
-
-async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean> {
-  try {
-    const data = await graphQLRequest<any>({
-      url: 'http://localhost:42069/graphql',
-      query: expect.any(String),
-      variables: { jobDefId: jobDefinitionId },
-      context: { operation: 'isJobDefinitionComplete', jobDefinitionId }
-    });
-    
-    const deliveredRequests = data?.requests?.items || [];
-    return deliveredRequests.length > 0;
-  } catch (e) {
-    return false;
   }
 }
 
@@ -216,12 +227,11 @@ describe('Dependency Resolution', () => {
   });
 
   describe('isJobDefinitionComplete', () => {
-    it('returns true when job has delivered requests', async () => {
+    it('returns true when lastStatus is COMPLETED', async () => {
       (graphQLRequest as any).mockResolvedValue({
-        requests: {
+        jobDefinitions: {
           items: [
-            { id: '0xREQ1' },
-            { id: '0xREQ2' }
+            { id: 'job-def-123', lastStatus: 'COMPLETED' }
           ]
         }
       });
@@ -231,9 +241,51 @@ describe('Dependency Resolution', () => {
       expect(result).toBe(true);
     });
 
-    it('returns false when job has no delivered requests', async () => {
+    it('returns true when lastStatus is FAILED', async () => {
       (graphQLRequest as any).mockResolvedValue({
-        requests: { items: [] }
+        jobDefinitions: {
+          items: [
+            { id: 'job-def-123', lastStatus: 'FAILED' }
+          ]
+        }
+      });
+
+      const result = await isJobDefinitionComplete('job-def-123');
+      
+      expect(result).toBe(true);
+    });
+
+    it('returns false when lastStatus is DELEGATING', async () => {
+      (graphQLRequest as any).mockResolvedValue({
+        jobDefinitions: {
+          items: [
+            { id: 'job-def-123', lastStatus: 'DELEGATING' }
+          ]
+        }
+      });
+
+      const result = await isJobDefinitionComplete('job-def-123');
+      
+      expect(result).toBe(false);
+    });
+
+    it('returns false when lastStatus is WAITING', async () => {
+      (graphQLRequest as any).mockResolvedValue({
+        jobDefinitions: {
+          items: [
+            { id: 'job-def-123', lastStatus: 'WAITING' }
+          ]
+        }
+      });
+
+      const result = await isJobDefinitionComplete('job-def-123');
+      
+      expect(result).toBe(false);
+    });
+
+    it('returns false when job definition not found', async () => {
+      (graphQLRequest as any).mockResolvedValue({
+        jobDefinitions: { items: [] }
       });
 
       const result = await isJobDefinitionComplete('job-def-123');
@@ -249,10 +301,10 @@ describe('Dependency Resolution', () => {
       expect(result).toBe(false);
     });
 
-    it('queries only for delivered requests', async () => {
+    it('queries jobDefinitions with correct ID', async () => {
       (graphQLRequest as any).mockResolvedValue({
-        requests: {
-          items: [{ id: '0xREQ1' }]
+        jobDefinitions: {
+          items: [{ id: 'job-def-123', lastStatus: 'COMPLETED' }]
         }
       });
 
@@ -263,18 +315,6 @@ describe('Dependency Resolution', () => {
           variables: { jobDefId: 'job-def-123' }
         })
       );
-    });
-
-    it('treats single delivered request as complete', async () => {
-      (graphQLRequest as any).mockResolvedValue({
-        requests: {
-          items: [{ id: '0xREQ1' }]
-        }
-      });
-
-      const result = await isJobDefinitionComplete('job-def-123');
-      
-      expect(result).toBe(true);
     });
 
     it('handles null response gracefully', async () => {
@@ -311,8 +351,8 @@ describe('Dependency Resolution', () => {
 
     it('returns true when all dependencies complete', async () => {
       (graphQLRequest as any).mockResolvedValue({
-        requests: {
-          items: [{ id: '0xREQ1' }]
+        jobDefinitions: {
+          items: [{ id: 'dep-uuid-1', lastStatus: 'COMPLETED' }]
         }
       });
 
@@ -329,8 +369,8 @@ describe('Dependency Resolution', () => {
 
     it('returns false when any dependency incomplete', async () => {
       (graphQLRequest as any)
-        .mockResolvedValueOnce({ requests: { items: [{ id: '0xREQ1' }] } }) // First dep complete
-        .mockResolvedValueOnce({ requests: { items: [] } }); // Second dep incomplete
+        .mockResolvedValueOnce({ jobDefinitions: { items: [{ id: '550e8400-e29b-41d4-a716-446655440001', lastStatus: 'COMPLETED' }] } }) // First dep complete
+        .mockResolvedValueOnce({ jobDefinitions: { items: [{ id: '550e8400-e29b-41d4-a716-446655440002', lastStatus: 'DELEGATING' }] } }); // Second dep incomplete
 
       const request = {
         id: '0xREQ123',
@@ -356,8 +396,8 @@ describe('Dependency Resolution', () => {
         })
         // Second call: check if resolved UUID is complete
         .mockResolvedValueOnce({
-          requests: {
-            items: [{ id: '0xREQ1' }]
+          jobDefinitions: {
+            items: [{ id: 'resolved-uuid', lastStatus: 'COMPLETED' }]
           }
         });
 
@@ -375,8 +415,8 @@ describe('Dependency Resolution', () => {
 
     it('checks multiple dependencies in parallel', async () => {
       (graphQLRequest as any).mockResolvedValue({
-        requests: {
-          items: [{ id: '0xREQ1' }]
+        jobDefinitions: {
+          items: [{ id: 'job-def', lastStatus: 'COMPLETED' }]
         }
       });
 
@@ -411,24 +451,27 @@ describe('Dependency Resolution', () => {
     });
 
     it('handles mixed UUID and name dependencies', async () => {
-      (graphQLRequest as any)
-        // UUID dependency: just check completion
-        .mockResolvedValueOnce({
-          requests: {
-            items: [{ id: '0xREQ1' }]
-          }
-        })
-        // Name dependency: resolve then check
-        .mockResolvedValueOnce({
-          requests: {
-            items: [{ jobDefinitionId: 'resolved-uuid' }]
-          }
-        })
-        .mockResolvedValueOnce({
-          requests: {
-            items: [{ id: '0xREQ2' }]
-          }
-        });
+      // Mock needs to handle parallel calls - both deps are checked simultaneously
+      // For UUID: direct completion check
+      // For Name: resolution query + completion check
+      (graphQLRequest as any).mockImplementation(async ({ query }: any) => {
+        if (query.includes('CheckJobDefCompletion')) {
+          // Completion check - return COMPLETED
+          return {
+            jobDefinitions: {
+              items: [{ id: 'any', lastStatus: 'COMPLETED' }]
+            }
+          };
+        } else if (query.includes('resolveJobName')) {
+          // Name resolution
+          return {
+            requests: {
+              items: [{ jobDefinitionId: 'resolved-uuid' }]
+            }
+          };
+        }
+        return { jobDefinitions: { items: [] } };
+      });
 
       const request = {
         id: '0xREQ123',
@@ -455,8 +498,8 @@ describe('Dependency Resolution', () => {
 
       // REQ2's dep is complete, REQ3's dep is not
       (graphQLRequest as any)
-        .mockResolvedValueOnce({ requests: { items: [{ id: '0x1' }] } }) // dep-1 complete
-        .mockResolvedValueOnce({ requests: { items: [] } }); // dep-2 incomplete
+        .mockResolvedValueOnce({ jobDefinitions: { items: [{ id: '550e8400-e29b-41d4-a716-446655440001', lastStatus: 'COMPLETED' }] } }) // dep-1 complete
+        .mockResolvedValueOnce({ jobDefinitions: { items: [{ id: '550e8400-e29b-41d4-a716-446655440002', lastStatus: 'WAITING' }] } }); // dep-2 incomplete
 
       const results = await Promise.all(
         requests.map(r => checkDependenciesMet(r))

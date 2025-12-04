@@ -80,10 +80,10 @@ async function wasRecentlyDispatched(
 /**
  * Determine if parent should be dispatched
  */
-export function shouldDispatchParent(
+export async function shouldDispatchParent(
   finalStatus: FinalStatus | null,
   metadata: any
-): ParentDispatchDecision {
+): Promise<ParentDispatchDecision> {
   // Only dispatch on terminal states
   if (!finalStatus || (finalStatus.status !== 'COMPLETED' && finalStatus.status !== 'FAILED')) {
     return {
@@ -100,10 +100,83 @@ export function shouldDispatchParent(
     };
   }
 
-  return {
-    shouldDispatch: true,
-    parentJobDefId,
-  };
+  // Check if ALL direct children of the parent are complete
+  try {
+    const ponderUrl = getPonderGraphqlUrl();
+    
+    // Query all job definitions that have this parent
+    const childrenQuery = `query GetParentChildren($parentJobDefId: String!) {
+      jobDefinitions(where: { sourceJobDefinitionId: $parentJobDefId }) {
+        items {
+          id
+          name
+          lastStatus
+        }
+      }
+    }`;
+    
+    const childrenData = await graphQLRequest<{
+      jobDefinitions: { items: Array<{ id: string; name: string; lastStatus: string }> };
+    }>({
+      url: ponderUrl,
+      query: childrenQuery,
+      variables: { parentJobDefId },
+      context: { operation: 'checkParentChildrenComplete', parentJobDefId }
+    });
+    
+    const children = childrenData?.jobDefinitions?.items || [];
+    
+    if (children.length === 0) {
+      // No children found, allow parent dispatch (this shouldn't happen in normal flow)
+      workerLogger.debug({ parentJobDefId }, 'No children found for parent, allowing dispatch');
+      return { shouldDispatch: true, parentJobDefId };
+    }
+    
+    // Check if all children are in terminal state (COMPLETED or FAILED)
+    const incompleteChildren = children.filter(
+      child => child.lastStatus !== 'COMPLETED' && child.lastStatus !== 'FAILED'
+    );
+    
+    if (incompleteChildren.length > 0) {
+      const incompleteNames = incompleteChildren
+        .map(c => `${c.name} (${c.lastStatus})`)
+        .slice(0, 3)
+        .join(', ');
+      
+      workerLogger.info({
+        parentJobDefId,
+        totalChildren: children.length,
+        incompleteChildren: incompleteChildren.length,
+        examples: incompleteNames
+      }, 'Parent dispatch blocked - waiting for all children to complete');
+      
+      return {
+        shouldDispatch: false,
+        reason: `Waiting for ${incompleteChildren.length}/${children.length} children to complete: ${incompleteNames}`,
+      };
+    }
+    
+    // All children are complete
+    workerLogger.info({
+      parentJobDefId,
+      totalChildren: children.length
+    }, 'All children complete - dispatching parent');
+    
+    return {
+      shouldDispatch: true,
+      parentJobDefId,
+    };
+  } catch (error) {
+    workerLogger.warn({
+      parentJobDefId,
+      error: serializeError(error)
+    }, 'Failed to check children completion status - blocking parent dispatch for safety');
+    
+    return {
+      shouldDispatch: false,
+      reason: 'Failed to verify children completion status',
+    };
+  }
 }
 
 /**
@@ -119,7 +192,7 @@ export async function dispatchParentIfNeeded(
     artifacts?: ExtractedArtifact[];
   }
 ): Promise<void> {
-  const decision = shouldDispatchParent(finalStatus, metadata);
+  const decision = await shouldDispatchParent(finalStatus, metadata);
 
   if (!decision.shouldDispatch) {
     workerLogger.debug(`Not dispatching parent - ${decision.reason}`);
