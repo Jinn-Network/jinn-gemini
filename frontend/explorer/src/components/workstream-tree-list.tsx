@@ -6,10 +6,10 @@ import { useJobGraph } from '@/hooks/use-job-graph'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
 import Link from 'next/link'
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronRight, ChevronDown, X, ExternalLink, Clock } from 'lucide-react'
+import { ChevronRight, ChevronDown, X, ExternalLink, Clock, GitBranch } from 'lucide-react'
 import { GraphNode, GraphEdge } from '@/lib/graph-queries'
 import { StatusIcon } from '@/components/status-icon'
-import { getJobDefinition, type JobDefinition, queryRequests } from '@/lib/subgraph'
+import { getJobDefinition, type JobDefinition, queryRequests, getDependencyInfo, type DependencyInfo } from '@/lib/subgraph'
 import { JobDefinitionDetailLayout } from '@/components/job-definition-detail-layout'
 import { Button } from '@/components/ui/button'
 
@@ -47,6 +47,12 @@ function buildTree(nodes: GraphNode[], edges: GraphEdge[], rootNode: GraphNode):
     const children: TreeNode[] = childIds
       .map(childId => buildNode(childId, new Set(visited)))
       .filter((child): child is TreeNode => child !== null)
+      // Sort children by timestamp (ascending - oldest first)
+      .sort((a, b) => {
+        const timestampA = a.node.metadata.timestamp || 0
+        const timestampB = b.node.metadata.timestamp || 0
+        return timestampA - timestampB
+      })
     
     return { node, children }
   }
@@ -83,6 +89,9 @@ function TreeNodeItem({
 }) {
   const { node, children } = treeNode
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [dependencyInfo, setDependencyInfo] = useState<DependencyInfo[]>([])
+  const [isHoveringDeps, setIsHoveringDeps] = useState(false)
+  const [loadingDeps, setLoadingDeps] = useState(false)
   const hasChildren = children.length > 0
   
   const displayStatus = node.metadata.lastStatus || node.status.toUpperCase()
@@ -93,16 +102,31 @@ function TreeNodeItem({
   
   // Check if this is the currently selected job
   const isSelected = node.id === selectedJobId
+
+  const dependencies = node.metadata.dependencies || []
+  const hasDependencies = dependencies.length > 0
+
+  // Fetch dependency info when hovering and node has dependencies
+  useEffect(() => {
+    if (isHoveringDeps && hasDependencies) {
+      setLoadingDeps(true)
+      getDependencyInfo(dependencies)
+        .then(info => setDependencyInfo(info))
+        .catch(err => {
+          console.error('Failed to fetch dependency info:', err)
+          setDependencyInfo([])
+        })
+        .finally(() => setLoadingDeps(false))
+    }
+  }, [isHoveringDeps, dependencies, hasDependencies])
   
   return (
     <div>
       <div 
         className={`py-2 px-3 rounded transition-colors cursor-pointer ${
           isSelected 
-            ? 'bg-muted border-l-4 border-primary/50 hover:bg-accent' 
-            : isNextInQueue 
-              ? 'bg-primary/10 border-l-4 border-blue-500 hover:bg-primary/20' 
-              : 'hover:bg-accent/50'
+            ? 'bg-muted hover:bg-accent' 
+            : 'hover:bg-accent/50'
         }`}
         style={{ paddingLeft: `${depth * 1.5 + 0.75}rem` }}
         onClick={() => onSelectJob(node.id)}
@@ -136,23 +160,71 @@ function TreeNodeItem({
               </div>
               {/* Next in Queue Indicator */}
               {isNextInQueue && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/20 dark:bg-blue-900/30 text-primary dark:text-primary-foreground border border-primary/30 dark:border-primary/50">
-                  <Clock className="w-3 h-3" />
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500 dark:bg-blue-600 text-white shadow-sm ring-2 ring-blue-500/50 dark:ring-blue-400/50">
+                  <Clock className="w-3.5 h-3.5" />
                   Next
                 </span>
               )}
             </div>
             
-            {/* Status Badge and Run Count */}
-            <div className="flex items-center gap-2 mt-1">
+            {/* Status Badge, Run Count, and Dependencies */}
+            <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
               <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor}`}>
                 <StatusIcon status={displayStatus} size={14} />
                 {displayStatus}
               </span>
               {node.metadata.runCount !== undefined && node.metadata.runCount > 0 && (
-                <span className="text-sm text-muted-foreground">
-                  {node.metadata.runCount} {node.metadata.runCount === 1 ? 'run' : 'runs'}
-                </span>
+                <>
+                  <span>·</span>
+                  <span>
+                    {node.metadata.runCount} {node.metadata.runCount === 1 ? 'run' : 'runs'}
+                  </span>
+                </>
+              )}
+              {hasDependencies && (
+                <>
+                  <span>·</span>
+                  <div 
+                    className="relative inline-flex items-center gap-1 cursor-help"
+                    onMouseEnter={() => setIsHoveringDeps(true)}
+                    onMouseLeave={() => setIsHoveringDeps(false)}
+                  >
+                    <GitBranch className="w-3.5 h-3.5" />
+                    <span className="font-medium">{dependencies.length} {dependencies.length === 1 ? 'dependency' : 'dependencies'}</span>
+                    
+                    {isHoveringDeps && (
+                      <div className="absolute z-50 left-0 top-full mt-1 w-64 p-3 bg-popover border rounded-lg shadow-lg">
+                        {loadingDeps ? (
+                          <div className="text-xs text-muted-foreground">Loading...</div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="text-xs font-semibold text-muted-foreground mb-2">
+                              Depends on:
+                            </div>
+                            {dependencyInfo.slice(0, 5).map((dep) => (
+                              <Link
+                                key={dep.id}
+                                href={`/jobDefinitions/${dep.id}`}
+                                className="flex items-center gap-2 text-xs py-1 hover:bg-accent rounded px-1 -mx-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <StatusIcon status={dep.status === 'delivered' ? 'COMPLETED' : dep.status === 'in_progress' ? 'PENDING' : 'PENDING'} size={14} />
+                                <span className="truncate" title={dep.jobName}>
+                                  {dep.jobName}
+                                </span>
+                              </Link>
+                            ))}
+                            {dependencies.length > 5 && (
+                              <div className="text-xs text-muted-foreground italic mt-1">
+                                +{dependencies.length - 5} more...
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>

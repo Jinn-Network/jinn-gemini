@@ -11,6 +11,7 @@ export interface JobDefinition {
   sourceJobDefinitionId?: string
   sourceRequestId?: string
   codeMetadata?: Record<string, unknown>
+  dependencies?: string[]
   createdAt?: string
   lastInteraction?: string
   lastStatus?: string
@@ -176,6 +177,7 @@ export const JOB_DEFINITIONS_QUERY = `
         sourceJobDefinitionId
         sourceRequestId
         codeMetadata
+        dependencies
         createdAt
         lastInteraction
         lastStatus
@@ -411,6 +413,7 @@ export const JOB_DEFINITION_QUERY = `
       sourceJobDefinitionId
       sourceRequestId
       codeMetadata
+      dependencies
       createdAt
       lastInteraction
       lastStatus

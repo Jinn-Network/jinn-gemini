@@ -11,6 +11,7 @@ export const jobDefinition = onchainTable(
     sourceJobDefinitionId: t.text(),
     sourceRequestId: t.text(),
     codeMetadata: t.json(),
+    dependencies: t.text().array(),
     createdAt: t.bigint(),
     lastInteraction: t.bigint(),
     lastStatus: t.text(),

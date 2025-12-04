@@ -357,7 +357,7 @@ ponder.on(
                 codeMetadata = content.codeMetadata;
         }
       }
-      // Extract dependencies array if present
+      // Extract dependencies array from content
       dependencies = Array.isArray(content.dependencies)
         ? content.dependencies.map((dep: any) => String(dep))
         : undefined;
@@ -376,6 +376,7 @@ ponder.on(
             name: jobName || 'Unnamed Job',
             enabledTools,
             blueprint,
+            dependencies,
             sourceJobDefinitionId: parentJobDefinitionId,
             sourceRequestId: sourceRequestId,
             codeMetadata,
@@ -391,6 +392,7 @@ ponder.on(
             lastInteraction: blockTimestamp,
             lastStatus: 'PENDING',
             // Do NOT re-attribute lineage on updates; preserve original creator
+            // Do NOT update dependencies - immutable per job definition
           },
         });
       }

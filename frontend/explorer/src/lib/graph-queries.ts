@@ -21,6 +21,7 @@ export interface GraphNode {
   level: number // depth from root
   metadata: {
     blockTimestamp?: string
+    timestamp?: number // Unix timestamp for sorting
     enabledTools?: string[]
     artifactCount?: number
     messageCount?: number
@@ -28,6 +29,7 @@ export interface GraphNode {
     delivered?: boolean
     runCount?: number // Number of request executions (for consolidated job definition nodes)
     lastStatus?: string // Raw status from job definition (DELEGATING, WAITING, etc)
+    dependencies?: string[] // Job definition dependencies
   }
 }
 
@@ -155,12 +157,14 @@ async function buildWorkstreamJobGraph(options: GraphQueryOptions): Promise<JobG
       status,
       level: 0, // Will calculate later
       metadata: {
+        timestamp: jd.createdAt ? Number(jd.createdAt) : undefined,
         enabledTools: jd.enabledTools || [],
         artifactCount: stats.artifactCount, // Placeholder
         messageCount: stats.messageCount, // Placeholder
         runCount: stats.runCount,
         lastStatus: stats.lastStatus,
-        delivered: stats.deliveredCount === stats.runCount && stats.runCount > 0
+        delivered: stats.deliveredCount === stats.runCount && stats.runCount > 0,
+        dependencies: jd.dependencies || []
       }
     }
   })
@@ -264,10 +268,12 @@ function createGraphNode(
       status,
       level,
       metadata: {
+        timestamp: jobDef.createdAt ? Number(jobDef.createdAt) : undefined,
         enabledTools: jobDef.enabledTools || [],
         artifactCount: 0,
         messageCount: 0,
         lastStatus: jobDef.lastStatus,
+        dependencies: jobDef.dependencies || [],
       },
     }
   } else {
@@ -280,11 +286,13 @@ function createGraphNode(
       level,
       metadata: {
         blockTimestamp: req.blockTimestamp,
+        timestamp: req.blockTimestamp ? Number(req.blockTimestamp) : undefined,
         enabledTools: req.enabledTools || [],
         delivered: req.delivered,
         artifactCount: 0,
         messageCount: 0,
         runCount: 1, // Each request node represents one run
+        dependencies: req.dependencies || [],
       },
     }
   }
