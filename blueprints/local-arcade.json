@@ -1,31 +1,138 @@
 {
-  "vision": {
-    "mission": "Create a self-contained Local Arcade with three classic games (Snake, 2048, Minesweeper) that can be played offline by opening a single entry point on a modern desktop machine.",
-    "vision": "A delightful, durable arcade product that showcases an autonomous system's ability to design, build, test, and document a small but non-trivial software experience end-to-end without external dependencies."
-  },
-  "constitution": [
-    {
-      "principle": "Player-Centric Fun",
-      "description": "The arcade exists to be enjoyable and approachable for human players. Clarity, responsiveness, and discoverability take precedence over clever implementation tricks."
-    },
-    {
-      "principle": "Local-First Autonomy",
-      "description": "Everything runs locally and offline. The system must not rely on external APIs, services, or accounts, and must autonomously handle all design and implementation decisions needed to ship a complete arcade."
-    },
-    {
-      "principle": "Single-Artifact Simplicity",
-      "description": "A non-technical user should be able to receive the arcade, open a single obvious entry point, and start playing within seconds, without installing tools or running commands."
-    },
-    {
-      "principle": "Explainable Engineering",
-      "description": "The system must leave behind understandable documentation explaining what was built and how to use it, so a human can reason about, extend, or modify the arcade."
-    },
-    {
-      "principle": "Robustness Over Fragility",
-      "description": "The arcade should degrade gracefully when something goes wrong (e.g. corrupted saved data) and never trap users in broken or confusing states."
-    }
-  ],
   "assertions": [
+    {
+      "id": "VISION-001",
+      "assertion": "The arcade must be a self-contained Local Arcade with three classic games (Snake, 2048, Minesweeper) that can be played offline by opening a single entry point on a modern desktop machine.",
+      "examples": {
+        "do": [
+          "Include exactly three games: Snake, 2048, and Minesweeper in a single cohesive product",
+          "Ensure the arcade runs completely offline without network dependencies",
+          "Provide a single entry point that can be opened directly on a modern desktop machine",
+          "Make the arcade accessible without requiring installation of additional tools or runtimes"
+        ],
+        "dont": [
+          "Require network connectivity or external services to function",
+          "Split the games into separate applications or files that must be opened individually",
+          "Depend on command-line tools, package managers, or developer environments",
+          "Require users to install frameworks, runtimes, or specialized software"
+        ]
+      },
+      "commentary": "The mission defines the core deliverable: a self-contained, offline arcade accessible through a single entry point. This constraint ensures the system demonstrates autonomous engineering from design to deployment."
+    },
+    {
+      "id": "VISION-002",
+      "assertion": "The arcade must be a delightful, durable product that showcases an autonomous system's ability to design, build, test, and document a small but non-trivial software experience end-to-end without external dependencies.",
+      "examples": {
+        "do": [
+          "Create a polished, enjoyable user experience that feels complete and intentional",
+          "Demonstrate full-stack capability from design through implementation to documentation",
+          "Handle the entire development lifecycle autonomously without requesting implementation guidance",
+          "Produce a product that feels durable and well-engineered, not a prototype or proof-of-concept"
+        ],
+        "dont": [
+          "Ship a minimal or placeholder implementation that lacks polish",
+          "Request external guidance for technical decisions or implementation details",
+          "Skip testing, documentation, or other essential engineering practices",
+          "Treat this as a learning exercise rather than a complete product delivery"
+        ]
+      },
+      "commentary": "The vision emphasizes that this is an evaluation of autonomous engineering capability. The system must independently handle all aspects of product development to demonstrate end-to-end competence."
+    },
+    {
+      "id": "CONST-001",
+      "assertion": "The arcade must prioritize player-centric fun, where clarity, responsiveness, and discoverability take precedence over clever implementation tricks.",
+      "examples": {
+        "do": [
+          "Design interfaces that are immediately understandable to players",
+          "Ensure games respond quickly and smoothly to player input",
+          "Make game objectives, controls, and status clearly visible",
+          "Prioritize user experience over demonstrating technical sophistication"
+        ],
+        "dont": [
+          "Sacrifice clarity for the sake of elegant code patterns",
+          "Hide important information or controls behind complex interactions",
+          "Prioritize implementation cleverness over player enjoyment",
+          "Create confusing or unintuitive interfaces to showcase technical skills"
+        ]
+      },
+      "commentary": "The arcade exists to be enjoyable and approachable for human players. Technical excellence should serve the player experience, not overshadow it."
+    },
+    {
+      "id": "CONST-002",
+      "assertion": "The arcade must operate with local-first autonomy, running everything locally and offline without relying on external APIs, services, or accounts, and must autonomously handle all design and implementation decisions needed to ship a complete arcade.",
+      "examples": {
+        "do": [
+          "Store all game data, scores, and state locally on the user's device",
+          "Bundle all required assets and dependencies within the arcade itself",
+          "Make all technical decisions independently without requesting external guidance",
+          "Handle design, architecture, and implementation choices autonomously"
+        ],
+        "dont": [
+          "Fetch game logic, assets, or data from remote servers",
+          "Require user accounts, logins, or online profiles",
+          "Request guidance on file structures, frameworks, or code-level decisions",
+          "Depend on external services for any core functionality"
+        ]
+      },
+      "commentary": "Local-first autonomy ensures reliability and demonstrates the system's ability to make independent engineering decisions. External dependencies would undermine both the product's durability and the evaluation of autonomous capability."
+    },
+    {
+      "id": "CONST-003",
+      "assertion": "The arcade must embody single-artifact simplicity, where a non-technical user can receive the arcade, open a single obvious entry point, and start playing within seconds, without installing tools or running commands.",
+      "examples": {
+        "do": [
+          "Provide one main file or shortcut that opens the arcade directly",
+          "Support running in a standard modern desktop browser without additional setup",
+          "Assume only common end-user capabilities like double-clicking a file",
+          "Enable players to start playing immediately after opening the entry point"
+        ],
+        "dont": [
+          "Require installation of runtimes, frameworks, or developer tooling",
+          "Depend on command-line commands, build steps, or environment setup",
+          "Assume presence of specialized software beyond a standard modern browser",
+          "Create a multi-step launch process that confuses non-technical users"
+        ]
+      },
+      "commentary": "Single-artifact simplicity ensures the evaluation focuses on the system's engineering, not the user's technical capabilities. The launch experience must be as simple as opening a document."
+    },
+    {
+      "id": "CONST-004",
+      "assertion": "The arcade must demonstrate explainable engineering by leaving behind understandable documentation explaining what was built and how to use it, so a human can reason about, extend, or modify the arcade.",
+      "examples": {
+        "do": [
+          "Provide clear documentation describing the arcade's purpose and included games",
+          "Explain how to run the arcade and what environment is needed",
+          "Document the basic rules and objectives of each game",
+          "Offer high-level explanations of the arcade's structure in accessible language"
+        ],
+        "dont": [
+          "Ship only source code with no descriptive documentation",
+          "Hide essential information inside code comments or internal notes",
+          "Write documentation that contradicts actual behavior or is outdated",
+          "Rely solely on external links for essential information"
+        ]
+      },
+      "commentary": "Explainable engineering transforms code into a comprehensible product. Documentation reveals the system's ability to reflect on and explain its own work, enabling future understanding and modification."
+    },
+    {
+      "id": "CONST-005",
+      "assertion": "The arcade must prioritize robustness over fragility, degrading gracefully when something goes wrong (e.g. corrupted saved data) and never trapping users in broken or confusing states.",
+      "examples": {
+        "do": [
+          "Detect and handle corrupted or missing saved data gracefully",
+          "Reset to safe defaults when stored data is unusable",
+          "Keep the arcade playable even when some saved data cannot be read",
+          "Provide clear recovery options when errors occur"
+        ],
+        "dont": [
+          "Crash, hang, or become unusable when stored data is missing or malformed",
+          "Display confusing error messages that non-technical users cannot act on",
+          "Silently ignore serious issues while leaving the arcade in a broken state",
+          "Trap users in error states with no clear path to recovery"
+        ]
+      },
+      "commentary": "Real-world environments are messy. The system must show resilience to imperfect local data and prioritize preserving playability. Robustness ensures the arcade remains usable even when things go wrong."
+    },
     {
       "id": "SCOPE-001",
       "assertion": "The arcade must ship exactly three games: Snake, 2048, and Minesweeper, each recognizably faithful to the classic gameplay.",
