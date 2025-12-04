@@ -173,8 +173,8 @@ export function RequestsTable({ records }: RequestsTableProps) {
             // Determine status based on delivered flag
             const statusText = delivered ? 'DELIVERED' : 'PENDING'
             const statusClass = delivered 
-              ? 'text-green-600 bg-green-50 border-green-200'
-              : 'text-yellow-600 bg-yellow-50 border-yellow-200'
+              ? 'text-green-700 dark:text-green-400 bg-green-500/10 border-green-500/30'
+              : 'text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 border-yellow-500/30'
             
             // Get workstream ID from Ponder (always use the indexed field)
             const workstreamId = 'workstreamId' in record ? record.workstreamId : null

@@ -27,7 +27,7 @@ export function GraphControls({
   onDirectionChange,
 }: GraphControlsProps) {
   return (
-    <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 space-y-4 z-10 min-w-[200px]">
+    <div className="absolute top-4 right-4 bg-card rounded-lg shadow-lg p-4 space-y-4 z-10 min-w-[200px]">
       {/* Zoom controls */}
       <div className="space-y-2">
         <div className="text-xs font-semibold text-gray-400 uppercase">View</div>
@@ -69,7 +69,7 @@ export function GraphControls({
         <select
           value={direction}
           onChange={(e) => onDirectionChange(e.target.value as typeof direction)}
-          className="w-full px-2 py-1.5 text-sm border rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-2 py-1.5 text-sm border rounded-md bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="upstream">Upstream (Parents)</option>
           <option value="downstream">Downstream (Children)</option>

@@ -63,14 +63,14 @@ export function ReflectionPhaseCard({ requestId, situationData }: ReflectionPhas
       <CardContent className="space-y-4">
         <div>
           <h4 className="text-sm font-semibold text-gray-400 mb-2">Situation Data</h4>
-          <div className="bg-white p-3 rounded border space-y-2 text-sm">
+          <div className="bg-card p-3 rounded border space-y-2 text-sm">
             <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-600" />
+              <Check className="w-4 h-4 text-green-700 dark:text-green-400" />
               <span className="font-medium text-gray-900">JSON created</span>
             </div>
             {situationData.embedding && (
               <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-green-600" />
+                <Check className="w-4 h-4 text-green-700 dark:text-green-400" />
                 <span className="font-medium text-gray-900">Embedding created</span>
               </div>
             )}
@@ -98,9 +98,9 @@ export function ReflectionPhaseCard({ requestId, situationData }: ReflectionPhas
           </p>
         </div>
 
-        <div className="text-xs text-gray-500 bg-white p-3 rounded border">
+        <div className="text-xs text-gray-500 bg-card p-3 rounded border">
           <p className="font-medium mb-1">Full inspection via CLI:</p>
-          <code className="block bg-gray-50 p-2 rounded mt-1 text-gray-800">
+          <code className="block bg-muted p-2 rounded mt-1 text-gray-800">
             tsx scripts/memory/inspect-situation.ts {requestId}
           </code>
         </div>

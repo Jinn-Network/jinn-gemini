@@ -51,14 +51,14 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
           <div className="flex items-center gap-2 mb-2">
             <h4 className="text-sm font-semibold text-gray-400">Workstream Progress Summary</h4>
             {recognitionData?.progressCheckpoint?.stats && (
-              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
+              <Badge variant="outline" className="bg-purple-500/10 text-purple-700 border-purple-500/30 text-xs">
                 {recognitionData.progressCheckpoint.stats.completedJobs} completed
               </Badge>
             )}
           </div>
           {recognitionData?.progressCheckpoint?.checkpointSummary ? (
             <>
-              <div className="bg-gradient-to-br from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200">
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-500/30">
                 <div className="prose prose-sm max-w-none text-sm">
                   <ReactMarkdown>{recognitionData.progressCheckpoint.checkpointSummary}</ReactMarkdown>
                 </div>
@@ -91,7 +91,7 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
           </div>
           {recognitionData?.initialSituation ? (
             <>
-              <div className="bg-gray-50 p-3 rounded border border-gray-200">
+              <div className="bg-muted p-3 rounded border border">
                 <pre className="text-xs overflow-auto max-h-[400px]">
                   {JSON.stringify(recognitionData.initialSituation, null, 2)}
                 </pre>
@@ -113,7 +113,7 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
           {recognitionData?.similarJobs && recognitionData.similarJobs.length > 0 ? (
             <div className="space-y-2">
               {recognitionData.similarJobs.map((job) => (
-                <div key={job.requestId} className="flex items-center justify-between bg-white p-3 rounded border border-gray-200 hover:border-blue-300 transition-colors">
+                <div key={job.requestId} className="flex items-center justify-between bg-card p-3 rounded border border hover:border-blue-300 transition-colors">
                   <Link
                     href={`/requests/${job.requestId}`}
                     className="text-primary hover:text-primary hover:underline font-medium text-sm flex-1"
@@ -135,7 +135,7 @@ export function RecognitionPhaseCard({ recognitionData }: RecognitionPhaseCardPr
         <div>
           <h4 className="text-sm font-semibold text-gray-400 mb-2">Synthesized Learnings</h4>
           {recognitionData?.learnings ? (
-            <div className="bg-gray-50 p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
+            <div className="bg-muted p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
               {typeof recognitionData.learnings === 'string' ? (
                 <ReactMarkdown>{recognitionData.learnings}</ReactMarkdown>
               ) : (

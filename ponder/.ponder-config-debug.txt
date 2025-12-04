@@ -3,19 +3,19 @@
 🔍 PONDER RUNTIME CONFIG
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 VITEST: true
-RPC_URL: https://virtual.base.eu.rpc.tenderly.co/3eaaeee6-9243-48d7-92dd-c268186f1bc6
-BASE_RPC_URL: https://virtual.base.eu.rpc.tenderly.co/3eaaeee6-9243-48d7-92dd-c268186f1bc6
-Resolved RPC URL: https://virtual.base.eu.rpc.tenderly.co/3eaaeee6-9243-48d7-92dd-c268186f1bc6
+RPC_URL: https://virtual.base.eu.rpc.tenderly.co/266588d7-a3f8-4bd1-ad1b-20be794d12c1
+BASE_RPC_URL: https://virtual.base.eu.rpc.tenderly.co/266588d7-a3f8-4bd1-ad1b-20be794d12c1
+Resolved RPC URL: https://virtual.base.eu.rpc.tenderly.co/266588d7-a3f8-4bd1-ad1b-20be794d12c1
 Is Tenderly VNet: true
 Finality Block Count: 0
-Start Block: 39031364
+Start Block: 39038393
 End Block: none (realtime)
 Database Mode: postgres
 Database URL: postgresql://postgres:****@db.clnwgxgvmnrkwqdblqgf.supabase.co:5432/postgres
 MECH_ADDRESS: 0xD03d75D3B59Ac252F2e8C7Bf4617cf91a102E613
 OPERATE_PROFILE_DIR: /Users/gcd/Repositories/main/jinn-cli-agents/tests-next/fixtures/operate-profile
-PORT: 42118
+PORT: 42112
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Timestamp: 2025-12-04T12:44:36.391Z
+Timestamp: 2025-12-04T16:38:54.474Z
 CWD: /Users/gcd/Repositories/main/jinn-cli-agents/ponder

@@ -70,18 +70,18 @@ export function ExecutionPhaseCard({
   const getStatusColor = (status?: string) => {
     switch (status?.toUpperCase()) {
       case 'COMPLETED':
-        return 'bg-green-100 text-green-800 border-green-300'
+        return 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30'
       case 'FAILED':
-        return 'bg-red-100 text-red-800 border-red-300'
+        return 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30'
       case 'RUNNING':
         return 'bg-primary/20 text-primary border-blue-300'
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-300'
+        return 'bg-muted text-gray-800 border-gray-300'
     }
   }
 
   return (
-    <Card className="border-green-200 bg-green-50/50">
+    <Card className="border-green-500/30 bg-green-500/10/50">
       <CardHeader>
         <CardTitle className="text-xl flex items-center gap-2">
           ⚙️ Execution Phase
@@ -103,13 +103,13 @@ export function ExecutionPhaseCard({
         {(tokens !== undefined || duration !== undefined) && (
           <div className="flex gap-4 text-sm">
             {tokens !== undefined && (
-              <div className="bg-white px-3 py-2 rounded border">
+              <div className="bg-card px-3 py-2 rounded border">
                 <span className="text-gray-400">Tokens:</span>{' '}
                 <span className="font-semibold text-gray-900">{tokens.toLocaleString()}</span>
               </div>
             )}
             {duration !== undefined && (
-              <div className="bg-white px-3 py-2 rounded border">
+              <div className="bg-card px-3 py-2 rounded border">
                 <span className="text-gray-400">Duration:</span>{' '}
                 <span className="font-semibold text-gray-900">{(duration / 1000).toFixed(1)}s</span>
               </div>
@@ -124,7 +124,7 @@ export function ExecutionPhaseCard({
             </h4>
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {trace.map((step, index) => (
-                <div key={index} className="border-l-4 border-green-400 pl-4 py-2 bg-white rounded-r">
+                <div key={index} className="border-l-4 border-green-400 pl-4 py-2 bg-card rounded-r">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-semibold text-gray-500">Step {index + 1}</span>
                     <span className="text-sm font-medium text-gray-900">{step.tool}</span>
@@ -142,7 +142,7 @@ export function ExecutionPhaseCard({
         {finalOutputSummary && (
           <div>
             <h4 className="text-sm font-semibold text-gray-400 mb-2">Final Output</h4>
-            <div className="text-sm text-gray-900 bg-white p-4 rounded border max-h-64 overflow-y-auto whitespace-pre-wrap">
+            <div className="text-sm text-gray-900 bg-card p-4 rounded border max-h-64 overflow-y-auto whitespace-pre-wrap">
               {finalOutputSummary}
             </div>
           </div>
@@ -153,9 +153,9 @@ export function ExecutionPhaseCard({
             <h4 className="text-sm font-semibold text-gray-400 mb-2">Artifacts Created</h4>
             <div className="space-y-2">
               {artifacts.map((artifact, index) => (
-                <div key={index} className="bg-white p-3 rounded border border-green-200">
+                <div key={index} className="bg-card p-3 rounded border border-green-500/30">
                   <div className="flex items-center gap-2 mb-2">
-                    <Badge variant="secondary" className="text-green-700 bg-green-100">
+                    <Badge variant="secondary" className="text-green-700 bg-green-500/10">
                       {artifact.topic}
                     </Badge>
                     <span className="text-sm font-medium text-gray-900 flex-1">{artifact.name}</span>
@@ -189,7 +189,7 @@ export function ExecutionPhaseCard({
             ) : childJobs.length > 0 ? (
               <RequestsTable records={childJobs} />
             ) : (
-              <div className="text-center py-8 text-gray-500 bg-white rounded border">
+              <div className="text-center py-8 text-gray-500 bg-card rounded border">
                 Loading child jobs...
               </div>
             )}

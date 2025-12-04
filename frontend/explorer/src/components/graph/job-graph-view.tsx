@@ -71,7 +71,7 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[700px] border rounded-lg bg-gray-50">
+      <div className="flex items-center justify-center h-[700px] border rounded-lg bg-muted">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <div className="text-gray-400">Loading graph...</div>
@@ -82,8 +82,8 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[700px] border rounded-lg bg-red-50">
-        <div className="text-center text-red-600 p-8">
+      <div className="flex items-center justify-center h-[700px] border rounded-lg bg-red-500/10">
+        <div className="text-center text-red-700 dark:text-red-400 p-8">
           <AlertTriangle className="w-12 h-12 mx-auto mb-4" />
           <div className="font-semibold text-lg">Error loading graph</div>
           <div className="text-sm mt-2">{error}</div>
@@ -94,7 +94,7 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
 
   if (!graph || graph.nodes.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[700px] border rounded-lg bg-gray-50">
+      <div className="flex items-center justify-center h-[700px] border rounded-lg bg-muted">
         <div className="text-center text-gray-400 p-8">
           <Search className="w-12 h-12 mx-auto mb-4" />
           <div className="font-semibold text-lg">No relationships found</div>
@@ -107,7 +107,7 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
   }
 
   return (
-    <div className="w-full h-full bg-gray-50 relative">
+    <div className="w-full h-full bg-muted relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -128,11 +128,11 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
             <Controls />
             <MiniMap
               nodeColor={() => '#10b981'}
-              className="bg-white border shadow-md"
+              className="bg-card border shadow-md"
             />
 
             {/* Statistics Panel */}
-            <Panel position="top-left" className="bg-white p-4 rounded-lg shadow-md">
+            <Panel position="top-left" className="bg-card p-4 rounded-lg shadow-md">
               <h3 className="font-semibold text-sm mb-2">Graph Statistics</h3>
               <div className="text-xs text-gray-400 space-y-1">
                 <div className="flex justify-between gap-4">
@@ -169,7 +169,7 @@ function JobGraphViewInner({ rootId, groupByDefinition = false }: JobGraphViewIn
         <Panel position="top-right" className="z-50">
           <button
             onClick={() => setShowOverlays(!showOverlays)}
-            className="p-2 bg-white hover:bg-gray-100 rounded-lg transition-colors shadow-md border border-gray-200"
+            className="p-2 bg-card hover:bg-muted rounded-lg transition-colors shadow-md border border"
             title={showOverlays ? 'Hide overlays' : 'Show overlays'}
             aria-label={showOverlays ? 'Hide overlays' : 'Show overlays'}
           >

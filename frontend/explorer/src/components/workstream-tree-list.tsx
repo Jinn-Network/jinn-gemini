@@ -63,11 +63,11 @@ function buildTree(nodes: GraphNode[], edges: GraphEdge[], rootNode: GraphNode):
 // Get status color classes matching job-definitions-table.tsx
 function getStatusColor(status: string): string {
   const statusUpper = status.toUpperCase()
-  if (statusUpper === 'COMPLETED') return 'bg-green-100 text-green-800'
-  if (statusUpper === 'FAILED') return 'bg-red-100 text-red-800'
+  if (statusUpper === 'COMPLETED') return 'bg-green-500/10 text-green-700 dark:text-green-400'
+  if (statusUpper === 'FAILED') return 'bg-red-500/10 text-red-700 dark:text-red-400'
   if (statusUpper === 'DELEGATING') return 'bg-primary/20 text-primary'
-  if (statusUpper === 'WAITING') return 'bg-purple-100 text-purple-800'
-  if (statusUpper === 'PENDING') return 'bg-yellow-100 text-yellow-800'
+  if (statusUpper === 'WAITING') return 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
+  if (statusUpper === 'PENDING') return 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
   return 'bg-muted text-muted-foreground'
 }
 

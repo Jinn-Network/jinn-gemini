@@ -35,51 +35,53 @@ export function JobDefinitionBlueprintTools({ jobDefinition }: BlueprintToolsPro
             commentary?: string
             examples?: { do?: string[]; dont?: string[] }
           }, idx: number) => (
-            <div key={assertion.id || idx} className="bg-gray-50 p-4 rounded border">
-              <div className="font-medium text-sm mb-2">{assertion.id}</div>
-              {assertion.assertion && (
-                <p className="text-sm text-gray-400 mb-3">{assertion.assertion}</p>
-              )}
-              {assertion.description && (
-                <p className="text-sm text-gray-400 mb-3">{assertion.description}</p>
-              )}
-              {assertion.examples && (
-                <div className="space-y-2 text-xs">
-                  {assertion.examples.do && assertion.examples.do.length > 0 && (
-                    <div>
-                      <div className="font-medium text-green-700 mb-1">✓ Do:</div>
-                      <ul className="list-disc list-inside text-gray-400 space-y-0.5">
-                        {assertion.examples.do.map((item, i) => (
-                          <li key={i}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {assertion.examples.dont && assertion.examples.dont.length > 0 && (
-                    <div>
-                      <div className="font-medium text-red-700 mb-1">✗ Don&apos;t:</div>
-                      <ul className="list-disc list-inside text-gray-400 space-y-0.5">
-                        {assertion.examples.dont.map((item, i) => (
-                          <li key={i}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-              {assertion.commentary && (
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <p className="text-xs text-gray-400 italic">{assertion.commentary}</p>
-                </div>
-              )}
-            </div>
+            <Card key={assertion.id || idx}>
+              <CardContent className="pt-4">
+                <div className="font-medium text-sm mb-2">{assertion.id}</div>
+                {assertion.assertion && (
+                  <p className="text-sm text-muted-foreground mb-3">{assertion.assertion}</p>
+                )}
+                {assertion.description && (
+                  <p className="text-sm text-muted-foreground mb-3">{assertion.description}</p>
+                )}
+                {assertion.examples && (
+                  <div className="space-y-2 text-xs">
+                    {assertion.examples.do && assertion.examples.do.length > 0 && (
+                      <div>
+                        <div className="font-medium text-green-700 mb-1">✓ Do:</div>
+                        <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                          {assertion.examples.do.map((item, i) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {assertion.examples.dont && assertion.examples.dont.length > 0 && (
+                      <div>
+                        <div className="font-medium text-red-700 mb-1">✗ Don&apos;t:</div>
+                        <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                          {assertion.examples.dont.map((item, i) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {assertion.commentary && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-xs text-muted-foreground italic">{assertion.commentary}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           ))}
         </div>
       )
     } else {
       // Otherwise render as markdown
       blueprintRendering = (
-        <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
+        <div className="prose prose-sm max-w-none bg-muted p-4 rounded border">
           <ReactMarkdown>{typeof blueprintContent === 'string' ? blueprintContent : JSON.stringify(parsed, null, 2)}</ReactMarkdown>
         </div>
       )
@@ -87,7 +89,7 @@ export function JobDefinitionBlueprintTools({ jobDefinition }: BlueprintToolsPro
   } catch {
     // If not JSON, render as markdown
     blueprintRendering = (
-      <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
+      <div className="prose prose-sm max-w-none bg-muted p-4 rounded border">
         <ReactMarkdown>{blueprintContent}</ReactMarkdown>
       </div>
     )

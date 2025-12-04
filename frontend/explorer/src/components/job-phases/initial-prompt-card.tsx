@@ -70,7 +70,7 @@ export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPr
             {blueprintData.blueprint && (
               <div>
                 <h4 className="text-sm font-semibold text-gray-400 mb-1">Blueprint</h4>
-                <div className="text-sm text-gray-900 bg-white p-3 rounded border whitespace-pre-wrap font-mono text-xs">
+                <div className="text-sm text-gray-900 bg-card p-3 rounded border whitespace-pre-wrap font-mono text-xs">
                   {blueprintData.blueprint}
                 </div>
               </div>
@@ -82,28 +82,28 @@ export function InitialPromptCard({ jobName, ipfsHash, enabledTools }: InitialPr
                 {blueprintData.objective && (
                   <div>
                     <h4 className="text-sm font-semibold text-gray-400 mb-1">Objective</h4>
-                    <p className="text-sm text-gray-900 bg-white p-3 rounded border">{blueprintData.objective}</p>
+                    <p className="text-sm text-gray-900 bg-card p-3 rounded border">{blueprintData.objective}</p>
                   </div>
                 )}
 
                 {blueprintData.context && (
                   <div>
                     <h4 className="text-sm font-semibold text-gray-400 mb-1">Context</h4>
-                    <p className="text-sm text-gray-400 bg-white p-3 rounded border whitespace-pre-wrap">{blueprintData.context}</p>
+                    <p className="text-sm text-gray-400 bg-card p-3 rounded border whitespace-pre-wrap">{blueprintData.context}</p>
                   </div>
                 )}
 
                 {blueprintData.acceptanceCriteria && (
                   <div>
                     <h4 className="text-sm font-semibold text-gray-400 mb-1">Acceptance Criteria</h4>
-                    <p className="text-sm text-gray-400 bg-white p-3 rounded border whitespace-pre-wrap">{blueprintData.acceptanceCriteria}</p>
+                    <p className="text-sm text-gray-400 bg-card p-3 rounded border whitespace-pre-wrap">{blueprintData.acceptanceCriteria}</p>
                   </div>
                 )}
 
                 {blueprintData.deliverables && (
                   <div>
                     <h4 className="text-sm font-semibold text-gray-400 mb-1">Deliverables</h4>
-                    <p className="text-sm text-gray-400 bg-white p-3 rounded border">{blueprintData.deliverables}</p>
+                    <p className="text-sm text-gray-400 bg-card p-3 rounded border">{blueprintData.deliverables}</p>
                   </div>
                 )}
               </>

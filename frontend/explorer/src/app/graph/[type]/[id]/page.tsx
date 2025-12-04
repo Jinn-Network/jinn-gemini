@@ -17,15 +17,17 @@ export default async function GraphPage({ params }: GraphPageProps) {
     notFound()
   }
 
+  const breadcrumbs = [
+    { label: 'Requests', href: '/requests' },
+    { label: `${id.substring(0, 8)}...`, href: `/requests/${id}` },
+    { label: 'Graph View' }
+  ]
+
   return (
     <>
       <SiteHeader 
-        title="Job Graph Visualization"
         subtitle="Explore job relationships and execution flows"
-        backLink={{
-          href: `/requests/${id}`,
-          label: 'Back to detail view'
-        }}
+        breadcrumbs={breadcrumbs}
       />
       <div className="p-4 md:p-6 space-y-6">
 

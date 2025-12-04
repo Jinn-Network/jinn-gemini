@@ -110,7 +110,7 @@ function CausalChainView({ jobId }: { jobId: string }) {
                 {new Date(causalData.source_artifact.created_at).toLocaleString()}
               </DetailItem>
               <DetailItem label="Content Preview">
-                <div className="text-sm bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+                <div className="text-sm bg-muted p-2 rounded max-h-20 overflow-y-auto">
                   {typeof causalData.source_artifact.content === 'string' 
                     ? causalData.source_artifact.content.substring(0, 200) + 
                       (causalData.source_artifact.content.length > 200 ? '...' : '')
@@ -132,7 +132,7 @@ function CausalChainView({ jobId }: { jobId: string }) {
           <CardContent>
             <div className="space-y-3">
               {causalData.emitted_artifacts.map((artifact) => (
-                <div key={artifact.id} className="border rounded-lg p-3 bg-gray-50">
+                <div key={artifact.id} className="border rounded-lg p-3 bg-muted">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <IdLink collection="artifacts" id={artifact.id} />
@@ -142,7 +142,7 @@ function CausalChainView({ jobId }: { jobId: string }) {
                       {new Date(artifact.created_at).toLocaleString()}
                     </span>
                   </div>
-                  <div className="text-sm text-gray-400 bg-white p-2 rounded max-h-16 overflow-y-auto">
+                  <div className="text-sm text-gray-400 bg-card p-2 rounded max-h-16 overflow-y-auto">
                     {typeof artifact.content === 'string' 
                       ? artifact.content.substring(0, 150) + (artifact.content.length > 150 ? '...' : '')
                       : JSON.stringify(artifact.content).substring(0, 150) + '...'
@@ -164,7 +164,7 @@ function CausalChainView({ jobId }: { jobId: string }) {
           <CardContent>
             <div className="space-y-3">
               {causalData.triggered_jobs.map((job) => (
-                <div key={job.id} className="border rounded-lg p-3 bg-gray-50">
+                <div key={job.id} className="border rounded-lg p-3 bg-muted">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <IdLink collection="job_board" id={job.id} />

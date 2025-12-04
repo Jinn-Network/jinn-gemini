@@ -102,10 +102,10 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
                 code: ({ children, className }) => {
                   const isInline = !className
                   if (isInline) {
-                    return <code className="bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-xs font-mono">{children}</code>
+                    return <code className="bg-muted text-foreground px-1 py-0.5 rounded text-xs font-mono">{children}</code>
                   }
                   return (
-                    <pre className="bg-gray-100 text-gray-800 p-3 rounded text-xs font-mono overflow-auto">
+                    <pre className="bg-muted text-foreground p-3 rounded text-xs font-mono overflow-auto">
                       <code>{children}</code>
                     </pre>
                   )

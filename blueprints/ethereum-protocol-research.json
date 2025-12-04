@@ -21,57 +21,66 @@
     },
     {
       "id": "DATA-SCOPE",
-      "assertion": "Research must strictly focus on the specific 24-hour period provided in the job context (e.g., 00:00 UTC to 00:00 UTC). Data outside this window must be explicitly excluded or marked as context only.",
+      "assertion": "Research must strictly focus on the specific 24-hour period provided in the job context (e.g., 00:00 UTC to 00:00 UTC). The target date is explicitly stated in the context field - extract and use that exact date, NOT 'today' or 'current date'. All web searches must include the specific date string (YYYY-MM-DD format) in the query to retrieve historical data.",
       "examples": {
         "do": [
-          "Filter search results for the specific date",
-          "Cite metrics (Volume, TVL, Price) for that specific day",
-          "Ignore 'current' real-time data if it's outside the target window",
-          "Clearly state the reporting period in the document header"
+          "Parse the context field to extract the exact target date (e.g., '2025-12-01')",
+          "Include the date string in every web_search query: 'Ethereum TVL 2025-12-01'",
+          "When delegating to child jobs, propagate the exact date in their job names",
+          "Verify all data sources show timestamps matching the target date",
+          "State 'Reporting Period: YYYY-MM-DD 00:00 UTC to YYYY-MM-DD+1 00:00 UTC' in the header"
         ],
         "dont": [
-          "Use 'last 24 hours' relative to now (if different from target date)",
+          "Use 'today', 'current', or relative date references in web searches",
+          "Assume the target date is the same as the job execution date",
+          "Search for 'latest Ethereum metrics' without specifying the target date",
           "Mix data from different days without distinction",
-          "Report real-time price if analyzing a past date"
+          "Report 'real-time' data when analyzing historical dates"
         ]
       },
-      "commentary": "To solve the 'moving target' problem, the analysis must be pinned to a specific calendar day. This allows for reproducible, historical analysis."
+      "commentary": "To solve the 'moving target' problem, the analysis must be pinned to a specific calendar day. The target date is provided in the context field and must be explicitly used in all searches and child job names. This allows for reproducible, historical analysis even when the job executes days later."
     },
     {
       "id": "MARKET-METRICS",
-      "assertion": "Report must include key market metrics: ETH Price Action (Open/Close/High/Low), Total DeFi TVL change, Total DEX Volume, and Average Gas Price for the period.",
+      "assertion": "Report must include key market metrics: ETH Price Action (Open/Close/High/Low with specific UTC timestamps), Total DeFi TVL change, Total DEX Volume, and Average Gas Price for the period. Every metric must include source attribution in parentheses (e.g., 'CoinGecko', 'DeFiLlama') immediately after the value.",
       "examples": {
         "do": [
-          "ETH: Open $3200, Close $3150 (-1.5%)",
-          "Gas: Avg 15 gwei, Peak 45 gwei",
-          "DEX Vol: $1.2B (-10% DoD)",
-          "TVL: $45B (+0.5%)"
+          "ETH: Open $3200 (CoinGecko, 00:00 UTC), Close $3150 (CoinGecko, 23:59 UTC) [-1.5%]",
+          "Gas: Avg 15 gwei (Etherscan), Peak 45 gwei at 14:30 UTC (Etherscan)",
+          "DEX Vol: $1.2B (DeFiLlama) [-10% vs prior 24h]",
+          "TVL: $45B (DeFiLlama) [+0.5% vs prior 24h]"
         ],
         "dont": [
+          "Omit source attribution for any metric",
           "Omit Gas or Price data",
-          "Provide absolute numbers without Day-over-Day (DoD) change context",
-          "Use vague terms like 'gas was high'"
+          "Provide absolute numbers without Day-over-Day comparison context",
+          "Use vague terms like 'gas was high'",
+          "Use footnotes or end-of-section citations instead of inline attribution"
         ]
       },
-      "commentary": "These metrics provide the baseline context for all other activity. Without them, protocol specific data lacks scale."
+      "commentary": "These metrics provide the baseline context for all other activity. Without them, protocol specific data lacks scale. Inline attribution ensures data provenance and verifiability."
     },
     {
       "id": "PROTOCOL-DEPTH",
-      "assertion": "Deep dive analysis must cover at least 3 major protocols (e.g., Uniswap, Aave, Lido) with specific metrics: Volume/Revenue for DEXs, Borrow/Supply for Lending, Net Flows for Staking.",
+      "assertion": "Deep dive analysis must cover at least 3 major protocols (e.g., Uniswap, Aave, Lido, MakerDAO, Curve) with specific metrics including source attribution and 7-day historical comparison. For DEXs: Volume/Revenue; For Lending: Borrow/Supply rates; For Staking: Net Flows and APR; For DAOs: Governance activity.",
       "examples": {
         "do": [
-          "Uniswap: $400M Volume, Top Pair ETH/USDC ($150M)",
-          "Aave: Net Supply +$50M, Top Borrow Asset USDC",
-          "Lido: +10k ETH Net Inflow, APR 3.5%",
-          "Include specific events like 'Proposal 123 passed'"
+          "Uniswap: $400M Volume (DeFiLlama) [7d avg: $380M, +5.3%], Top Pair ETH/USDC $150M",
+          "Aave V3: Net Supply +$50M (Aave Analytics, 24h delta), Borrow Rate USDC 4.2% (7d avg: 4.5%), Total Borrowed $2.1B",
+          "Lido: +10k ETH Net Inflow (Dune Analytics), stETH APR 3.5% (7d avg: 3.4%), Total Staked 9.8M ETH",
+          "Include governance: 'Aave AIP-123 passed with 95% support on 2025-12-01 (Snapshot)'",
+          "Note anomalies: 'Uniswap V3 WETH/USDC 0.05% tier saw 3x typical volume spike at 18:00 UTC'"
         ],
         "dont": [
           "Discuss protocols generically without numbers",
-          "Focus only on price token performance instead of protocol usage metrics",
-          "Skip protocol specific news or governance items"
+          "Omit source attribution for metrics",
+          "Provide current-day metrics without 7-day comparison context",
+          "Focus only on token price performance instead of protocol usage metrics",
+          "Skip protocol-specific news or governance items",
+          "Use aggregate 'DeFi' metrics without protocol breakdown"
         ]
       },
-      "commentary": "The core of the research is protocol usage, not just token speculation. We need to know *what happened* on-chain."
+      "commentary": "The core of the research is protocol usage, not just token speculation. We need to know *what happened* on-chain with quantifiable evidence. Historical comparison shows whether activity is anomalous or typical."
     },
     {
       "id": "SYNTHESIS-NARRATIVE",
@@ -120,6 +129,26 @@
         ]
       },
       "commentary": "Artifact sampling provides sufficient context for synthesis. Exhaustive retrieval is unnecessary."
+    },
+    {
+      "id": "DATA-SOURCES",
+      "assertion": "Use specific, high-quality data sources for each metric type: CoinGecko/CoinMarketCap for price data, Etherscan for gas/transaction data, DeFiLlama for TVL/volume aggregates, protocol-specific dashboards (Dune Analytics, Token Terminal) for granular protocol metrics, Snapshot/Tally for governance.",
+      "examples": {
+        "do": [
+          "Search 'Ethereum gas price 2025-12-01 site:etherscan.io'",
+          "Search 'Aave V3 borrowing activity 2025-12-01 site:dune.com'",
+          "Search 'Uniswap V3 volume 2025-12-01 DeFiLlama'",
+          "Cite dashboard URLs: 'Aave V3 metrics: https://dune.com/hagaetc/aave-v3'",
+          "Use multiple sources when available: 'TVL $45B (DeFiLlama), confirmed by DeBank $44.8B'"
+        ],
+        "dont": [
+          "Rely on single generic news article for all metrics",
+          "Use blog posts or social media as primary data sources",
+          "Cite sources without specific URLs or timestamps",
+          "Use outdated or inactive dashboards"
+        ]
+      },
+      "commentary": "Data quality depends on source selection. Direct protocol dashboards and analytics platforms provide more granular and reliable metrics than aggregated news articles."
     }
   ]
 }

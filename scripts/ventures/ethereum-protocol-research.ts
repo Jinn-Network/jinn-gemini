@@ -50,7 +50,7 @@ function parseDispatchResponse(result: any): { jobDefinitionId: string; requestI
 
 async function main() {
   console.log('╔═══════════════════════════════════════════════════════════════════════╗');
-  console.log('║  Ethereum Protocol Research - Entry Point                            ║');
+  console.log('║  Ethereum On-chain Activity Research - Entry Point                   ║');
   console.log('╚═══════════════════════════════════════════════════════════════════════╝');
   console.log('\nThis venture tests:');
   console.log('  ✓ Phase 1: Blueprint-driven execution');
@@ -59,19 +59,42 @@ async function main() {
   console.log('\nDispatching entry point job...\n');
 
   try {
+    // Target date for analysis (use yesterday by default to ensure data availability)
+    const targetDate = new Date();
+    targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+    targetDate.setUTCHours(0, 0, 0, 0);
+    
+    const endDate = new Date(targetDate);
+    endDate.setUTCDate(endDate.getUTCDate() + 1);
+    
+    const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+    const shortId = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel'][Math.floor(Math.random() * 8)];
+    const jobName = `Ethereum On-chain Activity – ${dateStr} – ${shortId}`;
+    
     const blueprint = await loadBlueprint('ethereum-protocol-research.json');
     
-    console.log('📊 Dispatching: Ethereum Protocol Daily Brief\n');
-    console.log('   Scope: 00:00 UTC Dec 1, 2025 → 00:00 UTC Dec 2, 2025');
+    console.log('📊 Dispatching: Ethereum On-chain Activity Research\n');
+    console.log(`   Job Name: ${jobName}`);
+    console.log(`   Scope: ${targetDate.toISOString()} → ${endDate.toISOString()}`);
     console.log('   Focus: Major DeFi protocols (Uniswap, Aave, Lido, Maker, Curve)');
     console.log('   Output: Structured Daily Report (Markdown Artifact)\n');
     
-    // Inject the specific date scope into the blueprint instructions
-    const dateScope = "TARGET DATE SCOPE: 00:00 UTC December 1, 2025 to 00:00 UTC December 2, 2025. All research must be strictly limited to this window.";
-    const finalBlueprint = blueprint.replace('"assertions": [', `"context": "${dateScope}",\n  "assertions": [`);
+    // Inject the specific date scope into the blueprint with EXPLICIT emphasis
+    const dateScope = [
+      `CRITICAL DATE CONSTRAINT: You are researching the 24-hour period from ${targetDate.toISOString()} to ${endDate.toISOString()}.`,
+      `This is ${dateStr} in YYYY-MM-DD format.`,
+      `DO NOT use "today" or "current date" - the analysis target is ${dateStr}, which may be in the past.`,
+      `When performing web searches, explicitly include "${dateStr}" in your queries.`,
+      `All metrics, events, and data MUST be from this specific date window only.`
+    ].join(' ');
+    
+    // Parse blueprint JSON, add context field, re-serialize
+    const blueprintObj = JSON.parse(blueprint);
+    blueprintObj.context = dateScope;
+    const finalBlueprint = JSON.stringify(blueprintObj);
 
     const result = await dispatchNewJob({
-      jobName: 'ethereum-protocol-research',
+      jobName,
       blueprint: finalBlueprint,
       model: 'gemini-2.5-flash',
       enabledTools: [
@@ -90,37 +113,15 @@ async function main() {
     
     console.log('✅ Research job dispatched successfully!\n');
     console.log('═══════════════════════════════════════════════════════════════════════');
-    console.log('\n📋 Job Details:');
-    console.log(`   Job Name: ethereum-protocol-research`);
-    console.log(`   Job Definition ID: ${jobDefinitionId}`);
-    console.log(`   Request ID: ${requestId}`);
-    console.log(`   Model: gemini-2.5-flash`);
+    console.log(`\n📋 ${jobName}`);
+    console.log(`   Target Date: ${dateStr}`);
+    console.log(`   Request ID: ${requestId}\n`);
     
-    console.log('\n\n🔧 Next Steps:');
-    console.log('\n1. Start worker to process the job:');
-    console.log(`   MECH_TARGET_REQUEST_ID=${requestId} yarn dev:mech --single`);
-    console.log('\n   Or to monitor the entire workstream:');
-    console.log(`   yarn dev:mech --workstream=${requestId} --single`);
+    console.log('🔧 Run workstream (processes 5 jobs):');
+    console.log(`   yarn dev:mech --workstream=${requestId} --runs=5\n`);
     
-    console.log('\n2. Monitor execution:');
-    console.log('   - Watch for blueprint assertions being addressed');
-    console.log('   - Agent may delegate to child jobs or execute directly');
-    console.log('   - Check job hierarchy for work decomposition decisions');
-    
-    console.log('\n3. Validate results:');
-    console.log(`   yarn inspect-job-run ${requestId}`);
-    
-    console.log('\n4. View in explorer:');
-    console.log(`   http://localhost:3000/requests/${requestId}`);
-    
-    console.log('\n\n📝 Validation Checklist:');
-    console.log('   [ ] Phase 1: Agent processes blueprint assertions');
-    console.log('   [ ] Phase 2: Agent makes autonomous delegation decisions');
-    console.log('   [ ] All blueprint assertions satisfied in final output');
-    console.log('   [ ] Output: "Ethereum Daily Brief" Artifact created');
-    console.log('   [ ] Output: 5 Required Sections (Exec Summary, Metrics, Protocols, Anomalies, Synthesis)');
-    console.log('   [ ] Output: Data strictly from Dec 1-2, 2025 window');
-    console.log('   [ ] Output: Quantitative metrics for at least 3 protocols');
+    console.log('🌐 View in explorer:');
+    console.log(`   https://explorer.jinn.network/requests/${requestId}\n`);
     
   } catch (error) {
     console.error('\n❌ Failed to dispatch job:', error);

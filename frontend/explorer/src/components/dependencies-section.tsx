@@ -67,7 +67,7 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
                     <Link
                       key={dep.id}
                       href={`/job-definitions/${dep.id}`}
-                      className="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
+                      className="flex items-center justify-between p-2 bg-muted rounded hover:bg-muted/70 transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         <StatusIcon status={jobStatus} size={16} />
@@ -103,7 +103,7 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
                   return (
                     <li 
                       key={dep.id} 
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors"
+                      className="flex items-center justify-between p-3 bg-muted rounded-md border hover:bg-muted/70 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
                         <Link 
@@ -117,10 +117,10 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
                         </div>
                       </div>
                       <span 
-                        className={`ml-4 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
+                        className={`ml-4 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap border ${
                           dep.delivered 
-                            ? 'text-green-700 bg-green-100 border border-green-300'
-                            : 'text-yellow-700 bg-yellow-100 border border-yellow-300'
+                            ? 'text-green-700 dark:text-green-400 bg-green-500/10 border-green-500/30'
+                            : 'text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 border-yellow-500/30'
                         }`}
                       >
                         <StatusIcon status={jobStatus} size={14} />
@@ -147,8 +147,8 @@ export function DependenciesSection({ requestId, dependencies, renderAsSubsectio
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900">Dependencies</h3>
+    <div className="bg-card rounded-lg border p-6 space-y-6">
+      <h3 className="text-lg font-semibold">Dependencies</h3>
       {content}
     </div>
   )

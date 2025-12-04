@@ -93,16 +93,16 @@ export function JobDefinitionsTable({ records, onSort, sortColumn = '', sortAsce
             
             // Status color mapping based on protocol model states
             const statusColor = lastStatus === 'COMPLETED'
-              ? 'bg-green-100 text-green-800'
+              ? 'bg-green-500/10 text-green-700 dark:text-green-400'
               : lastStatus === 'FAILED'
-              ? 'bg-red-100 text-red-800'
+              ? 'bg-red-500/10 text-red-700 dark:text-red-400'
               : lastStatus === 'DELEGATING'
               ? 'bg-primary/20 text-primary'
               : lastStatus === 'WAITING'
-              ? 'bg-purple-100 text-purple-800'
+              ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
               : lastStatus === 'PENDING'
-              ? 'bg-yellow-100 text-yellow-800'
-              : 'bg-gray-100 text-gray-800'
+              ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
+              : 'bg-muted text-gray-800'
 
             return (
               <TableRow key={record.id}>

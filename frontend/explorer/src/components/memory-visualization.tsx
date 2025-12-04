@@ -115,10 +115,10 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <div className="text-sm text-red-600">Error: {error}</div>
-            <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded border">
+            <div className="text-sm text-red-700 dark:text-red-400">Error: {error}</div>
+            <div className="text-xs text-gray-500 bg-muted p-3 rounded border">
               <p className="font-medium mb-1">CLI inspection tool:</p>
-              <code className="block bg-white p-2 rounded mt-1">
+              <code className="block bg-card p-2 rounded mt-1">
                 tsx scripts/memory/inspect-situation.ts {requestId}
               </code>
             </div>
@@ -162,7 +162,7 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
                 <h3 className="text-sm font-semibold mb-2">Similar Situations Retrieved</h3>
                 <div className="space-y-2">
                   {data.recognition.similarSituations.map((situation, index) => (
-                    <div key={index} className="border rounded p-3 bg-gray-50">
+                    <div key={index} className="border rounded p-3 bg-muted">
                       <div className="flex justify-between items-start mb-1">
                         <span className="text-sm font-medium text-primary">
                           {situation.jobName || situation.requestId.slice(0, 10)}
@@ -243,7 +243,7 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
             {data.situation.execution.finalOutputSummary && (
               <div>
                 <h3 className="text-sm font-semibold mb-2">Final Output Summary</h3>
-                <div className="text-sm text-gray-400 bg-green-50 p-3 rounded border border-green-200 max-h-48 overflow-y-auto">
+                <div className="text-sm text-gray-400 bg-green-500/10 p-3 rounded border border-green-500/30 max-h-48 overflow-y-auto">
                   {data.situation.execution.finalOutputSummary.slice(0, 600)}
                   {data.situation.execution.finalOutputSummary.length > 600 ? '...' : ''}
                 </div>
@@ -255,7 +255,7 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
                 <h3 className="text-sm font-semibold mb-2">Artifacts Created</h3>
                 <div className="space-y-1">
                   {data.situation.artifacts.map((artifact, index) => (
-                    <div key={index} className="text-xs bg-purple-50 p-2 rounded border border-purple-200">
+                    <div key={index} className="text-xs bg-purple-500/10 p-2 rounded border border-purple-500/30">
                       <span className="font-medium">{artifact.topic}:</span> {artifact.name}
                     </div>
                   ))}
@@ -264,14 +264,14 @@ export function MemoryVisualization({ requestId }: MemoryVisualizationProps) {
             )}
 
             {data.situation.embedding && (
-              <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+              <div className="text-xs text-gray-500 bg-muted p-2 rounded">
                 <span className="font-medium">Embedding:</span> {data.situation.embedding.model} ({data.situation.embedding.dim}D vector)
               </div>
             )}
 
-            <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded border">
+            <div className="text-xs text-gray-500 bg-muted p-3 rounded border">
               <p className="font-medium mb-1">Full inspection via CLI:</p>
-              <code className="block bg-white p-2 rounded mt-1">
+              <code className="block bg-card p-2 rounded mt-1">
                 tsx scripts/memory/inspect-situation.ts {requestId}
               </code>
             </div>

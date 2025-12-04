@@ -148,16 +148,16 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
             {jobDefinition.lastStatus && (
               <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap ${
                 jobDefinition.lastStatus === 'COMPLETED'
-                  ? 'bg-green-100 text-green-800'
+                  ? 'bg-green-500/10 text-green-700 dark:text-green-400'
                   : jobDefinition.lastStatus === 'FAILED'
-                  ? 'bg-red-100 text-red-800'
+                  ? 'bg-red-500/10 text-red-700 dark:text-red-400'
                   : jobDefinition.lastStatus === 'DELEGATING'
                   ? 'bg-primary/20 text-primary'
                   : jobDefinition.lastStatus === 'WAITING'
-                  ? 'bg-purple-100 text-purple-800'
+                  ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
                   : jobDefinition.lastStatus === 'PENDING'
-                  ? 'bg-yellow-100 text-yellow-800'
-                  : 'bg-gray-100 text-gray-800'
+                  ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
+                  : 'bg-muted text-gray-800'
               }`}>
                 <StatusIcon status={jobDefinition.lastStatus} size={16} />
                 {jobDefinition.lastStatus}
@@ -193,7 +193,7 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
               <div className="text-sm">
                 <span className="font-medium">From:</span> <TruncatedId value={recognitionArtifact.requestId} linkTo={`/requests/${recognitionArtifact.requestId}`} />
               </div>
-              <div className="prose prose-sm max-w-none bg-gray-50 p-3 rounded">
+              <div className="prose prose-sm max-w-none bg-muted p-3 rounded">
                 {recognitionArtifact.contentPreview}
               </div>
               <div className="pt-2">

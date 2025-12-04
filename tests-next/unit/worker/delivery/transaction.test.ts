@@ -527,7 +527,7 @@ describe('deliverViaSafeTransaction', () => {
 
       expect(workerLogger.info).toHaveBeenCalledWith(
         { requestId: '0x1234', requestIdHex: '0x1234' },
-        'Preflight: request already delivered or not eligible; skipping Safe delivery'
+        'Delivery preflight: request already delivered or revoked; skipping new Safe tx'
       );
     });
 

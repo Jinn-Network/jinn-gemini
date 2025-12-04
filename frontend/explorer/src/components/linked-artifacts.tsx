@@ -29,10 +29,10 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
 
   if (typeof value === 'boolean') {
     return (
-      <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
+      <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
         value 
-          ? 'text-green-600 bg-green-50 border border-green-200' 
-          : 'text-red-600 bg-red-50 border border-red-200'
+          ? 'text-green-700 dark:text-green-400 bg-green-500/10 border-green-500/30' 
+          : 'text-red-700 dark:text-red-400 bg-red-500/10 border-red-500/30'
       }`}>
         {value ? '✓ true' : '✗ false'}
       </span>
@@ -112,7 +112,7 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
           <div className="text-xs text-gray-500">
             {value.length} characters, ~{wordCount} words
           </div>
-          <div className="max-h-32 overflow-auto bg-gray-50 p-3 rounded border text-sm">
+          <div className="max-h-32 overflow-auto bg-muted p-3 rounded border text-sm">
             {value}
           </div>
         </div>
@@ -131,15 +131,15 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
     return (
       <div className="space-y-2">
         <div className="text-xs text-gray-500">Array ({value.length} items)</div>
-        <div className="bg-gray-50 rounded border overflow-hidden">
+        <div className="bg-muted rounded border overflow-hidden">
           <div className="max-h-64 overflow-auto p-3">
             <ul className="space-y-1">
               {value.map((item, index) => (
                 <li key={index} className="flex items-start gap-2 text-sm">
-                  <span className="text-gray-400 font-mono text-xs mt-0.5">{index + 1}.</span>
+                  <span className="text-muted-foreground font-mono text-xs mt-0.5">{index + 1}.</span>
                   <span className="flex-1">
                     {typeof item === 'object' ? (
-                      <pre className="text-xs text-gray-400 whitespace-pre-wrap">
+                      <pre className="text-xs text-muted-foreground whitespace-pre-wrap">
                         {JSON.stringify(item, null, 2)}
                       </pre>
                     ) : (
@@ -165,23 +165,23 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
     return (
       <div className="space-y-2">
         <div className="text-xs text-gray-500">Object ({keys.length} properties)</div>
-        <div className="bg-gray-50 border rounded overflow-hidden">
+        <div className="bg-muted border rounded overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-100">
+            <thead className="bg-muted">
               <tr>
-                <th className="text-left px-3 py-2 font-medium text-gray-400 text-xs">Property</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-400 text-xs">Value</th>
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Property</th>
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Value</th>
               </tr>
             </thead>
             <tbody>
               {keys.map((key, index) => (
-                <tr key={key} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-400 border-r border-gray-200">
+                <tr key={key} className={index % 2 === 0 ? '' : 'bg-card/50'}>
+                  <td className="px-3 py-2 font-mono text-xs text-muted-foreground border-r">
                     {key}
                   </td>
                   <td className="px-3 py-2 text-xs">
                     {typeof value === 'object' && value !== null && key in value && typeof (value as Record<string, unknown>)[key] === 'object' ? (
-                      <pre className="whitespace-pre-wrap text-gray-400">
+                      <pre className="whitespace-pre-wrap text-muted-foreground">
                         {JSON.stringify((value as Record<string, unknown>)[key], null, 2)}
                       </pre>
                     ) : (
@@ -222,7 +222,7 @@ function ContentDisplay({ value }: { value: unknown }) {
     // For long strings, show in a scrollable area
     if (value.length > 200) {
       return (
-        <div className="max-h-96 overflow-auto bg-gray-50 p-3 rounded border text-sm">
+        <div className="max-h-96 overflow-auto bg-muted p-3 rounded border text-sm">
           {value}
         </div>
       )
@@ -238,15 +238,15 @@ function ContentDisplay({ value }: { value: unknown }) {
     }
 
     return (
-      <div className="bg-gray-50 rounded border overflow-hidden">
+      <div className="bg-muted rounded border overflow-hidden">
         <div className="max-h-64 overflow-auto p-3">
           <ul className="space-y-1">
             {value.map((item, index) => (
               <li key={index} className="flex items-start gap-2 text-sm">
-                <span className="text-gray-400 font-mono text-xs mt-0.5">{index + 1}.</span>
+                <span className="text-muted-foreground font-mono text-xs mt-0.5">{index + 1}.</span>
                 <span className="flex-1">
                   {typeof item === 'object' ? (
-                    <pre className="text-xs text-gray-400 whitespace-pre-wrap">
+                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap">
                       {JSON.stringify(item, null, 2)}
                     </pre>
                   ) : (
@@ -269,23 +269,23 @@ function ContentDisplay({ value }: { value: unknown }) {
     }
 
     return (
-      <div className="bg-gray-50 border rounded overflow-hidden">
+      <div className="bg-muted border rounded overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-100">
+          <thead className="bg-muted">
             <tr>
-              <th className="text-left px-3 py-2 font-medium text-gray-400 text-xs">Property</th>
-              <th className="text-left px-3 py-2 font-medium text-gray-400 text-xs">Value</th>
+              <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Property</th>
+              <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Value</th>
             </tr>
           </thead>
           <tbody>
             {keys.map((key, index) => (
-              <tr key={key} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}>
-                <td className="px-3 py-2 font-mono text-xs text-gray-400 border-r border-gray-200">
+              <tr key={key} className={index % 2 === 0 ? '' : 'bg-card/50'}>
+                <td className="px-3 py-2 font-mono text-xs text-muted-foreground border-r">
                   {key}
                 </td>
                 <td className="px-3 py-2 text-xs">
                   {typeof value === 'object' && value !== null && key in value && typeof (value as Record<string, unknown>)[key] === 'object' ? (
-                    <pre className="whitespace-pre-wrap text-gray-400">
+                    <pre className="whitespace-pre-wrap text-muted-foreground">
                       {JSON.stringify((value as Record<string, unknown>)[key], null, 2)}
                     </pre>
                   ) : (
@@ -303,10 +303,10 @@ function ContentDisplay({ value }: { value: unknown }) {
   // Handle other types simply
   if (typeof value === 'boolean') {
     return (
-      <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
+      <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
         value 
-          ? 'text-green-600 bg-green-50 border border-green-200' 
-          : 'text-red-600 bg-red-50 border border-red-200'
+          ? 'text-green-700 dark:text-green-400 bg-green-500/10 border-green-500/30' 
+          : 'text-red-700 dark:text-red-400 bg-red-500/10 border-red-500/30'
       }`}>
         {value ? '✓ true' : '✗ false'}
       </span>

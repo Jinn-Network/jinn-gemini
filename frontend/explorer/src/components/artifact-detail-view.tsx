@@ -36,7 +36,7 @@ function ObjectViewer({ data }: { data: unknown }) {
   if (typeof data === 'object') {
     return (
       <div className="space-y-2">
-        <pre className="text-sm bg-gray-50 p-3 rounded overflow-auto max-h-96">
+        <pre className="text-sm bg-muted p-3 rounded overflow-auto max-h-96">
           {JSON.stringify(data, null, 2)}
         </pre>
       </div>
@@ -91,16 +91,16 @@ function TriggeredJobsList({ artifactId, isDbArtifact }: { artifactId: string; i
   return (
     <div className="space-y-3">
       {triggeredJobs.map((job) => (
-        <div key={job.id} className="border rounded-lg p-3 bg-gray-50">
+        <div key={job.id} className="border rounded-lg p-3 bg-muted">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <IdLink collection="job_board" id={job.id} />
               <span className="font-medium">{job.job_name}</span>
               <span className={`px-2 py-1 rounded text-xs font-medium ${
-                job.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                job.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                job.status === 'COMPLETED' ? 'bg-green-500/10 text-green-700 dark:text-green-400' :
+                job.status === 'FAILED' ? 'bg-red-500/10 text-red-700 dark:text-red-400' :
                 job.status === 'IN_PROGRESS' ? 'bg-primary/20 text-primary' :
-                'bg-yellow-100 text-yellow-800'
+                'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
               }`}>
                 {job.status}
               </span>
@@ -218,8 +218,8 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
                     typeof value === 'boolean' ? (
                       <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
                         value 
-                          ? 'text-green-600 bg-green-50 border border-green-200' 
-                          : 'text-red-600 bg-red-50 border border-red-200'
+                          ? 'text-green-700 dark:text-green-400 bg-green-500/10 border border-green-500/30' 
+                          : 'text-red-700 dark:text-red-400 bg-red-500/10 border border-red-500/30'
                       }`}>
                         {value ? '✓ true' : '✗ false'}
                       </span>

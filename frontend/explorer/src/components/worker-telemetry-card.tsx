@@ -562,7 +562,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
         <div className="space-y-6">
           {/* Summary Stats */}
           <div className="grid grid-cols-4 gap-3">
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+            <div className="bg-muted border rounded-lg p-3">
               <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                 <Clock className="w-3 h-3" />
                 <span>Total Duration</span>
@@ -615,7 +615,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
 
                 return (
                   <details key={idx} className="group border border-gray-200 rounded-lg">
-                    <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                    <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted transition-colors">
                       <span className="text-xs font-mono text-gray-400 w-6">{idx + 1}</span>
                       <span className="text-gray-500">{getPhaseIcon(phase)}</span>
                       <Badge
@@ -662,7 +662,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
                                 )}
                               </div>
                               {event.error && (
-                                <div className="mt-1 ml-4 text-red-600 bg-red-50 p-2 rounded">
+                                <div className="mt-1 ml-4 text-red-700 dark:text-red-400 bg-red-500/10 p-2 rounded">
                                   {event.error}
                                 </div>
                               )}
@@ -674,7 +674,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
                                   <summary className="text-gray-500 cursor-pointer hover:text-gray-400">
                                     View metadata
                                   </summary>
-                                  <pre className="mt-1 bg-gray-50 p-2 rounded text-xs overflow-auto">
+                                  <pre className="mt-1 bg-muted p-2 rounded text-xs overflow-auto">
                                     {JSON.stringify(event.metadata, null, 2)}
                                   </pre>
                                 </details>
@@ -695,7 +695,7 @@ export function WorkerTelemetryCard({ telemetryLog, loading }: WorkerTelemetryCa
             <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-800">
               View full telemetry JSON
             </summary>
-            <pre className="mt-2 bg-gray-50 p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
+            <pre className="mt-2 bg-muted p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
               {JSON.stringify(telemetryLog, null, 2)}
             </pre>
           </details>

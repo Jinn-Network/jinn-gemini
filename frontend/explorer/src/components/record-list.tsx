@@ -43,16 +43,16 @@ function getStatusDisplay(record: SubgraphRecord): { status: string; className: 
   if ('lastStatus' in record && record.lastStatus && typeof record.lastStatus === 'string') {
     const lastStatus = record.lastStatus
     const statusColor = lastStatus === 'COMPLETED'
-      ? 'bg-green-100 text-green-800 border-green-200'
+      ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30'
       : lastStatus === 'FAILED'
-      ? 'bg-red-100 text-red-800 border-red-200'
+      ? 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30'
       : lastStatus === 'DELEGATING'
       ? 'bg-primary/20 text-primary border-primary/30'
       : lastStatus === 'WAITING'
-      ? 'bg-purple-100 text-purple-800 border-purple-200'
+      ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30'
       : lastStatus === 'PENDING'
-      ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      : 'bg-gray-100 text-gray-800 border-gray-200'
+      ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/30'
+      : 'bg-muted text-muted-foreground border-muted-foreground/30'
     
     return {
       status: lastStatus,
@@ -66,14 +66,14 @@ function getStatusDisplay(record: SubgraphRecord): { status: string; className: 
     if (record.delivered) {
       return {
         status: 'DELIVERED',
-        className: 'text-green-600 bg-green-50 border-green-200',
+        className: 'text-green-700 dark:text-green-400 bg-green-500/10 border-green-500/30',
         showIcon: false
       }
     }
     
     return {
       status: 'PENDING',
-      className: 'text-yellow-600 bg-yellow-50 border-yellow-200',
+      className: 'text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
       showIcon: false
     }
   }

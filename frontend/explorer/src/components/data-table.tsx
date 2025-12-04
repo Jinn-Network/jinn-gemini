@@ -77,7 +77,7 @@ function formatCellValue(value: unknown, fieldName?: string): React.ReactNode {
   if (typeof value === 'boolean') {
     return (
       <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-        value ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+        value ? 'bg-green-500/10 text-green-700' : 'bg-red-500/10 text-red-700'
       }`}>
         {value ? '✓' : '✗'}
       </span>
@@ -97,7 +97,7 @@ function formatCellValue(value: unknown, fieldName?: string): React.ReactNode {
       }
       
       return (
-        <span className="font-mono text-xs text-purple-600" title={value}>
+        <span className="font-mono text-xs text-purple-700 dark:text-purple-400" title={value}>
           {value.slice(0, 8)}...
         </span>
       )
@@ -130,7 +130,7 @@ function formatCellValue(value: unknown, fieldName?: string): React.ReactNode {
     const isArray = Array.isArray(value)
     const count = isArray ? value.length : Object.keys(value).length
     return (
-      <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded" title={JSON.stringify(value)}>
+      <span className="text-xs bg-muted px-1.5 py-0.5 rounded" title={JSON.stringify(value)}>
         {isArray ? `Array(${count})` : `Object(${count})`}
       </span>
     )

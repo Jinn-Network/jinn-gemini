@@ -27,7 +27,7 @@ function ObjectViewer({ data }: { data: unknown }) {
   if (typeof data === 'object') {
     return (
       <div className="space-y-2">
-        <pre className="text-sm bg-gray-50 p-3 rounded overflow-auto max-h-96">
+        <pre className="text-sm bg-muted p-3 rounded overflow-auto max-h-96">
           {JSON.stringify(data, null, 2)}
         </pre>
       </div>
@@ -175,7 +175,7 @@ function ResponseTextCard({ responseText }: { responseText: unknown }) {
                   </Dialog>
                 </div>
                 {index < responseText.length - 1 && (
-                  <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
+                  <div className="border-t border dark:border-gray-700 my-4" />
                 )}
               </div>
             )
@@ -307,8 +307,8 @@ export function JobReportDetailView({ record }: JobReportDetailViewProps) {
                     typeof value === 'boolean' ? (
                       <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
                         value 
-                          ? 'text-green-600 bg-green-50 border border-green-200' 
-                          : 'text-red-600 bg-red-50 border border-red-200'
+                          ? 'text-green-700 dark:text-green-400 bg-green-500/10 border border-green-500/30' 
+                          : 'text-red-700 dark:text-red-400 bg-red-500/10 border border-red-500/30'
                       }`}>
                         {value ? '✓ true' : '✗ false'}
                       </span>

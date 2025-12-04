@@ -139,9 +139,9 @@ export function WorkstreamBriefing({ rootRequestId, initialBriefing }: Workstrea
 
   if (error) {
     return (
-      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-        <p className="text-sm text-yellow-800">{error}</p>
-        <p className="text-xs text-yellow-600 mt-2">
+      <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-md">
+        <p className="text-sm text-yellow-700 dark:text-yellow-400">{error}</p>
+        <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-2">
           This workstream may not have a launcher briefing yet.
         </p>
       </div>
@@ -172,7 +172,7 @@ export function WorkstreamBriefing({ rootRequestId, initialBriefing }: Workstrea
       )}
 
       {/* Main content */}
-      <div className="prose prose-sm max-w-none bg-white p-6 rounded-lg border border-gray-200">
+      <div className="prose prose-sm max-w-none bg-card p-6 rounded-lg border">
         <ReactMarkdown>{content}</ReactMarkdown>
       </div>
     </div>

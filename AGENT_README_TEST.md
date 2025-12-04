@@ -452,6 +452,30 @@ Never rely on `hierarchy.status` for terminal state decisions. Always query Pond
 - `worker/control_api_client.ts`: Removed confusing client-side stale detection
 **Prevention:** Control API is single source of truth for claim staleness, using 5-minute threshold
 
+### 15. Blueprint Date Scope vs Execution Date Confusion (2025-12-04)
+**Issue:** Research job dispatched for Dec 1st data but agent researched Dec 3rd instead (workstream 0x6f71ed1e)
+**Root Cause:** Script injected target date in blueprint context ("December 1, 2025 to December 2, 2025"), but agent executed on Dec 3rd and used "today"/"current date" from Gemini CLI environment, overriding the blueprint instruction.
+**Evidence:** 
+- Dispatch script set context: "TARGET DATE SCOPE: 00:00 UTC December 1, 2025 to 00:00 UTC December 2, 2025"
+- Job execution timestamp: 1764780883 (Dec 3, 2025 16:54 UTC)
+- All child jobs named "*- 2025-12-03" despite blueprint specifying Dec 1st
+**Root Problem:** Blueprint's DATA-SCOPE assertion was too weak - didn't emphasize that target date ≠ execution date. Agent performed web searches without explicit date strings (e.g., "Ethereum TVL" instead of "Ethereum TVL 2025-12-01").
+**Solution:**
+1. Enhanced DATA-SCOPE assertion with explicit parsing instructions and web search requirements
+2. Modified dispatch script to use dynamic date calculation (defaults to yesterday for data availability)
+3. Added CRITICAL DATE CONSTRAINT in context with multiple repetitions of the target date
+4. Changed job naming: `Ethereum On-chain Activity – {YYYY-MM-DD} – {random-word}` to make date scope visible
+5. Added DATA-SOURCES assertion for high-quality source selection (Etherscan, DeFiLlama, Dune, etc.)
+6. Enhanced MARKET-METRICS and PROTOCOL-DEPTH assertions to require inline source attribution and 7-day comparisons
+**Files Changed:**
+- `scripts/ventures/ethereum-protocol-research.ts`: Dynamic date handling, explicit job naming, strengthened context injection
+- `blueprints/ethereum-protocol-research.json`: 6 new/enhanced assertions for date handling and data quality
+**Prevention:** 
+- Blueprint must explicitly instruct: "Parse context field for exact date, NOT 'today'"
+- All web searches must include date string: "Ethereum metrics YYYY-MM-DD"
+- Child job names must propagate target date for clarity
+- Inline source attribution prevents vague aggregate claims
+
 ---
 
 ## Test Infrastructure Gotchas

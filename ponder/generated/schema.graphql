@@ -46,6 +46,7 @@ type jobDefinition {
   sourceJobDefinitionId: String
   sourceRequestId: String
   codeMetadata: JSON
+  dependencies: [String!]
   createdAt: BigInt
   lastInteraction: BigInt
   lastStatus: String
@@ -124,6 +125,10 @@ input jobDefinitionFilter {
   sourceRequestId_ends_with: String
   sourceRequestId_not_starts_with: String
   sourceRequestId_not_ends_with: String
+  dependencies: [String]
+  dependencies_not: [String]
+  dependencies_has: String
+  dependencies_not_has: String
   createdAt: BigInt
   createdAt_not: BigInt
   createdAt_in: [BigInt]

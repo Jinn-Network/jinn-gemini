@@ -1,6 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { CollectionName } from '@/lib/types'
 import { IdLink } from '@/components/id-link'
@@ -42,6 +43,7 @@ interface JobDefinition {
 function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fields: [string, unknown][] }) {
   const [artifactContent, setArtifactContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [parsedData, setParsedData] = useState<{ type?: string; tags?: string[] } | null>(null)
 
   useEffect(() => {
     // Fetch IPFS content if CID is available
@@ -49,7 +51,26 @@ function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fiel
     if ('cid' in record && record.cid) {
       fetchIpfsContent(record.cid as string).then(result => {
         if (result) {
-          setArtifactContent(result.content)
+          // Try to parse JSON to extract `.content` field and metadata
+          try {
+            const parsed = JSON.parse(result.content)
+            if (parsed && typeof parsed === 'object') {
+              // Extract the `.content` field if it exists
+              const contentValue = parsed.content
+              setArtifactContent(typeof contentValue === 'string' ? contentValue : JSON.stringify(contentValue, null, 2))
+              
+              // Store type and tags for metadata display
+              setParsedData({
+                type: parsed.type,
+                tags: parsed.tags
+              })
+            } else {
+              setArtifactContent(result.content)
+            }
+          } catch {
+            // If not JSON or parsing fails, show raw content
+            setArtifactContent(result.content)
+          }
         }
         setLoading(false)
       })
@@ -59,7 +80,7 @@ function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fiel
   }, [record])
 
   // Fields to exclude from metadata (shown in main content, redundant, or not needed)
-  const metadataExcludeFields = ['content', 'contentPreview', 'name', 'sourceRequestId']
+  const metadataExcludeFields = ['content', 'contentPreview', 'name', 'sourceRequestId', 'type', 'tags']
   const metadataFields = fields.filter(([key]) => !metadataExcludeFields.includes(key))
 
   return (
@@ -67,16 +88,13 @@ function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fiel
       {/* Main Content Area - 8/12 columns */}
       <div className="lg:col-span-8">
         <Card>
-          <CardHeader>
-            <CardTitle>Content</CardTitle>
-          </CardHeader>
           <CardContent>
             {loading ? (
               <div className="text-gray-500">Loading content...</div>
             ) : artifactContent ? (
-              <pre className="whitespace-pre-wrap break-words text-sm font-mono bg-gray-50 p-4 rounded overflow-auto max-h-[800px]">
-                {artifactContent}
-              </pre>
+              <div className="markdown-content">
+                <ReactMarkdown>{artifactContent}</ReactMarkdown>
+              </div>
             ) : (
               <div className="text-gray-500">No content available</div>
             )}
@@ -92,6 +110,35 @@ function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fiel
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {/* Type field from parsed content */}
+              {parsedData?.type && (
+                <div className="border-b border-gray-100 pb-3">
+                  <div className="text-sm font-medium text-gray-400 mb-1">
+                    Type
+                  </div>
+                  <div className="text-sm break-words overflow-hidden">
+                    {parsedData.type}
+                  </div>
+                </div>
+              )}
+              
+              {/* Tags field from parsed content */}
+              {parsedData?.tags && parsedData.tags.length > 0 && (
+                <div className="border-b border-gray-100 pb-3">
+                  <div className="text-sm font-medium text-gray-400 mb-1">
+                    Tags
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {parsedData.tags.map((tag, index) => (
+                      <Badge key={index} variant="secondary">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Other metadata fields */}
               {metadataFields.map(([key, value]) => (
                 <div key={key} className="border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
                   <div className="text-sm font-medium text-gray-400 mb-1">
@@ -437,7 +484,7 @@ function RequestContentDisplay({ cid }: { cid: string }) {
     <div className="space-y-4">
       {/* Blueprint Display */}
       {blueprint ? (
-        <div className="prose prose-sm max-w-none bg-gray-50 p-4 rounded border">
+        <div className="prose prose-sm max-w-none bg-muted p-4 rounded border">
           <ReactMarkdown>{blueprint}</ReactMarkdown>
         </div>
       ) : (

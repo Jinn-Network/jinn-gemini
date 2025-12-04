@@ -67,9 +67,14 @@ export default function WorkstreamPage({ params }: WorkstreamPageProps) {
   }, [params])
 
   if (loading) {
+    const loadingBreadcrumbs = [
+      { label: 'Workstreams', href: '/workstreams' },
+      { label: 'Loading...' }
+    ]
+
     return (
       <>
-        <SiteHeader title="Loading..." />
+        <SiteHeader breadcrumbs={loadingBreadcrumbs} />
         <div className="p-4 md:p-6">
           <p>Loading workstream...</p>
         </div>
@@ -78,9 +83,14 @@ export default function WorkstreamPage({ params }: WorkstreamPageProps) {
   }
 
   if (!rootRequest) {
+    const notFoundBreadcrumbs = [
+      { label: 'Workstreams', href: '/workstreams' },
+      { label: 'Not Found' }
+    ]
+
     return (
       <>
-        <SiteHeader title="Not Found" />
+        <SiteHeader breadcrumbs={notFoundBreadcrumbs} />
         <div className="p-4 md:p-6">
           <p>Workstream not found</p>
         </div>
@@ -88,11 +98,15 @@ export default function WorkstreamPage({ params }: WorkstreamPageProps) {
     )
   }
 
+  const workstreamTitle = rootRequest.jobName || 'Unnamed Workstream'
+  const breadcrumbs = [
+    { label: 'Workstreams', href: '/workstreams' },
+    { label: workstreamTitle }
+  ]
+
   return (
     <>
-      <SiteHeader 
-        title={rootRequest.jobName || 'Unnamed Workstream'}
-      />
+      <SiteHeader breadcrumbs={breadcrumbs} />
       <div className="p-4 md:p-6">
         <Tabs defaultValue="tree" className="w-full">
           <TabsList className="mb-4 border">

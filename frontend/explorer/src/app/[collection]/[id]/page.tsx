@@ -74,30 +74,28 @@ export default async function RecordPage({ params }: RecordPageProps) {
 
     const recordTitle = getRecordTitle(record, resolvedParams.collection)
 
+    const breadcrumbs = [
+      { label: collectionLabel, href: `/${resolvedParams.collection}` },
+      { label: recordTitle }
+    ]
+
     return (
       <>
-        <SiteHeader 
-          title={recordTitle}
-          backLink={{
-            href: `/${resolvedParams.collection}`,
-            label: `Back to ${collectionLabel}`
-          }}
-        />
+        <SiteHeader breadcrumbs={breadcrumbs} />
         <div className="p-4 md:p-6">
           <SubgraphDetailView record={record} collectionName={resolvedParams.collection} />
         </div>
       </>
     )
   } catch (error) {
+    const errorBreadcrumbs = [
+      { label: collectionLabel, href: `/${resolvedParams.collection}` },
+      { label: 'Error loading record' }
+    ]
+
     return (
       <>
-        <SiteHeader 
-          title="Error loading record"
-          backLink={{
-            href: `/${resolvedParams.collection}`,
-            label: `Back to ${collectionLabel}`
-          }}
-        />
+        <SiteHeader breadcrumbs={errorBreadcrumbs} />
         <div className="p-4 md:p-6">
           <p className="text-gray-400">
             Unable to fetch record {decodedId} from the {resolvedParams.collection} collection. 

@@ -8,12 +8,12 @@ export const JobNode = memo(({ data }: NodeProps<GraphNode>) => {
   // Status badge colors matching job-definitions-table.tsx
   const getStatusColor = (status: string) => {
     const statusUpper = status.toUpperCase()
-    if (statusUpper === 'COMPLETED') return 'bg-green-100 text-green-800'
-    if (statusUpper === 'FAILED') return 'bg-red-100 text-red-800'
+    if (statusUpper === 'COMPLETED') return 'bg-green-500/10 text-green-700 dark:text-green-400'
+    if (statusUpper === 'FAILED') return 'bg-red-500/10 text-red-700 dark:text-red-400'
     if (statusUpper === 'DELEGATING') return 'bg-primary/20 text-primary'
-    if (statusUpper === 'WAITING') return 'bg-purple-100 text-purple-800'
-    if (statusUpper === 'PENDING') return 'bg-yellow-100 text-yellow-800'
-    return 'bg-gray-100 text-gray-800'
+    if (statusUpper === 'WAITING') return 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
+    if (statusUpper === 'PENDING') return 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
+    return 'bg-muted text-gray-800'
   }
 
   // Border color based on status
@@ -33,7 +33,7 @@ export const JobNode = memo(({ data }: NodeProps<GraphNode>) => {
   const borderColor = getBorderColor(displayStatus)
   
   return (
-    <div className={`px-4 py-3 rounded-lg border-2 ${borderColor} bg-white shadow-md min-w-[220px] max-w-[280px] hover:shadow-lg transition-shadow cursor-pointer`}>
+    <div className={`px-4 py-3 rounded-lg border-2 ${borderColor} bg-card shadow-md min-w-[220px] max-w-[280px] hover:shadow-lg transition-shadow cursor-pointer`}>
       <Handle type="target" position={Position.Top} className="w-3 h-3 bg-gray-400" />
 
       <div className="space-y-2">

@@ -28,11 +28,15 @@ export default async function WorkstreamsPage() {
     })
   }
 
+  const breadcrumbs = [
+    { label: 'Workstreams' }
+  ]
+
   return (
     <>
       <SiteHeader 
-        title="Workstreams"
         subtitle="Top-level job executions and their entire downstream graphs"
+        breadcrumbs={breadcrumbs}
       />
       <div className="p-4 md:p-6">
 

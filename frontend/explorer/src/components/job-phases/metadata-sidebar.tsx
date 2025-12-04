@@ -44,7 +44,7 @@ export function MetadataSidebar({
         <CardContent className="space-y-3">
           <div>
             <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Request ID</h4>
-            <TruncatedId value={requestId} showFull={true} className="text-xs bg-gray-100 p-2 rounded block" />
+            <TruncatedId value={requestId} showFull={true} className="text-xs bg-muted p-2 rounded block" />
           </div>
 
           {delivered !== undefined && (
@@ -52,8 +52,8 @@ export function MetadataSidebar({
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Status</h4>
               <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${
                 delivered 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-yellow-100 text-yellow-800'
+                  ? 'bg-green-500/10 text-green-700 dark:text-green-400' 
+                  : 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
               }`}>
                 {delivered ? '✓ Delivered' : '⏳ Pending'}
               </span>
@@ -63,14 +63,14 @@ export function MetadataSidebar({
           {mech && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Mech Address</h4>
-              <TruncatedId value={mech} className="text-xs bg-gray-100 p-2 rounded block" />
+              <TruncatedId value={mech} className="text-xs bg-muted p-2 rounded block" />
             </div>
           )}
 
           {sender && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Sender Address</h4>
-              <TruncatedId value={sender} className="text-xs bg-gray-100 p-2 rounded block" />
+              <TruncatedId value={sender} className="text-xs bg-muted p-2 rounded block" />
             </div>
           )}
 
@@ -92,7 +92,7 @@ export function MetadataSidebar({
           {transactionHash && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Transaction Hash</h4>
-              <TruncatedId value={transactionHash} className="text-xs bg-gray-100 p-2 rounded block" />
+              <TruncatedId value={transactionHash} className="text-xs bg-muted p-2 rounded block" />
             </div>
           )}
         </CardContent>
@@ -106,7 +106,7 @@ export function MetadataSidebar({
           {jobDefinitionId && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Job Definition</h4>
-              <code className="text-xs bg-gray-100 p-2 rounded block truncate">{jobDefinitionId}</code>
+              <code className="text-xs bg-muted p-2 rounded block truncate">{jobDefinitionId}</code>
             </div>
           )}
 
@@ -124,7 +124,7 @@ export function MetadataSidebar({
           {sourceJobDefinitionId && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Parent Job Definition</h4>
-              <code className="text-xs bg-gray-100 p-2 rounded block truncate">{sourceJobDefinitionId}</code>
+              <code className="text-xs bg-muted p-2 rounded block truncate">{sourceJobDefinitionId}</code>
             </div>
           )}
 

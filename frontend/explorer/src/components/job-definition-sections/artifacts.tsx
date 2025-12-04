@@ -101,7 +101,7 @@ export function JobDefinitionArtifacts({ jobDefinition }: ArtifactsProps) {
                     )}
                     
                     {artifact.contentPreview && (
-                      <div className="bg-gray-50 p-2 rounded text-xs mt-2">
+                      <div className="bg-muted p-2 rounded text-xs mt-2">
                         {artifact.contentPreview.substring(0, 150)}
                         {artifact.contentPreview.length > 150 ? '...' : ''}
                       </div>

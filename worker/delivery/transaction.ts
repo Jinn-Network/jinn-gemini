@@ -354,7 +354,7 @@ export async function deliverViaSafeTransaction(
   });
   
   if (!isUndelivered) {
-    workerLogger.info({ requestId: context.requestId, requestIdHex }, 'Preflight: request already delivered or not eligible; skipping Safe delivery');
+    workerLogger.info({ requestId: context.requestId, requestIdHex }, 'Delivery preflight: request already delivered or revoked; skipping new Safe tx');
     throw new Error('Request already delivered');
   }
 

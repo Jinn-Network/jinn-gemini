@@ -96,6 +96,10 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     return records
   }, [rootRequest, records, collectionName, workstreamFilter])
 
+  const breadcrumbs = [
+    { label: getCollectionLabel(collectionName) }
+  ]
+
   if (loading) {
     const getSkeletonForCollection = () => {
       switch (collectionName) {
@@ -112,7 +116,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     
     return (
       <>
-        <SiteHeader title={getCollectionLabel(collectionName)} />
+        <SiteHeader breadcrumbs={breadcrumbs} />
         <div className="p-4 md:p-6">
           {getSkeletonForCollection()}
         </div>
@@ -123,9 +127,9 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   if (error) {
     return (
       <>
-        <SiteHeader title={getCollectionLabel(collectionName)} />
+        <SiteHeader breadcrumbs={breadcrumbs} />
         <div className="p-4 md:p-6">
-          <div className="text-red-500 p-4 border border-red-200 rounded bg-red-50">
+          <div className="text-red-700 dark:text-red-400 p-4 border border-red-500/30 rounded bg-red-500/10">
             Error loading {collectionName}: {error}
           </div>
         </div>
@@ -135,7 +139,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
 
   return (
     <>
-      <SiteHeader title={getCollectionLabel(collectionName)} />
+      <SiteHeader breadcrumbs={breadcrumbs} />
       <div className="p-4 md:p-6">
       
       {/* Workstream filter badge */}

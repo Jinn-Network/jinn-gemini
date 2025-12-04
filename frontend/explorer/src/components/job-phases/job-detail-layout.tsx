@@ -752,11 +752,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
   return (
     <Tabs defaultValue="pretty" className="w-full">
-      <TabsList className="mb-6 bg-gray-100 p-1 rounded-lg">
-        <TabsTrigger value="pretty" className="data-[state=active]:bg-white data-[state=active]:shadow">
+      <TabsList className="mb-6 bg-muted p-1 rounded-lg">
+        <TabsTrigger value="pretty" className="data-[state=active]:bg-card data-[state=active]:shadow">
           Pretty
         </TabsTrigger>
-        <TabsTrigger value="raw" className="data-[state=active]:bg-white data-[state=active]:shadow">
+        <TabsTrigger value="raw" className="data-[state=active]:bg-card data-[state=active]:shadow">
           Raw
         </TabsTrigger>
       </TabsList>
@@ -791,7 +791,8 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                               return (
                                 <div className="space-y-4">
                                   {blueprintParsed.assertions.map((assertion: { id: string; assertion?: string; description?: string; commentary?: string; examples?: { do?: string[]; dont?: string[] } }, idx: number) => (
-                                    <div key={idx} className="border border-gray-200 rounded-lg p-4 bg-white">
+                                    <Card key={idx}>
+                                      <CardContent className="pt-4">
                                       <div className="flex items-start gap-2 mb-2">
                                         <span className="text-xs font-mono bg-primary/20 text-primary px-2 py-1 rounded">
                                           {assertion.id}
@@ -827,11 +828,12 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                       )}
                                       
                                       {assertion.commentary && (
-                                        <div className="mt-3 pt-3 border-t border-gray-100">
-                                          <p className="text-xs text-gray-400 italic">{assertion.commentary}</p>
+                                        <div className="mt-3 pt-3 border-t">
+                                          <p className="text-xs text-muted-foreground italic">{assertion.commentary}</p>
                                         </div>
                                       )}
-                                    </div>
+                                    </CardContent>
+                                    </Card>
                                   ))}
                                 </div>
                               )
@@ -842,14 +844,14 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           
                           // Render as markdown if not structured
                           return (
-                            <div className="bg-gray-50 p-4 rounded text-sm max-h-[300px] overflow-auto prose prose-sm max-w-none">
+                            <div className="bg-muted p-4 rounded text-sm max-h-[300px] overflow-auto prose prose-sm max-w-none">
                               <ReactMarkdown>{typeof blueprintContent === 'string' ? blueprintContent : JSON.stringify(blueprintContent, null, 2)}</ReactMarkdown>
                             </div>
                           )
                         } catch {
                           // If not JSON, render as-is
                           return (
-                            <div className="bg-gray-50 p-4 rounded text-sm max-h-[300px] overflow-auto prose prose-sm max-w-none">
+                            <div className="bg-muted p-4 rounded text-sm max-h-[300px] overflow-auto prose prose-sm max-w-none">
                               <ReactMarkdown>{promptContent}</ReactMarkdown>
                             </div>
                           )
@@ -916,7 +918,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                       {executionData?.finalOutput && (
                         <div>
                           <div className="text-sm font-medium text-gray-400 mb-2">Final Output</div>
-                          <div className="bg-gray-50 p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
+                          <div className="bg-muted p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
                             <ReactMarkdown>
                               {deliveryData?.structuredSummary || executionData.finalOutput}
                             </ReactMarkdown>
@@ -926,7 +928,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                               <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-800">
                                 View full raw output
                               </summary>
-                              <div className="mt-2 bg-gray-50 p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
+                              <div className="mt-2 bg-muted p-4 rounded text-sm overflow-auto prose prose-sm max-w-none">
                                 <ReactMarkdown>{executionData.finalOutput}</ReactMarkdown>
                               </div>
                             </details>
@@ -942,45 +944,45 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           {/* Stats Cards */}
                           <div className="grid grid-cols-4 gap-3 mb-4">
                             {/* Model */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                            <div className="bg-muted border rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                                 <Cpu className="w-3 h-3" />
                                 <span>Model</span>
                               </div>
-                              <div className="text-sm font-semibold text-gray-900">
+                              <div className="text-sm font-semibold">
                                 {executionData.telemetry.raw?.model || 'N/A'}
                               </div>
                             </div>
                             
                             {/* Input Tokens */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                            <div className="bg-muted border rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                                 <Zap className="w-3 h-3" />
                                 <span>Input Tokens</span>
                               </div>
-                              <div className="text-sm font-semibold text-gray-900">
+                              <div className="text-sm font-semibold">
                                 {executionData.telemetry.raw?.inputTokens?.toLocaleString() || 'N/A'}
                               </div>
                             </div>
                             
                             {/* Total Tokens */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                            <div className="bg-muted border rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                                 <Zap className="w-3 h-3" />
                                 <span>Total Tokens</span>
                               </div>
-                              <div className="text-sm font-semibold text-gray-900">
+                              <div className="text-sm font-semibold">
                                 {executionData.telemetry.totalTokens?.toLocaleString() || 'N/A'}
                               </div>
                             </div>
                             
                             {/* Duration */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                            <div className="bg-muted border rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                                 <Clock className="w-3 h-3" />
                                 <span>Duration</span>
                               </div>
-                              <div className="text-sm font-semibold text-gray-900">
+                              <div className="text-sm font-semibold">
                                 {executionData.telemetry.duration || executionData?.duration || 'N/A'}ms
                               </div>
                             </div>
@@ -1022,14 +1024,14 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                     {Object.entries(toolMetrics.byTool)
                                       .sort(([, a], [, b]) => b.calls - a.calls)
                                       .map(([tool, stats]) => (
-                                        <div key={tool} className="flex items-center justify-between text-xs bg-white/50 rounded px-2 py-1">
+                                        <div key={tool} className="flex items-center justify-between text-xs bg-card/50 rounded px-2 py-1 border">
                                           <span className="font-mono text-primary">{tool}</span>
                                           <div className="flex items-center gap-3">
-                                            <span className="text-gray-400">{stats.calls} calls</span>
+                                            <span className="text-muted-foreground">{stats.calls} calls</span>
                                             {stats.failures > 0 && (
                                               <span className="text-red-600">{stats.failures} failed</span>
                                             )}
-                                            <span className="text-gray-500">avg {Math.round(stats.avgDuration_ms)}ms</span>
+                                            <span className="text-muted-foreground">avg {Math.round(stats.avgDuration_ms)}ms</span>
                                           </div>
                                         </div>
                                       ))}
@@ -1096,8 +1098,8 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                 }
                                 
                                 return (
-                                  <details key={idx} className="group border border-gray-200 rounded-lg">
-                                    <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                                  <details key={idx} className="group border rounded-lg">
+                                    <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted transition-colors">
                                       <span className="text-xs font-mono text-gray-400 w-6">{displayIndex}</span>
                                       <span className={colorClass}>{icon}</span>
                                       <Badge variant="outline" className="text-xs">
@@ -1109,7 +1111,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                         </span>
                                       )}
                                     </summary>
-                                    <div className="px-4 pb-4 pt-2 border-t border-gray-100">
+                                    <div className="px-4 pb-4 pt-2 border-t">
                                       {eventType === 'tool_call' && content && typeof content === 'object' ? (
                                         <div className="space-y-3">
                                           <div className="grid grid-cols-2 gap-3 text-xs">
@@ -1124,8 +1126,8 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                           </div>
                                           {content.args !== undefined && (
                                             <div>
-                                              <div className="text-xs text-gray-400 mb-1">Arguments:</div>
-                                              <pre className="bg-gray-50 p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
+                                              <div className="text-xs text-muted-foreground mb-1">Arguments:</div>
+                                              <pre className="bg-muted p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
                                                 {typeof content.args === 'object' ? JSON.stringify(content.args, null, 2) : String(content.args)}
                                               </pre>
                                             </div>
@@ -1133,14 +1135,14 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                           {content.result !== undefined && (
                                             <div>
                                               <div className="text-xs text-gray-400 mb-1">Result:</div>
-                                              <pre className="bg-gray-50 p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
+                                              <pre className="bg-muted p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
                                                 {typeof content.result === 'object' ? JSON.stringify(content.result, null, 2) : String(content.result)}
                                               </pre>
                                             </div>
                                           )}
                                         </div>
                                       ) : content ? (
-                                        <pre className="bg-gray-50 p-3 rounded overflow-auto max-h-[300px] text-xs font-mono whitespace-pre-wrap">
+                                        <pre className="bg-muted p-3 rounded overflow-auto max-h-[300px] text-xs font-mono whitespace-pre-wrap">
                                           {(() => {
                                             if (typeof content === 'string') {
                                               try {
@@ -1165,10 +1167,10 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                           {/* Full Telemetry JSON */}
                           <details className="mt-4">
-                            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-800">
+                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
                               View full telemetry JSON
                             </summary>
-                            <pre className="mt-2 bg-gray-50 p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
+                            <pre className="mt-2 bg-muted p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
                               {JSON.stringify(executionData.telemetry, null, 2)}
                             </pre>
                           </details>
@@ -1338,10 +1340,10 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                         </div>
 
                         <details className="mt-4">
-                          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-800">
+                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
                             Show raw JSON
                           </summary>
-                          <pre className="mt-2 bg-gray-50 p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
+                          <pre className="mt-2 bg-muted p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
                             {JSON.stringify(memoryData.situation, null, 2)}
                           </pre>
                         </details>
@@ -1444,8 +1446,8 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     <div className="text-sm font-medium text-gray-400 mb-1">Delivered Status</div>
                     <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
                       record.delivered
-                        ? 'bg-green-50 text-green-700 border-green-200'
-                        : 'bg-gray-50 text-gray-400 border-gray-200'
+                        ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30'
+                        : 'bg-muted text-muted-foreground border-muted-foreground/30'
                     }`}>
                       {record.delivered ? '✓ Delivered' : '⏳ Pending'}
                     </span>
@@ -1545,16 +1547,16 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     {(deliveryData || executionData) && executionData?.status ? (
                       <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                         executionData.status === 'COMPLETED' 
-                          ? 'bg-green-100 text-green-800'
+                          ? 'bg-green-500/10 text-green-700 dark:text-green-400'
                           : executionData.status === 'FAILED'
-                          ? 'bg-red-100 text-red-800'
+                          ? 'bg-red-500/10 text-red-700 dark:text-red-400'
                           : executionData.status === 'DELEGATING'
                           ? 'bg-primary/20 text-primary'
                           : executionData.status === 'WAITING'
-                          ? 'bg-purple-100 text-purple-800'
+                          ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
                           : executionData.status === 'PENDING'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-gray-100 text-gray-800'
+                          ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
+                          : 'bg-muted text-muted-foreground'
                       }`}>
                         <StatusIcon status={executionData.status} size={14} />
                         {executionData.status}
@@ -1584,14 +1586,14 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
             <CardHeader>
               <CardTitle>Job Data</CardTitle>
               <p className="text-sm text-gray-400 mt-1">
-                Composite record from Ponder&apos;s <code className="text-xs bg-gray-100 px-1 rounded">request</code> table. 
-                Combines the original <code className="text-xs bg-gray-100 px-1 rounded">MarketplaceRequest</code> event data 
-                with enrichments from the <code className="text-xs bg-gray-100 px-1 rounded">OlasMech:Deliver</code> event 
-                (e.g., <code className="text-xs bg-gray-100 px-1 rounded">deliveryIpfsHash</code>, <code className="text-xs bg-gray-100 px-1 rounded">delivered: true</code>).
+                Composite record from Ponder&apos;s <code className="text-xs bg-muted px-1 rounded">request</code> table. 
+                Combines the original <code className="text-xs bg-muted px-1 rounded">MarketplaceRequest</code> event data 
+                with enrichments from the <code className="text-xs bg-muted px-1 rounded">OlasMech:Deliver</code> event 
+                (e.g., <code className="text-xs bg-muted px-1 rounded">deliveryIpfsHash</code>, <code className="text-xs bg-muted px-1 rounded">delivered: true</code>).
               </p>
             </CardHeader>
             <CardContent>
-              <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono">
+              <pre className="bg-muted p-4 rounded overflow-auto max-h-[400px] text-xs font-mono">
                 {JSON.stringify(record, null, 2)}
               </pre>
             </CardContent>
@@ -1604,8 +1606,8 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                 <div>
                   <CardTitle>Job Definition Record</CardTitle>
                   <p className="text-sm text-gray-400 mt-1">
-                    Record from Ponder&apos;s <code className="text-xs bg-gray-100 px-1 rounded">jobDefinition</code> table, 
-                    referenced by <code className="text-xs bg-gray-100 px-1 rounded">request.jobDefinitionId</code>
+                    Record from Ponder&apos;s <code className="text-xs bg-muted px-1 rounded">jobDefinition</code> table, 
+                    referenced by <code className="text-xs bg-muted px-1 rounded">request.jobDefinitionId</code>
                   </p>
                 </div>
                 {record.jobDefinitionId && (
@@ -1636,15 +1638,15 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
             <CardHeader>
               <CardTitle>Request IPFS Content</CardTitle>
               <p className="text-sm text-gray-400 mt-1">
-                Fetched from <code className="text-xs bg-gray-100 px-1 rounded">request.ipfsHash</code> - 
-                the blueprint specification uploaded when posting the <code className="text-xs bg-gray-100 px-1 rounded">MarketplaceRequest</code> event
+                Fetched from <code className="text-xs bg-muted px-1 rounded">request.ipfsHash</code> - 
+                the blueprint specification uploaded when posting the <code className="text-xs bg-muted px-1 rounded">MarketplaceRequest</code> event
               </p>
             </CardHeader>
             <CardContent>
               {!record.ipfsHash ? (
                 <div className="text-gray-500 text-sm">No IPFS hash for this request</div>
               ) : promptContent ? (
-                <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono whitespace-pre-wrap">
+                <pre className="bg-muted p-4 rounded overflow-auto max-h-[400px] text-xs font-mono whitespace-pre-wrap">
                   {promptContent}
                 </pre>
               ) : (

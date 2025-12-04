@@ -26,8 +26,8 @@ function ValueDisplay({ value, fieldName }: { value: unknown; fieldName: string 
     return (
       <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
         value 
-          ? 'text-green-600 bg-green-50 border border-green-200' 
-          : 'text-red-600 bg-red-50 border border-red-200'
+          ? 'text-green-700 dark:text-green-400 bg-green-500/10 border border-green-500/30' 
+          : 'text-red-700 dark:text-red-400 bg-red-500/10 border border-red-500/30'
       }`}>
         {value ? '✓ true' : '✗ false'}
       </span>
@@ -95,15 +95,15 @@ function StatusBadge({ status }: { status: string }) {
       case 'open':
         return 'bg-primary/20 text-primary border-primary/30'
       case 'completed':
-        return 'bg-green-100 text-green-800 border-green-200'
+        return 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30'
       case 'closed':
-        return 'bg-gray-100 text-gray-800 border-gray-200'
+        return 'bg-muted text-muted-foreground border-muted-foreground/30'
       case 'failed':
-        return 'bg-red-100 text-red-800 border-red-200'
+        return 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30'
       case 'in_progress':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+        return 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/30'
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200'
+        return 'bg-muted text-muted-foreground border-muted-foreground/30'
     }
   }
 

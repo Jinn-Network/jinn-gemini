@@ -521,14 +521,27 @@ export async function processOnce(
     });
     workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
   } catch (e: any) {
+    const message = e?.message || String(e);
+
+    // Benign idempotency outcome: already delivered
+    if (message.includes('Request already delivered')) {
+      telemetry.logCheckpoint('delivery', 'delivery_already_completed', {});
+      workerLogger.info(
+        { requestId: target.id },
+        'Delivery skipped: request already delivered on-chain',
+      );
+      return;
+    }
+
+    // Real failure path
     telemetry.logCheckpoint('delivery', 'delivery_failed', {
-      message: e?.message || String(e),
+      message,
     });
     telemetry.logError('delivery', e);
     workerLogger.warn({ requestId: target.id, error: serializeError(e) }, 'Safe delivery failed');
 
     // Check if the error is due to a RevokeRequest event
-    const isRevokeError = e?.message?.includes('revoked by the Mech contract');
+    const isRevokeError = message.includes('revoked by the Mech contract');
     
     if (isRevokeError && metadata?.jobDefinitionId) {
       workerLogger.warn({ 
