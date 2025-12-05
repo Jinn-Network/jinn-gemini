@@ -242,6 +242,11 @@ STAKING_PROGRAM=<program>
 - Start block: 38187727 (November 15, 2025)
 - No need to configure specific Mech addresses
 
+**Factory Pattern Gotcha:**
+- `startBlock` goes at TOP-LEVEL contract config, NOT inside `factory()`
+- Factory pattern inherits parent contract's block range for event scanning
+- Only use `startBlock` inside `factory()` if you need different ranges (e.g., scan historical factory events but index children from "latest")
+
 **Testing Workflow:**
 1. Make changes in `ponder/src/index.ts` or `ponder/ponder.schema.ts`
 2. Test locally: `cd ponder && yarn dev`
