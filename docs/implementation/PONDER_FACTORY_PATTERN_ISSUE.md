@@ -1,6 +1,16 @@
 # Ponder Factory Pattern Configuration Issue
 
-## Context
+## Status: RESOLVED (2025-12-05)
+
+**Root Cause:** Block range configuration conflict - `startBlock`/`endBlock` defined inside `factory()` AND missing at top-level contract config.
+
+**Solution:** Move `startBlock`/`endBlock` from factory config to top-level contract config. The parent contract's block range automatically applies to factory event scanning.
+
+**Fix Applied:** `ponder/ponder.config.ts` lines 144-154
+
+---
+
+## Original Issue Context
 
 We are attempting to configure Ponder v0.15.12 to index multiple `OlasMech` contracts dynamically using the factory pattern. The factory contract is `MechMarketplace` which emits `CreateMech` events containing the addresses of newly created Mech contracts.
 
@@ -159,27 +169,35 @@ export type Factory<event extends AbiEvent = AbiEvent> = {
    - Should we use a different pattern (e.g., event-based dynamic registration)?
    - Is there a programmatic API for registering child contracts?
 
-## Request for Next Agent
+## Resolution Details
 
-Please investigate this issue using the following approach:
+**Documentation Reference:**
+Ponder factory pattern (via Context7 `/llmstxt/ponder_sh_llms-full_txt`):
 
-1. **Use Context7 MCP** to look up the latest Ponder documentation:
-   - Search for factory pattern examples in Ponder v0.15
-   - Look for any recent changes to factory configuration
-   - Check for similar issues or discussions
+```typescript
+// ✅ Correct: startBlock at top-level
+export default createConfig({
+  contracts: {
+    SudoswapPool: {
+      abi: SudoswapPoolAbi,
+      chain: "mainnet",
+      address: factory({
+        address: "0xb16c1342E617A5B6E4b631EB114483FDB289c0A4",
+        event: parseAbiItem("event NewPair(address poolAddress)"),
+        parameter: "poolAddress",
+      }),
+      startBlock: 14645816, // <-- Top-level, not inside factory()
+    },
+  },
+});
+```
 
-2. **Verify the configuration syntax**:
-   - Confirm the correct way to use the factory pattern
-   - Check if there are any special requirements for startBlock configuration
+**Block Range Semantics:**
+- **Top-level `startBlock`**: When to start scanning factory events AND when to start indexing child contract events
+- **Factory `startBlock`** (optional): Only needed if you want different ranges (e.g., scan historical factory events but index children from "latest")
 
-3. **Test potential solutions**:
-   - Try alternative configuration approaches
-   - Consider whether the MechMarketplace should be defined separately
-
-4. **Document findings**:
-   - If you find a working solution, update the configuration
-   - If this is a Ponder bug, document it for potential upstream report
-   - If factory pattern isn't suitable, propose an alternative approach
+**Our Case:**
+We want uniform behavior (index all Mech events from block 38187727), so only top-level `startBlock` is needed.
 
 ## Environment
 

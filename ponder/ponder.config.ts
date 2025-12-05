@@ -148,9 +148,9 @@ export default createConfig({
         address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
         event: MechMarketplaceAbi.find((item: any) => item.type === 'event' && item.name === 'CreateMech'),
         parameter: "mech",
-        startBlock: UNIVERSAL_START_BLOCK,
-        endBlock,
       }),
+      startBlock: UNIVERSAL_START_BLOCK,
+      endBlock,
     },
   },
 });
