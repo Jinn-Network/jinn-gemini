@@ -207,8 +207,7 @@ PONDER_GRAPHQL_URL=http://localhost:42069/graphql  # Local override
 CONTROL_API_PORT=4001
 CONTROL_API_URL=http://localhost:4001/graphql
 USE_TSX_MCP=1                    # Dev: run MCP with tsx
-PONDER_START_BLOCK=35577849      # Shorter sync window
-PONDER_MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
+PONDER_START_BLOCK=38187727      # Universal indexing start (Nov 15, 2025)
 ```
 
 **Worker Config:**
@@ -236,6 +235,12 @@ STAKING_PROGRAM=<program>
 - System depends on Railway for all normal operations
 - Run Ponder locally ONLY to test indexing changes before pushing
 - Validation scripts/worker/frontend default to Railway
+
+**Universal Mech Indexing:**
+- Ponder now indexes ALL Mechs participating in the marketplace
+- Uses factory pattern: `MechMarketplace.CreateMech` events
+- Start block: 38187727 (November 15, 2025)
+- No need to configure specific Mech addresses
 
 **Testing Workflow:**
 1. Make changes in `ponder/src/index.ts` or `ponder/ponder.schema.ts`

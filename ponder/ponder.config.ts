@@ -1,8 +1,7 @@
 import '../env/index.js';
-import { getMechAddress } from '../env/operate-profile.js';
 import MechMarketplaceAbi from './abis/MechMarketplace.json';
 import AgentMechAbi from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
-import { createConfig } from "ponder";
+import { createConfig, factory } from "ponder";
 import { http } from "viem";
 import fetch from 'cross-fetch';
 
@@ -10,40 +9,16 @@ import fetch from 'cross-fetch';
 const runtimeMode = process.env.RUNTIME_ENVIRONMENT || 'default';
 const suppressLogs = runtimeMode !== 'default';
 
-// Get start block: use env var if set, otherwise fetch current block and use recent history
-async function getStartBlock(): Promise<number> {
-  const rpcUrl = process.env.BASE_RPC_URL || process.env.RPC_URL || "https://mainnet.base.org";
+// Universal Mech indexing: Start from November 15, 2025 (block 38187727)
+// This block was calculated to correspond to 2025-11-15T00:00:00Z
+const UNIVERSAL_START_BLOCK = 38187727;
 
+// Get start block: use env var if set, otherwise use universal start block
+function getStartBlock(): number {
   if (process.env.PONDER_START_BLOCK) {
     return Number(process.env.PONDER_START_BLOCK);
   }
-
-  try {
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_blockNumber',
-        params: [],
-        id: 1,
-      }),
-    });
-
-    const result = await response.json();
-    const currentBlock = parseInt(result.result, 16);
-    const recentStartBlock = Math.max(currentBlock - 100, 0);
-
-    if (!suppressLogs) {
-      console.log(`[ponder] Using recent start block: ${recentStartBlock} (current: ${currentBlock})`);
-    }
-    return recentStartBlock;
-  } catch (error) {
-    if (!suppressLogs) {
-      console.warn('[ponder] Failed to fetch current block, using contract deployment block:', error);
-    }
-    return 35577849; // Fallback to contract deployment block
-  }
+  return UNIVERSAL_START_BLOCK;
 }
 
 // Review mode configuration
@@ -51,18 +26,14 @@ const endBlock = process.env.PONDER_END_BLOCK ? Number(process.env.PONDER_END_BL
 
 if (runtimeMode === 'review') {
   console.log('[Ponder Config] 🔍 REVIEW MODE ACTIVE');
-  console.log(`[Ponder Config]   Start Block: ${process.env.PONDER_START_BLOCK || 'auto-detect'}`);
+  console.log(`[Ponder Config]   Start Block: ${process.env.PONDER_START_BLOCK || UNIVERSAL_START_BLOCK}`);
   console.log(`[Ponder Config]   End Block: ${endBlock || 'none (will sync to chain head)'}`);
 }
 
-const startBlock = await getStartBlock();
+const startBlock = getStartBlock();
 
-const MECH_ADDRESS = process.env.MECH_ADDRESS || getMechAddress();
-if (!MECH_ADDRESS) {
-  throw new Error('[Ponder Config] MECH_ADDRESS is required. Set MECH_ADDRESS environment variable or ensure .operate/service_*/service_config.json contains MECH_TO_CONFIG.');
-}
 if (!suppressLogs) {
-  console.log('[Ponder Config] Indexing mech:', MECH_ADDRESS);
+  console.log('[Ponder Config] Universal Mech indexing enabled');
   console.log('[Ponder Config] Start block:', startBlock);
 }
 
@@ -122,7 +93,7 @@ if (databaseConfig.kind === 'postgres') {
 }
 
 configInfo.push(
-  `MECH_ADDRESS: ${MECH_ADDRESS}`,
+  `Indexing Mode: Universal (all Mechs via factory pattern)`,
   `OPERATE_PROFILE_DIR: ${process.env.OPERATE_PROFILE_DIR || 'not set'}`,
   `PORT: ${process.env.PORT || 'not set'}`,
   '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
@@ -167,15 +138,19 @@ export default createConfig({
       address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
       // Reuse ABI from mech-client-ts to avoid duplication during dev
       abi: MechMarketplaceAbi,
-      startBlock,
+      startBlock: UNIVERSAL_START_BLOCK,
       endBlock,
     },
     OlasMech: {
       chain: "base",
-      address: MECH_ADDRESS,
       abi: (AgentMechAbi as any)?.abi || (AgentMechAbi as any),
-      startBlock,
-      endBlock,
+      address: factory({
+        address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
+        event: MechMarketplaceAbi.find((item: any) => item.type === 'event' && item.name === 'CreateMech'),
+        parameter: "mech",
+        startBlock: UNIVERSAL_START_BLOCK,
+        endBlock,
+      }),
     },
   },
 });
