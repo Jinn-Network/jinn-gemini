@@ -222,3 +222,9 @@ packages/mech-client-ts/
 .ponder-test-*/
 .ponder-tests-next-*/
 ponder/.ponder-test-*/
+
+
+# Workstream local repositories (cloned to ~/.jinn/workstreams/)
+# This entry catches any accidental copies/symlinks in the project
+.jinn/
+**/.jinn/

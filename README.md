@@ -11,7 +11,7 @@ This project consists of several key components:
 - **MCP Server**: A Model Context Protocol server that provides tools for database operations
 - **Frontend Explorer**: A Next.js web interface for exploring data and job reports
 - **Telemetry Collection**: OpenTelemetry integration for monitoring and observability
-- **Job Management**: Database-driven job queue with comprehensive reporting
+- **Job Management**: Database-driven job queue with comprehensive reporting 
 
 ## Architecture
 
@@ -262,6 +262,37 @@ yarn frontend:start
 # Start both worker and frontend
 yarn start:all
 ```
+
+#### Launching Workstreams
+
+Launch blueprint-based workstreams with automatic GitHub repository creation:
+
+```bash
+# Launch a workstream (auto-creates GitHub repo, .json extension optional)
+yarn launch:workstream x402-data-service
+
+# Preview without creating repo or dispatching job
+yarn launch:workstream x402-data-service --dry-run
+
+# Skip GitHub repository creation (artifact-only mode)
+yarn launch:workstream x402-data-service --skip-repo
+
+# Customize model and add context
+yarn launch:workstream x402-data-service --model gemini-2.5-pro --context "Initial audit phase"
+```
+
+**Requirements:**
+- `GITHUB_TOKEN` environment variable (see `.env.template`) for repo creation
+- Token requires `repo` scope to create private repositories
+- Blueprints are loaded from `blueprints/` directory
+- **Note:** If you already have `GITHUB_TOKEN` in your environment (e.g., for `gh` CLI), ensure it has the `repo` scope, or override it in `.env`
+
+**What happens:**
+1. Creates a new private GitHub repository (name derived from blueprint)
+2. Initializes with main branch and README.md
+3. Clones locally to `~/.jinn/workstreams/<blueprint-name>` (outside project directory)
+4. Sets `CODE_METADATA_REPO_ROOT` for the workstream
+5. Dispatches the job with the blueprint
 
 #### Workstream Filtering
 

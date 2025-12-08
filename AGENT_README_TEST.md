@@ -127,6 +127,34 @@ yarn frontend:build         # Build frontend
 yarn start:all              # Start both services
 ```
 
+**Launching Workstreams:**
+```bash
+# Launch a blueprint-based workstream (.json extension optional)
+yarn launch:workstream x402-data-service
+
+# Preview without creating repo or dispatching
+yarn launch:workstream x402-data-service --dry-run
+
+# Skip GitHub repository creation (artifact-only mode)
+yarn launch:workstream x402-data-service --skip-repo
+
+# Customize model and context
+yarn launch:workstream x402-data-service --model gemini-2.5-pro --context "Initial audit"
+```
+
+**Workstream Launcher Details:**
+- Auto-creates private GitHub repository (name derived from blueprint)
+- Initializes with main branch and README.md
+- Clones locally to `~/.jinn/workstreams/<blueprint-name>`
+- Sets `CODE_METADATA_REPO_ROOT` for the workstream
+- Dispatches job with blueprint
+
+**GitHub Token Requirements:**
+- `GITHUB_TOKEN` environment variable required for repo creation
+- **Fine-grained token (recommended)**: "Administration" repository permissions (write)
+- **Classic token**: `repo` scope (full control of private repositories)
+- If conflicts with existing token (e.g., `gh` CLI), override in `.env`
+
 ---
 
 ## MCP Tools (Quick Reference)

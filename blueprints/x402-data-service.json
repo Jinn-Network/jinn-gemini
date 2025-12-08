@@ -1,0 +1,74 @@
+{
+  "assertions": [
+    {
+      "id": "INV-PROD-001",
+      "assertion": "The data service codebase must exist, pass all automated tests, and be running in a production-like environment.",
+      "examples": {
+        "do": [
+          "Verify the codebase repository exists and has a valid structure",
+          "Confirm all tests pass (CI/CD green)",
+          "Check the service is deployed and responding to health checks in a production environment"
+        ],
+        "dont": [
+          "Assume the service is running without verification",
+          "Ignore failing tests or missing repositories",
+          "Consider a local dev environment as 'production'"
+        ]
+      },
+      "commentary": "Base requirement: the software must exist, be verifiable, and be operational to serve its purpose."
+    },
+    {
+      "id": "INV-X402-001",
+      "assertion": "The service must accept and process data requests via the X402 standard (payment + query).",
+      "examples": {
+        "do": [
+          "Demonstrate a successful X402 request/response cycle",
+          "Verify payment processing logic for data access",
+          "Confirm the API endpoints conform to X402 specifications"
+        ],
+        "dont": [
+          "Use standard HTTP APIs without X402 payment wrappers",
+          "Allow free access where payment is required by the protocol",
+          "Fail to validate X402 headers, tokens, or proofs"
+        ]
+      },
+      "commentary": "The primary interface for agents to consume data must be X402, enabling the agent economy."
+    },
+    {
+      "id": "INV-DATA-001",
+      "assertion": "The service must autonomously research the X402 ecosystem and monotonically increase its structured knowledge base.",
+      "examples": {
+        "do": [
+          "Show evidence of new X402 ecosystem data being added to the database",
+          "Log active research activities (web searches, chain scanning) and their outcomes",
+          "Maintain a growing history of ecosystem state changes (e.g. new agents, services)"
+        ],
+        "dont": [
+          "Allow the database to become stale or static",
+          "Delete historical data without a valid compaction reason",
+          "Stop researching new ecosystem developments"
+        ]
+      },
+      "commentary": "The service is not just a database; it is an active agent that grows its value over time through research."
+    },
+    {
+      "id": "VERIFICATION-001",
+      "assertion": "All invariants must be verified by concrete evidence (logs, test outputs, live endpoint checks) in the final report.",
+      "examples": {
+        "do": [
+          "Include screenshots or log snippets showing successful health checks",
+          "Link to the specific commit hash deployed and verified",
+          "Provide a transaction hash or log for a test X402 payment"
+        ],
+        "dont": [
+          "Simply state 'it works' without proof",
+          "Omit verification steps for any invariant",
+          "Use vague language like 'checked successfully' without data"
+        ]
+      },
+      "commentary": "Meta-invariant: Trust but verify. This ensures the agent is actually performing the checks and providing proof of state."
+    }
+  ]
+}
+
+
