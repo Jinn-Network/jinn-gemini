@@ -115,6 +115,26 @@ export interface AdditionalContext {
 
   /** Completed child run tracking */
   completedChildRuns?: CompletedChildRun[];
+
+  /** Verification phase: set when job needs to verify merged child work */
+  verificationRequired?: boolean;
+
+  /** Current verification attempt number (1-indexed) */
+  verificationAttempt?: number;
+
+  /** Timestamp when verification was triggered */
+  verificationTriggeredAt?: string;
+
+  /** Request ID that triggered verification */
+  verificationSourceRequestId?: string;
+
+  /** Merge conflicts from dependency branch sync - agent must resolve these */
+  mergeConflicts?: Array<{
+    /** The branch that was merged */
+    branch: string;
+    /** List of files with conflict markers */
+    files: string[];
+  }>;
 }
 
 /**

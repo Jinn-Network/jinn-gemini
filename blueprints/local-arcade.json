@@ -240,6 +240,29 @@
       "commentary": "This blueprint tests product sense, not just correctness of code. A human player should be able to understand the experience through the interface itself."
     },
     {
+      "id": "UX-002",
+      "assertion": "The arcade must feature beautiful, polished user interface design with attention to visual aesthetics, modern styling, and delightful interactions.",
+      "examples": {
+        "do": [
+          "Use modern, clean visual design with thoughtful color schemes and typography",
+          "Implement smooth animations and transitions that enhance the user experience",
+          "Create visually appealing game boards, buttons, and UI elements with consistent styling",
+          "Design an attractive home screen that invites players to explore the games",
+          "Apply professional polish to spacing, alignment, and visual hierarchy",
+          "Use engaging visual feedback for player actions (e.g., button presses, game events)"
+        ],
+        "dont": [
+          "Ship a bare-bones interface with default browser styling or minimal CSS",
+          "Use clashing colors, poor contrast, or visually unappealing layouts",
+          "Create interfaces that look like technical prototypes or developer demos",
+          "Ignore visual design in favor of pure functionality",
+          "Use inconsistent styling across different screens or games",
+          "Present a utilitarian interface that lacks visual appeal or charm"
+        ]
+      },
+      "commentary": "Beautiful UX demonstrates the system's ability to create not just functional software, but delightful products. Visual design quality is a key indicator of product maturity and user-centric thinking."
+    },
+    {
       "id": "SNAKE-001",
       "assertion": "Snake must be implemented as a continuously progressing game where the player steers a growing entity to collect items and avoid collisions.",
       "examples": {

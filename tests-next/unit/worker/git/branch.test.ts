@@ -17,6 +17,7 @@ import {
   checkoutJobBranch,
   buildJobBranchName,
   ensureJobBranch,
+  syncWithBranch,
 } from '../../../../worker/git/branch.js';
 
 function run(cmd: string, cwd: string): string {
@@ -151,6 +152,70 @@ describe('branch', () => {
       const result = await ensureJobBranch(metadata);
       expect(result.branchName).toBe('job/ensure-test');
       expect(result.wasNewlyCreated).toBe(true);
+    });
+  });
+
+  describe('syncWithBranch', () => {
+    it('successfully merges clean branch', async () => {
+      // Create a source branch with changes
+      run('git checkout -b source-branch', repoDir);
+      fs.writeFileSync(path.join(repoDir, 'new-file.txt'), 'Source content\n');
+      run('git add new-file.txt', repoDir);
+      run('git commit -m "Add new file from source"', repoDir);
+
+      // Go back to main and create target branch
+      run('git checkout main', repoDir);
+      run('git checkout -b target-branch', repoDir);
+
+      // Sync with source branch
+      const result = await syncWithBranch(repoDir, 'source-branch');
+
+      expect(result.synced).toBe(true);
+      expect(result.hasConflicts).toBe(false);
+      expect(result.conflictingFiles).toEqual([]);
+      expect(result.sourceBranch).toBe('source-branch');
+
+      // Verify the file from source is now present
+      expect(fs.existsSync(path.join(repoDir, 'new-file.txt'))).toBe(true);
+    });
+
+    it('returns hasConflicts=true and leaves conflicts in working tree', async () => {
+      // Create a source branch with changes to README
+      run('git checkout -b source-branch', repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# Source Version\n');
+      run('git add README.md', repoDir);
+      run('git commit -m "Change README from source"', repoDir);
+
+      // Go back to main and create target branch with conflicting change
+      run('git checkout main', repoDir);
+      run('git checkout -b target-branch', repoDir);
+      fs.writeFileSync(path.join(repoDir, 'README.md'), '# Target Version\n');
+      run('git add README.md', repoDir);
+      run('git commit -m "Change README from target"', repoDir);
+
+      // Sync with source branch - should have conflicts
+      const result = await syncWithBranch(repoDir, 'source-branch');
+
+      expect(result.synced).toBe(false);
+      expect(result.hasConflicts).toBe(true);
+      expect(result.conflictingFiles).toContain('README.md');
+      expect(result.sourceBranch).toBe('source-branch');
+
+      // Verify conflict markers are in the file
+      const content = fs.readFileSync(path.join(repoDir, 'README.md'), 'utf-8');
+      expect(content).toContain('<<<<<<<');
+      expect(content).toContain('=======');
+      expect(content).toContain('>>>>>>>');
+    });
+
+    it('returns synced=true for non-existent branch (no-op)', async () => {
+      run('git checkout -b target-branch', repoDir);
+
+      const result = await syncWithBranch(repoDir, 'nonexistent-branch');
+
+      expect(result.synced).toBe(true);
+      expect(result.hasConflicts).toBe(false);
+      expect(result.conflictingFiles).toEqual([]);
     });
   });
 });

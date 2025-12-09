@@ -45,3 +45,5 @@ export { RecognitionProvider } from './providers/assertions/RecognitionProvider.
 export { ChildWorkAssertionProvider } from './providers/assertions/ChildWorkAssertionProvider.js';
 export { ProgressAssertionProvider } from './providers/assertions/ProgressAssertionProvider.js';
 export { ArtifactAssertionProvider } from './providers/assertions/ArtifactAssertionProvider.js';
+export { DelegationDirectiveProvider } from './providers/assertions/DelegationDirectiveProvider.js';
+export { VerificationDirectiveProvider } from './providers/assertions/VerificationDirectiveProvider.js';

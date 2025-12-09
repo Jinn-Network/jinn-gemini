@@ -457,6 +457,80 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
 
 
 /**
+ * Get branch information for a job definition by looking up its GIT_BRANCH artifact
+ * Returns the branch name and base branch from the most recent delivered request
+ */
+export async function getDependencyBranchInfo(jobDefinitionId: string): Promise<{
+  branchName?: string;
+  baseBranch?: string;
+} | null> {
+  try {
+    // Query for artifacts of type GIT_BRANCH from this job definition
+    const query = `query GetBranchArtifact($jobDefId: String!) {
+      artifacts(
+        where: {
+          sourceJobDefinitionId: $jobDefId,
+          topic: "GIT_BRANCH"
+        },
+        orderBy: "blockTimestamp",
+        orderDirection: "desc",
+        limit: 1
+      ) {
+        items {
+          cid
+          contentPreview
+        }
+      }
+    }`;
+
+    const data = await graphQLRequest<{
+      artifacts: { items: Array<{ cid: string; contentPreview?: string }> };
+    }>({
+      url: PONDER_GRAPHQL_URL,
+      query,
+      variables: { jobDefId: jobDefinitionId },
+      context: { operation: 'getDependencyBranchInfo', jobDefinitionId }
+    });
+
+    const artifact = data?.artifacts?.items?.[0];
+    if (!artifact) {
+      workerLogger.debug({ jobDefinitionId }, 'No GIT_BRANCH artifact found for dependency');
+      return null;
+    }
+
+    // Parse the content preview to extract branch info
+    // Content preview format: "Branch: job/xxx-yyy based on main\nDiff summary: ..."
+    const contentPreview = artifact.contentPreview || '';
+    const branchMatch = contentPreview.match(/Branch:\s*([^\s]+)\s+based\s+on\s+([^\s\n]+)/i);
+
+    if (branchMatch) {
+      return {
+        branchName: branchMatch[1],
+        baseBranch: branchMatch[2],
+      };
+    }
+
+    // Try alternative parsing - just look for branch name pattern
+    const simpleBranchMatch = contentPreview.match(/job\/[a-f0-9-]+(?:-[a-z0-9-]+)?/i);
+    if (simpleBranchMatch) {
+      return {
+        branchName: simpleBranchMatch[0],
+        baseBranch: DEFAULT_BASE_BRANCH,
+      };
+    }
+
+    workerLogger.debug({ jobDefinitionId, contentPreview }, 'Could not parse branch info from artifact');
+    return null;
+  } catch (e: any) {
+    workerLogger.warn({
+      jobDefinitionId,
+      error: e instanceof Error ? e.message : String(e)
+    }, 'Failed to get dependency branch info');
+    return null;
+  }
+}
+
+/**
  * Check if a job chain is complete by verifying all requests are delivered
  */
 async function isChainComplete(rootJobDefinitionId: string): Promise<boolean> {

@@ -3,19 +3,19 @@
 🔍 PONDER RUNTIME CONFIG
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 VITEST: not set
-RPC_URL: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c31d04025de6c556a6eb1145a801657a7/
-BASE_RPC_URL: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c31d04025de6c556a6eb1145a801657a7/
-Resolved RPC URL: https://tiniest-polished-brook.base-mainnet.quiknode.pro/4a5cae2c31d04025de6c556a6eb1145a801657a7/
+RPC_URL: https://base.gateway.tenderly.co/9JaKIhPX1SH38e5NaGZys
+BASE_RPC_URL: https://base.gateway.tenderly.co/9JaKIhPX1SH38e5NaGZys
+Resolved RPC URL: https://base.gateway.tenderly.co/9JaKIhPX1SH38e5NaGZys
 Is Tenderly VNet: false
 Finality Block Count: 30
-Start Block: 38187727
+Start Block: 39030923
 End Block: none (realtime)
 Database Mode: postgres
 Database URL: postgresql://postgres:****@db.clnwgxgvmnrkwqdblqgf.supabase.co:5432/postgres
-Indexing Mode: Universal (all Mechs via factory pattern)
+MECH_ADDRESS: 0xb55FaDf1f0Bb1DE99c13301397c7B67FdE44f6b1
 OPERATE_PROFILE_DIR: not set
 PORT: not set
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Timestamp: 2025-12-05T11:07:38.282Z
-CWD: /Users/gcd/Repositories/main/jinn-cli-agents/ponder
+Timestamp: 2025-12-05T10:46:05.924Z
+CWD: /Users/adrianobradley/jinn-gemini/ponder

@@ -157,3 +157,121 @@ export async function ensureJobBranch(codeMetadata: CodeMetadata): Promise<Branc
   return checkoutJobBranch(codeMetadata);
 }
 
+/**
+ * Result of syncing with a branch
+ */
+export interface SyncBranchResult {
+  /** Whether the sync completed (merge or no-op) */
+  synced: boolean;
+  /** Whether there are merge conflicts in the working tree */
+  hasConflicts: boolean;
+  /** List of files with conflicts (if any) */
+  conflictingFiles: string[];
+  /** The branch that was merged from */
+  sourceBranch: string;
+}
+
+/**
+ * Sync current branch with a target branch by merging it in
+ *
+ * If conflicts occur, they are LEFT in the working tree for the agent to resolve.
+ * This enables the agent to see and fix conflicts as part of its task.
+ *
+ * @param repoRoot - Repository root path
+ * @param targetBranch - Branch to merge from (e.g., 'origin/job/dep-branch')
+ * @returns Result indicating success and any conflicts
+ */
+export async function syncWithBranch(
+  repoRoot: string,
+  targetBranch: string
+): Promise<SyncBranchResult> {
+  const { execFileSync } = await import('node:child_process');
+
+  workerLogger.info({ targetBranch, repoRoot }, 'Syncing with branch');
+
+  // First check if the target branch exists
+  const hasLocal = localBranchExists(repoRoot, targetBranch, execFileSync);
+  const hasRemote = remoteBranchExists(repoRoot, targetBranch.replace('origin/', ''), execFileSync);
+
+  // Determine the actual ref to merge
+  let mergeRef = targetBranch;
+  if (!hasLocal && hasRemote && !targetBranch.startsWith('origin/')) {
+    mergeRef = `origin/${targetBranch}`;
+  } else if (!hasLocal && !hasRemote) {
+    workerLogger.warn({ targetBranch }, 'Target branch does not exist, skipping sync');
+    return {
+      synced: true,
+      hasConflicts: false,
+      conflictingFiles: [],
+      sourceBranch: targetBranch,
+    };
+  }
+
+  try {
+    // Attempt merge - this may fail with conflicts
+    execFileSync('git', ['merge', mergeRef, '--no-edit'], {
+      cwd: repoRoot,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: GIT_CHECKOUT_TIMEOUT_MS,
+      env: process.env as Record<string, string>,
+    });
+
+    workerLogger.info({ targetBranch, mergeRef }, 'Successfully merged branch');
+    return {
+      synced: true,
+      hasConflicts: false,
+      conflictingFiles: [],
+      sourceBranch: targetBranch,
+    };
+  } catch (mergeError: any) {
+    // Check if this is a merge conflict (exit code 1 with conflict markers)
+    const stderr = mergeError.stderr || '';
+    const stdout = mergeError.stdout || '';
+
+    if (stderr.includes('CONFLICT') || stdout.includes('CONFLICT') || stderr.includes('Automatic merge failed')) {
+      // Get the list of conflicting files
+      const conflictingFiles = getConflictingFiles(repoRoot, execFileSync);
+
+      workerLogger.warn(
+        { targetBranch, mergeRef, conflictCount: conflictingFiles.length, conflictingFiles },
+        'Merge conflicts detected - leaving in working tree for agent resolution'
+      );
+
+      return {
+        synced: false,
+        hasConflicts: true,
+        conflictingFiles,
+        sourceBranch: targetBranch,
+      };
+    }
+
+    // Some other merge error - log and re-throw
+    const errorMessage = `Failed to merge ${mergeRef}: ${stderr || mergeError.message}`;
+    workerLogger.error({ targetBranch, mergeRef, error: serializeError(mergeError) }, errorMessage);
+    throw new Error(errorMessage);
+  }
+}
+
+/**
+ * Get list of files with merge conflicts
+ */
+function getConflictingFiles(
+  repoRoot: string,
+  execFileSync: typeof import('node:child_process').execFileSync
+): string[] {
+  try {
+    // git diff --name-only --diff-filter=U lists unmerged (conflicting) files
+    const output = execFileSync('git', ['diff', '--name-only', '--diff-filter=U'], {
+      cwd: repoRoot,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
+
+    return output.trim().split('\n').filter(Boolean);
+  } catch {
+    // If this fails, return empty array - merge status is already tracked
+    return [];
+  }
+}
+

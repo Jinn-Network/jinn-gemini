@@ -18,7 +18,7 @@ import { serializeError } from '../logging/errors.js';
 import { snapshotEnvironment, restoreEnvironment } from './env.js';
 import { fetchIpfsMetadata } from '../metadata/fetchIpfsMetadata.js';
 import { ensureRepoCloned } from '../git/repoManager.js';
-import { checkoutJobBranch } from '../git/branch.js';
+import { checkoutJobBranch, syncWithBranch } from '../git/branch.js';
 import { pushJobBranch } from '../git/push.js';
 import { generateBranchUrl, formatSummaryForPr, createBranchArtifact } from '../git/pr.js';
 import { autoCommitIfNeeded, deriveCommitMessage, extractExecutionSummary } from '../git/autoCommit.js';
@@ -35,7 +35,8 @@ import { safeParseToolResponse } from '../tool_utils.js';
 import { getJinnWorkspaceDir, extractRepoName, getRepoRoot } from '../../shared/repo_utils.js';
 import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
 import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
-import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult } from '../types.js';
+import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult, AdditionalContext } from '../types.js';
+import { getDependencyBranchInfo } from '../mech_worker.js';
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
 
@@ -121,6 +122,60 @@ export async function processOnce(
           checkoutMethod: checkoutResult.checkoutMethod,
           baseBranch: metadata.codeMetadata.baseBranch || DEFAULT_BASE_BRANCH,
         });
+
+        // Merge dependency branches into this job's branch
+        // This ensures the child job sees work from its dependencies
+        if (metadata.dependencies && metadata.dependencies.length > 0) {
+          const repoRoot = getRepoRoot(metadata.codeMetadata);
+          const mergeConflicts: Array<{ branch: string; files: string[] }> = [];
+
+          for (const depJobDefId of metadata.dependencies) {
+            const branchInfo = await getDependencyBranchInfo(depJobDefId);
+            if (branchInfo?.branchName) {
+              workerLogger.info({
+                requestId: target.id,
+                dependencyJobDefId: depJobDefId,
+                dependencyBranch: branchInfo.branchName,
+              }, 'Syncing with dependency branch');
+
+              const syncResult = await syncWithBranch(repoRoot, branchInfo.branchName);
+
+              telemetry.logCheckpoint('initialization', 'dependency_sync', {
+                dependencyJobDefId: depJobDefId,
+                sourceBranch: syncResult.sourceBranch,
+                synced: syncResult.synced,
+                hasConflicts: syncResult.hasConflicts,
+                conflictingFiles: syncResult.conflictingFiles,
+              });
+
+              if (syncResult.hasConflicts) {
+                mergeConflicts.push({
+                  branch: branchInfo.branchName,
+                  files: syncResult.conflictingFiles,
+                });
+              }
+            } else {
+              workerLogger.debug({
+                requestId: target.id,
+                dependencyJobDefId: depJobDefId,
+              }, 'No branch info for dependency - may be artifact-only job');
+            }
+          }
+
+          // Store merge conflicts in additionalContext for assertion provider
+          if (mergeConflicts.length > 0) {
+            if (!metadata.additionalContext) {
+              metadata.additionalContext = {} as AdditionalContext;
+            }
+            metadata.additionalContext.mergeConflicts = mergeConflicts;
+
+            workerLogger.warn({
+              requestId: target.id,
+              conflictCount: mergeConflicts.length,
+              conflicts: mergeConflicts,
+            }, 'Dependency branch merge produced conflicts - agent must resolve');
+          }
+        }
       } else {
         workerLogger.info({ requestId: target.id }, 'No code metadata - artifact-only job');
       }
@@ -482,12 +537,6 @@ export async function processOnce(
     telemetry.endPhase('reporting');
   }
 
-  // Dispatch parent if needed
-  await dispatchParentIfNeeded(finalStatus, metadata!, target.id, result?.output || '', {
-    telemetry,
-    artifacts: Array.isArray(result?.artifacts) ? result.artifacts : undefined,
-  });
-
   // Deliver via Safe
   telemetry.startPhase('delivery');
   try {
@@ -520,6 +569,12 @@ export async function processOnce(
       artifactCount: artifactsForDelivery.length,
     });
     workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
+
+    // Dispatch parent if needed (after delivery so Ponder has indexed this job's completion)
+    await dispatchParentIfNeeded(finalStatus, metadata!, target.id, result?.output || '', {
+      telemetry,
+      artifacts: Array.isArray(result?.artifacts) ? result.artifacts : undefined,
+    });
   } catch (e: any) {
     const message = e?.message || String(e);
 

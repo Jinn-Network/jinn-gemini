@@ -31,11 +31,14 @@ import { ProgressCheckpointProvider } from './providers/context/ProgressCheckpoi
 
 // Assertion providers
 import { SystemBlueprintProvider } from './providers/assertions/SystemBlueprintProvider.js';
+import { DelegationDirectiveProvider } from './providers/assertions/DelegationDirectiveProvider.js';
 import { JobBlueprintProvider } from './providers/assertions/JobBlueprintProvider.js';
 import { RecognitionProvider } from './providers/assertions/RecognitionProvider.js';
 import { ChildWorkAssertionProvider } from './providers/assertions/ChildWorkAssertionProvider.js';
 import { ProgressAssertionProvider } from './providers/assertions/ProgressAssertionProvider.js';
 import { ArtifactAssertionProvider } from './providers/assertions/ArtifactAssertionProvider.js';
+import { VerificationDirectiveProvider } from './providers/assertions/VerificationDirectiveProvider.js';
+import { MergeConflictAssertionProvider } from './providers/assertions/MergeConflictAssertionProvider.js';
 
 /**
  * BlueprintBuilder constructs unified blueprints from multiple providers
@@ -281,6 +284,9 @@ export function createBlueprintBuilder(
   // Phase 2: Assertion providers (have access to built context)
   // Order: system first, then job, then dynamic context-aware assertions
   builder.registerAssertionProvider(new SystemBlueprintProvider());
+  builder.registerAssertionProvider(new DelegationDirectiveProvider()); // Inject early if high assertion count
+  builder.registerAssertionProvider(new VerificationDirectiveProvider()); // Inject if verificationRequired
+  builder.registerAssertionProvider(new MergeConflictAssertionProvider()); // Inject if merge conflicts exist
   builder.registerAssertionProvider(new JobBlueprintProvider());
   builder.registerAssertionProvider(new RecognitionProvider());
   builder.registerAssertionProvider(new ChildWorkAssertionProvider());

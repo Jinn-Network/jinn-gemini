@@ -222,6 +222,24 @@
       "commentary": "Delegation creates child jobs that execute independently. You will review their branch work in a future run."
     },
     {
+      "id": "SYS-DEPS-001",
+      "category": "system",
+      "assertion": "When creating multiple child jobs, I explicitly set dependencies so children that require upstream outputs wait for their prerequisites to finish.",
+      "examples": {
+        "do": [
+          "Set dependency edges between children when order matters",
+          "Group independent children without dependencies so they run in parallel",
+          "Document dependency reasons in child blueprints when non-obvious"
+        ],
+        "dont": [
+          "Launch dependent children without blocking on required upstream work",
+          "Create circular or unnecessary dependency chains",
+          "Assume the scheduler infers dependencies without me declaring them"
+        ]
+      },
+      "commentary": "Explicit dependencies prevent race conditions and wasted work. Declare them when dispatching children so execution order is respected."
+    },
+    {
       "id": "SYS-PARENT-ROLE-001",
       "category": "system",
       "assertion": "When I have completed children (CTX-CHILD-* assertions), my PRIMARY task is reviewing their branches with process_branch and merging - not redoing their work",
