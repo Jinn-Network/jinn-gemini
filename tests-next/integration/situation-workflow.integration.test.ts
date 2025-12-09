@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { resetConfigForTests } from '../../config/index.js';
 import { formatRecognitionMarkdown, normalizeLearnings } from '../../worker/recognition_helpers.js';
 
 type StoredRow = {
@@ -131,11 +130,6 @@ beforeEach(async () => {
 
 describe('situation workflow integration', () => {
   it('creates situation artifact and retrieves it via semantic search', async () => {
-    const previousModel = process.env.MECH_MODEL;
-    process.env.MECH_MODEL = 'gemini-2.5-pro';
-    resetConfigForTests();
-
-    try {
     const jobBlueprint = JSON.stringify({
       assertions: [{
         id: 'SIT-001',
@@ -154,10 +148,12 @@ describe('situation workflow integration', () => {
       }],
     });
 
+    // Model is specified in job metadata, not from environment
     const jobMetadata = {
       jobName: 'Investigate staking rewards variance',
       jobDefinitionId: 'job-def',
       blueprint: jobBlueprint,
+      model: 'gemini-2.5-pro', // Explicit model in job metadata
     };
 
     const result = {
@@ -205,14 +201,6 @@ describe('situation workflow integration', () => {
     expect(parsed.data).toHaveLength(1);
     expect(parsed.data[0].nodeId).toBe('0xaaa');
     expect(parsed.data[0].summary).toContain('Job 0xaaa');
-    } finally {
-      if (previousModel === undefined) {
-        delete process.env.MECH_MODEL;
-      } else {
-        process.env.MECH_MODEL = previousModel;
-      }
-      resetConfigForTests();
-    }
   });
 
   it('stores recognition metadata and surfaces it in search results', async () => {

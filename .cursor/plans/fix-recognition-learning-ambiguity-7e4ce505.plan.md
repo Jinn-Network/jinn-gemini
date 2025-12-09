@@ -1,4 +1,18 @@
-<!-- 7e4ce505-a94f-4d22-96cb-9a19406d095f 138fcbf1-17ac-4649-aedd-5abf7a67704b -->
+---
+name: Fix Recognition Learning Ambiguity
+overview: ""
+todos:
+  - id: e18be9f7-0acd-4782-9eac-5dbb51a0a4b7
+    content: Update worker/recognition_helpers.ts prompt instructions
+    status: pending
+  - id: 66573e9f-3aee-4fcc-a8c1-48d06c0aa0dc
+    content: Update worker/prompt/providers/assertions/RecognitionProvider.ts assertion formatting
+    status: pending
+  - id: 5e822883-10d0-4a52-ab26-6b604b520594
+    content: Update worker/prompt/system-blueprint.json system assertion
+    status: pending
+---
+
 # Fix Recognition Learning Ambiguity
 
 The agent is hallucinating delegation because recognition learnings are framed as imperative instructions ("Structure as orchestrator") which the agent interprets as narrative instructions. We will reframe them as historical observations of tool usage.
@@ -21,9 +35,3 @@ The agent is hallucinating delegation because recognition learnings are framed a
 ## 3. Verification
 
 - **Method**: Inspect the updated files to ensure the prompt logic flows correctly. (We cannot re-run the job deterministically to verify the fix immediately, but the prompt change addresses the root cause).
-
-### To-dos
-
-- [ ] Update worker/recognition_helpers.ts prompt instructions
-- [ ] Update worker/prompt/providers/assertions/RecognitionProvider.ts assertion formatting
-- [ ] Update worker/prompt/system-blueprint.json system assertion

@@ -65,15 +65,35 @@ export function useSubgraphCollection({
   const [currentSortAscending, setCurrentSortAscending] = useState<boolean>(sortAscending)
   const [realtimeStatus, setRealtimeStatus] = useState<ConnectionStatus>('disconnected')
   
+  // Refs to allow callbacks to access latest values without re-creating
+  const fetchRecordsRef = useRef<((page: number, showLoading?: boolean) => Promise<void>) | null>(null)
+  const currentPageRef = useRef(1)
+  
   // Track cursors for each page
   const cursorsRef = useRef<Map<number, { after?: string; before?: string }>>(new Map())
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const [realtimeUpdateTrigger, setRealtimeUpdateTrigger] = useState(0)
+  const realtimeDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingRefetchRef = useRef(false)
   
-  // Callback to trigger refresh when SSE event arrives
+  // Debounced callback to trigger refresh when SSE event arrives
   const handleRealtimeEvent = useCallback(() => {
-    console.log(`[useSubgraphCollection] Real-time update for ${collectionName}`)
-    setRealtimeUpdateTrigger(prev => prev + 1)
+    // Mark that we have a pending refetch
+    pendingRefetchRef.current = true
+    
+    // Clear any existing debounce timer
+    if (realtimeDebounceRef.current) {
+      clearTimeout(realtimeDebounceRef.current)
+    }
+    
+    // Debounce SSE events - wait 500ms before actually triggering a refetch
+    realtimeDebounceRef.current = setTimeout(() => {
+      if (pendingRefetchRef.current) {
+        console.log(`[useSubgraphCollection] Real-time update for ${collectionName}`)
+        pendingRefetchRef.current = false
+        // Trigger refetch directly instead of using state
+        fetchRecordsRef.current?.(currentPageRef.current, false)
+      }
+    }, 500)
   }, [collectionName])
   
   // Use Ponder native SSE via client.live() - MUST be initialized early
@@ -174,6 +194,15 @@ export function useSubgraphCollection({
     }
   }, [collectionName, pageSize, getQueryFunction, getDefaultSortColumn, currentSortAscending, whereFilter])
 
+  // Keep refs up to date
+  useEffect(() => {
+    fetchRecordsRef.current = fetchRecords
+  }, [fetchRecords])
+  
+  useEffect(() => {
+    currentPageRef.current = currentPage
+  }, [currentPage])
+
   // Set up polling only as fallback when SSE is not connected
   useEffect(() => {
     // If realtime is connected, disable polling
@@ -200,7 +229,7 @@ export function useSubgraphCollection({
     
     pollingIntervalRef.current = setInterval(() => {
       console.log(`[useSubgraphCollection] Polling for ${collectionName} updates (SSE fallback)`)
-      fetchRecords(currentPage, false)
+      fetchRecordsRef.current?.(currentPageRef.current, false)
     }, pollingInterval)
     
     return () => {
@@ -209,14 +238,16 @@ export function useSubgraphCollection({
         pollingIntervalRef.current = null
       }
     }
-  }, [enablePolling, pollingInterval, currentPage, fetchRecords, collectionName, isRealtimeConnected])
+  }, [enablePolling, pollingInterval, collectionName, isRealtimeConnected])
 
-  // Trigger refresh when realtime events arrive
+  // Cleanup debounce timer on unmount
   useEffect(() => {
-    if (isRealtimeConnected && realtimeUpdateTrigger > 0) {
-      fetchRecords(currentPage, false) // Silent refresh
+    return () => {
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current)
+      }
     }
-  }, [isRealtimeConnected, realtimeUpdateTrigger, currentPage, fetchRecords])
+  }, [])
 
   // Function to update sorting
   const setSorting = useCallback((column: string, ascending: boolean) => {
@@ -228,21 +259,23 @@ export function useSubgraphCollection({
 
   // Initial load and refetch when filter changes
   useEffect(() => {
-    fetchRecords(currentPage)
+    fetchRecordsRef.current?.(currentPageRef.current)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whereFilter]) // Refetch when filter changes
 
   // Update when page changes
   useEffect(() => {
     if (currentPage !== 1) {
-      fetchRecords(currentPage)
+      fetchRecordsRef.current?.(currentPage)
     }
-  }, [currentPage, fetchRecords])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage])
 
   // Refetch when sorting changes
   useEffect(() => {
-    fetchRecords(1)
-  }, [currentSortColumn, currentSortAscending, fetchRecords])
+    fetchRecordsRef.current?.(1)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSortColumn, currentSortAscending])
 
   return {
     records,

@@ -251,9 +251,17 @@ ponder.on(
     const sender: string = String(event.args.requester);
     const requestIds: string[] = toStringArray((event.args as any).requestIds);
     const requestDatas: string[] = toStringArray((event.args as any).requestDatas);
+    const networkId: string | undefined = event.args.networkId ? String(event.args.networkId) : undefined;
     const txHash: string = String(event.transaction.hash);
     const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
     const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+    // GLOBAL JINN EXPLORER: Only index requests with networkId === "jinn" (or missing for legacy)
+    // This filters out all non-Jinn Olas marketplace traffic
+    if (networkId && networkId !== "jinn") {
+      logger.debug({ requestIds, networkId, txHash }, "Skipping non-Jinn request");
+      return;
+    }
 
     const repo: Repository = createRepository(db, request, "request");
     const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
@@ -586,10 +594,69 @@ ponder.on(
   }
 });
 
-// Removed MechMarketplace delivery handlers in favor of OlasMech:Deliver
+// MarketplaceDelivery handler: marketplace-level delivery event that fires for ALL deliveries
+// regardless of which mech delivers. This complements OlasMech:Deliver for complete coverage.
+ponder.on(
+  "MechMarketplace:MarketplaceDelivery",
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  try {
+    const db = (context as any).db;
+    if (!db) {
+      logger.error("Ponder context.db is not available; cannot index MarketplaceDelivery");
+      return;
+    }
+
+    const requestId: string = String(event.args.requestId);
+    const deliveryMech: string = String(event.args.mech);
+    const txHash: string = String(event.transaction.hash);
+    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
+    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+    const requestRepo: Repository = createRepository(db, request, "request");
+    const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
+
+    // Check if this request exists and is a Jinn request
+    // If the request doesn't exist, it means it was filtered out by networkId != "jinn"
+    let existingRequest: any = null;
+    try {
+      existingRequest = await requestRepo.findUnique({ id: requestId });
+      if (!existingRequest) {
+        logger.debug(
+          { requestId, deliveryMech, txHash },
+          'MarketplaceDelivery event for non-Jinn request (filtered by networkId). Skipping.'
+        );
+        return;
+      }
+    } catch (e: any) {
+      logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before MarketplaceDelivery');
+      throw e;
+    }
+
+    // Update delivery record with marketplace-level delivery mech
+    // This tracks which mech actually delivered, even if different from priorityMech
+    await deliveryRepo.upsert({
+      id: requestId,
+      update: {
+        deliveryMech: deliveryMech,
+      },
+    });
+
+    // Update request with marketplace delivery metadata
+    await requestRepo.upsert({
+      id: requestId,
+      update: {
+        deliveryMech: deliveryMech,
+      },
+    });
+
+    logger.info({ requestId, deliveryMech, txHash }, "Indexed MarketplaceDelivery (marketplace-level delivery tracking)");
+  } catch (e: any) {
+    logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index MarketplaceDelivery");
+  }
+});
 
 
-// Fallback path: index AgentMech (OlasMech) Deliver events which include raw delivery data bytes
+// OlasMech:Deliver handler: mech-level delivery event with IPFS data
 ponder.on(
   "OlasMech:Deliver",
   async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
@@ -610,7 +677,7 @@ ponder.on(
     const artifactsRepo: Repository = createRepository(db, artifact, "artifact");
     const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
 
-    // Check if request exists - it should have been pre-seeded by MarketplaceRequest handler
+    // Check if request exists - it should have been pre-seeded by MarketplaceRequest handler.
     // If indexing from a later start block, we may see Deliver events for requests that were
     // created before our indexing window. Skip these gracefully.
     let existingRequest: any = null;
@@ -959,7 +1026,7 @@ ponder.on(
       logger.error({ requestId, err: e?.message || String(e) }, 'Failed to resolve delivery artifacts (OlasMech)');
     }
 
-    logger.info({ requestId, ipfsHash }, "Indexed OlasMech Deliver (delivery ipfs)");
+    logger.info({ requestId, ipfsHash }, "Indexed OlasMech Deliver");
   } catch (e: any) {
     logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index OlasMech Deliver");
   }

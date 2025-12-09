@@ -235,7 +235,7 @@ PONDER_GRAPHQL_URL=http://localhost:42069/graphql  # Local override
 CONTROL_API_PORT=4001
 CONTROL_API_URL=http://localhost:4001/graphql
 USE_TSX_MCP=1                    # Dev: run MCP with tsx
-PONDER_START_BLOCK=38187727      # Universal indexing start (Nov 15, 2025)
+PONDER_START_BLOCK=38187727      # OlasMech Deliver start block (factory scan fixed at 10,000,000)
 ```
 
 **Worker Config:**
@@ -264,16 +264,21 @@ STAKING_PROGRAM=<program>
 - Run Ponder locally ONLY to test indexing changes before pushing
 - Validation scripts/worker/frontend default to Railway
 
-**Universal Mech Indexing:**
-- Ponder now indexes ALL Mechs participating in the marketplace
-- Uses factory pattern: `MechMarketplace.CreateMech` events
-- Start block: 38187727 (November 15, 2025)
-- No need to configure specific Mech addresses
+**Global Jinn Explorer Architecture:**
+- Ponder indexes **all Jinn requests** across **all mechs** (not single-tenant)
+- NetworkId filtering: `networkId === "jinn"` or undefined (legacy) → INDEX; else skip
+- MarketplaceDelivery handler tracks delivered status for ANY mech delivering Jinn requests
+- OlasMech:Deliver handler resolves IPFS artifacts (delegating delivered status to MarketplaceDelivery)
+- Frontend can filter by `mech` (requested mech) or `deliveryMech` (actual deliverer)
+
+**Factory Mech Indexing (split start blocks):**
+- Mechs discovered via `MechMarketplace.CreateMech` (factory pattern)
+- Factory scan start block: 20,000,000 (~Jan 2024, covers all Jinn marketplace history)
+- OlasMech `Deliver` indexing start: `PONDER_START_BLOCK` (default 38187727, Nov 15 2025) to cap event volume
+- Delivery handlers: `MarketplaceDelivery` (delivered status) + `OlasMech:Deliver` (IPFS artifacts)
 
 **Factory Pattern Gotcha:**
-- `startBlock` goes at TOP-LEVEL contract config, NOT inside `factory()`
-- Factory pattern inherits parent contract's block range for event scanning
-- Only use `startBlock` inside `factory()` if you need different ranges (e.g., scan historical factory events but index children from "latest")
+- `startBlock` normally lives at top-level; use `factory().startBlock` only when discovery and child indexing need different ranges (we do: 10,000,000 vs 38,187,727)
 
 **Testing Workflow:**
 1. Make changes in `ponder/src/index.ts` or `ponder/ponder.schema.ts`
@@ -322,6 +327,12 @@ const { status, isConnected } = useRealtimeData(
 - 🟡 Yellow "Connecting" → Attempting connection
 - ⚫ Gray "Polling" → Disconnected, using fallback
 - 🔴 Red "Fallback" → Error state
+
+**Request IPFS Raw View & networkId visibility:**
+- **location**: Explorer `requests` detail page → `Raw` tab → `Request IPFS Content` card
+- **behavior**: Frontend renders the full IPFS payload (not just `blueprint`), preserving metadata fields like `networkId: "jinn"` for inspection
+- **source**: `frontend/explorer/src/components/job-phases/job-detail-layout.tsx` (`requestIpfsRawContent` state set from `fetchIpfsContent(record.ipfsHash)`)
+- **UI contract (2025-12-05):** Raw tab uses `RawSection` + `RawContentBlock` helpers with shadcn `ScrollArea` + `bg-muted` backgrounds; avoid reintroducing ad-hoc `pre` styling or gray backgrounds that reduce contrast
 
 ---
 
@@ -490,7 +501,91 @@ Never rely on `hierarchy.status` for terminal state decisions. Always query Pond
 - `worker/control_api_client.ts`: Removed confusing client-side stale detection
 **Prevention:** Control API is single source of truth for claim staleness, using 5-minute threshold
 
-### 15. Blueprint Date Scope vs Execution Date Confusion (2025-12-04)
+### 15. Ponder Global vs Single-Tenant Architecture (2025-12-05)
+**Issue:** Original Ponder design filtered requests by mech address, treating system as single-tenant. Colleague mechs' activity invisible in frontend, breaking global Jinn marketplace view.
+**Root Cause:** `MarketplaceRequest` handler had implicit mech filtering; no `MarketplaceDelivery` handler; `OlasMech:Deliver` set `delivered: true` directly instead of delegating to marketplace.
+**Solution:**
+1. Removed mech filtering from request indexing - ALL Jinn requests indexed regardless of `priorityMech`
+2. Added `MarketplaceDelivery` handler as source of truth for `delivered` status across all mechs
+3. OlasMech:Deliver now only handles IPFS artifact resolution, not delivered status
+4. Added schema fields: `deliveryMech`, `deliveryTxHash`, `deliveryBlockNumber`, `deliveryBlockTimestamp`
+5. Frontend queries updated to include delivery mech fields and support filtering by any mech
+**Files Changed:**
+- `ponder/src/index.ts`: NetworkId filtering without mech filtering, MarketplaceDelivery handler (batch), OlasMech:Deliver delegating delivered status
+- `ponder/ponder.schema.ts`: Added marketplace delivery fields with index on `deliveryMech`
+- `frontend/explorer/src/lib/subgraph.ts`: Updated Request interface and GraphQL queries
+- `frontend/explorer/src/components/subgraph-detail-view.tsx`: Added delivery mech field labels and ordering
+- `docs/implementation/NETWORKID-AND-DELIVERY-SYNC.md`: Updated to reflect global explorer architecture
+**Prevention:**
+- Ponder is a **global Jinn explorer** (all Jinn requests/deliveries), not single-mech view
+- NetworkId (`"jinn"` or undefined) gates indexing, NOT mech address
+- MarketplaceDelivery handler is source of truth for delivered status
+- Frontend can filter by `mech` (requested) or `deliveryMech` (actual deliverer)
+
+### 16. Tenderly VNet Factory Pattern Indexing (2025-12-08) [FIXED]
+**Issue:** Integration tests timeout waiting for Ponder to index `Deliver` events after successful dispatch to Tenderly VNets
+**Root Causes:**
+1. **Factory pattern scanning from wrong block:** Factory requires scanning `MechMarketplace.CreateMech` events from block 25M to discover mech addresses. VNets fork from block ~40M but don't contain historical blocks, so factory scan finds zero mechs.
+2. **Child start block evaluated at module-load time:** `getChildStartBlock()` was called during module initialization (line 49), before test env vars were set. Tests set `PONDER_START_BLOCK=39204916` but config read it as `undefined` and defaulted to 38187727.
+3. **MechMarketplace still scanning from block 0:** Even when `FACTORY_START_BLOCK=0` bypassed factory pattern on `OlasMech`, `MechMarketplace` contract still started at `FACTORY_START_BLOCK` (0), causing Ponder to backfill from non-existent blocks.
+
+**Evidence:**
+- Test output: "Setting PONDER_START_BLOCK to 39204760"
+- Ponder logs: "backfill (21.9%) Block 2792632" (wrong start block!)
+- VNet at block ~39,205,000 but Ponder stuck at 2.7M
+- Debug file showed `Child Start Block: 38187727` (default, not env var)
+
+**Solution Implemented:**
+1. **Bypass factory pattern in test mode:** When `FACTORY_START_BLOCK=0`, set `address: undefined` on `OlasMech` to index from all addresses
+2. **Lazy evaluation of child start block:** Changed line 191 from using `childStartBlock` constant to calling `getChildStartBlock()` directly, so env var is read after test sets it
+3. **MechMarketplace conditional start:** When `FACTORY_START_BLOCK=0`, use `getChildStartBlock()` for marketplace too, so both contracts scan from same recent block in test mode
+
+**Files Changed:**
+- `ponder/ponder.config.ts`:
+  - Line 164: `startBlock: FACTORY_START_BLOCK === 0 ? getChildStartBlock() : FACTORY_START_BLOCK` (marketplace)
+  - Line 191: `startBlock: getChildStartBlock()` (child contract, lazy eval)
+  - Removed module-level `childStartBlock` constant
+  - Enhanced debug logging
+- `tests-next/helpers/process-harness.ts`: Already sets `PONDER_FACTORY_START_BLOCK: '0'` (line 272)
+
+**Test Results:**
+All 6 integration tests in `validation-gateway.integration.test.ts` now pass (was 1/6, now 6/6):
+- ✅ blocks claim when requestId not found (9.4s)
+- ✅ allows claim when requestId exists (26.2s) 
+- ✅ handles idempotent claims (26.6s)
+- ✅ injects lineage fields (27.0s)
+- ✅ allows re-claiming stale jobs (27.3s)
+- ✅ blocks re-claiming fresh jobs (26.6s)
+
+**Prevention:**
+1. **Never evaluate env vars at module-load time** - always use lazy evaluation (function calls) in config objects
+2. **When bypassing factory pattern in tests**, ensure ALL contracts using the factory start block also use the test start block
+3. **Factory pattern + chain forks = incompatible** - either use `address: undefined` or seed factory events before testing
+
+### 17. Gemini CLI Hangs + File Path Issues in Test Environments (2025-12-08) [FIXED]
+**Issue 1:** System tests timeout after 300 seconds during agent execution phase. Gemini CLI subprocess spawns successfully but produces zero stdout/stderr.
+**Root Cause:** Gemini CLI v0.11.2 hangs during initialization when spawned with `cwd` pointing to ephemeral/temporary directories. Tests create git fixtures in `/var/folders/.../jinn-gemini-tests/{random}/git-fixtures/fixture-{timestamp}-{uuid}`, which causes CLI to hang (likely filesystem metadata/permission issues with transient paths).
+
+**Issue 2:** Agent creates files in `gemini-agent/` directory instead of repository root when using stable `cwd`.
+**Root Cause:** Native tools (`write_file`, etc.) resolve relative paths based on CLI's `cwd`. When `cwd` is set to stable `gemini-agent/` directory (to fix Issue 1), relative file paths like `olas-staking-optimization.md` are created in `gemini-agent/` instead of the git fixture repository root.
+
+**Solution Implemented:**
+1. **Stable cwd with workspace exposure**: Use `gemini-agent/` as `cwd` in test environments (prevents hang), but expose workspace path via `JINN_WORKSPACE_DIR` env var
+2. **Absolute path instruction**: Added `SYS-TOOLS-002` system blueprint assertion requiring absolute paths using `metadata.workspacePath`
+3. **Metadata enhancement**: BlueprintBuilder now includes `metadata.workspacePath` in the prompt (sourced from `JINN_WORKSPACE_DIR` or `CODE_METADATA_REPO_ROOT`)
+
+**Files Changed:**
+- `gemini-agent/agent.ts`: Added `JINN_WORKSPACE_DIR` to env vars (line 392), kept stable cwd logic
+- `worker/prompt/system-blueprint.json`: Added SYS-TOOLS-002 for absolute path requirement
+- `worker/prompt/BlueprintBuilder.ts`: Added workspacePath to metadata section
+- `tests-next/system/memory-system.system.test.ts`: Updated MEM-002B blueprint instructions to require absolute paths
+
+**Prevention:** 
+1. Never spawn external CLIs with `cwd` pointing to temporary test fixtures
+2. Always instruct agents to use absolute paths for file operations when workspace differs from cwd
+3. Expose workspace path in blueprint metadata for agent consumption
+
+### 18. Blueprint Date Scope vs Execution Date Confusion (2025-12-04)
 **Issue:** Research job dispatched for Dec 1st data but agent researched Dec 3rd instead (workstream 0x6f71ed1e)
 **Root Cause:** Script injected target date in blueprint context ("December 1, 2025 to December 2, 2025"), but agent executed on Dec 3rd and used "today"/"current date" from Gemini CLI environment, overriding the blueprint instruction.
 **Evidence:** 
@@ -513,6 +608,33 @@ Never rely on `hierarchy.status` for terminal state decisions. Always query Pond
 - All web searches must include date string: "Ethereum metrics YYYY-MM-DD"
 - Child job names must propagate target date for clarity
 - Inline source attribution prevents vague aggregate claims
+
+### 19. Auto-Dispatch sourceRequestId Null – workstreamId Conditional (2025-12-08)
+**Issue:** Auto-dispatched child requests had `sourceRequestId: null` instead of parent's request ID, breaking hierarchy tracking.
+**Root Cause:** `dispatch_existing_job.ts` conditionally skipped setting `sourceRequestId` when `workstreamId` was provided, assuming workstream preservation meant no hierarchy tracking needed.
+**Evidence:**
+- Test: `tests-next/system/memory-system.system.test.ts:1191` expected `sourceRequestId` to be parent's request ID but received null
+- Auto-dispatch flow: grandchild completes → `parentDispatch.ts` queries child's workstream → calls `dispatch_existing_job` with workstreamId
+- Lines 127-133 in `dispatch_existing_job.ts`: `if (!workstreamId) { lineageContext.sourceRequestId = context.requestId }`
+**Root Problem:** Logic assumed workstream-preserving requests don't need hierarchy. False - auto-dispatch REQUIRES both:
+1. Same workstream (grandchild → child rerun)
+2. Proper parent linkage (child sourceRequestId = parent requestId)
+**Solution:** Remove conditional, always set `sourceRequestId`/`sourceJobDefinitionId` when available in context:
+```typescript
+// Before (wrong):
+if (!workstreamId) {
+  if (context.requestId) lineageContext.sourceRequestId = context.requestId;
+  if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
+}
+
+// After (correct):
+if (context.requestId) lineageContext.sourceRequestId = context.requestId;
+if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
+```
+**Files Changed:**
+- `gemini-agent/mcp/tools/dispatch_existing_job.ts:125-133` – Removed workstreamId conditional
+**Prevention:** Workstream preservation and hierarchy tracking are independent concerns - don't conflate them.
+**Related:** Gotchas #12 (stale hierarchy), #13 (Ponder latency)
 
 ---
 
@@ -544,6 +666,13 @@ Never rely on `hierarchy.status` for terminal state decisions. Always query Pond
 **Symptom:** Tests with `rpcUrl: 'http://127.0.0.1:8545'` hang for 30s during `withProcessHarness` before any test code runs
 **Solution:** Always use real RPC (Tenderly VNet) or set `PONDER_START_BLOCK` env var to skip RPC call
 **Prevention:** Use `withTenderlyVNet` for all tests that need Ponder, even if not dispatching transactions
+
+### Tenderly VNet Connection Timeouts (2025-12-09) [FIXED]
+**Issue:** Integration tests fail with `ConnectTimeoutError` when connecting to Tenderly VNet endpoints
+**Root Cause:** Transient network issues when calling Tenderly API (createVnet, fundAddress, deleteVnet). Default `fetch()` has no retry logic, single timeout causes immediate test failure.
+**Error:** `ConnectTimeoutError: Connect Timeout Error (attempted address: virtual.base.eu.rpc.tenderly.co:443, timeout: 10000ms)`
+**Solution:** Added `fetchWithRetry()` helper in `scripts/lib/tenderly.ts` with exponential backoff (3 retries, 1s/2s/4s delays). Applied to `createVnet`, `fundAddress`, and `deleteVnet` methods.
+**Prevention:** External API calls in test infrastructure must have retry logic for network reliability.
 
 ---
 

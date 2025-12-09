@@ -3,7 +3,6 @@
  */
 
 import { Agent } from '../../gemini-agent/agent.js';
-import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
 import { createBlueprintBuilder } from '../prompt/index.js';
 import { setJobContext, clearJobContext, snapshotJobContext, restoreJobContext } from '../metadata/jobContext.js';
 import { didDispatchChild } from '../status/dispatchUtils.js';
@@ -50,8 +49,8 @@ export async function runAgentForRequest(
   request: UnclaimedRequest,
   metadata: IpfsMetadata
 ): Promise<AgentExecutionResult> {
-  // Prefer explicit model, then environment default, otherwise flash for speed
-  const model = metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash';
+  // Model comes from job metadata (set at dispatch time), fallback to flash
+  const model = metadata?.model || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const completedChildRequestIds = extractCompletedChildRequestIds(metadata?.additionalContext);
   

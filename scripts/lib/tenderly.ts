@@ -88,6 +88,49 @@ export class TenderlyClient {
   }
 
   /**
+   * Fetch with retry logic for transient network failures
+   */
+  private async fetchWithRetry(
+    url: string,
+    options: RequestInit,
+    { maxRetries = 3, baseDelayMs = 1000, operation = 'fetch' } = {}
+  ): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+        return response;
+      } catch (error: any) {
+        lastError = error;
+        const isRetryable = error.code === 'UND_ERR_CONNECT_TIMEOUT' ||
+          error.code === 'ECONNRESET' ||
+          error.code === 'ETIMEDOUT' ||
+          error.message?.includes('timeout') ||
+          error.message?.includes('ENOTFOUND');
+
+        if (!isRetryable || attempt === maxRetries) {
+          throw error;
+        }
+
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        scriptLogger.warn({
+          operation,
+          attempt,
+          maxRetries,
+          delay,
+          error: error.message,
+          code: error.code,
+        }, `Tenderly ${operation} failed, retrying...`);
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
    * Check if Tenderly is properly configured
    */
   isConfigured(): boolean {
@@ -157,15 +200,19 @@ export class TenderlyClient {
     }, 'Creating Virtual TestNet');
     
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-Access-Key': this.config.accessKey!,
+      const response = await this.fetchWithRetry(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Access-Key': this.config.accessKey!,
+          },
+          body: JSON.stringify(requestBody),
         },
-        body: JSON.stringify(requestBody),
-      });
+        { operation: 'createVnet' }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -217,18 +264,22 @@ export class TenderlyClient {
     }
 
     try {
-      const response = await fetch(adminRpcUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await this.fetchWithRetry(
+        adminRpcUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'tenderly_setBalance',
+            params: [[address], `0x${BigInt(amountWei).toString(16)}`], // Address must be in array
+            id: 1,
+          }),
         },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'tenderly_setBalance',
-          params: [[address], `0x${BigInt(amountWei).toString(16)}`], // Address must be in array
-          id: 1,
-        }),
-      });
+        { operation: 'fundAddress' }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -266,12 +317,16 @@ export class TenderlyClient {
     try {
       scriptLogger.info({ vnetId }, 'Deleting Virtual TestNet');
 
-      const response = await fetch(url, {
-        method: 'DELETE',
-        headers: {
-          'X-Access-Key': this.config.accessKey!,
+      const response = await this.fetchWithRetry(
+        url,
+        {
+          method: 'DELETE',
+          headers: {
+            'X-Access-Key': this.config.accessKey!,
+          },
         },
-      });
+        { operation: 'deleteVnet', maxRetries: 2 }
+      );
 
       if (!response.ok) {
         scriptLogger.warn({ vnetId, status: response.status, statusText: response.statusText }, 'Failed to delete Virtual TestNet');

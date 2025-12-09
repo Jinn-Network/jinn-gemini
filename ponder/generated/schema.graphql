@@ -168,6 +168,7 @@ type request {
   requestData: String
   ipfsHash: String
   deliveryIpfsHash: String
+  deliveryMech: String
   transactionHash: String
   blockNumber: BigInt!
   blockTimestamp: BigInt!
@@ -287,6 +288,16 @@ input requestFilter {
   deliveryIpfsHash_ends_with: String
   deliveryIpfsHash_not_starts_with: String
   deliveryIpfsHash_not_ends_with: String
+  deliveryMech: String
+  deliveryMech_not: String
+  deliveryMech_in: [String]
+  deliveryMech_not_in: [String]
+  deliveryMech_contains: String
+  deliveryMech_not_contains: String
+  deliveryMech_starts_with: String
+  deliveryMech_ends_with: String
+  deliveryMech_not_starts_with: String
+  deliveryMech_not_ends_with: String
   transactionHash: String
   transactionHash_not: String
   transactionHash_in: [String]
@@ -344,6 +355,7 @@ type delivery {
   sourceJobDefinitionId: String
   mech: String!
   mechServiceMultisig: String!
+  deliveryMech: String
   deliveryRate: BigInt!
   ipfsHash: String
   transactionHash: String!
@@ -420,6 +432,16 @@ input deliveryFilter {
   mechServiceMultisig_ends_with: String
   mechServiceMultisig_not_starts_with: String
   mechServiceMultisig_not_ends_with: String
+  deliveryMech: String
+  deliveryMech_not: String
+  deliveryMech_in: [String]
+  deliveryMech_not_in: [String]
+  deliveryMech_contains: String
+  deliveryMech_not_contains: String
+  deliveryMech_starts_with: String
+  deliveryMech_ends_with: String
+  deliveryMech_not_starts_with: String
+  deliveryMech_not_ends_with: String
   deliveryRate: BigInt
   deliveryRate_not: BigInt
   deliveryRate_in: [BigInt]

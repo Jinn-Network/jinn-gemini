@@ -33,7 +33,6 @@ import { createSituationArtifactForRequest } from '../situation_artifact.js';
 import { createArtifact as apiCreateArtifact } from '../control_api_client.js';
 import { safeParseToolResponse } from '../tool_utils.js';
 import { getJinnWorkspaceDir, extractRepoName, getRepoRoot } from '../../shared/repo_utils.js';
-import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
 import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult, AdditionalContext } from '../types.js';
 import { getDependencyBranchInfo } from '../mech_worker.js';
@@ -69,9 +68,10 @@ export async function processOnce(
       if (!metadata) {
         metadata = {};
       }
-      // Use model from job metadata if available, otherwise fallback to env var or default
+      // Use model from job metadata if available, otherwise default to flash
+      // Model should be set at job creation time, not from worker environment
       if (!metadata.model) {
-        metadata.model = getOptionalMechModel() || 'gemini-2.5-flash';
+        metadata.model = 'gemini-2.5-flash';
       }
 
       telemetry.logCheckpoint('initialization', 'metadata_fetched', {
@@ -202,7 +202,7 @@ export async function processOnce(
 
     // Agent execution
     telemetry.startPhase('agent_execution', {
-      model: metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash',
+      model: metadata?.model || 'gemini-2.5-flash',
     });
     try {
       result = await runAgentForRequest(target, metadata);
@@ -551,6 +551,7 @@ export async function processOnce(
     });
 
     const workerTelemetrySnapshot = telemetry.getLog();
+    workerLogger.info({ requestId: target.id }, '[DEBUG] About to call deliverViaSafeTransaction');
     const delivery = await deliverViaSafeTransaction({
       requestId: target.id,
       request: target,
@@ -562,6 +563,8 @@ export async function processOnce(
       workerTelemetry: workerTelemetrySnapshot,
       artifactsForDelivery,
     });
+    
+    workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, '[DEBUG] Returned from deliverViaSafeTransaction');
 
     telemetry.logCheckpoint('delivery', 'delivery_completed', {
       txHash: delivery?.tx_hash,
@@ -585,6 +588,13 @@ export async function processOnce(
         { requestId: target.id },
         'Delivery skipped: request already delivered on-chain',
       );
+      
+      // Still dispatch parent if needed (job completed, even if delivery was idempotent)
+      await dispatchParentIfNeeded(finalStatus, metadata!, target.id, result?.output || '', {
+        telemetry,
+        artifacts: Array.isArray(result?.artifacts) ? result.artifacts : undefined,
+      });
+      
       return;
     }
 

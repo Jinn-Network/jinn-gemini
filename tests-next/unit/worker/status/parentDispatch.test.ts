@@ -343,6 +343,7 @@ describe('parentDispatch', () => {
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'output');
 
         expect(workerLogger.debug).toHaveBeenCalledWith(
+          expect.objectContaining({ requestId: '0xchild' }),
           expect.stringContaining('Not dispatching parent')
         );
         expect(dispatchExistingJob).not.toHaveBeenCalled();

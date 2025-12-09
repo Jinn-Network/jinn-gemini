@@ -28,6 +28,11 @@ interface Request {
   jobName?: string
   enabledTools: string[]
   additionalContext?: Record<string, unknown>
+  // Marketplace delivery fields (global Jinn explorer)
+  deliveryMech?: string
+  deliveryTxHash?: string
+  deliveryBlockNumber?: string
+  deliveryBlockTimestamp?: string
 }
 
 interface JobDefinition {
@@ -184,7 +189,12 @@ const FIELD_ORDER: Record<string, string[]> = {
     'blockNumber',
     'transactionHash',
     'delivered',
-    'deliveryIpfsHash'
+    'deliveryIpfsHash',
+    // Marketplace delivery fields (global Jinn explorer)
+    'deliveryMech',
+    'deliveryTxHash',
+    'deliveryBlockNumber',
+    'deliveryBlockTimestamp'
   ],
   deliveries: [
     'id',
@@ -196,6 +206,7 @@ const FIELD_ORDER: Record<string, string[]> = {
     'ipfsHash',
     'deliveryRate',
     'mech',
+    'deliveryMech',
     'blockTimestamp',
     'blockNumber',
     'transactionHash'
@@ -539,7 +550,7 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
     }
 
     // Handle Ethereum addresses
-    if ((fieldName === 'mech' || fieldName === 'sender' || fieldName === 'mechServiceMultisig') && value.startsWith('0x')) {
+    if ((fieldName === 'mech' || fieldName === 'deliveryMech' || fieldName === 'sender' || fieldName === 'mechServiceMultisig') && value.startsWith('0x')) {
       return (
         <div className="font-mono text-sm break-all text-gray-400">
           {value}
@@ -752,8 +763,14 @@ function getFieldLabel(fieldName: string, collectionName: CollectionName): strin
     deliveryRate: 'Delivery Rate',
 
     // Address fields
-    mech: 'Mech Address',
+    mech: 'Priority Mech Address',
+    deliveryMech: 'Delivery Mech Address',
     sender: 'Sender Address',
+
+    // Marketplace delivery fields (global Jinn explorer)
+    deliveryTxHash: 'Delivery Transaction',
+    deliveryBlockNumber: 'Delivery Block Number',
+    deliveryBlockTimestamp: 'Delivery Timestamp',
   }
 
   // Return mapped label or convert camelCase to Title Case as fallback

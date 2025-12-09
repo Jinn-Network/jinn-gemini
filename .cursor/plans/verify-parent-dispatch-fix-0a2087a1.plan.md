@@ -1,4 +1,21 @@
-<!-- 0a2087a1-6a71-41bc-b799-6e538f5aa577 b5925ff6-6e79-4c60-a54e-5a620ae646b3 -->
+---
+name: "Plan: Verify Dependency and Parent Dispatch Fixes"
+overview: ""
+todos:
+  - id: 7f19cf26-0544-4bf3-87df-3bc3c7b33214
+    content: Move mock system test to unit suite
+    status: pending
+  - id: 5feda420-8310-4e45-8f84-a3865a510d28
+    content: Export isJobDefinitionComplete from worker
+    status: pending
+  - id: 13c11bdd-6363-47f1-bf3c-e2094644aeb0
+    content: Implement true system test with live Ponder
+    status: pending
+  - id: ce38eddd-9767-40a6-8806-9f6add23c87f
+    content: Update dependency unit tests
+    status: pending
+---
+
 # Plan: Verify Dependency and Parent Dispatch Fixes
 
 We will verify the fixes by confirming unit tests cover the new logic and replacing the misclassified system test with a genuine end-to-end integration test.
@@ -39,10 +56,3 @@ We will verify the fixes by confirming unit tests cover the new logic and replac
 6. **Runs Worker on Child 2:** Execute worker, wait for delivery
 7. **Asserts Parent Re-dispatched:** Query again - should now return 2 requests (original + auto-dispatched after both children complete)
 8. **Verifies Ponder Indexing:** Uses `waitForRequestIndexed` with predicates to ensure all data is ready before assertions
-
-### To-dos
-
-- [ ] Move mock system test to unit suite
-- [ ] Export isJobDefinitionComplete from worker
-- [ ] Implement true system test with live Ponder
-- [ ] Update dependency unit tests

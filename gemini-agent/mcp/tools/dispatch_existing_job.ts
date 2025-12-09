@@ -124,8 +124,8 @@ export async function dispatchExistingJob(args: unknown) {
   // Build request payload mirroring post_marketplace_job expectations
   const lineageContext: Record<string, any> = {};
 
-  // Always include sourceRequestId/sourceJobDefinitionId if available to ensure correct lineage tracking.
-  // This allows the job to be correctly identified as a child (or re-dispatched parent) in the hierarchy.
+  // Always set sourceRequestId/sourceJobDefinitionId when available
+  // This ensures proper hierarchy tracking even when workstreamId is preserved
   if (context.requestId) lineageContext.sourceRequestId = context.requestId;
   if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
 

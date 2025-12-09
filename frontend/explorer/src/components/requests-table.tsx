@@ -1,13 +1,12 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { SubgraphRecord } from '@/hooks/use-subgraph-collection'
 import { formatDate } from '@/lib/utils'
 import { getDependencyInfo, DependencyInfo, getJobDefinition } from '@/lib/subgraph'
 import { StatusIcon, mapDependencyStatusToJobStatus } from '@/components/status-icon'
 import { TruncatedId } from '@/components/truncated-id'
-import { useRealtimeData } from '@/hooks/use-realtime-data'
 import {
   Table,
   TableBody,
@@ -112,32 +111,9 @@ function JobDefStatusCell({ jobDefId, refetchTrigger }: { jobDefId?: string; ref
 }
 
 export function RequestsTable({ records }: RequestsTableProps) {
-  const [refetchTrigger, setRefetchTrigger] = useState(0)
-
-  // Single SSE listener for jobDefinitions updates (shared by all rows)
-  const handleJobDefUpdate = useCallback(() => {
-    setRefetchTrigger(prev => prev + 1)
-  }, [])
-
-  useRealtimeData('jobDefinitions', {
-    enabled: true,
-    onEvent: handleJobDefUpdate
-  })
-
-  // Single SSE listener for requests/deliveries updates (for dependencies)
-  const handleDependencyUpdate = useCallback(() => {
-    setRefetchTrigger(prev => prev + 1)
-  }, [])
-
-  useRealtimeData('requests', {
-    enabled: true,
-    onEvent: handleDependencyUpdate
-  })
-
-  useRealtimeData('deliveries', {
-    enabled: true,
-    onEvent: handleDependencyUpdate
-  })
+  // Note: Realtime updates are handled by useSubgraphCollection in the parent component
+  // No additional subscriptions needed here - they caused excessive re-renders
+  const refetchTrigger = 0 // Keep this for compatibility with child components
 
   if (records.length === 0) {
     return (

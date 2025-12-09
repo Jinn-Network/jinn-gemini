@@ -274,11 +274,13 @@ async function verifyUndeliveredStatus(params: {
 export async function deliverViaSafeTransaction(
   context: DeliveryTransactionContext
 ): Promise<{ tx_hash?: string; status?: string }> {
+  workerLogger.info({ requestId: context.requestId }, '[DELIVERY_START] Function entered');
   const chainConfig = getOptionalMechChainConfig() || 'base';
   const safeAddress = getServiceSafeAddress();
   const targetMechAddress = context.request.mech;
   const privateKey = getServicePrivateKey();
   const rpcHttpUrl = getRequiredRpcUrl();
+  workerLogger.info({ requestId: context.requestId, hasRpc: !!rpcHttpUrl }, '[DELIVERY_START] Config loaded');
 
   if (!safeAddress || !privateKey) {
     workerLogger.warn({ safeAddress: !!safeAddress, privateKey: !!privateKey }, 'Missing Safe delivery configuration; skipping on-chain delivery');
@@ -346,12 +348,14 @@ export async function deliverViaSafeTransaction(
     }
   }
   
+  workerLogger.info({ requestId: context.requestId }, '[DELIVERY_VERIFY] Starting verification');
   const isUndelivered = await verifyUndeliveredStatus({
     mechAddress: targetMechAddress,
     requestIdHex,
     requestId: context.requestId,
     rpcHttpUrl,
   });
+  workerLogger.info({ requestId: context.requestId, isUndelivered }, '[DELIVERY_VERIFY] Verification complete');
   
   if (!isUndelivered) {
     workerLogger.info({ requestId: context.requestId, requestIdHex }, 'Delivery preflight: request already delivered or revoked; skipping new Safe tx');
@@ -385,6 +389,8 @@ export async function deliverViaSafeTransaction(
     wait: true,
   } as const;
 
+  workerLogger.info({ requestId: context.requestId }, '[DELIVERY_DEBUG] Starting delivery transaction attempt');
+  
   let delivery: any;
   const maxRetries = 1; // Reduce retries since we now have better preflight checks
   let lastError: Error | undefined;
@@ -416,7 +422,9 @@ export async function deliverViaSafeTransaction(
       }
 
       try {
+        workerLogger.info({ requestId: context.requestId, attempt }, '[DELIVERY_DEBUG] Calling deliverViaSafe');
         delivery = await (deliverViaSafe as any)(payload);
+        workerLogger.info({ requestId: context.requestId, txHash: delivery?.tx_hash, status: delivery?.status }, '[DELIVERY_DEBUG] deliverViaSafe returned');
         
         // Track the transaction hash immediately after submission
         if (delivery?.tx_hash) {
@@ -464,7 +472,7 @@ export async function deliverViaSafeTransaction(
     
     if (!delivery && lastError) throw lastError;
 
-    workerLogger.info({ requestId: context.requestId, tx: delivery?.tx_hash, status: delivery?.status }, 'Delivered via Safe');
+    workerLogger.info({ requestId: context.requestId, tx: delivery?.tx_hash, status: delivery?.status }, '[DELIVERY_DEBUG] Delivered via Safe - SUCCESS PATH');
     
     // Check if the transaction actually revoked the request instead of delivering
     if (delivery?.tx_hash) {
@@ -481,6 +489,7 @@ export async function deliverViaSafeTransaction(
       }
     }
     
+    workerLogger.info({ requestId: context.requestId, txHash: delivery?.tx_hash }, '[DELIVERY_DEBUG] About to return from deliverViaSafeTransaction');
     return {
       tx_hash: delivery?.tx_hash,
       status: delivery?.status,
@@ -491,6 +500,7 @@ export async function deliverViaSafeTransaction(
       pendingDeliveries.delete(context.requestId);
       workerLogger.debug({ requestId: context.requestId }, 'Cleared pending delivery tracking');
     }
+    workerLogger.info({ requestId: context.requestId }, '[DELIVERY_DEBUG] Exiting finally block');
   }
 }
 

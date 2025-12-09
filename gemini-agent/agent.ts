@@ -362,15 +362,30 @@ export class Agent {
       }
 
       const geminiProcess = spawn('npx', ['@google/gemini-cli', ...args], {
-        // Use codeWorkspace if available, otherwise fall back to gemini-agent directory
-        // This ensures GEMINI.md is always found (in repo for code jobs, in gemini-agent/ for artifact jobs)
-        cwd: this.codeWorkspace && this.codeWorkspace.trim() !== '' 
-          ? this.codeWorkspace 
-          : this.agentRoot,
+        // Use stable cwd for Gemini CLI to prevent initialization hang in test environments.
+        // Gemini CLI v0.11.2 hangs when spawned with cwd pointing to ephemeral/temporary directories.
+        // Tests create temporary fixtures in /var/folders/.../jinn-gemini-tests/, which causes CLI to hang
+        // during initialization (likely filesystem metadata/permission issues with transient paths).
+        // Solution: Use stable agentRoot as cwd, but expose workspace via JINN_WORKSPACE_DIR env var
+        // so native tools (write_file, etc.) can resolve paths correctly.
+        cwd: (() => {
+          const workspace = this.codeWorkspace && this.codeWorkspace.trim() !== '' 
+            ? this.codeWorkspace 
+            : this.agentRoot;
+          
+          // If workspace is a temporary test fixture, use agentRoot (stable directory)
+          if (workspace.includes('/jinn-gemini-tests/') || process.env.VITEST === 'true') {
+            return this.agentRoot; // Stable directory (gemini-agent/)
+          }
+          
+          return workspace;
+        })(),
         env: {
           ...envWithJob,
           // Set GEMINI_HOME to a writable directory within the project to avoid EPERM errors
-          GEMINI_HOME: geminiHome
+          GEMINI_HOME: geminiHome,
+          // Expose workspace directory for native tools even when cwd is stable
+          ...(this.codeWorkspace && this.codeWorkspace.trim() !== '' ? { JINN_WORKSPACE_DIR: this.codeWorkspace } : {})
         }
       });
 

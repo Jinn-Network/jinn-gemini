@@ -2,7 +2,4 @@
 alwaysApply: true
 ---
 
-- NEVER create .md docs for summarising progress of learnings
-    - incorporate learnings into AGENT_README.md
-    - write progress summaries to corresponding Linear issues
-- add gotchas to AGENT_README.md
+- always incorporate significant learnings into AGENT_README_TEST.md

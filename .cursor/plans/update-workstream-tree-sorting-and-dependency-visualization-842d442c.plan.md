@@ -1,4 +1,21 @@
-<!-- 842d442c-9a31-493b-b6eb-145a1bf5e8fc 20f91b29-44f0-46ce-8863-05e02cd3e8ac -->
+---
+name: Update Workstream Tree Sorting and Dependency Visualization
+overview: ""
+todos:
+  - id: bfd697b1-0b5a-40b2-8a3c-667d7c3efce4
+    content: Update GraphNode interface and createGraphNode in graph-queries.ts to include timestamp and dependencies
+    status: pending
+  - id: b8ce49f2-2ca5-4eea-a111-eabec6809073
+    content: Implement dependency aggregation in buildWorkstreamJobGraph
+    status: pending
+  - id: bf33a692-d601-4842-beee-709f59b359f4
+    content: Implement date-based sorting in buildTree function
+    status: pending
+  - id: 942160f3-60d9-44ed-8109-f367f5964af9
+    content: Update TreeNodeItem to visualize dependencies
+    status: pending
+---
+
 # Update Workstream Tree Sorting and Dependency Visualization
 
 The user wants the jobs in the Workstream Tree view to be ordered by their creation date while preserving the hierarchy. Additionally, dependencies need to be made a first-class citizen on the Job Definition table in Ponder, populated from the first request, and then visualized in the frontend.
@@ -51,10 +68,3 @@ The user wants the jobs in the Workstream Tree view to be ordered by their creat
 
 - Verify that the Workstream Tree view sorts siblings by date.
 - Verify that Job Definitions show their dependencies populated directly from the Ponder index.
-
-### To-dos
-
-- [ ] Update GraphNode interface and createGraphNode in graph-queries.ts to include timestamp and dependencies
-- [ ] Implement dependency aggregation in buildWorkstreamJobGraph
-- [ ] Implement date-based sorting in buildTree function
-- [ ] Update TreeNodeItem to visualize dependencies

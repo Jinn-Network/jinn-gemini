@@ -36,6 +36,11 @@ export interface Request {
   enabledTools: string[]
   additionalContext?: Record<string, unknown>
   dependencies?: string[]
+  // Marketplace delivery fields (global Jinn explorer)
+  deliveryMech?: string
+  deliveryTxHash?: string
+  deliveryBlockNumber?: string
+  deliveryBlockTimestamp?: string
 }
 
 export interface DependencyInfo {
@@ -259,6 +264,7 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Paginat
           enabledTools
           additionalContext
           dependencies
+          deliveryMech
         }
         pageInfo {
           hasNextPage

@@ -1,4 +1,9 @@
-<!-- b46d9b47-ff7e-422c-b231-17c108d53678 8346f7b1-e5d1-40ea-8566-cfdda993b90f -->
+---
+name: Add Right-Side Sidebar to Job Definition Page
+overview: ""
+todos: []
+---
+
 # Add Right-Side Sidebar to Job Definition Page
 
 ## Context

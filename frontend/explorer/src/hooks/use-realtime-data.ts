@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { ponderClient } from '@/lib/ponder-client'
 import * as schema from '@/lib/schema'
 
@@ -34,6 +34,16 @@ export function useRealtimeData(
 ): UseRealtimeDataReturn {
   const { enabled = true, onEvent, onError } = options
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
+  
+  // Use refs for callbacks to avoid re-subscribing on every render
+  const onEventRef = useRef(onEvent)
+  const onErrorRef = useRef(onError)
+  
+  // Keep refs up to date
+  useEffect(() => {
+    onEventRef.current = onEvent
+    onErrorRef.current = onError
+  })
 
   useEffect(() => {
     if (!enabled) {
@@ -68,20 +78,26 @@ export function useRealtimeData(
       // Subscribe to table(s) changes using Drizzle query builder
       // Ponder client multiplexes all queries over a single SSE connection
       // Create subscriptions for each table
+      // Track if we've received the first event (for status update)
+      let hasConnected = false
+      
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const unsubscribers = tablesToSubscribe.map((table: any) => {
         const { unsubscribe } = ponderClient.live(
           (db) => db.select().from(table).limit(1),
-          (result) => {
-            const tableName = collectionName || 'all tables'
-            console.log(`[useRealtimeData] SSE event received for ${tableName}:`, result)
-            setStatus('connected')
-            onEvent?.()
+          () => {
+            // Only update status on first successful event
+            if (!hasConnected) {
+              hasConnected = true
+              setStatus('connected')
+            }
+            // Fire callback without causing re-render
+            onEventRef.current?.()
           },
           (error) => {
             console.error(`[useRealtimeData] Error in ${collectionName || 'all tables'} subscription:`, error)
             setStatus('error')
-            onError?.(error)
+            onErrorRef.current?.(error)
           }
         )
         return unsubscribe
@@ -96,7 +112,7 @@ export function useRealtimeData(
       setStatus('error')
       onError?.(error as Error)
     }
-  }, [enabled, collectionName, onEvent, onError])
+  }, [enabled, collectionName])
 
   return {
     status,

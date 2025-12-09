@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, ReactNode } from 'react'
 import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
 import { RecognitionPhaseCard } from './recognition-phase-card'
@@ -9,6 +9,7 @@ import { DependenciesSection } from '../dependencies-section'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import { ExternalLink, FileText, GitBranch, ArrowRight, ArrowLeft, Wrench, Zap, Cpu, Clock, Check, ArrowUp, HelpCircle } from 'lucide-react'
@@ -433,6 +434,65 @@ interface Artifact {
   contentPreview?: string
 }
 
+type RawSectionProps = {
+  title: string
+  description?: ReactNode
+  action?: ReactNode
+  children: ReactNode
+}
+
+type RawContentBlockProps = {
+  content: unknown
+  label: string
+  preserveWhitespace?: boolean
+}
+
+function RawSection({ title, description, action, children }: RawSectionProps) {
+  return (
+    <Card>
+      <CardHeader className="space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <CardTitle className="text-base leading-6">{title}</CardTitle>
+            {description && (
+              <p className="text-sm text-muted-foreground">{description}</p>
+            )}
+          </div>
+          {action}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">{children}</CardContent>
+    </Card>
+  )
+}
+
+function RawState({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-sm text-muted-foreground" aria-live="polite">
+      {children}
+    </p>
+  )
+}
+
+function RawContentBlock({ content, label, preserveWhitespace }: RawContentBlockProps) {
+  const rendered = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
+
+  return (
+    <ScrollArea className="max-h-[400px] rounded-md border bg-muted/50">
+      <pre
+        className={`p-4 text-xs font-mono leading-relaxed text-foreground ${
+          preserveWhitespace ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+        }`}
+        role="region"
+        aria-label={label}
+        tabIndex={0}
+      >
+        {rendered}
+      </pre>
+    </ScrollArea>
+  )
+}
+
 export function JobDetailLayout({ record }: JobDetailLayoutProps) {
   const [memoryData, setMemoryData] = useState<MemoryInspectionResponse | null>(null)
   const [loadingMemory, setLoadingMemory] = useState(true)
@@ -442,6 +502,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
   const [sourceRequest, setSourceRequest] = useState<SubgraphRequest | null>(null)
   const [sourceJobDef, setSourceJobDef] = useState<SubgraphJobDefinition | null>(null)
   const [promptContent, setPromptContent] = useState<string | null>(null)
+  const [requestIpfsRawContent, setRequestIpfsRawContent] = useState<string | null>(null)
   const [ipfsEnabledTools, setIpfsEnabledTools] = useState<string[]>([])
   const [deliveryContent, setDeliveryContent] = useState<string | null>(null)
   const [workstreamId, setWorkstreamId] = useState<string | null>(null)
@@ -635,6 +696,9 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
     if (record.ipfsHash) {
       fetchIpfsContent(record.ipfsHash).then(result => {
         if (result) {
+          // Preserve full IPFS payload for raw view (includes metadata like networkId)
+          setRequestIpfsRawContent(result.content)
+
           try {
             const parsed = JSON.parse(result.content)
             // Extract blueprint (new architecture) or fall back to prompt (legacy)
@@ -1581,200 +1645,174 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
       <TabsContent value="raw" className="mt-0">
         <div className="space-y-6">
-          {/* Base Request Data */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Job Data</CardTitle>
-              <p className="text-sm text-gray-400 mt-1">
-                Composite record from Ponder&apos;s <code className="text-xs bg-muted px-1 rounded">request</code> table. 
-                Combines the original <code className="text-xs bg-muted px-1 rounded">MarketplaceRequest</code> event data 
-                with enrichments from the <code className="text-xs bg-muted px-1 rounded">OlasMech:Deliver</code> event 
+          <RawSection
+            title="Job Data"
+            description={
+              <>
+                Composite record from Ponder&apos;s <code className="text-xs bg-muted px-1 rounded">request</code> table.{' '}
+                Combines the original <code className="text-xs bg-muted px-1 rounded">MarketplaceRequest</code> event data{' '}
+                with enrichments from the <code className="text-xs bg-muted px-1 rounded">OlasMech:Deliver</code> event{' '}
                 (e.g., <code className="text-xs bg-muted px-1 rounded">deliveryIpfsHash</code>, <code className="text-xs bg-muted px-1 rounded">delivered: true</code>).
-              </p>
-            </CardHeader>
-            <CardContent>
-              <pre className="bg-muted p-4 rounded overflow-auto max-h-[400px] text-xs font-mono">
-                {JSON.stringify(record, null, 2)}
-              </pre>
-            </CardContent>
-          </Card>
+              </>
+            }
+          >
+            <RawContentBlock content={record} label="Job data" />
+          </RawSection>
 
-          {/* Job Definition */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Job Definition Record</CardTitle>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Record from Ponder&apos;s <code className="text-xs bg-muted px-1 rounded">jobDefinition</code> table, 
-                    referenced by <code className="text-xs bg-muted px-1 rounded">request.jobDefinitionId</code>
-                  </p>
-                </div>
-                {record.jobDefinitionId && (
-                  <Link 
-                    href={`/jobDefinitions/${record.jobDefinitionId}`}
-                    className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
-                  >
-                    View Full →
-                  </Link>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {!record.jobDefinitionId ? (
-                <div className="text-gray-500 text-sm">No job definition for this request</div>
-              ) : jobDefinition ? (
-                <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono">
-                  {JSON.stringify(jobDefinition, null, 2)}
-                </pre>
-              ) : (
-                <div className="text-gray-500 text-sm">Loading...</div>
-              )}
-            </CardContent>
-          </Card>
+          <RawSection
+            title="Job Definition Record"
+            description={
+              <>
+                Record from Ponder&apos;s <code className="text-xs bg-muted px-1 rounded">jobDefinition</code> table,{' '}
+                referenced by <code className="text-xs bg-muted px-1 rounded">request.jobDefinitionId</code>
+              </>
+            }
+            action={
+              record.jobDefinitionId ? (
+                <Link
+                  href={`/jobDefinitions/${record.jobDefinitionId}`}
+                  className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
+                >
+                  View Full →
+                </Link>
+              ) : null
+            }
+          >
+            {!record.jobDefinitionId ? (
+              <RawState>No job definition for this request</RawState>
+            ) : jobDefinition ? (
+              <RawContentBlock content={jobDefinition} label="Job definition record" />
+            ) : (
+              <RawState>Loading...</RawState>
+            )}
+          </RawSection>
 
-          {/* Blueprint Content (IPFS) */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Request IPFS Content</CardTitle>
-              <p className="text-sm text-gray-400 mt-1">
-                Fetched from <code className="text-xs bg-muted px-1 rounded">request.ipfsHash</code> - 
-                the blueprint specification uploaded when posting the <code className="text-xs bg-muted px-1 rounded">MarketplaceRequest</code> event
-              </p>
-            </CardHeader>
-            <CardContent>
-              {!record.ipfsHash ? (
-                <div className="text-gray-500 text-sm">No IPFS hash for this request</div>
-              ) : promptContent ? (
-                <pre className="bg-muted p-4 rounded overflow-auto max-h-[400px] text-xs font-mono whitespace-pre-wrap">
-                  {promptContent}
-                </pre>
-              ) : (
-                <div className="text-gray-500 text-sm">Loading...</div>
-              )}
-            </CardContent>
-          </Card>
+          <RawSection
+            title="Request IPFS Content"
+            description={
+              <>
+                Fetched from <code className="text-xs bg-muted px-1 rounded">request.ipfsHash</code> - the blueprint specification
+                uploaded when posting the <code className="text-xs bg-muted px-1 rounded">MarketplaceRequest</code> event
+              </>
+            }
+          >
+            {!record.ipfsHash ? (
+              <RawState>No IPFS hash for this request</RawState>
+            ) : requestIpfsRawContent ? (
+              <RawContentBlock
+                content={requestIpfsRawContent}
+                preserveWhitespace
+                label="Request IPFS content"
+              />
+            ) : promptContent ? (
+              <RawContentBlock content={promptContent} preserveWhitespace label="Request IPFS content" />
+            ) : (
+              <RawState>Loading...</RawState>
+            )}
+          </RawSection>
 
-          {/* Source Request */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Source Request Record</CardTitle>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Parent request record from Ponder&apos;s <code className="text-xs bg-gray-100 px-1 rounded">request</code> table, 
-                    referenced by <code className="text-xs bg-gray-100 px-1 rounded">request.sourceRequestId</code> (for Work Protocol jobs)
-                  </p>
-                </div>
-                {record.sourceRequestId && (
-                  <Link 
-                    href={`/requests/${record.sourceRequestId}`}
-                    className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
-                  >
-                    View Full →
-                  </Link>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {!record.sourceRequestId ? (
-                <div className="text-gray-500 text-sm">No source request for this job</div>
-              ) : sourceRequest ? (
-                <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono">
-                  {JSON.stringify(sourceRequest, null, 2)}
-                </pre>
-              ) : (
-                <div className="text-gray-500 text-sm">Loading...</div>
-              )}
-            </CardContent>
-          </Card>
+          <RawSection
+            title="Source Request Record"
+            description={
+              <>
+                Parent request record from Ponder&apos;s <code className="text-xs bg-muted px-1 rounded">request</code> table,{' '}
+                referenced by <code className="text-xs bg-muted px-1 rounded">request.sourceRequestId</code> (for Work Protocol jobs)
+              </>
+            }
+            action={
+              record.sourceRequestId ? (
+                <Link
+                  href={`/requests/${record.sourceRequestId}`}
+                  className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
+                >
+                  View Full →
+                </Link>
+              ) : null
+            }
+          >
+            {!record.sourceRequestId ? (
+              <RawState>No source request for this job</RawState>
+            ) : sourceRequest ? (
+              <RawContentBlock content={sourceRequest} label="Source request data" />
+            ) : (
+              <RawState>Loading...</RawState>
+            )}
+          </RawSection>
 
-          {/* Source Job Definition */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Source Job Definition Record</CardTitle>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Parent job definition record from Ponder&apos;s <code className="text-xs bg-gray-100 px-1 rounded">jobDefinition</code> table, 
-                    referenced by <code className="text-xs bg-gray-100 px-1 rounded">request.sourceJobDefinitionId</code> (for Work Protocol jobs)
-                  </p>
-                </div>
-                {record.sourceJobDefinitionId && (
-                  <Link 
-                    href={`/jobDefinitions/${record.sourceJobDefinitionId}`}
-                    className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
-                  >
-                    View Full →
-                  </Link>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {!record.sourceJobDefinitionId ? (
-                <div className="text-gray-500 text-sm">No source job definition for this request</div>
-              ) : sourceJobDef ? (
-                <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono">
-                  {JSON.stringify(sourceJobDef, null, 2)}
-                </pre>
-              ) : (
-                <div className="text-gray-500 text-sm">Loading...</div>
-              )}
-            </CardContent>
-          </Card>
+          <RawSection
+            title="Source Job Definition Record"
+            description={
+              <>
+                Parent job definition record from Ponder&apos;s <code className="text-xs bg-muted px-1 rounded">jobDefinition</code> table,{' '}
+                referenced by <code className="text-xs bg-muted px-1 rounded">request.sourceJobDefinitionId</code> (for Work Protocol jobs)
+              </>
+            }
+            action={
+              record.sourceJobDefinitionId ? (
+                <Link
+                  href={`/jobDefinitions/${record.sourceJobDefinitionId}`}
+                  className="text-sm text-primary hover:text-primary hover:underline whitespace-nowrap"
+                >
+                  View Full →
+                </Link>
+              ) : null
+            }
+          >
+            {!record.sourceJobDefinitionId ? (
+              <RawState>No source job definition for this request</RawState>
+            ) : sourceJobDef ? (
+              <RawContentBlock content={sourceJobDef} label="Source job definition record" />
+            ) : (
+              <RawState>Loading...</RawState>
+            )}
+          </RawSection>
 
-          {/* Delivery Content (IPFS) */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Delivery IPFS Content</CardTitle>
-              <p className="text-sm text-gray-400 mt-1">
-                Fetched from <code className="text-xs bg-gray-100 px-1 rounded">request.deliveryIpfsHash</code> - 
-                the result payload uploaded when the worker delivered via the <code className="text-xs bg-gray-100 px-1 rounded">OlasMech:Deliver</code> event
-              </p>
-            </CardHeader>
-            <CardContent>
-              {!record.delivered ? (
-                <div className="text-gray-500 text-sm">Job not yet delivered</div>
-              ) : !record.deliveryIpfsHash ? (
-                <div className="text-gray-500 text-sm">No delivery IPFS hash for this job</div>
-              ) : deliveryData ? (
-                <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono whitespace-pre-wrap">
-                  {JSON.stringify(deliveryData, null, 2)}
-                </pre>
-              ) : deliveryContent ? (
-                <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono whitespace-pre-wrap">
-                  {deliveryContent}
-                </pre>
-              ) : (
-                <div className="text-gray-500 text-sm">Loading...</div>
-              )}
-            </CardContent>
-          </Card>
+          <RawSection
+            title="Delivery IPFS Content"
+            description={
+              <>
+                Fetched from <code className="text-xs bg-muted px-1 rounded">request.deliveryIpfsHash</code> - the result payload uploaded
+                when the worker delivered via the <code className="text-xs bg-muted px-1 rounded">OlasMech:Deliver</code> event
+              </>
+            }
+          >
+            {!record.delivered ? (
+              <RawState>Job not yet delivered</RawState>
+            ) : !record.deliveryIpfsHash ? (
+              <RawState>No delivery IPFS hash for this job</RawState>
+            ) : deliveryData ? (
+              <RawContentBlock content={deliveryData} preserveWhitespace label="Delivery IPFS payload" />
+            ) : deliveryContent ? (
+              <RawContentBlock content={deliveryContent} preserveWhitespace label="Delivery IPFS payload" />
+            ) : (
+              <RawState>Loading...</RawState>
+            )}
+          </RawSection>
 
-          {/* Memory Data */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Memory System Data</CardTitle>
-              <p className="text-sm text-gray-400 mt-1">
-                Reflection artifacts (<code className="text-xs bg-gray-100 px-1 rounded">MEMORY</code>, <code className="text-xs bg-gray-100 px-1 rounded">SITUATION</code>) 
-                and recognition phase data fetched from artifact IPFS content and enriched with embeddings
-              </p>
-            </CardHeader>
-            <CardContent>
-              {!memoryData || (!memoryData.hasSituation && !memoryData.hasRecognition) ? (
-                <div className="text-gray-500 text-sm">No memory system data for this job</div>
-              ) : (
-                <pre className="bg-gray-50 p-4 rounded overflow-auto max-h-[400px] text-xs font-mono">
-                  {JSON.stringify({
-                    situation: memoryData.situation,
-                    recognition: memoryData.recognition,
-                    hasSituation: memoryData.hasSituation,
-                    hasRecognition: memoryData.hasRecognition
-                  }, null, 2)}
-                </pre>
-              )}
-            </CardContent>
-          </Card>
+          <RawSection
+            title="Memory System Data"
+            description={
+              <>
+                Reflection artifacts (<code className="text-xs bg-muted px-1 rounded">MEMORY</code>,{' '}
+                <code className="text-xs bg-muted px-1 rounded">SITUATION</code>) and recognition phase data fetched from artifact IPFS
+                content and enriched with embeddings
+              </>
+            }
+          >
+            {!memoryData || (!memoryData.hasSituation && !memoryData.hasRecognition) ? (
+              <RawState>No memory system data for this job</RawState>
+            ) : (
+              <RawContentBlock
+                content={{
+                  situation: memoryData.situation,
+                  recognition: memoryData.recognition,
+                  hasSituation: memoryData.hasSituation,
+                  hasRecognition: memoryData.hasRecognition
+                }}
+                label="Memory system data"
+              />
+            )}
+          </RawSection>
         </div>
       </TabsContent>
     </Tabs>

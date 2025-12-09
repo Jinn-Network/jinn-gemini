@@ -40,9 +40,8 @@ SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 # Optional; defaults shown
 PONDER_PORT=42069
 CONTROL_API_PORT=4001
-# Ponder uses RPC_URL; optionally set PONDER_START_BLOCK for a shorter sync window
-PONDER_START_BLOCK=35577849
-PONDER_MECH_ADDRESS=0xaB15F8d064b59447Bd8E9e89DD3FA770aBF5EEb7
+# Ponder uses RPC_URL; optionally set PONDER_START_BLOCK to control OlasMech Deliver scan window
+PONDER_START_BLOCK=38187727
 
 # Dev: run MCP server with tsx
 USE_TSX_MCP=1
@@ -83,7 +82,7 @@ yarn mcp:start
 ## Environment variables (confirmed)
 
 - Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required by `control-api/server.ts`).
-- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `RPC_URL`, `PONDER_START_BLOCK`, `PONDER_MECH_ADDRESS` (`ponder/ponder.config.ts`).
+- Ponder: `PONDER_GRAPHQL_URL` (default `http://localhost:42069/graphql`), `RPC_URL`, `PONDER_START_BLOCK` (controls OlasMech Deliver start block; factory scan fixed at 10,000,000 in config).
 
 Testing with .env.test
 
@@ -110,15 +109,15 @@ Testing with .env.test
 
 ## Ponder (indexer) – reads
 
-- Network: Base (8453). RPC: `RPC_URL`. Start block: `PONDER_START_BLOCK`.
-- Contracts watched: `MechMarketplace` (request events) and `OlasMech` (deliver events).
+- Network: Base (8453). RPC: `RPC_URL`. Factory scan start block: `10,000,000` (fixed). Deliver scan start block: `PONDER_START_BLOCK` (default `38187727`).
+- Contracts watched (factory pattern): `MechMarketplace` (request events + `CreateMech` discovery) and `OlasMech` (deliver events on discovered mechs).
 - Schema (`ponder/ponder.schema.ts`):
   - `request(id, mech, sender, workstreamId?, requestData?, ipfsHash?, deliveryIpfsHash?, blockNumber, blockTimestamp, delivered, jobName?, enabledTools?[])`
   - `delivery(id, requestId, mech, mechServiceMultisig, deliveryRate, ipfsHash?, transactionHash, blockNumber, blockTimestamp)`
   - `artifact(id, requestId, name, cid, topic, contentPreview?)`
 - Handlers (`ponder/src/index.ts`):
   - On `MarketplaceRequest`: upserts `request`, resolves `ipfsHash` → fetches `jobName` and `enabledTools` from IPFS, computes `workstreamId` by traversing up the `sourceRequestId` chain to find the root.
-  - On `OlasMech:Deliver`: upserts `delivery`, marks `request.delivered`, resolves delivery JSON and upserts `artifact` rows.
+  - On `OlasMech:Deliver`: upserts `delivery`, marks `request.delivered`, resolves delivery JSON and upserts `artifact` rows (uses `event.args.data` for result digest; `MarketplaceDelivery` is not used because it omits result data).
 
 **Deployment:**
 - **Production**: Hosted on Railway at `https://jinn-gemini-production.up.railway.app/` (GraphQL endpoint)
@@ -361,7 +360,7 @@ MCP server (`gemini-agent/mcp/server.ts`) registers tools from `gemini-agent/mcp
 Notes:
 - Agent tools like `create_artifact` **do not write directly to the database**. Their structured output is captured in execution telemetry. After the job is finished, the **worker** is responsible for calling the Control API to persist artifacts, messages, and reports off-chain.
 - `dispatch_new_job` enriches with the IPFS gateway URL by querying Ponder (retrying briefly for indexing).
-- When the Safe delivers, the AgentMech contract emits the `Deliver` event that Ponder listens for. CLI-only delivery shortcuts (for example `scripts/deliver_request.ts`) emit only `MarketplaceDelivery` with `delivered=false`, so the subgraph will never flip the `request.delivered` flag.
+- Deliveries are indexed from `OlasMech:Deliver` (factory children). `MarketplaceDelivery` omits result data, so using CLI-only delivery shortcuts (e.g., `scripts/deliver_request.ts`) leaves `request.delivered=false`. Always deliver via Safe/AgentMech so `Deliver` events fire.
 - For automated tests and production flows always go through the MCP toolchain (dispatch via `dispatch_new_job`, deliver via Safe).
 
 ---
@@ -2376,24 +2375,29 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 
 **Fix Applied (2025-11-25)**:
 
-**Part 1: Network ID Filtering (Jinn-Only Indexing)**
+**Part 1: Network ID Filtering (Global Jinn Explorer)**
 - Added `networkId: "jinn"` to all new request metadata in `dispatch_new_job` and `dispatch_existing_job`
 - Updated Ponder `MarketplaceRequest` handler to filter by `networkId`:
   - `networkId === "jinn"` → INDEX (explicit Jinn marker)
   - `networkId === undefined` → INDEX (legacy Jinn, backward compatibility)
-  - `networkId === anything else` → SKIP and delete pre-seeded row (non-Jinn tenant)
-- Ensures Ponder only tracks Jinn jobs, not global marketplace traffic
+  - `networkId === anything else` → SKIP (non-Jinn tenant)
+- Indexes ALL Jinn requests across ALL mechs (global marketplace view), not just requests to your mech
 
-**Part 2: Marketplace Delivery Sync**
-- Added new Ponder handler for `MechMarketplace:MarketplaceDelivery` events
-- Handler updates `request.delivered = true` for Jinn requests when ANY mech delivers them
-- Added schema fields: `deliveryMech`, `deliveryTxHash`, `deliveryBlockNumber`, `deliveryBlockTimestamp`
-- Syncs Ponder's `delivered` status with marketplace truth, regardless of which mech won
+**Part 2: Delivery Tracking (Dual Handler Architecture)**
+- `MechMarketplace:MarketplaceDelivery` handler tracks which mech delivered each Jinn request
+  - Stores `deliveryMech` on both `request` and `delivery` tables
+  - Only processes deliveries for Jinn requests (filtered by Part 1)
+- `OlasMech:Deliver` handler provides IPFS artifact resolution
+  - Marks `request.delivered = true` (source of truth for delivered status)
+  - Stores `deliveryIpfsHash` for artifact resolution
+  - Resolves artifacts, telemetry, and SITUATION embeddings from IPFS
+- Factory scan starts at block 25,000,000 (Jan 2024, covers all Jinn history)
 
-**Part 3: Clean Separation of Concerns**
-- Ponder ONLY indexes requests for OUR mech (filtered by `mech` field in MarketplaceRequest)
-- MarketplaceDelivery handler tracks when ANY mech delivers via `deliveryMech` field
-- Frontend shows OUR requests with accurate delivery status, no pollution from colleague mechs
+**Part 3: Global Explorer Capabilities**
+- Frontend displays `deliveryMech` (which mech delivered) vs `mech` (priority mech)
+- GraphQL queries support filtering by any mech in Jinn marketplace
+- Worker continues to query `delivered: false` - Ponder maintains accurate status
+- No more RevokeRequest events from late delivery attempts
 
 **Impact**: 
 - Workers stop selecting requests after marketplace marks them delivered (any mech)
@@ -2408,11 +2412,10 @@ The legacy tag-based memory system has been replaced with a situation-centric le
 - Railway Ponder deployment will auto-reindex on next push
 
 **Related Files**:
-- `gemini-agent/mcp/tools/dispatch_new_job.ts` - Added `networkId` to metadata
-- `gemini-agent/mcp/tools/dispatch_existing_job.ts` - Added `networkId` to metadata
-- `ponder/ponder.schema.ts` - Added delivery tracking fields
-- `ponder/ponder.config.ts` - Added colleague mech contract
-- `ponder/src/index.ts` - Added networkId filtering, MarketplaceDelivery handler, colleague mech handler
+- `gemini-agent/mcp/tools/dispatch_new_job.ts` - Adds `networkId` to metadata
+- `gemini-agent/mcp/tools/dispatch_existing_job.ts` - Adds `networkId` to metadata
+- `ponder/ponder.config.ts` - Factory pattern with split start blocks (CreateMech discovery + OlasMech Deliver)
+- `ponder/src/index.ts` - NetworkId filtering on requests; delivery handler uses `OlasMech:Deliver`
 
 ### Ponder v0.15 Migration & SSE Connection Fix (Fixed 2025-11-28)
 

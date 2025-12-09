@@ -38,6 +38,7 @@ export const request = onchainTable(
     requestData: t.text(),
     ipfsHash: t.text(),
     deliveryIpfsHash: t.text(),
+    deliveryMech: t.hex(), // Mech that actually delivered (from MarketplaceDelivery event)
     transactionHash: t.text(),
     blockNumber: t.bigint().notNull(),
     blockTimestamp: t.bigint().notNull(),
@@ -50,6 +51,7 @@ export const request = onchainTable(
   (table) => ({
     ts: index().on(table.blockTimestamp),
     mechIdx: index().on(table.mech),
+    deliveryMechIdx: index().on(table.deliveryMech),
     senderIdx: index().on(table.sender),
     workstreamIdIdx: index().on(table.workstreamId),
     jobDefIdx: index().on(table.jobDefinitionId),
@@ -67,6 +69,7 @@ export const delivery = onchainTable(
     sourceJobDefinitionId: t.text(),
     mech: t.hex().notNull(),
     mechServiceMultisig: t.hex().notNull(),
+    deliveryMech: t.hex(), // Mech that actually delivered (from MarketplaceDelivery event)
     deliveryRate: t.bigint().notNull(),
     ipfsHash: t.text(),
     transactionHash: t.text().notNull(),
@@ -76,6 +79,7 @@ export const delivery = onchainTable(
   (table) => ({
     ts: index().on(table.blockTimestamp),
     mechIdx: index().on(table.mech),
+    deliveryMechIdx: index().on(table.deliveryMech),
     requestIdIdx: index().on(table.requestId),
     sourceReqIdx: index().on(table.sourceRequestId),
     sourceJobDefIdx: index().on(table.sourceJobDefinitionId),

@@ -136,6 +136,9 @@ export interface BlueprintMetadata {
 
   /** Which providers contributed to this blueprint */
   providers: string[];
+
+  /** Workspace path for file operations (write_file needs absolute paths) */
+  workspacePath?: string;
 }
 
 /**

@@ -1,74 +1,90 @@
-# NetworkId Filtering & Marketplace Delivery Sync
+# NetworkId Filtering & Global Jinn Explorer
 
-**Date**: 2025-11-25  
-**Status**: ✅ Implemented  
-**Related Issue**: RevokeRequest / Stale Pending Requests
+**Date**: 2025-11-25 (Original), 2025-12-05 (Updated for Global Explorer), 2025-12-08 (Implemented)  
+**Status**: ✅ Implemented (Global Jinn Explorer)  
+**Related Design**: See `cursor-plan://2b1692c7-a844-4760-bcf3-6366e483dcfb/global.plan.md` for full global explorer specification
 
-## Problem Statement
+## Evolution: Single-Tenant → Global Jinn Explorer
 
-Workers were repeatedly attempting to deliver requests that had already been delivered by competing mechs, resulting in:
+### Original Problem (2025-11-25)
+Workers repeatedly attempted to deliver requests already delivered by competing mechs, resulting in RevokeRequest events, wasted gas, and stale UI state.
 
-1. **RevokeRequest Events**: Transactions confirmed but emitted `RevokeRequest` instead of `Deliver`
-2. **Wasted Gas**: ~120k gas per failed delivery attempt
-3. **Stale UI State**: Frontend showed requests as "pending" indefinitely
-4. **Infinite Retry Loops**: Requests remained in worker queue across runs
+### Original Solution
+- NetworkId filtering to exclude non-Jinn traffic
+- MarketplaceDelivery handler to track competing mech deliveries
+- Single-mech focus: Ponder only indexed requests TO our mech
 
-### Root Causes
-
-1. **Worker Preflight**: Only checked mech's local undelivered queue, missing marketplace state updates
-2. **Ponder Indexing**: Only indexed deliveries from our mech, missing competing mech deliveries
-3. **Global Marketplace Pollution**: Ponder indexed ALL marketplace requests, not just Jinn jobs
+### Current Architecture (2025-12-05)
+**Ponder is now a global Jinn marketplace explorer**, not a single-tenant indexer. It tracks ALL Jinn requests and deliveries across ALL mechs, enabling:
+- Multi-mech visibility (your mech + colleague mechs)
+- Marketplace-wide analytics
+- Cross-mech delivery tracking
+- Network boundary enforcement (Jinn vs non-Jinn tenants)
 
 ## Solution Architecture
 
-### Part 1: Network ID Filtering (Jinn-Only Indexing)
+### Part 1: Network ID Filtering (Jinn-Only Indexing - No Mech Filtering)
 
-**Objective**: Ensure Ponder only tracks Jinn jobs, not global marketplace traffic.
+**Objective**: Index ALL Jinn marketplace requests, regardless of which mech is involved. Exclude non-Jinn tenants.
 
 **Implementation**:
 - Added `networkId: "jinn"` to all request metadata in dispatch tools
 - Updated Ponder `MarketplaceRequest` handler with filtering logic:
   - `networkId === "jinn"` → INDEX (explicit Jinn marker)
   - `networkId === undefined` → INDEX (legacy Jinn, backward compatibility)
-  - `networkId === other` → SKIP and delete pre-seeded row (non-Jinn tenant)
+  - `networkId === other` → SKIP and mark as filtered (non-Jinn tenant)
+- **NO mech-based filtering**: `priorityMech` from marketplace event is stored in `request.mech` for reference, but does NOT control whether request is indexed
+
+**Result**: `request` table contains ALL Jinn requests across ALL mechs (global Jinn marketplace view)
 
 **Files Modified**:
 - `gemini-agent/mcp/tools/dispatch_new_job.ts` - Added `networkId` field to metadata
 - `gemini-agent/mcp/tools/dispatch_existing_job.ts` - Added `networkId` field to metadata
-- `ponder/src/index.ts` - Added networkId filtering in MarketplaceRequest handler
+- `ponder/src/index.ts` - Added networkId filtering WITHOUT mech filtering in MarketplaceRequest handler
 
-### Part 2: Marketplace Delivery Sync
+### Part 2: Marketplace Delivery Sync (Global Jinn Explorer)
 
-**Objective**: Make Ponder's `delivered` status converge with marketplace truth, regardless of which mech delivered.
+**Objective**: Track delivered status for ALL Jinn requests delivered by ANY mech.
 
 **Implementation**:
-- Added new Ponder handler for `MechMarketplace:MarketplaceDelivery` events
+- Added Ponder handler for `MechMarketplace:MarketplaceDelivery` events (batch structure)
 - Handler updates `request.delivered = true` when ANY mech delivers a Jinn request
+- Only processes deliveries for requests that exist in DB (Jinn requests indexed in Part 1)
 - Added schema fields to track marketplace delivery metadata
 
 **New Schema Fields**:
-- `deliveryMech: p.hex().optional()` - Which mech delivered (from marketplace)
-- `deliveryTxHash: p.string().optional()` - Marketplace delivery transaction hash
-- `deliveryBlockNumber: p.bigint().optional()` - Block number of marketplace delivery
-- `deliveryBlockTimestamp: p.bigint().optional()` - Timestamp of marketplace delivery
+
+On `request` table:
+- `deliveryMech: t.hex()` - Which mech delivered (from MarketplaceDelivery event)
+
+On `delivery` table:
+- `deliveryMech: t.hex()` - Which mech delivered (from MarketplaceDelivery event)
+
+**Note**: Delivery transaction metadata (txHash, blockNumber, blockTimestamp) comes from OlasMech:Deliver event, stored in `delivery` table. MarketplaceDelivery provides the `deliveryMech` address only.
 
 **Files Modified**:
-- `ponder/ponder.schema.ts` - Added delivery tracking fields
-- `ponder/src/index.ts` - Added MarketplaceDelivery handler
+- `ponder/ponder.schema.ts` - Added delivery tracking fields with index on `deliveryMech`
+- `ponder/src/index.ts` - Added MarketplaceDelivery handler (batch event processing)
 
-### Part 3: Clean Separation of Concerns
+### Part 3: Responsibility Split (MarketplaceDelivery vs OlasMech:Deliver)
 
-**Objective**: Keep Ponder focused on OUR mech's requests only.
+**Objective**: Clean separation between delivered status (marketplace) and artifact resolution (OlasMech).
 
-**Implementation**:
-- Ponder only indexes requests for OUR mech (via `mech` field filter in MarketplaceRequest)
-- MarketplaceDelivery handler provides visibility into competing mech deliveries via `deliveryMech` field
-- Frontend sees OUR requests with accurate delivery status, regardless of which mech delivered
+**MarketplaceDelivery Handler (tracks which mech delivered)**:
+- Stores `deliveryMech` on both `request` and `delivery` tables
+- Only updates Jinn requests (requests that passed networkId filter in Part 1)
+- Does NOT update `delivered` status (delegated to OlasMech:Deliver handler for consistency with existing architecture)
 
-**Why NOT index colleague mechs**:
-- Would create duplicate request entries (one per mech that claims the request)
-- Would pollute frontend with requests we didn't create
-- MarketplaceDelivery handler already provides all needed telemetry via `deliveryMech` field
+**OlasMech:Deliver Handler (IPFS artifact resolution + delivered status)**:
+- Marks `request.delivered = true` (source of truth for delivered status)
+- Stores `deliveryIpfsHash` (IPFS digest for artifact resolution)
+- Resolves artifacts, telemetry, and SITUATION embeddings from IPFS
+- Factory-based: listens to ALL OlasMech instances discovered via `MechMarketplace.CreateMech`
+
+**Result**: 
+- Worker queries `delivered` status from Ponder and gets marketplace truth
+- Frontend can filter by `mech` (requested mech) or `deliveryMech` (actual deliverer)
+- No duplicate request entries - one entry per Jinn request, with delivery info from whichever mech delivered
 
 ## Data Flow
 
@@ -88,7 +104,7 @@ Worker queries Ponder → Sees delivered: false (stale)
 Worker attempts delivery → RevokeRequest (already delivered by colleague)
 ```
 
-### After Fix
+### After Fix (Global Jinn Explorer)
 
 ```
 MarketplaceRequest → Ponder fetches IPFS metadata
@@ -97,17 +113,26 @@ MarketplaceRequest → Ponder fetches IPFS metadata
                   ↓
         networkId === "jinn" or undefined?
           YES ↓              NO ↓
-    Index request      Skip (non-Jinn)
+    Index request (ALL mechs)   Skip (non-Jinn)
                   ↓
-MechMarketplace:MarketplaceDelivery → ANY mech delivers
+MechMarketplace:MarketplaceDelivery → ANY mech delivers (batch event)
                   ↓
         Ponder checks if request exists (Jinn job?)
           YES ↓              NO ↓
     Mark delivered: true   Skip (non-Jinn)
+    Store deliveryMech
+                  ↓
+OlasMech:Deliver → ANY mech's IPFS artifact
+                  ↓
+        Store deliveryIpfsHash (artifact resolution)
+        Resolve artifacts, telemetry, SITUATION embeddings
                   ↓
 Worker queries Ponder → Sees delivered: true (synced with marketplace)
                   ↓
 Worker skips request → No delivery attempt
+                  ↓
+Frontend → Can filter by mech (requested) OR deliveryMech (actual deliverer)
+        → Shows ALL Jinn requests across ALL mechs
 ```
 
 ## Backward Compatibility
@@ -142,25 +167,40 @@ query CheckRequest($id: String!) {
     id
     delivered
     deliveryMech
-    deliveryTxHash
-    deliveryBlockNumber
     mech
   }
 }
 ```
 
-**Find requests delivered by colleague**:
+**Find requests delivered by specific mech**:
 ```graphql
-query ColleagueDeliveries {
+query MechDeliveries {
   requests(
-    where: { deliveryMech: "0xe535D7AcDEeD905dddcb5443f41980436833cA2B" }
+    where: { deliveryMech: "0xb55fadf1f0bb1de99c13301397c7b67fde44f6b1" }
     limit: 10
   ) {
     items {
       id
       deliveryMech
-      deliveryTxHash
       mech
+      delivered
+    }
+  }
+}
+```
+
+**Find all requests FOR a specific mech (global Jinn view)**:
+```graphql
+query RequestsForMech {
+  requests(
+    where: { mech: "0x8c083dfe9bee719a05ba3c75a9b16be4ba52c299" }
+    limit: 10
+  ) {
+    items {
+      id
+      mech
+      deliveryMech
+      delivered
     }
   }
 }
@@ -233,10 +273,28 @@ No worker restart needed. Worker continues to query Ponder as before, but Ponder
 - `scripts/test-networkid-and-delivery-sync.ts` - Validation script
 - `ponder/ponder.schema.ts` - Schema documentation with new fields
 
+## Global Explorer Capabilities (2025-12-05)
+
+**Frontend Features**:
+- ✅ `deliveryMech` field displayed in request and delivery detail pages
+- ✅ Filter requests by `mech` (priority mech) or `deliveryMech` (actual deliverer)
+- ✅ GraphQL queries support filtering by any mech in Jinn marketplace
+- ✅ New schema fields: `deliveryMech` on both `request` and `delivery` tables
+
+**Analytics Enabled**:
+- Query requests by `deliveryMech` to track which mechs deliver most Jinn jobs
+- Compare `request.mech` vs `deliveryMech` to see request routing patterns
+- Measure cross-mech activity in Jinn marketplace
+
+**Network Boundary Enforcement**:
+- `networkId === "jinn"` or undefined → INDEX (global Jinn marketplace)
+- `networkId !== "jinn"` → SKIP (non-Jinn tenants completely excluded)
+- No mixing of Jinn and non-Jinn traffic in database
+
 ## Future Improvements
 
-1. **Frontend UI**: Add `deliveryMech` display to request detail pages
-2. **Analytics**: Query by `deliveryMech` to track which mechs deliver most Jinn jobs
+1. **Frontend Mech Selector**: Add dropdown to filter UI by specific mech address
+2. **Marketplace Analytics Dashboard**: Visualize request distribution and delivery patterns across mechs
 3. **Reorg Protection**: Add reorg handling for marketplace delivery events (low priority, Base has fast finality)
 4. **Rate Limiting**: Add rate limiting to MarketplaceDelivery handler if marketplace traffic grows significantly
 

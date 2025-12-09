@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Filter, X } from 'lucide-react'
 import { CollectionName } from '@/lib/types'
@@ -95,8 +95,18 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
   }, [collectionName, searchParams, isInitialized])
   
   // Sync filters to URL whenever they change
+  // Note: Using a ref to track the last synced filters to prevent infinite loops
+  const lastSyncedFiltersRef = useRef<string>('')
+  
   useEffect(() => {
     if (!isInitialized) return
+    
+    // Create a stable representation of current filters
+    const filterKey = JSON.stringify(activeFilters)
+    
+    // Skip if filters haven't actually changed
+    if (filterKey === lastSyncedFiltersRef.current) return
+    lastSyncedFiltersRef.current = filterKey
     
     const params = new URLSearchParams(searchParams.toString())
     
@@ -116,7 +126,8 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     // Update URL without causing a page reload
     const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname
     router.replace(newUrl, { scroll: false })
-  }, [activeFilters, isInitialized, router, searchParams])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilters, isInitialized])
 
   // Fetch root request when filtering by workstream
   useEffect(() => {

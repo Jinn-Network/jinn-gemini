@@ -5,8 +5,8 @@
 import { useJobGraph } from '@/hooks/use-job-graph'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
 import Link from 'next/link'
-import { useState, useEffect, useCallback } from 'react'
-import { ChevronRight, ChevronDown, X, ExternalLink, Clock, GitBranch } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { ChevronRight, ChevronDown, X, ExternalLink, Clock, GitBranch, MousePointerClick } from 'lucide-react'
 import { GraphNode, GraphEdge } from '@/lib/graph-queries'
 import { StatusIcon } from '@/components/status-icon'
 import { getJobDefinition, type JobDefinition, queryRequests, getDependencyInfo, type DependencyInfo } from '@/lib/subgraph'
@@ -262,6 +262,7 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
   const [selectedJob, setSelectedJob] = useState<JobDefinition | null>(null)
   const [loadingJob, setLoadingJob] = useState(false)
   const [jobError, setJobError] = useState<string | null>(null)
+  const hasAutoSelectedRef = useRef(false)
 
   // Fetch job definition when a job is selected
   const fetchJob = useCallback(async (jobId: string) => {
@@ -302,6 +303,15 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
 
   // State to hold the next job's definition ID
   const [nextJobDefinitionId, setNextJobDefinitionId] = useState<string | null>(null)
+
+  // Auto-select the first job when tree loads
+  const rootNodeId = graph?.rootNode?.id
+  useEffect(() => {
+    if (!loading && rootNodeId && !hasAutoSelectedRef.current) {
+      hasAutoSelectedRef.current = true
+      setSelectedJobId(rootNodeId)
+    }
+  }, [loading, rootNodeId])
 
   // Calculate which job is next in queue by querying requests directly
   // This matches the worker's logic: oldest undelivered request with met dependencies
@@ -408,14 +418,14 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
   const tree = buildTree(graph.nodes, graph.edges, graph.rootNode)
 
   return (
-    <div className={`grid gap-0 transition-all duration-300 ${selectedJobId ? 'grid-cols-5' : 'grid-cols-1'}`}>
+    <div className="grid gap-0 transition-all duration-300 grid-cols-5">
       {/* Tree List */}
       <div 
-        className={`force-scrollbar divide-y divide-gray-100 max-h-[800px] ${selectedJobId ? 'col-span-2' : 'col-span-5'}`}
+        className="force-scrollbar divide-y divide-gray-100 max-h-[800px] col-span-2"
         style={{ 
           overflowY: 'scroll',
           paddingLeft: '1.5rem',
-          paddingRight: selectedJobId ? '1.5rem' : '1.5rem',
+          paddingRight: '1.5rem',
           paddingTop: '1rem',
           paddingBottom: '1rem'
         }}
@@ -431,51 +441,63 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
       </div>
 
       {/* Detail Panel */}
-      {selectedJobId && (
-        <div 
-          className="force-scrollbar col-span-3 border-l max-h-[800px]"
-          style={{ overflowY: 'scroll' }}
-        >
-          {/* Panel Header */}
-          <div className="flex items-center justify-between px-6 py-3 sticky top-0 bg-background border-b z-10">
-            <div className="flex items-center gap-3">
-              <h3 className="font-semibold text-lg">{selectedJob?.name || 'Job Details'}</h3>
-              <Link
-                href={`/jobDefinitions/${selectedJobId}`}
-                className="text-sm text-primary hover:text-primary flex items-center gap-1"
+      <div 
+        className="force-scrollbar col-span-3 border-l max-h-[800px]"
+        style={{ overflowY: 'scroll' }}
+      >
+        {selectedJobId ? (
+          <>
+            {/* Panel Header */}
+            <div className="flex items-center justify-between px-6 py-3 sticky top-0 bg-background border-b z-10">
+              <div className="flex items-center gap-3">
+                <h3 className="font-semibold text-lg">{selectedJob?.name || 'Job Details'}</h3>
+                <Link
+                  href={`/jobDefinitions/${selectedJobId}`}
+                  className="text-sm text-primary hover:text-primary flex items-center gap-1"
+                >
+                  View Full <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClosePanel}
+                className="h-8 w-8 p-0"
               >
-                View Full <ExternalLink className="w-3 h-3" />
-              </Link>
+                <X className="w-4 h-4" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClosePanel}
-              className="h-8 w-8 p-0"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
 
-          {/* Panel Content */}
-          <div className="px-6 py-4">
-            {loadingJob ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                  <div className="text-sm text-muted-foreground">Loading job details...</div>
+            {/* Panel Content */}
+            <div className="px-6 py-4">
+              {loadingJob ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                    <div className="text-sm text-muted-foreground">Loading job details...</div>
+                  </div>
                 </div>
-              </div>
-            ) : jobError ? (
-              <div className="text-center py-12">
-                <div className="text-red-600 text-sm">{jobError}</div>
-              </div>
-            ) : selectedJob ? (
-              <JobDefinitionDetailLayout record={selectedJob} />
-            ) : null}
+              ) : jobError ? (
+                <div className="text-center py-12">
+                  <div className="text-red-600 text-sm">{jobError}</div>
+                </div>
+              ) : selectedJob ? (
+                <JobDefinitionDetailLayout record={selectedJob} />
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full py-24 px-6">
+            <div className="rounded-full bg-muted p-4 mb-4">
+              <MousePointerClick className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h3 className="font-medium text-lg text-foreground mb-1">No job selected</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-[240px]">
+              Select a job from the tree to view its details
+            </p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

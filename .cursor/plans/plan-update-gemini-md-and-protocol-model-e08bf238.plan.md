@@ -1,4 +1,9 @@
-<!-- e08bf238-f648-452f-a8e0-c131f5c976fe b79a55b5-47ce-4a12-92c5-092d8463433a -->
+---
+name: "Plan: Update GEMINI.md and Protocol Model"
+overview: ""
+todos: []
+---
+
 # Plan: Update GEMINI.md and Protocol Model
 
 ## Overview

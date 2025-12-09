@@ -324,6 +324,14 @@ export async function shouldDispatchParent(
 ): Promise<ParentDispatchDecision> {
   // Only dispatch on terminal states
   if (!finalStatus || (finalStatus.status !== 'COMPLETED' && finalStatus.status !== 'FAILED')) {
+    workerLogger.warn(
+      {
+        finalStatus: finalStatus?.status,
+        hasMetadata: !!metadata,
+        sourceJobDefinitionId: metadata?.sourceJobDefinitionId,
+      },
+      '[PARENT_DISPATCH_DECISION] Not dispatching - status not terminal',
+    );
     return {
       shouldDispatch: false,
       reason: `Status is not terminal: ${finalStatus?.status || 'none'}`,
@@ -332,6 +340,13 @@ export async function shouldDispatchParent(
 
   const parentJobDefId = metadata?.sourceJobDefinitionId;
   if (!parentJobDefId) {
+    workerLogger.warn(
+      {
+        finalStatus: finalStatus.status,
+        hasMetadata: !!metadata,
+      },
+      '[PARENT_DISPATCH_DECISION] Not dispatching - no parent job in metadata',
+    );
     return {
       shouldDispatch: false,
       reason: 'No parent job in metadata',
@@ -413,26 +428,32 @@ export async function shouldDispatchParent(
       
       return {
         shouldDispatch: false,
-        reason: `Waiting for ${incompleteChildren.length}/${children.length} children to complete: ${incompleteNames}`,
+        reason: `Waiting for ${incompleteChildren.length} children to complete: ${incompleteNames}`,
       };
     }
-    
-    // All children are complete
-    workerLogger.info({
-      parentJobDefId,
-      totalChildren: children.length
-    }, 'All children complete - dispatching parent');
-    
+
+    // All children complete
+    workerLogger.info(
+      {
+        parentJobDefId,
+        totalChildren: children.length,
+      },
+      'All children complete - will dispatch parent',
+    );
+
     return {
       shouldDispatch: true,
       parentJobDefId,
     };
   } catch (error) {
-    workerLogger.warn({
-      parentJobDefId,
-      error: serializeError(error)
-    }, 'Failed to check children completion status - blocking parent dispatch for safety');
-    
+    workerLogger.warn(
+      {
+        parentJobDefId,
+        error: serializeError(error),
+      },
+      '[PARENT_DISPATCH_DECISION] Failed to check children completion status - blocking parent dispatch for safety',
+    );
+
     return {
       shouldDispatch: false,
       reason: 'Failed to verify children completion status',
@@ -494,7 +515,10 @@ export async function dispatchParentIfNeeded(
   const decision = await shouldDispatchParent(finalStatus, metadata);
 
   if (!decision.shouldDispatch) {
-    workerLogger.debug(`Not dispatching parent - ${decision.reason}`);
+    workerLogger.debug(
+      { requestId, decision },
+      'Not dispatching parent - decision criteria not met',
+    );
     return;
   }
 
@@ -630,6 +654,13 @@ export async function dispatchParentIfNeeded(
         ? { completedChildRuns: [deterministicChildRun] }
         : undefined;
 
+    workerLogger.info({
+      parentJobDefId,
+      childRequestId: requestId,
+      message,
+      hasDeterministicContext: !!deterministicContext
+    }, '[PARENT_DISPATCH_DEBUG] Preparing to dispatch parent with message');
+
     const maxRetries = 3;
     let dispatchResult: ReturnType<typeof safeParseToolResponse> | undefined;
 
@@ -659,6 +690,13 @@ export async function dispatchParentIfNeeded(
         );
 
         dispatchResult = safeParseToolResponse(rawResult);
+        
+        workerLogger.info({
+          parentJobDefId,
+          ok: dispatchResult.ok,
+          data: dispatchResult.data
+        }, '[PARENT_DISPATCH_DEBUG] Dispatch result');
+        
         if (dispatchResult.ok) {
           break;
         }

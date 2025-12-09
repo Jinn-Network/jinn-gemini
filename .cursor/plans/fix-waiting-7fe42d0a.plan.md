@@ -1,4 +1,24 @@
-<!-- 7fe42d0a-c8a3-4ce1-a57d-e3c0040ff17e 5c983d58-dcb6-4282-b512-20e7bc6fb873 -->
+---
+name: Fix WAITING Status Cycles with Live Ponder Queries
+overview: ""
+todos:
+  - id: 71e2491b-ef4c-42b1-872b-1110cf2054f6
+    content: Add queryRequestsByJobDefinition and getAllChildrenForJobDefinition
+    status: pending
+  - id: 9d6f434c-d660-42bf-9aae-b9dec248497f
+    content: Add comprehensive STATUS_INFERENCE logging
+    status: pending
+  - id: c28fa4a4-719f-43be-a026-86652805f620
+    content: Implement live Ponder query path with comparison
+    status: pending
+  - id: 863b029e-93ba-43c9-8ec8-edfa729eb00c
+    content: Create and run test-waiting-fix.sh
+    status: pending
+  - id: b3712f69-ffad-4164-9af2-4ba980df8a21
+    content: Update docs with actual test findings
+    status: pending
+---
+
 # Fix WAITING Status Cycles with Live Ponder Queries
 
 ## Context & Background
@@ -904,11 +924,3 @@ yarn inspect-workstream 0x0d2dcd01a6c0f62dafbc93bc314bd7b766296e8b6cbebf5ae62815
 - See `SUMMARY_WORKSTREAM_FIXES.md` for context on workstream analysis
 - See `WAITING_CYCLES_ANALYSIS.md` for full investigation history
 - Original hypothesis in `WAITING_CYCLES_ROOT_CAUSE.md` (pre-test speculation)
-
-### To-dos
-
-- [ ] Add queryRequestsByJobDefinition and getAllChildrenForJobDefinition
-- [ ] Add comprehensive STATUS_INFERENCE logging
-- [ ] Implement live Ponder query path with comparison
-- [ ] Create and run test-waiting-fix.sh
-- [ ] Update docs with actual test findings

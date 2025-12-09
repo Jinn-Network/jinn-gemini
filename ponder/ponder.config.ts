@@ -9,16 +9,31 @@ import fetch from 'cross-fetch';
 const runtimeMode = process.env.RUNTIME_ENVIRONMENT || 'default';
 const suppressLogs = runtimeMode !== 'default';
 
-// Universal Mech indexing: Start from November 15, 2025 (block 38187727)
-// This block was calculated to correspond to 2025-11-15T00:00:00Z
-const UNIVERSAL_START_BLOCK = 38187727;
+// Factory/child split:
+// - Factory scan: discover ALL mechs ever created
+// - Child scan: index high-volume Deliver events only from recent window
+// Base mainnet genesis: ~June 2023 (block 0)
+// Jinn marketplace activity: Mid-2024 onwards
+// Using Jan 1, 2024 as safe start (well before any Jinn activity)
+// 
+// For test environments (Tenderly VNets), use block 0 to scan the entire fork history
+// since VNets don't contain mainnet blocks before the fork point
+function getFactoryStartBlock(): number {
+  if (process.env.PONDER_FACTORY_START_BLOCK) {
+    return Number(process.env.PONDER_FACTORY_START_BLOCK);
+  }
+  return 25_000_000; // ~Jan 2024, covers all Jinn marketplace history on mainnet
+}
 
-// Get start block: use env var if set, otherwise use universal start block
-function getStartBlock(): number {
+const FACTORY_START_BLOCK = getFactoryStartBlock();
+const CHILD_START_BLOCK_DEFAULT = 38187727; // 2025-11-15T00:00:00Z
+
+// Get child start block: use env var if set, otherwise use default recent window
+function getChildStartBlock(): number {
   if (process.env.PONDER_START_BLOCK) {
     return Number(process.env.PONDER_START_BLOCK);
   }
-  return UNIVERSAL_START_BLOCK;
+  return CHILD_START_BLOCK_DEFAULT;
 }
 
 // Review mode configuration
@@ -26,15 +41,19 @@ const endBlock = process.env.PONDER_END_BLOCK ? Number(process.env.PONDER_END_BL
 
 if (runtimeMode === 'review') {
   console.log('[Ponder Config] 🔍 REVIEW MODE ACTIVE');
-  console.log(`[Ponder Config]   Start Block: ${process.env.PONDER_START_BLOCK || UNIVERSAL_START_BLOCK}`);
+  console.log(`[Ponder Config]   Child Start Block: ${process.env.PONDER_START_BLOCK || CHILD_START_BLOCK_DEFAULT}`);
+  console.log(`[Ponder Config]   Factory Start Block: ${FACTORY_START_BLOCK}`);
   console.log(`[Ponder Config]   End Block: ${endBlock || 'none (will sync to chain head)'}`);
 }
 
-const startBlock = getStartBlock();
+// NOTE: Don't evaluate childStartBlock here at module-load time!
+// getChildStartBlock() must be called lazily so test env vars are set first.
+// See line 191 where it's called in the config object.
 
 if (!suppressLogs) {
-  console.log('[Ponder Config] Universal Mech indexing enabled');
-  console.log('[Ponder Config] Start block:', startBlock);
+  console.log('[Ponder Config] Mech factory pattern enabled (Marketplace → OlasMech)');
+  console.log('[Ponder Config] Factory start block:', FACTORY_START_BLOCK);
+  console.log('[Ponder Config] Child start block (lazy eval):', process.env.PONDER_START_BLOCK || CHILD_START_BLOCK_DEFAULT);
 }
 
 // Read RPC_URL dynamically to support runtime overrides (important for tests!)
@@ -79,7 +98,9 @@ const configInfo = [
   `Resolved RPC URL: ${rpcUrl}`,
   `Is Tenderly VNet: ${isTenderly}`,
   `Finality Block Count: ${getFinalityBlockCount()}`,
-  `Start Block: ${startBlock}`,
+  `Factory Start Block: ${FACTORY_START_BLOCK}`,
+  `Child Start Block (env var): ${process.env.PONDER_START_BLOCK || 'not set'}`,
+  `Child Start Block (default): ${CHILD_START_BLOCK_DEFAULT}`,
   `End Block: ${endBlock || 'none (realtime)'}`,
   `Database Mode: ${databaseConfig.kind}`,
 ];
@@ -93,7 +114,8 @@ if (databaseConfig.kind === 'postgres') {
 }
 
 configInfo.push(
-  `Indexing Mode: Universal (all Mechs via factory pattern)`,
+  `Indexing Mode: Factory (MechMarketplace.CreateMech → OlasMech.Deliver)`,
+  `Child Start Block (at config time): ${getChildStartBlock()}`,
   `OPERATE_PROFILE_DIR: ${process.env.OPERATE_PROFILE_DIR || 'not set'}`,
   `PORT: ${process.env.PORT || 'not set'}`,
   '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
@@ -138,18 +160,46 @@ export default createConfig({
       address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
       // Reuse ABI from mech-client-ts to avoid duplication during dev
       abi: MechMarketplaceAbi,
-      startBlock: UNIVERSAL_START_BLOCK,
+      // CRITICAL TEST ENVIRONMENT FIX:
+      // In test mode (FACTORY_START_BLOCK=0), we bypass the factory pattern on OlasMech
+      // by setting address: undefined. But MechMarketplace must ALSO start from the recent
+      // block, otherwise Ponder tries to scan from block 0 which doesn't exist in Tenderly VNets.
+      //
+      // Production: Scan from block 25M to discover all historical CreateMech events
+      // Test: Scan from recent block (VNet fork point) to only index test dispatches
+      startBlock: FACTORY_START_BLOCK === 0 ? getChildStartBlock() : FACTORY_START_BLOCK,
       endBlock,
     },
     OlasMech: {
       chain: "base",
+      // AgentMech ABI may be packaged either under .abi or as raw JSON
       abi: (AgentMechAbi as any)?.abi || (AgentMechAbi as any),
-      address: factory({
-        address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
-        event: MechMarketplaceAbi.find((item: any) => item.type === 'event' && item.name === 'CreateMech'),
-        parameter: "mech",
-      }),
-      startBlock: UNIVERSAL_START_BLOCK,
+      // CRITICAL TEST ENVIRONMENT FIX:
+      // Tenderly VNets fork from recent mainnet (~40M) but DON'T contain historical
+      // CreateMech events from earlier blocks. The factory pattern requires scanning
+      // for CreateMech events to discover mech addresses before indexing Deliver events.
+      //
+      // Test environments set PONDER_FACTORY_START_BLOCK=0, but the VNet doesn't have
+      // blocks 0 through ~40M, so the factory scan finds NO mechs and never indexes Deliver.
+      //
+      // SOLUTION: When FACTORY_START_BLOCK=0 (test mode), bypass factory pattern entirely
+      // and index from all addresses. This works because:
+      // 1. Test VNets are small (few hundred blocks) so scanning all addresses is fast
+      // 2. Tests dispatch to known mech address, so events will be indexed
+      // 3. Production (FACTORY_START_BLOCK=25M) still uses factory pattern for efficiency
+      address: FACTORY_START_BLOCK === 0 
+        ? undefined // undefined = index from all addresses (test mode only!)
+        : factory({
+            address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
+            event: MechMarketplaceAbi.find((item: any) => item.type === 'event' && item.name === 'CreateMech'),
+            parameter: "mech",
+            // Scan factory events from early deployment to discover all historical mechs
+            startBlock: FACTORY_START_BLOCK,
+            endBlock,
+          }),
+      // Index Deliver events only from recent high-volume window (or env override)
+      // CRITICAL: Call getChildStartBlock() here (not at module-load time) so test env vars are set first
+      startBlock: getChildStartBlock(),
       endBlock,
     },
   },

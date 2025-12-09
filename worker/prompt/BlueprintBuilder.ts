@@ -195,6 +195,8 @@ export class BlueprintBuilder {
         generatedAt: new Date().toISOString(),
         requestId,
         providers,
+        // Expose workspace path for file operations (write_file needs absolute paths)
+        workspacePath: process.env.JINN_WORKSPACE_DIR || process.env.CODE_METADATA_REPO_ROOT || undefined,
       },
     };
 

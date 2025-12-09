@@ -1,4 +1,9 @@
-<!-- 8d1e4248-b39a-4510-a735-ee9f018a86f7 8eb515cf-9d2c-4ad3-8021-6798f7b3068c -->
+---
+name: Create Workstream Inspection Script
+overview: ""
+todos: []
+---
+
 # Create Workstream Inspection Script
 
 I will create a new script `scripts/inspect-workstream.ts` to visualize the complete graph of a workstream. This will provide a high-fidelity but manageable view of job execution trees, enabling you to see relationships, triggers, and status across the entire venture.

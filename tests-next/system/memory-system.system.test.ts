@@ -51,7 +51,6 @@ import {
   waitForJobIndexed,
   pollGraphQL,
 } from '../../tests/helpers/shared.js';
-import { getOptionalMechModel, resetConfigForTests } from '../../config/index.js';
 
 async function waitForTransactionReceipt(
   rpcUrl: string,
@@ -296,11 +295,7 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
     'validates complete memory system lifecycle with recognition, reflection, and indexing',
     async () => {
       await withSuiteEnv(async () => {
-        const prevWorkerStdio = process.env.TESTS_NEXT_WORKER_STDIO;
-        process.env.TESTS_NEXT_WORKER_STDIO = 'inherit';
-
-        try {
-          await withTestEnv(async () => {
+        await withTestEnv(async () => {
             // Load test environment
             try {
               const testEnv = path.join(process.cwd(), '.env.test');
@@ -459,17 +454,18 @@ describe('System: Memory System (MEM-001 to MEM-010)', () => {
                             examples: {
                               do: [
                                 'Create "olas-staking-analysis" artifact with current parameters (APY 8-12%, locks 1w-1y, weekly rewards, 10% penalty).',
-                                'If delegation is needed, dispatch optimization child job with instructions to write "olas-staking-optimization.md" with heading "# OLAS Staking Optimization Strategy" and to create a MEMORY artifact with tags [staking, optimization, olas]. When dispatching, set enabledTools to include ["create_artifact", "write_file"] (in addition to defaults).',
+                                'If delegation is needed, dispatch optimization child job with a blueprint containing an assertion that REQUIRES: (1) calling write_file to create exactly "olas-staking-optimization.md" at repo root with heading "# OLAS Staking Optimization Strategy", (2) creating a MEMORY artifact with tags [staking, optimization, olas]. The blueprint must explicitly state the exact filename "olas-staking-optimization.md" as a requirement, not a suggestion.',
+                                'When dispatching, set enabledTools to include ["create_artifact", "write_file"] (in addition to defaults).',
                                 'Provide detailed context to the child job for optimization.',
                               ],
                               dont: [
                                 'Skip creating the analysis artifact.',
-                                'Dispatch child job without MEMORY artifact instructions.',
-                                'Forget to include tags on the MEMORY artifact.',
+                                'Dispatch child job with vague instructions like "write an optimization file" - the filename must be explicit in the blueprint.',
+                                'Forget to include tags on the MEMORY artifact instructions.',
                               ],
                             },
                             commentary:
-                              'Task 1: Call create_artifact with name="olas-staking-analysis", topic="defi-research", content "# OLAS Staking\n\nCurrent: APY 8-12%, 1w-1y locks, weekly rewards, 10% penalty.\n\nOptimize: dynamic APY, tiered locks, compounding." Task 2: If delegation is required, instruct the child to create the optimization file and MEMORY artifact for future reuse.',
+                              'Task 1: Call create_artifact with name="olas-staking-analysis", topic="defi-research", content "# OLAS Staking\n\nCurrent: APY 8-12%, 1w-1y locks, weekly rewards, 10% penalty.\n\nOptimize: dynamic APY, tiered locks, compounding." Task 2: If delegation is required, create a blueprint for the child with an assertion like: {"id":"OPT-001","assertion":"Call write_file to create olas-staking-optimization.md with heading # OLAS Staking Optimization Strategy. CRITICAL: Use ABSOLUTE path by prepending metadata.workspacePath to filename (e.g., metadata.workspacePath + /olas-staking-optimization.md).","examples":{"do":["Check metadata.workspacePath at end of your blueprint for the repository root path","Construct absolute path: metadata.workspacePath + /olas-staking-optimization.md","Call write_file with the complete absolute path","Include optimization recommendations in the file"],"dont":["Use relative path like just olas-staking-optimization.md","Assume current directory is repository root","Skip prepending metadata.workspacePath"]},"commentary":"File must be created at repository root using ABSOLUTE path. metadata.workspacePath contains the repository root directory. Native tools execute in gemini-agent/ but files belong in the repository. Always prepend metadata.workspacePath to filenames."}. The absolute path instruction using metadata.workspacePath must be in the assertion text itself.',
                           },
                           {
                             id: 'MEM-002C',
@@ -1444,22 +1440,9 @@ const { requestId } = childJob;
                   console.log('[TEST] Execution trace validated ✓');
 
                   // EXQ-004: Validate model selection from job metadata
-                  // Note: Grandchild uses the runtime default model (no explicit override)
-                  // Worker is started with model: 'gemini-2.5-pro', which gets inherited via MECH_MODEL
-                  // Set MECH_MODEL in test context to match what the worker uses for proper assertion
-                  const workerModel = 'gemini-2.5-pro'; // Matches runWorkerOnce model parameter
-                  const prevMechModel = process.env.MECH_MODEL;
-                  process.env.MECH_MODEL = workerModel;
-                  resetConfigForTests(); // Reset config cache to pick up MECH_MODEL change
-                  const expectedGrandchildModel =
-                    getOptionalMechModel?.() ?? process.env.MECH_MODEL ?? 'gemini-2.5-flash';
-                  // Restore previous MECH_MODEL
-                  if (prevMechModel === undefined) {
-                    delete process.env.MECH_MODEL;
-                  } else {
-                    process.env.MECH_MODEL = prevMechModel;
-                  }
-                  resetConfigForTests(); // Reset config cache again after restoring
+                  // Model is set at job dispatch time, not from worker environment
+                  // Grandchild was dispatched by child without explicit model, so uses default 'gemini-2.5-flash'
+                  const expectedGrandchildModel = 'gemini-2.5-flash';
                   expect(situation.job.model).toBe(expectedGrandchildModel); // Assert 49
                   console.log(`[TEST] Model selection validated (default model = ${expectedGrandchildModel}) ✓`);
 
@@ -1660,16 +1643,8 @@ const { requestId } = childJob;
               );
             });
           });
-        } finally {
-          // Restore worker stdio setting
-          if (prevWorkerStdio === undefined) {
-            delete process.env.TESTS_NEXT_WORKER_STDIO;
-          } else {
-            process.env.TESTS_NEXT_WORKER_STDIO = prevWorkerStdio;
-          }
-        }
-      });
-    },
+        });
+      },
     600_000 // 10 minute timeout
   );
 });

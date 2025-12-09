@@ -301,7 +301,7 @@ describe('deliverViaSafeTransaction', () => {
           tx: '0xtxhash',
           status: 'success',
         },
-        'Delivered via Safe'
+        '[DELIVERY_DEBUG] Delivered via Safe - SUCCESS PATH'
       );
     });
 

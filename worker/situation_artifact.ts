@@ -1,6 +1,5 @@
 import { embedText } from '../gemini-agent/mcp/tools/embed_text.js';
 import { createArtifact as mcpCreateArtifact } from '../gemini-agent/mcp/tools/create_artifact.js';
-import { getOptionalMechModel } from '../gemini-agent/mcp/tools/shared/env.js';
 import { safeParseToolResponse } from './tool_utils.js';
 import { encodeSituation, enrichSituation } from './situation_encoder.js';
 import { workerLogger } from '../logging/index.js';
@@ -68,7 +67,8 @@ export async function createSituationArtifactForRequest(args: CreateSituationArt
     let situation: any;
     let summaryText: string;
     
-    const runtimeModel = args.metadata?.model || getOptionalMechModel() || 'gemini-2.5-flash';
+    // Model should come from job metadata, not worker environment
+    const runtimeModel = args.metadata?.model || 'gemini-2.5-flash';
     
     if (args.recognition?.initialSituation) {
       if (args.recognition.initialSituation.job && !args.recognition.initialSituation.job.model) {

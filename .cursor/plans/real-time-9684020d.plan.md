@@ -1,4 +1,42 @@
-<!-- 9684020d-24aa-4020-a016-569a7696348e 3fa6a17a-e315-46d7-a296-6f7b345c5fb0 -->
+---
+name: Refactor to Ponder Native SSE using client.live()
+overview: ""
+todos:
+  - id: 655ab880-b5b6-464d-a176-ecb81b653ce0
+    content: Create ponder/src/api/index.ts with SQL client middleware
+    status: pending
+  - id: 3cae4aa4-9a07-4d59-ad11-91eee16b2b4e
+    content: Add @ponder/client to frontend/explorer dependencies
+    status: pending
+  - id: 6930d003-dda8-44a6-9bc7-d286c3e529e5
+    content: Create frontend/explorer/src/lib/ponder-client.ts
+    status: pending
+  - id: 775b093e-0bb1-497b-a725-c140e6cd4e4b
+    content: Refactor use-realtime-data.ts to use client.live()
+    status: pending
+  - id: 16785565-a2e9-45db-acd7-4b937ce885aa
+    content: Update use-subgraph-collection.ts to use refactored hook
+    status: pending
+  - id: 9cfb98d6-a1b9-4683-95b8-32495e11bd1c
+    content: Update use-job-graph.ts to use refactored hook
+    status: pending
+  - id: cb87e242-c6c3-4035-b657-be488a07fd2f
+    content: Update job-detail-layout.tsx to use refactored hook
+    status: pending
+  - id: 55ca2e9f-04ca-4720-9cf5-a9a7c0d100d5
+    content: Delete realtime-server.ts, start-combined.sh, and related files
+    status: pending
+  - id: ab80d269-1eb8-43fe-8058-290e9975ebd2
+    content: Remove NEXT_PUBLIC_REALTIME_URL references
+    status: pending
+  - id: adaea670-9db3-48c6-b918-bbddaeeb5fdf
+    content: Revert Railway start command to standard ponder start
+    status: pending
+  - id: 3554417b-6dd5-4c35-a268-120fc56591b7
+    content: Test client.live() subscriptions work locally and on Railway
+    status: pending
+---
+
 # Refactor to Ponder Native SSE using client.live()
 
 ## Overview
@@ -347,17 +385,3 @@ Remove dependencies that were only needed for custom server:
 - Frontend automatically connects to `/sql` endpoint for SSE
 - No additional Railway services or ports needed
 - PostgreSQL triggers are not required
-
-### To-dos
-
-- [ ] Create ponder/src/api/index.ts with SQL client middleware
-- [ ] Add @ponder/client to frontend/explorer dependencies
-- [ ] Create frontend/explorer/src/lib/ponder-client.ts
-- [ ] Refactor use-realtime-data.ts to use client.live()
-- [ ] Update use-subgraph-collection.ts to use refactored hook
-- [ ] Update use-job-graph.ts to use refactored hook
-- [ ] Update job-detail-layout.tsx to use refactored hook
-- [ ] Delete realtime-server.ts, start-combined.sh, and related files
-- [ ] Remove NEXT_PUBLIC_REALTIME_URL references
-- [ ] Revert Railway start command to standard ponder start
-- [ ] Test client.live() subscriptions work locally and on Railway

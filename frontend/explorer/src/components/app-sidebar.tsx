@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ChevronRight, Workflow, Briefcase, FileText } from "lucide-react"
+import { ChevronRight, Workflow, Briefcase, FileText, Home, Info } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 import {
@@ -37,9 +37,16 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <h2 className="text-lg font-bold text-sidebar-foreground px-2 group-data-[collapsible=icon]:hidden">
-          Jinn Explorer
-        </h2>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={pathname === '/'}>
+              <Link href="/" className="font-bold">
+                <Home className="!opacity-100" />
+                <span className="font-bold">Jinn Explorer</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -107,6 +114,16 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href="https://www.jinn.network" target="_blank" rel="noopener noreferrer">
+                <Info />
+                <span>About Jinn</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
           <div className="flex items-center [&_span]:group-data-[collapsible=icon]:hidden">
             <RealtimeStatusIndicator status={realtimeStatus} />

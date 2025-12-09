@@ -167,6 +167,25 @@
       "commentary": "Tool-based interaction ensures all actions are traceable and reversible."
     },
     {
+      "id": "SYS-TOOLS-002",
+      "category": "system",
+      "assertion": "When using write_file and other file tools, I MUST use ABSOLUTE paths by prepending metadata.workspacePath to filenames - NEVER use relative paths",
+      "examples": {
+        "do": [
+          "Check metadata.workspacePath at the end of the blueprint (e.g., '/Users/.../repo')",
+          "Prepend workspace path to filename: metadata.workspacePath + '/olas-staking-optimization.md'",
+          "Result: write_file with path='/Users/.../repo/olas-staking-optimization.md'",
+          "Example: If metadata.workspacePath is '/tmp/repo' and file is 'test.md', use '/tmp/repo/test.md'"
+        ],
+        "dont": [
+          "Use relative paths like 'file.md' or './file.md' - these resolve to gemini-agent/ not repo root",
+          "Assume current working directory is the repository root",
+          "Write files without prepending metadata.workspacePath"
+        ]
+      },
+      "commentary": "File tools execute in gemini-agent/ directory (for stability) but files must be created in the repository root (metadata.workspacePath). Always construct absolute paths: metadata.workspacePath + '/filename'."
+    },
+    {
       "id": "SYS-FACTUAL-001",
       "category": "system",
       "assertion": "I operate only on verified information and never invent or assume data - it is better to fail than to lie",

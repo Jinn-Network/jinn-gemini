@@ -1,4 +1,33 @@
-<!-- d1e95ca2-a27d-4055-8b95-ed88343e3d76 dffc9749-5244-4f84-9302-ed503b6aed3d -->
+---
+name: Comprehensive Backend Test Suite Gap Analysis
+overview: ""
+todos:
+  - id: 75c07815-e8f9-48ef-ad47-535662715933
+    content: Create `getAllChildrenForJobDefinition.test.ts` (P0) ✅
+    status: completed
+  - id: a14df12c-893c-4a39-8774-ecffc27401a7
+    content: Update `inferStatus.test.ts` with activeChildren logic (P0) ✅
+    status: completed
+  - id: fae6efd9-86ca-436e-b05c-b5614b6a2429
+    content: Add stale job reclaiming test to `validation-gateway.integration.test.ts` (P0) ✅
+    status: completed
+  - id: ad86bdcd-1735-4244-a7c1-f7e239a4bd31
+    content: Create `mech_worker.test.ts` for RPC filtering (P1) ✅
+    status: completed
+  - id: a796b2ad-457e-4d14-9918-a6b387144d21
+    content: Create `control_api_client.test.ts` (P1) ✅
+    status: completed
+  - id: 1b608686-f0cf-4255-8873-ea90bc30096e
+    content: Create `staleClaimLogic.test.ts` (P1) ✅
+    status: completed
+  - id: ae8a083c-6ebe-4add-8b1d-c797f89c24b1
+    content: Create `dependencies.test.ts` (P2) ✅
+    status: completed
+  - id: 7d5fafd1-fd0b-4181-83dc-de23aca2745b
+    content: Create `queryRequestsByJobDefinition.test.ts` (P2) ✅
+    status: completed
+---
+
 # Comprehensive Backend Test Suite Gap Analysis
 
 This plan addresses all identified test coverage gaps in the backend, prioritizing critical logic paths (status inference, stale reclaiming, RPC filtering) and aligning with the `tests-next` CI workflow.
@@ -143,16 +172,6 @@ yarn test:integration:next -- tests-next/integration/ponder/last-status.integrat
 yarn test:next
 ```
 
-### To-dos
-
-- [x] Create `getAllChildrenForJobDefinition.test.ts` (P0) ✅
-- [x] Update `inferStatus.test.ts` with activeChildren logic (P0) ✅
-- [x] Add stale job reclaiming test to `validation-gateway.integration.test.ts` (P0) ✅
-- [x] Create `mech_worker.test.ts` for RPC filtering (P1) ✅
-- [x] Create `control_api_client.test.ts` (P1) ✅
-- [x] Create `staleClaimLogic.test.ts` (P1) ✅
-- [x] Create `dependencies.test.ts` (P2) ✅
-- [x] Create `queryRequestsByJobDefinition.test.ts` (P2) ✅
 
 ## Implementation Complete
 

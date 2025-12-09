@@ -67,7 +67,7 @@ export async function runWorkerOnce(
   env.PONDER_GRAPHQL_URL = options.gqlUrl;
   env.CONTROL_API_URL = options.controlApiUrl ?? 'http://localhost:4001/graphql';
   env.USE_CONTROL_API = 'true';
-  env.MECH_MODEL = options.model ?? 'gemini-2.5-pro';
+  // Model comes from job metadata, not environment - don't set MECH_MODEL
   env.MECH_TARGET_REQUEST_ID = targetRequestId;
 
   console.log('[runWorkerOnce] launching worker', {
@@ -95,7 +95,7 @@ export async function runWorkerOnce(
     } catch {}
   }
 
-  // Run worker CLI with --single so it exits after processing the target request.
+  // Run worker CLI with --single so it exits after processing the target request
   const workerProc = execa('yarn', ['dev:mech', '--', '--single'], {
     cwd: process.cwd(),
     env,

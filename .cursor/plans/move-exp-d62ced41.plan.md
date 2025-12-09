@@ -1,4 +1,9 @@
-<!-- d62ced41-99a4-4aab-be56-878f6b190708 e1e32639-b5bb-4ccf-874a-e8625e7e48c0 -->
+---
+name: Move Request Expiration Logic to Client-Side
+overview: ""
+todos: []
+---
+
 # Move Request Expiration Logic to Client-Side
 
 ## Problem

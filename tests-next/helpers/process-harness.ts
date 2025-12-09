@@ -266,6 +266,10 @@ export class ProcessHarness {
       PONDER_DATABASE_URL: process.env.SUPABASE_POSTGRES_URL,
       SUPABASE_POSTGRES_URL: process.env.SUPABASE_POSTGRES_URL,
       VITEST: 'true',
+      // Set factory start block to 0 for test environments to scan entire VNet history
+      // This allows Ponder to discover CreateMech events in Tenderly VNets which don't
+      // contain mainnet blocks before the fork point
+      PONDER_FACTORY_START_BLOCK: '0',
     };
 
     if (typeof startBlock === 'number') {
