@@ -768,10 +768,10 @@
   resolved "https://registry.npmjs.org/@nolyfill/is-core-module/-/is-core-module-1.0.39.tgz"
   integrity sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==
 
-"@ponder/client@^0.15.12":
-  version "0.15.12"
-  resolved "https://registry.yarnpkg.com/@ponder/client/-/client-0.15.12.tgz#9d6e0d56edaa7d08365a4ba317224c9177191d8d"
-  integrity sha512-p8diicKmvENtJohIQ2zHMByPaGL6NAXrjRTQDpWrFnFs8VuHkZNo1q7o5qHQ10iTisr9Zgzh36olSsUlu0WmsA==
+"@ponder/client@^0.15.16":
+  version "0.15.16"
+  resolved "https://registry.yarnpkg.com/@ponder/client/-/client-0.15.16.tgz#5f59fdf76b66295808fc0c70ec1f013c7ddfaec5"
+  integrity sha512-C+Ys7QPyk/+LUgnnOw5Vxrlsg1hR3QQeVXHIuylxuQOcTA7J+9OdvaWf5kqlHUBQgmczPAX80XiQBNzFZ2M8mw==
   dependencies:
     drizzle-orm "0.41.0"
     eventsource "^3.0.5"
