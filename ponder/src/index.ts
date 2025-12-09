@@ -251,17 +251,9 @@ ponder.on(
     const sender: string = String(event.args.requester);
     const requestIds: string[] = toStringArray((event.args as any).requestIds);
     const requestDatas: string[] = toStringArray((event.args as any).requestDatas);
-    const networkId: string | undefined = event.args.networkId ? String(event.args.networkId) : undefined;
     const txHash: string = String(event.transaction.hash);
     const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
     const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
-
-    // GLOBAL JINN EXPLORER: Only index requests with networkId === "jinn" (or missing for legacy)
-    // This filters out all non-Jinn Olas marketplace traffic
-    if (networkId && networkId !== "jinn") {
-      logger.debug({ requestIds, networkId, txHash }, "Skipping non-Jinn request");
-      return;
-    }
 
     const repo: Repository = createRepository(db, request, "request");
     const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
@@ -276,18 +268,46 @@ ponder.on(
       const digestHex = String(dataHex).replace(/^0x/, '').toLowerCase();
       const { cidHex: ipfsHash, cidBase32 } = buildRawCidFromDigest(digestHex);
       
-      logger.info({ requestId: id, ipfsHash, cidBase32, txHash }, "Processing MarketplaceRequest - pre-seeding request row");
+      logger.info({ requestId: id, ipfsHash, cidBase32, txHash }, "Processing MarketplaceRequest - fetching IPFS metadata");
       
-      // Pre-seed request row immediately with minimal fields available from chain event
-      // This ensures the request exists in DB before expensive IPFS fetch completes,
-      // preventing Deliver events from hitting null constraint errors
+      // Fetch IPFS metadata FIRST to check networkId before any DB writes
+      // This ensures non-Jinn requests are filtered out without creating DB records
+      let content: any = null;
+      try {
+        content = await fetchRequestMetadata(cidBase32);
+        if (!content || typeof content !== "object") {
+          throw new Error(`IPFS payload for request ${id} is empty or malformed`);
+        }
+        logger.info({ requestId: id, hasJobName: !!content.jobName, hasJobDefinitionId: !!content.jobDefinitionId, networkId: content.networkId }, "IPFS metadata fetched successfully");
+      } catch (ipfsError: any) {
+        // If IPFS fetch fails, skip this request entirely
+        // Without metadata, we can't verify networkId, so safer to skip
+        logger.error(
+          { requestId: id, ipfsHash, cidBase32, error: serializeError(ipfsError) },
+          "Failed to fetch IPFS metadata for request - skipping (cannot verify networkId)"
+        );
+        continue;
+      }
+
+      // GLOBAL JINN EXPLORER: Only index requests with networkId === "jinn" (or missing for legacy)
+      // This filters out all non-Jinn Olas marketplace traffic
+      // NOTE: networkId comes from IPFS metadata, NOT from chain event args (which doesn't have this field)
+      const networkId: string | undefined = typeof content.networkId === "string" ? content.networkId : undefined;
+      if (networkId && networkId !== "jinn") {
+        logger.debug({ requestId: id, networkId, txHash }, "Skipping non-Jinn request (networkId filtering)");
+        continue;
+      }
+
+      // Now that we've verified this is a Jinn request, insert into DB
+      logger.info({ requestId: id, networkId: networkId || 'undefined (legacy)' }, "Request passed networkId filter - creating DB record");
+      
       try {
         await repo.upsert({
           id,
           create: {
             mech,
             sender,
-            workstreamId: id, // Temporary: will be recomputed after metadata fetch if sourceRequestId exists
+            workstreamId: id, // Temporary: will be recomputed after metadata extraction if sourceRequestId exists
             transactionHash: txHash,
             blockNumber,
             blockTimestamp,
@@ -295,37 +315,13 @@ ponder.on(
             delivered: false,
           },
           update: {
-            // Don't overwrite existing fields during pre-seed
+            // Don't overwrite existing fields during initial insert
           },
         });
-        logger.info({ requestId: id }, "Pre-seed upsert completed successfully");
+        logger.info({ requestId: id }, "Initial request insert completed successfully");
       } catch (upsertError: any) {
-        logger.error({ requestId: id, error: serializeError(upsertError) }, "Pre-seed upsert failed");
+        logger.error({ requestId: id, error: serializeError(upsertError) }, "Initial request insert failed");
         throw upsertError;
-      }
-      
-      // Now fetch IPFS metadata (expensive operation)
-      // Wrap in try-catch to ensure we always complete the enriched update,
-      // even if IPFS fetch fails (though it should not fail in normal operation)
-      let content: any = null;
-      try {
-        logger.info({ requestId: id, cidBase32 }, "Fetching IPFS metadata");
-        content = await fetchRequestMetadata(cidBase32);
-        if (!content || typeof content !== "object") {
-          throw new Error(`IPFS payload for request ${id} is empty or malformed`);
-        }
-        logger.info({ requestId: id, hasJobName: !!content.jobName, hasJobDefinitionId: !!content.jobDefinitionId }, "IPFS metadata fetched successfully");
-      } catch (ipfsError: any) {
-        // If IPFS fetch fails, log error but don't fail the entire handler
-        // The pre-seeded row exists, so Deliver events won't hit null constraints
-        // But we can't populate enriched fields without the content
-        logger.error(
-          { requestId: id, ipfsHash, cidBase32, error: serializeError(ipfsError) },
-          "Failed to fetch IPFS metadata for request (pre-seeded row exists, but enriched fields will be missing)"
-        );
-        // Don't re-throw - let handler continue with pre-seeded row
-        // Skip enrichment and continue to next request in batch
-        continue;
       }
 
       let jobName: string | undefined;

@@ -611,15 +611,19 @@ All 6 integration tests in `validation-gateway.integration.test.ts` now pass (wa
 - Child job names must propagate target date for clarity
 - Inline source attribution prevents vague aggregate claims
 
-### 19. Gemini CLI Version Mismatch Causes Execution Hang (2025-12-09)
-**Issue:** Worker appears to hang after "Spawning Gemini CLI" log - no output for 5-10+ minutes. Process shows `kevent` wait state, TCP connection ESTABLISHED but no API response.
-**Root Cause:** Outdated `@google/gemini-cli` version. Package.json pinned to `0.11.2` while latest was `0.19.4` (8 minor versions behind). API endpoints and communication protocols changed significantly between versions.
+### 19. Gemini CLI Hangs in Git Repository Directories (2025-12-09)
+**Issue:** Worker hangs after "Spawning Gemini CLI" for jobs with code workspaces (git repos). Artifact-only jobs work fine. CLI says "No input provided via stdin" when tested manually.
+**Root Cause:** CLI v0.11.2 handles positional prompts differently depending on `cwd`:
+- Directory WITHOUT `.git`: positional prompt argument works
+- Directory WITH `.git`: positional prompt IGNORED, expects `-p` flag or stdin
+
+The agent was passing prompts as positional arguments (`args.push(prompt)`), which worked from `gemini-agent/` but failed from workspace directories like `~/jinn-repos/repo-name/`.
 **Diagnosis Steps:**
-1. Check installed version: `npx @google/gemini-cli --version`
-2. Check latest version: `npm show @google/gemini-cli version`
-3. If mismatch, update package.json and run `yarn install`
-**Solution:** Updated `package.json` from `"@google/gemini-cli": "0.11.2"` to `"@google/gemini-cli": "^0.19.4"`
-**Prevention:** Use `^` prefix for Gemini CLI version to allow minor updates, or periodically check for updates. The Gemini CLI has weekly releases.
+1. Test CLI from agent dir: `cd gemini-agent && npx @google/gemini-cli --yolo "test"` → works
+2. Test CLI from workspace: `cd ~/jinn-repos/repo && npx @google/gemini-cli --yolo "test"` → "No input provided"
+3. Test with -p flag: `cd ~/jinn-repos/repo && npx @google/gemini-cli --yolo -p "test"` → works
+**Solution:** Changed `gemini-agent/agent.ts` from `args.push(prompt)` to `args.push('-p', prompt)` to explicitly use the `-p` flag for non-interactive mode.
+**Prevention:** Always use explicit `-p` flag for CLI prompts, not positional arguments.
 
 ### 20. Auto-Dispatch sourceRequestId Null – workstreamId Conditional (2025-12-08)
 **Issue:** Auto-dispatched child requests had `sourceRequestId: null` instead of parent's request ID, breaking hierarchy tracking.
@@ -647,6 +651,39 @@ if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobD
 - `gemini-agent/mcp/tools/dispatch_existing_job.ts:125-133` – Removed workstreamId conditional
 **Prevention:** Workstream preservation and hierarchy tracking are independent concerns - don't conflate them.
 **Related:** Gotchas #12 (stale hierarchy), #13 (Ponder latency)
+
+### 21. NetworkId Filtering Bug – Reading from Non-Existent Event Arg (2025-12-09) [FIXED]
+**Issue:** Non-Jinn requests (e.g., mech `0xe535d7acdeed905dddcb5443f41980436833ca2b`) appearing in frontend explorer despite networkId filtering being in place.
+**Root Cause:** `ponder/src/index.ts` tried to read `networkId` from `event.args.networkId` in the `MarketplaceRequest` handler. However, the `MarketplaceRequest` event ABI has NO `networkId` field – it only exists in the IPFS metadata.
+**Evidence:**
+- The `MarketplaceRequest` event has fields: `priorityMech`, `requester`, `numRequests`, `requestIds`, `requestDatas` (checked ABI)
+- Code at line 254: `const networkId = event.args.networkId ? String(event.args.networkId) : undefined;` → ALWAYS undefined
+- Filter check: `if (networkId && networkId !== "jinn")` → never triggers because undefined is falsy
+- IPFS metadata (containing actual `networkId`) fetched AFTER the filter check
+
+**Bug Flow:**
+```
+1. MarketplaceRequest event emitted
+2. Code reads event.args.networkId → always undefined
+3. Filter check: (undefined && undefined !== "jinn") = false → passes all requests
+4. Pre-seeds DB with request row
+5. Fetches IPFS metadata (too late for filtering)
+6. Non-Jinn requests now in DB
+```
+
+**Solution:**
+1. **Moved IPFS fetch before DB writes** – Fetch metadata first to verify networkId
+2. **Extract networkId from IPFS content** – `const networkId = typeof content.networkId === "string" ? content.networkId : undefined;`
+3. **Filter before any DB operations** – `if (networkId && networkId !== "jinn") { continue; }`
+4. **Skip requests on IPFS failure** – Cannot verify networkId without metadata, safer to skip
+
+**Files Changed:**
+- `ponder/src/index.ts`: Reordered MarketplaceRequest handler – IPFS fetch → networkId check → DB insert
+
+**Prevention:**
+- Always verify event ABI before reading from `event.args` – non-existent fields return undefined
+- NetworkId is an application-level concept (IPFS metadata), NOT a chain-level event field
+- After deploying fix, Ponder must reindex from scratch to purge incorrectly indexed requests
 
 ---
 

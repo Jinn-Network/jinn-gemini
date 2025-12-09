@@ -316,9 +316,10 @@ export class Agent {
         phase: this.jobContext?.phase || 'execution'
       }, 'Spawning Gemini CLI');
       
-      // Add prompt as positional argument (replaces deprecated --prompt flag)
-      // Positional prompts default to one-shot (non-interactive) mode, preventing "Please continue" loops
-      args.push(prompt);
+      // Use -p flag for prompt (NOT positional argument)
+      // CLI v0.11.2 ignores positional prompts when cwd is a git repository
+      // Using -p ensures non-interactive mode works regardless of cwd
+      args.push('-p', prompt);
 
       // Propagate job context to the MCP server via environment variables so the separate
       // MCP process can read them on startup

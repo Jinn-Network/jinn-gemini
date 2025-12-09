@@ -1,6 +1,6 @@
 # NetworkId Filtering & Global Jinn Explorer
 
-**Date**: 2025-11-25 (Original), 2025-12-05 (Updated for Global Explorer), 2025-12-08 (Implemented)  
+**Date**: 2025-11-25 (Original), 2025-12-05 (Updated for Global Explorer), 2025-12-08 (Implemented), 2025-12-09 (Bug fix)  
 **Status**: ✅ Implemented (Global Jinn Explorer)  
 **Related Design**: See `cursor-plan://2b1692c7-a844-4760-bcf3-6366e483dcfb/global.plan.md` for full global explorer specification
 
@@ -28,12 +28,16 @@ Workers repeatedly attempted to deliver requests already delivered by competing 
 **Objective**: Index ALL Jinn marketplace requests, regardless of which mech is involved. Exclude non-Jinn tenants.
 
 **Implementation**:
-- Added `networkId: "jinn"` to all request metadata in dispatch tools
+- Added `networkId: "jinn"` to all request metadata in dispatch tools (stored in IPFS)
 - Updated Ponder `MarketplaceRequest` handler with filtering logic:
+  - Fetch IPFS metadata FIRST (networkId is NOT in chain event args)
+  - Extract `networkId` from IPFS content: `content.networkId`
   - `networkId === "jinn"` → INDEX (explicit Jinn marker)
   - `networkId === undefined` → INDEX (legacy Jinn, backward compatibility)
-  - `networkId === other` → SKIP and mark as filtered (non-Jinn tenant)
+  - `networkId === other` → SKIP (non-Jinn tenant)
 - **NO mech-based filtering**: `priorityMech` from marketplace event is stored in `request.mech` for reference, but does NOT control whether request is indexed
+
+**CRITICAL**: The `MarketplaceRequest` event ABI does NOT include `networkId`. It only contains: `priorityMech`, `requester`, `numRequests`, `requestIds`, `requestDatas`. The `networkId` field is stored in the IPFS metadata (pointed to by `requestDatas`), not in chain event args.
 
 **Result**: `request` table contains ALL Jinn requests across ALL mechs (global Jinn marketplace view)
 
