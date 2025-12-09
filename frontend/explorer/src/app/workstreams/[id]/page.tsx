@@ -66,6 +66,18 @@ export default function WorkstreamPage({ params }: WorkstreamPageProps) {
     loadData()
   }, [params])
 
+  // Update document title when workstream data is loaded
+  useEffect(() => {
+    const truncate = (text: string, maxLength: number = 10) => 
+      text.length <= maxLength ? text : text.substring(0, maxLength) + '…'
+    
+    if (rootRequest?.jobName) {
+      document.title = `${truncate(rootRequest.jobName)} | Workstream | Jinn Explorer`
+    } else if (rootRequest) {
+      document.title = 'Unnamed… | Workstream | Jinn Explorer'
+    }
+  }, [rootRequest])
+
   if (loading) {
     const loadingBreadcrumbs = [
       { label: 'Workstreams', href: '/workstreams' },

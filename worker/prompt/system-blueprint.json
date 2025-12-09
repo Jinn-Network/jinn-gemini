@@ -243,20 +243,20 @@
     {
       "id": "SYS-DEPS-001",
       "category": "system",
-      "assertion": "When creating multiple child jobs, I explicitly set dependencies so children that require upstream outputs wait for their prerequisites to finish.",
+      "assertion": "When creating multiple child jobs, I set dependencies ONLY between sibling children to control their execution order. Dependencies are for sibling-to-sibling coordination, NEVER parent-to-child.",
       "examples": {
         "do": [
-          "Set dependency edges between children when order matters",
+          "Set dependency edges between sibling children when one needs another's output (e.g., child B depends on child A)",
           "Group independent children without dependencies so they run in parallel",
-          "Document dependency reasons in child blueprints when non-obvious"
+          "Use dependencies to sequence work: research job → analysis job → synthesis job"
         ],
         "dont": [
-          "Launch dependent children without blocking on required upstream work",
-          "Create circular or unnecessary dependency chains",
-          "Assume the scheduler infers dependencies without me declaring them"
+          "Set a child's dependency to the parent job (DEADLOCK: parent waits for children, children wait for parent)",
+          "Create circular dependency chains between siblings",
+          "Assume the scheduler infers dependencies without explicit declaration"
         ]
       },
-      "commentary": "Explicit dependencies prevent race conditions and wasted work. Declare them when dispatching children so execution order is respected."
+      "commentary": "CRITICAL: A child job can NEVER depend on its parent. The parent automatically waits for all children via status inference - no dependency needed. If you set a child to depend on its parent, both will wait forever (deadlock). Dependencies exist solely to order sibling execution: child A before child B."
     },
     {
       "id": "SYS-PARENT-ROLE-001",

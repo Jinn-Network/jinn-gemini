@@ -117,11 +117,11 @@ async function main() {
     console.log(`   Target Date: ${dateStr}`);
     console.log(`   Request ID: ${requestId}\n`);
     
-    console.log('🔧 Run workstream (processes 5 jobs):');
-    console.log(`   yarn dev:mech --workstream=${requestId} --runs=5\n`);
+    console.log('🔧 Run workstream (processes 15 jobs):');
+    console.log(`   yarn dev:mech --workstream=${requestId} --runs=15\n`);
     
     console.log('🌐 View in explorer:');
-    console.log(`   https://explorer.jinn.network/requests/${requestId}\n`);
+    console.log(`   https://explorer.jinn.network/workstreams/${requestId}\n`);
     
   } catch (error) {
     console.error('\n❌ Failed to dispatch job:', error);

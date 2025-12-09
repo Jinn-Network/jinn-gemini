@@ -1,3 +1,4 @@
+import { Metadata } from 'next'
 import { RecordPageProps, collectionNames } from '@/lib/types'
 import { SubgraphDetailView } from '@/components/subgraph-detail-view'
 import { getCollectionLabel } from '@/lib/utils'
@@ -15,6 +16,12 @@ import {
 } from '@/lib/subgraph'
 
 type SubgraphRecord = JobDefinition | Request | Delivery | Artifact
+
+// Truncate text for browser tab title (short, with ellipsis)
+function truncateForTitle(text: string, maxLength: number = 10): string {
+  if (text.length <= maxLength) return text
+  return text.substring(0, maxLength) + '…'
+}
 
 // Helper function to get human-readable title from record
 function getRecordTitle(record: SubgraphRecord, collectionName: string): string {
@@ -37,6 +44,20 @@ function getRecordTitle(record: SubgraphRecord, collectionName: string): string 
   return `${collectionName.slice(0, -1)} ${record.id.toString().substring(0, 8)}...`
 }
 
+// Get short title for browser tab
+function getRecordTitleShort(record: SubgraphRecord): string {
+  if ('name' in record && record.name) {
+    return truncateForTitle(record.name)
+  }
+  if ('jobName' in record && record.jobName) {
+    return truncateForTitle(record.jobName)
+  }
+  if ('topic' in record && record.topic) {
+    return truncateForTitle(record.topic)
+  }
+  return truncateForTitle(record.id.toString())
+}
+
 async function fetchRecord(collection: string, id: string): Promise<SubgraphRecord | null> {
   switch (collection) {
     case 'jobDefinitions':
@@ -49,6 +70,35 @@ async function fetchRecord(collection: string, id: string): Promise<SubgraphReco
       return await getArtifact(id)
     default:
       return null
+  }
+}
+
+export async function generateMetadata({ params }: RecordPageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  
+  if (!collectionNames.includes(resolvedParams.collection)) {
+    return { title: 'Not Found' }
+  }
+  
+  const decodedId = decodeURIComponent(resolvedParams.id)
+  const collectionLabel = getCollectionLabel(resolvedParams.collection)
+  
+  try {
+    const record = await fetchRecord(resolvedParams.collection, decodedId)
+    
+    if (!record) {
+      return { title: `Not Found | ${collectionLabel}` }
+    }
+    
+    const recordTitle = getRecordTitle(record, resolvedParams.collection)
+    const recordTitleShort = getRecordTitleShort(record)
+    
+    return {
+      title: `${recordTitleShort} | ${collectionLabel}`,
+      description: `View details for ${recordTitle} in ${collectionLabel}`,
+    }
+  } catch {
+    return { title: collectionLabel }
   }
 }
 

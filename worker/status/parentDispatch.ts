@@ -238,6 +238,28 @@ async function dispatchForVerification(
       undefined;
     const mechAddress = metadata?.workerAddress || metadata?.mech || undefined;
 
+    // Query workstreamId from Ponder to preserve it during verification dispatch
+    let workstreamId: string | undefined;
+    try {
+      const ponderUrl = getPonderGraphqlUrl();
+      const response = await graphQLRequest<{ request: { workstreamId?: string } | null }>({
+        url: ponderUrl,
+        query: `query GetWorkstreamId($id: String!) {
+          request(id: $id) {
+            workstreamId
+          }
+        }`,
+        variables: { id: requestId },
+        context: { operation: 'getVerificationWorkstreamId', requestId }
+      });
+      workstreamId = response?.request?.workstreamId;
+      if (workstreamId) {
+        workerLogger.debug({ requestId, workstreamId }, 'Retrieved workstream ID for verification dispatch');
+      }
+    } catch (error) {
+      workerLogger.warn({ requestId, error: serializeError(error) }, 'Failed to query workstream ID for verification, will proceed without it');
+    }
+
     // Build verification context - preserve existing context and add verification flag
     const verificationContext = {
       ...additionalContext,
@@ -254,6 +276,7 @@ async function dispatchForVerification(
         baseBranch,
         mechAddress,
         branchName: lineageInfo?.dispatcherBranchName || metadata?.codeMetadata?.branch?.name || undefined,
+        workstreamId,
       },
       async () =>
         dispatchExistingJob({
@@ -262,6 +285,7 @@ async function dispatchForVerification(
             content: `Verification run ${nextAttempt}/${MAX_VERIFICATION_ATTEMPTS}: verify merged child work satisfies all assertions`,
             type: 'verification'
           }),
+          workstreamId,
           additionalContext: verificationContext
         })
     );
@@ -491,6 +515,21 @@ export async function dispatchParentIfNeeded(
       reason: verificationDecision.reason
     }
   }, 'Verification decision for job');
+
+  // CRITICAL: If this was a verification run, do NOT dispatch parent.
+  // Verification runs are the FINAL step for a job that delegated to children.
+  // After verification completes, the job definition is done - no further dispatches needed.
+  // The parent dispatch should only happen when actual CHILD jobs complete, not verification runs.
+  // Without this check, we get an infinite loop:
+  //   Parent run → has children → dispatch verification → verification completes →
+  //   dispatch parent (wrong!) → parent run → has children → dispatch verification → ...
+  if (verificationDecision.isVerificationRun) {
+    workerLogger.info(
+      { requestId, jobDefinitionId: metadata?.jobDefinitionId, verificationAttempt: verificationDecision.verificationAttempt },
+      'Verification run completed - job definition done, NOT dispatching parent (this breaks the verification loop)'
+    );
+    return;
+  }
 
   if (verificationDecision.requiresVerification) {
     // Job completed after reviewing children - dispatch for verification instead of parent

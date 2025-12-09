@@ -1,6 +1,12 @@
+import { Metadata } from 'next'
 import { JobGraphView } from '@/components/graph/job-graph-view'
 import { notFound } from 'next/navigation'
 import { SiteHeader } from '@/components/site-header'
+
+export const metadata: Metadata = {
+  title: 'Graph View | Job Run',
+  description: 'Explore job relationships and execution flows in a visual graph',
+}
 
 interface GraphPageProps {
   params: Promise<{

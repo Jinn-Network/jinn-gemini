@@ -685,6 +685,100 @@ if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobD
 - NetworkId is an application-level concept (IPFS metadata), NOT a chain-level event field
 - After deploying fix, Ponder must reindex from scratch to purge incorrectly indexed requests
 
+### 22. Verification Dispatch Loses WorkstreamId (2025-12-09) [FIXED]
+**Issue:** Jobs dispatched for verification (verification phase after reviewing children) lose their workstreamId, causing them to fall outside `--workstream` filter and remain PENDING indefinitely.
+**Root Causes:**
+1. `dispatchForVerification` in `worker/status/parentDispatch.ts` didn't query or pass workstreamId to `dispatchExistingJob`
+2. `withJobContext` type in `worker/mcp/tools.ts` omitted `workstreamId` field, preventing TypeScript from accepting it
+
+**Evidence:**
+- "Protocol Deep Dive Research 2025-12-09" dispatched 3 times, third dispatch had wrong workstreamId
+- Parent job "Ethereum on-chain activity" stuck in DELEGATING because child remained PENDING
+- Verification dispatch at line 272-289 called `dispatchExistingJob` without workstreamId parameter
+- Parent dispatch at line 675-690 correctly passed workstreamId, but verification dispatch did not
+
+**Solution:**
+1. Added `workstreamId?: string` to `withJobContext` context type (`worker/mcp/tools.ts` line 18)
+2. Modified `dispatchForVerification` to query workstreamId from Ponder before dispatch (similar to parent dispatch logic at lines 532-551)
+3. Passed workstreamId to both `withJobContext` and `dispatchExistingJob` in verification dispatch call
+
+**Files Changed:**
+- `worker/mcp/tools.ts`: Added workstreamId to context type
+- `worker/status/parentDispatch.ts`: Query and pass workstreamId in dispatchForVerification (lines 240-262, 272-290)
+
+**Prevention:**
+- All auto-dispatch flows (parent dispatch, verification dispatch, delegation) must preserve workstreamId
+- Always query workstreamId from current request before re-dispatching
+- Use same pattern for all dispatch flows: query from Ponder → pass to withJobContext → pass to dispatchExistingJob
+
+### 23. Circular Dependency: Child Depends on Parent (2025-12-09) [FIXED]
+**Issue:** Agent dispatched child jobs with dependencies set to the parent job ID, creating a deadlock where parent waits for children and children wait for parent.
+**Root Cause:** 
+1. System blueprint `SYS-DEPS-001` was ambiguous about dependency targets
+2. No tool-level validation prevented setting parent as a dependency
+3. Agent misunderstood that dependencies are for sibling ordering, not parent-child relationships
+
+**Evidence:**
+- "Protocol Deep Dive" job dispatched 3 children (Uniswap, Aave, Lido deep dives)
+- Each child had `dependencies: ["774e69fc-6328-4acd-85be-26b0e5242a25"]` (the parent's ID)
+- Children remained PENDING indefinitely because parent could never complete
+
+**Why This Is a Deadlock:**
+```
+Parent waits for children (via status inference) → children PENDING
+Children wait for parent (via dependencies) → parent DELEGATING
+Both wait forever
+```
+
+**Solution:**
+1. Added validation in `dispatch_new_job.ts` to reject dependencies that include `context.jobDefinitionId` (the parent)
+2. Updated `SYS-DEPS-001` in `system-blueprint.json` to explicitly state dependencies are sibling-to-sibling only
+3. Added clear error message: "Child job cannot depend on its parent job... Dependencies should only be between sibling jobs"
+
+**Files Changed:**
+- `gemini-agent/mcp/tools/dispatch_new_job.ts`: Added circular dependency check (CIRCULAR_DEPENDENCY error code)
+- `worker/prompt/system-blueprint.json`: Clarified SYS-DEPS-001 that dependencies are for sibling ordering
+
+**Prevention:**
+- Parent-child coordination is automatic (status inference handles it)
+- Dependencies exist solely to order sibling execution (child A before child B)
+- Tool now rejects any attempt to set parent as dependency with clear error message
+
+### 24. Infinite Verification Loop (2025-12-09) [FIXED]
+**Issue:** Jobs with children enter an infinite loop: parent run → verification run → parent run → verification run → ...
+**Root Cause:** After a verification run completes, `dispatchParentIfNeeded()` still triggered parent dispatch because:
+1. Verification run completes with COMPLETED status
+2. `maybeDispatchParent()` is called after delivery
+3. `shouldDispatchParent()` sees "all children complete" and returns `shouldDispatch: true`
+4. Parent job is dispatched again (NOT a verification run)
+5. New parent run queries `jobHadChildren()` → TRUE (children still exist in Ponder)
+6. `shouldRequireVerification()` returns `requiresVerification: true`
+7. Another verification run dispatched → loop repeats
+
+**The Loop:**
+```
+Parent Run (not verification) → COMPLETED → has children? YES → dispatch verification
+Verification Run → COMPLETED → deliver → maybeDispatchParent → all children complete → dispatch parent
+Parent Run (not verification) → COMPLETED → has children? YES → dispatch verification
+... repeat forever
+```
+
+**Solution:** Added early return in `dispatchParentIfNeeded()` when `isVerificationRun: true`:
+```typescript
+if (verificationDecision.isVerificationRun) {
+  workerLogger.info({ ... }, 'Verification run completed - job definition done, NOT dispatching parent');
+  return;
+}
+```
+
+**Files Changed:**
+- `worker/status/parentDispatch.ts`: Added guard to skip parent dispatch after verification runs complete
+
+**Prevention:**
+- Verification runs are the FINAL step for a job that delegated to children
+- After verification completes, the job definition is done - no further dispatches needed
+- Parent dispatch should only occur when actual child jobs complete, not verification runs
+
 ---
 
 ## Test Infrastructure Gotchas

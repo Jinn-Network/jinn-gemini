@@ -12,6 +12,7 @@ import { StatusIcon } from '@/components/status-icon'
 import { getJobDefinition, type JobDefinition, queryRequests, getDependencyInfo, type DependencyInfo } from '@/lib/subgraph'
 import { JobDefinitionDetailLayout } from '@/components/job-definition-detail-layout'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 interface WorkstreamTreeListProps {
   rootId: string
@@ -184,46 +185,53 @@ function TreeNodeItem({
               {hasDependencies && (
                 <>
                   <span>·</span>
-                  <div 
-                    className="relative inline-flex items-center gap-1 cursor-help"
-                    onMouseEnter={() => setIsHoveringDeps(true)}
-                    onMouseLeave={() => setIsHoveringDeps(false)}
-                  >
-                    <GitBranch className="w-3.5 h-3.5" />
-                    <span className="font-medium">{dependencies.length} {dependencies.length === 1 ? 'dependency' : 'dependencies'}</span>
-                    
-                    {isHoveringDeps && (
-                      <div className="absolute z-50 left-0 top-full mt-1 w-64 p-3 bg-popover border rounded-lg shadow-lg">
-                        {loadingDeps ? (
-                          <div className="text-xs text-muted-foreground">Loading...</div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="text-xs font-semibold text-muted-foreground mb-2">
-                              Depends on:
-                            </div>
-                            {dependencyInfo.slice(0, 5).map((dep) => (
-                              <Link
-                                key={dep.id}
-                                href={`/jobDefinitions/${dep.id}`}
-                                className="flex items-center gap-2 text-xs py-1 hover:bg-accent rounded px-1 -mx-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <StatusIcon status={dep.status === 'delivered' ? 'COMPLETED' : dep.status === 'in_progress' ? 'PENDING' : 'PENDING'} size={14} />
-                                <span className="truncate" title={dep.jobName}>
-                                  {dep.jobName}
-                                </span>
-                              </Link>
-                            ))}
-                            {dependencies.length > 5 && (
-                              <div className="text-xs text-muted-foreground italic mt-1">
-                                +{dependencies.length - 5} more...
-                              </div>
-                            )}
-                          </div>
-                        )}
+                  <Popover open={isHoveringDeps} onOpenChange={setIsHoveringDeps}>
+                    <PopoverTrigger asChild>
+                      <div 
+                        className="inline-flex items-center gap-1 cursor-help"
+                        onMouseEnter={() => setIsHoveringDeps(true)}
+                        onMouseLeave={() => setIsHoveringDeps(false)}
+                      >
+                        <GitBranch className="w-3.5 h-3.5" />
+                        <span className="font-medium">{dependencies.length} {dependencies.length === 1 ? 'dependency' : 'dependencies'}</span>
                       </div>
-                    )}
-                  </div>
+                    </PopoverTrigger>
+                    <PopoverContent 
+                      className="w-64 p-3"
+                      align="start"
+                      onMouseEnter={() => setIsHoveringDeps(true)}
+                      onMouseLeave={() => setIsHoveringDeps(false)}
+                      onOpenAutoFocus={(e) => e.preventDefault()}
+                    >
+                      {loadingDeps ? (
+                        <div className="text-xs text-muted-foreground">Loading...</div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground mb-2">
+                            Depends on:
+                          </div>
+                          {dependencyInfo.slice(0, 5).map((dep) => (
+                            <Link
+                              key={dep.id}
+                              href={`/jobDefinitions/${dep.id}`}
+                              className="flex items-center gap-2 text-xs py-1 hover:bg-accent rounded px-1 -mx-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <StatusIcon status={dep.status === 'delivered' ? 'COMPLETED' : dep.status === 'in_progress' ? 'PENDING' : 'PENDING'} size={14} />
+                              <span className="truncate" title={dep.jobName}>
+                                {dep.jobName}
+                              </span>
+                            </Link>
+                          ))}
+                          {dependencies.length > 5 && (
+                            <div className="text-xs text-muted-foreground italic mt-1">
+                              +{dependencies.length - 5} more...
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
                 </>
               )}
             </div>

@@ -15,6 +15,7 @@ export async function withJobContext<T>(
     baseBranch?: string;
     parentRequestId?: string;
     branchName?: string;
+    workstreamId?: string;
   },
   fn: () => Promise<T>
 ): Promise<T> {

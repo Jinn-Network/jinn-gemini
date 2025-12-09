@@ -1,3 +1,4 @@
+import { Metadata } from 'next'
 import { getWorkstreams } from '@/lib/subgraph'
 import Link from 'next/link'
 import { TruncatedId } from '@/components/truncated-id'
@@ -10,6 +11,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+
+export const metadata: Metadata = {
+  title: 'Workstreams',
+  description: 'Browse all workstreams - top-level job executions and their downstream graphs',
+}
 
 // Force dynamic rendering to avoid build-time data fetching
 export const dynamic = 'force-dynamic'

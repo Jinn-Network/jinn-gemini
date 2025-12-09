@@ -299,6 +299,93 @@ export class TenderlyClient {
   }
 
   /**
+   * List all Virtual TestNets in the project
+   */
+  async listVnets(): Promise<Array<{ id: string; slug: string; display_name: string; created_at?: string }>> {
+    if (!this.isConfigured()) {
+      scriptLogger.warn('Tenderly not configured, cannot list vnets');
+      return [];
+    }
+
+    const url = `${this.baseUrl}/api/v1/account/${this.config.accountSlug}/project/${this.config.projectSlug}/vnets`;
+
+    try {
+      const response = await this.fetchWithRetry(
+        url,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-Access-Key': this.config.accessKey!,
+          },
+        },
+        { operation: 'listVnets' }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${response.statusText}. Response: ${errorText}`);
+      }
+
+      const vnets = await response.json();
+      scriptLogger.info({ count: vnets.length }, 'Listed Virtual TestNets');
+      return vnets;
+    } catch (error: any) {
+      scriptLogger.error({ error: error.message }, 'Failed to list Virtual TestNets');
+      throw error;
+    }
+  }
+
+  /**
+   * Cleanup old/stale Virtual TestNets (e.g., e2e-test-* vnets older than maxAgeMs)
+   * Returns the number of vnets deleted
+   */
+  async cleanupOldVnets(options: { maxAgeMs?: number; dryRun?: boolean } = {}): Promise<number> {
+    const { maxAgeMs = 60 * 60 * 1000, dryRun = false } = options; // Default 1 hour
+    
+    if (!this.isConfigured()) {
+      scriptLogger.warn('Tenderly not configured, cannot cleanup vnets');
+      return 0;
+    }
+
+    try {
+      const vnets = await this.listVnets();
+      const now = Date.now();
+      let deletedCount = 0;
+
+      for (const vnet of vnets) {
+        // Only cleanup e2e-test-* vnets (our test vnets)
+        if (!vnet.slug?.startsWith('e2e-test-')) {
+          continue;
+        }
+
+        // Parse timestamp from slug: e2e-test-{timestamp}-{randomId}
+        const match = vnet.slug.match(/^e2e-test-(\d+)-/);
+        if (match) {
+          const createdTimestamp = parseInt(match[1], 10);
+          const age = now - createdTimestamp;
+          
+          if (age > maxAgeMs) {
+            if (dryRun) {
+              scriptLogger.info({ vnetId: vnet.id, slug: vnet.slug, ageMs: age }, '[DRY RUN] Would delete stale vnet');
+            } else {
+              scriptLogger.info({ vnetId: vnet.id, slug: vnet.slug, ageMs: age }, 'Deleting stale vnet');
+              await this.deleteVnet(vnet.id);
+              deletedCount++;
+            }
+          }
+        }
+      }
+
+      scriptLogger.info({ deletedCount, dryRun }, 'Cleanup complete');
+      return deletedCount;
+    } catch (error: any) {
+      scriptLogger.error({ error: error.message }, 'Failed to cleanup old vnets');
+      return 0;
+    }
+  }
+
+  /**
    * Delete a Virtual TestNet after testing
    */
   async deleteVnet(vnetId: string): Promise<void> {

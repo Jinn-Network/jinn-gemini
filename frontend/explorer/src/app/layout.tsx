@@ -10,11 +10,16 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+const isDev = process.env.VERCEL_ENV !== 'production';
+
 export const metadata: Metadata = {
-  title: "Jinn Explorer",
+  title: {
+    default: 'Jinn Explorer',
+    template: '%s | Jinn Explorer'
+  },
   description: "Database explorer for the Jinn project",
   icons: {
-    icon: '/favicon.png',
+    icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
   },
 };
 

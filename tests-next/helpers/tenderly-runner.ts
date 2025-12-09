@@ -72,6 +72,15 @@ export async function withTenderlyVNet<T>(
   options?: TenderlyOptions
 ): Promise<T> {
   const tenderlyClient = createTenderlyClient();
+  
+  // Cleanup old/stale vnets before creating a new one to avoid quota issues
+  // Only cleanup vnets older than 30 minutes
+  try {
+    await tenderlyClient.cleanupOldVnets({ maxAgeMs: 30 * 60 * 1000 });
+  } catch (err) {
+    console.warn('[tenderly-runner] Failed to cleanup old vnets:', (err as Error).message);
+  }
+  
   const chainId = options?.chainId ?? 8453;
   const vnet = await tenderlyClient.createVnet(chainId);
   const rpcUrl = vnet.adminRpcUrl;

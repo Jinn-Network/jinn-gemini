@@ -357,6 +357,29 @@ export async function dispatchNewJob(args: unknown) {
         };
       }
 
+      // CRITICAL: Prevent circular dependencies with parent job
+      // A child job CANNOT depend on its parent because:
+      // - Parent waits for all children to complete before it can complete
+      // - If child depends on parent, child waits for parent to complete
+      // - Result: DEADLOCK (both waiting on each other forever)
+      const parentJobDefinitionId = context.jobDefinitionId;
+      if (parentJobDefinitionId && dependencies.includes(parentJobDefinitionId)) {
+        console.error('[dispatch_new_job] CIRCULAR_DEPENDENCY: Child job cannot depend on its parent job:', parentJobDefinitionId);
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              data: null,
+              meta: {
+                ok: false,
+                code: 'CIRCULAR_DEPENDENCY',
+                message: `Child job cannot depend on its parent job (${parentJobDefinitionId}). This creates a deadlock: parent waits for children, children wait for parent. Dependencies should only be between sibling jobs (other children) to control execution order.`,
+              },
+            }),
+          }],
+        };
+      }
+
       ipfsJsonContents[0].dependencies = dependencies;
     }
 
