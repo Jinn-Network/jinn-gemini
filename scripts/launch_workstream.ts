@@ -25,6 +25,7 @@ import { homedir } from 'os';
 import { execSync } from 'child_process';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import { scriptLogger } from '../logging/index.js';
 
 interface GitHubRepoResponse {
   id: number;
@@ -76,12 +77,19 @@ async function createGitHubRepo(repoName: string, token: string): Promise<GitHub
   if (!response.ok) {
     const errorBody = await response.text();
     if (response.status === 422 && errorBody.includes('already exists')) {
-      throw new Error(`Repository '${repoName}' already exists on GitHub. Please choose a different name or delete the existing repo.`);
+      throw new RepoExistsError(repoName);
     }
     throw new Error(`GitHub API error (${response.status}): ${errorBody}`);
   }
 
   return await response.json() as GitHubRepoResponse;
+}
+
+class RepoExistsError extends Error {
+  constructor(public repoName: string) {
+    super(`Repository '${repoName}' already exists`);
+    this.name = 'RepoExistsError';
+  }
 }
 
 async function initializeRepo(localPath: string, repoUrl: string, repoName: string): Promise<void> {
@@ -146,12 +154,12 @@ async function main() {
   const blueprintArg = String(argv._[0]);
   
   try {
-    console.log('🔍 Loading blueprint...');
+    scriptLogger.info('Loading blueprint...');
     const { content: blueprintContent, path: blueprintPath, name: blueprintName } = await loadBlueprint(blueprintArg);
-    console.log(`   Loaded: ${blueprintPath}`);
+    scriptLogger.info({ blueprintPath }, 'Blueprint loaded');
 
-    const dateStr = new Date().toISOString().split('T')[0];
-    const shortId = Math.random().toString(36).substring(2, 8);
+    // 3-letter random suffix (used for repo disambiguation and job name)
+    const shortId = Math.random().toString(36).substring(2, 5).toUpperCase();
     
     // Convert kebab-case or snake_case to Title Case for job name
     const title = blueprintName
@@ -159,7 +167,7 @@ async function main() {
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
       
-    const jobName = `${title} – ${dateStr} – ${shortId}`;
+    const jobName = `${title} – ${shortId}`;
 
     // Prepare context
     let context = argv.context || '';
@@ -174,41 +182,47 @@ async function main() {
         throw new Error('GITHUB_TOKEN environment variable is required for repository creation. Use --skip-repo to launch without a repository.');
       }
 
-      const repoName = blueprintName; // Use blueprint name as repo name
+      let repoName = blueprintName; // Start with blueprint name
       
-      console.log(`\n🐙 Creating GitHub repository: ${repoName}`);
+      scriptLogger.info({ repoName }, 'Creating GitHub repository');
       
       if (argv.dryRun) {
-        console.log('   [DRY RUN] Would create private repository');
+        scriptLogger.info('[DRY RUN] Would create private repository');
       } else {
+        let repo: GitHubRepoResponse;
         try {
-          const repo = await createGitHubRepo(repoName, githubToken);
-          repoUrl = repo.html_url;
-          console.log(`   ✅ Created: ${repoUrl}`);
-
-          // Clone to local workstream directory
-          const workstreamsDir = join(homedir(), '.jinn', 'workstreams');
-          repoPath = join(workstreamsDir, repoName);
-          
-          console.log(`\n📂 Initializing local repository: ${repoPath}`);
-          await initializeRepo(repoPath, repo.clone_url, repoName);
-          console.log(`   ✅ Initialized and pushed to main branch`);
-
-          // Add repo context
-          if (!context) {
-            context = `Repository: ${repoUrl}\nLocal path: ${repoPath}`;
-          } else {
-            context = `${context}\n\nRepository: ${repoUrl}\nLocal path: ${repoPath}`;
-          }
+          repo = await createGitHubRepo(repoName, githubToken);
         } catch (error) {
-          if (error instanceof Error && error.message.includes('already exists')) {
-            throw new Error(`${error.message}\n\nTip: Use --skip-repo to launch without creating a new repository.`);
+          if (error instanceof RepoExistsError) {
+            // Repo exists, append suffix and retry
+            repoName = `${blueprintName}-${shortId.toLowerCase()}`;
+            scriptLogger.info({ repoName }, 'Repository exists, retrying with suffix');
+            repo = await createGitHubRepo(repoName, githubToken);
+          } else {
+            throw error;
           }
-          throw error;
+        }
+        
+        repoUrl = repo.html_url;
+        scriptLogger.info({ repoUrl }, 'Repository created');
+
+        // Clone to local workstream directory
+        const workstreamsDir = join(homedir(), '.jinn', 'workstreams');
+        repoPath = join(workstreamsDir, repoName);
+        
+        scriptLogger.info({ repoPath }, 'Initializing local repository');
+        await initializeRepo(repoPath, repo.clone_url, repoName);
+        scriptLogger.info('Initialized and pushed to main branch');
+
+        // Add repo context
+        if (!context) {
+          context = `Repository: ${repoUrl}\nLocal path: ${repoPath}`;
+        } else {
+          context = `${context}\n\nRepository: ${repoUrl}\nLocal path: ${repoPath}`;
         }
       }
     } else {
-      console.log('\n⏭️  Skipping repository creation (--skip-repo flag set)');
+      scriptLogger.info('Skipping repository creation (--skip-repo flag set)');
     }
 
     // Inject context into blueprint
@@ -220,28 +234,27 @@ async function main() {
     }
     const finalBlueprint = JSON.stringify(blueprintObj);
 
-    console.log('\n📋 Job Configuration:');
-    console.log(`   Job Name:  ${jobName}`);
-    console.log(`   Blueprint: ${blueprintName}`);
-    console.log(`   Model:     ${argv.model}`);
-    if (repoPath) {
-      console.log(`   Repo Path: ${repoPath}`);
-    }
+    scriptLogger.info({
+      jobName,
+      blueprint: blueprintName,
+      model: argv.model,
+      repoPath,
+    }, 'Job configuration');
 
     if (argv.dryRun) {
-      console.log('\n✅ Dry run complete. No job dispatched.');
+      scriptLogger.info('Dry run complete. No job dispatched.');
       if (repoPath) {
-        console.log(`\nNote: Repository was NOT created (dry run mode).`);
+        scriptLogger.info('Note: Repository was NOT created (dry run mode).');
       }
       return;
     }
 
-    console.log('\n🚀 Dispatching job...');
+    scriptLogger.info('Dispatching job...');
     
     // Set CODE_METADATA_REPO_ROOT if we created a repo
     if (repoPath) {
       process.env.CODE_METADATA_REPO_ROOT = repoPath;
-      console.log(`   CODE_METADATA_REPO_ROOT: ${repoPath}`);
+      scriptLogger.debug({ CODE_METADATA_REPO_ROOT: repoPath }, 'Set CODE_METADATA_REPO_ROOT');
     }
 
     const result = await dispatchNewJob({
@@ -261,25 +274,18 @@ async function main() {
 
     const { requestId } = parseDispatchResponse(result);
     
-    console.log('\n✅ Workstream dispatched successfully!');
-    console.log('═══════════════════════════════════════════════════════════════════════');
-    console.log(`Request ID: ${requestId}`);
-    if (repoUrl) {
-      console.log(`Repository: ${repoUrl}`);
-    }
-    if (repoPath) {
-      console.log(`Local Path: ${repoPath}`);
-    }
-    console.log(`Explorer:   https://explorer.jinn.network/requests/${requestId}`);
-    console.log('\nTo run this workstream:');
-    console.log(`  yarn dev:mech --workstream=${requestId} --runs=5`);
-    console.log('═══════════════════════════════════════════════════════════════════════');
+    scriptLogger.info({
+      requestId,
+      repoUrl,
+      repoPath,
+      explorerUrl: `https://explorer.jinn.network/requests/${requestId}`,
+      runCommand: `yarn dev:mech --workstream=${requestId} --runs=5`,
+    }, 'Workstream dispatched successfully');
 
   } catch (error) {
-    console.error('\n❌ Error:', error instanceof Error ? error.message : String(error));
-    if (error instanceof Error && error.stack) {
-      console.error('\nStack trace:', error.stack);
-    }
+    scriptLogger.error({
+      err: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
+    }, 'Launch failed');
     process.exit(1);
   }
 }

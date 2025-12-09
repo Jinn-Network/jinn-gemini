@@ -144,8 +144,10 @@ yarn launch:workstream x402-data-service --model gemini-2.5-pro --context "Initi
 
 **Workstream Launcher Details:**
 - Auto-creates private GitHub repository (name derived from blueprint)
+- If repo exists, appends 3-letter suffix: `x402-data-service` → `x402-data-service-abc`
+- Job name uses same suffix: `X402 Data Service – ABC` (no date in job name)
 - Initializes with main branch and README.md
-- Clones locally to `~/.jinn/workstreams/<blueprint-name>`
+- Clones locally to `~/.jinn/workstreams/<repo-name>`
 - Sets `CODE_METADATA_REPO_ROOT` for the workstream
 - Dispatches job with blueprint
 
@@ -609,7 +611,17 @@ All 6 integration tests in `validation-gateway.integration.test.ts` now pass (wa
 - Child job names must propagate target date for clarity
 - Inline source attribution prevents vague aggregate claims
 
-### 19. Auto-Dispatch sourceRequestId Null – workstreamId Conditional (2025-12-08)
+### 19. Gemini CLI Version Mismatch Causes Execution Hang (2025-12-09)
+**Issue:** Worker appears to hang after "Spawning Gemini CLI" log - no output for 5-10+ minutes. Process shows `kevent` wait state, TCP connection ESTABLISHED but no API response.
+**Root Cause:** Outdated `@google/gemini-cli` version. Package.json pinned to `0.11.2` while latest was `0.19.4` (8 minor versions behind). API endpoints and communication protocols changed significantly between versions.
+**Diagnosis Steps:**
+1. Check installed version: `npx @google/gemini-cli --version`
+2. Check latest version: `npm show @google/gemini-cli version`
+3. If mismatch, update package.json and run `yarn install`
+**Solution:** Updated `package.json` from `"@google/gemini-cli": "0.11.2"` to `"@google/gemini-cli": "^0.19.4"`
+**Prevention:** Use `^` prefix for Gemini CLI version to allow minor updates, or periodically check for updates. The Gemini CLI has weekly releases.
+
+### 20. Auto-Dispatch sourceRequestId Null – workstreamId Conditional (2025-12-08)
 **Issue:** Auto-dispatched child requests had `sourceRequestId: null` instead of parent's request ID, breaking hierarchy tracking.
 **Root Cause:** `dispatch_existing_job.ts` conditionally skipped setting `sourceRequestId` when `workstreamId` was provided, assuming workstream preservation meant no hierarchy tracking needed.
 **Evidence:**
