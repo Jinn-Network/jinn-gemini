@@ -1,5 +1,7 @@
 [build]
 builder = "NIXPACKS"
+buildCommand = "yarn run build && cd ponder && yarn install"
+watchPatterns = ["/ponder/**"]
 
 [deploy]
 startCommand = "cd ponder && ponder start --port $PORT --schema $RAILWAY_DEPLOYMENT_ID --views-schema jinn_gemini_public"

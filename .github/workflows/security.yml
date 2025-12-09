@@ -1,13 +1,12 @@
 name: Security Scan
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
-  schedule:
-    # Run daily at 2 AM UTC
-    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Disabled: automated runs are broken
+    # Original triggers preserved below for restoration:
+    # push: branches: [main, develop]
+    # pull_request: branches: [main, develop]
+    # schedule: cron: '0 2 * * *'
 
 jobs:
   security:
