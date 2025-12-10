@@ -18,6 +18,7 @@ For deep architecture and implementation details, see the linked files in `docs/
 
 ## Critical Agent Rules
 
+- Use bd (beads) for all issue tracking; no markdown TODO lists; see AGENTS.md
 - **DO NOT** create .md documentation files for progress summaries
 - **DO** incorporate learnings into AGENT_README.md or `docs/spec/`
 - **DO** write progress summaries to corresponding Linear issues
@@ -778,6 +779,28 @@ if (verificationDecision.isVerificationRun) {
 - Verification runs are the FINAL step for a job that delegated to children
 - After verification completes, the job definition is done - no further dispatches needed
 - Parent dispatch should only occur when actual child jobs complete, not verification runs
+
+### 25. Conflicting Operate Service Configs (2025-12-09)
+**Issue:** `dispatch_new_job` fails with "Service target mech address not configured. Check .operate service config (MECH_TO_CONFIG)."  
+**Root Cause:** `.operate/services/` contained an extra service dir (`sc-a455...`) without `config.json`/`MECH_TO_CONFIG`; loader picked it first alphabetically, so mech mapping was missing.  
+**Solution:** Remove stale service dirs without `config.json`, or ensure they include valid `MECH_TO_CONFIG`. Keep only the intended service (e.g., `sc-bec48f4e-54bc-4b10-9c2f-649926359c20`).  
+**Prevention:** Before dispatching, ensure `.operate/services/` has a single valid service config with `config.json` providing `MECH_TO_CONFIG`; delete orphaned directories that lack config.
+
+### 26. Phantom Blueprint Assertion & Tool Visibility (2025-12-10)
+**Issue:** Request `0x4fa4bdd6...bcc3a` (workstream `0x771a17b...98ba`) referenced `SYS-PARENT-ROLE-001` even though the arcade blueprint lacked that assertion. Same job’s search-job tool call failed due to a mispointed Ponder URL, and Explorer UI only displayed tool arguments (no outputs), making debugging harder.  
+**Prevention:** Audit blueprint-to-assertion injection to prevent non-existent assertions, validate Ponder endpoint selection for search tools, and expose tool call outputs in Explorer for faster failure diagnosis.
+
+### 27. Dependency Merge Missing & Hidden in UI (2025-12-10)
+**Issue:** Documentation request `0x233f1768...978f` with three dependencies did not merge dependency branches into the docs branch before running. Explorer also shows no dependency metadata or merge attempt outcomes (success/conflict/blocked), leaving dependency management opaque.  
+**Prevention:** Ensure worker merges dependency branches (or surfaces conflicts as failures) before execution; add frontend visibility for dependency lists and merge attempt results to aid debugging.
+
+### 28. Initial Situation Duplication of Children (2025-12-10)
+**Issue:** Initial situation doc for request `0x5e8f2bd3...858c7` includes both `context.childRequestIds` and `context.children` with identical values, creating redundant child lists that could diverge.  
+**Prevention:** Emit a single authoritative child list field; keep other context fields for non-child metadata to avoid ambiguity in agents/telemetry.
+
+### 29. Parent Only Merged Documentation Branch (2025-12-10)
+**Issue:** Parent request `0x5e8f2bd3...858c7` had multiple completed child branches (2048-game, arcade-infra-ui, minesweeper-game, snake-game, documentation) and prompt assertions CTX-BRANCH-REVIEW-PRIORITY / CTX-CHILD-001..006, but only the documentation branch (`job/814554d8-...-documentation`) was populated/reviewed/merged. Other child branches were ignored.  
+**Prevention:** Ensure parent reviews and processes all child branches listed in context, not just the prioritized one; primary-task assertion should not suppress integration of additional completed children.
 
 ---
 

@@ -231,3 +231,11 @@ ponder/.ponder-test-*/
 .jinn/
 **/.jinn/
 
+# Beads issue tracker - local files only (JSONL files are tracked in git)
+.beads/beads.db
+.beads/beads.db-*
+.beads/bd.sock
+.beads/bd.pipe
+.beads/.exclusive-lock
+.git/beads-worktrees/
+
