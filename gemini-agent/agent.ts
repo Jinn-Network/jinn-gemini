@@ -1,10 +1,11 @@
 import { spawn } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync, statSync } from 'fs';
 import { join, dirname, resolve, isAbsolute, delimiter } from 'path';
+import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
-import { getOptionalCodeMetadataRepoRoot } from '../config/index.js';
+import { getOptionalCodeMetadataRepoRoot, getSandboxMode } from '../config/index.js';
 import { getRepoRoot } from '../shared/repo_utils.js';
 import { computeToolPolicy, UNIVERSAL_TOOLS, type ToolPolicyResult } from './toolPolicy.js';
 
@@ -65,20 +66,20 @@ export class Agent {
   private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
   private cachedToolPolicy: ToolPolicyResult | null = null;
   private isCodingJob: boolean;
-  
+
   // Stdout protection limits (configurable via environment variables)
   private readonly MAX_STDOUT_SIZE = parseInt(process.env.AGENT_MAX_STDOUT_SIZE || '5242880'); // 5MB default
   private readonly MAX_CHUNK_SIZE = parseInt(process.env.AGENT_MAX_CHUNK_SIZE || '102400'); // 100KB default
   private readonly REPETITION_WINDOW = parseInt(process.env.AGENT_REPETITION_WINDOW || '20'); // Track last 20 lines
   private readonly REPETITION_THRESHOLD = parseInt(process.env.AGENT_REPETITION_THRESHOLD || '10'); // Same line 10+ times = loop
   private readonly MAX_IDENTICAL_CHUNKS = parseInt(process.env.AGENT_MAX_IDENTICAL_CHUNKS || '10'); // Same chunk repeated
-  
+
   // Universal tools are now defined in toolPolicy.ts
   private readonly universalTools = UNIVERSAL_TOOLS;
 
   constructor(
-    model: string, 
-    enabledTools: string[], 
+    model: string,
+    enabledTools: string[],
     jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null },
     codeWorkspace?: string | null,
     options?: { isCodingJob?: boolean }
@@ -86,7 +87,7 @@ export class Agent {
     this.model = model;
     this.enabledTools = enabledTools || [];
     this.jobContext = jobContext;
-    
+
     // Determine if this is a coding job
     // Primary source: explicit option, fallback to inferring from codeWorkspace
     if (options?.isCodingJob !== undefined) {
@@ -95,7 +96,7 @@ export class Agent {
       // Infer from codeWorkspace: null means explicitly non-coding, empty string means no workspace
       this.isCodingJob = codeWorkspace !== null && codeWorkspace !== '';
     }
-    
+
     // agentRoot must point to the actual gemini-agent directory containing config files
     // Resolve relative to this file's location for reliable path resolution
     // This ensures agentRoot is correct regardless of CODE_METADATA_REPO_ROOT or process.cwd()
@@ -103,7 +104,7 @@ export class Agent {
     const agentDir = dirname(currentFile);
     this.agentRoot = agentDir; // This file is already in gemini-agent directory
     this.settingsPath = join(this.agentRoot, '.gemini', 'settings.json');
-    
+
     // Verify agentRoot exists and contains expected files
     if (!existsSync(this.agentRoot)) {
       throw new Error(`Agent root directory does not exist: ${this.agentRoot}`);
@@ -111,12 +112,12 @@ export class Agent {
     const templatePath = join(this.agentRoot, 'settings.template.dev.json');
     const fallbackTemplatePath = join(this.agentRoot, 'settings.template.json');
     if (!existsSync(templatePath) && !existsSync(fallbackTemplatePath)) {
-      agentLogger.warn({ 
-        agentRoot: this.agentRoot, 
-        templatePath, 
+      agentLogger.warn({
+        agentRoot: this.agentRoot,
+        templatePath,
         fallbackTemplatePath,
         currentFile,
-        agentDir 
+        agentDir
       }, 'Settings template files not found in agentRoot - path resolution may be incorrect');
     }
 
@@ -142,7 +143,7 @@ export class Agent {
         this.codeWorkspace = this.agentRoot;
       }
     }
-    
+
     // Log protection limits
     agentLogger.info({
       maxStdoutSizeMB: (this.MAX_STDOUT_SIZE / 1024 / 1024).toFixed(1),
@@ -171,7 +172,7 @@ export class Agent {
           : undefined;
         telemetry.raw = telemetry.raw || {};
         if (lastReq) telemetry.raw.lastApiRequest = lastReq;
-      } catch {} // Ignore errors here
+      } catch { } // Ignore errors here
 
       // Capture stderr warnings without failing the job
       if (result.stderr && result.stderr.trim()) {
@@ -189,7 +190,7 @@ export class Agent {
           const partialOutput = this.extractFinalOutput(result.output);
           telemetry.raw = telemetry.raw || {};
           (telemetry.raw as any).partialOutput = partialOutput;
-        } catch {} // Ignore errors here
+        } catch { } // Ignore errors here
         const err = new Error(`Gemini process exited with code ${result.exitCode}`);
         // Preserve stderr in error message context
         (err as any).stderr = result.stderr;
@@ -198,10 +199,10 @@ export class Agent {
 
       // Extract final output; if tool responses are JSON blobs from our tools, keep them as-is
       const output = this.extractFinalOutput(result.output);
-      
+
       // Extract structured summary from output (Phase 4)
-      const structuredSummary = extractStructuredSummary(output);
-      
+      const structuredSummary = extractStructuredSummary(output) ?? undefined;
+
       return { output, structuredSummary, telemetry };
     } catch (error) {
       // Preserve telemetry if the thrown error already includes it (e.g., from non-zero exit path)
@@ -245,11 +246,11 @@ export class Agent {
       // NOTE: Gemini CLI no longer accepts --approval-mode or --allowed-tools flags
       // Tool permissions are now controlled via MCP settings.json (includeTools/excludeTools)
       const args: string[] = [];
-      
+
       // Use cached tool policy (computed in generateJobSpecificSettings)
       // This ensures tool access is properly restricted via MCP settings
       const toolPolicy = this.cachedToolPolicy || computeToolPolicy(this.enabledTools, { isCodingJob: this.isCodingJob });
-      
+
       // Make sure Gemini CLI treats the job repo as part of the workspace to allow write_file
       const includeDirectories = new Set<string>();
       if (this.codeWorkspace && this.codeWorkspace.trim() !== '') {
@@ -259,7 +260,7 @@ export class Agent {
       } else if (!this.codeWorkspace || this.codeWorkspace.trim() === '') {
         agentLogger.debug('codeWorkspace is empty - skipping all directory includes (including env vars)');
       }
-      
+
       // Only add environment variable directories if codeWorkspace is not explicitly empty
       if (this.codeWorkspace && this.codeWorkspace.trim() !== '') {
         if (process.env.CODE_METADATA_REPO_ROOT) {
@@ -299,23 +300,23 @@ export class Agent {
         args.push('--debug');
       }
 
-      // Telemetry outfile
-      const telemetryFile = `/tmp/telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`;
+      // Telemetry outfile - use os.tmpdir() to ensure Seatbelt sandbox allows writes
+      const telemetryFile = join(tmpdir(), `telemetry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`);
       this.lastTelemetryFile = telemetryFile;
 
       // Persist the last prompt locally for debugging/repro
       const promptDir = dirname(this.settingsPath);
-      try { mkdirSync(promptDir, { recursive: true }); } catch {} // Ignore errors here
+      try { mkdirSync(promptDir, { recursive: true }); } catch { } // Ignore errors here
       const lastPromptPath = join(promptDir, 'last-prompt.txt');
-      try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch {} // Ignore errors here
+      try { writeFileSync(lastPromptPath, prompt, 'utf8'); } catch { } // Ignore errors here
 
       agentLogger.info({ telemetryFile }, 'Will write telemetry to file');
-      agentLogger.info({ 
+      agentLogger.info({
         model: this.model,
         jobName: this.jobContext?.jobName || 'job',
         phase: this.jobContext?.phase || 'execution'
       }, 'Spawning Gemini CLI');
-      
+
       // Use -p flag for prompt (NOT positional argument)
       // CLI v0.11.2 ignores positional prompts when cwd is a git repository
       // Using -p ensures non-interactive mode works regardless of cwd
@@ -344,7 +345,7 @@ export class Agent {
           envWithJob.JINN_SOURCE_EVENT_ID = this.jobContext.sourceEventId || '';
           envWithJob.JINN_PROJECT_DEFINITION_ID = this.jobContext.projectDefinitionId || '';
         }
-      } catch {} // Ignore errors here
+      } catch { } // Ignore errors here
 
       if (!envWithJob.GEMINI_CLI_SYSTEM_SETTINGS_PATH) {
         envWithJob.GEMINI_CLI_SYSTEM_SETTINGS_PATH = this.settingsPath;
@@ -370,15 +371,15 @@ export class Agent {
         // Solution: Use stable agentRoot as cwd, but expose workspace via JINN_WORKSPACE_DIR env var
         // so native tools (write_file, etc.) can resolve paths correctly.
         cwd: (() => {
-          const workspace = this.codeWorkspace && this.codeWorkspace.trim() !== '' 
-            ? this.codeWorkspace 
+          const workspace = this.codeWorkspace && this.codeWorkspace.trim() !== ''
+            ? this.codeWorkspace
             : this.agentRoot;
-          
+
           // If workspace is a temporary test fixture, use agentRoot (stable directory)
           if (workspace.includes('/jinn-gemini-tests/') || process.env.VITEST === 'true') {
             return this.agentRoot; // Stable directory (gemini-agent/)
           }
-          
+
           return workspace;
         })(),
         env: {
@@ -386,7 +387,9 @@ export class Agent {
           // Set GEMINI_HOME to a writable directory within the project to avoid EPERM errors
           GEMINI_HOME: geminiHome,
           // Expose workspace directory for native tools even when cwd is stable
-          ...(this.codeWorkspace && this.codeWorkspace.trim() !== '' ? { JINN_WORKSPACE_DIR: this.codeWorkspace } : {})
+          ...(this.codeWorkspace && this.codeWorkspace.trim() !== '' ? { JINN_WORKSPACE_DIR: this.codeWorkspace } : {}),
+          // Enable sandbox mode (default: 'sandbox-exec' for macOS Seatbelt isolation)
+          GEMINI_SANDBOX: getSandboxMode(),
         }
       });
 
@@ -394,7 +397,7 @@ export class Agent {
       let stderr = '';
       let terminated = false;
       let terminationReason = '';
-      
+
       // Tracking variables for protection
       // Consecutive-only line repetition tracking
       let lastTrackedLine: string | null = null;
@@ -402,16 +405,16 @@ export class Agent {
       const chunkHistory: string[] = [];
       let lineCount = 0;
       let lastLineTime = Date.now();
-      
+
       // Removed time-based process timeout
 
       // Prompt is provided as positional argument, no stdin needed
 
       geminiProcess.stdout.on('data', (data) => {
         if (terminated) return;
-        
+
         const chunk = data.toString();
-        
+
         // Check chunk size
         if (chunk.length > this.MAX_CHUNK_SIZE) {
           agentLogger.warn({ chunkSize: chunk.length, maxChunkSize: this.MAX_CHUNK_SIZE }, 'Terminating process due to large chunk');
@@ -420,7 +423,7 @@ export class Agent {
           geminiProcess.kill('SIGTERM');
           return;
         }
-        
+
         // Check total stdout size
         if (stdout.length + chunk.length > this.MAX_STDOUT_SIZE) {
           const totalSizeMB = ((stdout.length + chunk.length) / 1024 / 1024).toFixed(2);
@@ -430,13 +433,13 @@ export class Agent {
           geminiProcess.kill('SIGTERM');
           return;
         }
-        
+
         // Check for identical chunk repetition
         chunkHistory.push(chunk);
         if (chunkHistory.length > this.MAX_IDENTICAL_CHUNKS) {
           chunkHistory.shift();
         }
-        
+
         const identicalChunks = chunkHistory.filter(c => c === chunk).length;
         if (identicalChunks >= this.MAX_IDENTICAL_CHUNKS) {
           agentLogger.warn({ identicalChunks, maxIdenticalChunks: this.MAX_IDENTICAL_CHUNKS }, 'Terminating process due to identical chunk repetition');
@@ -445,17 +448,17 @@ export class Agent {
           geminiProcess.kill('SIGTERM');
           return;
         }
-        
+
         // Process lines for repetition detection and rate limiting
         const lines = chunk.split('\n');
         const currentTime = Date.now();
-        
+
         for (const line of lines) {
           if (line.trim().length > 0) {
             lineCount++;
-            
+
             // Removed per-second output rate limiting
-            
+
             // Line repetition detection (consecutive-only) with benign prefix ignore
             const isBenignPrefix = /^\s*call:/i.test(line);
             if (!isBenignPrefix) {
@@ -481,13 +484,13 @@ export class Agent {
               lastTrackedLine = null;
               consecutiveRepeatCount = 0;
             }
-            
+
             // Console logging (existing logic)
             const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
             agentLogger.output(truncatedLine);
           }
         }
-        
+
         // Add chunk to stdout if not terminated
         stdout += chunk;
       });
@@ -497,17 +500,17 @@ export class Agent {
       geminiProcess.stderr.on('data', (data) => {
         const chunk = data.toString();
         chunk.split('\n').forEach((line: string) => {
-            if (line.trim().length > 0) {
-                const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
-                console.error(truncatedLine);
-            }
+          if (line.trim().length > 0) {
+            const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
+            console.error(truncatedLine);
+          }
         });
         stderr += chunk;
       });
 
       geminiProcess.on('close', (code) => {
         // No timeout to clear
-        
+
         // Inspect stderr for API/tool errors even if process exits 0
         let hasApiError = (stderr && (
           stderr.includes('Error when talking to Gemini API') ||
@@ -523,7 +526,7 @@ export class Agent {
           hasApiError = false;
           exitCode = 0;
         }
-        
+
         // Handle termination cases
         if (terminated) {
           agentLogger.warn({ terminationReason }, 'Process terminated by loop detection');
@@ -532,13 +535,13 @@ export class Agent {
           // Force non-zero exit code for terminated processes
           exitCode = exitCode || 1;
         }
-        
+
         resolvePromise({ output: stdout, telemetryFile, stderr, exitCode });
       });
 
       geminiProcess.on('error', (err) => {
         // No timeout to clear
-        
+
         // Surface as a synthetic non-zero exit with captured streams
         const exitCode = 1;
         const synthetic = `Gemini spawn error: ${err?.message || String(err)}`;
@@ -555,11 +558,11 @@ export class Agent {
         ? 'settings.template.dev.json'
         : 'settings.template.json';
       const templatePath = join(this.agentRoot, templateFileName);
-      
+
       // Verify template file exists before reading
       if (!existsSync(templatePath)) {
-        const fallbackPath = join(this.agentRoot, templateFileName === 'settings.template.dev.json' 
-          ? 'settings.template.json' 
+        const fallbackPath = join(this.agentRoot, templateFileName === 'settings.template.dev.json'
+          ? 'settings.template.json'
           : 'settings.template.dev.json');
         const attemptedPaths = [templatePath];
         if (existsSync(fallbackPath)) {
@@ -572,7 +575,7 @@ export class Agent {
           `Current working directory: ${process.cwd()}`
         );
       }
-      
+
       const templateSettings: GeminiSettings = JSON.parse(readFileSync(templatePath, 'utf8'));
 
       if (!templateSettings.mcpServers) {
@@ -1012,7 +1015,7 @@ export class Agent {
                   const response = part.functionResponse.response;
 
                   // Find corresponding tool call and attach result
-                  const toolCall = telemetry.toolCalls.find(tc => 
+                  const toolCall = telemetry.toolCalls.find(tc =>
                     tc.tool === toolName && tc.success && !tc.result
                   );
 
@@ -1077,7 +1080,7 @@ export function extractStructuredSummary(output: string): string | null {
     /## Execution Summary/i,
     /# Summary/i
   ];
-  
+
   for (const marker of summaryMarkers) {
     if (marker.test(output)) {
       // Extract from marker to end (or to next major section)
@@ -1085,7 +1088,7 @@ export function extractStructuredSummary(output: string): string | null {
       if (match && match.index !== undefined) {
         // Extract until end or next major heading (that's not part of the summary)
         const remaining = output.slice(match.index);
-        
+
         // Don't cut off if we find internal headings like "### Actions Taken"
         // Only cut off if we find something that looks like a new top-level section
         // For now, just take everything from the marker to the end
@@ -1093,7 +1096,7 @@ export function extractStructuredSummary(output: string): string | null {
       }
     }
   }
-  
+
   // Fallback: Last 1200 chars (current behavior)
   return output.slice(-1200);
 }

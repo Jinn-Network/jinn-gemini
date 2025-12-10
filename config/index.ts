@@ -352,6 +352,11 @@ const devTestingSchema = z.object({
   MECHX_WSS_ENDPOINT: z.string().optional(),
   MECH_CHAIN_CONFIG: z.string().optional(),
   MECH_PRIVATE_KEY_PATH: z.string().optional(),
+
+  // GEMINI_SANDBOX: Sandbox mode for Gemini CLI agent execution
+  // Values: 'sandbox-exec' (macOS Seatbelt), 'docker', 'podman', 'false'
+  // Default: 'sandbox-exec' for process-level isolation on macOS
+  GEMINI_SANDBOX: z.enum(['sandbox-exec', 'docker', 'podman', 'false']).default('sandbox-exec'),
 });
 
 /**
@@ -423,9 +428,9 @@ function loadConfig(): ConfigType {
 
     // RPC_URL: Check canonical name, then legacy aliases
     RPC_URL: process.env.RPC_URL ||
-             process.env.MECHX_CHAIN_RPC ||
-             process.env.MECH_RPC_HTTP_URL ||
-             process.env.BASE_RPC_URL,
+      process.env.MECHX_CHAIN_RPC ||
+      process.env.MECH_RPC_HTTP_URL ||
+      process.env.BASE_RPC_URL,
 
     // MECH_ADDRESS: From .operate service profile only (no env var fallbacks)
     MECH_ADDRESS: getOperateMechAddress() || undefined,
@@ -1032,3 +1037,17 @@ export function getBlueprintEnableJobContext(): boolean {
 export function getBlueprintEnableProgress(): boolean {
   return getConfig().BLUEPRINT_ENABLE_PROGRESS ?? true;
 }
+
+// ============================================================================
+// Public API: Sandbox Configuration
+// ============================================================================
+
+/**
+ * Get the sandbox mode for Gemini CLI execution.
+ * Default: 'sandbox-exec' (macOS Seatbelt) for process-level isolation.
+ * Options: 'sandbox-exec', 'docker', 'podman', 'false'
+ */
+export function getSandboxMode(): 'sandbox-exec' | 'docker' | 'podman' | 'false' {
+  return getConfig().GEMINI_SANDBOX;
+}
+

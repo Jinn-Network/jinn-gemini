@@ -53,13 +53,16 @@ export async function runAgentForRequest(
   const model = metadata?.model || 'gemini-2.5-flash';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const completedChildRequestIds = extractCompletedChildRequestIds(metadata?.additionalContext);
-  
+
   // Determine if this is a coding job based on presence of code metadata
   const isCodingJob = !!metadata?.codeMetadata;
-  
-  // For artifact-only jobs (no code), pass null to prevent loading external repos
-  const codeWorkspace = isCodingJob ? undefined : null;
-  
+
+  // For artifact-only jobs (no code), pass null to prevent loading external repos.
+  // For coding jobs, prefer explicit repo root from environment if set (handles test fixtures).
+  const codeWorkspace = isCodingJob
+    ? (process.env.CODE_METADATA_REPO_ROOT || undefined)
+    : null;
+
   const agent = new Agent(
     model,
     enabledTools,
@@ -97,11 +100,11 @@ export async function runAgentForRequest(
       branchName: metadata?.codeMetadata?.branch?.name || undefined,
       completedChildRequestIds,
     });
-    
+
     const result = await agent.run(prompt);
     const telemetry = result.telemetry || {};
     const delegated = didDispatchChild(telemetry);
-    
+
     return {
       output: result.output || '',
       telemetry,
