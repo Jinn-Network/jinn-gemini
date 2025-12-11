@@ -1,0 +1,203 @@
+{
+  "assertions": [
+    {
+      "id": "SCAFFOLD-001",
+      "assertion": "The service must be scaffolded as a Hono application with x402-hono middleware in the services/x402-optimizer/ directory structure.",
+      "examples": {
+        "do": [
+          "Create services/x402-optimizer/src/index.ts as the main Hono app entry point",
+          "Use x402-hono paymentMiddleware for payment-gated routes",
+          "Structure routes in services/x402-optimizer/src/routes/ (analyze.ts, status.ts)",
+          "Place integration logic in services/x402-optimizer/src/lib/ (dispatch.ts, ponder.ts)",
+          "Include package.json with hono and x402-hono dependencies",
+          "Create .gitignore excluding node_modules/, dist/, .env, *.log"
+        ],
+        "dont": [
+          "Use Express, Fastify, or other frameworks instead of Hono",
+          "Place service files in project root or scattered locations",
+          "Skip the x402 payment middleware for the analyze endpoint",
+          "Forget to create .gitignore (causes Gemini CLI token overflow from scanning node_modules)"
+        ]
+      },
+      "commentary": "Hono + x402-hono is the specified stack. Consistent directory structure makes the service maintainable and follows x402 ecosystem conventions. CRITICAL: Always create .gitignore first to prevent node_modules from being scanned."
+    },
+    {
+      "id": "API-001",
+      "assertion": "POST /analyze must accept { endpointUrl: string } and return { jobId: string, statusUrl: string } after dispatching an analysis job.",
+      "examples": {
+        "do": [
+          "Validate endpointUrl is a valid URL before dispatching",
+          "Return 400 with error message for invalid input",
+          "Return jobId (the marketplace request ID) and statusUrl pointing to GET /status/:jobId",
+          "Protect this endpoint with x402 payment middleware ($0.50 per analysis)"
+        ],
+        "dont": [
+          "Accept arbitrary payloads without validation",
+          "Return 200 with incomplete response body",
+          "Allow unpaid requests to dispatch jobs"
+        ]
+      },
+      "commentary": "The analyze endpoint is the core paid service. It gates job dispatch behind x402 payment."
+    },
+    {
+      "id": "API-002",
+      "assertion": "GET /status/:jobId must query Ponder for job status and return { status: 'pending' | 'in_progress' | 'completed' | 'failed', reportUrl?: string }.",
+      "examples": {
+        "do": [
+          "Query Ponder GraphQL for request status using the jobId as request ID",
+          "Map Ponder delivered status to 'completed'",
+          "Include reportUrl (IPFS gateway link to deliveryIpfsHash) when status is 'completed'",
+          "Return 404 if jobId not found in Ponder"
+        ],
+        "dont": [
+          "Return stale or cached status without querying Ponder",
+          "Omit reportUrl for completed jobs",
+          "Expose internal error details to clients"
+        ]
+      },
+      "commentary": "Status polling is free (no payment required) and provides visibility into job progress."
+    },
+    {
+      "id": "API-003",
+      "assertion": "GET /health must return 200 OK with { status: 'healthy' } for Railway health checks.",
+      "examples": {
+        "do": [
+          "Return 200 status code with JSON body",
+          "Respond quickly without external dependencies",
+          "Include timestamp or version in response for debugging"
+        ],
+        "dont": [
+          "Fail health check due to Ponder connectivity issues",
+          "Return non-JSON response",
+          "Add payment middleware to health endpoint"
+        ]
+      },
+      "commentary": "Health endpoint is required for Railway deployment and should be lightweight."
+    },
+    {
+      "id": "DISPATCH-001",
+      "assertion": "Job dispatch must use the existing marketplaceInteract pattern from the monorepo to post analysis requests to the OLAS mech marketplace.",
+      "examples": {
+        "do": [
+          "Import and use marketplaceInteract from mech-client-ts",
+          "Include the analysis blueprint in IPFS metadata",
+          "Pass endpointUrl in additionalContext for the analysis agent",
+          "Use environment variables for RPC_URL, MECH_ADDRESS, PRIVATE_KEY"
+        ],
+        "dont": [
+          "Implement custom blockchain interaction",
+          "Hardcode credentials or addresses",
+          "Skip IPFS metadata upload"
+        ]
+      },
+      "commentary": "Reusing existing dispatch infrastructure ensures consistency and leverages battle-tested code."
+    },
+    {
+      "id": "STATUS-001",
+      "assertion": "Ponder queries must use the graphQLRequest helper from http/client.ts to fetch job status with retry logic.",
+      "examples": {
+        "do": [
+          "Query requests table by id for delivered status and deliveryIpfsHash",
+          "Use PONDER_GRAPHQL_URL environment variable for endpoint",
+          "Handle GraphQL errors gracefully with appropriate HTTP status codes"
+        ],
+        "dont": [
+          "Implement custom GraphQL client",
+          "Skip retry logic for transient failures",
+          "Query Ponder on every incoming request without caching consideration"
+        ]
+      },
+      "commentary": "Consistent use of shared HTTP client ensures proper error handling and logging."
+    },
+    {
+      "id": "X402-001",
+      "assertion": "The /analyze endpoint must be protected by x402-hono paymentMiddleware requiring $0.50 USDC payment on base-sepolia network.",
+      "examples": {
+        "do": [
+          "Configure paymentMiddleware with PAYMENT_WALLET_ADDRESS from env",
+          "Set price to '$0.50' for testnet (can adjust for mainnet)",
+          "Use 'base-sepolia' network for development, 'base' for production",
+          "Return proper 402 Payment Required response with payment details"
+        ],
+        "dont": [
+          "Skip payment verification in production",
+          "Hardcode wallet addresses",
+          "Use non-USDC tokens without explicit configuration"
+        ]
+      },
+      "commentary": "x402 payment is the core monetization mechanism. Proper middleware setup is essential."
+    },
+    {
+      "id": "DEPLOY-001",
+      "assertion": "The service must include railway.json configuration for Railway deployment with proper build and start commands.",
+      "examples": {
+        "do": [
+          "Include railway.json with NIXPACKS builder",
+          "Set startCommand to 'yarn start' or 'node dist/index.js'",
+          "Configure healthcheckPath to '/health'",
+          "Document required environment variables in .env.example"
+        ],
+        "dont": [
+          "Omit railway.json configuration",
+          "Use Docker when NIXPACKS suffices",
+          "Hardcode environment-specific values"
+        ]
+      },
+      "commentary": "Railway deployment config ensures one-click deployment capability."
+    },
+    {
+      "id": "BLUEPRINT-001",
+      "assertion": "The service must include an embedded analysis blueprint that instructs the agent to discover x402 service capabilities, research the ecosystem, and produce optimization recommendations.",
+      "examples": {
+        "do": [
+          "Include blueprint JSON in services/x402-optimizer/src/lib/analysis-blueprint.ts",
+          "Assertions: discover service from URL alone, research 10+ x402 services, compare against 3+ similar services",
+          "Assertions: perform live endpoint testing, include 3+ actionable recommendations",
+          "Enable web_fetch, google_web_search, create_artifact tools for analysis agent"
+        ],
+        "dont": [
+          "Skip ecosystem research assertions",
+          "Require OpenAPI spec or detailed documentation from target service",
+          "Produce vague, non-actionable recommendations"
+        ]
+      },
+      "commentary": "The analysis blueprint defines WHAT the agent must discover and report, making the optimization service valuable."
+    },
+    {
+      "id": "ENV-001",
+      "assertion": "All configuration must be via environment variables with sensible defaults and clear documentation.",
+      "examples": {
+        "do": [
+          "Document all required env vars: PAYMENT_WALLET_ADDRESS, RPC_URL, MECH_ADDRESS, PRIVATE_KEY, PONDER_GRAPHQL_URL",
+          "Provide .env.example with placeholder values",
+          "Use base-sepolia as default network for development",
+          "Default PORT to 3000"
+        ],
+        "dont": [
+          "Hardcode any addresses, keys, or URLs",
+          "Require undocumented environment variables",
+          "Mix testnet and mainnet defaults"
+        ]
+      },
+      "commentary": "Clear environment configuration enables easy local development and production deployment."
+    },
+    {
+      "id": "VERIFICATION-001",
+      "assertion": "All API endpoints must be tested by making actual HTTP requests and verifying responses match the specification.",
+      "examples": {
+        "do": [
+          "Test GET /health returns 200 with status: healthy",
+          "Test POST /analyze returns 402 without payment header",
+          "Test GET /status/:jobId returns appropriate status structure",
+          "Document test commands or scripts for verification"
+        ],
+        "dont": [
+          "Ship without any verification of endpoint behavior",
+          "Assume endpoints work without testing",
+          "Skip error case testing"
+        ]
+      },
+      "commentary": "Verification ensures the service actually works as specified before deployment."
+    }
+  ]
+}

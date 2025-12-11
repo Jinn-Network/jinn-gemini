@@ -127,6 +127,11 @@ describe('deliverViaSafeTransaction', () => {
             })),
           },
         })),
+        // Required for nonce debugging instrumentation added in e66da8a
+        accounts: {
+          privateKeyToAccount: vi.fn().mockReturnValue({ address: '0xAgentAddress' }),
+        },
+        getTransactionCount: vi.fn().mockResolvedValue(BigInt(0)),
       },
     };
 

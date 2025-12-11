@@ -391,15 +391,38 @@ export async function deliverViaSafeTransaction(
 
   workerLogger.info({ requestId: context.requestId }, '[DELIVERY_DEBUG] Starting delivery transaction attempt');
   
+  // Get agent wallet address for nonce debugging
+  const web3ForNonce = new Web3(rpcHttpUrl || getRequiredRpcUrl());
+  const agentAccount = web3ForNonce.eth.accounts.privateKeyToAccount(privateKey);
+  const agentAddress = agentAccount.address;
+  
   let delivery: any;
-  const maxRetries = 1; // Reduce retries since we now have better preflight checks
+  // Increased retries for nonce issues - sometimes pending tx backlog needs time to clear
+  const maxRetries = 5;
   let lastError: Error | undefined;
 
   try {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Fetch fresh nonce before each attempt for debugging (DEBUG level - see Gotcha #31)
+      try {
+        const latestNonce = await web3ForNonce.eth.getTransactionCount(agentAddress, 'latest');
+        const pendingNonce = await web3ForNonce.eth.getTransactionCount(agentAddress, 'pending');
+        workerLogger.debug({
+          requestId: context.requestId,
+          attempt,
+          agentAddress,
+          latestNonce: Number(latestNonce),
+          pendingNonce: Number(pendingNonce),
+          pendingTxCount: Number(pendingNonce) - Number(latestNonce),
+        }, 'Pre-delivery nonce check');
+      } catch (nonceErr: any) {
+        workerLogger.debug({ requestId: context.requestId, error: nonceErr.message }, 'Failed to fetch nonce for debug');
+      }
+
       if (attempt > 0) {
-        const backoffMs = Math.pow(2, attempt) * 5000;
-        workerLogger.info({ requestId: context.requestId, attempt, backoffMs }, 'Retrying Safe delivery');
+        // Longer backoff for nonce issues: 15s, 30s, 60s, 120s, 240s
+        const backoffMs = Math.min(Math.pow(2, attempt) * 7500, 240000);
+        workerLogger.info({ requestId: context.requestId, attempt, backoffMs, maxRetries }, 'Retrying Safe delivery');
         await new Promise(r => setTimeout(r, backoffMs));
         
         // Re-check delivery status before retry
@@ -440,7 +463,19 @@ export async function deliverViaSafeTransaction(
         lastError = e;
         // Only retry on specific transient errors
         if (e.message?.includes('nonce too low') || e.message?.includes('replacement transaction underpriced')) {
-           workerLogger.warn({ requestId: context.requestId, error: e.message }, 'Safe delivery nonce issue; will retry');
+           // Extract nonce info from error for debugging
+           const nonceMatch = e.message?.match(/next nonce (\d+), tx nonce (\d+)/);
+           const expectedNonce = nonceMatch ? nonceMatch[1] : 'unknown';
+           const usedNonce = nonceMatch ? nonceMatch[2] : 'unknown';
+           workerLogger.warn({ 
+             requestId: context.requestId, 
+             error: e.message,
+             expectedNonce,
+             usedNonce,
+             nonceGap: nonceMatch ? parseInt(nonceMatch[1]) - parseInt(nonceMatch[2]) : 'unknown',
+             attempt,
+             remainingRetries: maxRetries - attempt
+           }, 'Safe delivery nonce issue; will retry');
            continue;
         }
 

@@ -42,6 +42,10 @@ const CONTROL_API_URL = getOptionalControlApiUrl() || 'http://localhost:4001/gra
 const SINGLE_SHOT = process.argv.includes('--single') || process.argv.includes('--single-job');
 const USE_CONTROL_API = getUseControlApi();
 
+// Track jobs executed in this session to prevent re-execution on delivery failure
+// This prevents infinite loops when delivery fails but Control API allows re-claiming
+const executedJobsThisSession = new Set<string>();
+
 // Parse --runs=<N> flag for controlled execution cycles
 const MAX_RUNS = (() => {
   if (SINGLE_SHOT) return 1; // --single is equivalent to --runs=1
@@ -429,6 +433,12 @@ async function filterByDependencies(requests: UnclaimedRequest[]): Promise<Uncla
 }
 
 async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promise<boolean> {
+  // Skip jobs already executed this session (prevents re-execution loop on delivery failure)
+  if (executedJobsThisSession.has(request.id)) {
+    workerLogger.info({ requestId: request.id }, 'Already executed this session - skipping to prevent re-execution loop');
+    return false;
+  }
+
   try {
     // Control API is the only path for claiming
     try {
@@ -771,7 +781,13 @@ async function processOnce(): Promise<void> {
   if (!target) return;
   
   // Delegate job execution to orchestrator
-  await processJobOnce(target, workerAddress);
+  try {
+    await processJobOnce(target, workerAddress);
+  } finally {
+    // Mark as executed even if delivery fails to prevent re-execution loop
+    executedJobsThisSession.add(target.id);
+    workerLogger.debug({ requestId: target.id }, 'Marked job as executed this session');
+  }
 }
 
 /**

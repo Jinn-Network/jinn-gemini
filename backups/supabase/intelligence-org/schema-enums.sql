@@ -20,3 +20,4 @@ CREATE TYPE public.transaction_status AS ENUM ('PENDING', 'CLAIMED', 'CONFIRMED'
 
 
 
+

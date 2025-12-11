@@ -269,7 +269,9 @@ async function main() {
         'replace',
         'list_directory',
         'run_shell_command',
+        'dispatch_new_job',  // Needed for delegation
       ],
+      skipBranch: false,  // Explicit branch creation for code workstreams
     });
 
     const { requestId } = parseDispatchResponse(result);

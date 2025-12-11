@@ -802,6 +802,42 @@ if (verificationDecision.isVerificationRun) {
 **Issue:** Parent request `0x5e8f2bd3...858c7` had multiple completed child branches (2048-game, arcade-infra-ui, minesweeper-game, snake-game, documentation) and prompt assertions CTX-BRANCH-REVIEW-PRIORITY / CTX-CHILD-001..006, but only the documentation branch (`job/814554d8-...-documentation`) was populated/reviewed/merged. Other child branches were ignored.  
 **Prevention:** Ensure parent reviews and processes all child branches listed in context, not just the prioritized one; primary-task assertion should not suppress integration of additional completed children.
 
+### 30. Gemini CLI Token Overflow from node_modules Scanning (2025-12-11)
+**Issue:** Job `service-scaffolding` (workstream `0x9045ca50...`) failed with "The input token count exceeds the maximum number of tokens" despite a 26KB prompt. Gemini CLI returned 400 error then 429 (rate limit from retry).
+**Root Cause:** Scaffolding job ran `npm install` creating 652MB of `node_modules/` but no `.gitignore` was created. Gemini CLI scans the workspace directory and tried to include all files in context, causing token overflow.
+**Evidence:**
+- Prompt file was only 26KB (~6-8K tokens)
+- Repo size was 713MB, with 652MB in `node_modules/`
+- No `.gitignore` file present
+**Solution:**
+1. Always create `.gitignore` FIRST before running `npm install`
+2. Blueprint assertions should explicitly require `.gitignore` creation
+3. Updated `x402-service-optimizer.json` blueprint to include `.gitignore` in SCAFFOLD-001
+**Prevention:**
+- Blueprints for coding jobs MUST include `.gitignore` creation as an early assertion
+- Consider adding automatic `.gitignore` generation in workstream launcher
+- The `.gitignore` should exclude: `node_modules/`, `dist/`, `.env`, `*.log`, `.DS_Store`
+
+### 31. Infinite Re-Execution Loop on Delivery Nonce Failure (2025-12-11)
+**Issue:** Job `service-scaffolding` completed execution but delivery failed with "nonce too low: next nonce 1167, tx nonce 1161". Worker then re-claimed and re-executed the same job in an infinite loop.
+**Root Cause:** 
+1. Mech-client caches the agent wallet's nonce
+2. When multiple deliveries happen, the cached nonce becomes stale
+3. Delivery fails but Control API allows re-claiming (doesn't track execution completion)
+4. Worker re-executes the same job wastefully
+**Evidence:**
+- Agent wallet nonce on-chain: 1167 (confirmed)
+- Transaction attempted with nonce: 1161 (stale, 6 behind)
+- Control API re-claimed the job despite prior execution
+**Solution:**
+1. Added `executedJobsThisSession` Set in `worker/mech_worker.ts` to track executed jobs
+2. Check before claiming to skip jobs already executed in this session
+3. Mark jobs as executed in `finally` block even if delivery fails
+**Prevention:**
+- The mech-client should refresh nonce before each delivery attempt
+- Control API should track execution completion separately from delivery status
+- Workers should maintain session-local execution history to prevent re-execution
+
 ---
 
 ## Test Infrastructure Gotchas
