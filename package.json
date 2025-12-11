@@ -19,6 +19,7 @@
     "dev:stack:direct": "concurrently \"cd ponder && yarn dev\" \"yarn control:dev\" \"yarn frontend:dev\" --names \"ponder,control,frontend\" --prefix-colors \"cyan,magenta,green\"",
     "control-api": "tsx control-api/server.ts",
     "frontend-explorer": "cd frontend/explorer && yarn dev",
+    "frontend-explorer:storybook": "cd frontend/explorer && yarn storybook",
     "mech": "USE_TSX_MCP=1 tsx worker/mech_worker.ts",
     "control:dev": "tsx control-api/server.ts",
     "test:onchain:e2e": "tsx scripts/test_onchain_e2e.ts",
