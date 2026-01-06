@@ -80,19 +80,19 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       workerLogger.warn('Cannot fetch requests without mech address');
       return [];
     }
-    
-    workerLogger.info({ 
-      ponderUrl: PONDER_GRAPHQL_URL, 
+
+    workerLogger.info({
+      ponderUrl: PONDER_GRAPHQL_URL,
       mech: workerMech,
       workstreamFilter: WORKSTREAM_FILTER || 'none'
     }, 'Fetching requests from Ponder');
-    
+
     const whereConditions: string[] = ['mech: $mech', 'delivered: false'];
     if (WORKSTREAM_FILTER) {
       whereConditions.push('workstreamId: $workstreamId');
     }
     const whereClause = `{ ${whereConditions.join(', ')} }`;
-    
+
     // Query our local Ponder GraphQL (custom schema) - FILTER BY MECH AND UNDELIVERED (and optionally WORKSTREAM)
     const query = `query RecentRequests($limit: Int!, $mech: String!${WORKSTREAM_FILTER ? ', $workstreamId: String!' : ''}) {
   requests(
@@ -113,7 +113,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     }
   }
 }`;
-    
+
     const variables: any = {
       limit,
       mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
@@ -121,7 +121,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     if (WORKSTREAM_FILTER) {
       variables.workstreamId = WORKSTREAM_FILTER;
     }
-    
+
     const data = await graphQLRequest<{ requests: { items: any[] } }>({
       url: PONDER_GRAPHQL_URL,
       query,
@@ -150,40 +150,40 @@ async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: str
   const { mechAddress, rpcHttpUrl, size = 1000, offset = 0 } = params;
   try {
     if (!rpcHttpUrl) return new Set<string>();
-    
+
     // Step 1: Get requests pending in YOUR mech's queue
     const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
     const web3 = new Web3(rpcHttpUrl);
     const mechContract = new (web3 as any).eth.Contract(abi, mechAddress);
     const requestIds: string[] = await mechContract.methods.getUndeliveredRequestIds(size, offset).call();
-    
+
     if (!requestIds || requestIds.length === 0) {
       return new Set<string>();
     }
-    
+
     // Step 2: Filter out requests that have been delivered by OTHER mechs in the marketplace
     // This prevents wasted gas on delivery attempts that will be revoked
     const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
     // Dynamic import with require to avoid TypeScript module resolution issues
     const marketplaceAbi = require('../ponder/abis/MechMarketplace.json');
     const marketplace = new (web3 as any).eth.Contract(marketplaceAbi, MARKETPLACE_ADDRESS);
-    
+
     const undeliveredSet = new Set<string>();
-    
+
     // Check each request in the marketplace to see if it's actually still undelivered
     for (const requestId of requestIds) {
       try {
         const requestInfo = await marketplace.methods.mapRequestIdInfos(requestId).call();
         const isDelivered = requestInfo.deliveryMech !== '0x0000000000000000000000000000000000000000';
-        
+
         if (!isDelivered) {
           // Request is still undelivered in marketplace - safe to attempt delivery
           undeliveredSet.add(String(requestId).toLowerCase());
         } else {
           // Request was delivered by another mech - skip it
-          workerLogger.debug({ 
-            requestId, 
-            deliveredByMech: requestInfo.deliveryMech 
+          workerLogger.debug({
+            requestId,
+            deliveredByMech: requestInfo.deliveryMech
           }, 'Request already delivered in marketplace by another mech - filtering out');
         }
       } catch (err) {
@@ -192,7 +192,7 @@ async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: str
         undeliveredSet.add(String(requestId).toLowerCase());
       }
     }
-    
+
     return undeliveredSet;
   } catch (err) {
     workerLogger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to get undelivered set; returning null');
@@ -218,25 +218,25 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
     }
     const filtered = notDelivered.filter(r => {
       const set = mechToSet.get(r.mech.toLowerCase());
-      
+
       // If we failed to get the set (null), we default to TRUSTING Ponder (return true)
       // This prevents blocking if RPC is flaky, but might cause a revert on claim if actually delivered.
       if (set === null) {
         workerLogger.debug({ requestId: r.id }, 'RPC check failed (null set), falling back to Ponder status (keeping request)');
         return true;
       }
-      
+
       const idHex = String(r.id).startsWith('0x') ? String(r.id).toLowerCase() : ('0x' + BigInt(String(r.id)).toString(16)).toLowerCase();
       const inSet = set.has(idHex);
-      
+
       if (!inSet) {
-        workerLogger.debug({ 
-          requestId: r.id, 
+        workerLogger.debug({
+          requestId: r.id,
           mech: r.mech,
-          onChainSetSize: set.size 
+          onChainSetSize: set.size
         }, 'Request filtered out - not found in on-chain undelivered set (already delivered)');
       }
-      
+
       return inSet;
     });
     return filtered;
@@ -348,27 +348,27 @@ export async function isJobDefinitionComplete(jobDefinitionId: string): Promise<
     });
 
     const jobDef = data?.jobDefinitions?.items?.[0];
-    
+
     if (!jobDef) {
       workerLogger.debug({ jobDefinitionId }, 'Job definition not found');
       return false;
     }
-    
+
     // Job definition is complete only if lastStatus is terminal (COMPLETED/FAILED)
     // DELEGATING and WAITING mean work is still in progress
     const isComplete = jobDef.lastStatus === 'COMPLETED' || jobDef.lastStatus === 'FAILED';
-    
-    workerLogger.debug({ 
-      jobDefinitionId, 
+
+    workerLogger.debug({
+      jobDefinitionId,
       lastStatus: jobDef.lastStatus,
-      isComplete 
+      isComplete
     }, 'Job definition completion check (status-based)');
-    
+
     return isComplete;
   } catch (e: any) {
-    workerLogger.warn({ 
+    workerLogger.warn({
       jobDefinitionId,
-      error: e instanceof Error ? e.message : String(e) 
+      error: e instanceof Error ? e.message : String(e)
     }, 'Failed to check job definition completion - assuming not complete');
     return false;
   }
@@ -392,13 +392,13 @@ async function checkDependenciesMet(request: UnclaimedRequest): Promise<boolean>
         return { identifier, resolvedId, isComplete };
       })
     );
-    
+
     const allComplete = results.every(r => r.isComplete);
-    
+
     if (!allComplete) {
       const incomplete = results.filter(r => !r.isComplete);
-      workerLogger.info({ 
-        requestId: request.id, 
+      workerLogger.info({
+        requestId: request.id,
         totalDeps: request.dependencies.length,
         incompleteDeps: incomplete.map(r => ({
           identifier: r.identifier,
@@ -407,12 +407,12 @@ async function checkDependenciesMet(request: UnclaimedRequest): Promise<boolean>
         })),
       }, 'Dependencies not met - waiting for job definitions to complete');
     }
-    
+
     return allComplete;
   } catch (e: any) {
-    workerLogger.warn({ 
-      requestId: request.id, 
-      error: e instanceof Error ? e.message : String(e) 
+    workerLogger.warn({
+      requestId: request.id,
+      error: e instanceof Error ? e.message : String(e)
     }, 'Failed to check dependencies - assuming not met');
     return false;
   }
@@ -428,7 +428,7 @@ async function filterByDependencies(requests: UnclaimedRequest[]): Promise<Uncla
       canProceed: await checkDependenciesMet(request)
     }))
   );
-  
+
   return results.filter(r => r.canProceed).map(r => r.request);
 }
 
@@ -467,34 +467,31 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
 
 
 /**
- * Get branch information for a job definition by looking up its GIT_BRANCH artifact
- * Returns the branch name and base branch from the most recent delivered request
+ * Get branch information for a job definition by querying its codeMetadata
+ * 
+ * This queries the jobDefinition table directly for codeMetadata.branch.name, which is the same
+ * data source used when passing child branch info to parents (via completedChildRuns).
+ * This unifies how branch info is retrieved across the system.
+ * 
+ * @param jobDefinitionId - The job definition ID to get branch info for
+ * @returns Branch name and base branch if found, null otherwise
  */
 export async function getDependencyBranchInfo(jobDefinitionId: string): Promise<{
   branchName?: string;
   baseBranch?: string;
 } | null> {
   try {
-    // Query for artifacts of type GIT_BRANCH from this job definition
-    const query = `query GetBranchArtifact($jobDefId: String!) {
-      artifacts(
-        where: {
-          sourceJobDefinitionId: $jobDefId,
-          topic: "GIT_BRANCH"
-        },
-        orderBy: "blockTimestamp",
-        orderDirection: "desc",
-        limit: 1
-      ) {
-        items {
-          cid
-          contentPreview
-        }
+    // Query the job definition directly for codeMetadata
+    // This is the same data source used for child → parent branch info
+    const query = `query GetDependencyBranch($jobDefId: String!) {
+      jobDefinition(id: $jobDefId) {
+        id
+        codeMetadata
       }
     }`;
 
     const data = await graphQLRequest<{
-      artifacts: { items: Array<{ cid: string; contentPreview?: string }> };
+      jobDefinition: { id: string; codeMetadata?: any } | null;
     }>({
       url: PONDER_GRAPHQL_URL,
       query,
@@ -502,34 +499,35 @@ export async function getDependencyBranchInfo(jobDefinitionId: string): Promise<
       context: { operation: 'getDependencyBranchInfo', jobDefinitionId }
     });
 
-    const artifact = data?.artifacts?.items?.[0];
-    if (!artifact) {
-      workerLogger.debug({ jobDefinitionId }, 'No GIT_BRANCH artifact found for dependency');
+    const jobDef = data?.jobDefinition;
+    if (!jobDef) {
+      workerLogger.debug({ jobDefinitionId }, 'No job definition found for dependency');
       return null;
     }
 
-    // Parse the content preview to extract branch info
-    // Content preview format: "Branch: job/xxx-yyy based on main\nDiff summary: ..."
-    const contentPreview = artifact.contentPreview || '';
-    const branchMatch = contentPreview.match(/Branch:\s*([^\s]+)\s+based\s+on\s+([^\s\n]+)/i);
-
-    if (branchMatch) {
-      return {
-        branchName: branchMatch[1],
-        baseBranch: branchMatch[2],
-      };
+    // Extract branch info from codeMetadata
+    const codeMetadata = jobDef.codeMetadata;
+    if (!codeMetadata) {
+      workerLogger.debug({ jobDefinitionId }, 'No codeMetadata on dependency job definition');
+      return null;
     }
 
-    // Try alternative parsing - just look for branch name pattern
-    const simpleBranchMatch = contentPreview.match(/job\/[a-f0-9-]+(?:-[a-z0-9-]+)?/i);
-    if (simpleBranchMatch) {
-      return {
-        branchName: simpleBranchMatch[0],
-        baseBranch: DEFAULT_BASE_BRANCH,
-      };
+    // codeMetadata.branch.name contains the branch name
+    // codeMetadata.baseBranch contains the base branch
+    const branchName = codeMetadata.branch?.name;
+    const baseBranch = codeMetadata.baseBranch || DEFAULT_BASE_BRANCH;
+
+    if (branchName) {
+      workerLogger.debug({
+        jobDefinitionId,
+        branchName,
+        baseBranch
+      }, 'Found branch info from dependency job definition codeMetadata');
+
+      return { branchName, baseBranch };
     }
 
-    workerLogger.debug({ jobDefinitionId, contentPreview }, 'Could not parse branch info from artifact');
+    workerLogger.debug({ jobDefinitionId }, 'No branch name in dependency codeMetadata');
     return null;
   } catch (e: any) {
     workerLogger.warn({
@@ -540,14 +538,16 @@ export async function getDependencyBranchInfo(jobDefinitionId: string): Promise<
   }
 }
 
+
+
 /**
  * Check if a job chain is complete by verifying all requests are delivered
  */
 async function isChainComplete(rootJobDefinitionId: string): Promise<boolean> {
   try {
-      const data = await graphQLRequest<{ requests: { items: Array<{ id: string; delivered: boolean }> } }>({
+    const data = await graphQLRequest<{ requests: { items: Array<{ id: string; delivered: boolean }> } }>({
       url: PONDER_GRAPHQL_URL,
-        query: `query($rootId: String!) {
+      query: `query($rootId: String!) {
         requests(where: { sourceJobDefinitionId: $rootId }) {
           items {
             id
@@ -559,11 +559,11 @@ async function isChainComplete(rootJobDefinitionId: string): Promise<boolean> {
       context: { operation: 'isChainComplete', rootJobDefinitionId }
     });
     const requests = data?.requests?.items || [];
-    
+
     if (requests.length === 0) {
       return false; // No requests in chain
     }
-    
+
     // Check if all requests are delivered
     return requests.every((req: any) => req.delivered);
   } catch (e) {
@@ -578,11 +578,11 @@ async function isChainComplete(rootJobDefinitionId: string): Promise<boolean> {
 function shouldRepost(rootJobDefinitionId: string): boolean {
   const now = Date.now();
   const lastRepost = recentReposts.get(rootJobDefinitionId);
-  
+
   if (lastRepost && (now - lastRepost) < MIN_TIME_BETWEEN_REPOSTS) {
     return false;
   }
-  
+
   return true;
 }
 
@@ -607,7 +607,7 @@ async function repostExistingJob(jobDefinitionId: string): Promise<void> {
       context: { operation: 'repostExistingJob', jobDefinitionId }
     });
     const mostRecentRequest = queryData?.requests?.items?.[0];
-    
+
     // Build message indicating this is a repost after completion
     const message = mostRecentRequest ? JSON.stringify({
       content: "Reposting job after workstream completion",
@@ -615,7 +615,7 @@ async function repostExistingJob(jobDefinitionId: string): Promise<void> {
       to: jobDefinitionId
     }) : undefined;
 
-    const result = await dispatchExistingJob({ 
+    const result = await dispatchExistingJob({
       jobId: jobDefinitionId,
       message
     });
@@ -661,13 +661,13 @@ async function checkAndRepostCompletedChains(): Promise<void> {
       context: { operation: 'checkAndRepostCompletedChains' }
     });
     const rootJobDefs = data?.jobDefinitions?.items || [];
-    
+
     for (const rootJobDef of rootJobDefs) {
       // Skip if recently reposted
       if (!shouldRepost(rootJobDef.id)) {
         continue;
       }
-      
+
       // Check if chain is complete and repost if needed
       if (await isChainComplete(rootJobDef.id)) {
         workerLogger.info(`Found completed chain for root job ${rootJobDef.name}, reposting...`);
@@ -730,7 +730,7 @@ async function processOnce(): Promise<void> {
   // Optional: target a specific request id if provided (for deterministic tests)
   const targetIdEnv = (getOptionalMechTargetRequestId() || '').trim();
   let candidates: UnclaimedRequest[];
-  
+
   if (targetIdEnv) {
     const targetHex = targetIdEnv.startsWith('0x') ? targetIdEnv.toLowerCase() : ('0x' + BigInt(targetIdEnv).toString(16)).toLowerCase();
     const specificRequest = await fetchSpecificRequest(targetHex);
@@ -742,14 +742,14 @@ async function processOnce(): Promise<void> {
       workerLogger.info({ target: targetHex }, 'Target request already delivered');
       return;
     }
-    
+
     // Check dependencies even for targeted requests
     const depsMet = await checkDependenciesMet(specificRequest);
     if (!depsMet) {
       workerLogger.info({ target: targetHex }, 'Target request dependencies not met - skipping');
       return;
     }
-    
+
     candidates = [specificRequest];
     workerLogger.info({ target: targetHex }, 'Targeting specific request');
   } else {
@@ -759,7 +759,7 @@ async function processOnce(): Promise<void> {
       workerLogger.info('No unclaimed on-chain requests found');
       return;
     }
-    
+
     // Filter by dependencies - only process jobs whose dependencies are met
     candidates = await filterByDependencies(candidates);
     if (candidates.length === 0) {
@@ -772,14 +772,14 @@ async function processOnce(): Promise<void> {
   let target: UnclaimedRequest | null = null;
   for (const c of candidates) {
     const ok = await tryClaim(c, workerAddress);
-    if (ok) { 
-      target = c; 
-      break; 
+    if (ok) {
+      target = c;
+      break;
     }
   }
-  
+
   if (!target) return;
-  
+
   // Delegate job execution to orchestrator
   try {
     await processJobOnce(target, workerAddress);
@@ -809,7 +809,7 @@ async function checkControlApiHealth(): Promise<void> {
     });
     workerLogger.info({ controlApiUrl: CONTROL_API_URL }, 'Control API health check passed');
   } catch (e: any) {
-    workerLogger.error({ 
+    workerLogger.error({
       error: serializeError(e),
       controlApiUrl: CONTROL_API_URL
     }, 'Control API is not running - worker cannot start');
@@ -819,23 +819,23 @@ async function checkControlApiHealth(): Promise<void> {
 
 async function main() {
   workerLogger.info('Mech worker starting');
-  
+
   // Verify Control API is running before processing any jobs
   await checkControlApiHealth();
-  
+
   if (SINGLE_SHOT) {
     await processOnce();
     return;
   }
-  
+
   let runCount = 0;
-  for (;;) {
+  for (; ;) {
     try {
       // Check for completed chains and repost if needed
       await checkAndRepostCompletedChains();
-      
+
       await processOnce();
-      
+
       // Check if we've reached the max runs limit
       if (MAX_RUNS !== undefined) {
         runCount++;

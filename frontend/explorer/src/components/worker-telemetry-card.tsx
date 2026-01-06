@@ -102,6 +102,48 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
     )
   }
 
+  // Dependency sync event
+  if (event === 'dependency_sync') {
+    return (
+      <div className="flex flex-wrap gap-2 mt-1 ml-4">
+        <Badge variant="outline" className={`text-xs ${metadata.hasConflicts ? 'text-yellow-600 border-yellow-200 bg-yellow-50' :
+            metadata.synced ? 'text-green-600 border-green-200 bg-green-50' :
+              'text-gray-500'
+          }`}>
+          {metadata.hasConflicts ? 'Conflicts Detected' :
+            metadata.synced ? 'Synced' : 'Skipped'}
+        </Badge>
+
+        {!!metadata.dependencyJobDefId && (
+          <a
+            href={`/job-definitions/${metadata.dependencyJobDefId}`}
+            className="text-xs text-primary hover:text-primary hover:underline inline-flex items-center gap-1"
+          >
+            Job {String(metadata.dependencyJobDefId).slice(0, 8)}...
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+
+        {!!metadata.sourceBranch && (
+          <span className="text-xs text-gray-500 font-mono">
+            {String(metadata.sourceBranch)}
+          </span>
+        )}
+
+        {!!metadata.hasConflicts && Array.isArray(metadata.conflictingFiles) && metadata.conflictingFiles.length > 0 && (
+          <div className="w-full mt-1">
+            <div className="text-xs text-yellow-600 mb-1">Conflicting files:</div>
+            <ul className="text-xs text-gray-500 font-mono list-disc pl-4 space-y-0.5">
+              {metadata.conflictingFiles.map((file: string) => (
+                <li key={file}>{file}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // Branch checkout event
   if (event === 'branch_checkout') {
     return (
@@ -111,7 +153,7 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
         </Badge>
         <Badge variant="outline" className="text-xs">
           {metadata.checkoutMethod === 'new_from_base' ? 'Created new' :
-           metadata.checkoutMethod === 'remote_tracking' ? 'From remote' : 'Local'}
+            metadata.checkoutMethod === 'remote_tracking' ? 'From remote' : 'Local'}
         </Badge>
         {!!metadata.baseBranch && (
           <span className="text-xs text-gray-500">base: {String(metadata.baseBranch)}</span>
@@ -255,11 +297,10 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
           </Badge>
         )}
         {!!metadata.inferredStatus && (
-          <Badge variant="outline" className={`text-xs ${
-            metadata.inferredStatus === 'COMPLETED' ? 'text-green-600' :
-            metadata.inferredStatus === 'FAILED' ? 'text-red-600' :
-            'text-gray-400'
-          }`}>
+          <Badge variant="outline" className={`text-xs ${metadata.inferredStatus === 'COMPLETED' ? 'text-green-600' :
+              metadata.inferredStatus === 'FAILED' ? 'text-red-600' :
+                'text-gray-400'
+            }`}>
             Status: {String(metadata.inferredStatus)}
           </Badge>
         )}
@@ -392,11 +433,10 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
           </a>
         )}
         {!!status && (
-          <Badge variant="outline" className={`text-xs ${
-            status === 'confirmed' || status === 'delivered' || status === 'DELIVERED' ? 'text-green-600' :
-            status === 'reverted' ? 'text-red-600' :
-            'text-gray-400'
-          }`}>
+          <Badge variant="outline" className={`text-xs ${status === 'confirmed' || status === 'delivered' || status === 'DELIVERED' ? 'text-green-600' :
+              status === 'reverted' ? 'text-red-600' :
+                'text-gray-400'
+            }`}>
             {String(status)}
           </Badge>
         )}
@@ -420,11 +460,10 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
     return (
       <div className="flex flex-wrap gap-2 mt-1 ml-4">
         {!!metadata.status && (
-          <Badge variant="outline" className={`text-xs ${
-            metadata.status === 'COMPLETED' ? 'text-green-600' :
-            metadata.status === 'FAILED' ? 'text-red-600' :
-            'text-gray-400'
-          }`}>
+          <Badge variant="outline" className={`text-xs ${metadata.status === 'COMPLETED' ? 'text-green-600' :
+              metadata.status === 'FAILED' ? 'text-red-600' :
+                'text-gray-400'
+            }`}>
             Status: {String(metadata.status)}
           </Badge>
         )}
@@ -447,11 +486,10 @@ function formatEventMetadata(event: string, metadata: Record<string, unknown>): 
           </a>
         )}
         {!!metadata.childStatus && (
-          <Badge variant="outline" className={`text-xs ${
-            metadata.childStatus === 'COMPLETED' ? 'text-green-600' :
-            metadata.childStatus === 'FAILED' ? 'text-red-600' :
-            'text-gray-400'
-          }`}>
+          <Badge variant="outline" className={`text-xs ${metadata.childStatus === 'COMPLETED' ? 'text-green-600' :
+              metadata.childStatus === 'FAILED' ? 'text-red-600' :
+                'text-gray-400'
+            }`}>
             Child: {String(metadata.childStatus)}
           </Badge>
         )}

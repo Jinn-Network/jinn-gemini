@@ -11,6 +11,9 @@ export { searchSimilarSituations, searchSimilarSituationsParams, searchSimilarSi
 export { inspectSituation, inspectSituationParams, inspectSituationSchema } from './inspect_situation.js';
 export { loadMcpServer, stopMcpServer } from './shared/mcp-bootstrap.js';
 
+// Template registration
+export { registerTemplate, registerTemplateParams, registerTemplateSchema, type RegisterTemplateParams } from './register_template.js';
+
 // GitHub tools
 export { getFileContents, getFileContentsParams, getFileContentsSchema, searchCode, searchCodeParams, searchCodeSchema, listCommits, listCommitsParams, listCommitsSchema } from './github_tools.js';
 

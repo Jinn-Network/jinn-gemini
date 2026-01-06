@@ -21,6 +21,7 @@ export const REGISTERED_MCP_TOOLS = [
   'search_code',
   'list_commits',
   'process_branch',
+  'register_template',
   'list_tools', // Special tool registered separately
   'verify_trade_ideas',
 ] as const;
@@ -80,6 +81,7 @@ async function main() {
       { name: 'search_code', schema: tools.searchCodeSchema, handler: tools.searchCode },
       { name: 'list_commits', schema: tools.listCommitsSchema, handler: tools.listCommits },
       { name: 'process_branch', schema: tools.process_branch_schema, handler: tools.process_branch },
+      { name: 'register_template', schema: tools.registerTemplateSchema, handler: tools.registerTemplate },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums

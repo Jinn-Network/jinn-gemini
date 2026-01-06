@@ -69,6 +69,22 @@ const typeDefs = /* GraphQL */ `
     updated_at: String!
   }
 
+  type JobTemplate {
+    id: String!
+    name: String!
+    description: String
+    tags: [String!]!
+    enabled_tools_policy: String!
+    input_schema: String!
+    output_spec: String!
+    x402_price: String!
+    safety_tier: String!
+    status: String!
+    canonical_job_definition_id: String
+    created_at: String!
+    updated_at: String!
+  }
+
   type TransactionRequest {
     id: String!
     request_id: String
@@ -109,6 +125,19 @@ const typeDefs = /* GraphQL */ `
     status: String
   }
 
+  input JobTemplateInput {
+    name: String!
+    description: String
+    tags: [String!]
+    enabled_tools_policy: String
+    input_schema: String
+    output_spec: String
+    x402_price: String
+    safety_tier: String
+    status: String
+    canonical_job_definition_id: String
+  }
+
   type Mutation {
     claimRequest(requestId: String!): RequestClaim!
     createJobReport(requestId: String!, reportData: JobReportInput!): JobReport!
@@ -119,10 +148,14 @@ const typeDefs = /* GraphQL */ `
     getTransactionStatus(id: String!): TransactionRequest!
     claimTransactionRequest: TransactionRequest
     updateTransactionStatus(id: String!, status: String!, safe_tx_hash: String, tx_hash: String, error_code: String, error_message: String): TransactionRequest!
+    createJobTemplate(id: String!, templateData: JobTemplateInput!): JobTemplate!
+    updateJobTemplate(id: String!, templateData: JobTemplateInput!): JobTemplate!
   }
 
   type Query {
     _health: String!
+    jobTemplates(status: String, safety_tier: String, limit: Int): [JobTemplate!]!
+    jobTemplate(id: String!): JobTemplate
   }
 `;
 
@@ -181,6 +214,60 @@ function getWorkerAddress(ctx: Context): string {
 const resolvers = {
   Query: {
     _health: () => 'ok',
+    
+    jobTemplates: async (
+      _: any,
+      args: { status?: string; safety_tier?: string; limit?: number },
+      ctx: Context
+    ) => {
+      let query = ctx.supabase
+        .from('job_templates')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (args.status) {
+        query = query.eq('status', args.status);
+      }
+      if (args.safety_tier) {
+        query = query.eq('safety_tier', args.safety_tier);
+      }
+      if (args.limit) {
+        query = query.limit(args.limit);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      
+      // Transform JSONB fields to strings for GraphQL
+      return (data || []).map((t: any) => ({
+        ...t,
+        tags: t.tags || [],
+        enabled_tools_policy: JSON.stringify(t.enabled_tools_policy || []),
+        input_schema: JSON.stringify(t.input_schema || {}),
+        output_spec: JSON.stringify(t.output_spec || {}),
+        x402_price: String(t.x402_price || 0),
+      }));
+    },
+    
+    jobTemplate: async (_: any, args: { id: string }, ctx: Context) => {
+      const { data, error } = await ctx.supabase
+        .from('job_templates')
+        .select('*')
+        .eq('id', args.id)
+        .maybeSingle();
+      
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+      
+      return {
+        ...data,
+        tags: data.tags || [],
+        enabled_tools_policy: JSON.stringify(data.enabled_tools_policy || []),
+        input_schema: JSON.stringify(data.input_schema || {}),
+        output_spec: JSON.stringify(data.output_spec || {}),
+        x402_price: String(data.x402_price || 0),
+      };
+    },
   },
   Mutation: {
     claimRequest: async (_: any, args: { requestId: string }, ctx: Context) => {
@@ -496,6 +583,99 @@ const resolvers = {
       if (error) throw new Error(error.message);
       if (!data || data.length === 0) throw new Error('Not found');
       return data[0];
+    },
+
+    createJobTemplate: async (
+      _: any,
+      args: { id: string; templateData: any },
+      ctx: Context
+    ) => {
+      const payload: any = {
+        id: args.id,
+        name: args.templateData.name,
+        description: args.templateData.description ?? null,
+        tags: args.templateData.tags ?? [],
+        enabled_tools_policy: args.templateData.enabled_tools_policy 
+          ? JSON.parse(args.templateData.enabled_tools_policy) 
+          : [],
+        input_schema: args.templateData.input_schema 
+          ? JSON.parse(args.templateData.input_schema) 
+          : {},
+        output_spec: args.templateData.output_spec 
+          ? JSON.parse(args.templateData.output_spec) 
+          : {},
+        x402_price: args.templateData.x402_price 
+          ? BigInt(args.templateData.x402_price) 
+          : 0,
+        safety_tier: args.templateData.safety_tier ?? 'public',
+        status: args.templateData.status ?? 'visible',
+        canonical_job_definition_id: args.templateData.canonical_job_definition_id ?? null,
+      };
+
+      const { data, error } = await ctx.supabase
+        .from('job_templates')
+        .insert(payload)
+        .select()
+        .limit(1);
+      if (error) throw new Error(error.message);
+      
+      const t = data![0];
+      return {
+        ...t,
+        tags: t.tags || [],
+        enabled_tools_policy: JSON.stringify(t.enabled_tools_policy || []),
+        input_schema: JSON.stringify(t.input_schema || {}),
+        output_spec: JSON.stringify(t.output_spec || {}),
+        x402_price: String(t.x402_price || 0),
+      };
+    },
+
+    updateJobTemplate: async (
+      _: any,
+      args: { id: string; templateData: any },
+      ctx: Context
+    ) => {
+      const patch: any = {};
+      
+      if (args.templateData.name !== undefined) patch.name = args.templateData.name;
+      if (args.templateData.description !== undefined) patch.description = args.templateData.description;
+      if (args.templateData.tags !== undefined) patch.tags = args.templateData.tags;
+      if (args.templateData.enabled_tools_policy !== undefined) {
+        patch.enabled_tools_policy = JSON.parse(args.templateData.enabled_tools_policy);
+      }
+      if (args.templateData.input_schema !== undefined) {
+        patch.input_schema = JSON.parse(args.templateData.input_schema);
+      }
+      if (args.templateData.output_spec !== undefined) {
+        patch.output_spec = JSON.parse(args.templateData.output_spec);
+      }
+      if (args.templateData.x402_price !== undefined) {
+        patch.x402_price = BigInt(args.templateData.x402_price);
+      }
+      if (args.templateData.safety_tier !== undefined) patch.safety_tier = args.templateData.safety_tier;
+      if (args.templateData.status !== undefined) patch.status = args.templateData.status;
+      if (args.templateData.canonical_job_definition_id !== undefined) {
+        patch.canonical_job_definition_id = args.templateData.canonical_job_definition_id;
+      }
+
+      const { data, error } = await ctx.supabase
+        .from('job_templates')
+        .update(patch)
+        .eq('id', args.id)
+        .select()
+        .limit(1);
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) throw new Error('Template not found');
+      
+      const t = data[0];
+      return {
+        ...t,
+        tags: t.tags || [],
+        enabled_tools_policy: JSON.stringify(t.enabled_tools_policy || []),
+        input_schema: JSON.stringify(t.input_schema || {}),
+        output_spec: JSON.stringify(t.output_spec || {}),
+        x402_price: String(t.x402_price || 0),
+      };
     },
   },
 };

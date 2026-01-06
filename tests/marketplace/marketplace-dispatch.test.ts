@@ -38,8 +38,8 @@ describe('Marketplace: dispatch_new_job → IPFS → Ponder', () => {
     expect(jobDef.id).toBe(jobDefId);
     expect(Array.isArray(jobDef.enabledTools)).toBe(true);
     expect(jobDef.enabledTools.sort()).toEqual(enabledTools.sort());
-    expect(typeof jobDef.promptContent).toBe('string');
-    expect(jobDef.promptContent.toLowerCase()).toContain('verify marketplace dispatch');
+    expect(typeof jobDef.blueprint).toBe('string');
+    expect(jobDef.blueprint.toLowerCase()).toContain('verify marketplace dispatch');
 
     // 3) Wait for request to be indexed
     const request = await waitForRequestIndexed(gqlUrl, requestId);

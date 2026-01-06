@@ -1,0 +1,62 @@
+{
+    "name": "Deployment Pipeline Test",
+    "description": "A scoped-down test blueprint to verify the venture deployment pipeline without open-ended ideation.",
+    "version": "0.0.1",
+    "tags": [
+        "test",
+        "verification",
+        "deployment"
+    ],
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "ventureName": {
+                "type": "string",
+                "default": "Timestamp Service"
+            }
+        }
+    },
+    "outputSpec": {
+        "name": "deploymentsCompleted",
+        "fields": [
+            {
+                "name": "deploymentsCompleted",
+                "path": "$.result.deploymentsCompleted",
+                "type": "integer",
+                "description": "Number of ventures successfully registered"
+            },
+            {
+                "name": "venturesCreated",
+                "path": "$.result.venturesCreated",
+                "type": "array",
+                "description": "Details of registered templates"
+            }
+        ]
+    },
+    "enabledTools": [
+        "list_tools",
+        "dispatch_new_job",
+        "create_artifact",
+        "register_template"
+    ],
+    "invariants": [
+        {
+            "id": "TEST-GOAL-001",
+            "form": "directive",
+            "invariant": "CREATE DUMMY VENTURE: Create a simple 'Timestamp Service' venture blueprint. The blueprint should just have one invariant: 'Output current timestamp'. Do NOT perform any research or validation. Just create the artifact.",
+            "measurement": "Verify a simple blueprint.json is created."
+        },
+        {
+            "id": "GOAL-009",
+            "form": "directive",
+            "invariant": "TEST EXECUTION BEFORE DEPLOYMENT: FOR EACH venture package created, dispatch it as a child workstream using dispatch_new_job with sample inputs. The child job will execute the venture blueprint to validate it works. You will be RE-INVOKED automatically when all children complete.",
+            "measurement": "Verify dispatch_new_job called."
+        },
+        {
+            "id": "GOAL-010",
+            "form": "directive",
+            "invariant": "TEMPLATE REGISTRATION (AFTER RE-INVOCATION): When re-invoked with completed test children, register the venture as a template using register_template. Use priceWei='100000000000000' (0.0001 ETH) and status='hidden'.",
+            "measurement": "Verify register_template called."
+        }
+    ]
+}

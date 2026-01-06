@@ -12,8 +12,7 @@
 
 // Core types
 export type {
-  AssertionCategory,
-  BlueprintAssertion,
+  Invariant,
   BlueprintContext,
   HierarchyContext,
   ProgressContext,
@@ -24,7 +23,7 @@ export type {
   BlueprintBuilderConfig,
   BuildContext,
   ContextProvider,
-  AssertionProvider,
+  InvariantProvider,
   BlueprintBuildResult,
 } from './types.js';
 
@@ -39,11 +38,15 @@ export { JobContextProvider } from './providers/context/JobContextProvider.js';
 export { ProgressCheckpointProvider } from './providers/context/ProgressCheckpointProvider.js';
 
 // Assertion providers
-export { SystemBlueprintProvider } from './providers/assertions/SystemBlueprintProvider.js';
-export { JobBlueprintProvider } from './providers/assertions/JobBlueprintProvider.js';
-export { RecognitionProvider } from './providers/assertions/RecognitionProvider.js';
-export { ChildWorkAssertionProvider } from './providers/assertions/ChildWorkAssertionProvider.js';
-export { ProgressAssertionProvider } from './providers/assertions/ProgressAssertionProvider.js';
-export { ArtifactAssertionProvider } from './providers/assertions/ArtifactAssertionProvider.js';
-export { DelegationDirectiveProvider } from './providers/assertions/DelegationDirectiveProvider.js';
-export { VerificationDirectiveProvider } from './providers/assertions/VerificationDirectiveProvider.js';
+export {
+  SystemInvariantProvider,
+  _clearSystemBlueprintCache,
+  GoalInvariantProvider,
+  LearningInvariantProvider,
+  CoordinationInvariantProvider,
+  StateInvariantProvider,
+  StrategyInvariantProvider,
+  RecoveryInvariantProvider,
+  ToolingInvariantProvider,
+  QualityInvariantProvider,
+} from './providers/invariants/index.js';

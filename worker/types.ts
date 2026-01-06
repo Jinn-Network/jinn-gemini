@@ -135,6 +135,21 @@ export interface AdditionalContext {
     /** List of files with conflict markers */
     files: string[];
   }>;
+
+  /** Whether this job involves coding work (triggers coding standards assertion) */
+  isCodingJob?: boolean;
+
+  /** Loop recovery: set when job is re-dispatched after loop protection terminated previous run */
+  loopRecovery?: {
+    /** Current loop recovery attempt (1-indexed) */
+    attempt: number;
+    /** Message explaining what caused the loop */
+    loopMessage: string;
+    /** Timestamp when loop recovery was triggered */
+    triggeredAt: string;
+    /** Request ID of the run that was terminated due to loop */
+    previousRequestId?: string;
+  };
 }
 
 /**
@@ -174,6 +189,18 @@ export interface IpfsMetadata {
   model?: string;
   recognition?: RecognitionPhaseResult | null;
   dependencies?: string[];  // Request IDs that must complete first
+  /** Template ID if job was dispatched from a template */
+  templateId?: string;
+  /** OutputSpec for structured result extraction (passthrough from template) */
+  outputSpec?: {
+    schema: {
+      type: 'object';
+      properties: Record<string, { type: string; description?: string; items?: { type: string } }>;
+      required?: string[];
+    };
+    mapping: Record<string, string>;
+    transforms?: Record<string, { type: string; params?: Record<string, any> }>;
+  };
 }
 
 /**
@@ -261,7 +288,7 @@ export interface ParentDispatchDecision {
  * Recognition result (re-exported from recognition_helpers)
  */
 export type { RecognitionPhaseResult } from './recognition_helpers.js';
-  
+
 /**
  * Reflection result
  */

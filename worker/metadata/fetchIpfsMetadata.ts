@@ -72,6 +72,14 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
           dispatcherBaseBranch: json.lineage.dispatcherBaseBranch ? String(json.lineage.dispatcherBaseBranch) : undefined,
         }
       : undefined;
+
+    // Template ID for tracking x402 template executions
+    const templateId = json?.templateId ? String(json.templateId) : undefined;
+    
+    // OutputSpec for structured result extraction (passthrough from x402 gateway)
+    const outputSpec = json?.outputSpec && typeof json.outputSpec === 'object'
+      ? json.outputSpec
+      : undefined;
     
     return {
       blueprint,
@@ -86,6 +94,8 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
       model,
       dependencies,
       lineage,
+      templateId,
+      outputSpec,
     };
   } catch (e: any) {
     workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');

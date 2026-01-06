@@ -19,7 +19,7 @@ const dispatchExistingJobParamsBase = z.object({
   message: z.string().optional(),
   workstreamId: z.string().optional().describe('Workstream ID to preserve when re-dispatching parent jobs. If provided, ensures the new request maintains the same workstream as the child that triggered it.'),
   responseTimeout: z.number().optional().default(300).describe('Response timeout in seconds for marketplace request. Defaults to 300 (5 minutes). Maximum allowed by marketplace is 300 seconds.'),
-  additionalContext: z.any().optional(),
+  additionalContext: z.record(z.unknown()).optional().describe('Additional context to pass to the job, as a key-value object.'),
 });
 
 export const dispatchExistingJobParams = dispatchExistingJobParamsBase.refine(
@@ -73,10 +73,11 @@ export async function dispatchExistingJob(args: unknown) {
           name: string;
           enabledTools?: string;
           blueprint?: string;
+          codeMetadata?: any;
         } | null;
       }>({
         url: gqlUrl,
-        query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools blueprint } }`,
+        query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools blueprint codeMetadata } }`,
         variables: { id: jobId },
         maxRetries: 1,
         context: { operation: 'getJobById', jobId }
@@ -90,11 +91,12 @@ export async function dispatchExistingJob(args: unknown) {
             name: string;
             enabledTools?: string;
             blueprint?: string;
+            codeMetadata?: any;
           }>;
         };
       }>({
         url: gqlUrl,
-        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools blueprint } } }`,
+        query: `query($name: String!) { jobDefinitions(where: { name: $name }, limit: 1) { items { id name enabledTools blueprint codeMetadata } } }`,
         variables: { name: jobName },
         maxRetries: 1,
         context: { operation: 'getJobByName', jobName }
@@ -114,7 +116,9 @@ export async function dispatchExistingJob(args: unknown) {
   const baseTools: string[] | undefined = Array.isArray(jobDef.enabledTools) ? jobDef.enabledTools : undefined;
   const baseBlueprint: string | undefined = typeof jobDef.blueprint === 'string' ? jobDef.blueprint : undefined;
 
-  const requestedTools = overridesTools ?? baseTools ?? [];
+  const requestedTools = overridesTools
+    ? [...(baseTools ?? []), ...overridesTools]  // Merge: base tools + override tools
+    : baseTools ?? [];
   const finalTools = ensureUniversalTools(requestedTools);
   const finalBlueprint = overridePrompt ?? baseBlueprint ?? '';
   if (!finalBlueprint) {
@@ -210,31 +214,48 @@ export async function dispatchExistingJob(args: unknown) {
   let branchResult: any = null;
   let codeMetadata: any = null;
 
-  try {
-    branchResult = await ensureJobBranch({
-      jobDefinitionId,
-      jobName: name,
-      baseBranch,
-    });
-
-    const metadataHints = {
-      jobDefinitionId,
-      parent:
-        context.jobDefinitionId || context.requestId
-          ? {
-            jobDefinitionId: context.jobDefinitionId || undefined,
-            requestId: context.requestId || undefined,
-          }
-          : undefined,
-      baseBranch,
-      branchName: branchResult.branchName,
+  // PRIORITY: Use existing codeMetadata from job definition if it has valid repo.remoteUrl
+  // This avoids re-collecting git metadata which can fail if branches don't have upstream tracking
+  // See Gotcha #32: Parent job looked in wrong location due to failed git remote fetch during re-dispatch
+  const existingCodeMetadata = jobDef.codeMetadata;
+  if (existingCodeMetadata?.repo?.remoteUrl) {
+    codeMetadata = existingCodeMetadata;
+    // Derive branchResult from existing metadata for IPFS payload consistency
+    branchResult = {
+      branchName: existingCodeMetadata.branch?.name,
+      baseBranch: existingCodeMetadata.baseBranch,
+      created: false,
+      pushed: false,
     };
+    console.log('[dispatch_existing_job] Using existing codeMetadata from job definition');
+  } else {
+    // Fall back to collecting fresh metadata (original dispatch or artifact-only jobs)
+    try {
+      branchResult = await ensureJobBranch({
+        jobDefinitionId,
+        jobName: name,
+        baseBranch,
+      });
 
-    codeMetadata = await collectLocalCodeMetadata(metadataHints);
-  } catch (codeMetadataError: any) {
-    // Code metadata collection failed - this is acceptable for artifact-only jobs
-    // Log the error but continue with dispatch
-    console.error('[dispatch_existing_job] Code metadata collection skipped:', codeMetadataError.message);
+      const metadataHints = {
+        jobDefinitionId,
+        parent:
+          context.jobDefinitionId || context.requestId
+            ? {
+              jobDefinitionId: context.jobDefinitionId || undefined,
+              requestId: context.requestId || undefined,
+            }
+            : undefined,
+        baseBranch,
+        branchName: branchResult.branchName,
+      };
+
+      codeMetadata = await collectLocalCodeMetadata(metadataHints);
+    } catch (codeMetadataError: any) {
+      // Code metadata collection failed - this is acceptable for artifact-only jobs
+      // Log the error but continue with dispatch
+      console.error('[dispatch_existing_job] Code metadata collection skipped:', codeMetadataError.message);
+    }
   }
 
   const lineage =

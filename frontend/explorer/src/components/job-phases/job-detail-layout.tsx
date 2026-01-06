@@ -2,6 +2,7 @@
 
 import { useEffect, useState, ReactNode } from 'react'
 import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
+import { parseInvariants, getInvariantText } from '@/lib/invariant-utils'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
 import { RecognitionPhaseCard } from './recognition-phase-card'
 import { WorkerTelemetryCard } from '../worker-telemetry-card'
@@ -27,11 +28,11 @@ import {
 } from '@/components/ui/table'
 
 // Component for showing parent dispatch trigger
-function ParentDispatchIndicator({ 
-  requestId, 
+function ParentDispatchIndicator({
+  requestId,
   sourceJobDefinitionId,
-  jobStatus 
-}: { 
+  jobStatus
+}: {
   requestId: string
   sourceJobDefinitionId: string | null
   jobStatus: string | null
@@ -40,7 +41,7 @@ function ParentDispatchIndicator({
   const [newParentRequestId, setNewParentRequestId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [parentJobDef, setParentJobDef] = useState<SubgraphJobDefinition | null>(null)
-  
+
   useEffect(() => {
     if (!sourceJobDefinitionId) {
       setLoading(false)
@@ -52,7 +53,7 @@ function ParentDispatchIndicator({
       setLoading(false)
       return
     }
-    
+
     const checkParentDispatch = async () => {
       try {
         // Fetch parent job definition info
@@ -63,16 +64,16 @@ function ParentDispatchIndicator({
 
         // Query for messages sent to parent job definition from this request
         const messages = await queryMessages({
-          where: { 
+          where: {
             requestId: requestId,
-            to: sourceJobDefinitionId 
+            to: sourceJobDefinitionId
           },
           limit: 1
         })
-        
+
         if (messages.items.length > 0) {
           setParentDispatched(true)
-          
+
           // Try to find the new parent request that was created
           // Query for recent requests of the parent job definition
           const parentRequests = await queryRequests({
@@ -81,13 +82,13 @@ function ParentDispatchIndicator({
             orderDirection: 'desc',
             limit: 5
           })
-          
+
           // Find the request that came after this job's completion
           const messageTimestamp = BigInt(messages.items[0].blockTimestamp)
-          const newRequest = parentRequests.items.find(r => 
+          const newRequest = parentRequests.items.find(r =>
             BigInt(r.blockTimestamp) >= messageTimestamp
           )
-          
+
           if (newRequest) {
             setNewParentRequestId(newRequest.id)
           }
@@ -98,12 +99,12 @@ function ParentDispatchIndicator({
         setLoading(false)
       }
     }
-    
+
     checkParentDispatch()
   }, [requestId, sourceJobDefinitionId, jobStatus])
-  
+
   if (loading || !parentDispatched || !sourceJobDefinitionId) return null
-  
+
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 mt-4">
       <div className="flex items-center gap-2 mb-2">
@@ -115,8 +116,8 @@ function ParentDispatchIndicator({
       <p className="text-sm text-primary">
         This job&apos;s <Badge variant="outline" className="mx-1">{jobStatus}</Badge> status triggered parent job{' '}
         {parentJobDef && (
-          <Link 
-            href={`/job-definitions/${sourceJobDefinitionId}`} 
+          <Link
+            href={`/job-definitions/${sourceJobDefinitionId}`}
             className="font-medium underline hover:text-foreground"
           >
             {parentJobDef.name}
@@ -126,7 +127,7 @@ function ParentDispatchIndicator({
         {newParentRequestId && (
           <>
             {' '}
-            <Link 
+            <Link
               href={`/requests/${newParentRequestId}`}
               className="font-medium underline hover:text-foreground"
             >
@@ -140,13 +141,13 @@ function ParentDispatchIndicator({
 }
 
 // Component for showing parent re-run status in Job Info card
-function ParentReRunField({ 
-  requestId, 
+function ParentReRunField({
+  requestId,
   sourceJobDefinitionId,
   jobStatus,
   delivered,
   workerTelemetry
-}: { 
+}: {
   requestId: string
   sourceJobDefinitionId: string | null
   jobStatus: string | null
@@ -163,26 +164,26 @@ function ParentReRunField({
 }) {
   const [newRequestId, setNewRequestId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  
+
   useEffect(() => {
     // No parent job
     if (!sourceJobDefinitionId) {
       setLoading(false)
       return
     }
-    
+
     // Job not delivered yet
     if (!delivered) {
       setLoading(false)
       return
     }
-    
+
     // Job not in terminal state (parent only triggered on COMPLETED/FAILED)
     if (jobStatus !== 'COMPLETED' && jobStatus !== 'FAILED') {
       setLoading(false)
       return
     }
-    
+
     const find = async () => {
       try {
         // First, try to get newRequestId from worker telemetry (most reliable)
@@ -196,13 +197,13 @@ function ParentReRunField({
             return
           }
         }
-        
+
         // Fallback: query messages and find parent request
         const messages = await queryMessages({
           where: { requestId, to: sourceJobDefinitionId },
           limit: 1
         })
-        
+
         if (messages.items.length > 0) {
           const parentRequests = await queryRequests({
             where: { jobDefinitionId: sourceJobDefinitionId },
@@ -210,12 +211,12 @@ function ParentReRunField({
             orderDirection: 'desc',
             limit: 5
           })
-          
+
           const messageTimestamp = BigInt(messages.items[0].blockTimestamp)
-          const newRequest = parentRequests.items.find(r => 
+          const newRequest = parentRequests.items.find(r =>
             BigInt(r.blockTimestamp) >= messageTimestamp
           )
-          
+
           if (newRequest) setNewRequestId(newRequest.id)
         }
       } catch (error) {
@@ -226,28 +227,28 @@ function ParentReRunField({
     }
     find()
   }, [requestId, sourceJobDefinitionId, jobStatus, delivered, workerTelemetry])
-  
+
   // Show appropriate empty states
   if (!sourceJobDefinitionId) {
     return <div className="text-sm text-gray-500">No parent job</div>
   }
-  
+
   if (!delivered) {
     return <div className="text-sm text-gray-500">Pending delivery</div>
   }
-  
+
   if (jobStatus !== 'COMPLETED' && jobStatus !== 'FAILED') {
     return <div className="text-sm text-gray-500">Not in terminal state</div>
   }
-  
+
   if (loading) {
     return <div className="text-sm text-gray-500">Checking...</div>
   }
-  
+
   if (!newRequestId) {
     return <div className="text-sm text-gray-500">Not triggered yet</div>
   }
-  
+
   return (
     <Link
       href={`/requests/${newRequestId}`}
@@ -268,10 +269,10 @@ function ChildJobsSection({ parentRequestId }: { parentRequestId: string }) {
     const fetchChildren = async () => {
       try {
         // Query subgraph for all jobs where sourceRequestId matches this job
-        const jobsResponse = await queryRequests({ 
-          where: { sourceRequestId: parentRequestId }, 
-          orderBy: 'blockTimestamp', 
-          orderDirection: 'desc' 
+        const jobsResponse = await queryRequests({
+          where: { sourceRequestId: parentRequestId },
+          orderBy: 'blockTimestamp',
+          orderDirection: 'desc'
         })
         setChildJobs(jobsResponse.items)
       } catch (error) {
@@ -480,9 +481,8 @@ function RawContentBlock({ content, label, preserveWhitespace }: RawContentBlock
   return (
     <ScrollArea className="max-h-[400px] rounded-md border bg-muted/50">
       <pre
-        className={`p-4 text-xs font-mono leading-relaxed text-foreground ${
-          preserveWhitespace ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
-        }`}
+        className={`p-4 text-xs font-mono leading-relaxed text-foreground ${preserveWhitespace ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+          }`}
         role="region"
         aria-label={label}
         tabIndex={0}
@@ -532,7 +532,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
       try {
         setLoadingMemory(true)
         const response = await fetch(`/api/memory-inspection?requestId=${encodeURIComponent(record.id)}`)
-        
+
         if (response.ok) {
           const result: MemoryInspectionResponse = await response.json()
           setMemoryData(result)
@@ -596,7 +596,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
         setLoadingWorkerTelemetry(true)
         // Find WORKER_TELEMETRY artifact
         const telemetryArtifact = artifacts.find(a => a.topic === 'WORKER_TELEMETRY')
-        
+
         if (telemetryArtifact?.cid) {
           const result = await fetchIpfsContent(telemetryArtifact.cid)
           if (result) {
@@ -631,10 +631,10 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
   useEffect(() => {
     const fetchDelivery = async () => {
       if (!record.deliveryIpfsHash || !record.delivered || loadingMemory) {
-        console.log('[JobDetailLayout] Skipping delivery fetch:', { 
-          hasHash: !!record.deliveryIpfsHash, 
-          delivered: record.delivered, 
-          loadingMemory 
+        console.log('[JobDetailLayout] Skipping delivery fetch:', {
+          hasHash: !!record.deliveryIpfsHash,
+          delivered: record.delivered,
+          loadingMemory
         })
         return
       }
@@ -761,11 +761,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
     for (const call of toolCalls) {
       if (!call || typeof call !== 'object') continue
-      
+
       totalCalls++
       const tool = call.tool || 'unknown'
       const success = call.success !== false
-      
+
       if (success) {
         successCount++
       } else {
@@ -827,8 +827,8 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
       <TabsContent value="pretty" className="mt-0">
         <div className="flex gap-6">
-      {/* Main Content - 8/12 width */}
-      <div className="flex-1 space-y-6" style={{ maxWidth: '66.666%' }}>
+          {/* Main Content - 8/12 width */}
+          <div className="flex-1 space-y-6" style={{ maxWidth: '66.666%' }}>
             {/* Request */}
             <Card>
               <CardHeader>
@@ -843,69 +843,80 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                         try {
                           const parsed = JSON.parse(promptContent)
                           const blueprintContent = parsed.blueprint || parsed.prompt || promptContent
-                          
-                          // Check if blueprint itself is JSON with assertions structure
+
+                          // Check if blueprint itself is JSON with invariants/assertions structure
                           try {
-                            const blueprintParsed = typeof blueprintContent === 'string' 
-                              ? JSON.parse(blueprintContent) 
+                            const blueprintParsed = typeof blueprintContent === 'string'
+                              ? JSON.parse(blueprintContent)
                               : blueprintContent
-                            
-                            if (blueprintParsed.assertions && Array.isArray(blueprintParsed.assertions)) {
-                              // Render structured blueprint with assertions
+
+                            const items = parseInvariants(blueprintParsed)
+                            if (items.length > 0) {
+                              // Render structured blueprint with invariants
                               return (
                                 <div className="space-y-4">
-                                  {blueprintParsed.assertions.map((assertion: { id: string; assertion?: string; description?: string; commentary?: string; examples?: { do?: string[]; dont?: string[] } }, idx: number) => (
-                                    <Card key={idx}>
-                                      <CardContent className="pt-4">
-                                      <div className="flex items-start gap-2 mb-2">
-                                        <span className="text-xs font-mono bg-primary/20 text-primary px-2 py-1 rounded">
-                                          {assertion.id}
-                                        </span>
-                                        <p className="text-sm font-medium text-gray-900 flex-1">
-                                          {assertion.assertion}
-                                        </p>
-                                      </div>
-                                      
-                                      {assertion.examples && (
-                                        <div className="mt-3 space-y-2">
-                                          {assertion.examples.do && assertion.examples.do.length > 0 && (
-                                            <div>
-                                              <div className="text-xs font-semibold text-green-700 mb-1">✓ Do:</div>
-                                              <ul className="text-xs text-gray-400 space-y-1 ml-4">
-                                                {assertion.examples.do.map((item: string, i: number) => (
-                                                  <li key={i} className="list-disc">{item}</li>
-                                                ))}
-                                              </ul>
+                                  {items.map((item, idx) => {
+                                    const text = getInvariantText(item)
+                                    return (
+                                      <Card key={idx}>
+                                        <CardContent className="pt-4">
+                                          <div className="flex items-start gap-2 mb-2">
+                                            <span className="text-xs font-mono bg-primary/20 text-primary px-2 py-1 rounded">
+                                              {item.id}
+                                            </span>
+                                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1">
+                                              {text}
+                                            </p>
+                                          </div>
+
+                                          {item.measurement && (
+                                            <div className="text-xs bg-blue-50 dark:bg-blue-950 p-2 rounded mb-2">
+                                              <span className="font-medium text-blue-700 dark:text-blue-300">📏 Measurement:</span>{' '}
+                                              <span className="text-blue-600 dark:text-blue-400">{item.measurement}</span>
                                             </div>
                                           )}
-                                          {assertion.examples.dont && assertion.examples.dont.length > 0 && (
-                                            <div>
-                                              <div className="text-xs font-semibold text-red-700 mb-1">✗ Don&apos;t:</div>
-                                              <ul className="text-xs text-gray-400 space-y-1 ml-4">
-                                                {assertion.examples.dont.map((item: string, i: number) => (
-                                                  <li key={i} className="list-disc">{item}</li>
-                                                ))}
-                                              </ul>
+
+                                          {item.examples && (
+                                            <div className="mt-3 space-y-2">
+                                              {item.examples.do && item.examples.do.length > 0 && (
+                                                <div>
+                                                  <div className="text-xs font-semibold text-green-700 mb-1">✓ Do:</div>
+                                                  <ul className="text-xs text-gray-400 space-y-1 ml-4">
+                                                    {item.examples.do.map((example: string, i: number) => (
+                                                      <li key={i} className="list-disc">{example}</li>
+                                                    ))}
+                                                  </ul>
+                                                </div>
+                                              )}
+                                              {item.examples.dont && item.examples.dont.length > 0 && (
+                                                <div>
+                                                  <div className="text-xs font-semibold text-red-700 mb-1">✗ Don&apos;t:</div>
+                                                  <ul className="text-xs text-gray-400 space-y-1 ml-4">
+                                                    {item.examples.dont.map((example: string, i: number) => (
+                                                      <li key={i} className="list-disc">{example}</li>
+                                                    ))}
+                                                  </ul>
+                                                </div>
+                                              )}
                                             </div>
                                           )}
-                                        </div>
-                                      )}
-                                      
-                                      {assertion.commentary && (
-                                        <div className="mt-3 pt-3 border-t">
-                                          <p className="text-xs text-muted-foreground italic">{assertion.commentary}</p>
-                                        </div>
-                                      )}
-                                    </CardContent>
-                                    </Card>
-                                  ))}
+
+                                          {item.commentary && (
+                                            <div className="mt-3 pt-3 border-t">
+                                              <p className="text-xs text-muted-foreground italic">{item.commentary}</p>
+                                            </div>
+                                          )}
+                                        </CardContent>
+                                      </Card>
+                                    )
+                                  })}
                                 </div>
                               )
                             }
                           } catch {
                             // Not a structured blueprint, fall through
                           }
-                          
+
                           // Render as markdown if not structured
                           return (
                             <div className="bg-muted p-4 rounded text-sm max-h-[300px] overflow-auto prose prose-sm max-w-none">
@@ -929,10 +940,10 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     <div className="text-sm font-medium text-gray-400 mb-2">Enabled Tools</div>
                     {(() => {
                       // Use IPFS-sourced enabledTools as primary source, fallback to record.enabledTools
-                      let tools: string[] = ipfsEnabledTools.length > 0 
-                        ? ipfsEnabledTools 
+                      let tools: string[] = ipfsEnabledTools.length > 0
+                        ? ipfsEnabledTools
                         : []
-                      
+
                       // Fallback to record.enabledTools if IPFS didn't provide tools
                       if (tools.length === 0 && record.enabledTools) {
                         if (typeof record.enabledTools === 'string') {
@@ -941,11 +952,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           tools = record.enabledTools
                         }
                       }
-                      
+
                       if (tools.length === 0) {
                         return <div className="text-gray-500 text-sm">None</div>
                       }
-                      
+
                       return (
                         <div className="flex flex-wrap gap-2">
                           {tools.map((tool, idx) => (
@@ -965,7 +976,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
             </Card>
 
             {/* Recognition Phase */}
-            <RecognitionPhaseCard 
+            <RecognitionPhaseCard
               recognitionData={memoryData?.recognition || null}
               hasRecognition={memoryData?.hasRecognition || false}
             />
@@ -1002,242 +1013,242 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                       <div>
                         <div className="text-sm font-medium text-gray-400 mb-3">Agentic Task Trace</div>
-                        
+
                         {executionData?.telemetry ? (
                           <>
-                          {/* Stats Cards */}
-                          <div className="grid grid-cols-4 gap-3 mb-4">
-                            {/* Model */}
-                            <div className="bg-muted border rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                                <Cpu className="w-3 h-3" />
-                                <span>Model</span>
+                            {/* Stats Cards */}
+                            <div className="grid grid-cols-4 gap-3 mb-4">
+                              {/* Model */}
+                              <div className="bg-muted border rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                                  <Cpu className="w-3 h-3" />
+                                  <span>Model</span>
+                                </div>
+                                <div className="text-sm font-semibold">
+                                  {executionData.telemetry.raw?.model || 'N/A'}
+                                </div>
                               </div>
-                              <div className="text-sm font-semibold">
-                                {executionData.telemetry.raw?.model || 'N/A'}
-                              </div>
-                            </div>
-                            
-                            {/* Input Tokens */}
-                            <div className="bg-muted border rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                                <Zap className="w-3 h-3" />
-                                <span>Input Tokens</span>
-                              </div>
-                              <div className="text-sm font-semibold">
-                                {executionData.telemetry.raw?.inputTokens?.toLocaleString() || 'N/A'}
-                              </div>
-                            </div>
-                            
-                            {/* Total Tokens */}
-                            <div className="bg-muted border rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                                <Zap className="w-3 h-3" />
-                                <span>Total Tokens</span>
-                              </div>
-                              <div className="text-sm font-semibold">
-                                {executionData.telemetry.totalTokens?.toLocaleString() || 'N/A'}
-                              </div>
-                            </div>
-                            
-                            {/* Duration */}
-                            <div className="bg-muted border rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                                <Clock className="w-3 h-3" />
-                                <span>Duration</span>
-                              </div>
-                              <div className="text-sm font-semibold">
-                                {executionData.telemetry.duration || executionData?.duration || 'N/A'}ms
-                              </div>
-                            </div>
-                          </div>
 
-                          {/* Tool Metrics Summary */}
-                          {toolMetrics && (
-                            <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 mb-4">
-                              <div className="flex items-center gap-2 text-sm font-medium text-primary mb-3">
-                                <Wrench className="w-4 h-4" />
-                                <span>Tool Call Metrics</span>
-                              </div>
-                              <div className="grid grid-cols-3 gap-4 mb-3">
-                                <div>
-                                  <div className="text-xs text-primary">Total Calls</div>
-                                  <div className="text-lg font-semibold text-foreground">
-                                    {toolMetrics.totalCalls}
-                                  </div>
+                              {/* Input Tokens */}
+                              <div className="bg-muted border rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                                  <Zap className="w-3 h-3" />
+                                  <span>Input Tokens</span>
                                 </div>
-                                <div>
-                                  <div className="text-xs text-green-600">Successes</div>
-                                  <div className="text-lg font-semibold text-green-700">
-                                    {toolMetrics.successCount}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-xs text-red-600">Failures</div>
-                                  <div className="text-lg font-semibold text-red-700">
-                                    {toolMetrics.failureCount}
-                                  </div>
+                                <div className="text-sm font-semibold">
+                                  {executionData.telemetry.raw?.inputTokens?.toLocaleString() || 'N/A'}
                                 </div>
                               </div>
-                              {Object.keys(toolMetrics.byTool).length > 0 && (
-                                <details>
-                                  <summary className="text-xs text-primary cursor-pointer hover:text-primary">
-                                    View breakdown by tool
-                                  </summary>
-                                  <div className="mt-2 space-y-1">
-                                    {Object.entries(toolMetrics.byTool)
-                                      .sort(([, a], [, b]) => b.calls - a.calls)
-                                      .map(([tool, stats]) => (
-                                        <div key={tool} className="flex items-center justify-between text-xs bg-card/50 rounded px-2 py-1 border">
-                                          <span className="font-mono text-primary">{tool}</span>
-                                          <div className="flex items-center gap-3">
-                                            <span className="text-muted-foreground">{stats.calls} calls</span>
-                                            {stats.failures > 0 && (
-                                              <span className="text-red-600">{stats.failures} failed</span>
-                                            )}
-                                            <span className="text-muted-foreground">avg {Math.round(stats.avgDuration_ms)}ms</span>
-                                          </div>
-                                        </div>
-                                      ))}
-                                  </div>
-                                </details>
-                              )}
-                            </div>
-                          )}
 
-                          {/* Event Timeline */}
-                          <div className="space-y-2">
-                            {(() => {
-                              const events = executionData.telemetry.raw?.events || []
-                              const requestText = executionData.telemetry.requestText || []
-                              const responseText = executionData.telemetry.responseText || []
-                              const toolCalls = executionData.telemetry.toolCalls || []
-                              
-                              let apiPairIndex = 0
-                              let toolCallIndex = 0
-                              let userPromptIndex = 0
-                              
-                              let displayIndex = 0
-                              
-                              return events.map((event, idx: number) => {
-                                if (typeof event !== 'string') return null
-                                const eventType = event.split('.')[1] || event
-                                
-                                // Skip config and model_routing events
-                                if (eventType === 'config' || eventType === 'model_routing') {
-                                  return null
-                                }
-                                
-                                displayIndex++
-                                
-                                let icon = null
-                                let label = ''
-                                let content = null
-                                let colorClass = 'text-gray-400'
-                                
-                                if (eventType === 'user_prompt') {
-                                  icon = <FileText className="w-4 h-4" />
-                                  label = 'User Prompt'
-                                  content = requestText[userPromptIndex]
-                                  userPromptIndex++
-                                  colorClass = 'text-primary'
-                                } else if (eventType === 'api_request') {
-                                  icon = <ArrowRight className="w-4 h-4" />
-                                  label = `API Request #${apiPairIndex + 1}`
-                                  content = requestText[apiPairIndex]
-                                  colorClass = 'text-green-600'
-                                } else if (eventType === 'api_response') {
-                                  icon = <ArrowLeft className="w-4 h-4" />
-                                  label = `API Response #${apiPairIndex + 1}`
-                                  content = responseText[apiPairIndex]
-                                  apiPairIndex++
-                                  colorClass = 'text-green-600'
-                                } else if (eventType === 'tool_call') {
-                                  const toolCall = toolCalls[toolCallIndex]
-                                  icon = <Wrench className="w-4 h-4" />
-                                  label = `Tool Call: ${(typeof toolCall === 'object' && toolCall?.tool) || 'Unknown'}`
-                                  content = toolCall
-                                  toolCallIndex++
-                                  colorClass = 'text-purple-600'
-                                }
-                                
-                                return (
-                                  <details key={idx} className="group border rounded-lg">
-                                    <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted transition-colors">
-                                      <span className="text-xs font-mono text-gray-400 w-6">{displayIndex}</span>
-                                      <span className={colorClass}>{icon}</span>
-                                      <Badge variant="outline" className="text-xs">
-                                        {label}
-                                      </Badge>
-                                      {eventType === 'tool_call' && content && typeof content === 'object' && (
-                                        <span className={`text-xs ml-auto ${content.success ? 'text-green-600' : 'text-red-600'}`}>
-                                          {content.success ? '✓ Success' : '✗ Failed'}
-                                        </span>
-                                      )}
+                              {/* Total Tokens */}
+                              <div className="bg-muted border rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                                  <Zap className="w-3 h-3" />
+                                  <span>Total Tokens</span>
+                                </div>
+                                <div className="text-sm font-semibold">
+                                  {executionData.telemetry.totalTokens?.toLocaleString() || 'N/A'}
+                                </div>
+                              </div>
+
+                              {/* Duration */}
+                              <div className="bg-muted border rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                                  <Clock className="w-3 h-3" />
+                                  <span>Duration</span>
+                                </div>
+                                <div className="text-sm font-semibold">
+                                  {executionData.telemetry.duration || executionData?.duration || 'N/A'}ms
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Tool Metrics Summary */}
+                            {toolMetrics && (
+                              <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 mb-4">
+                                <div className="flex items-center gap-2 text-sm font-medium text-primary mb-3">
+                                  <Wrench className="w-4 h-4" />
+                                  <span>Tool Call Metrics</span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 mb-3">
+                                  <div>
+                                    <div className="text-xs text-primary">Total Calls</div>
+                                    <div className="text-lg font-semibold text-foreground">
+                                      {toolMetrics.totalCalls}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-green-600">Successes</div>
+                                    <div className="text-lg font-semibold text-green-700">
+                                      {toolMetrics.successCount}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-red-600">Failures</div>
+                                    <div className="text-lg font-semibold text-red-700">
+                                      {toolMetrics.failureCount}
+                                    </div>
+                                  </div>
+                                </div>
+                                {Object.keys(toolMetrics.byTool).length > 0 && (
+                                  <details>
+                                    <summary className="text-xs text-primary cursor-pointer hover:text-primary">
+                                      View breakdown by tool
                                     </summary>
-                                    <div className="px-4 pb-4 pt-2 border-t">
-                                      {eventType === 'tool_call' && content && typeof content === 'object' ? (
-                                        <div className="space-y-3">
-                                          <div className="grid grid-cols-2 gap-3 text-xs">
-                                            <div>
-                                              <span className="text-gray-400">Tool:</span>
-                                              <span className="ml-2 font-medium">{content.tool}</span>
-                                            </div>
-                                            <div>
-                                              <span className="text-gray-400">Duration:</span>
-                                              <span className="ml-2 font-medium">{content.duration_ms}ms</span>
+                                    <div className="mt-2 space-y-1">
+                                      {Object.entries(toolMetrics.byTool)
+                                        .sort(([, a], [, b]) => b.calls - a.calls)
+                                        .map(([tool, stats]) => (
+                                          <div key={tool} className="flex items-center justify-between text-xs bg-card/50 rounded px-2 py-1 border">
+                                            <span className="font-mono text-primary">{tool}</span>
+                                            <div className="flex items-center gap-3">
+                                              <span className="text-muted-foreground">{stats.calls} calls</span>
+                                              {stats.failures > 0 && (
+                                                <span className="text-red-600">{stats.failures} failed</span>
+                                              )}
+                                              <span className="text-muted-foreground">avg {Math.round(stats.avgDuration_ms)}ms</span>
                                             </div>
                                           </div>
-                                          {content.args !== undefined && (
-                                            <div>
-                                              <div className="text-xs text-muted-foreground mb-1">Arguments:</div>
-                                              <pre className="bg-muted p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
-                                                {typeof content.args === 'object' ? JSON.stringify(content.args, null, 2) : String(content.args)}
-                                              </pre>
-                                            </div>
-                                          )}
-                                          {content.result !== undefined && (
-                                            <div>
-                                              <div className="text-xs text-gray-400 mb-1">Result:</div>
-                                              <pre className="bg-muted p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
-                                                {typeof content.result === 'object' ? JSON.stringify(content.result, null, 2) : String(content.result)}
-                                              </pre>
-                                            </div>
-                                          )}
-                                        </div>
-                                      ) : content ? (
-                                        <pre className="bg-muted p-3 rounded overflow-auto max-h-[300px] text-xs font-mono whitespace-pre-wrap">
-                                          {(() => {
-                                            if (typeof content === 'string') {
-                                              try {
-                                                const parsed = JSON.parse(content)
-                                                return JSON.stringify(parsed, null, 2)
-                                              } catch {
-                                                return content
-                                              }
-                                            }
-                                            return JSON.stringify(content, null, 2)
-                                          })()}
-                                        </pre>
-                                      ) : (
-                                        <div className="text-xs text-gray-500">No additional data</div>
-                                      )}
+                                        ))}
                                     </div>
                                   </details>
-                                )
-                              }).filter(Boolean)
-                            })()}
-                          </div>
+                                )}
+                              </div>
+                            )}
 
-                          {/* Full Telemetry JSON */}
-                          <details className="mt-4">
-                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                              View full telemetry JSON
-                            </summary>
-                            <pre className="mt-2 bg-muted p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
-                              {JSON.stringify(executionData.telemetry, null, 2)}
-                            </pre>
-                          </details>
+                            {/* Event Timeline */}
+                            <div className="space-y-2">
+                              {(() => {
+                                const events = executionData.telemetry.raw?.events || []
+                                const requestText = executionData.telemetry.requestText || []
+                                const responseText = executionData.telemetry.responseText || []
+                                const toolCalls = executionData.telemetry.toolCalls || []
+
+                                let apiPairIndex = 0
+                                let toolCallIndex = 0
+                                let userPromptIndex = 0
+
+                                let displayIndex = 0
+
+                                return events.map((event, idx: number) => {
+                                  if (typeof event !== 'string') return null
+                                  const eventType = event.split('.')[1] || event
+
+                                  // Skip config and model_routing events
+                                  if (eventType === 'config' || eventType === 'model_routing') {
+                                    return null
+                                  }
+
+                                  displayIndex++
+
+                                  let icon = null
+                                  let label = ''
+                                  let content = null
+                                  let colorClass = 'text-gray-400'
+
+                                  if (eventType === 'user_prompt') {
+                                    icon = <FileText className="w-4 h-4" />
+                                    label = 'User Prompt'
+                                    content = requestText[userPromptIndex]
+                                    userPromptIndex++
+                                    colorClass = 'text-primary'
+                                  } else if (eventType === 'api_request') {
+                                    icon = <ArrowRight className="w-4 h-4" />
+                                    label = `API Request #${apiPairIndex + 1}`
+                                    content = requestText[apiPairIndex]
+                                    colorClass = 'text-green-600'
+                                  } else if (eventType === 'api_response') {
+                                    icon = <ArrowLeft className="w-4 h-4" />
+                                    label = `API Response #${apiPairIndex + 1}`
+                                    content = responseText[apiPairIndex]
+                                    apiPairIndex++
+                                    colorClass = 'text-green-600'
+                                  } else if (eventType === 'tool_call') {
+                                    const toolCall = toolCalls[toolCallIndex]
+                                    icon = <Wrench className="w-4 h-4" />
+                                    label = `Tool Call: ${(typeof toolCall === 'object' && toolCall?.tool) || 'Unknown'}`
+                                    content = toolCall
+                                    toolCallIndex++
+                                    colorClass = 'text-purple-600'
+                                  }
+
+                                  return (
+                                    <details key={idx} className="group border rounded-lg">
+                                      <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted transition-colors">
+                                        <span className="text-xs font-mono text-gray-400 w-6">{displayIndex}</span>
+                                        <span className={colorClass}>{icon}</span>
+                                        <Badge variant="outline" className="text-xs">
+                                          {label}
+                                        </Badge>
+                                        {eventType === 'tool_call' && content && typeof content === 'object' && (
+                                          <span className={`text-xs ml-auto ${content.success ? 'text-green-600' : 'text-red-600'}`}>
+                                            {content.success ? '✓ Success' : '✗ Failed'}
+                                          </span>
+                                        )}
+                                      </summary>
+                                      <div className="px-4 pb-4 pt-2 border-t">
+                                        {eventType === 'tool_call' && content && typeof content === 'object' ? (
+                                          <div className="space-y-3">
+                                            <div className="grid grid-cols-2 gap-3 text-xs">
+                                              <div>
+                                                <span className="text-gray-400">Tool:</span>
+                                                <span className="ml-2 font-medium">{content.tool}</span>
+                                              </div>
+                                              <div>
+                                                <span className="text-gray-400">Duration:</span>
+                                                <span className="ml-2 font-medium">{content.duration_ms}ms</span>
+                                              </div>
+                                            </div>
+                                            {content.args !== undefined && (
+                                              <div>
+                                                <div className="text-xs text-muted-foreground mb-1">Arguments:</div>
+                                                <pre className="bg-muted p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
+                                                  {typeof content.args === 'object' ? JSON.stringify(content.args, null, 2) : String(content.args)}
+                                                </pre>
+                                              </div>
+                                            )}
+                                            {content.result !== undefined && (
+                                              <div>
+                                                <div className="text-xs text-gray-400 mb-1">Result:</div>
+                                                <pre className="bg-muted p-3 rounded overflow-auto max-h-[200px] text-xs font-mono">
+                                                  {typeof content.result === 'object' ? JSON.stringify(content.result, null, 2) : String(content.result)}
+                                                </pre>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : content ? (
+                                          <pre className="bg-muted p-3 rounded overflow-auto max-h-[300px] text-xs font-mono whitespace-pre-wrap">
+                                            {(() => {
+                                              if (typeof content === 'string') {
+                                                try {
+                                                  const parsed = JSON.parse(content)
+                                                  return JSON.stringify(parsed, null, 2)
+                                                } catch {
+                                                  return content
+                                                }
+                                              }
+                                              return JSON.stringify(content, null, 2)
+                                            })()}
+                                          </pre>
+                                        ) : (
+                                          <div className="text-xs text-gray-500">No additional data</div>
+                                        )}
+                                      </div>
+                                    </details>
+                                  )
+                                }).filter(Boolean)
+                              })()}
+                            </div>
+
+                            {/* Full Telemetry JSON */}
+                            <details className="mt-4">
+                              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                                View full telemetry JSON
+                              </summary>
+                              <pre className="mt-2 bg-muted p-3 rounded overflow-auto max-h-[300px] text-xs font-mono">
+                                {JSON.stringify(executionData.telemetry, null, 2)}
+                              </pre>
+                            </details>
                           </>
                         ) : (
                           <div className="text-sm text-gray-500 italic">
@@ -1253,11 +1264,11 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                           const filteredArtifacts = artifacts.filter(
                             (a) => a.topic !== 'MEMORY' && a.topic !== 'SITUATION' && a.topic !== 'WORKER_TELEMETRY'
                           )
-                          
+
                           if (loadingArtifacts) {
                             return <div className="text-gray-500 text-sm">Loading artifacts...</div>
                           }
-                          
+
                           if (filteredArtifacts.length === 0) {
                             return <div className="text-gray-500 text-sm">No artifacts created</div>
                           }
@@ -1285,10 +1296,10 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                                       </TableCell>
                                       <TableCell className="text-muted-foreground">{artifact.topic || '-'}</TableCell>
                                       <TableCell className="text-muted-foreground text-xs">
-                                        {artifact.contentPreview 
-                                          ? (artifact.contentPreview.length > 50 
-                                              ? artifact.contentPreview.substring(0, 50) + '...' 
-                                              : artifact.contentPreview)
+                                        {artifact.contentPreview
+                                          ? (artifact.contentPreview.length > 50
+                                            ? artifact.contentPreview.substring(0, 50) + '...'
+                                            : artifact.contentPreview)
                                           : '-'}
                                       </TableCell>
                                     </TableRow>
@@ -1302,9 +1313,9 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                       {/* Child Jobs Spawned */}
                       <ChildJobsSection parentRequestId={record.id} />
-                      
+
                       {/* Parent Dispatch Indicator */}
-                      <ParentDispatchIndicator 
+                      <ParentDispatchIndicator
                         requestId={record.id}
                         sourceJobDefinitionId={record.sourceJobDefinitionId || null}
                         jobStatus={executionData?.status || null}
@@ -1331,7 +1342,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                         // Try to get memory artifacts from multiple sources:
                         // 1. From Ponder artifacts (on-chain)
                         const ponderMemoryArtifacts = artifacts.filter((a) => a.topic === 'MEMORY')
-                        
+
                         // 2. From delivery reflection data (new flow)
                         const reflectionMemoryArtifacts: Artifact[] = []
                         if (deliveryData?.reflection?.telemetry?.toolCalls) {
@@ -1347,13 +1358,13 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                             }
                           })
                         }
-                        
+
                         const allMemoryArtifacts = [...ponderMemoryArtifacts, ...reflectionMemoryArtifacts]
-                        
+
                         if (loadingArtifacts || loadingDelivery) {
                           return <div className="text-gray-500 text-sm">Loading...</div>
                         }
-                        
+
                         if (allMemoryArtifacts.length === 0) {
                           return <div className="text-gray-500 text-sm">No memory artifacts created</div>
                         }
@@ -1423,7 +1434,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
             </Card>
 
             {/* Worker Telemetry */}
-            <WorkerTelemetryCard 
+            <WorkerTelemetryCard
               telemetryLog={workerTelemetry}
               loading={loadingWorkerTelemetry}
             />
@@ -1508,11 +1519,10 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                   <div>
                     <div className="text-sm font-medium text-gray-400 mb-1">Delivered Status</div>
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${
-                      record.delivered
+                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${record.delivered
                         ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30'
                         : 'bg-muted text-muted-foreground border-muted-foreground/30'
-                    }`}>
+                      }`}>
                       {record.delivered ? '✓ Delivered' : '⏳ Pending'}
                     </span>
                   </div>
@@ -1584,7 +1594,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                         </Tooltip>
                       </TooltipProvider>
                     </div>
-                    <ParentReRunField 
+                    <ParentReRunField
                       requestId={record.id}
                       sourceJobDefinitionId={record.sourceJobDefinitionId || null}
                       jobStatus={executionData?.status || null}
@@ -1609,19 +1619,18 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                       </TooltipProvider>
                     </div>
                     {(deliveryData || executionData) && executionData?.status ? (
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-                        executionData.status === 'COMPLETED' 
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${executionData.status === 'COMPLETED'
                           ? 'bg-green-500/10 text-green-700 dark:text-green-400'
                           : executionData.status === 'FAILED'
-                          ? 'bg-red-500/10 text-red-700 dark:text-red-400'
-                          : executionData.status === 'DELEGATING'
-                          ? 'bg-primary/20 text-primary'
-                          : executionData.status === 'WAITING'
-                          ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
-                          : executionData.status === 'PENDING'
-                          ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
-                          : 'bg-muted text-muted-foreground'
-                      }`}>
+                            ? 'bg-red-500/10 text-red-700 dark:text-red-400'
+                            : executionData.status === 'DELEGATING'
+                              ? 'bg-primary/20 text-primary'
+                              : executionData.status === 'WAITING'
+                                ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
+                                : executionData.status === 'PENDING'
+                                  ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
+                                  : 'bg-muted text-muted-foreground'
+                        }`}>
                         <StatusIcon status={executionData.status} size={14} />
                         {executionData.status}
                       </span>
@@ -1631,16 +1640,16 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   </div>
 
                   {/* Dependencies Subsection */}
-                  <DependenciesSection 
-                    requestId={record.id} 
+                  <DependenciesSection
+                    requestId={record.id}
                     dependencies={record.dependencies}
                     renderAsSubsection={true}
                   />
                 </div>
               </CardContent>
             </Card>
-      </div>
-    </div>
+          </div>
+        </div>
       </TabsContent>
 
       <TabsContent value="raw" className="mt-0">

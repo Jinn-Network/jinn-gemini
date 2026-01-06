@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
 import { getOptionalCodeMetadataRepoRoot, getSandboxMode } from '../config/index.js';
 import { getRepoRoot } from '../shared/repo_utils.js';
-import { computeToolPolicy, UNIVERSAL_TOOLS, type ToolPolicyResult } from './toolPolicy.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, hasBrowserAutomation, BROWSER_AUTOMATION_TOOLS, type ToolPolicyResult } from './toolPolicy.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
@@ -176,11 +176,27 @@ export class Agent {
 
       // Capture stderr warnings without failing the job
       if (result.stderr && result.stderr.trim()) {
-        agentLogger.warn({
-          stderrPreview: result.stderr.substring(0, 200)
-        }, 'Warning-level errors detected in stderr');
-        telemetry.raw = telemetry.raw || {};
-        telemetry.raw.stderrWarnings = result.stderr;
+        // Filter out benign stderr lines (startup profiling, info messages)
+        const relevantStderr = result.stderr
+          .split('\n')
+          .filter(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            // Filter startup profiler logs
+            if (trimmed.startsWith('[STARTUP]')) return false;
+            // Filter info messages that go to stderr
+            if (trimmed.includes('YOLO mode is enabled')) return false;
+            return true;
+          })
+          .join('\n');
+
+        if (relevantStderr) {
+          agentLogger.warn({
+            stderrPreview: relevantStderr.substring(0, 200)
+          }, 'Warning-level errors detected in stderr');
+          telemetry.raw = telemetry.raw || {};
+          telemetry.raw.stderrWarnings = relevantStderr;
+        }
       }
 
       // If Gemini exited with non-zero, throw with enriched telemetry
@@ -500,7 +516,12 @@ export class Agent {
       geminiProcess.stderr.on('data', (data) => {
         const chunk = data.toString();
         chunk.split('\n').forEach((line: string) => {
-          if (line.trim().length > 0) {
+          const trimmed = line.trim();
+          if (trimmed.length > 0) {
+            // Filter out benign stderr patterns from live streaming
+            if (trimmed.startsWith('[STARTUP]')) return;
+            if (trimmed.includes('YOLO mode is enabled')) return;
+
             const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
             console.error(truncatedLine);
           }
@@ -582,6 +603,13 @@ export class Agent {
         throw new Error('No MCP servers configured in settings.template.json');
       }
 
+      // Conditionally include chrome-devtools server based on browser_automation meta-tool
+      // If browser_automation is not in enabledTools, remove the chrome-devtools server
+      if (templateSettings.mcpServers['chrome-devtools'] && !hasBrowserAutomation(this.enabledTools)) {
+        delete templateSettings.mcpServers['chrome-devtools'];
+        agentLogger.debug('Removed chrome-devtools server (browser_automation not enabled)');
+      }
+
       const serverName = templateSettings.mcpServers.metacog ? 'metacog' : Object.keys(templateSettings.mcpServers)[0];
       if (!serverName) throw new Error('No MCP servers found in template configuration');
 
@@ -618,8 +646,17 @@ export class Agent {
       this.cachedToolPolicy = computeToolPolicy(this.enabledTools, { isCodingJob: this.isCodingJob });
       const toolPolicy = this.cachedToolPolicy;
 
-      // Include the merged tool set (universal + job-specific)
-      mcpServer.includeTools = toolPolicy.mcpIncludeTools;
+      // Filter browser tools from metacog's includeTools - they don't belong there
+      // metacog only provides our custom tools (get_details, dispatch_new_job, etc.)
+      const browserToolSet = new Set(BROWSER_AUTOMATION_TOOLS as readonly string[]);
+      const metacogTools = toolPolicy.mcpIncludeTools.filter(t => !browserToolSet.has(t));
+      mcpServer.includeTools = metacogTools;
+
+      // If chrome-devtools server is present, set its includeTools to browser automation tools
+      if (templateSettings.mcpServers['chrome-devtools']) {
+        const browserTools = toolPolicy.mcpIncludeTools.filter(t => browserToolSet.has(t));
+        templateSettings.mcpServers['chrome-devtools'].includeTools = browserTools;
+      }
 
       // CRITICAL: Do NOT set global excludeTools - it overrides per-server includeTools
       // The Gemini CLI respects per-server includeTools without needing global exclusions
@@ -1015,17 +1052,27 @@ export class Agent {
                   const response = part.functionResponse.response;
 
                   // Find corresponding tool call and attach result
+                  // NOTE: Removed tc.success check to include failed tool calls
                   const toolCall = telemetry.toolCalls.find(tc =>
-                    tc.tool === toolName && tc.success && !tc.result
+                    tc.tool === toolName && !tc.result
                   );
 
                   if (toolCall && response.output) {
                     try {
                       // Parse the tool response output
                       const output = JSON.parse(response.output);
-                      if (output.data && output.meta?.ok) {
+                      // Attach result regardless of output.meta.ok to capture errors
+                      if (output.data) {
                         toolCall.result = output.data;
                         agentLogger.debug({ toolName, resultKeys: Object.keys(output.data) }, 'Attached result to tool call');
+                      } else if (output.error) {
+                        // Capture error responses
+                        toolCall.result = { error: output.error };
+                        agentLogger.debug({ toolName, error: output.error }, 'Attached error result to tool call');
+                      } else {
+                        // Fallback: attach entire output object
+                        toolCall.result = output;
+                        agentLogger.debug({ toolName }, 'Attached raw output to tool call');
                       }
                     } catch (parseError) {
                       // If JSON parsing fails, store raw output

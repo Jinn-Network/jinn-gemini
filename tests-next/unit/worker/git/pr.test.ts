@@ -15,6 +15,17 @@ import { createArtifact as controlApiCreateArtifact } from '../../../../worker/c
 // Mock fetch globally
 global.fetch = vi.fn();
 
+// Mock config module to avoid RPC_URL/CHAIN_ID validation errors in tests
+vi.mock('../../../../config/index.js', async () => {
+  const actual = await vi.importActual('../../../../config/index.js');
+  return {
+    ...actual,
+    getOptionalGithubToken: vi.fn(() => process.env.GITHUB_TOKEN),
+    getOptionalGithubRepository: vi.fn(() => process.env.GITHUB_REPOSITORY),
+    getGithubApiUrl: vi.fn(() => process.env.GITHUB_API_URL || 'https://api.github.com'),
+  };
+});
+
 // Mock dependencies that live outside this module
 vi.mock('@jinn-network/mech-client-ts/dist/ipfs.js', () => ({
   pushJsonToIpfs: vi.fn(),
@@ -332,86 +343,87 @@ describe('pr', () => {
         (call) => call[1]?.method === 'POST'
       );
       expect(createCall).toBeTruthy();
-      
+
       const body = JSON.parse(createCall![1]!.body as string);
       expect(body.body).toContain('Custom summary');
       expect(body.body).toContain('req-123');
       expect(body.body).toContain('job/test-branch');
     });
 
-  describe('createPullRequestArtifact', () => {
-    const codeMetadata: CodeMetadata = {
-      branch: {
-        name: 'job/test-branch',
-        headCommit: 'abc123',
-        remoteUrl: 'https://github.com/owner/repo.git',
-        status: { isDirty: false },
-      },
-      repo: {
-        remoteUrl: 'https://github.com/owner/repo.git',
-      },
-      baseBranch: 'main',
-      capturedAt: new Date().toISOString(),
-      jobDefinitionId: 'job-123',
-    };
+    describe('createPullRequestArtifact', () => {
+      const codeMetadata: CodeMetadata = {
+        branch: {
+          name: 'job/test-branch',
+          headCommit: 'abc123',
+          remoteUrl: 'https://github.com/owner/repo.git',
+          status: { isDirty: false },
+        },
+        repo: {
+          remoteUrl: 'https://github.com/owner/repo.git',
+        },
+        baseBranch: 'main',
+        capturedAt: new Date().toISOString(),
+        jobDefinitionId: 'job-123',
+      };
 
-    const baseParams = {
-      requestId: '0xreq',
-      branchUrl: 'https://github.com/owner/repo/tree/job/test-branch',
-      branchName: 'job/test-branch',
-      baseBranch: 'main',
-      title: '[Job job-123] updates',
-      summaryBlock: '### Execution Summary\n- Test summary',
-      codeMetadata,
-    };
+      const baseParams = {
+        requestId: '0xreq',
+        branchUrl: 'https://github.com/owner/repo/tree/job/test-branch',
+        branchName: 'job/test-branch',
+        baseBranch: 'main',
+        title: '[Job job-123] updates',
+        summaryBlock: '### Execution Summary\n- Test summary',
+        codeMetadata,
+      };
 
-    beforeEach(() => {
-      vi.mocked(pushJsonToIpfs).mockResolvedValue(['0xdeadbeef', 'bafyprcid']);
-      vi.mocked(controlApiCreateArtifact).mockResolvedValue('artifact-id');
-    });
-
-    it('returns artifact record and persists via Control API', async () => {
-      const record = await createPullRequestArtifact(baseParams);
-
-      expect(record).toEqual({
-        cid: 'bafyprcid',
-        topic: 'git/branch',
-        name: 'branch-job/test-branch',
-        type: 'GIT_BRANCH',
-        contentPreview: baseParams.summaryBlock!.slice(0, 100),
-        content: expect.stringContaining('job/test-branch'),
+      beforeEach(() => {
+        vi.mocked(pushJsonToIpfs).mockResolvedValue(['0xdeadbeef', 'bafyprcid']);
+        vi.mocked(controlApiCreateArtifact).mockResolvedValue('artifact-id');
       });
 
-      expect(pushJsonToIpfs).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'branch-job/test-branch',
+      it('returns artifact record and persists via Control API', async () => {
+        const record = await createPullRequestArtifact(baseParams);
+
+        expect(record).toEqual({
+          cid: 'bafyprcid',
           topic: 'git/branch',
+          name: 'branch-job/test-branch',
           type: 'GIT_BRANCH',
-        })
-      );
-      expect(controlApiCreateArtifact).toHaveBeenCalledWith('0xreq', {
-        cid: 'bafyprcid',
-        topic: 'git/branch',
-        content: null,
+          // New format: "Branch: <branchName> based on <baseBranch> - <summary>"
+          contentPreview: `Branch: ${baseParams.branchName} based on ${baseParams.baseBranch} - ${baseParams.summaryBlock!.slice(0, 50)}`,
+          content: expect.stringContaining('job/test-branch'),
+        });
+
+        expect(pushJsonToIpfs).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'branch-job/test-branch',
+            topic: 'git/branch',
+            type: 'GIT_BRANCH',
+          })
+        );
+        expect(controlApiCreateArtifact).toHaveBeenCalledWith('0xreq', {
+          cid: 'bafyprcid',
+          topic: 'git/branch',
+          content: null,
+        });
+      });
+
+      it('still returns record when Control API persistence fails', async () => {
+        vi.mocked(controlApiCreateArtifact).mockRejectedValueOnce(new Error('boom'));
+        const record = await createPullRequestArtifact(baseParams);
+        expect(record).not.toBeNull();
+        expect(record?.cid).toBe('bafyprcid');
+      });
+
+      it('throws when IPFS upload fails', async () => {
+        vi.mocked(pushJsonToIpfs).mockRejectedValueOnce(new Error('ipfs down'));
+        // Now throws instead of returning null
+        await expect(
+          createPullRequestArtifact(baseParams)
+        ).rejects.toThrow('Branch artifact creation failed');
+        expect(controlApiCreateArtifact).not.toHaveBeenCalled();
       });
     });
-
-    it('still returns record when Control API persistence fails', async () => {
-      vi.mocked(controlApiCreateArtifact).mockRejectedValueOnce(new Error('boom'));
-      const record = await createPullRequestArtifact(baseParams);
-      expect(record).not.toBeNull();
-      expect(record?.cid).toBe('bafyprcid');
-    });
-
-    it('throws when IPFS upload fails', async () => {
-      vi.mocked(pushJsonToIpfs).mockRejectedValueOnce(new Error('ipfs down'));
-      // Now throws instead of returning null
-      await expect(
-        createPullRequestArtifact(baseParams)
-      ).rejects.toThrow('Branch artifact creation failed');
-      expect(controlApiCreateArtifact).not.toHaveBeenCalled();
-    });
-  });
   });
 
 });

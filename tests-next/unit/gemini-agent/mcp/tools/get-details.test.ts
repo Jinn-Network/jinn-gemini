@@ -82,7 +82,7 @@ describe('get-details MCP tool', () => {
                 id: jobId,
                 name: 'Test Job',
                 enabledTools: '["tool1","tool2"]',
-                promptContent: 'Test prompt',
+                blueprint: 'Test prompt',
                 sourceJobDefinitionId: 'parent-job-uuid',
                 sourceRequestId: '0xJobSource',
               },

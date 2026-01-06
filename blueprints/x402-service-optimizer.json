@@ -1,29 +1,9 @@
 {
+  "context": "## Service: x402-service-optimizer\n\nBuild an x402 service that ANALYZES other x402 services and produces optimization recommendations. When someone calls POST /analyze with an endpoint URL, this service dispatches a Jinn workstream to analyze that target service, then returns a job ID for status polling.\n\n### Core Functionality\n1. Accept x402 payment to analyze a target service URL\n2. Dispatch analysis job to Jinn marketplace\n3. Provide status polling endpoint\n4. Analysis reports include: service capabilities, pricing analysis, and NEW service ideas\n\n### Pricing\n- POST /analyze: $0.50 USDC (paid via x402)\n- GET /status/:jobId: free\n- GET /health: free",
   "assertions": [
     {
-      "id": "SCAFFOLD-001",
-      "assertion": "The service must be scaffolded as a Hono application with x402-hono middleware in the services/x402-optimizer/ directory structure.",
-      "examples": {
-        "do": [
-          "Create services/x402-optimizer/src/index.ts as the main Hono app entry point",
-          "Use x402-hono paymentMiddleware for payment-gated routes",
-          "Structure routes in services/x402-optimizer/src/routes/ (analyze.ts, status.ts)",
-          "Place integration logic in services/x402-optimizer/src/lib/ (dispatch.ts, ponder.ts)",
-          "Include package.json with hono and x402-hono dependencies",
-          "Create .gitignore excluding node_modules/, dist/, .env, *.log"
-        ],
-        "dont": [
-          "Use Express, Fastify, or other frameworks instead of Hono",
-          "Place service files in project root or scattered locations",
-          "Skip the x402 payment middleware for the analyze endpoint",
-          "Forget to create .gitignore (causes Gemini CLI token overflow from scanning node_modules)"
-        ]
-      },
-      "commentary": "Hono + x402-hono is the specified stack. Consistent directory structure makes the service maintainable and follows x402 ecosystem conventions. CRITICAL: Always create .gitignore first to prevent node_modules from being scanned."
-    },
-    {
-      "id": "API-001",
-      "assertion": "POST /analyze must accept { endpointUrl: string } and return { jobId: string, statusUrl: string } after dispatching an analysis job.",
+      "id": "OPT-API-001",
+      "assertion": "POST /analyze must accept { endpointUrl: string, autoLoop?: boolean } and return { jobId: string, statusUrl: string } after dispatching an analysis job.",
       "examples": {
         "do": [
           "Validate endpointUrl is a valid URL before dispatching",
@@ -40,164 +20,156 @@
       "commentary": "The analyze endpoint is the core paid service. It gates job dispatch behind x402 payment."
     },
     {
-      "id": "API-002",
-      "assertion": "GET /status/:jobId must query Ponder for job status and return { status: 'pending' | 'in_progress' | 'completed' | 'failed', reportUrl?: string }.",
+      "id": "OPT-API-002",
+      "assertion": "GET /status/:jobId must query Ponder for job status and return { status: 'pending' | 'in_progress' | 'completed', reportUrl?: string }.",
       "examples": {
         "do": [
-          "Query Ponder GraphQL for request status using the jobId as request ID",
-          "Map Ponder delivered status to 'completed'",
-          "Include reportUrl (IPFS gateway link to deliveryIpfsHash) when status is 'completed'",
-          "Return 404 if jobId not found in Ponder"
+          "Query Ponder GraphQL for request status using the jobId",
+          "Map Ponder delivered=true to 'completed'",
+          "Include reportUrl (IPFS gateway link to deliveryIpfsHash) when completed",
+          "Return 404 if jobId not found"
         ],
         "dont": [
-          "Return stale or cached status without querying Ponder",
-          "Omit reportUrl for completed jobs",
-          "Expose internal error details to clients"
+          "Return stale status without querying Ponder",
+          "Omit reportUrl for completed jobs"
         ]
       },
-      "commentary": "Status polling is free (no payment required) and provides visibility into job progress."
+      "commentary": "Status polling is free and provides visibility into job progress."
     },
     {
-      "id": "API-003",
-      "assertion": "GET /health must return 200 OK with { status: 'healthy' } for Railway health checks.",
+      "id": "OPT-DISPATCH-001",
+      "assertion": "Job dispatch must use marketplaceInteract from @jinn-network/mech-client-ts to post analysis requests to the OLAS mech marketplace.",
       "examples": {
         "do": [
-          "Return 200 status code with JSON body",
-          "Respond quickly without external dependencies",
-          "Include timestamp or version in response for debugging"
-        ],
-        "dont": [
-          "Fail health check due to Ponder connectivity issues",
-          "Return non-JSON response",
-          "Add payment middleware to health endpoint"
-        ]
-      },
-      "commentary": "Health endpoint is required for Railway deployment and should be lightweight."
-    },
-    {
-      "id": "DISPATCH-001",
-      "assertion": "Job dispatch must use the existing marketplaceInteract pattern from the monorepo to post analysis requests to the OLAS mech marketplace.",
-      "examples": {
-        "do": [
-          "Import and use marketplaceInteract from mech-client-ts",
+          "Import marketplaceInteract from mech-client-ts",
           "Include the analysis blueprint in IPFS metadata",
-          "Pass endpointUrl in additionalContext for the analysis agent",
-          "Use environment variables for RPC_URL, MECH_ADDRESS, PRIVATE_KEY"
+          "Pass endpointUrl in the blueprint context for the analysis agent",
+          "Use environment variables: RPC_URL, MECH_ADDRESS, PRIVATE_KEY, CHAIN_CONFIG"
         ],
         "dont": [
           "Implement custom blockchain interaction",
-          "Hardcode credentials or addresses",
-          "Skip IPFS metadata upload"
+          "Hardcode credentials or addresses"
         ]
       },
-      "commentary": "Reusing existing dispatch infrastructure ensures consistency and leverages battle-tested code."
+      "commentary": "Reusing existing dispatch infrastructure ensures consistency."
     },
     {
-      "id": "STATUS-001",
-      "assertion": "Ponder queries must use the graphQLRequest helper from http/client.ts to fetch job status with retry logic.",
+      "id": "OPT-PONDER-001",
+      "assertion": "Status queries must use Ponder GraphQL at PONDER_GRAPHQL_URL to check if requests are delivered.",
       "examples": {
         "do": [
-          "Query requests table by id for delivered status and deliveryIpfsHash",
-          "Use PONDER_GRAPHQL_URL environment variable for endpoint",
-          "Handle GraphQL errors gracefully with appropriate HTTP status codes"
+          "Query: { request(id: $jobId) { delivered deliveryIpfsHash } }",
+          "Use PONDER_GRAPHQL_URL environment variable",
+          "Handle GraphQL errors gracefully"
         ],
         "dont": [
-          "Implement custom GraphQL client",
-          "Skip retry logic for transient failures",
-          "Query Ponder on every incoming request without caching consideration"
+          "Implement custom indexer",
+          "Skip error handling"
         ]
       },
-      "commentary": "Consistent use of shared HTTP client ensures proper error handling and logging."
+      "commentary": "Ponder is the single source of truth for request status."
     },
     {
-      "id": "X402-001",
-      "assertion": "The /analyze endpoint must be protected by x402-hono paymentMiddleware requiring $0.50 USDC payment on base-sepolia network.",
+      "id": "OPT-BLUEPRINT-001",
+      "assertion": "The service must include an embedded ANALYSIS BLUEPRINT (separate from THIS build blueprint) that instructs the Jinn agent HOW to analyze a target x402 service.",
       "examples": {
         "do": [
-          "Configure paymentMiddleware with PAYMENT_WALLET_ADDRESS from env",
-          "Set price to '$0.50' for testnet (can adjust for mainnet)",
-          "Use 'base-sepolia' network for development, 'base' for production",
-          "Return proper 402 Payment Required response with payment details"
+          "Create src/lib/analysis-blueprint.json with assertions for the ANALYSIS AGENT",
+          "Analysis assertions: discover service from URL alone, call endpoints, analyze pricing",
+          "Analysis assertions: research 5+ similar services, compare capabilities",
+          "Analysis assertions: produce 3+ actionable optimization recommendations",
+          "Include tools: web_search, create_artifact for the analysis agent"
         ],
         "dont": [
-          "Skip payment verification in production",
-          "Hardcode wallet addresses",
-          "Use non-USDC tokens without explicit configuration"
+          "Confuse the BUILD blueprint (this file) with the ANALYSIS blueprint (what the optimizer dispatches)",
+          "Skip ecosystem research",
+          "Produce vague recommendations"
         ]
       },
-      "commentary": "x402 payment is the core monetization mechanism. Proper middleware setup is essential."
+      "commentary": "This is META - the optimizer BUILD blueprint tells you to CREATE an analysis blueprint that the optimizer will USE when analyzing services."
     },
     {
-      "id": "DEPLOY-001",
-      "assertion": "The service must include railway.json configuration for Railway deployment with proper build and start commands.",
+      "id": "OPT-IDEATION-001",
+      "assertion": "The ANALYSIS BLUEPRINT must require the analysis report to include 2-3 new x402 service ideas that complement the analyzed service.",
       "examples": {
         "do": [
-          "Include railway.json with NIXPACKS builder",
-          "Set startCommand to 'yarn start' or 'node dist/index.js'",
-          "Configure healthcheckPath to '/health'",
-          "Document required environment variables in .env.example"
+          "Identify gaps the analyzed service doesn't cover",
+          "Propose services that could consume the analyzed service's output",
+          "Each idea must include: name, description, target price point, potential users"
         ],
         "dont": [
-          "Omit railway.json configuration",
-          "Use Docker when NIXPACKS suffices",
-          "Hardcode environment-specific values"
+          "Skip ideation entirely",
+          "Propose vague ideas"
         ]
       },
-      "commentary": "Railway deployment config ensures one-click deployment capability."
+      "commentary": "Ideation creates a flywheel - each analysis spawns new service ideas."
     },
     {
-      "id": "BLUEPRINT-001",
-      "assertion": "The service must include an embedded analysis blueprint that instructs the agent to discover x402 service capabilities, research the ecosystem, and produce optimization recommendations.",
+      "id": "OPT-SPEC-001",
+      "assertion": "The ANALYSIS BLUEPRINT must require structured JSON specs for each proposed service idea, suitable for feeding to an x402 Builder.",
       "examples": {
         "do": [
-          "Include blueprint JSON in services/x402-optimizer/src/lib/analysis-blueprint.ts",
-          "Assertions: discover service from URL alone, research 10+ x402 services, compare against 3+ similar services",
-          "Assertions: perform live endpoint testing, include 3+ actionable recommendations",
-          "Enable web_fetch, google_web_search, create_artifact tools for analysis agent"
+          "Output specs with: name, description, endpoints array, pricePerCall, network",
+          "Each endpoint: method, path, description, inputSchema, outputSchema",
+          "Include realistic price points"
         ],
         "dont": [
-          "Skip ecosystem research assertions",
-          "Require OpenAPI spec or detailed documentation from target service",
-          "Produce vague, non-actionable recommendations"
+          "Output prose that needs manual parsing",
+          "Omit pricing"
         ]
       },
-      "commentary": "The analysis blueprint defines WHAT the agent must discover and report, making the optimization service valuable."
+      "commentary": "Structured specs enable automation - a Builder can create services from them."
     },
     {
-      "id": "ENV-001",
-      "assertion": "All configuration must be via environment variables with sensible defaults and clear documentation.",
+      "id": "OPT-AUTOLOOP-001",
+      "assertion": "If autoLoop=true in the /analyze request, the optimizer SHOULD POST the top-ranked spec to BUILDER_URL/build after analysis completes.",
       "examples": {
         "do": [
-          "Document all required env vars: PAYMENT_WALLET_ADDRESS, RPC_URL, MECH_ADDRESS, PRIVATE_KEY, PONDER_GRAPHQL_URL",
-          "Provide .env.example with placeholder values",
-          "Use base-sepolia as default network for development",
-          "Default PORT to 3000"
+          "Check for autoLoop flag in request body",
+          "If BUILDER_URL env is set and autoLoop=true, POST top spec to BUILDER_URL/build",
+          "Include Builder response (jobId, repoUrl) in analysis report",
+          "If Builder call fails, log error but still return analysis"
         ],
         "dont": [
-          "Hardcode any addresses, keys, or URLs",
-          "Require undocumented environment variables",
-          "Mix testnet and mainnet defaults"
+          "Auto-loop by default",
+          "Fail entire analysis if Builder fails",
+          "Loop infinitely"
         ]
       },
-      "commentary": "Clear environment configuration enables easy local development and production deployment."
+      "commentary": "Auto-loop enables demonstration of self-improving ecosystem."
     },
     {
-      "id": "VERIFICATION-001",
-      "assertion": "All API endpoints must be tested by making actual HTTP requests and verifying responses match the specification.",
+      "id": "OPT-ENV-001",
+      "assertion": "Required environment variables: PAYMENT_WALLET_ADDRESS, RPC_URL, MECH_ADDRESS, PRIVATE_KEY, PONDER_GRAPHQL_URL, CHAIN_CONFIG. Optional: BUILDER_URL for auto-loop.",
       "examples": {
         "do": [
-          "Test GET /health returns 200 with status: healthy",
-          "Test POST /analyze returns 402 without payment header",
-          "Test GET /status/:jobId returns appropriate status structure",
-          "Document test commands or scripts for verification"
+          "Create .env.example with all required vars",
+          "Use CHAIN_CONFIG=base for mainnet, base-sepolia for testnet",
+          "Document BUILDER_URL as optional"
         ],
         "dont": [
-          "Ship without any verification of endpoint behavior",
-          "Assume endpoints work without testing",
-          "Skip error case testing"
+          "Hardcode any values",
+          "Mix testnet/mainnet defaults"
         ]
       },
-      "commentary": "Verification ensures the service actually works as specified before deployment."
+      "commentary": "Clear env documentation enables easy deployment."
+    },
+    {
+      "id": "OPT-VERIFY-001",
+      "assertion": "Test all endpoints with actual HTTP requests: /health returns 200, /analyze returns 402 without payment, /status/:id returns status object.",
+      "examples": {
+        "do": [
+          "curl /health - expect 200 { status: 'ok' }",
+          "curl -X POST /analyze -d '{\"endpointUrl\":\"...\"}' - expect 402",
+          "curl /status/test-id - expect { status: '...' }",
+          "Report actual curl commands and responses"
+        ],
+        "dont": [
+          "Claim endpoints work without testing",
+          "Skip 402 verification"
+        ]
+      },
+      "commentary": "Verification must be empirical with actual requests."
     }
   ]
 }

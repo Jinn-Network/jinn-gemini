@@ -20,6 +20,8 @@ import {
   getBlueprintEnableRecognition,
   getBlueprintEnableJobContext,
   getBlueprintEnableProgress,
+  getBlueprintEnableBeads,
+  getBlueprintEnableContextPhases,
 } from '../../config/index.js';
 
 /**
@@ -29,9 +31,12 @@ import {
 export const DEFAULT_BLUEPRINT_CONFIG: BlueprintBuilderConfig = {
   enableSystemBlueprint: getBlueprintEnableSystem(),
   enableContextAssertions: getBlueprintEnableContextAssertions(),
-  enableRecognitionLearnings: getBlueprintEnableRecognition(),
+  // Master switch overrides individual recognition/progress settings
+  enableRecognitionLearnings: getBlueprintEnableContextPhases() && getBlueprintEnableRecognition(),
   enableJobContext: getBlueprintEnableJobContext(),
-  enableProgressCheckpoint: getBlueprintEnableProgress(),
+  enableProgressCheckpoint: getBlueprintEnableContextPhases() && getBlueprintEnableProgress(),
+  enableBeadsAssertions: getBlueprintEnableBeads(),
+  enableContextPhases: getBlueprintEnableContextPhases(),
   debug: getBlueprintBuilderDebug(),
   logProviders: getBlueprintLogProviders(),
 };

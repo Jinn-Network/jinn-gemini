@@ -4,6 +4,7 @@ import { Client } from 'pg';
 import fetch from 'cross-fetch';
 import type { Situation, SituationNodeEmbeddingRecord } from '../../../packages/jinn-types/src/situation.js';
 import { mcpLogger } from '../../../logging/index.js';
+import { getPonderGraphqlUrl } from './shared/env.js';
 
 export const inspectSituationParams = z.object({
   request_id: z.string().min(1, 'request_id is required'),
@@ -16,7 +17,7 @@ export const inspectSituationSchema = {
   inputSchema: inspectSituationParams.shape,
 };
 
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
 const IPFS_GATEWAY_BASE = (process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/').replace(/\/+$/, '/');
 
 function getDatabaseUrl(): string | null {
@@ -100,9 +101,9 @@ async function fetchSituationArtifact(requestId: string): Promise<{ artifact: Ar
       mcpLogger.warn({ status: res.status, cid: artifact.cid }, 'Failed to fetch IPFS content');
       return { artifact, situation: null };
     }
-    
+
     let situationData = await res.json();
-    
+
     if (situationData.content && typeof situationData.content === 'string') {
       try {
         situationData = JSON.parse(situationData.content);
@@ -110,7 +111,7 @@ async function fetchSituationArtifact(requestId: string): Promise<{ artifact: Ar
         mcpLogger.warn({ cid: artifact.cid }, 'Failed to parse wrapped artifact content');
       }
     }
-    
+
     return { artifact, situation: situationData as Situation };
   } catch (error: any) {
     mcpLogger.warn({ cid: artifact.cid, error: error?.message }, 'Error fetching situation from IPFS');
@@ -124,11 +125,11 @@ async function fetchNodeEmbedding(requestId: string, client: Client): Promise<Si
       'SELECT node_id, model, dim, summary, meta, updated_at FROM node_embeddings WHERE node_id = $1',
       [requestId]
     );
-    
+
     if (res.rows.length === 0) {
       return null;
     }
-    
+
     const row = res.rows[0];
     return {
       nodeId: row.node_id,
@@ -167,9 +168,9 @@ async function searchSimilarSituations(
       ORDER BY score DESC
       LIMIT $2;
     `;
-    
+
     const res = await client.query(sql, [vectorLiteral, k, excludeNodeId]);
-    
+
     return res.rows.map((row: any) => ({
       nodeId: row.node_id,
       score: typeof row.score === 'string' ? Number(row.score) : Number(row.score ?? 0),

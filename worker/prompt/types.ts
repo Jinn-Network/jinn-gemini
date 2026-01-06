@@ -18,42 +18,30 @@ export type {
 } from '../types.js';
 
 // =============================================================================
-// Assertion Types
+// Invariant Types
 // =============================================================================
 
 /**
- * Categories for assertions (instructions only)
- * - system: Protocol, identity, behavioral rules (from system-blueprint.json)
- * - context: Dynamic assertions that embed specific context data
- * - recognition: Prescriptive learnings from similar jobs
- * - job: Work requirements from the job blueprint
+ * An invariant - a property that should hold
+ * 
+ * Minimal schema: id + invariant statement, with optional measurement and examples.
+ * Layer (ACTION/JOB/PROTOCOL) is derived from ID prefix in BlueprintBuilder.
  */
-export type AssertionCategory = 'system' | 'context' | 'recognition' | 'job';
-
-/**
- * A blueprint assertion - an instruction, rule, or requirement
- *
- * All assertions share this homomorphic structure, whether static (from
- * system-blueprint.json) or dynamic (generated from context data).
- */
-export interface BlueprintAssertion {
-  /** Unique identifier (e.g., "SYS-IDENTITY-001", "CTX-CHILD-001") */
+export interface Invariant {
+  /** Unique identifier (e.g., "SYS-001", "JOB-001", "COORD-001") */
   id: string;
 
-  /** Source category */
-  category: AssertionCategory;
+  /** The invariant statement itself - what must hold */
+  invariant: string;
 
-  /** The requirement, principle, or instruction */
-  assertion: string;
+  /** Natural language guidance on how to measure/verify this invariant */
+  measurement?: string;
 
   /** Examples of correct and incorrect application */
-  examples: {
+  examples?: {
     do: string[];
     dont: string[];
   };
-
-  /** Human-readable context explaining the rationale */
-  commentary: string;
 }
 
 // =============================================================================
@@ -72,6 +60,8 @@ export interface ChildJobInfo {
   branchName?: string;
   /** Base branch the child branched from */
   baseBranch?: string;
+  /** Whether the child's work is already integrated into parent (commits merged or rejected) */
+  isIntegrated?: boolean;
 }
 
 /**
@@ -136,20 +126,17 @@ export interface BlueprintMetadata {
 
   /** Which providers contributed to this blueprint */
   providers: string[];
-
-  /** Workspace path for file operations (write_file needs absolute paths) */
-  workspacePath?: string;
 }
 
 /**
  * The unified blueprint sent to the agent
  *
  * This is the final output of the BlueprintBuilder - a single JSON structure
- * containing all instructions (assertions) and reference data (context).
+ * containing all invariants and reference data (context).
  */
 export interface UnifiedBlueprint {
-  /** Instructions and requirements (homomorphic format) */
-  assertions: BlueprintAssertion[];
+  /** Invariants - properties that should hold (homomorphic format) */
+  invariants: Invariant[];
 
   /** Factual state information (structured data) */
   context: BlueprintContext;
@@ -182,6 +169,12 @@ export interface BlueprintBuilderConfig {
 
   /** Enable progress checkpoint context */
   enableProgressCheckpoint: boolean;
+
+  /** Enable beads issue tracking assertions for coding jobs */
+  enableBeadsAssertions: boolean;
+
+  /** Master switch for Recognition, Reflection, Progress phases */
+  enableContextPhases: boolean;
 
   // Debugging
   /** Enable debug mode */
@@ -226,26 +219,24 @@ export interface ContextProvider {
 }
 
 /**
- * Assertion provider interface (Phase 2)
+ * Invariant provider interface (Phase 2)
  *
- * Assertion providers run second and have access to the built context.
- * They can generate static assertions or dynamic context-aware assertions.
+ * Invariant providers run second and have access to the built context.
+ * They generate invariants - properties that should hold.
+ * Layer ordering is derived from ID prefix in BlueprintBuilder.
  */
-export interface AssertionProvider {
+export interface InvariantProvider {
   /** Provider name for logging/debugging */
   name: string;
-
-  /** The category of assertions this provider generates */
-  category: AssertionCategory;
 
   /** Check if this provider is enabled */
   enabled: (config: BlueprintBuilderConfig) => boolean;
 
-  /** Provide assertions (with access to built context) */
+  /** Provide invariants (with access to built context) */
   provide: (
     ctx: BuildContext,
     builtContext: BlueprintContext
-  ) => Promise<BlueprintAssertion[]>;
+  ) => Promise<Invariant[]>;
 }
 
 // =============================================================================

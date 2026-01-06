@@ -8,4 +8,5 @@ export * from './workingTree.js';
 export * from './autoCommit.js';
 export * from './push.js';
 export * from './pr.js';
+export * from './repoSetup.js';
 

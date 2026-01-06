@@ -8,6 +8,7 @@ import { getRepoRoot, extractRepoName, getJinnWorkspaceDir } from '../../shared/
 import type { CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
 import { GIT_CLONE_TIMEOUT_MS, GIT_FETCH_TIMEOUT_MS } from '../constants.js';
 import { serializeError } from '../logging/errors.js';
+// Repo setup (gitignore, beads) now happens in jobRunner after branch checkout
 
 /**
  * Result of repository clone/fetch operation
@@ -27,6 +28,7 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
 
   if (existsSync(targetPath)) {
     workerLogger.info({ targetPath }, 'Repository already cloned');
+
     // Always fetch branches to ensure we have latest remote refs
     let fetchPerformed = false;
     try {
@@ -103,7 +105,7 @@ export async function prepareRepoForJob(codeMetadata: CodeMetadata): Promise<str
       return repoRoot;
     }
   }
-  
+
   // Fallback to current working directory or env override
   return getRepoRoot(codeMetadata);
 }

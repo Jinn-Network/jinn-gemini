@@ -48,7 +48,7 @@ async function loadBlueprint(filename: string): Promise<{ content: string; path:
   if (!blueprintFile.includes('/')) {
     blueprintPath = join(process.cwd(), 'blueprints', blueprintFile);
   }
-  
+
   try {
     const content = await readFile(blueprintPath, 'utf-8');
     const name = basename(blueprintPath, extname(blueprintPath));
@@ -98,15 +98,15 @@ async function initializeRepo(localPath: string, repoUrl: string, repoName: stri
 
   // Initialize git repo
   execSync('git init', { cwd: localPath, stdio: 'pipe' });
-  
-  // Create initial README
-  const readmeContent = `# ${repoName}\n\nWorkstream repository for ${repoName}.\n\nThis repository was automatically created by the Jinn workstream launcher.\n`;
+
+  // Create minimal README
+  const readmeContent = `# ${repoName}\n`;
   await writeFile(join(localPath, 'README.md'), readmeContent, 'utf-8');
 
   // Git initial commit
   execSync('git add README.md', { cwd: localPath, stdio: 'pipe' });
   execSync('git commit -m "Initial commit"', { cwd: localPath, stdio: 'pipe' });
-  
+
   // Create main branch explicitly (in case default is not 'main')
   try {
     execSync('git branch -M main', { cwd: localPath, stdio: 'pipe' });
@@ -125,26 +125,26 @@ function parseDispatchResponse(result: any): { jobDefinitionId: string; requestI
   }
 
   const response = JSON.parse(result.content[0].text);
-  
+
   if (!response.meta?.ok) {
     throw new Error(`Dispatch failed: ${response.meta?.message}`);
   }
-  
+
   const data = response.data;
   const requestId = Array.isArray(data.request_ids) ? data.request_ids[0] : data.request_id;
   const jobDefinitionId = data.jobDefinitionId;
-  
+
   if (!jobDefinitionId) {
     throw new Error('No jobDefinitionId in response');
   }
-  
+
   return { jobDefinitionId, requestId };
 }
 
 async function main() {
   const argv = await yargs(hideBin(process.argv))
     .option('dry-run', { type: 'boolean', description: 'Simulate without creating repo or dispatching' })
-    .option('model', { type: 'string', default: 'gemini-2.5-flash', description: 'Model to use' })
+    .option('model', { type: 'string', default: 'gemini-3-flash-preview', description: 'Model to use' })
     .option('context', { type: 'string', description: 'Additional context to inject' })
     .option('skip-repo', { type: 'boolean', description: 'Skip GitHub repository creation (artifact-only mode)' })
     .demandCommand(1, 'Please provide a blueprint filename (e.g., x402-data-service)')
@@ -152,7 +152,7 @@ async function main() {
     .parse();
 
   const blueprintArg = String(argv._[0]);
-  
+
   try {
     scriptLogger.info('Loading blueprint...');
     const { content: blueprintContent, path: blueprintPath, name: blueprintName } = await loadBlueprint(blueprintArg);
@@ -160,18 +160,18 @@ async function main() {
 
     // 3-letter random suffix (used for repo disambiguation and job name)
     const shortId = Math.random().toString(36).substring(2, 5).toUpperCase();
-    
+
     // Convert kebab-case or snake_case to Title Case for job name
     const title = blueprintName
       .split(/[-_]/)
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
-      
+
     const jobName = `${title} – ${shortId}`;
 
     // Prepare context
     let context = argv.context || '';
-    
+
     let repoPath: string | undefined;
     let repoUrl: string | undefined;
 
@@ -183,9 +183,9 @@ async function main() {
       }
 
       let repoName = blueprintName; // Start with blueprint name
-      
+
       scriptLogger.info({ repoName }, 'Creating GitHub repository');
-      
+
       if (argv.dryRun) {
         scriptLogger.info('[DRY RUN] Would create private repository');
       } else {
@@ -202,14 +202,14 @@ async function main() {
             throw error;
           }
         }
-        
+
         repoUrl = repo.html_url;
         scriptLogger.info({ repoUrl }, 'Repository created');
 
         // Clone to local workstream directory
         const workstreamsDir = join(homedir(), '.jinn', 'workstreams');
         repoPath = join(workstreamsDir, repoName);
-        
+
         scriptLogger.info({ repoPath }, 'Initializing local repository');
         await initializeRepo(repoPath, repo.clone_url, repoName);
         scriptLogger.info('Initialized and pushed to main branch');
@@ -232,7 +232,17 @@ async function main() {
     } else {
       blueprintObj.context = context || `Launched via generic launcher on ${new Date().toISOString()}.\nBlueprint: ${blueprintName}`;
     }
-    const finalBlueprint = JSON.stringify(blueprintObj);
+    // Strip template metadata before dispatching
+    // We only want the agent to see invariants, context, and outputSpec
+    const cleanBlueprint: Record<string, unknown> = {
+      invariants: blueprintObj.invariants || blueprintObj.assertions || [],
+      context: blueprintObj.context
+    };
+    // Include outputSpec so OutputInvariantProvider can generate constraints
+    if (blueprintObj.outputSpec) {
+      cleanBlueprint.outputSpec = blueprintObj.outputSpec;
+    }
+    const finalBlueprint = JSON.stringify(cleanBlueprint);
 
     scriptLogger.info({
       jobName,
@@ -250,7 +260,7 @@ async function main() {
     }
 
     scriptLogger.info('Dispatching job...');
-    
+
     // Set CODE_METADATA_REPO_ROOT if we created a repo
     if (repoPath) {
       process.env.CODE_METADATA_REPO_ROOT = repoPath;
@@ -261,7 +271,7 @@ async function main() {
       jobName,
       blueprint: finalBlueprint,
       model: argv.model,
-      enabledTools: [
+      enabledTools: blueprintObj.enabledTools || [
         'web_search',
         'create_artifact',
         'write_file',
@@ -269,19 +279,19 @@ async function main() {
         'replace',
         'list_directory',
         'run_shell_command',
-        'dispatch_new_job',  // Needed for delegation
+        'dispatch_new_job',
       ],
       skipBranch: false,  // Explicit branch creation for code workstreams
     });
 
     const { requestId } = parseDispatchResponse(result);
-    
+
     scriptLogger.info({
       requestId,
       repoUrl,
       repoPath,
-      explorerUrl: `https://explorer.jinn.network/requests/${requestId}`,
-      runCommand: `yarn dev:mech --workstream=${requestId} --runs=5`,
+      explorerUrl: `https://explorer.jinn.network/workstreams/${requestId}`,
+      runCommand: `yarn dev:mech --workstream=${requestId} --runs=15`,
     }, 'Workstream dispatched successfully');
 
   } catch (error) {

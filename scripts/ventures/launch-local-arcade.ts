@@ -7,13 +7,48 @@
  * (Snake, 2048, Minesweeper) that runs entirely offline.
  * 
  * Usage:
- *   ./scripts/ventures/launch-local-arcade.ts [optional message]
+ *   ./scripts/ventures/launch-local-arcade.ts [options] [message]
+ * 
+ * Options:
+ *   --repo <path>   Path to local repository clone (enables parallel workstreams)
+ * 
+ * Examples:
+ *   # Use default repo from CODE_METADATA_REPO_ROOT
+ *   ./scripts/ventures/launch-local-arcade.ts "First arcade"
+ * 
+ *   # Use specific repo path for parallel runs
+ *   ./scripts/ventures/launch-local-arcade.ts --repo ~/jinn-repos/arcade-run-1 "First test"
+ *   ./scripts/ventures/launch-local-arcade.ts --repo ~/jinn-repos/arcade-run-2 "Second test"
  */
 
 import 'dotenv/config';
 import { dispatchNewJob } from '../../gemini-agent/mcp/tools/dispatch_new_job.js';
 import { readFile } from 'fs/promises';
-import { join } from 'path';
+import { join, resolve } from 'path';
+
+interface ParsedArgs {
+    repoPath?: string;
+    message?: string;
+}
+
+function parseArgs(args: string[]): ParsedArgs {
+    const result: ParsedArgs = {};
+    let i = 0;
+
+    while (i < args.length) {
+        if (args[i] === '--repo' && i + 1 < args.length) {
+            result.repoPath = resolve(args[i + 1]);
+            i += 2;
+        } else if (!args[i].startsWith('--')) {
+            result.message = args[i];
+            i++;
+        } else {
+            i++;
+        }
+    }
+
+    return result;
+}
 
 async function loadBlueprint(filename: string): Promise<string> {
     const blueprintPath = join(process.cwd(), 'blueprints', filename);
@@ -44,18 +79,24 @@ async function main() {
     console.log('║  🎮 Launching Local Arcade Venture                                    ║');
     console.log('╚═══════════════════════════════════════════════════════════════════════╝');
 
-    // Note: This venture doesn't require a specific repository since it's self-contained
-    // The agent will create the arcade in a new location or use CODE_METADATA_REPO_ROOT if set
-    if (process.env.CODE_METADATA_REPO_ROOT) {
-        console.log(`\n📂 Linked Repository: ${process.env.CODE_METADATA_REPO_ROOT}`);
-        console.log('   (The arcade will be created in this location)');
+    // Parse CLI arguments
+    const { repoPath, message } = parseArgs(process.argv.slice(2));
+
+    // Set repo path: CLI arg takes precedence over env var
+    const effectiveRepoPath = repoPath || process.env.CODE_METADATA_REPO_ROOT;
+
+    if (repoPath) {
+        // Override env var if --repo was specified
+        process.env.CODE_METADATA_REPO_ROOT = repoPath;
+        console.log(`\n📂 Repository (from --repo): ${repoPath}`);
+    } else if (process.env.CODE_METADATA_REPO_ROOT) {
+        console.log(`\n📂 Repository (from env): ${process.env.CODE_METADATA_REPO_ROOT}`);
     } else {
         console.log('\n📂 No repository specified - agent will determine the output location');
     }
 
     try {
         const blueprint = await loadBlueprint('local-arcade.json');
-        const message = process.argv[2];
 
         console.log('\n📋 Dispatching initial job...');
         if (message) {
@@ -90,7 +131,12 @@ async function main() {
 
         console.log('\n🔧 Next Steps:');
         console.log('\n1. Start the worker:');
-        console.log(`   MECH_TARGET_REQUEST_ID=${requestId} yarn dev:mech --single`);
+        if (effectiveRepoPath) {
+            console.log(`   CODE_METADATA_REPO_ROOT=${effectiveRepoPath} \\`);
+            console.log(`     yarn dev:mech --workstream=${requestId}`);
+        } else {
+            console.log(`   yarn dev:mech --workstream=${requestId}`);
+        }
 
         console.log('\n2. Monitor the agent:');
         console.log(`   http://localhost:3000/requests/${requestId}`);

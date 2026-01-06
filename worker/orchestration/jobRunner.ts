@@ -13,11 +13,13 @@
  */
 
 import { workerLogger } from '../../logging/index.js';
+import { execSync } from 'child_process';
 import { WorkerTelemetryService } from '../worker_telemetry.js';
 import { serializeError } from '../logging/errors.js';
 import { snapshotEnvironment, restoreEnvironment } from './env.js';
 import { fetchIpfsMetadata } from '../metadata/fetchIpfsMetadata.js';
 import { ensureRepoCloned } from '../git/repoManager.js';
+import { ensureGitignore, ensureBeadsInit, commitRepoSetup } from '../git/repoSetup.js';
 import { checkoutJobBranch, syncWithBranch } from '../git/branch.js';
 import { pushJobBranch } from '../git/push.js';
 import { generateBranchUrl, formatSummaryForPr, createBranchArtifact } from '../git/pr.js';
@@ -26,7 +28,7 @@ import { runRecognitionPhase } from '../recognition/runRecognition.js';
 // Recognition augmentation now handled by BlueprintBuilder's RecognitionProvider
 import { runAgentForRequest, consolidateArtifacts, parseTelemetry, extractOutput, mergeTelemetry, extractArtifactsFromError } from '../execution/index.js';
 import { runReflection } from '../reflection/runReflection.js';
-import { inferJobStatus, dispatchParentIfNeeded } from '../status/index.js';
+import { inferJobStatus, dispatchParentIfNeeded, dispatchForLoopRecovery, extractSemanticFailure } from '../status/index.js';
 import { storeOnchainReport } from '../delivery/report.js';
 import { deliverViaSafeTransaction } from '../delivery/transaction.js';
 import { createSituationArtifactForRequest } from '../situation_artifact.js';
@@ -36,6 +38,7 @@ import { getJinnWorkspaceDir, extractRepoName, getRepoRoot } from '../../shared/
 import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult, AdditionalContext } from '../types.js';
 import { getDependencyBranchInfo } from '../mech_worker.js';
+import { getBlueprintEnableContextPhases } from '../../config/index.js';
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
 
@@ -59,6 +62,7 @@ export async function processOnce(
 
   const envSnapshot = snapshotEnvironment();
   const telemetry = new WorkerTelemetryService(target.id);
+  const contextPhasesEnabled = getBlueprintEnableContextPhases();
 
   try {
     // Initialize: fetch metadata and set up repo
@@ -68,10 +72,9 @@ export async function processOnce(
       if (!metadata) {
         metadata = {};
       }
-      // Use model from job metadata if available, otherwise default to flash
-      // Model should be set at job creation time, not from worker environment
+      // Use model from job metadata if available, otherwise fall back to default
       if (!metadata.model) {
-        metadata.model = 'gemini-2.5-flash';
+        metadata.model = 'gemini-3-flash-preview';
       }
 
       telemetry.logCheckpoint('initialization', 'metadata_fetched', {
@@ -123,13 +126,23 @@ export async function processOnce(
           baseBranch: metadata.codeMetadata.baseBranch || DEFAULT_BASE_BRANCH,
         });
 
+        // Now that we're on the job branch, ensure .gitignore and beads are set up
+        // This happens AFTER checkout so .gitignore is committed to the job branch
+        // (not main), preventing divergent commits when child branches don't inherit from main
+        const setupRepoRoot = getRepoRoot(metadata.codeMetadata);
+        if (setupRepoRoot) {
+          ensureGitignore(setupRepoRoot);
+          await ensureBeadsInit(setupRepoRoot);
+          await commitRepoSetup(setupRepoRoot);
+        }
+
         // Merge dependency branches into this job's branch
         // This ensures the child job sees work from its dependencies
-        if (metadata.dependencies && metadata.dependencies.length > 0) {
+        if (target.dependencies && target.dependencies.length > 0) {
           const repoRoot = getRepoRoot(metadata.codeMetadata);
           const mergeConflicts: Array<{ branch: string; files: string[] }> = [];
 
-          for (const depJobDefId of metadata.dependencies) {
+          for (const depJobDefId of target.dependencies) {
             const branchInfo = await getDependencyBranchInfo(depJobDefId);
             if (branchInfo?.branchName) {
               workerLogger.info({
@@ -153,6 +166,26 @@ export async function processOnce(
                   branch: branchInfo.branchName,
                   files: syncResult.conflictingFiles,
                 });
+
+                // Commit the conflicted state so we can continue to next dependency
+                // Agent will see conflict markers in committed files and must resolve them
+                try {
+                  execSync('git add .', { cwd: repoRoot, encoding: 'utf8' });
+                  execSync(
+                    `git commit -m "WIP: Merge conflict from ${branchInfo.branchName} - agent must resolve"`,
+                    { cwd: repoRoot, encoding: 'utf8' }
+                  );
+                  workerLogger.info({
+                    requestId: target.id,
+                    dependency: branchInfo.branchName
+                  }, 'Committed conflicted merge state to allow further dependency syncs');
+                } catch (commitError) {
+                  workerLogger.warn({
+                    requestId: target.id,
+                    dependency: branchInfo.branchName,
+                    error: serializeError(commitError)
+                  }, 'Failed to commit conflicted state - subsequent merges may fail');
+                }
               }
             } else {
               workerLogger.debug({
@@ -178,6 +211,20 @@ export async function processOnce(
         }
       } else {
         workerLogger.info({ requestId: target.id }, 'No code metadata - artifact-only job');
+
+        // VALIDATION: Warn if coding tools are enabled but no codeMetadata
+        // This indicates a likely misconfiguration (e.g., x402-builder dispatching without codeMetadata)
+        const CODING_TOOLS = ['write_file', 'replace', 'run_shell_command', 'process_branch'];
+        const enabledTools = metadata?.enabledTools || [];
+        const codingToolsEnabled = enabledTools.filter((t: string) => CODING_TOOLS.includes(t));
+
+        if (codingToolsEnabled.length > 0) {
+          workerLogger.warn({
+            requestId: target.id,
+            codingToolsEnabled,
+            hint: 'Job has coding tools but no codeMetadata. Tools will be unavailable. Did the dispatcher forget to include codeMetadata?',
+          }, 'MISCONFIGURATION: Coding tools enabled without codeMetadata');
+        }
       }
     } catch (initializationError: any) {
       telemetry.logError('initialization', initializationError);
@@ -189,10 +236,14 @@ export async function processOnce(
     // Recognition phase
     telemetry.startPhase('recognition');
     try {
-      recognition = await runRecognitionPhase(target.id, metadata, telemetry);
-      // Recognition learnings are now handled by BlueprintBuilder's RecognitionProvider
-      // Do NOT augment metadata.blueprint here - it must remain valid JSON for BlueprintBuilder
-      metadata.recognition = recognition;
+      if (!contextPhasesEnabled) {
+        workerLogger.info({ requestId: target.id }, 'Recognition phase skipped (BLUEPRINT_ENABLE_CONTEXT_PHASES=false)');
+      } else {
+        recognition = await runRecognitionPhase(target.id, metadata, telemetry);
+        // Recognition learnings are now handled by BlueprintBuilder's LearningInvariantProvider
+        // Do NOT augment metadata.blueprint here - it must remain valid JSON for BlueprintBuilder
+        metadata.recognition = recognition;
+      }
     } catch (recognitionError: any) {
       telemetry.logError('recognition', recognitionError);
       workerLogger.warn({ requestId: target.id, error: serializeError(recognitionError) }, 'Recognition phase failed (continuing without learnings)');
@@ -202,7 +253,7 @@ export async function processOnce(
 
     // Agent execution
     telemetry.startPhase('agent_execution', {
-      model: metadata?.model || 'gemini-2.5-flash',
+      model: metadata?.model || 'gemini-3-flash-preview',
     });
     try {
       result = await runAgentForRequest(target, metadata);
@@ -222,6 +273,24 @@ export async function processOnce(
         status: finalStatus.status,
         message: finalStatus.message
       }, 'Execution completed - status inferred');
+
+      // NEW: Check for semantic FAILED in agent output
+      // If agent says "Status: FAILED" but inferJobStatus returned COMPLETED, override
+      if (finalStatus.status === 'COMPLETED' && result.output) {
+        const semanticFailed = extractSemanticFailure(result.output as string);
+        if (semanticFailed) {
+          finalStatus = {
+            status: 'FAILED',
+            message: semanticFailed.message,
+          };
+          workerLogger.info({
+            requestId: target.id,
+            reason: semanticFailed.reason,
+            message: semanticFailed.message,
+          }, 'Semantic FAILED status detected in agent output - overriding COMPLETED');
+        }
+      }
+
 
       // Aggregate tool metrics
       if (result?.telemetry?.toolCalls && result.telemetry.toolCalls.length > 0) {
@@ -271,7 +340,41 @@ export async function processOnce(
         });
       }
 
-      if (parsed.processExitError) {
+      // Detect loop protection terminations (Gemini CLI or worker-level)
+      // These should NOT trigger transport error recovery - they are intentional failures
+      const stderrWarnings = parsed.telemetry?.raw?.stderrWarnings || '';
+      const outputText = result?.output || '';
+      const isLoopProtection =
+        stderrWarnings.includes('unproductive loop') ||
+        outputText.includes('[PROCESS TERMINATED');
+
+      // If loop protection triggered, ensure FAILED status with helpful message
+      if (isLoopProtection && finalStatus) {
+        // Extract the loop detection message for a more helpful error
+        const loopMatch = stderrWarnings.match(/The assistant is in a clear unproductive loop[^.]*\./);
+        const loopMessage = loopMatch
+          ? loopMatch[0]
+          : 'Agent terminated: unproductive loop detected';
+
+        finalStatus = {
+          status: 'FAILED',
+          message: loopMessage,
+        };
+
+        workerLogger.warn({
+          requestId: target.id,
+          jobName: metadata?.jobName,
+          loopMessage,
+        }, 'Job failed due to loop protection - not eligible for transport error recovery');
+
+        // Auto-dispatch for loop recovery (if not at max attempts)
+        // Extract full loop message for more context
+        const fullLoopMessage = stderrWarnings.match(/The assistant is in a clear unproductive loop[^]*?(?=\n\n|$)/)?.[0] || loopMessage;
+        await dispatchForLoopRecovery(metadata, target.id, fullLoopMessage, telemetry);
+      }
+
+      // Transport error recovery: only for genuine transport failures, NOT loop protection
+      if (parsed.processExitError && !isLoopProtection) {
         if (!finalStatus || finalStatus.status === 'FAILED') {
           try {
             finalStatus = await inferJobStatus({
@@ -331,28 +434,32 @@ export async function processOnce(
   // Reflection phase
   telemetry.startPhase('reflection');
   try {
-    reflection = await runReflection(target, metadata!, finalStatus, result, error);
-    if (reflection) {
-      const reflectionArtifacts = extractMemoryArtifacts(reflection);
-      const learningsCount = reflection?.telemetry?.toolCalls?.filter(
-        (call: any) => call.tool === 'create_artifact' && call.success
-      ).length || 0;
-      
-      telemetry.logCheckpoint('reflection', 'reflection_complete', {
-        hasMemoryArtifacts: reflectionArtifacts.length > 0,
-        learningsCount,
-      });
-      
-      if (reflectionArtifacts.length > 0) {
-        const existing = Array.isArray(result.artifacts) ? [...result.artifacts] : [];
-        const seen = new Set(existing.map((artifact) => `${artifact.cid}|${artifact.topic}`));
-        for (const artifact of reflectionArtifacts) {
-          const key = `${artifact.cid}|${artifact.topic}`;
-          if (seen.has(key)) continue;
-          existing.push(artifact);
-          seen.add(key);
+    if (!contextPhasesEnabled) {
+      workerLogger.info({ requestId: target.id }, 'Reflection phase skipped (BLUEPRINT_ENABLE_CONTEXT_PHASES=false)');
+    } else {
+      reflection = await runReflection(target, metadata!, finalStatus, result, error);
+      if (reflection) {
+        const reflectionArtifacts = extractMemoryArtifacts(reflection);
+        const learningsCount = reflection?.telemetry?.toolCalls?.filter(
+          (call: any) => call.tool === 'create_artifact' && call.success
+        ).length || 0;
+
+        telemetry.logCheckpoint('reflection', 'reflection_complete', {
+          hasMemoryArtifacts: reflectionArtifacts.length > 0,
+          learningsCount,
+        });
+
+        if (reflectionArtifacts.length > 0) {
+          const existing = Array.isArray(result.artifacts) ? [...result.artifacts] : [];
+          const seen = new Set(existing.map((artifact) => `${artifact.cid}|${artifact.topic}`));
+          for (const artifact of reflectionArtifacts) {
+            const key = `${artifact.cid}|${artifact.topic}`;
+            if (seen.has(key)) continue;
+            existing.push(artifact);
+            seen.add(key);
+          }
+          result.artifacts = existing;
         }
-        result.artifacts = existing;
       }
     }
   } catch (reflectionError: any) {
@@ -373,13 +480,13 @@ export async function processOnce(
       finalStatus: finalStatus!,
       recognition,
     });
-    
+
     // Extract CID from artifacts (situation artifact is added to result.artifacts)
-    const situationArtifact = Array.isArray(result.artifacts) 
+    const situationArtifact = Array.isArray(result.artifacts)
       ? result.artifacts.find((a: any) => a.topic === 'SITUATION' || a.type === 'SITUATION')
       : null;
     situationCid = situationArtifact?.cid;
-    
+
     telemetry.logCheckpoint('situation_creation', 'situation_artifact_created', {
       cid: situationCid,
       hasEmbedding: true, // Embedding is always created in createSituationArtifactForRequest
@@ -563,7 +670,7 @@ export async function processOnce(
       workerTelemetry: workerTelemetrySnapshot,
       artifactsForDelivery,
     });
-    
+
     workerLogger.info({ requestId: target.id, tx: delivery?.tx_hash, status: delivery?.status }, '[DEBUG] Returned from deliverViaSafeTransaction');
 
     telemetry.logCheckpoint('delivery', 'delivery_completed', {
@@ -588,13 +695,13 @@ export async function processOnce(
         { requestId: target.id },
         'Delivery skipped: request already delivered on-chain',
       );
-      
+
       // Still dispatch parent if needed (job completed, even if delivery was idempotent)
       await dispatchParentIfNeeded(finalStatus, metadata!, target.id, result?.output || '', {
         telemetry,
         artifacts: Array.isArray(result?.artifacts) ? result.artifacts : undefined,
       });
-      
+
       return;
     }
 
@@ -607,14 +714,14 @@ export async function processOnce(
 
     // Check if the error is due to a RevokeRequest event
     const isRevokeError = message.includes('revoked by the Mech contract');
-    
+
     if (isRevokeError && metadata?.jobDefinitionId) {
-      workerLogger.warn({ 
-        requestId: target.id, 
+      workerLogger.warn({
+        requestId: target.id,
         jobDefinitionId: metadata.jobDefinitionId,
-        jobName: metadata.jobName 
+        jobName: metadata.jobName
       }, 'Request was revoked - automatic re-dispatch recommended');
-      
+
       // Store failure status with revoke context
       try {
         await storeOnchainReport(target, workerAddress, result, {

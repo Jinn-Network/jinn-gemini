@@ -97,7 +97,7 @@ function getOperateDir(): string | null {
   if (operateHome && existsSync(operateHome)) {
     return operateHome;
   }
-  
+
   configLogger.warn({ operateHome }, '.operate directory not found at expected location');
   return null;
 }
@@ -112,35 +112,35 @@ function readServiceConfig(): ServiceConfig | null {
       configLogger.warn('No .operate directory found');
       return null;
     }
-    
+
     const servicesDir = join(operateDir, 'services');
     if (!existsSync(servicesDir)) {
       configLogger.warn({ operateDir }, 'No services directory found');
       return null;
     }
-    
-    // Find the first service directory
+
+    // Find the first service directory that contains a config.json
     const serviceDirs = readdirSync(servicesDir, { withFileTypes: true })
       .filter(dirent => dirent.isDirectory())
       .map(dirent => dirent.name);
-    
-    if (serviceDirs.length === 0) {
-      configLogger.warn({ servicesDir }, 'No service directories found');
+
+    let configPath: string | null = null;
+    for (const serviceDir of serviceDirs) {
+      const candidatePath = join(servicesDir, serviceDir, 'config.json');
+      if (existsSync(candidatePath)) {
+        configPath = candidatePath;
+        break;
+      }
+    }
+
+    if (!configPath) {
+      configLogger.warn({ servicesDir }, 'No service directories with config.json found');
       return null;
     }
-    
-    // Read config.json from the first service
-    const serviceDir = serviceDirs[0];
-    const configPath = join(servicesDir, serviceDir, 'config.json');
-    
-    if (!existsSync(configPath)) {
-      configLogger.warn({ configPath }, 'No config.json found');
-      return null;
-    }
-    
+
     const configData = readFileSync(configPath, 'utf-8');
     const config: ServiceConfig = JSON.parse(configData);
-    
+
     return config;
   } catch (error) {
     configLogger.warn({ err: error }, 'Error reading service config');
@@ -162,24 +162,24 @@ export function getMechAddress(): string | null {
   if (!config) {
     return null;
   }
-  
+
   // Extract mech address from MECH_TO_CONFIG
   const mechToConfig = config.env_variables?.MECH_TO_CONFIG?.value;
   if (!mechToConfig) {
     configLogger.warn('MECH_TO_CONFIG not found in service config');
     return null;
   }
-  
+
   try {
     // Parse MECH_TO_CONFIG JSON
     const mechConfig = JSON.parse(mechToConfig);
     const mechAddresses = Object.keys(mechConfig);
-    
+
     if (mechAddresses.length === 0) {
       configLogger.warn('No mech addresses found in MECH_TO_CONFIG');
       return null;
     }
-    
+
     const mechAddress = mechAddresses[0];
     configLogger.info(` Found service target mech: ${mechAddress}`);
     return mechAddress;
@@ -206,7 +206,7 @@ export function getServiceSafeAddress(): string | null {
   if (!config) {
     return null;
   }
-  
+
   // Try to find the Safe address from chain_configs (primary location)
   if (config.chain_configs) {
     // Look for the first chain config with a multisig address
@@ -218,14 +218,14 @@ export function getServiceSafeAddress(): string | null {
       }
     }
   }
-  
+
   // Fall back to safe_address at root (backwards compatibility)
   const safeAddress = config.safe_address;
   if (safeAddress) {
     configLogger.info(` Found safe address: ${safeAddress}`);
     return safeAddress;
   }
-  
+
   configLogger.warn('safe_address not found in service config');
   return null;
 }
@@ -246,7 +246,7 @@ export function getServicePrivateKey(): string | null {
   if (!config) {
     return null;
   }
-  
+
   // Find the first agent instance address from chain_configs
   let agentAddress: string | null = null;
   if (config.chain_configs) {
@@ -258,26 +258,26 @@ export function getServicePrivateKey(): string | null {
       }
     }
   }
-  
+
   if (!agentAddress) {
     configLogger.warn('No agent instance found in chain_configs');
     return null;
   }
-  
+
   // Try to read from keys directory using agent address
   try {
     const operateDir = getOperateDir();
     if (!operateDir) {
       return null;
     }
-    
+
     const keysPath = join(operateDir, 'keys', agentAddress);
-    
+
     if (existsSync(keysPath)) {
       const keyData = readFileSync(keysPath, 'utf-8').trim();
       const keyJson = JSON.parse(keyData);
       const privateKey = keyJson.private_key;
-      
+
       if (privateKey) {
         configLogger.info(` Found private key for agent ${agentAddress}`);
         return privateKey;
@@ -288,7 +288,7 @@ export function getServicePrivateKey(): string | null {
   } catch (error) {
     configLogger.warn({ err: error }, 'Error reading private key from .operate');
   }
-  
+
   return null;
 }
 
@@ -307,13 +307,13 @@ export function getMechChainConfig(): string {
   if (!config || !config.chain_configs) {
     return 'base';
   }
-  
+
   // Return the first chain config name found
   const chainNames = Object.keys(config.chain_configs);
   if (chainNames.length === 0) {
     return 'base';
   }
-  
+
   return chainNames[0];
 }
 

@@ -1,8 +1,11 @@
 /**
- * Parent dispatch: determine if parent needs to be auto-dispatched and call MCP dispatcher
+ * Auto-dispatch: determine if parent needs to be auto-dispatched and call MCP dispatcher
  *
- * Also handles verification dispatch: when a job completes after having children,
- * it gets re-dispatched for verification before the parent is notified.
+ * Also handles:
+ * - Verification dispatch: when a job completes after having children and all children
+ *   are integrated, it gets re-dispatched for verification before the parent is notified.
+ * - Continuation dispatch: when a job completes but child code is not yet integrated,
+ *   it gets re-dispatched to continue integration work.
  */
 
 import { workerLogger } from '../../logging/index.js';
@@ -16,6 +19,8 @@ import { graphQLRequest } from '../../http/client.js';
 import { getPonderGraphqlUrl } from '../../gemini-agent/mcp/tools/shared/env.js';
 import type { WorkerTelemetryService } from '../worker_telemetry.js';
 import { serializeError } from '../logging/errors.js';
+import { isChildIntegrated, batchFetchBranches } from '../git/integration.js';
+import { fetchAllChildren } from '../prompt/providers/context/fetchChildren.js';
 
 const DISPATCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes - long enough for jobs to process
 const MAX_VERIFICATION_ATTEMPTS = 3;
@@ -30,9 +35,9 @@ async function wasRecentlyDispatched(
 ): Promise<boolean> {
   try {
     const ponderUrl = getPonderGraphqlUrl();
-    
-    const response = await graphQLRequest<{ 
-      requests: { items: Array<{ id: string; blockTimestamp: string }> } 
+
+    const response = await graphQLRequest<{
+      requests: { items: Array<{ id: string; blockTimestamp: string }> }
     }>({
       url: ponderUrl,
       query: `query CheckRecentDispatch($jobDefId: String!, $sourceReqId: String!) {
@@ -51,9 +56,9 @@ async function wasRecentlyDispatched(
           }
         }
       }`,
-      variables: { 
+      variables: {
         jobDefId: parentJobDefId,
-        sourceReqId: childRequestId 
+        sourceReqId: childRequestId
       },
       context: { operation: 'checkRecentDispatch', parentJobDefId, childRequestId }
     });
@@ -65,11 +70,11 @@ async function wasRecentlyDispatched(
     const timeSince = Date.now() - dispatchTime;
 
     if (timeSince < DISPATCH_COOLDOWN_MS) {
-      workerLogger.debug({ 
-        parentJobDefId, 
-        childRequestId, 
+      workerLogger.debug({
+        parentJobDefId,
+        childRequestId,
         recentRequestId: recentRequest.id,
-        timeSince 
+        timeSince
       }, 'Found recent dispatch from this child');
       return true;
     }
@@ -111,6 +116,12 @@ async function jobHadChildren(jobDefinitionId: string): Promise<boolean> {
 }
 
 /**
+ * Structure for completed child with branch info
+ */
+
+
+
+/**
  * Determine if verification is required for this job
  * Returns verification decision with context
  */
@@ -118,7 +129,41 @@ export interface VerificationDecision {
   requiresVerification: boolean;
   isVerificationRun: boolean;
   verificationAttempt: number;
+  /** Job needs to continue integrating children (not ready for verification yet) */
+  needsContinuation?: boolean;
   reason: string;
+}
+
+/**
+ * Get list of child jobs whose code is not yet integrated into parent branch
+ */
+async function getUnintegratedChildren(parentJobDefId: string): Promise<string[]> {
+  const parentBranch = process.env.CODE_METADATA_BRANCH_NAME || 'main';
+
+  // Fetch all children from Ponder
+  const children = await fetchAllChildren(parentJobDefId);
+  if (children.length === 0) return [];
+
+  // Batch fetch branches for efficiency
+  const branchNames = children.map(c => c.branchName).filter(Boolean) as string[];
+  if (branchNames.length > 0) {
+    batchFetchBranches(branchNames, parentBranch);
+  }
+
+  // Check each child's integration status
+  const unintegrated = children
+    .filter(c => c.branchName && !isChildIntegrated(c.branchName, parentBranch))
+    .map(c => c.jobName || c.jobDefinitionId);
+
+  if (unintegrated.length > 0) {
+    workerLogger.info({
+      parentJobDefId,
+      unintegratedCount: unintegrated.length,
+      unintegratedChildren: unintegrated.slice(0, 5)
+    }, 'Found unintegrated children (code not yet merged)');
+  }
+
+  return unintegrated;
 }
 
 export async function shouldRequireVerification(
@@ -179,12 +224,34 @@ export async function shouldRequireVerification(
     };
   }
 
-  // Job completed after having children - needs verification
+  // Job had children - check if all children's CODE is integrated
+  const unintegratedChildren = jobDefinitionId
+    ? await getUnintegratedChildren(jobDefinitionId)
+    : [];
+
+  if (unintegratedChildren.length > 0) {
+    // Children exist but code not integrated - need to continue integration
+    workerLogger.info({
+      jobDefinitionId,
+      unintegratedCount: unintegratedChildren.length,
+      unintegrated: unintegratedChildren.slice(0, 3)
+    }, 'Children not yet integrated - deferring verification');
+
+    return {
+      requiresVerification: false,
+      isVerificationRun: false,
+      verificationAttempt: 0,
+      needsContinuation: true,
+      reason: `${unintegratedChildren.length} children not yet integrated`
+    };
+  }
+
+  // All children integrated - ready for verification
   return {
     requiresVerification: true,
     isVerificationRun: false,
     verificationAttempt: 0,
-    reason: 'Job completed after reviewing children - verification required'
+    reason: 'Job completed with all children integrated - verification required'
   };
 }
 
@@ -286,7 +353,8 @@ async function dispatchForVerification(
             type: 'verification'
           }),
           workstreamId,
-          additionalContext: verificationContext
+          additionalContext: verificationContext,
+          enabledTools: ['browser_automation']  // Enable browser automation for visual verification
         })
     );
 
@@ -335,9 +403,256 @@ async function dispatchForVerification(
   }
 }
 
+/**
+ * Dispatch job for continuation (re-dispatch self to continue integrating children)
+ * This is NOT a verification run - the job still has integration work to do.
+ */
+async function dispatchForContinuation(
+  metadata: any,
+  requestId: string,
+  telemetry?: WorkerTelemetryService
+): Promise<boolean> {
+  const jobDefinitionId = metadata?.jobDefinitionId;
+  if (!jobDefinitionId) {
+    workerLogger.error({ requestId }, 'Cannot dispatch for continuation: missing jobDefinitionId');
+    return false;
+  }
+
+  workerLogger.info(
+    { requestId, jobDefinitionId },
+    'Dispatching job for continuation (children not yet integrated)'
+  );
+
+  if (telemetry) {
+    telemetry.startPhase('continuation_dispatch');
+    telemetry.logCheckpoint('continuation_dispatch', 'dispatching_for_continuation', { jobDefinitionId });
+  }
+
+  try {
+    const lineageInfo = metadata?.lineage;
+    const baseBranch =
+      lineageInfo?.dispatcherBranchName ||
+      lineageInfo?.dispatcherBaseBranch ||
+      metadata?.codeMetadata?.baseBranch ||
+      undefined;
+    const mechAddress = metadata?.workerAddress || metadata?.mech || undefined;
+
+    // Query workstreamId from Ponder
+    let workstreamId: string | undefined;
+    try {
+      const ponderUrl = getPonderGraphqlUrl();
+      const response = await graphQLRequest<{ request: { workstreamId?: string } | null }>({
+        url: ponderUrl,
+        query: `query GetWorkstreamId($id: String!) { request(id: $id) { workstreamId } }`,
+        variables: { id: requestId },
+        context: { operation: 'getContinuationWorkstreamId', requestId }
+      });
+      workstreamId = response?.request?.workstreamId;
+    } catch (error) {
+      workerLogger.warn({ requestId, error: serializeError(error) }, 'Failed to query workstream ID for continuation');
+    }
+
+    const rawResult = await withJobContext(
+      {
+        requestId: lineageInfo?.parentDispatcherRequestId || undefined,
+        jobDefinitionId,
+        baseBranch,
+        mechAddress,
+        branchName: lineageInfo?.dispatcherBranchName || metadata?.codeMetadata?.branch?.name || undefined,
+        workstreamId,
+      },
+      async () =>
+        dispatchExistingJob({
+          jobId: jobDefinitionId,
+          message: JSON.stringify({
+            content: 'Continue integration: some children have unintegrated code',
+            type: 'continuation'
+          }),
+          workstreamId,
+          additionalContext: metadata?.additionalContext // Preserve existing context
+        })
+    );
+
+    const dispatchResult = safeParseToolResponse(rawResult);
+
+    if (dispatchResult.ok) {
+      if (telemetry) {
+        telemetry.logCheckpoint('continuation_dispatch', 'dispatch_success', {
+          jobDefinitionId,
+          newRequestId: dispatchResult.data?.request_ids?.[0]
+        });
+      }
+      workerLogger.info(
+        { jobDefinitionId, newRequestId: dispatchResult.data?.request_ids?.[0] },
+        'Continuation dispatch successful'
+      );
+      return true;
+    } else {
+      if (telemetry) {
+        telemetry.logError('continuation_dispatch', dispatchResult?.message || 'Unknown error');
+      }
+      workerLogger.error({ jobDefinitionId, error: dispatchResult?.message }, 'Failed to dispatch for continuation');
+      return false;
+    }
+  } catch (error) {
+    if (telemetry) {
+      telemetry.logError('continuation_dispatch', error instanceof Error ? error.message : String(error));
+    }
+    workerLogger.error({ jobDefinitionId, error: serializeError(error) }, 'Error dispatching for continuation');
+    return false;
+  } finally {
+    if (telemetry) {
+      telemetry.endPhase('continuation_dispatch');
+    }
+  }
+}
+
+const MAX_LOOP_RECOVERY_ATTEMPTS = 3;
+
+/**
+ * Dispatch job for loop recovery (re-dispatch self after loop termination)
+ * 
+ * When a job is terminated by loop protection, we re-dispatch it with context
+ * about what caused the loop so the agent can take a different approach.
+ */
+export async function dispatchForLoopRecovery(
+  metadata: any,
+  requestId: string,
+  loopMessage: string,
+  telemetry?: WorkerTelemetryService
+): Promise<boolean> {
+  const jobDefinitionId = metadata?.jobDefinitionId;
+  if (!jobDefinitionId) {
+    workerLogger.error({ requestId }, 'Cannot dispatch for loop recovery: missing jobDefinitionId');
+    return false;
+  }
+
+  const additionalContext = metadata?.additionalContext ?? {};
+  const currentAttempt = additionalContext?.loopRecovery?.attempt ?? 0;
+  const nextAttempt = currentAttempt + 1;
+
+  if (nextAttempt > MAX_LOOP_RECOVERY_ATTEMPTS) {
+    workerLogger.error(
+      { requestId, jobDefinitionId, attempts: nextAttempt },
+      'Max loop recovery attempts exceeded - job requires human review'
+    );
+    // Don't dispatch for recovery, let it fail permanently
+    return false;
+  }
+
+  workerLogger.info(
+    { requestId, jobDefinitionId, loopRecoveryAttempt: nextAttempt },
+    'Dispatching job for loop recovery'
+  );
+
+  if (telemetry) {
+    telemetry.startPhase('loop_recovery_dispatch');
+    telemetry.logCheckpoint('loop_recovery_dispatch', 'dispatching_for_loop_recovery', {
+      jobDefinitionId,
+      loopRecoveryAttempt: nextAttempt
+    });
+  }
+
+  try {
+    const lineageInfo = metadata?.lineage;
+    const baseBranch =
+      lineageInfo?.dispatcherBranchName ||
+      lineageInfo?.dispatcherBaseBranch ||
+      metadata?.codeMetadata?.baseBranch ||
+      metadata?.codeMetadata?.branch?.name ||
+      undefined;
+    const mechAddress = metadata?.workerAddress || metadata?.mech || undefined;
+
+    // Query workstreamId from Ponder
+    let workstreamId: string | undefined;
+    try {
+      const ponderUrl = getPonderGraphqlUrl();
+      const response = await graphQLRequest<{ request: { workstreamId?: string } | null }>({
+        url: ponderUrl,
+        query: `query GetWorkstreamId($id: String!) { request(id: $id) { workstreamId } }`,
+        variables: { id: requestId },
+        context: { operation: 'getLoopRecoveryWorkstreamId', requestId }
+      });
+      workstreamId = response?.request?.workstreamId;
+    } catch (error) {
+      workerLogger.warn({ requestId, error: serializeError(error) }, 'Failed to query workstream ID for loop recovery');
+    }
+
+    // Build loop recovery context - preserve existing context and add loop info
+    const loopRecoveryContext = {
+      ...additionalContext,
+      loopRecovery: {
+        attempt: nextAttempt,
+        loopMessage,
+        triggeredAt: new Date().toISOString(),
+        previousRequestId: requestId,
+      },
+      // Clear verification flags if any (loop recovery is a fresh attempt)
+      verificationRequired: undefined,
+      verificationAttempt: undefined,
+    };
+
+    const rawResult = await withJobContext(
+      {
+        requestId: lineageInfo?.parentDispatcherRequestId || undefined,
+        jobDefinitionId,
+        baseBranch,
+        mechAddress,
+        branchName: lineageInfo?.dispatcherBranchName || metadata?.codeMetadata?.branch?.name || undefined,
+        workstreamId,
+      },
+      async () =>
+        dispatchExistingJob({
+          jobId: jobDefinitionId,
+          message: JSON.stringify({
+            content: `Loop recovery: Previous run terminated due to unproductive loop. Approach task differently.`,
+            type: 'loop_recovery',
+            loopMessage: loopMessage.slice(0, 500), // Truncate for message field
+          }),
+          workstreamId,
+          additionalContext: loopRecoveryContext,
+        })
+    );
+
+    const dispatchResult = safeParseToolResponse(rawResult);
+
+    if (dispatchResult.ok) {
+      if (telemetry) {
+        telemetry.logCheckpoint('loop_recovery_dispatch', 'dispatch_success', {
+          jobDefinitionId,
+          newRequestId: dispatchResult.data?.request_ids?.[0],
+          loopRecoveryAttempt: nextAttempt,
+        });
+      }
+      workerLogger.info(
+        { jobDefinitionId, newRequestId: dispatchResult.data?.request_ids?.[0], loopRecoveryAttempt: nextAttempt },
+        'Loop recovery dispatch successful'
+      );
+      return true;
+    } else {
+      if (telemetry) {
+        telemetry.logError('loop_recovery_dispatch', dispatchResult?.message || 'Unknown error');
+      }
+      workerLogger.error({ jobDefinitionId, error: dispatchResult?.message }, 'Failed to dispatch for loop recovery');
+      return false;
+    }
+  } catch (error) {
+    if (telemetry) {
+      telemetry.logError('loop_recovery_dispatch', error instanceof Error ? error.message : String(error));
+    }
+    workerLogger.error({ jobDefinitionId, error: serializeError(error) }, 'Error dispatching for loop recovery');
+    return false;
+  } finally {
+    if (telemetry) {
+      telemetry.endPhase('loop_recovery_dispatch');
+    }
+  }
+}
+
 // Ponder indexing lag tolerance: poll up to N times before deciding children are incomplete
-const PONDER_INDEX_POLL_COUNT = Number(process.env.PONDER_INDEX_POLL_COUNT ?? 10);
-const PONDER_INDEX_POLL_DELAY_MS = Number(process.env.PONDER_INDEX_POLL_DELAY_MS ?? 1000);
+// Reduced from 10x1000ms since we now self-exclude from sibling check (only need to wait for near-simultaneous siblings)
+const PONDER_INDEX_POLL_COUNT = Number(process.env.PONDER_INDEX_POLL_COUNT ?? 3);
+const PONDER_INDEX_POLL_DELAY_MS = Number(process.env.PONDER_INDEX_POLL_DELAY_MS ?? 500);
 
 /**
  * Determine if parent should be dispatched
@@ -361,19 +676,53 @@ export async function shouldDispatchParent(
       reason: `Status is not terminal: ${finalStatus?.status || 'none'}`,
     };
   }
+  // Get parent job definition ID
+  // First try metadata, but it may be wrong/missing for verification runs
+  let parentJobDefId = metadata?.sourceJobDefinitionId;
+  const jobDefinitionId = metadata?.jobDefinitionId;
 
-  const parentJobDefId = metadata?.sourceJobDefinitionId;
+  // If parentJobDefId is missing or equals current job (self-referential from verification dispatch),
+  // query Ponder for the authoritative parent relationship
+  const wasSelfReferential = parentJobDefId === jobDefinitionId;
+  if ((!parentJobDefId || wasSelfReferential) && jobDefinitionId) {
+    try {
+      const ponderUrl = getPonderGraphqlUrl();
+      const response = await graphQLRequest<{ jobDefinition: { sourceJobDefinitionId: string | null } | null }>({
+        url: ponderUrl,
+        query: `query GetJobDefParent($id: String!) { jobDefinition(id: $id) { sourceJobDefinitionId } }`,
+        variables: { id: jobDefinitionId },
+        context: { operation: 'getJobDefParent', jobDefinitionId }
+      });
+      const ponderParent = response?.jobDefinition?.sourceJobDefinitionId;
+      if (ponderParent) {
+        workerLogger.info({ jobDefinitionId, ponderParent, metadataParent: parentJobDefId },
+          'Using authoritative parent from Ponder (metadata was missing/self-referential)');
+        parentJobDefId = ponderParent;
+      } else if (wasSelfReferential) {
+        // Ponder returned null AND we had a self-referential parent - this is a ROOT JOB
+        // Clear the self-referential value to prevent self-dispatch loop
+        workerLogger.info({ jobDefinitionId, metadataParent: parentJobDefId },
+          'Ponder confirms no parent (root job) - clearing self-referential metadata');
+        parentJobDefId = undefined;
+      }
+    } catch (error) {
+      workerLogger.warn({ jobDefinitionId, error: serializeError(error) },
+        'Failed to query Ponder for parent job definition');
+    }
+  }
+
   if (!parentJobDefId) {
     workerLogger.warn(
       {
         finalStatus: finalStatus.status,
         hasMetadata: !!metadata,
+        jobDefinitionId,
       },
-      '[PARENT_DISPATCH_DECISION] Not dispatching - no parent job in metadata',
+      '[PARENT_DISPATCH_DECISION] Not dispatching - no parent job in metadata or Ponder',
     );
     return {
       shouldDispatch: false,
-      reason: 'No parent job in metadata',
+      reason: 'No parent job in metadata or Ponder',
     };
   }
 
@@ -381,7 +730,7 @@ export async function shouldDispatchParent(
   // Poll Ponder multiple times to allow for indexing lag
   try {
     const ponderUrl = getPonderGraphqlUrl();
-    
+
     // Query all job definitions that have this parent
     const childrenQuery = `query GetParentChildren($parentJobDefId: String!) {
       jobDefinitions(where: { sourceJobDefinitionId: $parentJobDefId }) {
@@ -392,10 +741,10 @@ export async function shouldDispatchParent(
         }
       }
     }`;
-    
+
     let children: Array<{ id: string; name: string; lastStatus: string }> = [];
     let incompleteChildren: typeof children = [];
-    
+
     for (let poll = 0; poll < PONDER_INDEX_POLL_COUNT; poll++) {
       const childrenData = await graphQLRequest<{
         jobDefinitions: { items: Array<{ id: string; name: string; lastStatus: string }> };
@@ -405,25 +754,29 @@ export async function shouldDispatchParent(
         variables: { parentJobDefId },
         context: { operation: 'checkParentChildrenComplete', parentJobDefId, poll }
       });
-      
+
       children = childrenData?.jobDefinitions?.items || [];
-      
+
       if (children.length === 0) {
         // No children found, allow parent dispatch (this shouldn't happen in normal flow)
         workerLogger.debug({ parentJobDefId }, 'No children found for parent, allowing dispatch');
         return { shouldDispatch: true, parentJobDefId };
       }
-      
+
       // Check if all children are in terminal state (COMPLETED or FAILED)
+      // IMPORTANT: Exclude ourselves from this check - we know we're terminal (we passed the check at line 664)
+      // but Ponder may not have indexed our status yet due to indexing lag
       incompleteChildren = children.filter(
-        child => child.lastStatus !== 'COMPLETED' && child.lastStatus !== 'FAILED'
+        child => child.id !== jobDefinitionId &&
+          child.lastStatus !== 'COMPLETED' &&
+          child.lastStatus !== 'FAILED'
       );
-      
+
       if (incompleteChildren.length === 0) {
         // All children complete - exit poll loop
         break;
       }
-      
+
       // Still have incomplete children - wait and poll again (unless this is last poll)
       if (poll < PONDER_INDEX_POLL_COUNT - 1) {
         workerLogger.debug({
@@ -435,13 +788,13 @@ export async function shouldDispatchParent(
         await new Promise(r => setTimeout(r, PONDER_INDEX_POLL_DELAY_MS));
       }
     }
-    
+
     if (incompleteChildren.length > 0) {
       const incompleteNames = incompleteChildren
         .map(c => `${c.name} (${c.lastStatus})`)
         .slice(0, 3)
         .join(', ');
-      
+
       workerLogger.info({
         parentJobDefId,
         totalChildren: children.length,
@@ -449,7 +802,7 @@ export async function shouldDispatchParent(
         examples: incompleteNames,
         pollsAttempted: PONDER_INDEX_POLL_COUNT
       }, 'Parent dispatch blocked - waiting for all children to complete (after polling)');
-      
+
       return {
         shouldDispatch: false,
         reason: `Waiting for ${incompleteChildren.length} children to complete: ${incompleteNames}`,
@@ -512,23 +865,41 @@ export async function dispatchParentIfNeeded(
       requiresVerification: verificationDecision.requiresVerification,
       isVerificationRun: verificationDecision.isVerificationRun,
       verificationAttempt: verificationDecision.verificationAttempt,
+      needsContinuation: verificationDecision.needsContinuation,
       reason: verificationDecision.reason
     }
   }, 'Verification decision for job');
 
-  // CRITICAL: If this was a verification run, do NOT dispatch parent.
-  // Verification runs are the FINAL step for a job that delegated to children.
-  // After verification completes, the job definition is done - no further dispatches needed.
-  // The parent dispatch should only happen when actual CHILD jobs complete, not verification runs.
-  // Without this check, we get an infinite loop:
-  //   Parent run → has children → dispatch verification → verification completes →
-  //   dispatch parent (wrong!) → parent run → has children → dispatch verification → ...
+  // If this was a verification run that completed without delegating further,
+  // we should now dispatch the parent. The verification is done.
+  // NOTE: The loop prevention is handled by shouldRequireVerification returning
+  // requiresVerification: false for verification runs (line 149-156).
   if (verificationDecision.isVerificationRun) {
     workerLogger.info(
       { requestId, jobDefinitionId: metadata?.jobDefinitionId, verificationAttempt: verificationDecision.verificationAttempt },
-      'Verification run completed - job definition done, NOT dispatching parent (this breaks the verification loop)'
+      'Verification run completed - proceeding to parent dispatch check'
     );
-    return;
+    // Continue to shouldDispatchParent check below
+  }
+
+  // Check if job needs to continue integrating children (code not yet merged)
+  if (verificationDecision.needsContinuation) {
+    workerLogger.info(
+      { requestId, jobDefinitionId: metadata?.jobDefinitionId },
+      'Job completed but children not integrated - dispatching for continuation'
+    );
+
+    const dispatched = await dispatchForContinuation(metadata, requestId, options?.telemetry);
+    if (dispatched) {
+      // Continuation dispatch succeeded - don't dispatch parent yet
+      return;
+    }
+    // If continuation dispatch failed, fall through to dispatch parent
+    // (better to signal completion than to hang)
+    workerLogger.warn(
+      { requestId },
+      'Continuation dispatch failed - proceeding with parent dispatch'
+    );
   }
 
   if (verificationDecision.requiresVerification) {
@@ -600,7 +971,7 @@ export async function dispatchParentIfNeeded(
       reason: 'child_terminal_state'
     });
   }
-  
+
   try {
     const lineageInfo = metadata?.lineage;
     if (!lineageInfo) {
@@ -617,87 +988,17 @@ export async function dispatchParentIfNeeded(
     const mechAddress = metadata?.workerAddress || metadata?.mech || undefined;
 
     const messageContent = `Child job ${finalStatus!.status}: ${finalStatus!.message}. Output: ${output.length > 500 ? output.substring(0, 500) + '...' : output}`;
-    
+
     const message = {
       content: messageContent,
       to: parentJobDefId,
       from: requestId
     };
 
-    // Extract branch info from metadata or GIT_BRANCH artifact
-    let childBranchName: string | undefined;
-    let childBaseBranch: string | undefined;
-
-    // First check metadata for branch info
-    childBranchName = metadata?.codeMetadata?.branch?.name;
-    childBaseBranch = metadata?.codeMetadata?.baseBranch;
-
-    const deterministicChildRun = {
-      requestId,
-      jobDefinitionId: metadata?.jobDefinitionId,
-      jobName: metadata?.jobName,
-      status: finalStatus?.status,
-      summary: finalStatus?.message,
-      branchName: childBranchName,
-      baseBranch: childBaseBranch,
-      artifacts: await Promise.all((options?.artifacts || []).map(async (artifact, index) => {
-        let details = undefined;
-        if (artifact.type === 'GIT_BRANCH' || artifact.topic === 'git/branch') {
-          // Parse the artifact content to extract branch information
-          if ((artifact as any).content) {
-            try {
-              const parsed = JSON.parse((artifact as any).content);
-              const headBranch = parsed.headBranch;
-              const baseBranch = parsed.baseBranch;
-
-              // Use artifact branch info if not already set from metadata
-              if (!childBranchName && headBranch) {
-                childBranchName = headBranch;
-              }
-              if (!childBaseBranch && baseBranch) {
-                childBaseBranch = baseBranch;
-              }
-
-              if (headBranch && baseBranch) {
-                const repoPath = metadata?.codeMetadata?.repoRoot || process.env.CODE_METADATA_REPO_ROOT;
-                if (repoPath) {
-                  details = await fetchBranchDetails({ headBranch, baseBranch, repoPath });
-                }
-              }
-            } catch (e) {
-              workerLogger.warn({ error: serializeError(e), artifact: artifact.name }, 'Failed to parse PR artifact content');
-            }
-          }
-        }
-
-        return {
-          id: `${requestId}:${index}`,
-          name: artifact.name || `artifact-${index + 1}`,
-          topic: artifact.topic,
-          cid: artifact.cid,
-          details,
-        };
-      })),
-    };
-
-    // Update branchName/baseBranch after artifact processing (may have been extracted from GIT_BRANCH artifact)
-    if (childBranchName && !deterministicChildRun.branchName) {
-      (deterministicChildRun as any).branchName = childBranchName;
-    }
-    if (childBaseBranch && !deterministicChildRun.baseBranch) {
-      (deterministicChildRun as any).baseBranch = childBaseBranch;
-    }
-
-    const deterministicContext =
-      deterministicChildRun.requestId || deterministicChildRun.artifacts.length > 0
-        ? { completedChildRuns: [deterministicChildRun] }
-        : undefined;
-
     workerLogger.info({
       parentJobDefId,
       childRequestId: requestId,
-      message,
-      hasDeterministicContext: !!deterministicContext
+      message
     }, '[PARENT_DISPATCH_DEBUG] Preparing to dispatch parent with message');
 
     const maxRetries = 3;
@@ -724,18 +1025,18 @@ export async function dispatchParentIfNeeded(
               jobId: parentJobDefId,
               message: JSON.stringify(message),
               workstreamId,
-              ...(deterministicContext ? { additionalContext: deterministicContext } : {}),
+
             })
         );
 
         dispatchResult = safeParseToolResponse(rawResult);
-        
+
         workerLogger.info({
           parentJobDefId,
           ok: dispatchResult.ok,
           data: dispatchResult.data
         }, '[PARENT_DISPATCH_DEBUG] Dispatch result');
-        
+
         if (dispatchResult.ok) {
           break;
         }
@@ -761,19 +1062,19 @@ export async function dispatchParentIfNeeded(
           newRequestId: dispatchResult.data?.request_ids?.[0]
         });
       }
-      workerLogger.info({ 
-        parentJobDefId, 
+      workerLogger.info({
+        parentJobDefId,
         childRequestId: requestId,
-        newRequestId: dispatchResult.data?.request_ids?.[0] 
+        newRequestId: dispatchResult.data?.request_ids?.[0]
       }, `Parent job ${parentJobDefId} dispatched successfully`);
     } else {
       if (telemetry) {
         telemetry.logError('parent_dispatch', dispatchResult?.message || 'Unknown error');
       }
-      workerLogger.error({ 
-        parentJobDefId, 
+      workerLogger.error({
+        parentJobDefId,
         childRequestId: requestId,
-        error: dispatchResult?.message 
+        error: dispatchResult?.message
       }, `Failed to dispatch parent job ${parentJobDefId}: ${dispatchResult?.message}`);
     }
   } catch (e) {

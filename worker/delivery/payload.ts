@@ -27,6 +27,9 @@ export function buildDeliveryPayload(params: {
     ...(metadata?.jobDefinitionId ? { jobDefinitionId: metadata.jobDefinitionId } : {}),
     ...(metadata?.jobName ? { jobName: metadata.jobName } : {}),
     ...(metadata?.blueprint ? { blueprint: metadata.blueprint } : {}),
+    // Template passthrough: include templateId and outputSpec so x402 gateway can use them directly
+    ...(metadata?.templateId ? { templateId: metadata.templateId } : {}),
+    ...(metadata?.outputSpec ? { outputSpec: metadata.outputSpec } : {}),
     ...(finalStatus ? { status: finalStatus.status, statusMessage: finalStatus.message } : {}),
     ...(workerTelemetry ? { workerTelemetry } : {}),
     ...(recognition

@@ -1,380 +1,228 @@
 {
-  "assertions": [
+  "invariants": [
     {
-      "id": "VISION-001",
-      "assertion": "The arcade must be a self-contained Local Arcade with three classic games (Snake, 2048, Minesweeper) that can be played offline by opening a single entry point on a modern desktop machine.",
+      "id": "GOAL-VISION",
+      "form": "constraint",
+      "description": "The arcade must be a self-contained Local Arcade with three classic games (Snake, 2048, Minesweeper) that runs offline via a single entry point on a modern desktop machine.",
       "examples": {
         "do": [
-          "Include exactly three games: Snake, 2048, and Minesweeper in a single cohesive product",
-          "Ensure the arcade runs completely offline without network dependencies",
-          "Provide a single entry point that can be opened directly on a modern desktop machine",
-          "Make the arcade accessible without requiring installation of additional tools or runtimes"
+          "Include exactly three games accessible from a single entry point, fully functional offline"
         ],
         "dont": [
-          "Require network connectivity or external services to function",
-          "Split the games into separate applications or files that must be opened individually",
-          "Depend on command-line tools, package managers, or developer environments",
-          "Require users to install frameworks, runtimes, or specialized software"
+          "Require network connectivity, installation of runtimes, or separate files for each game"
         ]
       },
-      "commentary": "The mission defines the core deliverable: a self-contained, offline arcade accessible through a single entry point. This constraint ensures the system demonstrates autonomous engineering from design to deployment."
+      "commentary": "The mission defines the core deliverable: a self-contained, offline arcade."
     },
     {
-      "id": "VISION-002",
-      "assertion": "The arcade must be a delightful, durable product that showcases an autonomous system's ability to design, build, test, and document a small but non-trivial software experience end-to-end without external dependencies.",
+      "id": "GOAL-CRAFT",
+      "form": "constraint",
+      "description": "The arcade must be a delightful, durable product demonstrating autonomous end-to-end engineering from design through implementation to documentation.",
       "examples": {
         "do": [
-          "Create a polished, enjoyable user experience that feels complete and intentional",
-          "Demonstrate full-stack capability from design through implementation to documentation",
-          "Handle the entire development lifecycle autonomously without requesting implementation guidance",
-          "Produce a product that feels durable and well-engineered, not a prototype or proof-of-concept"
+          "Create a polished, enjoyable experience; handle the entire lifecycle autonomously"
         ],
         "dont": [
-          "Ship a minimal or placeholder implementation that lacks polish",
-          "Request external guidance for technical decisions or implementation details",
-          "Skip testing, documentation, or other essential engineering practices",
-          "Treat this as a learning exercise rather than a complete product delivery"
+          "Ship a prototype lacking polish or request external guidance for implementation"
         ]
       },
-      "commentary": "The vision emphasizes that this is an evaluation of autonomous engineering capability. The system must independently handle all aspects of product development to demonstrate end-to-end competence."
+      "commentary": "This evaluates autonomous engineering capability from requirements to working product."
     },
     {
-      "id": "CONST-001",
-      "assertion": "The arcade must prioritize player-centric fun, where clarity, responsiveness, and discoverability take precedence over clever implementation tricks.",
+      "id": "GOAL-FUN",
+      "form": "constraint",
+      "description": "The arcade must prioritize player-centric fun: clarity, responsiveness, and discoverability take precedence over clever implementation.",
       "examples": {
         "do": [
-          "Design interfaces that are immediately understandable to players",
-          "Ensure games respond quickly and smoothly to player input",
-          "Make game objectives, controls, and status clearly visible",
-          "Prioritize user experience over demonstrating technical sophistication"
+          "Design immediately understandable interfaces; ensure games respond quickly to input"
         ],
         "dont": [
-          "Sacrifice clarity for the sake of elegant code patterns",
-          "Hide important information or controls behind complex interactions",
-          "Prioritize implementation cleverness over player enjoyment",
-          "Create confusing or unintuitive interfaces to showcase technical skills"
+          "Sacrifice clarity for elegant code patterns or hide important information"
         ]
       },
-      "commentary": "The arcade exists to be enjoyable and approachable for human players. Technical excellence should serve the player experience, not overshadow it."
+      "commentary": "Technical excellence should serve the player experience, not overshadow it."
     },
     {
-      "id": "CONST-002",
-      "assertion": "The arcade must operate with local-first autonomy, running everything locally and offline without relying on external APIs, services, or accounts, and must autonomously handle all design and implementation decisions needed to ship a complete arcade.",
+      "id": "GOAL-SIMPLE",
+      "form": "constraint",
+      "description": "A non-technical user must be able to receive the arcade, open a single obvious entry point, and start playing within seconds without installing tools.",
       "examples": {
         "do": [
-          "Store all game data, scores, and state locally on the user's device",
-          "Bundle all required assets and dependencies within the arcade itself",
-          "Make all technical decisions independently without requesting external guidance",
-          "Handle design, architecture, and implementation choices autonomously"
+          "Provide one main file that opens directly in a standard modern desktop browser"
         ],
         "dont": [
-          "Fetch game logic, assets, or data from remote servers",
-          "Require user accounts, logins, or online profiles",
-          "Request guidance on file structures, frameworks, or code-level decisions",
-          "Depend on external services for any core functionality"
+          "Require command-line commands, build steps, or specialized software"
         ]
       },
-      "commentary": "Local-first autonomy ensures reliability and demonstrates the system's ability to make independent engineering decisions. External dependencies would undermine both the product's durability and the evaluation of autonomous capability."
+      "commentary": "Single-artifact simplicity ensures the launch experience is as simple as opening a document."
     },
     {
-      "id": "CONST-003",
-      "assertion": "The arcade must embody single-artifact simplicity, where a non-technical user can receive the arcade, open a single obvious entry point, and start playing within seconds, without installing tools or running commands.",
+      "id": "GOAL-DOCS",
+      "form": "boolean",
+      "description": "The arcade must ship with human-readable documentation explaining what was built, how to run it, and how each game works.",
       "examples": {
         "do": [
-          "Provide one main file or shortcut that opens the arcade directly",
-          "Support running in a standard modern desktop browser without additional setup",
-          "Assume only common end-user capabilities like double-clicking a file",
-          "Enable players to start playing immediately after opening the entry point"
+          "Provide overview doc describing purpose, games, and basic rules for unfamiliar players"
         ],
         "dont": [
-          "Require installation of runtimes, frameworks, or developer tooling",
-          "Depend on command-line commands, build steps, or environment setup",
-          "Assume presence of specialized software beyond a standard modern browser",
-          "Create a multi-step launch process that confuses non-technical users"
+          "Ship only source code with no descriptive documentation"
         ]
       },
-      "commentary": "Single-artifact simplicity ensures the evaluation focuses on the system's engineering, not the user's technical capabilities. The launch experience must be as simple as opening a document."
+      "commentary": "Documentation transforms code into a comprehensible product."
     },
     {
-      "id": "CONST-004",
-      "assertion": "The arcade must demonstrate explainable engineering by leaving behind understandable documentation explaining what was built and how to use it, so a human can reason about, extend, or modify the arcade.",
+      "id": "GOAL-ROBUST",
+      "form": "constraint",
+      "description": "The arcade must handle corrupted or missing saved data gracefully, never trapping users in broken states.",
       "examples": {
         "do": [
-          "Provide clear documentation describing the arcade's purpose and included games",
-          "Explain how to run the arcade and what environment is needed",
-          "Document the basic rules and objectives of each game",
-          "Offer high-level explanations of the arcade's structure in accessible language"
+          "Reset to safe defaults when stored data is unusable; provide clear recovery options"
         ],
         "dont": [
-          "Ship only source code with no descriptive documentation",
-          "Hide essential information inside code comments or internal notes",
-          "Write documentation that contradicts actual behavior or is outdated",
-          "Rely solely on external links for essential information"
+          "Crash or hang when stored data is missing or malformed"
         ]
       },
-      "commentary": "Explainable engineering transforms code into a comprehensible product. Documentation reveals the system's ability to reflect on and explain its own work, enabling future understanding and modification."
+      "commentary": "Real-world environments are messy. Prioritize preserving playability."
     },
     {
-      "id": "CONST-005",
-      "assertion": "The arcade must prioritize robustness over fragility, degrading gracefully when something goes wrong (e.g. corrupted saved data) and never trapping users in broken or confusing states.",
+      "id": "GOAL-GAMES",
+      "form": "constraint",
+      "description": "The arcade must ship exactly three games: Snake (continuous movement, growing snake, collision end), 2048 (sliding tiles, merging, grid fills), Minesweeper (hidden mines, numerical hints, logic reveal).",
       "examples": {
         "do": [
-          "Detect and handle corrupted or missing saved data gracefully",
-          "Reset to safe defaults when stored data is unusable",
-          "Keep the arcade playable even when some saved data cannot be read",
-          "Provide clear recovery options when errors occur"
+          "Implement all three games recognizably faithful to classic gameplay with win/loss conditions"
         ],
         "dont": [
-          "Crash, hang, or become unusable when stored data is missing or malformed",
-          "Display confusing error messages that non-technical users cannot act on",
-          "Silently ignore serious issues while leaving the arcade in a broken state",
-          "Trap users in error states with no clear path to recovery"
+          "Replace a game with a variant that changes core mechanics or ship incomplete prototypes"
         ]
       },
-      "commentary": "Real-world environments are messy. The system must show resilience to imperfect local data and prioritize preserving playability. Robustness ensures the arcade remains usable even when things go wrong."
+      "commentary": "These specific games provide a clear benchmark for correctness and user expectations."
     },
     {
-      "id": "SCOPE-001",
-      "assertion": "The arcade must ship exactly three games: Snake, 2048, and Minesweeper, each recognizably faithful to the classic gameplay.",
+      "id": "GOAL-HOME",
+      "form": "directive",
+      "description": "The arcade must provide a single clear home screen acting as the hub for all three games.",
       "examples": {
         "do": [
-          "Include a reflex-based Snake game where a continuously moving snake eats items, grows, and can collide with walls or itself to end the game.",
-          "Include a 2048 sliding-tile puzzle with a grid where identical tiles merge into higher-valued tiles, and the game ends when no moves remain.",
-          "Include a Minesweeper logic puzzle with hidden mines, numerical hints, and a win condition based on revealing all safe cells.",
-          "Ensure that players familiar with the original games immediately recognize the mechanics and objectives."
+          "Present home screen with game names, obvious actions to start each, and way to return"
         ],
         "dont": [
-          "Replace one of the required games with a different game or a variant that changes the core mechanics.",
-          "Implement only partial or significantly altered versions of these games that no longer feel like Snake, 2048, or Minesweeper.",
-          "Ship placeholder prototypes that lack win/loss conditions or scoring."
+          "Require opening separate files or force full restart to switch games"
         ]
       },
-      "commentary": "The arcade is a three-game product, not an open-ended playground. These specific games provide a clear benchmark for correctness and user expectations."
+      "commentary": "The arcade should feel like one cohesive product with a central hub."
     },
     {
-      "id": "ARCADE-001",
-      "assertion": "The arcade must provide a single, clear home screen that acts as the hub for all three games.",
+      "id": "GOAL-OFFLINE",
+      "form": "boolean",
+      "description": "The arcade must be fully functional offline without any reliance on network connectivity.",
       "examples": {
         "do": [
-          "Present an initial screen titled as the arcade home with the names and short descriptions of Snake, 2048, and Minesweeper.",
-          "Offer obvious actions (e.g. buttons, tiles) to start each game in one step from the home screen.",
-          "Show at least minimal global information, such as each game's best score or total games played, on or from the home screen.",
-          "Provide a consistent way to return from any game back to the arcade home without restarting the entire arcade."
+          "Allow all games to be played in airplane mode; bundle all required assets"
         ],
         "dont": [
-          "Require players to open separate files or windows manually to access each game.",
-          "Hide games behind non-obvious navigation or multiple layers of menus.",
-          "Force a full restart of the arcade application to switch from one game to another."
+          "Fetch game logic or data from remote servers at runtime"
         ]
       },
-      "commentary": "The arcade should feel like one cohesive product with a central hub, not three unrelated demos stitched together."
+      "commentary": "This venture is explicitly local-first."
     },
     {
-      "id": "RUN-001",
-      "assertion": "The arcade must be runnable by a non-technical user via a single obvious entry point on a modern desktop environment, with no additional installation steps.",
+      "id": "GOAL-PERSIST",
+      "form": "boolean",
+      "description": "The arcade must persist each game's best results and basic play history locally, surviving closure.",
       "examples": {
         "do": [
-          "Provide one main file or shortcut that a user can open directly to access the arcade home.",
-          "Support running the arcade on a typical modern desktop browser without requiring command-line tools or package managers.",
-          "Assume only common end-user capabilities like double-clicking a file or opening it via a file explorer."
+          "Remember best scores across sessions; handle absence of prior data gracefully"
         ],
         "dont": [
-          "Require the user to install runtimes, frameworks, or developer tooling before playing.",
-          "Depend on command-line commands, build steps, or environment setup that a non-technical user would not understand.",
-          "Assume the presence of specialized software beyond a standard modern browser."
+          "Forget all scores when closed or rely on cloud storage"
         ]
       },
-      "commentary": "The primary goal is to evaluate the system's engineering, not the user's. The launch experience must be as simple as opening a document."
+      "commentary": "Persisted scores make the arcade feel like a product the player can grow with."
     },
     {
-      "id": "OFFLINE-001",
-      "assertion": "The arcade must be fully functional offline, without any reliance on network connectivity or external services.",
+      "id": "GOAL-UX-CLEAR",
+      "form": "constraint",
+      "description": "Every game must clearly communicate its objective, controls, and current status without requiring external documentation.",
       "examples": {
         "do": [
-          "Allow all three games to be played with the device in airplane mode.",
-          "Ensure that best scores and stats are stored and retrieved locally on the user's device.",
-          "Bundle any assets required for the experience within the arcade itself."
+          "Display controls, current score, and clearly define win/loss states within the game"
         ],
         "dont": [
-          "Fetch game logic, assets, or data from remote servers at runtime.",
-          "Require user accounts, logins, or online profiles to access or save progress.",
-          "Break or disable features when internet connectivity is unavailable."
+          "Expect players to know controls from prior knowledge or require reading README"
         ]
       },
-      "commentary": "This venture is explicitly local-first. External dependencies would undermine both reliability and the evaluation of the system's self-contained engineering."
+      "commentary": "A human player should understand the experience through the interface itself."
     },
     {
-      "id": "PERSIST-001",
-      "assertion": "The arcade must persist each game's best results and basic play history locally, surviving closure and reopening.",
+      "id": "GOAL-UX-BEAUTY",
+      "form": "constraint",
+      "description": "The arcade must feature beautiful, polished UI with modern styling, smooth animations, and delightful interactions.",
       "examples": {
         "do": [
-          "Remember each game's best score across sessions so that returning tomorrow shows the same best values.",
-          "Track simple per-game stats, such as number of games played or most recent completion time, and surface them in the arcade.",
-          "Handle the absence of prior data gracefully on first run and after a deliberate reset."
+          "Use clean visual design with thoughtful colors; implement smooth animations"
         ],
         "dont": [
-          "Forget all scores and stats every time the arcade is closed and reopened.",
-          "Rely on cloud storage or remote services to remember player progress.",
-          "Silently fail or crash when previously stored data is missing or malformed."
+          "Ship bare-bones interface with default browser styling or clashing colors"
         ]
       },
-      "commentary": "Persisted scores and stats make the arcade feel like a product the player can grow with, and exercise the system's ability to manage local state robustly."
+      "commentary": "Visual design quality is a key indicator of product maturity."
     },
     {
-      "id": "UX-001",
-      "assertion": "Every game must clearly communicate its objective, controls, and current status to the player without requiring external documentation.",
+      "id": "GOAL-SNAKE",
+      "form": "constraint",
+      "description": "Snake: continuously moving snake, grows when eating items, ends on collision with wall/self, allows quick restart.",
       "examples": {
         "do": [
-          "Display or provide easy access to a short description of what the player is trying to achieve in Snake, 2048, and Minesweeper.",
-          "Show or expose the basic controls (e.g. which keys or mouse actions are used) in a way that is easy to discover from within the game.",
-          "Continuously display current score and clearly define how a game ends (win or loss state).",
-          "Provide visible options to start a new game or return to the arcade home."
+          "Move snake continuously over time; end game on collision with clear game-over display"
         ],
         "dont": [
-          "Expect players to know how to play purely from prior knowledge without any in-product hints.",
-          "Hide controls behind obscure gestures or multi-step menus.",
-          "End games abruptly without indicating why or what the outcome means.",
-          "Require players to read external README files or source code comments to learn how to play."
+          "Turn Snake into turn-based puzzle or ignore collisions"
         ]
       },
-      "commentary": "This blueprint tests product sense, not just correctness of code. A human player should be able to understand the experience through the interface itself."
+      "commentary": "Snake should feel like a classic reflex game: simple, responsive, immediately understandable."
     },
     {
-      "id": "UX-002",
-      "assertion": "The arcade must feature beautiful, polished user interface design with attention to visual aesthetics, modern styling, and delightful interactions.",
+      "id": "GOAL-2048",
+      "form": "constraint",
+      "description": "2048: fixed-size grid, tiles slide and merge on equal value, new tiles appear after moves, ends when no moves remain.",
       "examples": {
         "do": [
-          "Use modern, clean visual design with thoughtful color schemes and typography",
-          "Implement smooth animations and transitions that enhance the user experience",
-          "Create visually appealing game boards, buttons, and UI elements with consistent styling",
-          "Design an attractive home screen that invites players to explore the games",
-          "Apply professional polish to spacing, alignment, and visual hierarchy",
-          "Use engaging visual feedback for player actions (e.g., button presses, game events)"
+          "Merge equal tiles on collision; end game when no valid moves with clear indication"
         ],
         "dont": [
-          "Ship a bare-bones interface with default browser styling or minimal CSS",
-          "Use clashing colors, poor contrast, or visually unappealing layouts",
-          "Create interfaces that look like technical prototypes or developer demos",
-          "Ignore visual design in favor of pure functionality",
-          "Use inconsistent styling across different screens or games",
-          "Present a utilitarian interface that lacks visual appeal or charm"
+          "Allow inconsistent merging or continue indefinitely when blocked"
         ]
       },
-      "commentary": "Beautiful UX demonstrates the system's ability to create not just functional software, but delightful products. Visual design quality is a key indicator of product maturity and user-centric thinking."
+      "commentary": "Faithfulness to 2048's core rules is essential to be recognizable and satisfying."
     },
     {
-      "id": "SNAKE-001",
-      "assertion": "Snake must be implemented as a continuously progressing game where the player steers a growing entity to collect items and avoid collisions.",
+      "id": "GOAL-MINE",
+      "form": "constraint",
+      "description": "Minesweeper: hidden mines, reveal/mark actions, numerical hints for adjacent mines, cascade reveal, clear win/loss states.",
       "examples": {
         "do": [
-          "Continuously move the snake over time without requiring the player to trigger each step manually.",
-          "Increase the snake's length and the player's score when an item is collected.",
-          "End the game when the snake hits a boundary or its own body, and clearly show that the run is over.",
-          "Allow the player to quickly start a new run after a game over."
+          "Show numbers indicating adjacent mines; cascade reveal on empty cells; clear loss on mine reveal"
         ],
         "dont": [
-          "Turn Snake into a turn-based puzzle where nothing moves unless the player acts.",
-          "Ignore collisions, allowing the snake to overlap itself or pass through boundaries without consequences.",
-          "Hide the score or make it unclear what actions lead to higher scores.",
-          "Force players to navigate back through multiple screens just to try again."
+          "Omit numerical hints or leave win condition ambiguous"
         ]
       },
-      "commentary": "Snake should feel like a classic reflex game: simple, responsive, and immediately understandable, while still obeying the familiar rules."
+      "commentary": "Correct win/loss logic and numerical hints are central to the Minesweeper experience."
     },
     {
-      "id": "GAME2048-001",
-      "assertion": "2048 must be implemented as a deterministic sliding-tile puzzle where tiles of equal value merge and the board eventually fills up.",
+      "id": "GOAL-AUTONOMY",
+      "form": "constraint",
+      "description": "The system must independently derive technical design, implement, and verify correctness without low-level implementation instructions.",
       "examples": {
         "do": [
-          "Use a fixed-size grid where tiles slide in the chosen direction until they can't move further.",
-          "Merge tiles of equal value when they collide as part of a move, and increase the player's score when this happens.",
-          "Introduce new tiles after valid moves in empty spaces so the grid can eventually fill.",
-          "End the game when there are no valid moves left and clearly show that the board is blocked."
+          "Translate high-level requirements into architecture; design and run own tests"
         ],
         "dont": [
-          "Change the game into a random tile-clicker that does not respect the 2048 mechanics.",
-          "Allow tiles to move or merge in inconsistent ways that break player expectations.",
-          "Continue the game indefinitely even when no valid moves remain.",
-          "Fail to show the current score and best score for 2048."
+          "Request external guidance for file layouts, frameworks, or code-level decisions"
         ]
       },
-      "commentary": "2048 is a planning and pattern-recognition game. Faithfulness to its core rules is essential to be recognizable and satisfying."
-    },
-    {
-      "id": "MINE-001",
-      "assertion": "Minesweeper must be implemented as a hidden-information logic game where players reveal safe cells and avoid mines using numerical hints.",
-      "examples": {
-        "do": [
-          "Present a grid of covered cells, some of which contain hidden mines.",
-          "Allow the player to reveal cells and to mark suspected mines.",
-          "Show numbers in revealed cells indicating how many neighboring cells contain mines.",
-          "Cascade the reveal of neighboring cells when a safe cell with no adjacent mines is uncovered.",
-          "Treat revealing a mine as an immediate loss and communicate this clearly.",
-          "Treat revealing all non-mine cells as a win and communicate this clearly."
-        ],
-        "dont": [
-          "Reveal mines randomly without giving the player enough information to reason about risk.",
-          "Omit numerical hints, preventing players from using logic to deduce safe cells.",
-          "Allow games to continue after a mine has been revealed without acknowledging the loss.",
-          "Leave the win condition ambiguous or fail to signal when all safe cells are revealed."
-        ]
-      },
-      "commentary": "Minesweeper showcases reasoning over incomplete information. Correct win/loss logic and numerical hints are central to the experience."
-    },
-    {
-      "id": "ROBUST-001",
-      "assertion": "The arcade must handle unexpected or corrupted local state gracefully, preferring clear recovery over crashes or silent failure.",
-      "examples": {
-        "do": [
-          "Detect when previously stored scores or stats are unusable and reset them with a brief explanation or silent safe default.",
-          "Allow the player to reset their progress if something seems wrong with scores or history.",
-          "Keep the arcade and all games playable even if some saved data cannot be read."
-        ],
-        "dont": [
-          "Crash, hang, or become unusable when stored data is missing or malformed.",
-          "Display confusing error messages that a non-technical user cannot act on.",
-          "Silently ignore serious issues while leaving the arcade in an inconsistent or broken state."
-        ]
-      },
-      "commentary": "Real-world environments are messy. The system must show resilience to imperfect local data and prioritize preserving playability."
-    },
-    {
-      "id": "AUTONOMY-001",
-      "assertion": "The system must independently derive the technical design, implement the arcade, and verify its correctness without being given low-level implementation instructions.",
-      "examples": {
-        "do": [
-          "Translate these high-level product requirements into its own internal specification and architecture.",
-          "Choose appropriate technologies, structures, and patterns that respect the constraints (local, offline, single entry point).",
-          "Design and run its own checks or tests to confirm that game rules and scoring behave as intended.",
-          "Adjust its implementation if its own checks reveal errors or inconsistencies."
-        ],
-        "dont": [
-          "Request or rely on external guidance for concrete file layouts, frameworks, or code-level decisions.",
-          "Ignore obvious inconsistencies between the intended game behavior and the actual implementation.",
-          "Treat the blueprint as a suggestion rather than a binding contract for functionality and constraints."
-        ]
-      },
-      "commentary": "This blueprint evaluates the system's ability to go from high-level requirements to a working, tested implementation and internal design without being spoon-fed lower-level instructions."
-    },
-    {
-      "id": "DOCS-001",
-      "assertion": "The arcade must ship with human-readable documentation describing what was built, how to run it, and how each game works.",
-      "examples": {
-        "do": [
-          "Provide a short overview document explaining the purpose of the Local Arcade and listing the included games.",
-          "Explain how a user should start the arcade and what environment they need (e.g. a modern desktop browser).",
-          "Describe the basic rules and objectives of Snake, 2048, and Minesweeper for players who are unfamiliar with them.",
-          "Offer a brief, high-level explanation of how the arcade is structured, in language accessible to technically curious readers."
-        ],
-        "dont": [
-          "Ship only source code with no descriptive documentation.",
-          "Hide all information about how to run or use the arcade inside comments or internal notes.",
-          "Write documentation that contradicts the actual behavior of the arcade or is obviously outdated.",
-          "Rely solely on external links for essential information about running or understanding the arcade."
-        ]
-      },
-      "commentary": "Documentation turns a code artifact into a product. It also reveals the system's ability to reflect on and explain its own work."
+      "commentary": "This evaluates the system's ability to go from requirements to working, tested implementation."
     }
   ]
 }
-

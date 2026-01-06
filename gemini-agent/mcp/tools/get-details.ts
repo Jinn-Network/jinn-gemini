@@ -3,6 +3,7 @@ import fetch from 'cross-fetch';
 import { z } from 'zod';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 import { resolveRequestIpfsContent } from './shared/ipfs.js';
+import { getPonderGraphqlUrl } from './shared/env.js';
 
 function markChildWorkReviewed(requestIds: string[], artifactIds: string[]) {
     const completedRaw = process.env.JINN_COMPLETED_CHILDREN;
@@ -114,7 +115,7 @@ export async function getDetails(params: GetDetailsParams) {
         const jobDefRecords: any[] = [];
         const errors: string[] = [];
 
-        const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+        const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
 
         // Fetch requests (and also fetch delivery for each to expose delivery provenance)
         if (requestIds.length > 0) {
@@ -255,7 +256,7 @@ export async function getDetails(params: GetDetailsParams) {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             // Align with Ponder schema: include sourceRequestId and sourceJobDefinitionId
-                            query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools promptContent sourceJobDefinitionId sourceRequestId } }`,
+                            query: `query($id: String!) { jobDefinition(id: $id) { id name enabledTools blueprint sourceJobDefinitionId sourceRequestId } }`,
                             variables: { id }
                         })
                     });
@@ -323,7 +324,7 @@ export async function getDetails(params: GetDetailsParams) {
 
     } catch (e: any) {
         return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error getting details: ${e.message}` } }, null, 2) }] 
+            content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'DB_ERROR', message: `Error getting details: ${e.message}` } }, null, 2) }]
         };
     }
 }

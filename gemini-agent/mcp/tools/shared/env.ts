@@ -29,7 +29,6 @@ export {
   getOptionalMechSafeAddress,
   getRequiredMechSafeAddress,
   getOptionalMechMarketplaceAddress,
-  getOptionalMechModel,
   getOptionalMechReclaimAfterMinutes,
   getEnableAutoRepost,
   getOptionalMechChainConfig,
@@ -137,6 +136,10 @@ export function loadEnvOnce(): void {
     ]
       .forEach((key) => preserveKeys.add(key));
   }
+
+  // Always preserve CODE_METADATA_REPO_ROOT - this enables parallel workstreams
+  // with isolated repository clones (set via launch-local-arcade.ts --repo flag)
+  preserveKeys.add('CODE_METADATA_REPO_ROOT');
 
   // 1) Explicit path override
   const explicit = process.env.JINN_ENV_PATH;

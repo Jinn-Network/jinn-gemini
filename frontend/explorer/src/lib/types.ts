@@ -13,6 +13,7 @@ export const collectionNames = [
   'deliveries',
   'artifacts',
   'messages',
+  'templates',
 ] as const;
 
 export type CollectionName = typeof collectionNames[number];

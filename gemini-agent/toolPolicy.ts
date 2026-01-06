@@ -42,7 +42,8 @@ export const CODING_UNIVERSAL_TOOLS = [
   'process_branch',
   'write_file',
   'replace',
-  'run_shell_command'
+  'run_shell_command',
+  'write_todos'
 ] as const;
 
 /**
@@ -70,6 +71,7 @@ export const NATIVE_TOOLS = [
   'read_many_files',
   'run_shell_command',
   'save_memory',
+  'write_todos',
 ] as const;
 
 /**
@@ -77,6 +79,33 @@ export const NATIVE_TOOLS = [
  * These are safe and essential for basic agent operation
  */
 export const ALWAYS_ENABLED_NATIVE_TOOLS: readonly (typeof NATIVE_TOOLS[number])[] = [] as const;
+
+/**
+ * Chrome DevTools browser automation tools
+ * All 26 tools are enabled as a single unit via the 'browser_automation' meta-tool
+ * When an agent includes 'browser_automation' in enabledTools, the chrome-devtools MCP server is activated
+ */
+export const BROWSER_AUTOMATION_TOOLS = [
+  // Input automation
+  'click', 'drag', 'fill', 'fill_form', 'handle_dialog', 'hover', 'press_key', 'upload_file',
+  // Navigation
+  'close_page', 'list_pages', 'navigate_page', 'new_page', 'select_page', 'wait_for',
+  // Emulation
+  'emulate', 'resize_page',
+  // Performance
+  'performance_analyze_insight', 'performance_start_trace', 'performance_stop_trace',
+  // Network
+  'get_network_request', 'list_network_requests',
+  // Debugging
+  'evaluate_script', 'get_console_message', 'list_console_messages', 'take_screenshot', 'take_snapshot',
+] as const;
+
+/**
+ * Check if browser automation is enabled in the tools list
+ */
+export function hasBrowserAutomation(enabledTools: string[]): boolean {
+  return enabledTools.includes('browser_automation');
+}
 
 /**
  * Result of tool policy computation
@@ -91,27 +120,55 @@ export interface ToolPolicyResult {
 }
 
 /**
+ * Tools that reflection agents should NOT have access to.
+ * Reflection agents run without full job context (no requestId, workstreamId),
+ * so they must not dispatch jobs which would create orphaned workstreams.
+ */
+export const REFLECTION_EXCLUDED_TOOLS = [
+  'dispatch_new_job',      // Would create jobs without workstream context
+  'dispatch_existing_job', // Would dispatch jobs without workstream context
+  'google_web_search',     // Not needed for reflection, wastes time/tokens
+  'web_fetch',             // Not needed for reflection, wastes time/tokens
+] as const;
+
+/**
  * Compute tool policy for a job based on its enabled tools and job type
  * 
  * @param jobEnabledTools - Tools explicitly enabled by the job definition (may be empty)
- * @param options - Configuration options including whether this is a coding job
+ * @param options - Configuration options including whether this is a coding job or reflection agent
  * @returns Tool policy result with MCP and CLI configurations
  */
 export function computeToolPolicy(
   jobEnabledTools: string[] = [],
-  options?: { isCodingJob?: boolean }
+  options?: { isCodingJob?: boolean; isReflectionAgent?: boolean }
 ): ToolPolicyResult {
   // Determine if this is a coding job (default to true for backward compatibility)
   const isCodingJob = options?.isCodingJob !== false;
-  
+  const isReflectionAgent = options?.isReflectionAgent === true;
+
   // Select the appropriate universal tools based on job type
-  const effectiveUniversalTools = isCodingJob 
-    ? UNIVERSAL_TOOLS 
+  const baseUniversalTools = isCodingJob
+    ? UNIVERSAL_TOOLS
     : BASE_UNIVERSAL_TOOLS;
-  
+
+  // Filter out excluded tools for reflection agents
+  const effectiveUniversalTools = isReflectionAgent
+    ? baseUniversalTools.filter(t => !REFLECTION_EXCLUDED_TOOLS.includes(t as any))
+    : baseUniversalTools;
+
   // Merge universal tools with job-specific tools, removing duplicates
   const allTools = [...effectiveUniversalTools, ...jobEnabledTools];
-  const uniqueTools = [...new Set(allTools)];
+
+  // Expand browser_automation meta-tool to individual tools
+  // This ensures chrome-devtools server receives actual tool names in includeTools
+  let expandedTools = allTools;
+  if (allTools.includes('browser_automation')) {
+    expandedTools = [
+      ...allTools.filter(t => t !== 'browser_automation'),
+      ...BROWSER_AUTOMATION_TOOLS
+    ];
+  }
+  const uniqueTools = [...new Set(expandedTools)];
 
   // MCP include: all tools the agent should have access to
   const mcpIncludeTools = uniqueTools;

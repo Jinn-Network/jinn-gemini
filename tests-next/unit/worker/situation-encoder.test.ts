@@ -222,6 +222,5 @@ describe('createInitialSituation with deterministic context', () => {
     });
 
     expect(situation.context.childRequestIds).toEqual(['0xchild-envelope']);
-    expect(situation.context.children).toEqual(['0xchild-envelope']);
   });
 });

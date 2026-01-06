@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { queryArtifacts, queryRequests, type Artifact, type Request } from '@/lib/subgraph'
+import { parseInvariants, getInvariantText, type InvariantItem } from '@/lib/invariant-utils'
 import { StatusIcon } from '@/components/status-icon'
 import { TruncatedId } from '@/components/truncated-id'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -28,10 +29,10 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
   const [recentRuns, setRecentRuns] = useState<Request[]>([])
   const [recentArtifacts, setRecentArtifacts] = useState<Artifact[]>([])
   const [loading, setLoading] = useState(true)
-  const [assertions, setAssertions] = useState<Array<{ id: string; assertion?: string }>>([])
+  const [invariants, setInvariants] = useState<InvariantItem[]>([])
 
   // Real-time updates
-  const { isConnected } = useRealtimeData(undefined, { 
+  const { isConnected } = useRealtimeData(undefined, {
     enabled: true,
     onEvent: () => {
       // Refetch data on events
@@ -41,12 +42,13 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
 
   const fetchData = async () => {
     try {
-      // Parse blueprint for assertions
+      // Parse blueprint for invariants (supports both new 'invariants' and legacy 'assertions')
       if (jobDefinition.blueprint) {
         try {
           const parsed = JSON.parse(jobDefinition.blueprint)
-          if (parsed.assertions && Array.isArray(parsed.assertions)) {
-            setAssertions(parsed.assertions)
+          const items = parseInvariants(parsed)
+          if (items.length > 0) {
+            setInvariants(items)
           }
         } catch {
           // Not JSON, ignore
@@ -55,7 +57,7 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
 
       // Fetch latest SITUATION artifact and extract recognition summary
       const situationResults = await queryArtifacts({
-        where: { 
+        where: {
           sourceJobDefinitionId: jobDefinition.id,
           topic: 'SITUATION'
         },
@@ -63,19 +65,19 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
         orderDirection: 'desc',
         limit: 1
       })
-      
+
       if (situationResults.items[0]) {
         // Fetch the full content from IPFS to get recognition data
         try {
           const response = await fetch(`https://gateway.autonolas.tech/ipfs/${situationResults.items[0].cid}`)
           const situationData = await response.json()
-          
+
           // Extract recognition markdown/summary from the SITUATION artifact
-          const recognitionSummary = situationData?.meta?.recognition?.markdown || 
-                                    situationData?.meta?.recognition?.learnings ||
-                                    situationData?.meta?.summaryText ||
-                                    null
-          
+          const recognitionSummary = situationData?.meta?.recognition?.markdown ||
+            situationData?.meta?.recognition?.learnings ||
+            situationData?.meta?.summaryText ||
+            null
+
           if (recognitionSummary) {
             setRecognitionArtifact({
               ...situationResults.items[0],
@@ -146,19 +148,18 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
         <CardContent>
           <div className="flex items-center gap-4">
             {jobDefinition.lastStatus && (
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap ${
-                jobDefinition.lastStatus === 'COMPLETED'
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap ${jobDefinition.lastStatus === 'COMPLETED'
                   ? 'bg-green-500/10 text-green-700 dark:text-green-400'
                   : jobDefinition.lastStatus === 'FAILED'
-                  ? 'bg-red-500/10 text-red-700 dark:text-red-400'
-                  : jobDefinition.lastStatus === 'DELEGATING'
-                  ? 'bg-primary/20 text-primary'
-                  : jobDefinition.lastStatus === 'WAITING'
-                  ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
-                  : jobDefinition.lastStatus === 'PENDING'
-                  ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
-                  : 'bg-muted text-gray-800'
-              }`}>
+                    ? 'bg-red-500/10 text-red-700 dark:text-red-400'
+                    : jobDefinition.lastStatus === 'DELEGATING'
+                      ? 'bg-primary/20 text-primary'
+                      : jobDefinition.lastStatus === 'WAITING'
+                        ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
+                        : jobDefinition.lastStatus === 'PENDING'
+                          ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
+                          : 'bg-muted text-gray-800'
+                }`}>
                 <StatusIcon status={jobDefinition.lastStatus} size={16} />
                 {jobDefinition.lastStatus}
               </span>
@@ -197,7 +198,7 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
                 {recognitionArtifact.contentPreview}
               </div>
               <div className="pt-2">
-                <Link 
+                <Link
                   href={`/requests/${recognitionArtifact.requestId}`}
                   className="text-sm text-primary hover:text-primary hover:underline"
                 >
@@ -209,23 +210,26 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
         </Card>
       )}
 
-      {/* Assertions Summary */}
-      {assertions.length > 0 && (
+      {/* Invariants Summary */}
+      {invariants.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Assertions ({assertions.length})</CardTitle>
+            <CardTitle>Invariants ({invariants.length})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {assertions.map((assertion, idx) => (
-                <div key={assertion.id || idx} className="text-sm">
-                  <span className="font-mono font-medium">{assertion.id}:</span>{' '}
-                  <span className="text-gray-400">
-                    {assertion.assertion?.substring(0, 100)}
-                    {assertion.assertion && assertion.assertion.length > 100 ? '...' : ''}
-                  </span>
-                </div>
-              ))}
+              {invariants.map((item, idx) => {
+                const text = getInvariantText(item)
+                return (
+                  <div key={item.id || idx} className="text-sm">
+                    <span className="font-mono font-medium">{item.id}:</span>{' '}
+                    <span className="text-gray-400">
+                      {text?.substring(0, 100)}
+                      {text && text.length > 100 ? '...' : ''}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>

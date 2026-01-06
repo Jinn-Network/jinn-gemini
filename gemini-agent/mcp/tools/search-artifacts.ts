@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
+import { getPonderGraphqlUrl } from './shared/env.js';
 
 export const searchArtifactsParams = z.object({
   query: z.string().min(1).describe('Case-insensitive text to match against artifact name, topic, and content preview.'),
@@ -15,7 +16,7 @@ export const searchArtifactsSchema = {
 };
 
 async function fetchRequestForArtifact(requestId: string): Promise<any | null> {
-  const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+  const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
   const gql = `query GetRequest($requestId: String!) {
     requests(where: { id: $requestId }, limit: 1) {
       items { 
@@ -23,14 +24,14 @@ async function fetchRequestForArtifact(requestId: string): Promise<any | null> {
       }
     }
   }`;
-  
+
   const variables = { requestId };
   const res = await fetch(PONDER_GRAPHQL_URL, {
-    method: 'POST', 
-    headers: { 'Content-Type': 'application/json' }, 
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: gql, variables })
   });
-  
+
   const json = await res.json();
   const requests = json?.data?.requests?.items || [];
   return requests.length > 0 ? requests[0] : null;
@@ -41,10 +42,12 @@ export async function searchArtifacts(params: SearchArtifactsParams) {
     const parsed = searchArtifactsParams.safeParse(params);
     if (!parsed.success) {
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ 
-          data: [], 
-          meta: { ok: false, code: 'VALIDATION_ERROR', message: parsed.error.message }
-        }) }]
+        content: [{
+          type: 'text' as const, text: JSON.stringify({
+            data: [],
+            meta: { ok: false, code: 'VALIDATION_ERROR', message: parsed.error.message }
+          })
+        }]
       };
     }
 
@@ -52,7 +55,7 @@ export async function searchArtifacts(params: SearchArtifactsParams) {
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
     // Query artifacts table directly
-    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+    const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
     const artifactsGql = `query SearchArtifacts($q: String!, $limit: Int!) {
       artifacts(where: { OR: [
         { name_contains: $q }, 
@@ -65,14 +68,14 @@ export async function searchArtifacts(params: SearchArtifactsParams) {
         }
       }
     }`;
-    
+
     const variables = { q: query, limit: 100 };
     const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: artifactsGql, variables })
     });
-    
+
     const json = await res.json();
     const artifacts = json?.data?.artifacts?.items || [];
 
@@ -90,7 +93,7 @@ export async function searchArtifacts(params: SearchArtifactsParams) {
           return artifact; // Return artifact without request context on error
         }
       });
-      
+
       enrichedArtifacts = await Promise.all(requestPromises);
     }
 
@@ -104,14 +107,14 @@ export async function searchArtifacts(params: SearchArtifactsParams) {
       requestedMeta: { cursor, query, include_request_context }
     });
 
-    return { 
-      content: [{ 
-        type: 'text' as const, 
-        text: JSON.stringify({ 
-          data: composed.data, 
-          meta: { ok: true, ...composed.meta, source: 'ponder', type: 'artifacts' } 
-        }) 
-      }] 
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          data: composed.data,
+          meta: { ok: true, ...composed.meta, source: 'ponder', type: 'artifacts' }
+        })
+      }]
     };
   } catch (e: any) {
     return {

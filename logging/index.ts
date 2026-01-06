@@ -17,7 +17,7 @@ function flushLoggerSync(): void {
   }
 
   if (typeof destination.flush === 'function') {
-    destination.flush(() => {});
+    destination.flush(() => { });
   }
 }
 
@@ -50,7 +50,12 @@ export const agentLogger = withHelpers(baseAgentLogger, {
   // Exception: Uses process.stdout.write for subprocess stdout forwarding (per spec: "Subprocess streaming in process managers")
   // This forwards Gemini CLI output directly to stdout, bypassing pino-pretty to prevent line wrapping of JSON
   output(message: string) {
-    process.stdout.write(`\x1b[95m${message}\x1b[0m\n`);
+    // Sanitize message to prevent terminal corruption from raw buffer data
+    // Keep printable ASCII (32-126), whitespace, newlines, and standard ANSI color codes
+    // But strip other control characters that crash xterm.js (like DEL=127)
+    // eslint-disable-next-line no-control-regex
+    const sanitized = message.replace(/[^\x20-\x7E\s\n\r\t\x1b]/g, '');
+    process.stdout.write(`\x1b[95m${sanitized}\x1b[0m\n`);
   },
   thinking(message: string) {
     baseAgentLogger.debug({ agentThinking: true }, message);

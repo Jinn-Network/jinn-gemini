@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import fetch from 'cross-fetch';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
+import { getPonderGraphqlUrl } from './shared/env.js';
 
 const base = z.object({
   query: z.string().min(1).describe('Case-insensitive text to match against job name and description.'),
@@ -18,7 +19,7 @@ export const searchJobsSchema = {
 };
 
 async function fetchRequestsForJob(jobId: string, maxRequests: number): Promise<any[]> {
-  const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+  const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
   const gql = `query GetJobRequests($jobId: String!, $limit: Int!) {
     requests(where: { sourceJobDefinitionId: $jobId }, 
             orderBy: "blockTimestamp", orderDirection: "desc", limit: $limit) {
@@ -28,14 +29,14 @@ async function fetchRequestsForJob(jobId: string, maxRequests: number): Promise<
       }
     }
   }`;
-  
+
   const variables = { jobId, limit: maxRequests };
   const res = await fetch(PONDER_GRAPHQL_URL, {
-    method: 'POST', 
-    headers: { 'Content-Type': 'application/json' }, 
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: gql, variables })
   });
-  
+
   const json = await res.json();
   return json?.data?.requests?.items || [];
 }
@@ -52,27 +53,27 @@ export async function searchJobs(params: SearchJobsParams) {
     const { query, cursor, include_requests, max_requests_per_job } = parsed.data;
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
-    // Step 1: Search job definitions by name and promptContent
-    const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+    // Step 1: Search job definitions by name and blueprint
+    const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
     const jobsGql = `query SearchJobs($q: String!, $limit: Int!) {
       jobDefinitions(where: { OR: [
         { name_contains: $q }, 
-        { promptContent_contains: $q }
+        { blueprint_contains: $q }
       ] }, limit: $limit) {
         items { 
-          id name promptContent enabledTools 
+          id name blueprint enabledTools 
           sourceJobDefinitionId sourceRequestId
         }
       }
     }`;
-    
+
     const variables = { q: query, limit: 100 }; // Get more jobs to allow for pagination
     const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: jobsGql, variables })
     });
-    
+
     const json = await res.json();
     const jobs = json?.data?.jobDefinitions?.items || [];
 
@@ -88,7 +89,7 @@ export async function searchJobs(params: SearchJobsParams) {
           return { ...job, requests: [], requestsError: 'Failed to fetch requests' };
         }
       });
-      
+
       enrichedJobs = await Promise.all(requestPromises);
     }
 
@@ -102,14 +103,14 @@ export async function searchJobs(params: SearchJobsParams) {
       requestedMeta: { cursor, query, include_requests, max_requests_per_job }
     });
 
-    return { 
-      content: [{ 
-        type: 'text' as const, 
-        text: JSON.stringify({ 
-          data: composed.data, 
-          meta: { ok: true, ...composed.meta, source: 'ponder', type: 'job_definitions' } 
-        }) 
-      }] 
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          data: composed.data,
+          meta: { ok: true, ...composed.meta, source: 'ponder', type: 'job_definitions' }
+        })
+      }]
     };
   } catch (e: any) {
     return {

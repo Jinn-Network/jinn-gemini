@@ -3,114 +3,86 @@
  * Used across unit, integration, and system tests for Phase 1 verification
  */
 
-export interface BlueprintAssertion {
-  id: string;
-  assertion: string;
-  examples: {
-    do: string[];
-    dont: string[];
-  };
-  commentary: string;
-}
+import type { Invariant } from '../../worker/prompt/types.js';
 
 export interface BlueprintStructure {
-  assertions: BlueprintAssertion[];
+  invariants: Invariant[];
 }
 
 /**
- * Build a complete blueprint JSON string from assertions array
+ * Build a complete blueprint JSON string from invariants array
  */
-export function buildTestBlueprint(assertions: BlueprintAssertion[]): string {
-  return JSON.stringify({ assertions });
+export function buildTestBlueprint(invariants: Invariant[]): string {
+  return JSON.stringify({ invariants });
 }
 
 /**
- * Build a minimal valid assertion for testing
+ * Build a minimal valid invariant for testing
  */
-export function buildMinimalAssertion(id: string): BlueprintAssertion {
+export function buildMinimalInvariant(id: string): Invariant {
   return {
     id,
-    assertion: `Test assertion ${id}`,
+    invariant: `Test invariant ${id}`,
     examples: {
       do: ['Example positive behavior'],
       dont: ['Example negative behavior'],
     },
-    commentary: `Test commentary for ${id}`,
   };
 }
 
 /**
- * Build an assertion with custom content
+ * Build an invariant with custom content
  */
-export function buildCustomAssertion(
+export function buildCustomInvariant(
   id: string,
-  assertion: string,
+  invariantText: string,
   doExamples: string[],
-  dontExamples: string[],
-  commentary: string
-): BlueprintAssertion {
+  dontExamples: string[]
+): Invariant {
   return {
     id,
-    assertion,
+    invariant: invariantText,
     examples: {
       do: doExamples,
       dont: dontExamples,
     },
-    commentary,
   };
 }
 
 /**
- * Build a complete multi-assertion blueprint for complex tests
+ * Build a complete multi-invariant blueprint for complex tests
  */
-export function buildMultiAssertionBlueprint(count: number): string {
-  const assertions: BlueprintAssertion[] = [];
+export function buildMultiInvariantBlueprint(count: number): string {
+  const invariants: Invariant[] = [];
   for (let i = 1; i <= count; i++) {
-    assertions.push(buildMinimalAssertion(`TEST-${String(i).padStart(3, '0')}`));
+    invariants.push(buildMinimalInvariant(`JOB-${String(i).padStart(3, '0')}`));
   }
-  return buildTestBlueprint(assertions);
+  return buildTestBlueprint(invariants);
 }
 
 /**
  * Build an invalid blueprint for negative testing
  */
-export function buildInvalidBlueprint(issue: 'missing-id' | 'missing-assertion' | 'missing-examples' | 'missing-commentary' | 'invalid-structure'): string {
+export function buildInvalidBlueprint(issue: 'missing-id' | 'missing-description' | 'invalid-structure'): string {
   switch (issue) {
     case 'missing-id':
       return JSON.stringify({
-        assertions: [{
-          assertion: 'Test assertion',
+        invariants: [{
+          invariant: 'Test invariant',
           examples: { do: ['example'], dont: ['example'] },
-          commentary: 'Test commentary',
         }],
       });
-    case 'missing-assertion':
+    case 'missing-description':
       return JSON.stringify({
-        assertions: [{
-          id: 'TEST-001',
-          examples: { do: ['example'], dont: ['example'] },
-          commentary: 'Test commentary',
-        }],
-      });
-    case 'missing-examples':
-      return JSON.stringify({
-        assertions: [{
-          id: 'TEST-001',
-          assertion: 'Test assertion',
-          commentary: 'Test commentary',
-        }],
-      });
-    case 'missing-commentary':
-      return JSON.stringify({
-        assertions: [{
-          id: 'TEST-001',
-          assertion: 'Test assertion',
+        invariants: [{
+          id: 'JOB-001',
+          // Missing 'invariant' field
           examples: { do: ['example'], dont: ['example'] },
         }],
       });
     case 'invalid-structure':
       return JSON.stringify({
-        notAssertions: 'invalid',
+        notInvariants: 'invalid',
       });
     default:
       return '{}';
@@ -123,4 +95,10 @@ export function buildInvalidBlueprint(issue: 'missing-id' | 'missing-assertion' 
 export function parseBlueprint(blueprintJson: string): BlueprintStructure {
   return JSON.parse(blueprintJson);
 }
+
+// Legacy exports for backwards compatibility with existing tests
+export { buildMinimalInvariant as buildMinimalAssertion };
+export { buildCustomInvariant as buildCustomAssertion };
+export { buildMultiInvariantBlueprint as buildMultiAssertionBlueprint };
+export type BlueprintAssertion = Invariant;
 

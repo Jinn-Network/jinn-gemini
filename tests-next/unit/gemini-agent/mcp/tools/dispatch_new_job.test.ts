@@ -42,7 +42,6 @@ vi.mock('../../../../../gemini-agent/shared/code_metadata.js', () => ({
 
 vi.mock('../../../../../config/index.js', () => ({
   getCodeMetadataDefaultBaseBranch: vi.fn(),
-  getOptionalMechModel: vi.fn(),
 }));
 
 import { graphQLRequest } from '../../../../../http/client.js';
@@ -51,7 +50,7 @@ import { getCurrentJobContext } from '../../../../../gemini-agent/mcp/tools/shar
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from '../../../../../gemini-agent/mcp/tools/shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../../../../gemini-agent/shared/code_metadata.js';
-import { getCodeMetadataDefaultBaseBranch, getOptionalMechModel } from '../../../../../config/index.js';
+import { getCodeMetadataDefaultBaseBranch } from '../../../../../config/index.js';
 
 // Helper to create valid blueprint JSON
 function createBlueprint(assertions: Array<{
@@ -93,7 +92,6 @@ describe('dispatchNewJob', () => {
     (getServicePrivateKey as any).mockReturnValue('0xPrivateKey');
     (getPonderGraphqlUrl as any).mockReturnValue('http://localhost:42069/graphql');
     (getCodeMetadataDefaultBaseBranch as any).mockReturnValue('main');
-    (getOptionalMechModel as any).mockReturnValue(undefined); // No env override by default
 
     // Mock graphQLRequest to return empty job list first (no existing job),
     // then return ipfsHash on poll

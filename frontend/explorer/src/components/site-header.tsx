@@ -35,7 +35,7 @@ export function SiteHeader({ title, subtitle, backLink, breadcrumbs }: SiteHeade
     <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="mr-2 h-4" />
-      <div className="flex flex-col gap-1 flex-1 min-w-0">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
         {showBreadcrumbs ? (
           <Breadcrumb>
             <BreadcrumbList>
@@ -74,9 +74,12 @@ export function SiteHeader({ title, subtitle, backLink, breadcrumbs }: SiteHeade
           </h1>
         ) : null}
         {subtitle && (
-          <p className="text-xs text-muted-foreground truncate">
-            {subtitle}
-          </p>
+          <>
+            <Separator orientation="vertical" className="h-4" />
+            <span className="text-sm text-muted-foreground truncate">
+              {subtitle}
+            </span>
+          </>
         )}
       </div>
     </header>

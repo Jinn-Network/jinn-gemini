@@ -141,6 +141,15 @@ const CORE_CLI_TOOLS: ToolInfo[] = [
         required: true
       }
     }
+  },
+  {
+    name: 'browser_automation',
+    description: 'Meta-tool that enables all Chrome DevTools browser automation capabilities. When included in enabledTools, activates the chrome-devtools MCP server with 26 tools for browser automation including: navigation (navigate_page, new_page, close_page), input (click, fill, hover, press_key), screenshots (take_screenshot, take_snapshot), performance tracing, and network inspection. Useful for verification jobs that need visual testing.',
+    parameters: {},
+    examples: [
+      'Enable browser automation for a verification job: enabledTools: ["browser_automation"]',
+      'Combine with other tools: enabledTools: ["write_file", "read_file", "browser_automation"]'
+    ]
   }
 ];
 

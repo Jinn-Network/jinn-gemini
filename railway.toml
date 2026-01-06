@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "yarn run build && cd ponder && yarn install"
+nixpacksConfigPath = "nixpacks.toml"
 watchPatterns = ["/ponder/**"]
 
 [deploy]

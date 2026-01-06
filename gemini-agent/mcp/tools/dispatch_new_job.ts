@@ -6,29 +6,29 @@ import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
-import { getCodeMetadataDefaultBaseBranch, getOptionalMechModel } from '../../../config/index.js';
+import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
 import { ensureUniversalTools } from './shared/base-tools.js';
 import { getJobContextForDispatch } from './shared/job-context-utils.js';
 
-// Blueprint assertion schema matching the style guide
-const blueprintAssertionSchema = z.object({
-  id: z.string().describe('Unique identifier for this assertion (e.g., "TST-001")'),
-  assertion: z.string().min(10).describe('Brief, declarative statement defining a principle, requirement, or constraint'),
+// Blueprint invariant schema - minimal format
+const blueprintInvariantSchema = z.object({
+  id: z.string().describe('Unique identifier for this invariant (e.g., "JOB-001")'),
+  invariant: z.string().min(10).describe('Brief, declarative statement defining the property that must hold'),
+  measurement: z.string().optional().describe('Natural language guidance on how to verify/measure this invariant'),
   examples: z.object({
     do: z.array(z.string()).min(1).describe('Positive examples showing correct application'),
     dont: z.array(z.string()).min(1).describe('Negative examples showing violation or anti-pattern'),
-  }).describe('Two-column guidance with concrete positive and negative examples'),
-  commentary: z.string().min(10).describe('Human-readable context explaining the rationale, background, or implications'),
+  }).optional().describe('Two-column guidance with concrete positive and negative examples'),
 });
 
 const blueprintStructureSchema = z.object({
-  assertions: z.array(blueprintAssertionSchema).min(1).describe('Array of assertions defining the job requirements'),
+  invariants: z.array(blueprintInvariantSchema).min(1).describe('Array of invariants defining the job requirements'),
 });
 
 const dispatchNewJobParamsBase = z.object({
   jobName: z.string().min(1).describe('Name for this job definition'),
-  blueprint: z.string().optional().describe('JSON string containing structured blueprint with assertions array. Each assertion must have: id, assertion, examples (do/dont arrays), and commentary.'),
-  model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-2.5-flash", "gemini-2.5-pro"). Defaults to MECH_MODEL env var or "gemini-2.5-flash" if not specified.'),
+  blueprint: z.string().optional().describe('JSON string containing structured blueprint with invariants array. Each invariant must have: id, invariant. Optional: measurement, examples.'),
+  model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-3-flash-preview", "gemini-2.5-pro"). Defaults to "gemini-3-flash-preview" if not specified.'),
   enabledTools: z.array(z.string()).optional().describe('Array of tool names to enable for this job'),
   message: z.string().optional().describe('Optional message to include in the job request'),
   dependencies: z.array(z.string()).optional().describe('Array of job definition UUIDs (not job names) that must have at least one delivered request before this job can execute. Use get_details or search_jobs to find job definition IDs. Example: ["4eac1570-7980-4e2b-afc7-3f5159e99ea5"]'),
@@ -58,29 +58,38 @@ WHEN NOT TO USE (use dispatch_existing_job instead):
 BLUEPRINT FORMAT (REQUIRED):
 The blueprint must be a JSON string with the following structure:
 {
-  "assertions": [
+  "invariants": [
     {
-      "id": "UNIQUE-ID",
-      "assertion": "Brief declarative statement of requirement",
+      "id": "JOB-001",
+      "invariant": "Brief declarative statement of requirement",
+      "measurement": "How to verify this is satisfied",
       "examples": {
-        "do": ["Positive example 1", "Positive example 2"],
-        "dont": ["Negative example 1", "Negative example 2"]
-      },
-      "commentary": "Explanation of why this assertion exists and its implications"
+        "do": ["Positive example 1"],
+        "dont": ["Negative example 1"]
+      }
     }
   ]
 }
 
+INVARIANT SCOPING (CRITICAL):
+When creating child jobs, write NEW invariants specific to that child's responsibility.
+Do NOT copy-paste parent invariants that span multiple concerns.
+Example - If parent invariant is "ship 3 games: Snake, 2048, Minesweeper":
+  - 2048-child: "Implement 2048 tile-merging puzzle with score tracking and win/loss conditions"
+  - Snake-child: "Implement Snake game with growing snake, food collection, and collision detection"
+  - Minesweeper-child: "Implement Minesweeper with mine placement, reveal logic, and flag system"
+Each child sees only its own scope, not requirements for sibling work.
+
 PARAMETERS:
 - jobName: (required) Name for this job definition
-- blueprint: (required) JSON string containing structured assertions array as defined above
-- model: (optional) Gemini model to use (defaults to MECH_MODEL env var or "gemini-2.5-flash")
+- blueprint: (required) JSON string containing structured invariants array as defined above
+- model: (optional) Gemini model to use (defaults to "gemini-3-flash-preview")
 - enabledTools: (optional) Array of tool names to enable
 - message: (optional) Additional message to include in the job request
 - dependencies: (optional) Array of job definition UUIDs (not job names) that must have at least one delivered request before this job executes. Use get_details or search_jobs to find job definition IDs.
 - responseTimeout: (optional) Response timeout in seconds for marketplace request (defaults to 300, max 300)
 
-The blueprint is validated and made directly available to the agent in GEMINI.md context.`,
+The blueprint is validated and made directly available to the agent in blueprint context.`,
   inputSchema: dispatchNewJobParamsBase.shape,
 };
 
@@ -223,7 +232,7 @@ export async function dispatchNewJob(args: unknown) {
     // Build additionalContext with hierarchy, summary, and message
     // Blueprint and dependencies are now stored at root level, not in additionalContext
     let additionalContext: Record<string, any> = {};
-    
+
     // Add hierarchy and summary from job context
     if (jobContext) {
       if (jobContext.hierarchy) {
@@ -258,7 +267,9 @@ export async function dispatchNewJob(args: unknown) {
     // 3. If inside a job with codeMetadata, inherit parent context (can create child branches)
     const hasRepoRoot = Boolean(process.env.CODE_METADATA_REPO_ROOT);
     const hasParentBranchContext = Boolean(context.branchName || context.baseBranch);
-    const shouldSkipBranch = skipBranch || (!hasRepoRoot && !hasParentBranchContext);
+    const missingRepoContext = !hasRepoRoot && !hasParentBranchContext;
+    const shouldCreateBranch = !skipBranch && !missingRepoContext;
+    const shouldKeepRepoContext = !shouldCreateBranch && !missingRepoContext;
 
     const baseBranch =
       context.branchName ||
@@ -267,7 +278,22 @@ export async function dispatchNewJob(args: unknown) {
 
     let branchResult;
     let codeMetadata;
-    if (!shouldSkipBranch) {
+
+    // Helper to build hints
+    const getMetadataHints = (targetBranchName?: string) => ({
+      jobDefinitionId,
+      parent:
+        context.jobDefinitionId || context.requestId
+          ? {
+            jobDefinitionId: context.jobDefinitionId || undefined,
+            requestId: context.requestId || undefined,
+          }
+          : undefined,
+      baseBranch,
+      branchName: targetBranchName,
+    });
+
+    if (shouldCreateBranch) {
       try {
         branchResult = await ensureJobBranch({
           jobDefinitionId,
@@ -275,20 +301,7 @@ export async function dispatchNewJob(args: unknown) {
           baseBranch,
         });
 
-        const metadataHints = {
-          jobDefinitionId,
-          parent:
-            context.jobDefinitionId || context.requestId
-              ? {
-                jobDefinitionId: context.jobDefinitionId || undefined,
-                requestId: context.requestId || undefined,
-              }
-              : undefined,
-          baseBranch,
-          branchName: branchResult.branchName,
-        };
-
-        codeMetadata = await collectLocalCodeMetadata(metadataHints);
+        codeMetadata = await collectLocalCodeMetadata(getMetadataHints(branchResult.branchName));
       } catch (branchError: any) {
         return {
           content: [{
@@ -303,6 +316,15 @@ export async function dispatchNewJob(args: unknown) {
             }),
           }],
         };
+      }
+    } else if (shouldKeepRepoContext) {
+      // Skip creating a new branch (e.g. skipBranch=true), but preserve repo context
+      // Child will run on the current HEAD/branch of the parent
+      try {
+        codeMetadata = await collectLocalCodeMetadata(getMetadataHints(undefined));
+      } catch (metadataError: any) {
+        console.warn('[dispatch_new_job] Failed to collect local metadata (non-critical):', metadataError);
+        // Continue without code metadata - job will be artifact-only
       }
     }
 
@@ -325,7 +347,7 @@ export async function dispatchNewJob(args: unknown) {
     const ipfsJsonContents: any[] = [{
       blueprint: finalBlueprint,
       jobName,
-      model: model || getOptionalMechModel() || 'gemini-2.5-flash',
+      model: model || 'gemini-3-flash-preview',
       enabledTools,
       jobDefinitionId,
       nonce: ensureUuid(),

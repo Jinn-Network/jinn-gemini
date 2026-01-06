@@ -1,11 +1,11 @@
 # Blueprint Style Guide
 
-**Version**: 2.0  
-**Last Updated**: 2025-11-25
+**Version**: 3.0  
+**Last Updated**: 2025-12-17
 
 ## Purpose
 
-Blueprints define **what** must be true about the system state after job completion - not **how** to achieve it. They specify acceptance criteria, constraints, and quality standards that the system must satisfy.
+Blueprints define **what** must be true about the system state after job completion - not **how** to achieve it. They specify acceptance criteria, constraints, and quality standards using **invariants** - conditions that must hold true.
 
 ## Core Principles
 
@@ -14,17 +14,12 @@ Blueprints define **what** must be true about the system state after job complet
 **GOOD** - Specifies desired outcome:
 ```json
 {
-  "id": "DATA-001",
-  "assertion": "Analysis must include real-time protocol TVL data from authoritative sources with timestamps",
+  "id": "GOAL-001",
+  "form": "constraint",
+  "description": "Analysis must include real-time protocol TVL data from authoritative sources with timestamps",
   "examples": {
-    "do": [
-      "Report TVL with source attribution: 'Uniswap V3 TVL: $2.1B (DeFi Llama, 2024-11-14 16:30 UTC)'",
-      "Cross-reference data across multiple sources for validation"
-    ],
-    "dont": [
-      "Report TVL without timestamp or source",
-      "Use data older than 24 hours without justification"
-    ]
+    "do": ["Report TVL with source attribution: 'Uniswap V3 TVL: $2.1B (DeFi Llama, 2024-11-14 16:30 UTC)'"],
+    "dont": ["Report TVL without timestamp or source"]
   },
   "commentary": "Real-time accuracy requires transparent data provenance and recency validation."
 }
@@ -33,11 +28,7 @@ Blueprints define **what** must be true about the system state after job complet
 **BAD** - Prescribes implementation steps:
 ```json
 {
-  "assertion": "Agent must call web_search with 'DeFi Llama TVL' then parse the results",
-  "examples": {
-    "do": ["Use web_search tool", "Parse JSON response"],
-    "dont": ["Skip tool usage"]
-  }
+  "description": "Agent must call web_search with 'DeFi Llama TVL' then parse the results"
 }
 ```
 
@@ -87,30 +78,33 @@ Replace ambiguous terms with specific, measurable requirements.
 
 ### Required Fields
 
-Every assertion must contain:
+Every invariant must contain:
 
 ```json
 {
-  "id": "CATEGORY-NNN",
-  "assertion": "Brief declarative statement",
+  "id": "GOAL-NNN",
+  "form": "constraint",
+  "description": "Brief declarative statement",
   "examples": {
-    "do": ["Positive example 1", "Positive example 2"],
-    "dont": ["Negative example 1", "Negative example 2"]
+    "do": ["One specific positive example"],
+    "dont": ["One specific negative example"]
   },
   "commentary": "Explanation of rationale and implications"
 }
 ```
 
-### Assertion ID Conventions
+### Invariant Forms
 
-Use semantic prefixes:
-- `DATA-xxx`: Data sourcing, quality, provenance
-- `ANALYSIS-xxx`: Analytical methodology, rigor
-- `OUTPUT-xxx`: Deliverable format, content
-- `SCOPE-xxx`: Boundaries, focus areas
-- `QUALITY-xxx`: Standards, validation criteria
-- `CONSTRAINT-xxx`: Technical or business constraints
-- `VERIFICATION-xxx`: Assertion satisfaction validation (required for 3+ assertion blueprints)
+- `boolean` – True/false conditions
+- `threshold` – Minimum value requirements  
+- `constraint` – Boundaries and limits
+- `directive` – Guidance without hard verification
+- `sequence` – Ordered steps or phases
+- `range` – Value within bounds
+
+### Invariant ID Conventions
+
+Use `GOAL-NNN` format for venture blueprints. System invariants use domain prefixes (SYS, LEARN, COORD, etc.).
 
 ## Anti-Patterns
 
@@ -216,34 +210,24 @@ Any behavioral differences between jobs must be encoded in blueprint assertions,
 
 ```json
 {
-  "assertions": [
+  "invariants": [
     {
-      "id": "DATA-001",
-      "assertion": "Research must use authoritative sources with timestamps within the specified time window",
+      "id": "GOAL-001",
+      "form": "constraint",
+      "description": "Research must use authoritative sources with timestamps within the specified time window",
       "examples": {
-        "do": [
-          "DeFi Llama protocol metrics (timestamp: 2024-11-14 15:00 UTC)",
-          "Dune Analytics dashboard data (updated: 2 hours ago)"
-        ],
-        "dont": [
-          "Generic web searches without source attribution",
-          "Data without timestamps or provenance"
-        ]
+        "do": ["DeFi Llama protocol metrics (timestamp: 2024-11-14 15:00 UTC)"],
+        "dont": ["Generic web searches without source attribution"]
       },
       "commentary": "Credibility depends on verifiable, recent data sources."
     },
     {
-      "id": "ANALYSIS-001",
-      "assertion": "Findings must be quantified relative to historical baselines",
+      "id": "GOAL-002",
+      "form": "constraint",
+      "description": "Findings must be quantified relative to historical baselines",
       "examples": {
-        "do": [
-          "Volume is 2.3x the 7-day average",
-          "TVL decreased 15% vs. previous 24h"
-        ],
-        "dont": [
-          "Volume was high",
-          "TVL dropped significantly"
-        ]
+        "do": ["Volume is 2.3x the 7-day average"],
+        "dont": ["Volume was high"]
       },
       "commentary": "Statistical context prevents spurious signal detection."
     }
@@ -255,22 +239,24 @@ Any behavioral differences between jobs must be encoded in blueprint assertions,
 
 ```json
 {
-  "assertions": [
+  "invariants": [
     {
-      "id": "QUALITY-001",
-      "assertion": "All existing tests must pass after changes",
+      "id": "GOAL-001",
+      "form": "boolean",
+      "description": "All existing tests must pass after changes",
       "examples": {
         "do": ["Run full test suite and verify zero failures"],
-        "dont": ["Skip tests", "Disable failing tests"]
+        "dont": ["Disable failing tests"]
       },
       "commentary": "Regression prevention is non-negotiable."
     },
     {
-      "id": "CONSTRAINT-001",
-      "assertion": "Public API surface must remain unchanged",
+      "id": "GOAL-002",
+      "form": "constraint",
+      "description": "Public API surface must remain unchanged",
       "examples": {
-        "do": ["Add new methods", "Modify private internals"],
-        "dont": ["Remove public methods", "Change method signatures"]
+        "do": ["Add new methods; modify private internals"],
+        "dont": ["Remove public methods; change method signatures"]
       },
       "commentary": "API stability ensures downstream compatibility."
     }
@@ -280,16 +266,16 @@ Any behavioral differences between jobs must be encoded in blueprint assertions,
 
 ## Recognition Learnings vs. Blueprints
 
-**Blueprints** define job requirements (what must be satisfied).
+**Blueprints** define job requirements (what invariants must hold).
 
 **Recognition learnings** provide execution strategies (how similar jobs succeeded/failed).
 
 The agent synthesizes both:
-1. Blueprint defines success criteria
+1. Blueprint defines success criteria via invariants
 2. Recognition suggests proven approaches
 3. Agent decides final execution plan
 
-If recognition learnings conflict with blueprint requirements, **blueprint always wins**.
+If recognition learnings conflict with blueprint invariants, **blueprint always wins**.
 
 ## Enforcement Patterns
 

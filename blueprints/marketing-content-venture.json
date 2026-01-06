@@ -1,0 +1,237 @@
+{
+    "name": "Marketing Content Venture",
+    "description": "Generates strategic, multi-channel marketing content with competitor analysis, viral hooks, and visual concepts. Outputs structured artifacts per channel.",
+    "version": "1.2.0",
+    "priceUsd": "$0.01",
+    "priceWei": "10000000000000000",
+    "tags": [
+        "marketing",
+        "content",
+        "copywriting",
+        "strategy",
+        "viral",
+        "visuals"
+    ],
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "productName": {
+                "type": "string",
+                "description": "Name of the product or service to promote"
+            },
+            "productUrl": {
+                "type": "string",
+                "description": "URL to the product website (agent will scrape for context)"
+            },
+            "productDescription": {
+                "type": "string",
+                "description": "Brief description of what it does, key features, value proposition"
+            },
+            "competitorUrls": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                },
+                "description": "List of competitor websites to analyze for differentiation gaps"
+            },
+            "targetAudience": {
+                "type": "string",
+                "description": "Who we're talking to (e.g., 'Web3 developers', 'Enterprise CTOs')"
+            },
+            "brandVoice": {
+                "type": "string",
+                "enum": [
+                    "professional",
+                    "casual",
+                    "technical",
+                    "playful",
+                    "authoritative",
+                    "contrarian"
+                ],
+                "description": "Tone and style for all content. 'Contrarian' challenges status quo.",
+                "default": "professional"
+            },
+            "channels": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "twitter-post",
+                        "twitter-thread",
+                        "linkedin",
+                        "blog",
+                        "youtube-script",
+                        "newsletter"
+                    ]
+                },
+                "description": "Which channels to generate content for",
+                "default": [
+                    "twitter-post",
+                    "linkedin",
+                    "blog"
+                ]
+            },
+            "campaignGoal": {
+                "type": "string",
+                "enum": [
+                    "awareness",
+                    "signups",
+                    "engagement",
+                    "product-launch",
+                    "thought-leadership"
+                ],
+                "description": "Primary goal of this content campaign",
+                "default": "awareness"
+            },
+            "existingBrandAssets": {
+                "type": "string",
+                "description": "Optional URL or artifact CID pointing to brand guidelines, past content, or style guides"
+            }
+        },
+        "required": [
+            "productName",
+            "productDescription",
+            "targetAudience"
+        ]
+    },
+    "outputSpec": {
+        "version": "1.1",
+        "fields": [
+            {
+                "name": "summary",
+                "path": "$.result.summary",
+                "type": "string",
+                "required": true,
+                "description": "Executive summary of content strategy and key differentiators"
+            },
+            {
+                "name": "contentItems",
+                "path": "$.result.contentItems",
+                "type": "array",
+                "required": true,
+                "description": "Array of content items, each with: channel, type, title, content, alternate_hooks, image_prompt"
+            },
+            {
+                "name": "contentCalendar",
+                "path": "$.result.contentCalendar",
+                "type": "array",
+                "required": false,
+                "description": "Suggested posting schedule with dates and content item references"
+            }
+        ]
+    },
+    "enabledTools": [
+        "web_fetch",
+        "web_search",
+        "create_artifact",
+        "search_artifacts",
+        "get_details"
+    ],
+    "invariants": [
+        {
+            "id": "GOAL-001",
+            "form": "directive",
+            "invariant": "PHASE 1: STRATEGY & ANALYSIS. Before writing content, create 'content-strategy.md'. 1) Analyze {{productUrl}} vs {{competitorUrls}}. 2) Identify competitor weaknesses/gaps. 3) Define our unique angle. 4) Outline the Content Waterfall strategy.",
+            "measurement": "Verify 'content-strategy.md' artifact was created before any content-{channel}.md artifacts.",
+            "examples": {
+                "do": [
+                    "Analyze competitors, find they ignore 'Developer Experience', make DX our key differentiator"
+                ],
+                "dont": [
+                    "Skip analysis and write generic copy"
+                ]
+            },
+            "commentary": "Differentiation is the key to effective marketing."
+        },
+        {
+            "id": "GOAL-002",
+            "form": "directive",
+            "invariant": "CONTENT WATERFALL: Structure content generation as a flow. 1. Deep Dive (Blog/Newsletter) -> 2. Distill (Thread/LinkedIn) -> 3. Hook (Tweet). Ensure the Core Idea flows down from long-form to short-form.",
+            "measurement": "If blog is requested, verify content-blog.md was created before content-twitter.md. Thread before post.",
+            "examples": {
+                "do": [
+                    "Write blog post first, then extract key points for a Twitter thread"
+                ],
+                "dont": [
+                    "Write tweet first, then try to fluff it up into a blog"
+                ]
+            },
+            "commentary": "Maximizes ROI on high-quality ideas and ensures consistency."
+        },
+        {
+            "id": "GOAL-003",
+            "form": "constraint",
+            "invariant": "HOOK THEORY LAB: For every social post (Twitter, LinkedIn), generate exactly 3 ALTERNATIVE HOOKS/HEADLINES using different triggers: 1) Curiosity, 2) Benefit, 3) Contrarian/Fear. Place these in the 'alternate_hooks' field.",
+            "measurement": "For each social post in contentItems, verify 'alternate_hooks' array exists and has exactly 3 items.",
+            "examples": {
+                "do": [
+                    "Hook 1: 'How to X', Hook 2: 'Stop doing Y', Hook 3: 'The secret to Z'"
+                ],
+                "dont": [
+                    "Provide only one subject line"
+                ]
+            },
+            "commentary": "The hook determines 80% of content performance."
+        },
+        {
+            "id": "GOAL-004",
+            "form": "directive",
+            "invariant": "VISUAL CONCEPTING: For every content item, generate a detailed 'image_prompt' suitable for Midjourney/DALL-E that visualizes the core concept abstractly or literally. Style: {{brandVoice}}.",
+            "measurement": "For each content item, verify 'image_prompt' field is present and has >20 characters.",
+            "examples": {
+                "do": [
+                    "Prompt: 'Cyberpunk city with glowing neon nodes connecting, isometric view, purple and blue, 4k'"
+                ],
+                "dont": [
+                    "Prompt: 'A graph showing growth'"
+                ]
+            },
+            "commentary": "Visuals drive engagement. Providing prompts empowers the user to create them."
+        },
+        {
+            "id": "GOAL-005",
+            "form": "constraint",
+            "invariant": "SELF-CORRECTION LOOP: After drafting, you MUST critique your own work against {{brandVoice}} and Factual Accuracy constraints. If it fails, REWRITE it before adding to proper output. Do not output failed drafts.",
+            "measurement": "Implicit in output quality. Confirm no tone mismatches detected in final content.",
+            "examples": {
+                "do": [
+                    "Draft -> Critique: 'Too formal' -> Rewrite: 'Hey folks!' -> Final Output"
+                ],
+                "dont": [
+                    "Output the first draft without checking tone"
+                ]
+            },
+            "commentary": "Simulates a human editor/QA step."
+        },
+        {
+            "id": "GOAL-006",
+            "form": "constraint",
+            "invariant": "PLATFORM-NATIVE FORMATTING: Twitter posts ≤280 chars. Twitter threads = 5-10 connected tweets. LinkedIn = professional, 1-3 paragraphs. Blog = 800-1500 words with headers. YouTube = timestamped script with hooks.",
+            "measurement": "Twitter posts: char count ≤280. Blog posts: word count between 800-1500. Thread: 5-10 items.",
+            "examples": {
+                "do": [
+                    "Twitter: concise, punchy. LinkedIn: professional spacing."
+                ],
+                "dont": [
+                    "Post a wall of text on Twitter"
+                ]
+            },
+            "commentary": "Native formatting is non-negotiable for engagement."
+        },
+        {
+            "id": "GOAL-007",
+            "form": "constraint",
+            "invariant": "Create a separate artifact for EACH channel's content: 'content-{channel}.md'. Include all items (hooks, image prompts, main text) for that channel in the artifact.",
+            "measurement": "Verify 'content-{channel}.md' artifact exists for each channel in the requested channels array.",
+            "examples": {
+                "do": [
+                    "content-twitter.md includes: Tweet 1 (Body, Hooks, Image Prompt), Thread 1..."
+                ],
+                "dont": [
+                    "Dump everything in one file"
+                ]
+            },
+            "commentary": "Organized output aids review."
+        }
+    ]
+}

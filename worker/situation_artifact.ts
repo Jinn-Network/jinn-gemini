@@ -67,7 +67,7 @@ export async function createSituationArtifactForRequest(args: CreateSituationArt
     let situation: any;
     let summaryText: string;
     
-    // Model should come from job metadata, not worker environment
+    // Model from job metadata, then flash
     const runtimeModel = args.metadata?.model || 'gemini-2.5-flash';
     
     if (args.recognition?.initialSituation) {

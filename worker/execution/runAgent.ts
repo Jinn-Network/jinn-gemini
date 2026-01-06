@@ -50,7 +50,7 @@ export async function runAgentForRequest(
   metadata: IpfsMetadata
 ): Promise<AgentExecutionResult> {
   // Model comes from job metadata (set at dispatch time), fallback to flash
-  const model = metadata?.model || 'gemini-2.5-flash';
+  const model = metadata?.model || 'gemini-3-flash-preview';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
   const completedChildRequestIds = extractCompletedChildRequestIds(metadata?.additionalContext);
 
@@ -92,8 +92,8 @@ export async function runAgentForRequest(
       mechAddress: request.mech,
       jobDefinitionId: metadata?.jobDefinitionId || undefined,
       baseBranch:
-        metadata?.codeMetadata?.baseBranch ||
         metadata?.codeMetadata?.branch?.name ||
+        metadata?.codeMetadata?.baseBranch ||
         undefined,
       workstreamId: metadata?.workstreamId || request.id, // Fallback to requestId for root jobs
       parentRequestId: metadata?.sourceRequestId || undefined,

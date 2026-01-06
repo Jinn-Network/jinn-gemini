@@ -85,6 +85,11 @@ function parseGithubRepo(remoteUrl: string | undefined, branchName: string): { o
 /**
  * Generate a branch URL for viewing on the remote (e.g., GitHub)
  * Converts git remote URL to HTTPS branch URL
+ * 
+ * Supported formats:
+ * - SSH: git@github.com:owner/repo.git
+ * - SSH alias: alias:owner/repo.git (uses github.com as default host)
+ * - HTTPS: https://github.com/owner/repo.git
  */
 export function generateBranchUrl(codeMetadata: CodeMetadata, branchName: string): string | null {
   try {
@@ -106,9 +111,19 @@ export function generateBranchUrl(codeMetadata: CodeMetadata, branchName: string
     else if (remoteUrl.startsWith('https://') || remoteUrl.startsWith('http://')) {
       httpsBase = remoteUrl.replace(/\.git$/, '');
     }
+    // Handle SSH alias format: alias:owner/repo.git (e.g., ritsukai:ritsukai/local-arcade.git)
+    // This format is used with SSH config host aliases - we assume github.com as the host
     else {
-      workerLogger.warn({ remoteUrl }, 'Unknown git remote URL format');
-      return null;
+      const aliasMatch = remoteUrl.match(/^([^:@]+):(.+?)(\.git)?$/);
+      if (aliasMatch) {
+        const [, , path] = aliasMatch;
+        // SSH aliases typically point to GitHub; use github.com as default host
+        httpsBase = `https://github.com/${path}`;
+        workerLogger.debug({ remoteUrl, httpsBase }, 'Generated branch URL from SSH alias format');
+      } else {
+        workerLogger.warn({ remoteUrl }, 'Unknown git remote URL format');
+        return null;
+      }
     }
 
     return `${httpsBase}/tree/${branchName}`;
@@ -251,7 +266,10 @@ export async function createBranchArtifact(params: {
 
   try {
     const artifactName = `branch-${branchName}`;
-    const contentPreview = summaryBlock?.slice(0, 100) ?? title.slice(0, 100);
+    // Generate contentPreview in format expected by getDependencyBranchInfo parser
+    // Format: "Branch: <branchName> based on <baseBranch>"
+    // This ensures regex parsing works as fallback if JSON parsing fails
+    const contentPreview = `Branch: ${branchName} based on ${baseBranch}${summaryBlock ? ` - ${summaryBlock.slice(0, 50)}` : ''}`;
 
     const artifactPayload = {
       name: artifactName,

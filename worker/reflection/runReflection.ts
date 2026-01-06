@@ -3,7 +3,6 @@
  */
 
 import { Agent } from '../../gemini-agent/agent.js';
-import { getOptionalMechModel } from '../../gemini-agent/mcp/tools/shared/env.js';
 import { workerLogger } from '../../logging/index.js';
 import { serializeError } from '../logging/errors.js';
 import type { FinalStatus, AgentExecutionResult, IpfsMetadata, UnclaimedRequest, ReflectionResult } from '../types.js';

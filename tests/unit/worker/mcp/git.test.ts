@@ -157,7 +157,7 @@ describe('process_branch', () => {
             const parsed = JSON.parse(result.content[0].text);
 
             expect(parsed.success).toBe(false);
-            expect(parsed.error).toBe('Merge conflict detected');
+            expect(parsed.error).toBe('Merge conflict detected - resolution required');
             expect(parsed.conflicting_files).toContain('src/index.ts');
             expect(parsed.next_steps).toContain('checkout');
         });
@@ -167,7 +167,9 @@ describe('process_branch', () => {
 
             mockExecSync
                 .mockReturnValueOnce('main') // getCurrentBranch
-                .mockReturnValueOnce(' M src/file.ts') // git status --porcelain (has changes)
+                .mockReturnValueOnce(' M src/file.ts') // git status --porcelain (has changes via hasUncommittedChanges)
+                .mockReturnValueOnce(' M src/file.ts') // git status --porcelain (for beads check)
+                .mockReturnValueOnce(' M src/file.ts'); // git status --porcelain (re-check after auto-commit attempt)
 
             const result = await process_branch({
                 branch_name: 'feat/test',
@@ -291,7 +293,9 @@ describe('process_branch', () => {
 
             mockExecSync
                 .mockReturnValueOnce('main') // getCurrentBranch
-                .mockReturnValueOnce(' M src/file.ts'); // git status --porcelain (has changes)
+                .mockReturnValueOnce(' M src/file.ts') // git status --porcelain (has changes via hasUncommittedChanges)
+                .mockReturnValueOnce(' M src/file.ts') // git status --porcelain (for beads check)
+                .mockReturnValueOnce(' M src/file.ts'); // git status --porcelain (re-check after auto-commit attempt)
 
             const result = await process_branch({
                 branch_name: 'feat/test',
@@ -434,8 +438,9 @@ describe('process_branch', () => {
             const parsed = JSON.parse(result.content[0].text);
 
             expect(parsed.success).toBe(true);
-            expect(parsed.details.diff_summary.length).toBeGreaterThan(10000);
-            expect(parsed.details.diff_summary).not.toContain('truncated');
+            // Large diffs may be paginated, check for pagination metadata
+            expect(parsed.pagination).toBeDefined();
+            expect(parsed.pagination.total_diff_bytes).toBeGreaterThan(10000);
             expect(parsed.details.file_stats.added).toBe(1);
         });
 

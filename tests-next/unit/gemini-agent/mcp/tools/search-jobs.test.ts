@@ -131,7 +131,7 @@ describe('searchJobs', () => {
   });
 
   describe('GraphQL query construction', () => {
-    it('searches by name and promptContent', async () => {
+    it('searches by name and blueprint', async () => {
       (fetch as any).mockResolvedValue({
         json: async () => ({ data: { jobDefinitions: { items: [] } } }),
       });
@@ -144,7 +144,7 @@ describe('searchJobs', () => {
       const body = JSON.parse(call[1].body);
 
       expect(body.query).toContain('name_contains');
-      expect(body.query).toContain('promptContent_contains');
+      expect(body.query).toContain('blueprint_contains');
       expect(body.variables.q).toBe('my-search-term');
     });
 
@@ -363,7 +363,7 @@ describe('searchJobs', () => {
         {
           id: 'job-1',
           name: 'Job 1',
-          promptContent: 'Do task 1',
+          blueprint: 'Do task 1',
           enabledTools: '["tool1"]',
         },
       ];

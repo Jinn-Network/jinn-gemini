@@ -1,8 +1,9 @@
 /**
  * JobContextProvider - Provides job hierarchy and artifact context
  *
- * This provider extracts job hierarchy information from metadata.additionalContext
- * and outputs structured BlueprintContext.hierarchy and BlueprintContext.artifacts.
+ * This provider fetches child job data from Ponder using a single query,
+ * replacing the dual-source approach (completedChildRuns + hierarchy)
+ * that was prone to duplicates and phantom entries.
  */
 
 import type {
@@ -15,6 +16,9 @@ import type {
   ArtifactInfo,
   AdditionalContext,
 } from '../../types.js';
+import { workerLogger } from '../../../../logging/index.js';
+import { fetchAllChildren, type ChildJobData } from './fetchChildren.js';
+import { isChildIntegrated, batchFetchBranches } from '../../../git/integration.js';
 
 /**
  * JobContextProvider extracts hierarchy and artifact information
@@ -27,125 +31,90 @@ export class JobContextProvider implements ContextProvider {
   }
 
   async provide(ctx: BuildContext): Promise<Partial<BlueprintContext>> {
-    const additionalContext = ctx.metadata?.additionalContext;
-
-    if (!additionalContext) {
-      return {};
-    }
-
     const result: Partial<BlueprintContext> = {};
+    const jobDefinitionId = ctx.metadata?.jobDefinitionId;
 
-    // Extract hierarchy information
-    const hierarchy = this.extractHierarchy(additionalContext);
-    if (hierarchy) {
-      result.hierarchy = hierarchy;
+    // Fetch children from Ponder using single authoritative query
+    if (jobDefinitionId) {
+      const hierarchy = await this.fetchHierarchy(jobDefinitionId);
+      if (hierarchy) {
+        result.hierarchy = hierarchy;
+      }
     }
 
-    // Extract artifacts
-    const artifacts = this.extractArtifacts(additionalContext);
-    if (artifacts.length > 0) {
-      result.artifacts = artifacts;
+    // Extract artifacts from additionalContext (kept for backward compatibility)
+    const additionalContext = ctx.metadata?.additionalContext;
+    if (additionalContext) {
+      const artifacts = this.extractArtifacts(additionalContext);
+      if (artifacts.length > 0) {
+        result.artifacts = artifacts;
+      }
     }
 
     return result;
   }
 
   /**
-   * Extract hierarchy information from additionalContext
-   * Combines data from both `hierarchy` array and `completedChildRuns` array
+   * Fetch hierarchy information from Ponder using single query.
+   * This replaces the dual-source merge of completedChildRuns + hierarchy.
    */
-  private extractHierarchy(additionalContext: AdditionalContext): HierarchyContext | undefined {
-    const summary = additionalContext.summary;
-    const hierarchyJobs = additionalContext.hierarchy;
-    const completedChildRuns = additionalContext.completedChildRuns;
+  private async fetchHierarchy(parentJobDefId: string): Promise<HierarchyContext | undefined> {
+    const childrenData = await fetchAllChildren(parentJobDefId);
 
-    if (!summary && !hierarchyJobs && !completedChildRuns) {
+    if (childrenData.length === 0) {
       return undefined;
     }
 
-    // Extract children from the hierarchy
-    const children: ChildJobInfo[] = [];
-    const seenRequestIds = new Set<string>();
+    const repoRoot = process.env.CODE_METADATA_REPO_ROOT;
+    const parentBranch = process.env.CODE_METADATA_BRANCH_NAME || 'main';
 
-    // First, process completedChildRuns (most recent child completion data)
-    // This contains branchName/baseBranch directly from the dispatching child
-    if (Array.isArray(completedChildRuns)) {
-      for (const run of completedChildRuns) {
-        if (!run.requestId) continue;
-        seenRequestIds.add(run.requestId);
-
-        // Extract branch info from run or from GIT_BRANCH artifact
-        let branchName = (run as any).branchName;
-        let baseBranch = (run as any).baseBranch;
-
-        // Check artifacts for GIT_BRANCH if not directly on run
-        if (!branchName && Array.isArray((run as any).artifacts)) {
-          const branchArtifact = (run as any).artifacts.find(
-            (a: any) => a.type === 'GIT_BRANCH' || a.topic === 'git/branch'
-          );
-          if (branchArtifact?.details) {
-            branchName = branchArtifact.details.headBranch;
-            baseBranch = baseBranch || branchArtifact.details.baseBranch;
-          }
-        }
-
-        children.push({
-          requestId: run.requestId,
-          jobName: (run as any).jobName,
-          status: this.mapJobStatus((run as any).status || 'completed'),
-          summary: (run as any).summary,
-          branchName,
-          baseBranch,
-        });
+    // Batch fetch all child branches + parent for efficiency
+    if (repoRoot) {
+      const branchNames = childrenData.map((c) => c.branchName).filter(Boolean) as string[];
+      if (branchNames.length > 0) {
+        batchFetchBranches(branchNames, parentBranch);
       }
     }
 
-    // Then process hierarchy array (may have additional jobs, including failed/active ones)
-    if (Array.isArray(hierarchyJobs)) {
-      for (const job of hierarchyJobs) {
-        const requestId = job.requestId || job.id || '';
-        // Skip if already added from completedChildRuns
-        if (seenRequestIds.has(requestId)) continue;
+    // Map Ponder data to ChildJobInfo with integration check
+    const children: ChildJobInfo[] = childrenData.map((child) => {
+      // Check if child's work is already integrated into parent
+      const isIntegrated = child.branchName
+        ? isChildIntegrated(child.branchName, parentBranch)
+        : true; // No branch = integrated (nothing to merge)
 
-        // Map job status to our simplified status
-        const status = this.mapJobStatus(job.status);
-
-        // Extract branch info from job or from GIT_BRANCH artifact
-        let branchName = job.branchName;
-        let baseBranch = job.baseBranch;
-
-        // If not directly on job, check artifactRefs for GIT_BRANCH artifact
-        if (!branchName && Array.isArray(job.artifactRefs)) {
-          const branchArtifact = job.artifactRefs.find(
-            (a) => a.type === 'GIT_BRANCH' || a.topic === 'git/branch'
-          );
-          if (branchArtifact?.details) {
-            branchName = branchArtifact.details.headBranch;
-            baseBranch = baseBranch || branchArtifact.details.baseBranch;
-          }
-        }
-
-        children.push({
-          requestId,
-          jobName: job.name || job.jobName,
-          status,
-          summary: job.summary || job.deliverySummary,
-          branchName,
-          baseBranch,
-        });
+      if (isIntegrated) {
+        workerLogger.info(
+          { branchName: child.branchName, jobDefinitionId: child.jobDefinitionId },
+          'Child already integrated (commits in parent or branch deleted)'
+        );
       }
-    }
+
+      return {
+        // Note: We're using jobDefinitionId as the identifier now,
+        // since that's what Ponder query returns. The ChildJobInfo type
+        // uses requestId, but for our purposes the job def ID works.
+        requestId: child.jobDefinitionId,
+        jobName: child.jobName,
+        status: child.status,
+        summary: undefined, // Not fetched from Ponder; can add IPFS fetch if needed
+        branchName: child.branchName,
+        baseBranch: child.baseBranch,
+        isIntegrated,
+      };
+    });
 
     return {
-      totalJobs: summary?.totalJobs || children.length,
-      completedJobs: summary?.completedJobs || children.filter((c) => c.status === 'COMPLETED').length,
-      activeJobs: summary?.activeJobs || children.filter((c) => c.status === 'ACTIVE').length,
+      totalJobs: children.length,
+      completedJobs: children.filter((c) => c.status === 'COMPLETED').length,
+      activeJobs: children.filter((c) => c.status === 'ACTIVE').length,
       children,
     };
   }
 
   /**
    * Extract artifacts from additionalContext
+   * (kept for backward compatibility until artifact fetching is consolidated)
    */
   private extractArtifacts(additionalContext: AdditionalContext): ArtifactInfo[] {
     const artifacts: ArtifactInfo[] = [];
@@ -169,22 +138,5 @@ export class JobContextProvider implements ContextProvider {
     }
 
     return artifacts;
-  }
-
-  /**
-   * Map various job status strings to our simplified status
-   */
-  private mapJobStatus(status: string): 'COMPLETED' | 'ACTIVE' | 'FAILED' {
-    const normalized = (status || '').toUpperCase();
-
-    if (normalized === 'COMPLETED' || normalized === 'DELIVERED' || normalized === 'SUCCESS') {
-      return 'COMPLETED';
-    }
-
-    if (normalized === 'FAILED' || normalized === 'ERROR') {
-      return 'FAILED';
-    }
-
-    return 'ACTIVE';
   }
 }

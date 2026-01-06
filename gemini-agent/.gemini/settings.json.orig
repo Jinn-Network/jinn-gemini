@@ -1,9 +1,10 @@
 {
+  "previewFeatures": true,
   "mcpServers": {
     "metacog": {
-      "command": "/Users/gcd/Repositories/main/jinn-cli-agents/node_modules/.bin/tsx",
+      "command": "/Users/adrianobradley/jinn-gemini/node_modules/.bin/tsx",
       "args": [
-        "/Users/gcd/Repositories/main/jinn-cli-agents/gemini-agent/mcp/server.ts"
+        "/Users/adrianobradley/jinn-gemini/gemini-agent/mcp/server.ts"
       ],
       "trust": true,
       "includeTools": [
@@ -21,17 +22,66 @@
         "read_file",
         "search_file_content",
         "glob",
-        "read_many_files"
+        "read_many_files",
+        "process_branch",
+        "write_file",
+        "replace",
+        "run_shell_command",
+        "write_todos",
+        "web_search"
+      ]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--headless=true",
+        "--chromeArg=--no-sandbox",
+        "--isolated=true"
+      ],
+      "trust": true,
+      "includeTools": [
+        "click",
+        "drag",
+        "fill",
+        "fill_form",
+        "handle_dialog",
+        "hover",
+        "press_key",
+        "upload_file",
+        "close_page",
+        "list_pages",
+        "navigate_page",
+        "new_page",
+        "select_page",
+        "wait_for",
+        "emulate",
+        "resize_page",
+        "performance_analyze_insight",
+        "performance_start_trace",
+        "performance_stop_trace",
+        "get_network_request",
+        "list_network_requests",
+        "evaluate_script",
+        "get_console_message",
+        "list_console_messages",
+        "take_screenshot",
+        "take_snapshot"
       ]
     }
   },
   "coreTools": [
     "list_directory",
     "read_file",
+    "write_file",
     "search_file_content",
     "glob",
     "web_fetch",
     "google_web_search",
-    "read_many_files"
+    "replace",
+    "read_many_files",
+    "run_shell_command",
+    "write_todos"
   ]
 }

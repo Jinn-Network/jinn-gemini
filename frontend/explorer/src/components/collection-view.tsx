@@ -34,6 +34,7 @@ function getSortingConfig(collectionName: CollectionName): { column: string; asc
     deliveries: { column: 'blockTimestamp', ascending: false },
     artifacts: { column: 'blockTimestamp', ascending: false },
     messages: { column: 'blockTimestamp', ascending: false },
+    templates: { column: 'id', ascending: false },
   }
   
   return sortingConfigs[collectionName] || { column: 'id', ascending: false }

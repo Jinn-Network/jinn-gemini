@@ -31,9 +31,7 @@ export interface SituationContext {
     jobDefinitionId?: string;
   };
   childRequestIds?: string[];
-  children?: string[];
   siblingRequestIds?: string[];
-  siblings?: string[];
 }
 
 export interface SituationArtifactReference {

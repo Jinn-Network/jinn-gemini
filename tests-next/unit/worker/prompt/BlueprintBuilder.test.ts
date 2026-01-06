@@ -6,14 +6,15 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { BlueprintBuilder, createBlueprintBuilder } from '../../../../worker/prompt/BlueprintBuilder.js';
 import type {
   IpfsMetadata,
-  RecognitionPhaseResult,
-  BlueprintAssertion,
+} from '../../../../worker/types.js';
+import type {
+  Invariant,
   BlueprintContext,
   ContextProvider,
-  AssertionProvider,
+  InvariantProvider,
   BuildContext,
   BlueprintBuilderConfig,
-} from '../../../../worker/types.js';
+} from '../../../../worker/prompt/types.js';
 
 describe('BlueprintBuilder', () => {
   describe('createBlueprintBuilder', () => {
@@ -66,7 +67,7 @@ describe('BlueprintBuilder', () => {
         mockMetadata
       );
 
-      expect(blueprint.assertions).toEqual([]);
+      expect(blueprint.invariants).toEqual([]);
       expect(blueprint.context).toEqual({});
       expect(blueprint.metadata.requestId).toBe('req-123');
       expect(blueprint.metadata.providers).toEqual([]);
@@ -85,12 +86,12 @@ describe('BlueprintBuilder', () => {
         },
       };
 
-      const mockAssertionProvider: AssertionProvider = {
-        name: 'test-assertion',
-        category: 'job',
+      const mockInvariantProvider: InvariantProvider = {
+        name: 'test-invariant',
+        domain: 'goal',
         enabled: () => true,
         provide: async (ctx, builtContext) => {
-          executionOrder.push('assertion');
+          executionOrder.push('invariant');
           // Should have access to context
           expect(builtContext.hierarchy).toBeDefined();
           return [];
@@ -98,14 +99,14 @@ describe('BlueprintBuilder', () => {
       };
 
       builder.registerContextProvider(mockContextProvider);
-      builder.registerAssertionProvider(mockAssertionProvider);
+      builder.registerInvariantProvider(mockInvariantProvider);
 
       await builder.build('req-123', mockMetadata);
 
-      expect(executionOrder).toEqual(['context', 'assertion']);
+      expect(executionOrder).toEqual(['context', 'invariant']);
     });
 
-    it('should pass built context to assertion providers', async () => {
+    it('should pass built context to invariant providers', async () => {
       const mockContextProvider: ContextProvider = {
         name: 'test-context',
         enabled: () => true,
@@ -114,32 +115,33 @@ describe('BlueprintBuilder', () => {
         }),
       };
 
-      const mockAssertionProvider: AssertionProvider = {
-        name: 'test-assertion',
-        category: 'job',
+      const mockInvariantProvider: InvariantProvider = {
+        name: 'test-invariant',
+        domain: 'goal',
         enabled: () => true,
         provide: async (_ctx, builtContext) => {
           expect(builtContext.hierarchy?.totalJobs).toBe(5);
           return [
             {
-              id: 'TEST-001',
-              category: 'job',
-              assertion: `There are ${builtContext.hierarchy?.totalJobs} jobs in the hierarchy`,
+              id: 'GOAL-001',
+              form: 'boolean',
+              domain: 'goal',
+              description: `There are ${builtContext.hierarchy?.totalJobs} jobs in the hierarchy`,
               examples: { do: ['test'], dont: ['test'] },
-              commentary: 'Test assertion',
+              commentary: 'Test invariant',
             },
           ];
         },
       };
 
       builder.registerContextProvider(mockContextProvider);
-      builder.registerAssertionProvider(mockAssertionProvider);
+      builder.registerInvariantProvider(mockInvariantProvider);
 
       const { blueprint } = await builder.build('req-123', mockMetadata);
 
       expect(blueprint.context.hierarchy?.totalJobs).toBe(5);
-      expect(blueprint.assertions).toHaveLength(1);
-      expect(blueprint.assertions[0].assertion).toContain('5 jobs');
+      expect(blueprint.invariants).toHaveLength(1);
+      expect(blueprint.invariants[0].description).toContain('5 jobs');
     });
 
     it('should skip disabled providers', async () => {
@@ -189,7 +191,7 @@ describe('BlueprintBuilder', () => {
 
       expect(typeof prompt).toBe('string');
       const parsed = JSON.parse(prompt);
-      expect(parsed.assertions).toBeDefined();
+      expect(parsed.invariants).toBeDefined();
       expect(parsed.context).toBeDefined();
       expect(parsed.metadata).toBeDefined();
     });

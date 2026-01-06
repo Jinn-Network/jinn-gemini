@@ -12,7 +12,7 @@ import type { SubgraphRecord } from '@/hooks/use-subgraph-collection';
 
 // Mock next/link
 vi.mock('next/link', () => ({
-  default: ({ children, href }: {children: React.ReactNode; href: string}) => <a href={href}>{children}</a>,
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 // Create a mock job definition record with only valid schema fields
@@ -21,7 +21,7 @@ function createMockJobDefinition(overrides: Partial<SubgraphRecord> = {}): Subgr
     id: '0064f9f0-cb53-4974-bb27-09699fcf734d',
     name: 'Test Job Definition',
     enabledTools: ['google_web_search', 'web_fetch'],
-    blueprint: '{"assertions":[{"id":"TEST-001","assertion":"Test assertion"}]}',
+    blueprint: '{"invariants":[{"id":"TEST-001","invariant":"Test invariant"}]}',
     sourceJobDefinitionId: null,
     sourceRequestId: null,
     codeMetadata: null,
@@ -208,14 +208,14 @@ describe('JobDefinitionsTable', () => {
     it('does NOT try to access promptContent field', () => {
       // This test ensures we don't regress to using the non-existent promptContent field
       const records = [createMockJobDefinition()];
-      
+
       // If the component tries to access 'promptContent', this will throw
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
       expect(() => {
         render(<JobDefinitionsTable records={records} />);
       }).not.toThrow();
-      
+
       expect(consoleErrorSpy).not.toHaveBeenCalled();
       consoleErrorSpy.mockRestore();
     });
@@ -223,13 +223,13 @@ describe('JobDefinitionsTable', () => {
     it('does NOT try to access description field', () => {
       // This test ensures we don't regress to using the non-existent description field
       const records = [createMockJobDefinition()];
-      
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
       expect(() => {
         render(<JobDefinitionsTable records={records} />);
       }).not.toThrow();
-      
+
       expect(consoleErrorSpy).not.toHaveBeenCalled();
       consoleErrorSpy.mockRestore();
     });
@@ -237,13 +237,13 @@ describe('JobDefinitionsTable', () => {
     it('does NOT try to access blockTimestamp field on jobDefinition', () => {
       // jobDefinitions don't have blockTimestamp (only requests do)
       const records = [createMockJobDefinition()];
-      
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
       expect(() => {
         render(<JobDefinitionsTable records={records} />);
       }).not.toThrow();
-      
+
       expect(consoleErrorSpy).not.toHaveBeenCalled();
       consoleErrorSpy.mockRestore();
     });
@@ -262,12 +262,12 @@ describe('JobDefinitionsTable', () => {
         }),
       ];
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
       expect(() => {
         render(<JobDefinitionsTable records={records} />);
       }).not.toThrow();
-      
+
       // Table should render successfully
       expect(screen.getByText('Test Name')).toBeInTheDocument();
       expect(consoleErrorSpy).not.toHaveBeenCalled();

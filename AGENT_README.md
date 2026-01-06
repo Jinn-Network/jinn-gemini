@@ -254,19 +254,20 @@ Each job specifies its own Gemini model in the job definition. Model selection i
 
 **When Creating Jobs:**
 ```typescript
-// Blueprint must be a JSON string with assertions array
+// Blueprint must be a JSON string with invariants array
 // Blueprints define WHAT must be true (outcomes), not HOW to achieve it (process)
 // The agent has full autonomy to determine execution strategy
 const blueprint = JSON.stringify({
-  assertions: [
+  invariants: [
     {
-      id: 'REQ-001',
-      assertion: 'Brief declarative statement of requirement (WHAT must be satisfied)',
+      id: 'GOAL-001',
+      form: 'constraint',  // boolean, threshold, range, directive, sequence, constraint
+      description: 'Brief declarative statement of requirement (WHAT must be satisfied)',
       examples: {
-        do: ['Positive example 1', 'Positive example 2'],
-        dont: ['Negative example 1', 'Negative example 2']
+        do: ['One specific, actionable positive example'],
+        dont: ['One specific negative example']
       },
-      commentary: 'Explanation of why this assertion exists (rationale, not process)'
+      commentary: 'Explanation of why this invariant exists (rationale, not process)'
     }
   ]
 });
@@ -280,16 +281,16 @@ dispatchNewJob({
 })
 
 // The agent receiving this job will:
-// 1. Read all blueprint assertions (WHAT must be satisfied)
+// 1. Read all blueprint invariants (WHAT must be satisfied)
 // 2. Consult recognition learnings (HOW similar jobs succeeded)
 // 3. Autonomously decide execution strategy (direct work vs delegation)
-// 4. Verify all assertions are satisfied in the final deliverable
+// 4. Verify all invariants are satisfied in the final deliverable
 ```
 
 **Blueprint Style Guide**: See `docs/spec/blueprint/style-guide.md` for comprehensive guidance on:
 - Writing declarative, outcome-focused blueprints
 - Quantifying vague requirements (e.g., "multiple sources" → "minimum 3 distinct sources")
-- Enforcement patterns (multi-source validation, statistical context, verification assertions)
+- Invariant forms and when to use each
 - Common pitfalls and anti-patterns
 
 ### Blueprint Design Philosophy
@@ -298,28 +299,34 @@ dispatchNewJob({
 
 Blueprints must define success criteria and outcomes, not implementation steps or strategies. The agent has full autonomy to determine execution approach.
 
+**Invariant Forms:**
+- `boolean` – True/false conditions
+- `threshold` – Minimum value requirements (e.g., "at least 3 sources")
+- `constraint` – Boundaries and limits
+- `directive` – Guidance without hard verification
+- `sequence` – Ordered steps or phases
+- `range` – Value within bounds
+
 **Key Requirements:**
 - **Quantify Everything**: Replace vague terms with specific numbers ("minimum 3 distinct sources with URLs")
 - **Inline Attribution**: Citations with URLs per claim, not generic footer ("Volume $378M (defillama.com)")
-- **Statistical Context**: All metrics need 7-day average comparison minimum
-- **Verification Assertion**: Add VERIFICATION-001 for blueprints with 3+ assertions
+- **Consolidated Examples**: 1-2 high-quality, scenario-based examples per invariant
 
 ❌ **Wrong - Prescribes HOW:**
 ```json
 {
   "id": "DEPTH-001",
-  "assertion": "If initial web searches return aggregate data, delegate deep-dive research to child jobs",
-  "examples": {
-    "do": ["Dispatch child job for protocol-specific analysis"]
-  }
+  "form": "directive",
+  "description": "If initial web searches return aggregate data, delegate deep-dive research to child jobs"
 }
 ```
 
 ✅ **Correct - Defines WHAT:**
 ```json
 {
-  "id": "DEPTH-001", 
-  "assertion": "Analysis must include protocol-specific breakdowns with 7-day historical comparisons",
+  "id": "GOAL-001", 
+  "form": "constraint",
+  "description": "Analysis must include protocol-specific breakdowns with 7-day historical comparisons",
   "examples": {
     "do": ["Report Uniswap volume: $378M (1.2x 7-day average)"],
     "dont": ["Report aggregate DeFi volume without protocol breakdowns"]

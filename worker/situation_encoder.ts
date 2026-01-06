@@ -4,8 +4,9 @@ export const SITUATION_ARTIFACT_VERSION = "sit-enc-v1.1";
 import { ExtractedArtifact } from './artifacts.js';
 import { workerLogger } from '../logging/index.js';
 import { extractPromptSections } from './recognition_helpers.js';
+import { getPonderGraphqlUrl } from '../config/index.js';
 
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
+const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
 
 interface SituationEncoderInput {
   requestId: string;
@@ -368,22 +369,20 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
   );
 
   // Extract blueprint for metadata (objective/acceptanceCriteria extracted later from prompt on line 318)
-  const blueprint = (input.additionalContext ?? requestRecord?.additionalContext)?.blueprint 
-    ? String((input.additionalContext ?? requestRecord?.additionalContext).blueprint) 
+  const blueprint = (input.additionalContext ?? requestRecord?.additionalContext)?.blueprint
+    ? String((input.additionalContext ?? requestRecord?.additionalContext).blueprint)
     : undefined;
 
   const situationContext: SituationContext = {
     parentRequestId,
     parent: parentRequestId
       ? {
-          requestId: parentRequestId,
-          jobDefinitionId: parentJobDefinitionId,
-        }
+        requestId: parentRequestId,
+        jobDefinitionId: parentJobDefinitionId,
+      }
       : undefined,
     childRequestIds: deterministicContext.childRequestIds || [],
-    children: deterministicContext.childRequestIds || [],
     siblingRequestIds,
-    siblings: siblingRequestIds,
   };
 
   // Fetch job definition to enrich with blueprint and enabled tools
@@ -431,7 +430,6 @@ export async function createInitialSituation(input: InitialSituationInput): Prom
 export async function enrichSituation(input: EnrichSituationInput): Promise<SituationEncoderResult> {
   const existingChildIds =
     input.initialSituation.context.childRequestIds ||
-    input.initialSituation.context.children ||
     [];
 
   const childRequestIdsFromQuery =
@@ -441,8 +439,8 @@ export async function enrichSituation(input: EnrichSituationInput): Promise<Situ
   const executionTrace = buildExecutionTrace(input.telemetry);
   const status: SituationExecution['status'] =
     input.finalStatus === 'COMPLETED' ? 'COMPLETED' :
-    input.finalStatus === 'DELEGATING' ? 'DELEGATING' :
-    input.finalStatus === 'WAITING' ? 'WAITING' : 'FAILED';
+      input.finalStatus === 'DELEGATING' ? 'DELEGATING' :
+        input.finalStatus === 'WAITING' ? 'WAITING' : 'FAILED';
 
   const finalOutputSummary = truncate(input.output, 1200);
 
@@ -453,14 +451,12 @@ export async function enrichSituation(input: EnrichSituationInput): Promise<Situ
     ...input.initialSituation.context,
     parent: input.initialSituation.context.parentRequestId
       ? {
-          requestId: input.initialSituation.context.parentRequestId,
-          jobDefinitionId: input.initialSituation.context.parent?.jobDefinitionId,
-        }
+        requestId: input.initialSituation.context.parentRequestId,
+        jobDefinitionId: input.initialSituation.context.parent?.jobDefinitionId,
+      }
       : input.initialSituation.context.parent,
     childRequestIds,
-    children: childRequestIds,
-    siblingRequestIds: input.initialSituation.context.siblingRequestIds || input.initialSituation.context.siblings,
-    siblings: input.initialSituation.context.siblingRequestIds || input.initialSituation.context.siblings,
+    siblingRequestIds: input.initialSituation.context.siblingRequestIds,
   };
 
   const summaryText = deriveSummaryText({
@@ -471,7 +467,7 @@ export async function enrichSituation(input: EnrichSituationInput): Promise<Situ
     status,
     parentRequestId: input.initialSituation.context.parentRequestId,
     childRequestIds,
-    siblingRequestIds: input.initialSituation.context.siblingRequestIds || input.initialSituation.context.siblings || [],
+    siblingRequestIds: input.initialSituation.context.siblingRequestIds || [],
     trace: executionTrace,
     finalOutputSummary,
     artifacts,
@@ -519,8 +515,8 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
   const executionTrace = buildExecutionTrace(input.telemetry);
   const status: SituationExecution['status'] =
     input.finalStatus === 'COMPLETED' ? 'COMPLETED' :
-    input.finalStatus === 'DELEGATING' ? 'DELEGATING' :
-    input.finalStatus === 'WAITING' ? 'WAITING' : 'FAILED';
+      input.finalStatus === 'DELEGATING' ? 'DELEGATING' :
+        input.finalStatus === 'WAITING' ? 'WAITING' : 'FAILED';
 
   const finalOutputSummary = typeof input.output === 'string' ? input.output : JSON.stringify(input.output);
 
@@ -530,14 +526,12 @@ export async function encodeSituation(input: SituationEncoderInput): Promise<Sit
     parentRequestId,
     parent: parentRequestId
       ? {
-          requestId: parentRequestId,
-          jobDefinitionId: parentJobDefinitionId,
-        }
+        requestId: parentRequestId,
+        jobDefinitionId: parentJobDefinitionId,
+      }
       : undefined,
     childRequestIds,
-    children: childRequestIds,
     siblingRequestIds,
-    siblings: siblingRequestIds,
   };
 
   let jobBlueprint: string | undefined;

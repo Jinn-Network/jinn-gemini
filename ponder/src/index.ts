@@ -3,7 +3,7 @@ import fetch from "cross-fetch";
 import axios from "axios";
 import { logger, serializeError } from "../../logging/index.js";
 import { Pool } from "pg";
-import { jobDefinition, request, delivery, artifact, message, workstream } from "ponder:schema";
+import { jobDefinition, request, delivery, artifact, message, workstream, jobTemplate } from "ponder:schema";
 
 // Minimal local types to avoid implicit any in handler params and align with Ponder 0.7+ DB API
 type Repository = {
@@ -197,6 +197,203 @@ async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promi
 }
 
 /**
+ * Compute a hash of the blueprint for template deduplication.
+ * Normalizes the blueprint by removing variable parts (timestamps, UUIDs, etc.)
+ * and hashing the structural content.
+ */
+function computeBlueprintHash(blueprint: string | undefined): string | null {
+  if (!blueprint) return null;
+  
+  try {
+    // Parse blueprint if it's JSON
+    let parsed: any;
+    try {
+      parsed = JSON.parse(blueprint);
+    } catch {
+      // If not valid JSON, hash the raw string
+      return simpleHash(blueprint);
+    }
+    
+    // Extract structural elements for hashing:
+    // - assertion IDs and text (not examples which may vary)
+    // - tool names
+    // Ignore: timestamps, UUIDs, context strings, specific values
+    const structural: any = {
+      assertions: [],
+      tools: [],
+    };
+    
+    if (parsed.assertions && Array.isArray(parsed.assertions)) {
+      structural.assertions = parsed.assertions.map((a: any) => ({
+        id: a.id,
+        assertion: typeof a.assertion === 'string' ? a.assertion.substring(0, 200) : '',
+      }));
+    }
+    
+    // Also consider enabled tools as part of template identity
+    if (parsed.enabledTools && Array.isArray(parsed.enabledTools)) {
+      structural.tools = parsed.enabledTools.sort();
+    }
+    
+    return simpleHash(JSON.stringify(structural));
+  } catch {
+    return simpleHash(blueprint);
+  }
+}
+
+/**
+ * Simple hash function for strings (non-cryptographic, for deduplication only)
+ */
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  // Convert to hex string with prefix
+  return 'bph_' + Math.abs(hash).toString(16).padStart(8, '0');
+}
+
+/**
+ * Extract a template name from a job name by removing variable suffixes.
+ * E.g., "Ethereum Daily Research - 2025-12-15 - abc" -> "Ethereum Daily Research"
+ */
+function extractTemplateName(jobName: string | undefined): string {
+  if (!jobName) return 'Unnamed Template';
+  
+  // Remove common variable suffixes:
+  // - Dates: "- 2025-12-15", "– Dec 15", etc.
+  // - Random suffixes: "- abc", "- xyz123"
+  // - UUIDs: "- 550e8400-e29b-..."
+  let name = jobName
+    .replace(/\s*[-–]\s*\d{4}-\d{2}-\d{2}.*$/i, '') // ISO dates
+    .replace(/\s*[-–]\s*[A-Z][a-z]{2}\s+\d{1,2}.*$/i, '') // "Dec 15" style
+    .replace(/\s*[-–]\s*[a-z]{3,8}$/i, '') // Short random suffixes
+    .replace(/\s*[-–]\s*[0-9a-f]{8}-[0-9a-f]{4}-.*$/i, '') // UUIDs
+    .replace(/\s*\(via x402\)$/i, '') // x402 suffix
+    .trim();
+  
+  return name || 'Unnamed Template';
+}
+
+/**
+ * Extract tags from job name and blueprint content.
+ */
+function extractTags(jobName: string | undefined, blueprint: string | undefined): string[] {
+  const tags = new Set<string>();
+  
+  // Common keywords to extract as tags
+  const keywords = [
+    'ethereum', 'research', 'analysis', 'trading', 'defi', 'daily',
+    'prediction', 'market', 'x402', 'ecosystem', 'agents', 'protocol',
+    'audit', 'security', 'optimization', 'scaffold', 'documentation'
+  ];
+  
+  const searchText = `${jobName || ''} ${blueprint || ''}`.toLowerCase();
+  
+  for (const keyword of keywords) {
+    if (searchText.includes(keyword)) {
+      tags.add(keyword);
+    }
+  }
+  
+  return Array.from(tags).slice(0, 10); // Limit to 10 tags
+}
+
+/**
+ * Generate a template ID from the name (slug format).
+ */
+function generateTemplateId(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 50) || 'unnamed-template';
+}
+
+/**
+ * Derive or update a job template from a job definition.
+ * Called when a new job definition is indexed.
+ */
+async function deriveJobTemplate(
+  db: NonNullable<PonderContextShape["db"]>,
+  jobDef: {
+    id: string;
+    name?: string;
+    blueprint?: string;
+    enabledTools?: string[];
+    blockTimestamp: bigint;
+    outputSpec?: Record<string, any>;
+    priceWei?: bigint;
+    priceUsd?: string;
+    inputSchema?: Record<string, any>;
+  }
+): Promise<void> {
+  const templateRepo = createRepository(db, jobTemplate, "jobTemplate");
+  
+  // Compute blueprint hash for deduplication
+  const blueprintHash = computeBlueprintHash(jobDef.blueprint);
+  if (!blueprintHash) {
+    logger.debug({ jobDefinitionId: jobDef.id }, "Skipping template derivation - no blueprint");
+    return;
+  }
+  
+  // Check if a template with this blueprint hash already exists
+  // We use the hash as part of the ID for direct lookup
+  const templateName = extractTemplateName(jobDef.name);
+  const baseTemplateId = generateTemplateId(templateName);
+  
+  // Try to find existing template by blueprint hash
+  // Since we can't query by non-PK fields easily, we'll use a hash-based ID
+  const templateId = `${baseTemplateId}-${blueprintHash.substring(4, 12)}`;
+  
+  const existing = await templateRepo.findUnique({ id: templateId });
+  
+  if (existing) {
+    // Update existing template metrics
+    const newRunCount = (existing.runCount || 0) + 1;
+    await templateRepo.upsert({
+      id: templateId,
+      update: {
+        runCount: newRunCount,
+        lastUsedAt: jobDef.blockTimestamp,
+      },
+    });
+    logger.debug({ templateId, runCount: newRunCount }, "Updated existing job template metrics");
+  } else {
+    // Create new template
+    const tags = extractTags(jobDef.name, jobDef.blueprint);
+    
+    await templateRepo.upsert({
+      id: templateId,
+      create: {
+        id: templateId,
+        name: templateName,
+        description: `Auto-derived from job: ${jobDef.name || 'Unnamed'}`,
+        tags,
+        enabledTools: jobDef.enabledTools || [],
+        blueprintHash,
+        blueprint: jobDef.blueprint,
+        inputSchema: jobDef.inputSchema || null,
+        outputSpec: jobDef.outputSpec || null,
+        priceWei: jobDef.priceWei ?? 0n,
+        priceUsd: jobDef.priceUsd || null,
+        canonicalJobDefinitionId: jobDef.id,
+        runCount: 1,
+        successCount: 0,
+        avgDurationSeconds: null,
+        avgCostWei: null,
+        createdAt: jobDef.blockTimestamp,
+        lastUsedAt: jobDef.blockTimestamp,
+        status: 'visible',
+      },
+    });
+    logger.info({ templateId, templateName, blueprintHash }, "Created new job template from job definition");
+  }
+}
+
+/**
  * Traverses up the request chain to find the ultimate root request ID (workstream root).
  * @param startRequestId The ID of the request to start traversal from (the immediate parent).
  * @param requestRepo The Ponder repository for requests.
@@ -361,6 +558,20 @@ ponder.on(
                 codeMetadata = content.codeMetadata;
         }
       }
+      // Extract template metadata for x402 templates
+      const templateOutputSpec = content.outputSpec && typeof content.outputSpec === 'object' 
+        ? content.outputSpec 
+        : undefined;
+      const templatePriceWei = typeof content.priceWei === 'string' || typeof content.priceWei === 'number'
+        ? BigInt(content.priceWei)
+        : undefined;
+      const templatePriceUsd = typeof content.priceUsd === 'string'
+        ? content.priceUsd
+        : undefined;
+      const templateInputSchema = content.inputSchema && typeof content.inputSchema === 'object'
+        ? content.inputSchema
+        : undefined;
+      
       // Extract dependencies array from content
       dependencies = Array.isArray(content.dependencies)
         ? content.dependencies.map((dep: any) => String(dep))
@@ -399,6 +610,25 @@ ponder.on(
             // Do NOT update dependencies - immutable per job definition
           },
         });
+        
+        // Derive job template from this job definition
+        // This creates or updates a template based on blueprint similarity
+        try {
+          await deriveJobTemplate(db, {
+            id: jobDefinitionId,
+            name: jobName,
+            blueprint,
+            enabledTools,
+            blockTimestamp,
+            outputSpec: templateOutputSpec,
+            priceWei: templatePriceWei,
+            priceUsd: templatePriceUsd,
+            inputSchema: templateInputSchema,
+          });
+        } catch (templateError: any) {
+          // Don't fail the main indexing if template derivation fails
+          logger.warn({ jobDefinitionId, error: serializeError(templateError) }, "Template derivation failed (non-fatal)");
+        }
       }
 
       // jobDefinitionId = target job being dispatched (what this request is FOR)

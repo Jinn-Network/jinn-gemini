@@ -1,9 +1,24 @@
 {
-    "mcpServers": {
-      "metacog": {
-        "command": "tsx",
-        "args": ["../gemini-agent/mcp/server.ts"],
-        "trust": true
-      }
+  "previewFeatures": true,
+  "mcpServers": {
+    "metacog": {
+      "command": "tsx",
+      "args": [
+        "../gemini-agent/mcp/server.ts"
+      ],
+      "trust": true
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--headless=true",
+        "--chromeArg=--no-sandbox",
+        "--isolated=true"
+      ],
+      "trust": true,
+      "includeTools": []
     }
   }
+}

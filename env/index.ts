@@ -37,6 +37,13 @@ if (process.env.__ENV_LOADED !== '1') {
         });
     }
 
+    // Always preserve CODE_METADATA_REPO_ROOT - this enables parallel workstreams
+    // with isolated repository clones (set via launch-local-arcade.ts --repo flag)
+    if (process.env.CODE_METADATA_REPO_ROOT) {
+      preservedKeys.add('CODE_METADATA_REPO_ROOT');
+      preservedValues['CODE_METADATA_REPO_ROOT'] = process.env.CODE_METADATA_REPO_ROOT;
+    }
+
     // Load base .env first
     const rootEnvPath = path.join(repoRoot, '.env');
     let parsed: Record<string, string> = {};
@@ -115,7 +122,7 @@ if (process.env.__ENV_LOADED !== '1') {
         // The existing value in process.env is kept unchanged
       }
     }
-    
+
     // RPC Consolidation: Map all RPC variables to use the single RPC_URL
     if (parsed.RPC_URL) {
       // Set fallback RPC variables to use the main RPC_URL if they're not explicitly set
@@ -164,4 +171,4 @@ if (process.env.__ENV_LOADED !== '1') {
   }
 }
 
-export {};
+export { };

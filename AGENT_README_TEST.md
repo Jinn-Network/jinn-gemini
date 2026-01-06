@@ -196,25 +196,28 @@ yarn launch:workstream x402-data-service --model gemini-2.5-pro --context "Initi
 **Structure:**
 ```json
 {
-  "assertions": [
+  "invariants": [
     {
-      "id": "REQ-001",
-      "assertion": "Declarative statement of WHAT must be satisfied",
+      "id": "GOAL-001",
+      "form": "constraint",
+      "description": "Declarative statement of WHAT must be satisfied",
       "examples": {
-        "do": ["Positive example 1", "Positive example 2"],
-        "dont": ["Negative example 1", "Negative example 2"]
+        "do": ["One specific, actionable positive example"],
+        "dont": ["One specific negative example"]
       },
-      "commentary": "WHY this assertion exists (rationale, not implementation)"
+      "commentary": "WHY this invariant exists (rationale, not implementation)"
     }
   ]
 }
 ```
 
+**Invariant Forms:** `boolean`, `threshold`, `range`, `directive`, `sequence`, `constraint`
+
 **Key Requirements:**
 - **Quantify Everything**: "minimum 3 distinct sources with URLs" not "multiple sources"
 - **Inline Attribution**: "Volume $378M (defillama.com)" not generic footer
-- **Statistical Context**: All metrics need 7-day average comparison
-- **Verification Assertion**: Add VERIFICATION-001 for blueprints with 3+ assertions
+- **Consolidated Examples**: 1-2 high-quality do/dont examples per invariant
+- **Specific & Actionable**: Examples should be scenario-based, not generic
 
 ❌ **Wrong**: "If initial web searches return aggregate data, delegate to child jobs"  
 ✅ **Correct**: "Analysis must include protocol-specific breakdowns with 7-day historical comparisons"
@@ -733,7 +736,7 @@ Both wait forever
 
 **Solution:**
 1. Added validation in `dispatch_new_job.ts` to reject dependencies that include `context.jobDefinitionId` (the parent)
-2. Updated `SYS-DEPS-001` in `system-blueprint.json` to explicitly state dependencies are sibling-to-sibling only
+2. Updated `SYS-DEPS-001` in `system-blueprint.json` to emphasize that dependencies are for true input/output ordering, with a coding-default pattern: scaffold → implement → integrate
 3. Added clear error message: "Child job cannot depend on its parent job... Dependencies should only be between sibling jobs"
 
 **Files Changed:**
@@ -745,40 +748,32 @@ Both wait forever
 - Dependencies exist solely to order sibling execution (child A before child B)
 - Tool now rejects any attempt to set parent as dependency with clear error message
 
-### 24. Infinite Verification Loop (2025-12-09) [FIXED]
+### 24. Verification Run Incorrectly Blocked Parent Dispatch (2025-12-09, REFIXED 2025-12-11)
 **Issue:** Jobs with children enter an infinite loop: parent run → verification run → parent run → verification run → ...
-**Root Cause:** After a verification run completes, `dispatchParentIfNeeded()` still triggered parent dispatch because:
-1. Verification run completes with COMPLETED status
-2. `maybeDispatchParent()` is called after delivery
-3. `shouldDispatchParent()` sees "all children complete" and returns `shouldDispatch: true`
-4. Parent job is dispatched again (NOT a verification run)
-5. New parent run queries `jobHadChildren()` → TRUE (children still exist in Ponder)
-6. `shouldRequireVerification()` returns `requiresVerification: true`
-7. Another verification run dispatched → loop repeats
+**Original Root Cause:** After a verification run completes, `dispatchParentIfNeeded()` triggered re-dispatch of the same job because `shouldRequireVerification()` saw children and requested another verification.
 
-**The Loop:**
-```
-Parent Run (not verification) → COMPLETED → has children? YES → dispatch verification
-Verification Run → COMPLETED → deliver → maybeDispatchParent → all children complete → dispatch parent
-Parent Run (not verification) → COMPLETED → has children? YES → dispatch verification
-... repeat forever
-```
+**First Fix (2025-12-09, INCORRECT):** Added early return when `isVerificationRun: true` to block parent dispatch entirely. This broke the case where a child job's verification run should notify its parent.
 
-**Solution:** Added early return in `dispatchParentIfNeeded()` when `isVerificationRun: true`:
-```typescript
-if (verificationDecision.isVerificationRun) {
-  workerLogger.info({ ... }, 'Verification run completed - job definition done, NOT dispatching parent');
-  return;
-}
+**Second Fix (2025-12-11):** Removed the early return. The `shouldRequireVerification()` function already returns `requiresVerification: false` for verification runs (line 264-271), which prevents infinite self-dispatch. The early return was blocking legitimate parent dispatches.
+
+**Correct Flow:**
+```
+Parent Job dispatches Child Job → Child dispatches its grandchildren →
+   Grandchildren complete → Child re-runs (review phase) →
+   Child completes → dispatches Child for verification →
+   Child verification run completes (no more delegation) →
+   `shouldRequireVerification()` returns requiresVerification: false →
+   `shouldDispatchParent()` → Parent is dispatched ✓
 ```
 
 **Files Changed:**
-- `worker/status/parentDispatch.ts`: Added guard to skip parent dispatch after verification runs complete
+- `worker/status/parentDispatch.ts`: Removed incorrect early return, verification runs now proceed to parent dispatch check
 
 **Prevention:**
-- Verification runs are the FINAL step for a job that delegated to children
-- After verification completes, the job definition is done - no further dispatches needed
-- Parent dispatch should only occur when actual child jobs complete, not verification runs
+- Verification run is a GATE before parent dispatch, not a blocker
+- The `requiresVerification` check handles re-dispatching for more verification if needed
+- After successful verification (no more delegation), parent should be dispatched
+
 
 ### 25. Conflicting Operate Service Configs (2025-12-09)
 **Issue:** `dispatch_new_job` fails with "Service target mech address not configured. Check .operate service config (MECH_TO_CONFIG)."  
@@ -794,15 +789,23 @@ if (verificationDecision.isVerificationRun) {
 **Issue:** Documentation request `0x233f1768...978f` with three dependencies did not merge dependency branches into the docs branch before running. Explorer also shows no dependency metadata or merge attempt outcomes (success/conflict/blocked), leaving dependency management opaque.  
 **Prevention:** Ensure worker merges dependency branches (or surfaces conflicts as failures) before execution; add frontend visibility for dependency lists and merge attempt results to aid debugging.
 
-### 28. Initial Situation Duplication of Children (2025-12-10)
-**Issue:** Initial situation doc for request `0x5e8f2bd3...858c7` includes both `context.childRequestIds` and `context.children` with identical values, creating redundant child lists that could diverge.  
 **Prevention:** Emit a single authoritative child list field; keep other context fields for non-child metadata to avoid ambiguity in agents/telemetry.
 
-### 29. Parent Only Merged Documentation Branch (2025-12-10)
+### 29. Ponder Artifact Content Missing (2025-12-11)
+**Issue:** `getDependencyBranchInfo` failed with "Cannot query field 'content'" because Ponder intentionally excludes full artifact content.
+**Root Cause:** Ponder indexer only stores metadata (`cid`, `contentPreview`, `topic`) to prevent DB bloat. Full JSON content lives only on IPFS.
+**Solution applied:** Reverted to "Fast Path" parsing (regex on `contentPreview`) instead of trying to query non-existent `content` field.
+**Trade-off:**
+- **Fast Path (Current):** Regex parse `contentPreview`. Fast, 0 network, but fragile if string format changes.
+- **Robust Path (Ideal):** Fetch full JSON from IPFS using `cid`. Robust but slower (async fetch).
+**Fix:** Removed invalid `content` field from GraphQL query in `mech_worker.ts`.
+
+
+### 30. Parent Only Merged Documentation Branch (2025-12-10)
 **Issue:** Parent request `0x5e8f2bd3...858c7` had multiple completed child branches (2048-game, arcade-infra-ui, minesweeper-game, snake-game, documentation) and prompt assertions CTX-BRANCH-REVIEW-PRIORITY / CTX-CHILD-001..006, but only the documentation branch (`job/814554d8-...-documentation`) was populated/reviewed/merged. Other child branches were ignored.  
 **Prevention:** Ensure parent reviews and processes all child branches listed in context, not just the prioritized one; primary-task assertion should not suppress integration of additional completed children.
 
-### 30. Gemini CLI Token Overflow from node_modules Scanning (2025-12-11)
+### 31. Gemini CLI Token Overflow from node_modules Scanning (2025-12-11)
 **Issue:** Job `service-scaffolding` (workstream `0x9045ca50...`) failed with "The input token count exceeds the maximum number of tokens" despite a 26KB prompt. Gemini CLI returned 400 error then 429 (rate limit from retry).
 **Root Cause:** Scaffolding job ran `npm install` creating 652MB of `node_modules/` but no `.gitignore` was created. Gemini CLI scans the workspace directory and tried to include all files in context, causing token overflow.
 **Evidence:**
@@ -818,7 +821,7 @@ if (verificationDecision.isVerificationRun) {
 - Consider adding automatic `.gitignore` generation in workstream launcher
 - The `.gitignore` should exclude: `node_modules/`, `dist/`, `.env`, `*.log`, `.DS_Store`
 
-### 31. Infinite Re-Execution Loop on Delivery Nonce Failure (2025-12-11)
+### 32. Infinite Re-Execution Loop on Delivery Nonce Failure (2025-12-11)
 **Issue:** Job `service-scaffolding` completed execution but delivery failed with "nonce too low: next nonce 1167, tx nonce 1161". Worker then re-claimed and re-executed the same job in an infinite loop.
 **Root Cause:** 
 1. Mech-client caches the agent wallet's nonce
@@ -837,6 +840,96 @@ if (verificationDecision.isVerificationRun) {
 - The mech-client should refresh nonce before each delivery attempt
 - Control API should track execution completion separately from delivery status
 - Workers should maintain session-local execution history to prevent re-execution
+
+### 33. Re-Dispatched Jobs Missing codeMetadata.repo.remoteUrl (2025-12-11) [FIXED]
+**Issue:** Verification/parent jobs looked for files in wrong directory (`gemini-agent/` instead of workspace). Jobs failed with "file not found" errors despite code existing in the correct repo.
+**Root Cause:** `dispatchExistingJob` re-collected git metadata via `collectLocalCodeMetadata()` instead of reusing the job definition's stored `codeMetadata`. If `git remote get-url` failed (branch without upstream tracking), `repo.remoteUrl` was undefined. The IPFS payload had `codeMetadata` (object exists) but no valid `remoteUrl`. Worker then skipped repo setup and agent fell back to `agentRoot`.
+**Evidence:**
+- Workstream `0x7edd4dd122c8ad35cab2572cfd1763875a3d79dc6a9b6073ae6de6844a877b25` (X402 Service Optimizer)
+- Verification job looked in `/Users/.../jinn-cli-agents/gemini-agent/services/x402-optimizer/`
+- Correct path: `~/.jinn/workstreams/x402-service-optimizer-gsn/services/x402-optimizer/`
+**Solution:**
+1. Modified `dispatchExistingJob` to query `codeMetadata` from the job definition via GraphQL
+2. If job definition has valid `codeMetadata.repo.remoteUrl`, reuse it instead of re-collecting
+3. Only fall back to `collectLocalCodeMetadata` for original dispatches or artifact-only jobs
+**Files Changed:**
+- `gemini-agent/mcp/tools/dispatch_existing_job.ts`: Added `codeMetadata` to GraphQL query, prioritize existing data over re-collection
+**Prevention:**
+- Re-dispatches should reuse stored metadata, not re-compute it
+- Git state can change between dispatches; original dispatch captures the correct data
+- Avoid fragile git operations during critical dispatch paths
+
+### 34. x402-Builder Dispatched Without codeMetadata (2025-12-12) [FIXED]
+**Issue:** x402-service-optimizer workstream had all jobs fail with "process_branch tool not found" despite being a coding workstream with an associated GitHub repository.
+**Root Cause:** The x402-builder service (`services/x402-builder/index.tsx`) created a GitHub repo but did NOT include `codeMetadata` in the IPFS payload when dispatching the job:
+```typescript
+// BEFORE (broken):
+ipfsJsonContents: [{
+  blueprint, jobName, model, jobDefinitionId, nonce
+  // NO codeMetadata!
+}]
+```
+Without `codeMetadata`, the worker treats the job as artifact-only (`isCodingJob = false`), and `toolPolicy.ts` excludes coding tools (`process_branch`, `write_file`, `replace`, `run_shell_command`).
+**Evidence:**
+- Workstream `0x1479a1eb90f4997dd8ba327af56505adb926119321a517235f6386e82d71c323`
+- Log: `No code metadata - artifact-only job`
+- Multiple "Process Branch Tool Not Found" bug report artifacts
+- Children created bug reports instead of code
+**Solution:**
+1. Fixed `x402-builder/index.tsx` to include `codeMetadata` and `branchName` in IPFS payload
+2. Added validation in `worker/orchestration/jobRunner.ts` to warn when coding tools are enabled but no codeMetadata
+**Files Changed:**
+- `services/x402-builder/index.tsx`: Added `codeMetadata`, `branchName`, `baseBranch` to `ipfsJsonContents`
+- `worker/orchestration/jobRunner.ts`: Added MISCONFIGURATION warning for coding tools without codeMetadata
+**Prevention:**
+- Any service that creates a repo MUST include `codeMetadata` in the dispatch payload
+- Worker now logs `MISCONFIGURATION: Coding tools enabled without codeMetadata` to catch this early
+- The codeMetadata must include at minimum: `repo.remoteUrl`, `baseBranch`, `branch.name`
+
+### 35. Hackathon Direction: Job Templates as x402 Services (2025-12-15)
+**Decision:** Productize reusable workflows as **x402-paid callable templates** distributed via the Coinbase x402 bazaar, with Explorer surfacing a catalog.
+**Key Points (Daily 2025-12-15):**
+- **Distribution**: x402 bazaar is a permissionless discovery channel; ship a single (or few) x402 endpoint(s) that list templates + execute by template ID.
+- **Scope realism**: Full “data services” (DBs, migrations, server ops) are not the near-term goal; **workflows/templates are already a product**.
+- **Output determinism**: Templates need an **OutputSpec** (schema + mapping) to extract deterministic response fields from the delivery payload.
+- **Pricing/budgeting**: Derive price from **historical run cost**; support **budget caps** for callers; longer-term tokenomics possible.
+- **Security**: Public templates with web/shell/git expand attack surface; do not run public execution on local machines; enforce tool restrictions.
+- **Terminology**: Prefer “job template” (document/policies) vs “job instance” (stateful execution). Current `jobDefinition` behaves like an instance container.
+
+### 36. get_details and search_jobs Fail with promptContent Schema Mismatch (2025-12-16) [FIXED]
+**Issue:** Agents calling `get_details` or `search_jobs` for job definitions received errors like "Cannot query field 'promptContent' on type 'jobDefinition'".
+**Root Cause:** The GraphQL queries in both tools used the field name `promptContent` which was an old field name. Ponder schema was updated to use `blueprint` instead, but the tool queries were never updated.
+**Evidence:**
+- Telemetry: `"errors": ["jobDefinition:79ce4091-...: Cannot query field \"promptContent\" on type \"jobDefinition\"."]`
+- Agent response: "I can't retrieve job definitions due to a `get_details` tool bug"
+**Solution:**
+1. Changed `get-details.ts` line 259: `promptContent` → `blueprint`
+2. Changed `search-jobs.ts` lines 56, 61, 64: `promptContent` → `blueprint`, `promptContent_contains` → `blueprint_contains`
+**Files Changed:**
+- `gemini-agent/mcp/tools/get-details.ts`: Updated GraphQL query
+- `gemini-agent/mcp/tools/search-jobs.ts`: Updated GraphQL query and comment
+**Prevention:**
+- When renaming Ponder schema fields, grep entire codebase for old field names
+- Add integration tests that exercise real GraphQL queries against Ponder schema
+
+### 37. Agent Ignores STRAT-DELEGATE and Executes Directly (2025-12-18) [FIXED]
+**Issue:** Agent received `STRAT-DELEGATE` invariant saying "DELEGATION REQUIRED: You have 9 goal invariants" but executed 13 web searches directly instead of calling `dispatch_new_job`.
+**Root Cause:** `STRAT-DELEGATE` was a "directive" (advisory) not a "constraint" (mandatory). Agent treated it as a suggestion and chose to execute work directly.
+**Evidence:**
+- Telemetry: 13 `google_web_search` calls, 0 `dispatch_new_job` calls
+- Agent researched pain points itself instead of delegating to children
+**Solution:**
+1. Changed `form: 'directive'` → `form: 'constraint'` in `StrategyInvariantProvider.ts`
+2. Added blocking language: "You MUST NOT execute GOAL-* invariants directly"
+3. Added `measurement` field: "Verify dispatch_new_job was called at least once"
+4. Added explicit dont examples: "Call google_web_search before dispatching children"
+5. Changed commentary: "you are an ORCHESTRATOR not an EXECUTOR"
+**Files Changed:**
+- `worker/prompt/providers/invariants/StrategyInvariantProvider.ts`: Strengthened STRAT-DELEGATE constraint
+**Prevention:**
+- Strategy invariants that require delegation must be `form: 'constraint'` not `form: 'directive'`
+- Include measurement fields that can detect violation (e.g., "dispatch_new_job must be called")
+- Add explicit negative examples showing what NOT to do first
 
 ---
 
@@ -890,6 +983,7 @@ if (verificationDecision.isVerificationRun) {
 - `docs/documentation/WORKER_INTERNALS.md` – Telemetry, context management, Control API
 - `docs/documentation/MEMORY_ARCHITECTURE.md` – Semantic search, SITUATION artifacts, recognition/reflection
 - `docs/documentation/OLAS_ARCHITECTURE_GUIDE.md` – Wallet/Safe setup, staking, mech deployment (1700+ lines)
+- `docs/documentation/JOB_TERMINOLOGY.md` – Job template vs instance terminology, API naming guidelines
 
 **Specs & Guides:**
 - `docs/spec/blueprint/style-guide.md` – Blueprint writing guide

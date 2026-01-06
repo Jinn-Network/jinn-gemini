@@ -7,6 +7,7 @@ import { execSync } from 'node:child_process';
 import { workerLogger } from '../../../logging/index.js';
 import { serializeError } from '../../logging/errors.js';
 import { getCurrentJobContext } from '../../../gemini-agent/mcp/tools/shared/context.js';
+import { composeSinglePageResponse, decodeCursor, type ComposeSinglePageResult } from '../../../gemini-agent/mcp/tools/shared/context-management.js';
 
 interface ProcessBranchArgs {
     branch_name: string;
@@ -80,6 +81,7 @@ export const process_branch_params = z.object({
     branch_name: z.string().min(1).describe('The full name of the child branch to process (e.g., \'job/abc-123-feature-name\')'),
     action: z.enum(['merge', 'reject', 'checkout', 'compare']).describe('The action to take: merge (integrate), reject (delete), checkout (switch to branch for edits), or compare (view diff without changing state)'),
     rationale: z.string().min(1).describe('A brief explanation of why you are taking this action (required for audit trail)'),
+    cursor: z.string().optional().describe('Pagination cursor for compare action. If the diff is large, use the next_cursor from the response to fetch more.'),
 });
 
 /**
@@ -139,9 +141,11 @@ export async function process_branch(args: unknown) {
             case 'checkout':
                 result = await handleCheckout(branch_name, repoPath);
                 break;
-            case 'compare':
-                result = await handleCompare(branch_name, repoPath, baseBr);
+            case 'compare': {
+                const cursor = (parseResult.data as any).cursor;
+                result = await handleCompare(branch_name, repoPath, baseBr, cursor);
                 break;
+            }
             default:
                 result = JSON.stringify({
                     success: false,
@@ -186,17 +190,49 @@ async function handleMerge(
 ): Promise<string> {
     const currentBranch = getCurrentBranch(repoPath);
 
-    // Check for uncommitted changes
+    // Check for uncommitted changes - auto-commit beads files if they're the only changes
     if (hasUncommittedChanges(repoPath)) {
-        return JSON.stringify({
-            success: false,
-            action: 'merge',
-            error: 'Uncommitted changes detected',
-            message: 'You have uncommitted changes in your working tree. Please commit or stash them before merging.',
-            details: {
-                current_branch: currentBranch,
-            },
+        const statusOutput = execSync('git status --porcelain', {
+            cwd: repoPath,
+            encoding: 'utf-8',
         });
+        const changedFiles = statusOutput.trim().split('\n').filter(line => line.trim());
+        const onlyBeadsChanges = changedFiles.every(line => {
+            // Status format: "XY path" - extract the path part
+            const filePath = line.slice(3).trim();
+            return filePath.startsWith('.beads/') || filePath.startsWith('.beads\\');
+        });
+
+        if (onlyBeadsChanges && changedFiles.length > 0) {
+            // Auto-commit beads runtime files to unblock the merge
+            try {
+                execSync('git add .beads/', {
+                    cwd: repoPath,
+                    stdio: 'ignore',
+                });
+                execSync('git commit -m "chore: sync beads state before merge"', {
+                    cwd: repoPath,
+                    stdio: 'ignore',
+                });
+                workerLogger.info({ repoPath, filesCommitted: changedFiles.length }, 'Auto-committed beads files before merge');
+            } catch (commitError) {
+                // If commit fails, continue with the original error
+                workerLogger.warn({ repoPath, error: serializeError(commitError) }, 'Failed to auto-commit beads files');
+            }
+        }
+
+        // Re-check after potential auto-commit
+        if (hasUncommittedChanges(repoPath)) {
+            return JSON.stringify({
+                success: false,
+                action: 'merge',
+                error: 'Uncommitted changes detected',
+                message: 'You have uncommitted changes in your working tree. Please commit or stash them before merging.',
+                details: {
+                    current_branch: currentBranch,
+                },
+            });
+        }
     }
 
     // Fetch latest state
@@ -273,10 +309,11 @@ async function handleMerge(
             return JSON.stringify({
                 success: false,
                 action: 'merge',
-                error: 'Merge conflict detected',
-                message: `Cannot auto-merge '${branchName}' into '${baseBranch}'. Conflicts must be resolved manually.`,
+                error: 'Merge conflict detected - resolution required',
+                message: `MERGE CONFLICT: Cannot auto-merge '${branchName}' into '${baseBranch}'. This is normal when multiple jobs modify the same files. Resolve the conflicts to preserve valuable work (only reject if the work is no longer relevant).`,
                 conflicting_files: conflictingFiles,
-                next_steps: `Use process_branch({ branch_name: '${branchName}', action: 'checkout' }) to switch to the branch, resolve conflicts, commit, then retry merge.`,
+                next_steps: `RESOLUTION WORKFLOW:\n1. Call process_branch({ branch_name: '${branchName}', action: 'checkout', rationale: 'Resolving merge conflicts' })\n2. Run: git merge origin/${baseBranch}\n3. Open each conflicting file and resolve the <<<<<<< / ======= / >>>>>>> markers\n4. Stage and commit: git add . && git commit -m "Resolve merge conflicts with ${baseBranch}"\n5. Return to base and merge: process_branch({ branch_name: '${branchName}', action: 'merge', rationale: 'Conflicts resolved' })`,
+                important: 'Conflicts indicate overlapping work, not bad work. Resolve them to preserve valuable changes from both branches.',
             });
         }
 
@@ -404,17 +441,45 @@ async function handleCheckout(
 ): Promise<string> {
     const originalBranch = getCurrentBranch(repoPath);
 
-    // Check for uncommitted changes
+    // Check for uncommitted changes - auto-commit beads files if they're the only changes
     if (hasUncommittedChanges(repoPath)) {
-        return JSON.stringify({
-            success: false,
-            action: 'checkout',
-            error: 'Uncommitted changes detected',
-            message: 'You have uncommitted changes in your working tree. Please commit them before switching branches.',
-            details: {
-                current_branch: originalBranch,
-            },
+        const statusOutput = execSync('git status --porcelain', {
+            cwd: repoPath,
+            encoding: 'utf-8',
         });
+        const changedFiles = statusOutput.trim().split('\n').filter(line => line.trim());
+        const onlyBeadsChanges = changedFiles.every(line => {
+            const filePath = line.slice(3).trim();
+            return filePath.startsWith('.beads/') || filePath.startsWith('.beads\\');
+        });
+
+        if (onlyBeadsChanges && changedFiles.length > 0) {
+            try {
+                execSync('git add .beads/', {
+                    cwd: repoPath,
+                    stdio: 'ignore',
+                });
+                execSync('git commit -m "chore: sync beads state before checkout"', {
+                    cwd: repoPath,
+                    stdio: 'ignore',
+                });
+                workerLogger.info({ repoPath, filesCommitted: changedFiles.length }, 'Auto-committed beads files before checkout');
+            } catch (commitError) {
+                workerLogger.warn({ repoPath, error: serializeError(commitError) }, 'Failed to auto-commit beads files');
+            }
+        }
+
+        if (hasUncommittedChanges(repoPath)) {
+            return JSON.stringify({
+                success: false,
+                action: 'checkout',
+                error: 'Uncommitted changes detected',
+                message: 'You have uncommitted changes in your working tree. Please commit them before switching branches.',
+                details: {
+                    current_branch: originalBranch,
+                },
+            });
+        }
     }
 
     // Fetch the branch
@@ -471,12 +536,18 @@ async function handleCheckout(
 
 /**
  * Handle the 'compare' action - compare branch against base without modifying state
+ * Supports pagination for large diffs via cursor parameter
  */
 async function handleCompare(
     branchName: string,
     repoPath: string,
-    baseBranch: string
+    baseBranch: string,
+    cursor?: string
 ): Promise<string> {
+    // Decode cursor to get offset
+    const cursorData = decodeCursor<{ offset: number }>(cursor);
+    const startOffset = cursorData?.offset ?? 0;
+
     // Fetch latest state of both branches
     try {
         execSync(`git fetch origin ${branchName}`, {
@@ -518,7 +589,7 @@ async function handleCompare(
         }
     }
 
-    // Generate full diff (no truncation)
+    // Generate full diff
     let diffSummary = '';
     try {
         diffSummary = execSync(
@@ -581,7 +652,26 @@ async function handleCompare(
         );
     }
 
-    const result: ProcessBranchResult = {
+    // Split diff into lines for pagination
+    const diffLines = diffSummary.split('\n');
+    const totalDiffLines = diffLines.length;
+    const totalDiffBytes = diffSummary.length;
+
+    // Use pagination for the diff lines
+    // Each "item" is a line - we'll rejoin them after pagination
+    const paginationResult = composeSinglePageResponse(diffLines, {
+        startOffset,
+        pageTokenBudget: 12_000,  // ~48KB of diff per page
+        truncateChars: -1,        // Don't truncate individual lines
+        perFieldMaxChars: 500,    // But cap very long lines
+        enforceHardPageBudget: true,
+    });
+
+    const paginatedDiffLines = paginationResult.data as string[];
+    const paginatedDiff = paginatedDiffLines.join('\n');
+
+    // Build result with pagination info
+    const result = {
         success: true,
         action: 'compare',
         message: `Compared '${branchName}' against '${baseBranch}'.`,
@@ -592,13 +682,25 @@ async function handleCompare(
             commit_count: commitCount,
             file_stats: fileStats,
             head_sha: headSha ? headSha.slice(0, 8) : '',
-            diff_summary: diffSummary,
+            diff_summary: paginatedDiff,
         },
-        next_steps: mergeStatus === 'mergeable'
-            ? `Branch is mergeable. Use process_branch({ branch_name: '${branchName}', action: 'merge', rationale: '...' }) to integrate, or action: 'reject' to discard.`
-            : mergeStatus === 'conflict'
-            ? `Branch has merge conflicts. Use process_branch({ branch_name: '${branchName}', action: 'checkout', rationale: '...' }) to resolve conflicts before merging.`
-            : `Merge status unknown. Review the diff and decide whether to merge, reject, or checkout for manual review.`,
+        pagination: {
+            has_more: paginationResult.meta.has_more,
+            next_cursor: paginationResult.meta.next_cursor,
+            page_tokens: paginationResult.meta.tokens.page_tokens,
+            total_diff_lines: totalDiffLines,
+            total_diff_bytes: totalDiffBytes,
+            showing_lines: `${startOffset + 1}-${startOffset + paginatedDiffLines.length} of ${totalDiffLines}`,
+        },
+        next_steps: paginationResult.meta.has_more
+            ? `Diff is large (${totalDiffLines} lines, ${Math.round(totalDiffBytes / 1024)}KB). ` +
+            `Use process_branch({ branch_name: '${branchName}', action: 'compare', cursor: '${paginationResult.meta.next_cursor}', rationale: 'Fetching more diff' }) to see more. ` +
+            `Merge status: ${mergeStatus}.`
+            : mergeStatus === 'mergeable'
+                ? `Branch is mergeable. Use process_branch({ branch_name: '${branchName}', action: 'merge', rationale: '...' }) to integrate, or action: 'reject' to discard.`
+                : mergeStatus === 'conflict'
+                    ? `Branch has merge conflicts. Resolve conflicts to preserve valuable work. Use process_branch({ branch_name: '${branchName}', action: 'checkout', rationale: 'Resolving conflicts' }) to fix.`
+                    : `Merge status unknown. Review the diff and decide whether to merge, reject, or checkout for manual review.`,
     };
 
     return JSON.stringify(result);

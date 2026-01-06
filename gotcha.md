@@ -233,3 +233,40 @@ echo "0x49f6339b84601918ae9f729c478fdb5fb4c3b2822e1931708f960478bbf91e19" > ethe
 - Auto-overwriting of file makes manual edits useless
 - `RPC_URL` doesn't override without also setting `MECHX_CHAIN_RPC`
 - Tenderly VNet addresses look valid but connect to public mainnet if RPC wrong
+
+---
+
+## 6. Ponder Artifact Content Missing & Regex Fallback
+
+**Issue**: Worker failed to sync dependencies because `getDependencyBranchInfo` tried to query a non-existent `content` field from Ponder artifacts.
+
+**Symptoms**:
+```typescript
+error: "GraphQL errors: Cannot query field \"content\" on type \"artifact\"."
+```
+
+**Root Cause**:
+- **Design Choice**: Ponder intentionally excludes the full `content` field from the database to prevent storage bloat. It only stores metadata: `cid`, `contentPreview`, `topic`, etc.
+- **Worker Logic**: The worker code attempted to query `content` as a "middle path" between metadata and full IPFS fetch, but this path doesn't exist.
+
+**Solution (Applied)**:
+Reverted to using the **Fast Path** (regex parsing of `contentPreview`) as the primary method.
+
+**Indexing Strategy & Trade-offs**:
+
+1.  **Fast Path (Current)**:
+    - **Mechanism**: Parse branch name from `contentPreview` string using regex.
+    - **Format**: `Branch: <branch> based on <base>`
+    - **Pros**: Extremely fast, zero network overhead (data already in Ponder query).
+    - **Cons**: Fragile - breaks if `pr.ts` changes the string format.
+
+2.  **Robust Path (Ideal)**:
+    - **Mechanism**: Use `cid` from Ponder to fetch full JSON from IPFS gateway.
+    - **Pros**: Robust, standard JSON parsing, immune to string formatting changes.
+    - **Cons**: Slower (async network fetch), potential gateway timeouts.
+    - **Future Work**: Implementing this as a fallback if regex fails would be the strongest solution.
+
+**Verification**:
+- Confirmed valid `contentPreview` format in `worker/git/pr.ts`
+- Verified regex matches this format in `worker/mech_worker.ts`
+

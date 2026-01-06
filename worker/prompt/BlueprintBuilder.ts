@@ -15,11 +15,11 @@ import { DEFAULT_BLUEPRINT_CONFIG } from './config.js';
 import type {
   BlueprintBuilderConfig,
   BlueprintContext,
-  BlueprintAssertion,
+  Invariant,
   UnifiedBlueprint,
   BuildContext,
   ContextProvider,
-  AssertionProvider,
+  InvariantProvider,
   BlueprintBuildResult,
 } from './types.js';
 import type { IpfsMetadata } from '../types.js';
@@ -29,23 +29,26 @@ import type { RecognitionPhaseResult } from '../recognition_helpers.js';
 import { JobContextProvider } from './providers/context/JobContextProvider.js';
 import { ProgressCheckpointProvider } from './providers/context/ProgressCheckpointProvider.js';
 
-// Assertion providers
-import { SystemBlueprintProvider } from './providers/assertions/SystemBlueprintProvider.js';
-import { DelegationDirectiveProvider } from './providers/assertions/DelegationDirectiveProvider.js';
-import { JobBlueprintProvider } from './providers/assertions/JobBlueprintProvider.js';
-import { RecognitionProvider } from './providers/assertions/RecognitionProvider.js';
-import { ChildWorkAssertionProvider } from './providers/assertions/ChildWorkAssertionProvider.js';
-import { ProgressAssertionProvider } from './providers/assertions/ProgressAssertionProvider.js';
-import { ArtifactAssertionProvider } from './providers/assertions/ArtifactAssertionProvider.js';
-import { VerificationDirectiveProvider } from './providers/assertions/VerificationDirectiveProvider.js';
-import { MergeConflictAssertionProvider } from './providers/assertions/MergeConflictAssertionProvider.js';
+// Invariant providers
+import {
+  SystemInvariantProvider,
+  GoalInvariantProvider,
+  LearningInvariantProvider,
+  CoordinationInvariantProvider,
+  StateInvariantProvider,
+  StrategyInvariantProvider,
+  RecoveryInvariantProvider,
+  ToolingInvariantProvider,
+  QualityInvariantProvider,
+  OutputInvariantProvider,
+} from './providers/invariants/index.js';
 
 /**
  * BlueprintBuilder constructs unified blueprints from multiple providers
  */
 export class BlueprintBuilder {
   private contextProviders: ContextProvider[] = [];
-  private assertionProviders: AssertionProvider[] = [];
+  private invariantProviders: InvariantProvider[] = [];
   private config: BlueprintBuilderConfig;
 
   constructor(config?: Partial<BlueprintBuilderConfig>) {
@@ -61,10 +64,10 @@ export class BlueprintBuilder {
   }
 
   /**
-   * Register an assertion provider (Phase 2)
+   * Register an invariant provider (Phase 2)
    */
-  registerAssertionProvider(provider: AssertionProvider): this {
-    this.assertionProviders.push(provider);
+  registerInvariantProvider(provider: InvariantProvider): this {
+    this.invariantProviders.push(provider);
     return this;
   }
 
@@ -139,39 +142,39 @@ export class BlueprintBuilder {
       );
     }
 
-    // Phase 2: Build assertions from assertion providers (with access to context)
-    const assertions: BlueprintAssertion[] = [];
-    for (const provider of this.assertionProviders) {
+    // Phase 2: Build invariants from invariant providers (with access to context)
+    const invariants: Invariant[] = [];
+    for (const provider of this.invariantProviders) {
       if (!provider.enabled(this.config)) {
         if (this.config.logProviders) {
-          workerLogger.debug({ provider: provider.name }, 'Assertion provider disabled, skipping');
+          workerLogger.debug({ provider: provider.name }, 'Invariant provider disabled, skipping');
         }
         continue;
       }
 
       try {
-        const providerAssertions = await provider.provide(buildContext, context);
-        if (providerAssertions && providerAssertions.length > 0) {
-          assertions.push(...providerAssertions);
+        const providerInvariants = await provider.provide(buildContext, context);
+        if (providerInvariants && providerInvariants.length > 0) {
+          invariants.push(...providerInvariants);
           providers.push(provider.name);
 
           if (this.config.logProviders) {
             workerLogger.debug(
-              { provider: provider.name, count: providerAssertions.length },
-              'Assertion provider contributed'
+              { provider: provider.name, count: providerInvariants.length },
+              'Invariant provider contributed'
             );
           }
 
-          // Log CTX assertions from ChildWorkAssertionProvider (plan step 6)
-          if (provider.name === 'child-work-assertions') {
-            const ctxAssertions = providerAssertions.filter(a => a.id.startsWith('CTX-CHILD-'));
-            if (ctxAssertions.length > 0) {
+          // Log COORD invariants from CoordinationInvariantProvider
+          if (provider.name === 'coordination') {
+            const coordInvariants = providerInvariants.filter(i => i.id.startsWith('COORD-'));
+            if (coordInvariants.length > 0) {
               workerLogger.info(
                 {
-                  ctxAssertionCount: ctxAssertions.length,
-                  assertionIds: ctxAssertions.map(a => a.id)
+                  coordInvariantCount: coordInvariants.length,
+                  invariantIds: coordInvariants.map(i => i.id)
                 },
-                'CTX-CHILD assertions generated for completed children'
+                'COORD invariants generated for coordination'
               );
             }
           }
@@ -182,21 +185,30 @@ export class BlueprintBuilder {
             provider: provider.name,
             error: serializeError(error),
           },
-          'Assertion provider failed, skipping'
+          'Invariant provider failed, skipping'
         );
       }
     }
 
+    // Sort invariants by layer for urgency-based ordering: ACTION → JOB → PROTOCOL
+    // Layer is derived from ID prefix
+    const getLayerFromId = (id: string): 'action' | 'job' | 'protocol' => {
+      const prefix = id.split('-')[0];
+      if (['COORD', 'STATE', 'QUAL'].includes(prefix)) return 'action';
+      if (['JOB', 'GOAL'].includes(prefix)) return 'job';
+      return 'protocol';
+    };
+    const layerOrder = ['action', 'job', 'protocol'];
+    invariants.sort((a, b) => layerOrder.indexOf(getLayerFromId(a.id)) - layerOrder.indexOf(getLayerFromId(b.id)));
+
     // Assemble the unified blueprint
     const blueprint: UnifiedBlueprint = {
-      assertions,
+      invariants,
       context,
       metadata: {
         generatedAt: new Date().toISOString(),
         requestId,
         providers,
-        // Expose workspace path for file operations (write_file needs absolute paths)
-        workspacePath: process.env.JINN_WORKSPACE_DIR || process.env.CODE_METADATA_REPO_ROOT || undefined,
       },
     };
 
@@ -206,7 +218,7 @@ export class BlueprintBuilder {
       workerLogger.info(
         {
           requestId,
-          assertionCount: assertions.length,
+          invariantCount: invariants.length,
           contextKeys: Object.keys(context),
           providerCount: providers.length,
           buildTime,
@@ -228,21 +240,21 @@ export class BlueprintBuilder {
   ): Promise<string> {
     const { blueprint } = await this.build(requestId, metadata, recognition);
     const promptString = JSON.stringify(blueprint, null, 2);
-    
-    // Verify assertions reach agent prompt (plan step 7)
-    const ctxAssertions = blueprint.assertions.filter(a => a.id.startsWith('CTX-CHILD-'));
-    if (ctxAssertions.length > 0) {
+
+    // Verify invariants reach agent prompt
+    const coordInvariants = blueprint.invariants.filter(i => i.id.startsWith('COORD-'));
+    if (coordInvariants.length > 0) {
       workerLogger.info(
         {
           requestId,
-          ctxAssertionCount: ctxAssertions.length,
+          coordInvariantCount: coordInvariants.length,
           promptLength: promptString.length,
-          sample: ctxAssertions[0]?.assertion.slice(0, 80)
+          sample: coordInvariants[0]?.invariant.slice(0, 80)
         },
-        'Blueprint prompt contains CTX-CHILD assertions for agent'
+        'Blueprint prompt contains COORD invariants for agent'
       );
     }
-    
+
     return promptString;
   }
 
@@ -270,9 +282,10 @@ export class BlueprintBuilder {
  *
  * Provider registration order matters:
  * - Context providers run first (Phase 1), building the BlueprintContext
- * - Assertion providers run second (Phase 2), with access to the built context
+ * - Invariant providers run second (Phase 2), with access to the built context
  *
  * Within each phase, providers run in registration order.
+ * Providers are ordered by domain priority: system → strategy → recovery → goal → etc.
  */
 export function createBlueprintBuilder(
   config?: Partial<BlueprintBuilderConfig>
@@ -283,17 +296,18 @@ export function createBlueprintBuilder(
   builder.registerContextProvider(new JobContextProvider());
   builder.registerContextProvider(new ProgressCheckpointProvider());
 
-  // Phase 2: Assertion providers (have access to built context)
-  // Order: system first, then job, then dynamic context-aware assertions
-  builder.registerAssertionProvider(new SystemBlueprintProvider());
-  builder.registerAssertionProvider(new DelegationDirectiveProvider()); // Inject early if high assertion count
-  builder.registerAssertionProvider(new VerificationDirectiveProvider()); // Inject if verificationRequired
-  builder.registerAssertionProvider(new MergeConflictAssertionProvider()); // Inject if merge conflicts exist
-  builder.registerAssertionProvider(new JobBlueprintProvider());
-  builder.registerAssertionProvider(new RecognitionProvider());
-  builder.registerAssertionProvider(new ChildWorkAssertionProvider());
-  builder.registerAssertionProvider(new ProgressAssertionProvider());
-  builder.registerAssertionProvider(new ArtifactAssertionProvider());
+  // Phase 2: Invariant providers (have access to built context)
+  // Order follows domain priority: system → strategy → recovery → goal → learning → coordination → state → tooling → quality
+  builder.registerInvariantProvider(new SystemInvariantProvider());
+  builder.registerInvariantProvider(new OutputInvariantProvider());  // Output schema from outputSpec
+  builder.registerInvariantProvider(new StrategyInvariantProvider());
+  builder.registerInvariantProvider(new RecoveryInvariantProvider());
+  builder.registerInvariantProvider(new GoalInvariantProvider());
+  builder.registerInvariantProvider(new LearningInvariantProvider());
+  builder.registerInvariantProvider(new CoordinationInvariantProvider());
+  builder.registerInvariantProvider(new StateInvariantProvider());
+  builder.registerInvariantProvider(new ToolingInvariantProvider());
+  builder.registerInvariantProvider(new QualityInvariantProvider());
 
   return builder;
 }

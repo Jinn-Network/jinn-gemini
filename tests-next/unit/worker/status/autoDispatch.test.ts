@@ -1,19 +1,20 @@
 /**
- * Unit Test: Parent Job Dispatch
- * Module: worker/status/parentDispatch.ts
+ * Unit Test: Auto-Dispatch (formerly Parent Dispatch)
+ * Module: worker/status/autoDispatch.ts
  * Priority: P1 (HIGH)
  *
- * Tests parent job dispatch decision logic and execution for Work Protocol.
- * Ensures child jobs correctly notify parent jobs upon completion/failure.
+ * Tests auto-dispatch decision logic and execution for Work Protocol.
+ * Includes parent dispatch, verification dispatch, and continuation dispatch.
  *
- * Impact: Prevents workflow stalls from missing parent dispatches
+ * Impact: Prevents workflow stalls from missing dispatches
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   shouldDispatchParent,
   dispatchParentIfNeeded,
-} from '../../../../worker/status/parentDispatch.js';
+  shouldRequireVerification,
+} from '../../../../worker/status/autoDispatch.js';
 import type { FinalStatus, ParentDispatchDecision } from '../../../../worker/types.js';
 
 // Mock dependencies
@@ -41,7 +42,7 @@ vi.mock('../../../../logging/index.js', () => ({
 }));
 
 vi.mock('../../../../http/client.js', () => ({
-  graphQLRequest: vi.fn(async () => ({ 
+  graphQLRequest: vi.fn(async () => ({
     requests: { items: [] },
     request: { workstreamId: undefined }
   })),
@@ -64,16 +65,29 @@ vi.mock('../../../../worker/tool_utils.js', () => ({
   safeParseToolResponse: vi.fn(),
 }));
 
+// Mock git integration utilities
+vi.mock('../../../../worker/git/integration.js', () => ({
+  isChildIntegrated: vi.fn(() => true), // Default: all children integrated
+  batchFetchBranches: vi.fn(),
+}));
+
+// Mock fetchAllChildren for getUnintegratedChildren
+vi.mock('../../../../worker/prompt/providers/context/fetchChildren.js', () => ({
+  fetchAllChildren: vi.fn(async () => []),
+}));
+
 import { workerLogger } from '../../../../logging/index.js';
 import { dispatchExistingJob } from '../../../../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import { safeParseToolResponse } from '../../../../worker/tool_utils.js';
 import { graphQLRequest } from '../../../../http/client.js';
 import { withJobContext } from '../../../../worker/mcp/tools.js';
+import { isChildIntegrated } from '../../../../worker/git/integration.js';
+import { fetchAllChildren } from '../../../../worker/prompt/providers/context/fetchChildren.js';
 
 describe('parentDispatch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (graphQLRequest as any).mockResolvedValue({ 
+    (graphQLRequest as any).mockResolvedValue({
       requests: { items: [] },
       request: { workstreamId: undefined }
     });
@@ -297,7 +311,7 @@ describe('parentDispatch', () => {
         const result = await shouldDispatchParent(finalStatus, metadata);
 
         expect(result.shouldDispatch).toBe(false);
-        expect(result.reason).toBe('No parent job in metadata');
+        expect(result.reason).toBe('No parent job in metadata or Ponder');
       });
 
       it('does not dispatch when metadata is null', async () => {
@@ -309,7 +323,7 @@ describe('parentDispatch', () => {
         const result = await shouldDispatchParent(finalStatus, null);
 
         expect(result.shouldDispatch).toBe(false);
-        expect(result.reason).toBe('No parent job in metadata');
+        expect(result.reason).toBe('No parent job in metadata or Ponder');
       });
 
       it('does not dispatch when sourceJobDefinitionId is undefined', async () => {
@@ -324,7 +338,7 @@ describe('parentDispatch', () => {
         const result = await shouldDispatchParent(finalStatus, metadata);
 
         expect(result.shouldDispatch).toBe(false);
-        expect(result.reason).toBe('No parent job in metadata');
+        expect(result.reason).toBe('No parent job in metadata or Ponder');
       });
     });
   });
@@ -400,15 +414,7 @@ describe('parentDispatch', () => {
             jobId: '0xparent123',
             message: expect.stringContaining('Child job COMPLETED'),
             workstreamId: undefined,
-            additionalContext: expect.objectContaining({
-              completedChildRuns: expect.arrayContaining([
-                expect.objectContaining({
-                  requestId: '0xchild456',
-                  status: 'COMPLETED',
-                  summary: 'All tasks done',
-                }),
-              ]),
-            }),
+            // NOTE: completedChildRuns was removed - parent fetches via Ponder directly
           })
         );
       });
@@ -439,15 +445,7 @@ describe('parentDispatch', () => {
             jobId: '0xparent789',
             message: expect.stringContaining('Child job FAILED'),
             workstreamId: undefined,
-            additionalContext: expect.objectContaining({
-              completedChildRuns: expect.arrayContaining([
-                expect.objectContaining({
-                  requestId: '0xchild',
-                  status: 'FAILED',
-                  summary: 'Job failed: timeout',
-                }),
-              ]),
-            }),
+            // NOTE: completedChildRuns was removed - parent fetches via Ponder directly
           })
         );
       });
@@ -662,7 +660,7 @@ describe('parentDispatch', () => {
 
         // Verify it was called multiple times (retry loop)
         expect(callCount).toBeGreaterThan(1);
-        
+
         // The error is caught in the inner catch block, and after retries exhaust,
         // dispatchResult is undefined, so error is logged with undefined message
         expect(workerLogger.error).toHaveBeenCalledWith(
@@ -673,6 +671,287 @@ describe('parentDispatch', () => {
           expect.stringContaining('Failed to dispatch parent job')
         );
       }, 20000); // Increase timeout to accommodate retry loop with backoff (2s + 4s = 6s minimum)
+    });
+  });
+
+  describe('verification run parent dispatch', () => {
+    it('dispatches parent when verification run completes without delegating', async () => {
+      const finalStatus: FinalStatus = {
+        status: 'COMPLETED',
+        message: 'Verification passed',
+      };
+      // Verification run metadata - note verificationRequired: true
+      const metadata = {
+        jobDefinitionId: '0xchild-job',
+        sourceJobDefinitionId: '0xparent-job',
+        additionalContext: {
+          verificationRequired: true,
+          verificationAttempt: 1,
+        },
+        lineage: {
+          dispatcherBranchName: 'main',
+          dispatcherBaseBranch: 'main',
+          parentDispatcherRequestId: 'req-parent',
+        },
+      };
+
+      // Mock children check - all complete
+      (graphQLRequest as any).mockResolvedValue({
+        jobDefinitions: { items: [] },
+        request: { workstreamId: '0xworkstream' }
+      });
+      (dispatchExistingJob as any).mockResolvedValue({ ok: true, request_ids: ['0xnew'] });
+      (safeParseToolResponse as any).mockReturnValue({
+        ok: true,
+        data: { request_ids: ['0xnew'] }
+      });
+
+      await dispatchParentIfNeeded(finalStatus, metadata, '0xchild-req', 'Verification output');
+
+      // Should log that verification run is proceeding to parent dispatch
+      expect(workerLogger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobDefinitionId: '0xchild-job',
+          verificationAttempt: 1,
+        }),
+        expect.stringContaining('Verification run completed - proceeding to parent dispatch check')
+      );
+
+      // Should dispatch the parent
+      expect(dispatchExistingJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: '0xparent-job',
+        })
+      );
+    });
+  });
+
+  describe('Ponder parent query fallback', () => {
+    it('queries Ponder when metadata.sourceJobDefinitionId is missing', async () => {
+      const finalStatus: FinalStatus = {
+        status: 'COMPLETED',
+        message: 'Job done',
+      };
+      const metadata = {
+        jobDefinitionId: '0xchild-job',
+        // sourceJobDefinitionId is missing!
+        lineage: {
+          dispatcherBranchName: 'main',
+        },
+      };
+
+      // First call: getJobDefParent query returns the parent
+      // Second call: children query returns empty (all complete)
+      (graphQLRequest as any)
+        .mockResolvedValueOnce({
+          jobDefinition: { sourceJobDefinitionId: '0xparent-from-ponder' }
+        })
+        .mockResolvedValueOnce({
+          jobDefinitions: { items: [] }
+        });
+
+      const result = await shouldDispatchParent(finalStatus, metadata);
+
+      expect(result.shouldDispatch).toBe(true);
+      expect(result.parentJobDefId).toBe('0xparent-from-ponder');
+
+      // Should log that it used Ponder
+      expect(workerLogger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobDefinitionId: '0xchild-job',
+          ponderParent: '0xparent-from-ponder',
+        }),
+        expect.stringContaining('Using authoritative parent from Ponder')
+      );
+    });
+
+    it('queries Ponder when metadata.sourceJobDefinitionId equals current job (self-referential)', async () => {
+      const finalStatus: FinalStatus = {
+        status: 'COMPLETED',
+        message: 'Job done',
+      };
+      const metadata = {
+        jobDefinitionId: '0xchild-job',
+        sourceJobDefinitionId: '0xchild-job', // Self-referential - bug from dispatch_existing_job
+        lineage: {
+          dispatcherBranchName: 'main',
+        },
+      };
+
+      // First call: getJobDefParent query returns the real parent
+      // Second call: children query returns empty
+      (graphQLRequest as any)
+        .mockResolvedValueOnce({
+          jobDefinition: { sourceJobDefinitionId: '0xreal-parent' }
+        })
+        .mockResolvedValueOnce({
+          jobDefinitions: { items: [] }
+        });
+
+      const result = await shouldDispatchParent(finalStatus, metadata);
+
+      expect(result.shouldDispatch).toBe(true);
+      expect(result.parentJobDefId).toBe('0xreal-parent');
+
+      // Should log the correction
+      expect(workerLogger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ponderParent: '0xreal-parent',
+          metadataParent: '0xchild-job',
+        }),
+        expect.stringContaining('Using authoritative parent from Ponder')
+      );
+    });
+
+    it('clears self-referential parent when Ponder returns null (root job)', async () => {
+      const finalStatus: FinalStatus = {
+        status: 'COMPLETED',
+        message: 'Root job done',
+      };
+      const metadata = {
+        jobDefinitionId: '0xroot-job',
+        sourceJobDefinitionId: '0xroot-job', // Self-referential from verification dispatch
+        lineage: {
+          dispatcherBranchName: 'main',
+        },
+      };
+
+      // Ponder returns null for root job (no parent)
+      (graphQLRequest as any)
+        .mockResolvedValueOnce({
+          jobDefinition: { sourceJobDefinitionId: null }
+        });
+
+      const result = await shouldDispatchParent(finalStatus, metadata);
+
+      // Should NOT dispatch - this is a root job with no parent
+      expect(result.shouldDispatch).toBe(false);
+      expect(result.reason).toContain('No parent job');
+
+      // Should log that it detected a root job
+      expect(workerLogger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobDefinitionId: '0xroot-job',
+          metadataParent: '0xroot-job',
+        }),
+        expect.stringContaining('Ponder confirms no parent (root job)')
+      );
+    });
+  });
+
+  describe('shouldRequireVerification', () => {
+    describe('no verification needed', () => {
+      it('returns false for non-COMPLETED status', async () => {
+        const finalStatus: FinalStatus = { status: 'DELEGATING', message: 'Delegated' };
+        const metadata = { jobDefinitionId: '0xjob' };
+
+        const result = await shouldRequireVerification(finalStatus, metadata);
+
+        expect(result.requiresVerification).toBe(false);
+        expect(result.reason).toContain('Not a COMPLETED status');
+      });
+
+      it('returns false for job with no children', async () => {
+        const finalStatus: FinalStatus = { status: 'COMPLETED', message: 'Done' };
+        const metadata = { jobDefinitionId: '0xjob-no-children' };
+
+        // Mock: no children found
+        (graphQLRequest as any).mockResolvedValue({
+          jobDefinitions: { items: [] }
+        });
+
+        const result = await shouldRequireVerification(finalStatus, metadata);
+
+        expect(result.requiresVerification).toBe(false);
+        expect(result.reason).toContain('no children');
+      });
+
+      it('returns false (already verification run)', async () => {
+        const finalStatus: FinalStatus = { status: 'COMPLETED', message: 'Verified' };
+        const metadata = {
+          jobDefinitionId: '0xjob',
+          additionalContext: {
+            verificationRequired: true,
+            verificationAttempt: 1
+          }
+        };
+
+        const result = await shouldRequireVerification(finalStatus, metadata);
+
+        expect(result.requiresVerification).toBe(false);
+        expect(result.isVerificationRun).toBe(true);
+        expect(result.reason).toContain('Already a verification run');
+      });
+    });
+
+    describe('verification required', () => {
+      it('returns true when children exist and all are integrated', async () => {
+        const finalStatus: FinalStatus = { status: 'COMPLETED', message: 'Done' };
+        const metadata = {
+          jobDefinitionId: '0xparent-job',
+          additionalContext: {
+            completedChildRuns: [{ requestId: 'child1' }]
+          }
+        };
+
+        // Mock: children all integrated
+        (fetchAllChildren as any).mockResolvedValue([
+          { jobDefinitionId: 'child1', jobName: 'Child 1', branchName: 'job/child1', status: 'COMPLETED' }
+        ]);
+        (isChildIntegrated as any).mockReturnValue(true);
+
+        const result = await shouldRequireVerification(finalStatus, metadata);
+
+        expect(result.requiresVerification).toBe(true);
+        expect(result.reason).toContain('all children integrated');
+      });
+    });
+
+    describe('needsContinuation', () => {
+      it('returns needsContinuation when children exist but NOT integrated', async () => {
+        const finalStatus: FinalStatus = { status: 'COMPLETED', message: 'Done' };
+        const metadata = {
+          jobDefinitionId: '0xparent-job',
+          additionalContext: {
+            completedChildRuns: [{ requestId: 'child1' }]
+          }
+        };
+
+        // Mock: children exist but NOT integrated
+        (fetchAllChildren as any).mockResolvedValue([
+          { jobDefinitionId: 'child1', jobName: 'Child 1', branchName: 'job/child1', status: 'COMPLETED' }
+        ]);
+        (isChildIntegrated as any).mockReturnValue(false); // Child NOT integrated
+
+        const result = await shouldRequireVerification(finalStatus, metadata);
+
+        expect(result.requiresVerification).toBe(false);
+        expect(result.needsContinuation).toBe(true);
+        expect(result.reason).toContain('not yet integrated');
+      });
+
+      it('returns needsContinuation for multiple unintegrated children', async () => {
+        const finalStatus: FinalStatus = { status: 'COMPLETED', message: 'Done' };
+        const metadata = {
+          jobDefinitionId: '0xparent-job',
+          additionalContext: {
+            completedChildRuns: [{ requestId: 'child1' }, { requestId: 'child2' }]
+          }
+        };
+
+        // Mock: multiple children, none integrated
+        (fetchAllChildren as any).mockResolvedValue([
+          { jobDefinitionId: 'child1', jobName: 'Child 1', branchName: 'job/child1', status: 'COMPLETED' },
+          { jobDefinitionId: 'child2', jobName: 'Child 2', branchName: 'job/child2', status: 'COMPLETED' }
+        ]);
+        (isChildIntegrated as any).mockReturnValue(false);
+
+        const result = await shouldRequireVerification(finalStatus, metadata);
+
+        expect(result.requiresVerification).toBe(false);
+        expect(result.needsContinuation).toBe(true);
+        expect(result.reason).toContain('2 children not yet integrated');
+      });
     });
   });
 });

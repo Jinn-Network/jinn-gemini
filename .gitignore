@@ -239,3 +239,4 @@ ponder/.ponder-test-*/
 .beads/.exclusive-lock
 .git/beads-worktrees/
 
+gemini-agent/.gemini/settings.json.orig

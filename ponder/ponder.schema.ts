@@ -155,3 +155,44 @@ export const workstream = onchainTable(
     senderIdx: index().on(table.sender),
   })
 );
+
+/**
+ * Job Templates - Reusable workflow definitions derived from job definitions
+ * 
+ * Templates are extracted from job_definition records by grouping similar
+ * blueprints and tool configurations. They represent callable workflows
+ * that can be executed via x402 payments.
+ */
+export const jobTemplate = onchainTable(
+  "job_template",
+  (t) => ({
+    id: t.text().primaryKey(), // Template ID (slug or UUID)
+    name: t.text().notNull(),
+    description: t.text(),
+    tags: t.text().array(),
+    enabledTools: t.text().array(), // Tool policy for this template
+    blueprintHash: t.text(), // Hash of canonical blueprint for deduplication
+    blueprint: t.text(), // Canonical blueprint JSON
+    inputSchema: t.json(), // JSON Schema for template inputs
+    outputSpec: t.json(), // OutputSpec for deterministic result extraction
+    priceWei: t.bigint(), // x402 price in USDC atomic units (6 decimals, 0 = free)
+    priceUsd: t.text(), // Human-readable USD price (e.g., "$0.001")
+    canonicalJobDefinitionId: t.text(), // Reference to first/canonical job definition
+    runCount: t.integer().notNull(), // Number of times this template has been executed
+    successCount: t.integer().notNull(), // Successful completions
+    avgDurationSeconds: t.integer(), // Average execution duration
+    avgCostWei: t.bigint(), // Average cost from historical runs
+    createdAt: t.bigint().notNull(), // First seen timestamp
+    lastUsedAt: t.bigint(), // Most recent execution
+    status: t.text().notNull(), // 'visible' | 'hidden' | 'deprecated'
+  }),
+  (table) => ({
+    nameIdx: index().on(table.name),
+    statusIdx: index().on(table.status),
+    blueprintHashIdx: index().on(table.blueprintHash),
+    canonicalJobDefIdx: index().on(table.canonicalJobDefinitionId),
+    createdAtIdx: index().on(table.createdAt),
+    lastUsedAtIdx: index().on(table.lastUsedAt),
+    runCountIdx: index().on(table.runCount),
+  })
+);

@@ -14,6 +14,7 @@ export function getCollectionLabel(collectionName: CollectionName): string {
     deliveries: 'Deliveries',
     artifacts: 'Artifacts',
     messages: 'Messages',
+    templates: 'Templates',
   };
 
   return labelMap[collectionName] || collectionName;
@@ -28,6 +29,7 @@ export interface NavigationItem {
 
 export const navigationItems: NavigationItem[] = [
   { label: 'Workstreams', collection: 'workstreams' },
+  { label: 'Templates', collection: 'templates' },
   { 
     label: 'Jobs', 
     collection: 'requests',

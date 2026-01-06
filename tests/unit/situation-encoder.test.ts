@@ -40,7 +40,7 @@ const jobDefinitionResponse = {
   data: {
     jobDefinition: {
       id: 'job-def-123',
-      promptContent: `# Objective
+      blueprint: `# Objective
 Inspect staking contract
 
 # Context
@@ -65,9 +65,9 @@ beforeEach(async () => {
     if (query.includes('sourceRequestId')) {
       return { ok: true, json: async () => childRequestsResponse };
     }
-     if (query.includes('jobDefinition(id')) {
-       return { ok: true, json: async () => jobDefinitionResponse };
-     }
+    if (query.includes('jobDefinition(id')) {
+      return { ok: true, json: async () => jobDefinitionResponse };
+    }
     return { ok: true, json: async () => ({ data: { requests: { items: [] } } }) };
   });
 

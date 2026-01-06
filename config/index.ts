@@ -363,27 +363,48 @@ const devTestingSchema = z.object({
  * Blueprint builder configuration schema
  * Controls how the centralized prompt building system operates
  */
+/**
+ * Robust boolean coercion that handles "false", "0", and actual booleans
+ */
+const booleanSchema = z.union([z.boolean(), z.string(), z.number()])
+  .transform((val) => {
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'number') return val !== 0;
+    const s = String(val).toLowerCase().trim();
+    return s !== 'false' && s !== '0' && s !== '';
+  });
+
+/**
+ * Blueprint builder configuration schema
+ * Controls how the centralized prompt building system operates
+ */
 const blueprintBuilderSchema = z.object({
   // BLUEPRINT_BUILDER_DEBUG: Enable debug logging for blueprint building
-  BLUEPRINT_BUILDER_DEBUG: z.coerce.boolean().optional(),
+  BLUEPRINT_BUILDER_DEBUG: booleanSchema.optional(),
 
   // BLUEPRINT_LOG_PROVIDERS: Log which providers contribute to each blueprint
-  BLUEPRINT_LOG_PROVIDERS: z.coerce.boolean().optional(),
+  BLUEPRINT_LOG_PROVIDERS: booleanSchema.optional(),
 
   // BLUEPRINT_ENABLE_SYSTEM: Enable static system assertions from system-blueprint.json
-  BLUEPRINT_ENABLE_SYSTEM: z.coerce.boolean().optional(),
+  BLUEPRINT_ENABLE_SYSTEM: booleanSchema.optional(),
 
   // BLUEPRINT_ENABLE_CONTEXT_ASSERTIONS: Enable dynamic context-aware assertions
-  BLUEPRINT_ENABLE_CONTEXT_ASSERTIONS: z.coerce.boolean().optional(),
+  BLUEPRINT_ENABLE_CONTEXT_ASSERTIONS: booleanSchema.optional(),
 
   // BLUEPRINT_ENABLE_RECOGNITION: Enable prescriptive learnings from similar jobs
-  BLUEPRINT_ENABLE_RECOGNITION: z.coerce.boolean().optional(),
+  BLUEPRINT_ENABLE_RECOGNITION: booleanSchema.optional(),
 
   // BLUEPRINT_ENABLE_JOB_CONTEXT: Enable job hierarchy context
-  BLUEPRINT_ENABLE_JOB_CONTEXT: z.coerce.boolean().optional(),
+  BLUEPRINT_ENABLE_JOB_CONTEXT: booleanSchema.optional(),
 
   // BLUEPRINT_ENABLE_PROGRESS: Enable progress checkpoint context
-  BLUEPRINT_ENABLE_PROGRESS: z.coerce.boolean().optional(),
+  BLUEPRINT_ENABLE_PROGRESS: booleanSchema.optional(),
+
+  // BLUEPRINT_ENABLE_BEADS: Enable beads issue tracking assertions for coding jobs
+  BLUEPRINT_ENABLE_BEADS: booleanSchema.optional(),
+
+  // BLUEPRINT_ENABLE_CONTEXT_PHASES: Master switch to disable Recognition, Reflection, and Progress phases
+  BLUEPRINT_ENABLE_CONTEXT_PHASES: booleanSchema.optional(),
 });
 
 /**
@@ -566,10 +587,6 @@ export function getRequiredMechSafeAddress(): string {
 
 export function getOptionalMechMarketplaceAddress(): string | undefined {
   return getConfig().MECH_MARKETPLACE_ADDRESS_BASE;
-}
-
-export function getOptionalMechModel(): string | undefined {
-  return getConfig().MECH_MODEL;
 }
 
 export function getOptionalMechReclaimAfterMinutes(): number | undefined {
@@ -1036,6 +1053,14 @@ export function getBlueprintEnableJobContext(): boolean {
 
 export function getBlueprintEnableProgress(): boolean {
   return getConfig().BLUEPRINT_ENABLE_PROGRESS ?? true;
+}
+
+export function getBlueprintEnableBeads(): boolean {
+  return getConfig().BLUEPRINT_ENABLE_BEADS ?? true;
+}
+
+export function getBlueprintEnableContextPhases(): boolean {
+  return getConfig().BLUEPRINT_ENABLE_CONTEXT_PHASES ?? true;
 }
 
 // ============================================================================
