@@ -33,3 +33,6 @@ export { QualityInvariantProvider } from './QualityInvariantProvider.js';
 
 // Domain: system - Output schema requirements (from outputSpec)
 export { OutputInvariantProvider } from './OutputInvariantProvider.js';
+
+// Domain: cycle - Continuous/ongoing operation
+export { CycleInvariantProvider } from './CycleInvariantProvider.js';

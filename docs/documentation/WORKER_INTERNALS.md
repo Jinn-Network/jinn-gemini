@@ -299,6 +299,126 @@ This tool is essential for the delegation workflow - it allows project leads to 
 
 ---
 
+## Cyclic Jobs (Continuous Operation)
+
+Cyclic jobs enable long-running, continuous operation. When a cyclic job completes, the worker automatically re-dispatches it for a new cycle, allowing the agent to reassess invariants and delegate work as needed.
+
+### Overview
+
+Standard jobs have a finite lifecycle: dispatch → execute → deliver. Cyclic jobs extend this:
+
+```
+dispatch → execute → deliver → cycle dispatch → execute → deliver → ...
+```
+
+Each cycle is a new request with its own execution context, but the job's invariants represent ongoing requirements that must remain satisfied.
+
+### Enabling Cyclic Operation
+
+Cyclic mode is an **operational decision** set at workstream launch time, not by agents. The `cyclic` flag is NOT exposed through the `dispatch_new_job` MCP tool - agents cannot make jobs cyclic.
+
+Set `cyclic: true` in the IPFS metadata when launching the root job via a launcher script:
+
+```typescript
+// Launcher script (external to agent execution)
+import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
+import { randomUUID } from 'node:crypto';
+
+const ipfsJsonContents = [{
+  blueprint: JSON.stringify({
+    invariants: [
+      {
+        id: 'JOB-001',
+        invariant: 'System health metrics must remain above thresholds',
+        // ...
+      }
+    ]
+  }),
+  jobName: 'continuous-monitoring',
+  model: 'gemini-3-flash-preview',
+  enabledTools: ['create_artifact', 'search_artifacts', 'dispatch_new_job'],
+  jobDefinitionId: randomUUID(),
+  nonce: randomUUID(),
+  // Enable continuous operation - root job only
+  cyclic: true,
+}];
+
+await marketplaceInteract({
+  prompts: [ipfsJsonContents[0].blueprint],
+  priorityMech: mechAddress,
+  tools: ipfsJsonContents[0].enabledTools,
+  ipfsJsonContents,
+  chainConfig,
+  keyConfig: { source: 'value', value: privateKey },
+  postOnly: true,
+});
+```
+
+**Why agents can't set `cyclic`**: This is intentional. Cyclic operation is a workstream-level operational mode, not something child jobs should control. Only root jobs launched externally can be cyclic.
+
+### Cycle Dispatch Flow
+
+The worker handles cycle dispatch in `dispatchParentIfNeeded()`:
+
+1. Job completes with status `COMPLETED`
+2. Worker checks if job has a parent to notify
+3. If no parent exists (root job) and `cyclic: true`:
+   - `dispatchForCycle()` creates a new request
+   - Cycle number increments
+   - Cycle context is injected into `additionalContext`
+
+**Dispatch order**: Continuation → Verification → Parent → **Cycle** (cycle is last, only for root jobs)
+
+### Cycle Context
+
+The worker injects cycle information into `additionalContext.cycle`:
+
+```typescript
+interface CycleContext {
+  isCycleRun: boolean;           // true for all cycles after the initial run
+  cycleNumber: number;           // 1-indexed cycle number
+  previousCycleCompletedAt?: string;  // ISO timestamp of previous cycle completion
+  previousCycleRequestId?: string;    // Request ID of previous cycle
+}
+```
+
+### Cycle Invariants
+
+The `CycleInvariantProvider` injects two invariants when `additionalContext.cycle.isCycleRun` is true:
+
+**CYCLE-001**: Directs the agent to evaluate current state and take action (direct work, delegation for assessment, or delegation for remediation).
+
+**CYCLE-002**: Provides context about when the previous cycle completed, encouraging the agent to build on prior work.
+
+These invariants are intentionally non-prescriptive—complex jobs may need to delegate even the assessment of invariant satisfaction, not just remediation.
+
+### Implementation Files
+
+- `worker/prompt/providers/invariants/CycleInvariantProvider.ts` - Injects cycle invariants
+- `worker/status/autoDispatch.ts` - `dispatchForCycle()` function
+- `worker/types.ts` - `cyclic` flag and `cycle` context types
+
+### Behavior Notes
+
+1. **Root jobs only**: Cycle dispatch only triggers for root jobs (no parent). Child jobs complete normally.
+
+2. **Completion required**: Jobs must complete with status `COMPLETED`. Failed jobs (`FAILED` status) do not cycle.
+
+3. **Context cleared**: Each cycle clears `verificationRequired`, `verificationAttempt`, and `loopRecovery` flags to prevent stale state.
+
+4. **Workstream preserved**: The workstream ID is preserved across cycles for consistent tracking.
+
+5. **No cycle limit**: There is no built-in limit on cycle count. Jobs continue until stopped externally or the agent decides not to delegate work.
+
+### Example Use Cases
+
+- **Monitoring dashboards**: Continuously check metrics and alert on anomalies
+- **Continuous improvement**: Periodically reassess codebase quality and dispatch fixes
+- **Data pipelines**: Ongoing data ingestion and processing
+- **Market analysis**: Regular reassessment of market conditions
+
+---
+
 **End of Worker Internals Reference**
 
 

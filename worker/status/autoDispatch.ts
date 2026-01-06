@@ -510,6 +510,138 @@ async function dispatchForContinuation(
 const MAX_LOOP_RECOVERY_ATTEMPTS = 3;
 
 /**
+ * Dispatch job for a new cycle (re-dispatch cyclic job after completion)
+ *
+ * When a cyclic job completes (reaches terminal state with no parent to notify),
+ * it gets re-dispatched to start a new cycle. The cycle provider will inject
+ * invariants instructing the agent to reassess all JOB invariants.
+ */
+export async function dispatchForCycle(
+  metadata: any,
+  requestId: string,
+  telemetry?: WorkerTelemetryService
+): Promise<boolean> {
+  const jobDefinitionId = metadata?.jobDefinitionId;
+  if (!jobDefinitionId) {
+    workerLogger.error({ requestId }, 'Cannot dispatch for cycle: missing jobDefinitionId');
+    return false;
+  }
+
+  const additionalContext = metadata?.additionalContext ?? {};
+  const currentCycleNumber = additionalContext?.cycle?.cycleNumber ?? 0;
+  const nextCycleNumber = currentCycleNumber + 1;
+
+  workerLogger.info(
+    { requestId, jobDefinitionId, cycleNumber: nextCycleNumber },
+    'Dispatching job for new cycle (cyclic operation)'
+  );
+
+  if (telemetry) {
+    telemetry.startPhase('cycle_dispatch');
+    telemetry.logCheckpoint('cycle_dispatch', 'dispatching_for_cycle', {
+      jobDefinitionId,
+      cycleNumber: nextCycleNumber
+    });
+  }
+
+  try {
+    const lineageInfo = metadata?.lineage;
+    const baseBranch =
+      lineageInfo?.dispatcherBranchName ||
+      lineageInfo?.dispatcherBaseBranch ||
+      metadata?.codeMetadata?.baseBranch ||
+      metadata?.codeMetadata?.branch?.name ||
+      undefined;
+    const mechAddress = metadata?.workerAddress || metadata?.mech || undefined;
+
+    // Query workstreamId from Ponder
+    let workstreamId: string | undefined;
+    try {
+      const ponderUrl = getPonderGraphqlUrl();
+      const response = await graphQLRequest<{ request: { workstreamId?: string } | null }>({
+        url: ponderUrl,
+        query: `query GetWorkstreamId($id: String!) { request(id: $id) { workstreamId } }`,
+        variables: { id: requestId },
+        context: { operation: 'getCycleWorkstreamId', requestId }
+      });
+      workstreamId = response?.request?.workstreamId;
+    } catch (error) {
+      workerLogger.warn({ requestId, error: serializeError(error) }, 'Failed to query workstream ID for cycle dispatch');
+    }
+
+    // Build cycle context - preserve existing context and add cycle info
+    const cycleContext = {
+      ...additionalContext,
+      cycle: {
+        isCycleRun: true,
+        cycleNumber: nextCycleNumber,
+        previousCycleCompletedAt: new Date().toISOString(),
+        previousCycleRequestId: requestId,
+      },
+      // Clear any verification/loop recovery flags from previous cycle
+      verificationRequired: undefined,
+      verificationAttempt: undefined,
+      loopRecovery: undefined,
+    };
+
+    const rawResult = await withJobContext(
+      {
+        requestId: lineageInfo?.parentDispatcherRequestId || undefined,
+        jobDefinitionId,
+        baseBranch,
+        mechAddress,
+        branchName: lineageInfo?.dispatcherBranchName || metadata?.codeMetadata?.branch?.name || undefined,
+        workstreamId,
+      },
+      async () =>
+        dispatchExistingJob({
+          jobId: jobDefinitionId,
+          message: JSON.stringify({
+            content: `Cycle ${nextCycleNumber}: Reassess all invariants and dispatch work as needed.`,
+            type: 'cycle',
+            cycleNumber: nextCycleNumber,
+          }),
+          workstreamId,
+          additionalContext: cycleContext,
+        })
+    );
+
+    const dispatchResult = safeParseToolResponse(rawResult);
+
+    if (dispatchResult.ok) {
+      if (telemetry) {
+        telemetry.logCheckpoint('cycle_dispatch', 'dispatch_success', {
+          jobDefinitionId,
+          newRequestId: dispatchResult.data?.request_ids?.[0],
+          cycleNumber: nextCycleNumber,
+        });
+      }
+      workerLogger.info(
+        { jobDefinitionId, newRequestId: dispatchResult.data?.request_ids?.[0], cycleNumber: nextCycleNumber },
+        'Cycle dispatch successful'
+      );
+      return true;
+    } else {
+      if (telemetry) {
+        telemetry.logError('cycle_dispatch', dispatchResult?.message || 'Unknown error');
+      }
+      workerLogger.error({ jobDefinitionId, error: dispatchResult?.message }, 'Failed to dispatch for cycle');
+      return false;
+    }
+  } catch (error) {
+    if (telemetry) {
+      telemetry.logError('cycle_dispatch', error instanceof Error ? error.message : String(error));
+    }
+    workerLogger.error({ jobDefinitionId, error: serializeError(error) }, 'Error dispatching for cycle');
+    return false;
+  } finally {
+    if (telemetry) {
+      telemetry.endPhase('cycle_dispatch');
+    }
+  }
+}
+
+/**
  * Dispatch job for loop recovery (re-dispatch self after loop termination)
  * 
  * When a job is terminated by loop protection, we re-dispatch it with context
@@ -925,8 +1057,34 @@ export async function dispatchParentIfNeeded(
   const decision = await shouldDispatchParent(finalStatus, metadata);
 
   if (!decision.shouldDispatch) {
+    // Check if this is a root job that should cycle
+    // Only cycle if:
+    // 1. No parent exists (this is the root)
+    // 2. Job is marked as cyclic
+    // 3. Job completed successfully (not failed)
+    const isRootJob = decision.reason === 'No parent job in metadata or Ponder';
+    const isCyclic = metadata?.cyclic === true;
+    const isCompleted = finalStatus?.status === 'COMPLETED';
+
+    if (isRootJob && isCyclic && isCompleted) {
+      workerLogger.info(
+        { requestId, jobDefinitionId: metadata?.jobDefinitionId },
+        'Root cyclic job completed - dispatching for new cycle'
+      );
+
+      const dispatched = await dispatchForCycle(metadata, requestId, options?.telemetry);
+      if (dispatched) {
+        return;
+      }
+      // If cycle dispatch failed, log but don't error - job still completed
+      workerLogger.warn(
+        { requestId },
+        'Cycle dispatch failed - job will not continue cycling'
+      );
+    }
+
     workerLogger.debug(
-      { requestId, decision },
+      { requestId, decision, isCyclic, isRootJob },
       'Not dispatching parent - decision criteria not met',
     );
     return;

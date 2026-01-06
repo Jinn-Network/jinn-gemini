@@ -367,6 +367,14 @@ yarn dev:mech --workstream=0x0447dd1e... --single
 
 ---
 
+## Cyclic Jobs (Continuous Operation)
+
+Root jobs can be launched with `cyclic: true` in IPFS metadata (set via launcher scripts, NOT agents). Worker auto-redispatches after completion. Agent receives CYCLE invariants guiding reassessment and delegation.
+
+**Reference:** `docs/documentation/WORKER_INTERNALS.md` (Cyclic Jobs section)
+
+---
+
 ## Blood-Written Rules (Common Gotchas)
 
 ### 1. RPC Rate Limits

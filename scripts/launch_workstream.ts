@@ -1,25 +1,30 @@
 #!/usr/bin/env tsx
 /**
  * Generic Workstream Launcher
- * 
+ *
  * Launches a blueprint-based workstream with automatic GitHub repository creation.
- * 
+ *
  * Usage: yarn launch:workstream <blueprint-name> [options]
- * 
+ *
  * Options:
  *   --dry-run         Print what would happen without creating repo or dispatching
  *   --model           Specify model (default: gemini-2.5-flash)
  *   --context         Additional context string to inject
  *   --skip-repo       Skip GitHub repository creation (artifact-only mode)
- * 
+ *   --cyclic          Enable continuous operation (auto-redispatch after completion)
+ *
  * Example:
  *   yarn launch:workstream x402-data-service
  *   yarn launch:workstream x402-data-service.json --dry-run
+ *   yarn launch:workstream monitoring-job --cyclic
  */
 
 import 'dotenv/config';
 import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
+import { getServiceProfile } from '../env/operate-profile.js';
 import { readFile, mkdir, writeFile } from 'fs/promises';
+import { randomUUID } from 'crypto';
 import { join, basename, extname } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
@@ -147,6 +152,7 @@ async function main() {
     .option('model', { type: 'string', default: 'gemini-3-flash-preview', description: 'Model to use' })
     .option('context', { type: 'string', description: 'Additional context to inject' })
     .option('skip-repo', { type: 'boolean', description: 'Skip GitHub repository creation (artifact-only mode)' })
+    .option('cyclic', { type: 'boolean', description: 'Enable continuous operation (auto-redispatch after completion)' })
     .demandCommand(1, 'Please provide a blueprint filename (e.g., x402-data-service)')
     .help()
     .parse();
@@ -267,24 +273,66 @@ async function main() {
       scriptLogger.debug({ CODE_METADATA_REPO_ROOT: repoPath }, 'Set CODE_METADATA_REPO_ROOT');
     }
 
-    const result = await dispatchNewJob({
-      jobName,
-      blueprint: finalBlueprint,
-      model: argv.model,
-      enabledTools: blueprintObj.enabledTools || [
-        'web_search',
-        'create_artifact',
-        'write_file',
-        'read_file',
-        'replace',
-        'list_directory',
-        'run_shell_command',
-        'dispatch_new_job',
-      ],
-      skipBranch: false,  // Explicit branch creation for code workstreams
-    });
+    const enabledTools = blueprintObj.enabledTools || [
+      'web_search',
+      'create_artifact',
+      'write_file',
+      'read_file',
+      'replace',
+      'list_directory',
+      'run_shell_command',
+      'dispatch_new_job',
+    ];
 
-    const { requestId } = parseDispatchResponse(result);
+    let requestId: string;
+
+    if (argv.cyclic) {
+      // Cyclic jobs use marketplaceInteract directly to set cyclic: true in IPFS metadata
+      // This is intentional - agents cannot set cyclic, only launcher scripts can
+      scriptLogger.info({ cyclic: true }, 'Launching cyclic workstream');
+
+      const profile = getServiceProfile();
+      const jobDefinitionId = randomUUID();
+
+      const ipfsJsonContents = [{
+        blueprint: finalBlueprint,
+        jobName,
+        model: argv.model || 'gemini-3-flash-preview',
+        enabledTools,
+        jobDefinitionId,
+        nonce: randomUUID(),
+        cyclic: true,  // Enable continuous operation
+      }];
+
+      const result = await marketplaceInteract({
+        prompts: [finalBlueprint],
+        priorityMech: profile.mechAddress,
+        tools: enabledTools,
+        ipfsJsonContents,
+        chainConfig: profile.chainConfig,
+        keyConfig: { source: 'value', value: profile.privateKey },
+        postOnly: true,
+        responseTimeout: 300,
+      });
+
+      if (!result?.request_ids?.[0]) {
+        throw new Error('No request ID returned from marketplace dispatch');
+      }
+
+      requestId = result.request_ids[0];
+    } else {
+      // Standard dispatch via MCP tool
+      const result = await dispatchNewJob({
+        jobName,
+        blueprint: finalBlueprint,
+        model: argv.model,
+        enabledTools,
+        skipBranch: false,  // Explicit branch creation for code workstreams
+      });
+
+      const parsed = parseDispatchResponse(result);
+      requestId = parsed.requestId;
+    }
 
     scriptLogger.info({
       requestId,

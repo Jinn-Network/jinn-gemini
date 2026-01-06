@@ -150,6 +150,18 @@ export interface AdditionalContext {
     /** Request ID of the run that was terminated due to loop */
     previousRequestId?: string;
   };
+
+  /** Cycle: set when a cyclic job is re-dispatched for a new cycle */
+  cycle?: {
+    /** Whether this is a cycle run (as opposed to initial run) */
+    isCycleRun: boolean;
+    /** Current cycle number (1-indexed) */
+    cycleNumber: number;
+    /** Timestamp when the previous cycle completed */
+    previousCycleCompletedAt?: string;
+    /** Request ID of the previous cycle run */
+    previousCycleRequestId?: string;
+  };
 }
 
 /**
@@ -201,6 +213,8 @@ export interface IpfsMetadata {
     mapping: Record<string, string>;
     transforms?: Record<string, { type: string; params?: Record<string, any> }>;
   };
+  /** Whether this job operates cyclically (continuously re-dispatches after completion) */
+  cyclic?: boolean;
 }
 
 /**

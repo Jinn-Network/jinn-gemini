@@ -80,7 +80,10 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
     const outputSpec = json?.outputSpec && typeof json.outputSpec === 'object'
       ? json.outputSpec
       : undefined;
-    
+
+    // Cyclic flag for continuous operation
+    const cyclic = json?.cyclic === true;
+
     return {
       blueprint,
       enabledTools,
@@ -96,6 +99,7 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
       lineage,
       templateId,
       outputSpec,
+      cyclic,
     };
   } catch (e: any) {
     workerLogger.warn({ error: e?.message || String(e) }, 'Failed to fetch IPFS metadata; proceeding without it');

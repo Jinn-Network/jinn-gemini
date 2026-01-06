@@ -41,6 +41,7 @@ import {
   ToolingInvariantProvider,
   QualityInvariantProvider,
   OutputInvariantProvider,
+  CycleInvariantProvider,
 } from './providers/invariants/index.js';
 
 /**
@@ -308,6 +309,7 @@ export function createBlueprintBuilder(
   builder.registerInvariantProvider(new StateInvariantProvider());
   builder.registerInvariantProvider(new ToolingInvariantProvider());
   builder.registerInvariantProvider(new QualityInvariantProvider());
+  builder.registerInvariantProvider(new CycleInvariantProvider());
 
   return builder;
 }
