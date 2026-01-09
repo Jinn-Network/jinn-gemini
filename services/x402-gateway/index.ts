@@ -675,32 +675,27 @@ const summarizeOutputSpec = summarizeSpec;
 
 /**
  * Substitute {{variable}} placeholders in a string with input values.
- * Supports nested variable paths like {{blogSpec.name}}.
+ * Uses flat variable names (e.g., {{blogName}}) with schema default fallback.
  */
 function substituteVariables(
   text: string,
   input: Record<string, any>,
   inputSchema?: Record<string, any>
 ): string {
-  return text.replace(/\{\{([\w.]+)\}\}/g, (match, varPath) => {
-    // Support nested paths like blogSpec.name
-    const parts = varPath.split('.');
-    let value: any = input;
-    for (const part of parts) {
-      if (value && typeof value === 'object' && part in value) {
-        value = value[part];
-      } else {
-        value = undefined;
-        break;
-      }
+  return text.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+    // Check input first
+    if (input[varName] !== undefined) {
+      return String(input[varName]);
     }
 
-    if (value !== undefined) {
-      return String(value);
+    // Fall back to default from schema
+    const defaultVal = inputSchema?.properties?.[varName]?.default;
+    if (defaultVal !== undefined) {
+      return String(defaultVal);
     }
 
-    // Keep placeholder if no value found
-    console.warn(`No value found for template variable: ${varPath}`);
+    // Keep placeholder if no value or default found
+    console.warn(`No value found for template variable: ${varName}`);
     return match;
   });
 }
