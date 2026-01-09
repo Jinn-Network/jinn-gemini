@@ -33,6 +33,7 @@ import {
   validateBudget,
   formatWei,
 } from "./pricing.js";
+import { buildJobBranchName, type CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
 
 const app = new Hono();
 app.use("/*", cors());
@@ -89,6 +90,46 @@ async function queryPonderTemplates(query: string, variables?: Record<string, an
   }
 
   return json.data;
+}
+
+/**
+ * Build codeMetadata from standardized input fields.
+ * Templates use `repoUrl` and optionally `baseBranch`.
+ */
+function buildCodeMetadataFromInput(
+  input: Record<string, any>,
+  jobDefinitionId: string,
+  jobName: string
+): CodeMetadata | undefined {
+  const repoInput = input?.repoUrl;
+  if (typeof repoInput !== 'string' || !repoInput) {
+    return undefined;
+  }
+
+  // Convert org/repo format to full URL if needed
+  const repoUrl = repoInput.includes('://')
+    ? repoInput
+    : `https://github.com/${repoInput}`;
+
+  const baseBranch = input?.baseBranch || 'main';
+
+  const branchName = buildJobBranchName({
+    jobDefinitionId,
+    jobName,
+    maxSlugLength: 20,
+  });
+
+  return {
+    branch: {
+      name: branchName,
+      headCommit: 'pending', // Worker resolves after checkout
+      remoteUrl: repoUrl,
+    },
+    repo: { remoteUrl: repoUrl },
+    baseBranch,
+    capturedAt: new Date().toISOString(),
+    jobDefinitionId,
+  };
 }
 
 /**
@@ -336,7 +377,22 @@ app.post("/templates/:id/execute", async (c) => {
   try {
     // Dispatch to Jinn
     const jobDefinitionId = crypto.randomUUID();
+    const jobName = `${template.name} (via x402)`;
     const { marketplaceInteract } = await import("@jinn-network/mech-client-ts/dist/marketplace_interact.js");
+
+    // Build codeMetadata from standardized input fields (repoUrl, baseBranch)
+    const codeMetadata = buildCodeMetadataFromInput(input, jobDefinitionId, jobName);
+
+    // Build additionalContext with budget info and env vars
+    const additionalContext: Record<string, any> = {};
+    if (body.callerBudget) {
+      additionalContext.budgetCap = body.callerBudget;
+      additionalContext.estimatedCost = estimatedCost;
+    }
+    // Pass env vars from input if provided
+    if (input.env && typeof input.env === 'object') {
+      additionalContext.env = input.env;
+    }
 
     const result = await marketplaceInteract({
       prompts: [JSON.stringify({ invariants })],
@@ -344,22 +400,31 @@ app.post("/templates/:id/execute", async (c) => {
       tools: enabledTools,
       ipfsJsonContents: [{
         blueprint: JSON.stringify({ invariants }),
-        jobName: `${template.name} (via x402)`,
+        jobName,
         model: "gemini-3-flash-preview",
         jobDefinitionId,
         nonce: crypto.randomUUID(),
+        networkId: 'jinn',
         templateId: template.id,
         templateVersion: "1.0.0",
         enabledTools,
         // OutputSpec passthrough: include in dispatch so worker can pass through to delivery
         ...(template.outputSpec && { outputSpec: template.outputSpec }),
+        // InputSchema for default value resolution
+        ...(template.inputSchema && { inputSchema: template.inputSchema }),
         // Budget and pricing context
         estimatedCost,
-        ...(body.callerBudget && {
-          callerBudget: body.callerBudget,
-          additionalContext: {
-            budgetCap: body.callerBudget,
-            estimatedCost,
+        // additionalContext (budget, env vars)
+        ...(Object.keys(additionalContext).length > 0 && { additionalContext }),
+        // Git workflow fields (if codeMetadata present)
+        ...(codeMetadata && {
+          codeMetadata,
+          branchName: codeMetadata.branch.name,
+          baseBranch: codeMetadata.baseBranch,
+          executionPolicy: {
+            branch: codeMetadata.branch.name,
+            ensureTestsPass: true,
+            description: 'Agent must work on the provided branch.',
           },
         }),
       }],
@@ -675,27 +740,32 @@ const summarizeOutputSpec = summarizeSpec;
 
 /**
  * Substitute {{variable}} placeholders in a string with input values.
- * Uses flat variable names (e.g., {{blogName}}) with schema default fallback.
+ * Supports nested variable paths like {{blogSpec.name}}.
  */
 function substituteVariables(
   text: string,
   input: Record<string, any>,
   inputSchema?: Record<string, any>
 ): string {
-  return text.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
-    // Check input first
-    if (input[varName] !== undefined) {
-      return String(input[varName]);
+  return text.replace(/\{\{([\w.]+)\}\}/g, (match, varPath) => {
+    // Support nested paths like blogSpec.name
+    const parts = varPath.split('.');
+    let value: any = input;
+    for (const part of parts) {
+      if (value && typeof value === 'object' && part in value) {
+        value = value[part];
+      } else {
+        value = undefined;
+        break;
+      }
     }
 
-    // Fall back to default from schema
-    const defaultVal = inputSchema?.properties?.[varName]?.default;
-    if (defaultVal !== undefined) {
-      return String(defaultVal);
+    if (value !== undefined) {
+      return String(value);
     }
 
-    // Keep placeholder if no value or default found
-    console.warn(`No value found for template variable: ${varName}`);
+    // Keep placeholder if no value found
+    console.warn(`No value found for template variable: ${varPath}`);
     return match;
   });
 }
