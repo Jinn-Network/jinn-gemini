@@ -22,11 +22,11 @@ import { cors } from "hono/cors";
 import { paymentMiddleware, type Network } from "x402-hono";
 import { facilitator } from "@coinbase/x402";
 import { serve } from "@hono/node-server";
-import { 
-  extractAndValidate, 
+import {
+  extractAndValidate,
   summarizeOutputSpec as summarizeSpec,
   DEFAULT_OUTPUT_SPEC,
-  type OutputSpec 
+  type OutputSpec
 } from "./output-spec.js";
 import {
   computeTemplatePrice,
@@ -78,16 +78,16 @@ async function queryPonderTemplates(query: string, variables?: Record<string, an
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
   });
-  
+
   if (!res.ok) {
     throw new Error(`Ponder query failed: ${res.status} ${res.statusText}`);
   }
-  
+
   const json = await res.json() as { data?: any; errors?: any[] };
   if (json.errors?.length) {
     throw new Error(`Ponder query error: ${json.errors[0].message}`);
   }
-  
+
   return json.data;
 }
 
@@ -121,7 +121,7 @@ async function fetchTemplatesFromPonder(): Promise<PonderJobTemplate[]> {
       }
     }
   `;
-  
+
   const data = await queryPonderTemplates(query);
   return data?.jobTemplates?.items || [];
 }
@@ -154,7 +154,7 @@ async function fetchTemplateFromPonder(templateId: string): Promise<PonderJobTem
       }
     }
   `;
-  
+
   const data = await queryPonderTemplates(query, { id: templateId });
   return data?.jobTemplate || null;
 }
@@ -166,8 +166,8 @@ interface ExecuteRequest {
 }
 
 // Health check
-app.get("/health", (c) => c.json({ 
-  status: "ok", 
+app.get("/health", (c) => c.json({
+  status: "ok",
   service: "x402-gateway",
   timestamp: new Date().toISOString()
 }));
@@ -191,7 +191,7 @@ app.get("/", (c) => c.json({
 app.get("/templates", async (c) => {
   try {
     const ponderTemplates = await fetchTemplatesFromPonder();
-    
+
     // Transform Ponder templates for API response
     const templates = ponderTemplates.map((t) => ({
       templateId: t.id,
@@ -210,8 +210,8 @@ app.get("/templates", async (c) => {
     return c.json({ templates, source: "ponder" });
   } catch (ponderError: any) {
     console.error("Ponder query failed:", ponderError.message);
-    return c.json({ 
-      error: "Template service unavailable", 
+    return c.json({
+      error: "Template service unavailable",
       details: ponderError.message,
       hint: "The jobTemplate table may not be deployed yet. Ponder is still indexing."
     }, 503);
@@ -221,10 +221,10 @@ app.get("/templates", async (c) => {
 // GET /templates/:id - Get template details from Ponder
 app.get("/templates/:id", async (c) => {
   const templateId = c.req.param("id");
-  
+
   try {
     const template = await fetchTemplateFromPonder(templateId);
-    
+
     if (!template) {
       return c.json({ error: "Template not found" }, 404);
     }
@@ -253,8 +253,8 @@ app.get("/templates/:id", async (c) => {
     });
   } catch (ponderError: any) {
     console.error("Ponder query failed for template:", templateId, ponderError.message);
-    return c.json({ 
-      error: "Template service unavailable", 
+    return c.json({
+      error: "Template service unavailable",
       details: ponderError.message,
       hint: "The jobTemplate table may not be deployed yet. Ponder is still indexing."
     }, 503);
@@ -269,16 +269,16 @@ app.post("/templates/:id/execute", async (c) => {
   }
 
   const templateId = c.req.param("id");
-  
+
   // Fetch template from Ponder
   let template: PonderJobTemplate | null = null;
-  
+
   try {
     template = await fetchTemplateFromPonder(templateId);
   } catch (ponderError: any) {
     console.error("Ponder query failed for execute:", templateId, ponderError.message);
-    return c.json({ 
-      error: "Template service unavailable", 
+    return c.json({
+      error: "Template service unavailable",
       details: ponderError.message,
       hint: "The jobTemplate table may not be deployed yet. Ponder is still indexing."
     }, 503);
@@ -299,14 +299,14 @@ app.post("/templates/:id/execute", async (c) => {
   const enabledTools = template.enabledTools || [];
 
   // Compute estimated cost (from template price or historical data)
-  const estimatedCost = template.priceWei || 
+  const estimatedCost = template.priceWei ||
     await computeTemplatePrice(ponderUrl, template.canonicalJobDefinitionId);
 
   // Validate caller budget if provided
   const budgetCheck = validateBudget(body.callerBudget, estimatedCost);
   if (!budgetCheck.valid) {
-    return c.json({ 
-      error: "Budget exceeded", 
+    return c.json({
+      error: "Budget exceeded",
       details: budgetCheck.message,
       estimatedCost: formatWei(estimatedCost),
       callerBudget: body.callerBudget ? formatWei(body.callerBudget) : undefined,
@@ -320,7 +320,7 @@ app.post("/templates/:id/execute", async (c) => {
   // Validate input against schema (basic validation)
   const inputSchema = (template.inputSchema || {}) as Record<string, any>;
   const input = body.input || {};
-  
+
   if (inputSchema.required) {
     for (const field of inputSchema.required) {
       if (!(field in input)) {
@@ -331,7 +331,7 @@ app.post("/templates/:id/execute", async (c) => {
 
   // Build blueprint from template
   // If template has stored blueprint from Ponder, use it; otherwise generate
-  const blueprint = await buildBlueprintFromTemplate(template, input, body.context);
+  const { invariants } = await buildBlueprintFromTemplate(template, input);
 
   try {
     // Dispatch to Jinn
@@ -339,11 +339,11 @@ app.post("/templates/:id/execute", async (c) => {
     const { marketplaceInteract } = await import("@jinn-network/mech-client-ts/dist/marketplace_interact.js");
 
     const result = await marketplaceInteract({
-      prompts: [JSON.stringify(blueprint)],
+      prompts: [JSON.stringify({ invariants })],
       priorityMech: mechAddress,
       tools: enabledTools,
       ipfsJsonContents: [{
-        blueprint: JSON.stringify(blueprint),
+        blueprint: JSON.stringify({ invariants }),
         jobName: `${template.name} (via x402)`,
         model: "gemini-2.5-flash",
         jobDefinitionId,
@@ -355,7 +355,7 @@ app.post("/templates/:id/execute", async (c) => {
         ...(template.outputSpec && { outputSpec: template.outputSpec }),
         // Budget and pricing context
         estimatedCost,
-        ...(body.callerBudget && { 
+        ...(body.callerBudget && {
           callerBudget: body.callerBudget,
           additionalContext: {
             budgetCap: body.callerBudget,
@@ -403,7 +403,7 @@ app.get("/runs/:requestId/status", async (c) => {
       blockTimestamp
     } 
   }`;
-  
+
   try {
     const res = await fetch(ponderUrl, {
       method: "POST",
@@ -415,8 +415,8 @@ app.get("/runs/:requestId/status", async (c) => {
     const req = data?.data?.request;
 
     if (!req) {
-      return c.json({ 
-        requestId, 
+      return c.json({
+        requestId,
         status: "not_found",
         message: "Request not yet indexed or does not exist"
       });
@@ -448,7 +448,7 @@ app.get("/runs/:requestId/result", async (c) => {
       jobDefinitionId
     } 
   }`;
-  
+
   try {
     const res = await fetch(ponderUrl, {
       method: "POST",
@@ -456,16 +456,20 @@ app.get("/runs/:requestId/result", async (c) => {
       body: JSON.stringify({ query: requestQuery, variables: { id: requestId } }),
     });
 
-    const data = await res.json() as { data?: { request?: { 
-      delivered: boolean; 
-      deliveryIpfsHash?: string; 
-      jobName?: string;
-      jobDefinitionId?: string;
-    } } };
+    const data = await res.json() as {
+      data?: {
+        request?: {
+          delivered: boolean;
+          deliveryIpfsHash?: string;
+          jobName?: string;
+          jobDefinitionId?: string;
+        }
+      }
+    };
     const req = data?.data?.request;
 
     if (!req) {
-      return c.json({ 
+      return c.json({
         status: "not_found",
         result: null,
       }, 404);
@@ -482,7 +486,7 @@ app.get("/runs/:requestId/result", async (c) => {
     // Step 2: Check job definition's lastStatus to determine if workstream is complete
     let finalRequestId = requestId;
     let finalDeliveryHash = req.deliveryIpfsHash;
-    
+
     if (req.jobDefinitionId) {
       const jobDefQuery = `query ($id: String!) {
         jobDefinition(id: $id) {
@@ -490,16 +494,16 @@ app.get("/runs/:requestId/result", async (c) => {
           lastStatus
         }
       }`;
-      
+
       const jobDefRes = await fetch(ponderUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: jobDefQuery, variables: { id: req.jobDefinitionId } }),
       });
-      
+
       const jobDefData = await jobDefRes.json() as { data?: { jobDefinition?: { lastStatus?: string } } };
       const lastStatus = jobDefData?.data?.jobDefinition?.lastStatus;
-      
+
       // If job is COMPLETED, find the latest delivered request for this job definition
       // This handles the case where parent was re-run after children completed
       if (lastStatus === "COMPLETED") {
@@ -516,16 +520,16 @@ app.get("/runs/:requestId/result", async (c) => {
             }
           }
         }`;
-        
+
         const latestRes = await fetch(ponderUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: latestQuery, variables: { jobDefId: req.jobDefinitionId } }),
         });
-        
+
         const latestData = await latestRes.json() as { data?: { requests?: { items?: Array<{ id: string; deliveryIpfsHash?: string }> } } };
         const latestRequest = latestData?.data?.requests?.items?.[0];
-        
+
         if (latestRequest?.deliveryIpfsHash) {
           finalRequestId = latestRequest.id;
           finalDeliveryHash = latestRequest.deliveryIpfsHash;
@@ -548,7 +552,7 @@ app.get("/runs/:requestId/result", async (c) => {
 
     // Step 3: Fetch delivery payload from IPFS
     const ipfsUrl = buildIpfsUrl(finalDeliveryHash, finalRequestId);
-    const ipfsRes = await fetch(ipfsUrl, { 
+    const ipfsRes = await fetch(ipfsUrl, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(10000),
     });
@@ -564,7 +568,7 @@ app.get("/runs/:requestId/result", async (c) => {
 
     // Get OutputSpec: prefer passthrough from delivery payload, fallback to Ponder lookup
     let outputSpec: OutputSpec | undefined;
-    
+
     // First: try passthrough OutputSpec from delivery payload (fast path)
     if (deliveryPayload.outputSpec && typeof deliveryPayload.outputSpec === 'object') {
       outputSpec = deliveryPayload.outputSpec as OutputSpec;
@@ -586,7 +590,7 @@ app.get("/runs/:requestId/result", async (c) => {
     // Apply OutputSpec mapping and validation
     try {
       const result = extractAndValidate(deliveryPayload, outputSpec);
-      
+
       return c.json({
         status: "completed",
         result,
@@ -609,22 +613,22 @@ function buildIpfsUrl(deliveryIpfsHash: string, requestId: string): string {
   // deliveryIpfsHash is 'f01551220' + 64-hex digest (raw codec)
   // We need to convert to dag-pb CID (codec 0x70) and append requestId path
   const digestHex = deliveryIpfsHash.replace(/^f01551220/i, '');
-  
+
   if (digestHex.length !== 64) {
     // Fallback to raw format if not expected length
     return `https://gateway.autonolas.tech/ipfs/${deliveryIpfsHash}/${requestId}`;
   }
-  
+
   try {
     // Parse digest hex to bytes
     const digestBytes: number[] = [];
     for (let i = 0; i < digestHex.length; i += 2) {
       digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
     }
-    
+
     // Build CIDv1 bytes: [0x01] + [0x70] (dag-pb) + multihash: [0x12, 0x20] + digest
     const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
-    
+
     // Base32 encode (lowercase, no padding), prefix with 'b'
     const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
     let bitBuffer = 0;
@@ -643,7 +647,7 @@ function buildIpfsUrl(deliveryIpfsHash: string, requestId: string): string {
       const idx = (bitBuffer << (5 - bitCount)) & 0x1f;
       out += base32Alphabet[idx];
     }
-    
+
     const dirCid = 'b' + out;
     return `https://gateway.autonolas.tech/ipfs/${dirCid}/${requestId}`;
   } catch {
@@ -656,82 +660,121 @@ function buildIpfsUrl(deliveryIpfsHash: string, requestId: string): string {
 function formatPrice(weiString: string | number | bigint): string {
   const wei = BigInt(weiString || 0);
   if (wei === 0n) return "free";
-  
+
   const eth = Number(wei) / 1e18;
   if (eth >= 0.001) return `${eth.toFixed(4)} ETH`;
-  
+
   const gwei = Number(wei) / 1e9;
   if (gwei >= 1) return `${gwei.toFixed(2)} gwei`;
-  
+
   return `${wei} wei`;
 }
 
 // Use imported summarizeOutputSpec from output-spec.ts
 const summarizeOutputSpec = summarizeSpec;
 
+/**
+ * Substitute {{variable}} placeholders in a string with input values.
+ * Supports nested variable paths like {{blogSpec.name}}.
+ */
+function substituteVariables(
+  text: string,
+  input: Record<string, any>,
+  inputSchema?: Record<string, any>
+): string {
+  return text.replace(/\{\{([\w.]+)\}\}/g, (match, varPath) => {
+    // Support nested paths like blogSpec.name
+    const parts = varPath.split('.');
+    let value: any = input;
+    for (const part of parts) {
+      if (value && typeof value === 'object' && part in value) {
+        value = value[part];
+      } else {
+        value = undefined;
+        break;
+      }
+    }
+
+    if (value !== undefined) {
+      return String(value);
+    }
+
+    // Keep placeholder if no value found
+    console.warn(`No value found for template variable: ${varPath}`);
+    return match;
+  });
+}
+
+/**
+ * Deep substitute variables in an object (recursively processes strings).
+ */
+function deepSubstitute(
+  obj: any,
+  input: Record<string, any>,
+  inputSchema?: Record<string, any>
+): any {
+  if (typeof obj === 'string') {
+    return substituteVariables(obj, input, inputSchema);
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => deepSubstitute(item, input, inputSchema));
+  }
+  if (obj && typeof obj === 'object') {
+    const result: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = deepSubstitute(value, input, inputSchema);
+    }
+    return result;
+  }
+  return obj;
+}
+
 // Helper: Build blueprint from template
 async function buildBlueprintFromTemplate(
-  template: PonderJobTemplate | any, 
-  input: Record<string, any>,
-  additionalContext?: string
-): Promise<{ assertions: any[]; context: string }> {
+  template: PonderJobTemplate | any,
+  input: Record<string, any>
+): Promise<{ invariants: any[] }> {
   // If template has a stored blueprint from Ponder, parse and use it
   if (template.blueprint) {
     try {
       const storedBlueprint = JSON.parse(template.blueprint);
-      
-      // Inject input parameters into context
-      const context = [
-        storedBlueprint.context || '',
-        '',
-        '## Input Parameters',
-        JSON.stringify(input, null, 2),
-        '',
-        additionalContext ? `## Additional Context\n${additionalContext}` : '',
-      ].filter(Boolean).join('\n');
-      
-      return {
-        assertions: storedBlueprint.assertions || [],
-        context,
-      };
+
+      // Deep substitute {{variable}} placeholders in invariants
+      const substitutedInvariants = deepSubstitute(
+        storedBlueprint.invariants || [],
+        input,
+        template.inputSchema || undefined
+      );
+
+      return { invariants: substitutedInvariants };
     } catch (parseError) {
       console.warn("Failed to parse stored blueprint, falling back to generic:", parseError);
     }
   }
-  
-  // Fallback: Generate generic blueprint for templates without stored blueprints
-  const context = [
-    `## Template: ${template.name}`,
-    template.description || '',
-    '',
-    '## Input Parameters',
-    JSON.stringify(input, null, 2),
-    '',
-    additionalContext ? `## Additional Context\n${additionalContext}` : '',
-  ].filter(Boolean).join('\n');
 
-  const assertions = [
+  // Fallback: Generate generic blueprint for templates without stored blueprints
+  const fallbackInvariants = [
     {
       id: "TEMPLATE-001",
-      assertion: `Execute the ${template.name} template with the provided input parameters.`,
+      invariant: `Execute the ${template.name} template with the provided input parameters.`,
+      measurement: "Template execution completes successfully with expected output.",
       examples: {
         do: ["Follow the template's intended purpose", "Use provided input parameters"],
         dont: ["Deviate from template scope", "Ignore input parameters"]
-      },
-      commentary: "Template execution should be deterministic and follow the defined contract."
+      }
     },
     {
-      id: "OUTPUT-001", 
-      assertion: "Produce output conforming to the template's output specification.",
+      id: "OUTPUT-001",
+      invariant: "Produce output conforming to the template's output specification.",
+      measurement: "All required output fields are present and correctly formatted.",
       examples: {
         do: ["Include all required output fields", "Format output as specified"],
         dont: ["Omit required fields", "Return unstructured data"]
-      },
-      commentary: "Output determinism enables reliable downstream consumption."
+      }
     }
   ];
 
-  return { assertions, context };
+  return { invariants: fallbackInvariants };
 }
 
 // Start server
