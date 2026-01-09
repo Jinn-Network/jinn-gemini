@@ -33,7 +33,41 @@ import {
   validateBudget,
   formatWei,
 } from "./pricing.js";
-import { buildJobBranchName, type CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
+
+// Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
+interface BranchSnapshot {
+  name: string;
+  headCommit: string;
+  remoteUrl?: string;
+}
+
+interface RepoMetadata {
+  remoteUrl?: string;
+}
+
+interface CodeMetadata {
+  branch: BranchSnapshot;
+  repo?: RepoMetadata;
+  baseBranch?: string;
+  capturedAt: string;
+  jobDefinitionId: string;
+}
+
+function buildJobBranchName(options: { jobDefinitionId: string; jobName?: string | null; maxSlugLength?: number }): string {
+  const { jobDefinitionId, jobName, maxSlugLength = 30 } = options;
+  const prefix = jobDefinitionId.slice(0, 8);
+
+  let slug = '';
+  if (jobName) {
+    slug = jobName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, maxSlugLength);
+  }
+
+  return slug ? `job/${prefix}-${slug}` : `job/${prefix}`;
+}
 
 const app = new Hono();
 app.use("/*", cors());
