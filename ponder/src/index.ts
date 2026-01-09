@@ -162,10 +162,10 @@ async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promi
     const url = `${gateway}${cidBase32}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    
+
     try {
       const response = await fetch(url, { signal: controller.signal });
-      
+
       if (!response.ok) {
         const msg = `HTTP ${response.status} from ${gateway}`;
         logger.debug({ cidBase32, gateway, status: response.status }, "IPFS gateway failed, trying next");
@@ -203,7 +203,7 @@ async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promi
  */
 function computeBlueprintHash(blueprint: string | undefined): string | null {
   if (!blueprint) return null;
-  
+
   try {
     // Parse blueprint if it's JSON
     let parsed: any;
@@ -213,7 +213,7 @@ function computeBlueprintHash(blueprint: string | undefined): string | null {
       // If not valid JSON, hash the raw string
       return simpleHash(blueprint);
     }
-    
+
     // Extract structural elements for hashing:
     // - assertion IDs and text (not examples which may vary)
     // - tool names
@@ -222,19 +222,19 @@ function computeBlueprintHash(blueprint: string | undefined): string | null {
       assertions: [],
       tools: [],
     };
-    
+
     if (parsed.assertions && Array.isArray(parsed.assertions)) {
       structural.assertions = parsed.assertions.map((a: any) => ({
         id: a.id,
         assertion: typeof a.assertion === 'string' ? a.assertion.substring(0, 200) : '',
       }));
     }
-    
+
     // Also consider enabled tools as part of template identity
     if (parsed.enabledTools && Array.isArray(parsed.enabledTools)) {
       structural.tools = parsed.enabledTools.sort();
     }
-    
+
     return simpleHash(JSON.stringify(structural));
   } catch {
     return simpleHash(blueprint);
@@ -261,7 +261,7 @@ function simpleHash(str: string): string {
  */
 function extractTemplateName(jobName: string | undefined): string {
   if (!jobName) return 'Unnamed Template';
-  
+
   // Remove common variable suffixes:
   // - Dates: "- 2025-12-15", "– Dec 15", etc.
   // - Random suffixes: "- abc", "- xyz123"
@@ -273,7 +273,7 @@ function extractTemplateName(jobName: string | undefined): string {
     .replace(/\s*[-–]\s*[0-9a-f]{8}-[0-9a-f]{4}-.*$/i, '') // UUIDs
     .replace(/\s*\(via x402\)$/i, '') // x402 suffix
     .trim();
-  
+
   return name || 'Unnamed Template';
 }
 
@@ -282,22 +282,22 @@ function extractTemplateName(jobName: string | undefined): string {
  */
 function extractTags(jobName: string | undefined, blueprint: string | undefined): string[] {
   const tags = new Set<string>();
-  
+
   // Common keywords to extract as tags
   const keywords = [
     'ethereum', 'research', 'analysis', 'trading', 'defi', 'daily',
     'prediction', 'market', 'x402', 'ecosystem', 'agents', 'protocol',
     'audit', 'security', 'optimization', 'scaffold', 'documentation'
   ];
-  
+
   const searchText = `${jobName || ''} ${blueprint || ''}`.toLowerCase();
-  
+
   for (const keyword of keywords) {
     if (searchText.includes(keyword)) {
       tags.add(keyword);
     }
   }
-  
+
   return Array.from(tags).slice(0, 10); // Limit to 10 tags
 }
 
@@ -331,40 +331,43 @@ async function deriveJobTemplate(
   }
 ): Promise<void> {
   const templateRepo = createRepository(db, jobTemplate, "jobTemplate");
-  
+
   // Compute blueprint hash for deduplication
   const blueprintHash = computeBlueprintHash(jobDef.blueprint);
   if (!blueprintHash) {
     logger.debug({ jobDefinitionId: jobDef.id }, "Skipping template derivation - no blueprint");
     return;
   }
-  
+
   // Check if a template with this blueprint hash already exists
   // We use the hash as part of the ID for direct lookup
   const templateName = extractTemplateName(jobDef.name);
   const baseTemplateId = generateTemplateId(templateName);
-  
+
   // Try to find existing template by blueprint hash
   // Since we can't query by non-PK fields easily, we'll use a hash-based ID
   const templateId = `${baseTemplateId}-${blueprintHash.substring(4, 12)}`;
-  
+
   const existing = await templateRepo.findUnique({ id: templateId });
-  
+
   if (existing) {
     // Update existing template metrics
     const newRunCount = (existing.runCount || 0) + 1;
+    // If inputSchema is null and a new one is provided, update it
+    const shouldUpdateInputSchema = !existing.inputSchema && jobDef.inputSchema;
     await templateRepo.upsert({
       id: templateId,
       update: {
         runCount: newRunCount,
         lastUsedAt: jobDef.blockTimestamp,
+        ...(shouldUpdateInputSchema ? { inputSchema: jobDef.inputSchema } : {}),
       },
     });
-    logger.debug({ templateId, runCount: newRunCount }, "Updated existing job template metrics");
+    logger.debug({ templateId, runCount: newRunCount, inputSchemaUpdated: shouldUpdateInputSchema }, "Updated existing job template metrics");
   } else {
     // Create new template
     const tags = extractTags(jobDef.name, jobDef.blueprint);
-    
+
     await templateRepo.upsert({
       id: templateId,
       create: {
@@ -437,298 +440,162 @@ async function findWorkstreamRoot(
 ponder.on(
   "MechMarketplace:MarketplaceRequest",
   async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
-  try {
-    const db = (context as any).db;
-    if (!db) {
-      logger.error("Ponder context.db is not available; cannot index MarketplaceRequest");
-      return;
-    }
-
-    const mech: string = String(event.args.priorityMech);
-    const sender: string = String(event.args.requester);
-    const requestIds: string[] = toStringArray((event.args as any).requestIds);
-    const requestDatas: string[] = toStringArray((event.args as any).requestDatas);
-    const txHash: string = String(event.transaction.hash);
-    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
-    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
-
-    const repo: Repository = createRepository(db, request, "request");
-    const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
-    const messageRepo: Repository = createRepository(db, message, "message");
-
-    for (let i = 0; i < requestIds.length; i++) {
-      const id = requestIds[i];
-      const dataHex = requestDatas?.[i];
-      if (!dataHex) {
-        throw new Error(`MarketplaceRequest missing requestDatas entry for request ${id}`);
+    try {
+      const db = (context as any).db;
+      if (!db) {
+        logger.error("Ponder context.db is not available; cannot index MarketplaceRequest");
+        return;
       }
-      const digestHex = String(dataHex).replace(/^0x/, '').toLowerCase();
-      const { cidHex: ipfsHash, cidBase32 } = buildRawCidFromDigest(digestHex);
-      
-      logger.info({ requestId: id, ipfsHash, cidBase32, txHash }, "Processing MarketplaceRequest - fetching IPFS metadata");
-      
-      // Fetch IPFS metadata FIRST to check networkId before any DB writes
-      // This ensures non-Jinn requests are filtered out without creating DB records
-      let content: any = null;
-      try {
-        content = await fetchRequestMetadata(cidBase32);
-        if (!content || typeof content !== "object") {
-          throw new Error(`IPFS payload for request ${id} is empty or malformed`);
+
+      const mech: string = String(event.args.priorityMech);
+      const sender: string = String(event.args.requester);
+      const requestIds: string[] = toStringArray((event.args as any).requestIds);
+      const requestDatas: string[] = toStringArray((event.args as any).requestDatas);
+      const txHash: string = String(event.transaction.hash);
+      const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
+      const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+      const repo: Repository = createRepository(db, request, "request");
+      const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
+      const messageRepo: Repository = createRepository(db, message, "message");
+
+      for (let i = 0; i < requestIds.length; i++) {
+        const id = requestIds[i];
+        const dataHex = requestDatas?.[i];
+        if (!dataHex) {
+          throw new Error(`MarketplaceRequest missing requestDatas entry for request ${id}`);
         }
-        logger.info({ requestId: id, hasJobName: !!content.jobName, hasJobDefinitionId: !!content.jobDefinitionId, networkId: content.networkId }, "IPFS metadata fetched successfully");
-      } catch (ipfsError: any) {
-        // If IPFS fetch fails, skip this request entirely
-        // Without metadata, we can't verify networkId, so safer to skip
-        logger.error(
-          { requestId: id, ipfsHash, cidBase32, error: serializeError(ipfsError) },
-          "Failed to fetch IPFS metadata for request - skipping (cannot verify networkId)"
-        );
-        continue;
-      }
+        const digestHex = String(dataHex).replace(/^0x/, '').toLowerCase();
+        const { cidHex: ipfsHash, cidBase32 } = buildRawCidFromDigest(digestHex);
 
-      // GLOBAL JINN EXPLORER: Only index requests with networkId === "jinn" (or missing for legacy)
-      // This filters out all non-Jinn Olas marketplace traffic
-      // NOTE: networkId comes from IPFS metadata, NOT from chain event args (which doesn't have this field)
-      const networkId: string | undefined = typeof content.networkId === "string" ? content.networkId : undefined;
-      if (networkId && networkId !== "jinn") {
-        logger.debug({ requestId: id, networkId, txHash }, "Skipping non-Jinn request (networkId filtering)");
-        continue;
-      }
+        logger.info({ requestId: id, ipfsHash, cidBase32, txHash }, "Processing MarketplaceRequest - fetching IPFS metadata");
 
-      // Now that we've verified this is a Jinn request, insert into DB
-      logger.info({ requestId: id, networkId: networkId || 'undefined (legacy)' }, "Request passed networkId filter - creating DB record");
-      
-      try {
-        await repo.upsert({
-          id,
-          create: {
-            mech,
-            sender,
-            workstreamId: id, // Temporary: will be recomputed after metadata extraction if sourceRequestId exists
-            transactionHash: txHash,
-            blockNumber,
-            blockTimestamp,
-            ipfsHash,
-            delivered: false,
-          },
-          update: {
-            // Don't overwrite existing fields during initial insert
-          },
-        });
-        logger.info({ requestId: id }, "Initial request insert completed successfully");
-      } catch (upsertError: any) {
-        logger.error({ requestId: id, error: serializeError(upsertError) }, "Initial request insert failed");
-        throw upsertError;
-      }
-
-      let jobName: string | undefined;
-      let enabledTools: string[] | undefined;
-      let jobDefinitionId: string | undefined;
-      let blueprint: string | undefined;
-      let sourceRequestId: string | undefined;
-      let sourceJobDefinitionIdFromContent: string | undefined;
-      let additionalContext: any = undefined;
-      let messageContent: any = undefined;
-      let codeMetadata: any = undefined;
-      let dependencies: string[] | undefined;
-      jobName = typeof content.jobName === "string" ? content.jobName : undefined;
-      enabledTools = Array.isArray(content.tools)
-        ? content.tools.map((tool: any) => String(tool))
-        : Array.isArray(content.enabledTools)
-          ? content.enabledTools.map((tool: any) => String(tool))
-          : undefined;
-      jobDefinitionId = typeof content.jobDefinitionId === "string" ? content.jobDefinitionId : undefined;
-      // Support both blueprint (new) and prompt (legacy)
-      blueprint = typeof content.blueprint === "string" 
-        ? content.blueprint 
-        : (typeof content.prompt === "string" ? content.prompt : undefined);
-      sourceRequestId = typeof content.sourceRequestId === "string" ? content.sourceRequestId : undefined;
-      sourceJobDefinitionIdFromContent =
-        typeof (content as any).sourceJobDefinitionId === "string"
-          ? (content as any).sourceJobDefinitionId
-          : undefined;
-            additionalContext = (content as any).additionalContext || undefined;
-            if (additionalContext?.message) {
-              messageContent = additionalContext.message;
-            }
-      if (content.codeMetadata && typeof content.codeMetadata === "object") {
-              try {
-          codeMetadata = safeJsonClone(content.codeMetadata);
-        } catch {
-                codeMetadata = content.codeMetadata;
-        }
-      }
-      // Extract template metadata for x402 templates
-      const templateOutputSpec = content.outputSpec && typeof content.outputSpec === 'object' 
-        ? content.outputSpec 
-        : undefined;
-      const templatePriceWei = typeof content.priceWei === 'string' || typeof content.priceWei === 'number'
-        ? BigInt(content.priceWei)
-        : undefined;
-      const templatePriceUsd = typeof content.priceUsd === 'string'
-        ? content.priceUsd
-        : undefined;
-      const templateInputSchema = content.inputSchema && typeof content.inputSchema === 'object'
-        ? content.inputSchema
-        : undefined;
-      
-      // Extract dependencies array from content
-      dependencies = Array.isArray(content.dependencies)
-        ? content.dependencies.map((dep: any) => String(dep))
-        : undefined;
-
-      // Upsert jobDefinition if present
-      // NOTE: This happens BEFORE workstreamId is computed, so we can't include it here yet.
-      // We'll need to update it after workstreamId is computed.
-      if (jobDefRepo && jobDefinitionId) {
-        // Prefer explicit lineage from payload if provided
-        const parentJobDefinitionId: string | undefined = sourceJobDefinitionIdFromContent;
-
-        await jobDefRepo.upsert({
-          id: jobDefinitionId,
-          create: {
-            id: jobDefinitionId,
-            name: jobName || 'Unnamed Job',
-            enabledTools,
-            blueprint,
-            dependencies,
-            sourceJobDefinitionId: parentJobDefinitionId,
-            sourceRequestId: sourceRequestId,
-            codeMetadata,
-            createdAt: blockTimestamp,
-            lastInteraction: blockTimestamp,
-            lastStatus: 'PENDING',
-          },
-          update: {
-            name: jobName || 'Unnamed Job',
-            enabledTools,
-            blueprint,
-            codeMetadata: codeMetadata || undefined,
-            lastInteraction: blockTimestamp,
-            lastStatus: 'PENDING',
-            // Do NOT re-attribute lineage on updates; preserve original creator
-            // Do NOT update dependencies - immutable per job definition
-          },
-        });
-        
-        // Derive job template from this job definition
-        // This creates or updates a template based on blueprint similarity
+        // Fetch IPFS metadata FIRST to check networkId before any DB writes
+        // This ensures non-Jinn requests are filtered out without creating DB records
+        let content: any = null;
         try {
-          await deriveJobTemplate(db, {
-            id: jobDefinitionId,
-            name: jobName,
-            blueprint,
-            enabledTools,
-            blockTimestamp,
-            outputSpec: templateOutputSpec,
-            priceWei: templatePriceWei,
-            priceUsd: templatePriceUsd,
-            inputSchema: templateInputSchema,
+          content = await fetchRequestMetadata(cidBase32);
+          if (!content || typeof content !== "object") {
+            throw new Error(`IPFS payload for request ${id} is empty or malformed`);
+          }
+          logger.info({ requestId: id, hasJobName: !!content.jobName, hasJobDefinitionId: !!content.jobDefinitionId, networkId: content.networkId }, "IPFS metadata fetched successfully");
+        } catch (ipfsError: any) {
+          // If IPFS fetch fails, skip this request entirely
+          // Without metadata, we can't verify networkId, so safer to skip
+          logger.error(
+            { requestId: id, ipfsHash, cidBase32, error: serializeError(ipfsError) },
+            "Failed to fetch IPFS metadata for request - skipping (cannot verify networkId)"
+          );
+          continue;
+        }
+
+        // GLOBAL JINN EXPLORER: Only index requests with networkId === "jinn" (or missing for legacy)
+        // This filters out all non-Jinn Olas marketplace traffic
+        // NOTE: networkId comes from IPFS metadata, NOT from chain event args (which doesn't have this field)
+        const networkId: string | undefined = typeof content.networkId === "string" ? content.networkId : undefined;
+        if (networkId && networkId !== "jinn") {
+          logger.debug({ requestId: id, networkId, txHash }, "Skipping non-Jinn request (networkId filtering)");
+          continue;
+        }
+
+        // Now that we've verified this is a Jinn request, insert into DB
+        logger.info({ requestId: id, networkId: networkId || 'undefined (legacy)' }, "Request passed networkId filter - creating DB record");
+
+        try {
+          await repo.upsert({
+            id,
+            create: {
+              mech,
+              sender,
+              workstreamId: id, // Temporary: will be recomputed after metadata extraction if sourceRequestId exists
+              transactionHash: txHash,
+              blockNumber,
+              blockTimestamp,
+              ipfsHash,
+              delivered: false,
+            },
+            update: {
+              // Don't overwrite existing fields during initial insert
+            },
           });
-        } catch (templateError: any) {
-          // Don't fail the main indexing if template derivation fails
-          logger.warn({ jobDefinitionId, error: serializeError(templateError) }, "Template derivation failed (non-fatal)");
+          logger.info({ requestId: id }, "Initial request insert completed successfully");
+        } catch (upsertError: any) {
+          logger.error({ requestId: id, error: serializeError(upsertError) }, "Initial request insert failed");
+          throw upsertError;
         }
-      }
 
-      // jobDefinitionId = target job being dispatched (what this request is FOR)
-      // sourceJobDefinitionIdFromContent = parent job that created this request (lineage tracking)
-
-      // Ensure additionalContext is properly structured with message preserved
-      // The message should remain in additionalContext even after being extracted
-      // for the messages table, so that request.additionalContext is complete
-      //
-      // IMPORTANT: Ponder's p.json() type expects serializable objects.
-      // Deep clone through JSON to ensure no circular references.
-      let contextToStore: any = undefined;
-      if (additionalContext && typeof additionalContext === 'object') {
-        try {
-          // Deep clone to ensure serializability - this preserves ALL fields including
-          // hierarchy, summary, and message
-          contextToStore = safeJsonClone(additionalContext);
-        } catch (e) {
-          contextToStore = undefined;
+        let jobName: string | undefined;
+        let enabledTools: string[] | undefined;
+        let jobDefinitionId: string | undefined;
+        let blueprint: string | undefined;
+        let sourceRequestId: string | undefined;
+        let sourceJobDefinitionIdFromContent: string | undefined;
+        let additionalContext: any = undefined;
+        let messageContent: any = undefined;
+        let codeMetadata: any = undefined;
+        let dependencies: string[] | undefined;
+        jobName = typeof content.jobName === "string" ? content.jobName : undefined;
+        enabledTools = Array.isArray(content.tools)
+          ? content.tools.map((tool: any) => String(tool))
+          : Array.isArray(content.enabledTools)
+            ? content.enabledTools.map((tool: any) => String(tool))
+            : undefined;
+        jobDefinitionId = typeof content.jobDefinitionId === "string" ? content.jobDefinitionId : undefined;
+        // Support both blueprint (new) and prompt (legacy)
+        blueprint = typeof content.blueprint === "string"
+          ? content.blueprint
+          : (typeof content.prompt === "string" ? content.prompt : undefined);
+        sourceRequestId = typeof content.sourceRequestId === "string" ? content.sourceRequestId : undefined;
+        sourceJobDefinitionIdFromContent =
+          typeof (content as any).sourceJobDefinitionId === "string"
+            ? (content as any).sourceJobDefinitionId
+            : undefined;
+        additionalContext = (content as any).additionalContext || undefined;
+        if (additionalContext?.message) {
+          messageContent = additionalContext.message;
         }
-      }
+        if (content.codeMetadata && typeof content.codeMetadata === "object") {
+          try {
+            codeMetadata = safeJsonClone(content.codeMetadata);
+          } catch {
+            codeMetadata = content.codeMetadata;
+          }
+        }
+        // Extract template metadata for x402 templates
+        const templateOutputSpec = content.outputSpec && typeof content.outputSpec === 'object'
+          ? content.outputSpec
+          : undefined;
+        const templatePriceWei = typeof content.priceWei === 'string' || typeof content.priceWei === 'number'
+          ? BigInt(content.priceWei)
+          : undefined;
+        const templatePriceUsd = typeof content.priceUsd === 'string'
+          ? content.priceUsd
+          : undefined;
+        const templateInputSchema = content.inputSchema && typeof content.inputSchema === 'object'
+          ? content.inputSchema
+          : undefined;
 
-      // --- COMPUTE WORKSTREAM ID ---
-      // The workstream ID is the root request ID of the entire job chain.
-      // Priority: 1) Explicit workstreamId in IPFS metadata (for parent re-dispatches)
-      //           2) Traverse sourceRequestId chain to find root (for child jobs)
-      //           3) Use own request ID (for root jobs)
-      let workstreamId: string;
-      const explicitWorkstreamId = typeof content.workstreamId === 'string' ? content.workstreamId : undefined;
-      if (explicitWorkstreamId) {
-        // Parent re-dispatch preserving workstream
-        workstreamId = explicitWorkstreamId;
-        logger.debug({ requestId: id, workstreamId }, 'Using explicit workstream ID from metadata');
-      } else if (sourceRequestId) {
-        // This is a child job, find its ultimate root
-        workstreamId = await findWorkstreamRoot(sourceRequestId, repo);
-      } else {
-        // This is a root job, its workstream ID is its own ID
-        workstreamId = id;
-      }
+        // Extract dependencies array from content
+        dependencies = Array.isArray(content.dependencies)
+          ? content.dependencies.map((dep: any) => String(dep))
+          : undefined;
 
-      // Update the pre-seeded request row with enriched metadata
-      // The create path should never execute here since we pre-seeded above,
-      // but include it as a safety fallback
-      try {
-        logger.info({ requestId: id, jobName, jobDefinitionId, workstreamId }, "Updating request row with enriched metadata");
-        await repo.upsert({
-          id,
-          create: {
-            mech,
-            sender,
-            workstreamId,
-            jobDefinitionId: jobDefinitionId,
-            sourceRequestId: sourceRequestId,
-            sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
-            requestData: dataHex || undefined,
-            ipfsHash,
-            transactionHash: txHash,
-            blockNumber,
-            blockTimestamp,
-            delivered: false,
-            jobName,
-            enabledTools,
-            additionalContext: contextToStore,
-            dependencies,
-          },
-          update: {
-            // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
-            workstreamId,
-            jobDefinitionId: jobDefinitionId,
-            sourceRequestId: sourceRequestId,
-            sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
-            requestData: dataHex || undefined,
-            jobName,
-            enabledTools,
-            additionalContext: contextToStore,
-            dependencies,
-            // intentionally do not overwrite delivered, mech, sender, blockNumber, blockTimestamp, transactionHash here
-          },
-        });
-        logger.info({ requestId: id }, "Enriched update completed successfully");
-      } catch (enrichError: any) {
-        logger.error({ requestId: id, error: serializeError(enrichError) }, "Enriched update failed");
-        throw enrichError;
-      }
+        // Upsert jobDefinition if present
+        // NOTE: This happens BEFORE workstreamId is computed, so we can't include it here yet.
+        // We'll need to update it after workstreamId is computed.
+        if (jobDefRepo && jobDefinitionId) {
+          // Prefer explicit lineage from payload if provided
+          const parentJobDefinitionId: string | undefined = sourceJobDefinitionIdFromContent;
 
-      // Update jobDefinition with workstreamId now that it's computed
-      if (jobDefRepo && jobDefinitionId) {
-        try {
-          // Use upsert instead of update to ensure workstreamId is set even on create
           await jobDefRepo.upsert({
             id: jobDefinitionId,
             create: {
-              // This should never execute since we created above, but include as fallback
               id: jobDefinitionId,
               name: jobName || 'Unnamed Job',
               enabledTools,
               blueprint,
-              workstreamId,
-              sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
+              dependencies,
+              sourceJobDefinitionId: parentJobDefinitionId,
               sourceRequestId: sourceRequestId,
               codeMetadata,
               createdAt: blockTimestamp,
@@ -736,489 +603,625 @@ ponder.on(
               lastStatus: 'PENDING',
             },
             update: {
-              // Do NOT update workstreamId - a job definition can participate in multiple workstreams
-              // The workstreamId field only stores the first workstream the job was created in
-              // To find all workstreams for a job, query requests by jobDefinitionId and get their unique workstreamIds
+              name: jobName || 'Unnamed Job',
+              enabledTools,
+              blueprint,
+              codeMetadata: codeMetadata || undefined,
+              lastInteraction: blockTimestamp,
+              lastStatus: 'PENDING',
+              // Do NOT re-attribute lineage on updates; preserve original creator
+              // Do NOT update dependencies - immutable per job definition
             },
           });
-          logger.debug({ jobDefinitionId, workstreamId }, "Job definition workstream ID preserved (not updated)");
-        } catch (jobDefError: any) {
-          logger.error({ jobDefinitionId, error: serializeError(jobDefError) }, "Failed to update job definition");
-          // Don't throw - this is not critical enough to fail the entire indexing
-        }
-      }
 
-      // Index message if present
-      if (messageRepo && messageContent) {
-        const msgTo = typeof messageContent === 'object' && messageContent.to ? messageContent.to : jobDefinitionId;
-        const msgFrom = typeof messageContent === 'object' && messageContent.from ? messageContent.from : sourceJobDefinitionIdFromContent;
-        const msgText = typeof messageContent === 'string' ? messageContent : messageContent.content;
-        
-        if (msgText) {
-          await messageRepo.upsert({
+          // Derive job template from this job definition
+          // This creates or updates a template based on blueprint similarity
+          try {
+            await deriveJobTemplate(db, {
+              id: jobDefinitionId,
+              name: jobName,
+              blueprint,
+              enabledTools,
+              blockTimestamp,
+              outputSpec: templateOutputSpec,
+              priceWei: templatePriceWei,
+              priceUsd: templatePriceUsd,
+              inputSchema: templateInputSchema,
+            });
+          } catch (templateError: any) {
+            // Don't fail the main indexing if template derivation fails
+            logger.warn({ jobDefinitionId, error: serializeError(templateError) }, "Template derivation failed (non-fatal)");
+          }
+        }
+
+        // jobDefinitionId = target job being dispatched (what this request is FOR)
+        // sourceJobDefinitionIdFromContent = parent job that created this request (lineage tracking)
+
+        // Ensure additionalContext is properly structured with message preserved
+        // The message should remain in additionalContext even after being extracted
+        // for the messages table, so that request.additionalContext is complete
+        //
+        // IMPORTANT: Ponder's p.json() type expects serializable objects.
+        // Deep clone through JSON to ensure no circular references.
+        let contextToStore: any = undefined;
+        if (additionalContext && typeof additionalContext === 'object') {
+          try {
+            // Deep clone to ensure serializability - this preserves ALL fields including
+            // hierarchy, summary, and message
+            contextToStore = safeJsonClone(additionalContext);
+          } catch (e) {
+            contextToStore = undefined;
+          }
+        }
+
+        // --- COMPUTE WORKSTREAM ID ---
+        // The workstream ID is the root request ID of the entire job chain.
+        // Priority: 1) Explicit workstreamId in IPFS metadata (for parent re-dispatches)
+        //           2) Traverse sourceRequestId chain to find root (for child jobs)
+        //           3) Use own request ID (for root jobs)
+        let workstreamId: string;
+        const explicitWorkstreamId = typeof content.workstreamId === 'string' ? content.workstreamId : undefined;
+        if (explicitWorkstreamId) {
+          // Parent re-dispatch preserving workstream
+          workstreamId = explicitWorkstreamId;
+          logger.debug({ requestId: id, workstreamId }, 'Using explicit workstream ID from metadata');
+        } else if (sourceRequestId) {
+          // This is a child job, find its ultimate root
+          workstreamId = await findWorkstreamRoot(sourceRequestId, repo);
+        } else {
+          // This is a root job, its workstream ID is its own ID
+          workstreamId = id;
+        }
+
+        // Update the pre-seeded request row with enriched metadata
+        // The create path should never execute here since we pre-seeded above,
+        // but include it as a safety fallback
+        try {
+          logger.info({ requestId: id, jobName, jobDefinitionId, workstreamId }, "Updating request row with enriched metadata");
+          await repo.upsert({
             id,
             create: {
-              requestId: id,
+              mech,
+              sender,
+              workstreamId,
+              jobDefinitionId: jobDefinitionId,
               sourceRequestId: sourceRequestId,
-              sourceJobDefinitionId: msgFrom,
-              to: msgTo,
-              content: msgText,
+              sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
+              requestData: dataHex || undefined,
+              ipfsHash,
+              transactionHash: txHash,
+              blockNumber,
               blockTimestamp,
+              delivered: false,
+              jobName,
+              enabledTools,
+              additionalContext: contextToStore,
+              dependencies,
             },
             update: {
-              content: msgText,
-              to: msgTo,
-              sourceJobDefinitionId: msgFrom,
+              // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
+              workstreamId,
+              jobDefinitionId: jobDefinitionId,
+              sourceRequestId: sourceRequestId,
+              sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
+              requestData: dataHex || undefined,
+              jobName,
+              enabledTools,
+              additionalContext: contextToStore,
+              dependencies,
+              // intentionally do not overwrite delivered, mech, sender, blockNumber, blockTimestamp, transactionHash here
             },
           });
+          logger.info({ requestId: id }, "Enriched update completed successfully");
+        } catch (enrichError: any) {
+          logger.error({ requestId: id, error: serializeError(enrichError) }, "Enriched update failed");
+          throw enrichError;
         }
-      }
 
-      // Update workstream table
-      const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
-      
-      // If this is a root request (sourceRequestId is null), create a workstream entry
-      if (!sourceRequestId) {
-        await workstreamRepo.upsert({
-          id: workstreamId,
-          create: {
-            rootRequestId: id,
-            jobName,
-            mech,
-            sender,
-            blockTimestamp,
-            lastActivity: blockTimestamp,
-            childRequestCount: 0,
-            hasLauncherBriefing: false,
-            delivered: false,
-          },
-          update: {
-            lastActivity: blockTimestamp,
-          },
-        });
-        logger.debug({ workstreamId, requestId: id }, "Created/updated workstream entry for root request");
-      } else {
-        // This is a child request, increment the child count in the workstream
-        const workstreamRecord = await workstreamRepo.findUnique({ id: workstreamId });
-        if (workstreamRecord) {
-          const currentCount = typeof workstreamRecord.childRequestCount === 'number' ? workstreamRecord.childRequestCount : 0;
+        // Update jobDefinition with workstreamId now that it's computed
+        if (jobDefRepo && jobDefinitionId) {
+          try {
+            // Use upsert instead of update to ensure workstreamId is set even on create
+            await jobDefRepo.upsert({
+              id: jobDefinitionId,
+              create: {
+                // This should never execute since we created above, but include as fallback
+                id: jobDefinitionId,
+                name: jobName || 'Unnamed Job',
+                enabledTools,
+                blueprint,
+                workstreamId,
+                sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
+                sourceRequestId: sourceRequestId,
+                codeMetadata,
+                createdAt: blockTimestamp,
+                lastInteraction: blockTimestamp,
+                lastStatus: 'PENDING',
+              },
+              update: {
+                // Do NOT update workstreamId - a job definition can participate in multiple workstreams
+                // The workstreamId field only stores the first workstream the job was created in
+                // To find all workstreams for a job, query requests by jobDefinitionId and get their unique workstreamIds
+              },
+            });
+            logger.debug({ jobDefinitionId, workstreamId }, "Job definition workstream ID preserved (not updated)");
+          } catch (jobDefError: any) {
+            logger.error({ jobDefinitionId, error: serializeError(jobDefError) }, "Failed to update job definition");
+            // Don't throw - this is not critical enough to fail the entire indexing
+          }
+        }
+
+        // Index message if present
+        if (messageRepo && messageContent) {
+          const msgTo = typeof messageContent === 'object' && messageContent.to ? messageContent.to : jobDefinitionId;
+          const msgFrom = typeof messageContent === 'object' && messageContent.from ? messageContent.from : sourceJobDefinitionIdFromContent;
+          const msgText = typeof messageContent === 'string' ? messageContent : messageContent.content;
+
+          if (msgText) {
+            await messageRepo.upsert({
+              id,
+              create: {
+                requestId: id,
+                sourceRequestId: sourceRequestId,
+                sourceJobDefinitionId: msgFrom,
+                to: msgTo,
+                content: msgText,
+                blockTimestamp,
+              },
+              update: {
+                content: msgText,
+                to: msgTo,
+                sourceJobDefinitionId: msgFrom,
+              },
+            });
+          }
+        }
+
+        // Update workstream table
+        const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
+
+        // If this is a root request (sourceRequestId is null), create a workstream entry
+        if (!sourceRequestId) {
           await workstreamRepo.upsert({
             id: workstreamId,
+            create: {
+              rootRequestId: id,
+              jobName,
+              mech,
+              sender,
+              blockTimestamp,
+              lastActivity: blockTimestamp,
+              childRequestCount: 0,
+              hasLauncherBriefing: false,
+              delivered: false,
+            },
             update: {
-              childRequestCount: currentCount + 1,
               lastActivity: blockTimestamp,
             },
           });
-          logger.debug({ workstreamId, requestId: id, newCount: currentCount + 1 }, "Incremented child request count for workstream");
+          logger.debug({ workstreamId, requestId: id }, "Created/updated workstream entry for root request");
+        } else {
+          // This is a child request, increment the child count in the workstream
+          const workstreamRecord = await workstreamRepo.findUnique({ id: workstreamId });
+          if (workstreamRecord) {
+            const currentCount = typeof workstreamRecord.childRequestCount === 'number' ? workstreamRecord.childRequestCount : 0;
+            await workstreamRepo.upsert({
+              id: workstreamId,
+              update: {
+                childRequestCount: currentCount + 1,
+                lastActivity: blockTimestamp,
+              },
+            });
+            logger.debug({ workstreamId, requestId: id, newCount: currentCount + 1 }, "Incremented child request count for workstream");
+          }
         }
       }
-    }
 
-    logger.info({ mech, sender, requestIds }, "Indexed MarketplaceRequest");
-  } catch (e: any) {
-    logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index MarketplaceRequest");
-  }
-});
+      logger.info({ mech, sender, requestIds }, "Indexed MarketplaceRequest");
+    } catch (e: any) {
+      logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index MarketplaceRequest");
+    }
+  });
 
 // MarketplaceDelivery handler: marketplace-level delivery event that fires for ALL deliveries
 // regardless of which mech delivers. This complements OlasMech:Deliver for complete coverage.
 ponder.on(
   "MechMarketplace:MarketplaceDelivery",
   async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
-  try {
-    const db = (context as any).db;
-    if (!db) {
-      logger.error("Ponder context.db is not available; cannot index MarketplaceDelivery");
-      return;
-    }
-
-    const requestId: string = String(event.args.requestId);
-    const deliveryMech: string = String(event.args.mech);
-    const txHash: string = String(event.transaction.hash);
-    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
-    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
-
-    const requestRepo: Repository = createRepository(db, request, "request");
-    const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
-
-    // Check if this request exists and is a Jinn request
-    // If the request doesn't exist, it means it was filtered out by networkId != "jinn"
-    let existingRequest: any = null;
     try {
-      existingRequest = await requestRepo.findUnique({ id: requestId });
-      if (!existingRequest) {
-        logger.debug(
-          { requestId, deliveryMech, txHash },
-          'MarketplaceDelivery event for non-Jinn request (filtered by networkId). Skipping.'
-        );
+      const db = (context as any).db;
+      if (!db) {
+        logger.error("Ponder context.db is not available; cannot index MarketplaceDelivery");
         return;
       }
+
+      const requestId: string = String(event.args.requestId);
+      const deliveryMech: string = String(event.args.mech);
+      const txHash: string = String(event.transaction.hash);
+      const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
+      const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+      const requestRepo: Repository = createRepository(db, request, "request");
+      const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
+
+      // Check if this request exists and is a Jinn request
+      // If the request doesn't exist, it means it was filtered out by networkId != "jinn"
+      let existingRequest: any = null;
+      try {
+        existingRequest = await requestRepo.findUnique({ id: requestId });
+        if (!existingRequest) {
+          logger.debug(
+            { requestId, deliveryMech, txHash },
+            'MarketplaceDelivery event for non-Jinn request (filtered by networkId). Skipping.'
+          );
+          return;
+        }
+      } catch (e: any) {
+        logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before MarketplaceDelivery');
+        throw e;
+      }
+
+      // Update delivery record with marketplace-level delivery mech
+      // This tracks which mech actually delivered, even if different from priorityMech
+      await deliveryRepo.upsert({
+        id: requestId,
+        update: {
+          deliveryMech: deliveryMech,
+        },
+      });
+
+      // Update request with marketplace delivery metadata
+      await requestRepo.upsert({
+        id: requestId,
+        update: {
+          deliveryMech: deliveryMech,
+        },
+      });
+
+      logger.info({ requestId, deliveryMech, txHash }, "Indexed MarketplaceDelivery (marketplace-level delivery tracking)");
     } catch (e: any) {
-      logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before MarketplaceDelivery');
-      throw e;
+      logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index MarketplaceDelivery");
     }
-
-    // Update delivery record with marketplace-level delivery mech
-    // This tracks which mech actually delivered, even if different from priorityMech
-    await deliveryRepo.upsert({
-      id: requestId,
-      update: {
-        deliveryMech: deliveryMech,
-      },
-    });
-
-    // Update request with marketplace delivery metadata
-    await requestRepo.upsert({
-      id: requestId,
-      update: {
-        deliveryMech: deliveryMech,
-      },
-    });
-
-    logger.info({ requestId, deliveryMech, txHash }, "Indexed MarketplaceDelivery (marketplace-level delivery tracking)");
-  } catch (e: any) {
-    logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index MarketplaceDelivery");
-  }
-});
+  });
 
 
 // OlasMech:Deliver handler: mech-level delivery event with IPFS data
 ponder.on(
   "OlasMech:Deliver",
   async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
-  try {
-    const db = (context as any).db;
-    if (!db) {
-      logger.error("Ponder context.db is not available; cannot index OlasMech Deliver");
-      return;
-    }
-    const requestId: string = String(event.args.requestId);
-    const dataBytes: string | undefined = event.args.data ? String(event.args.data) : undefined;
-    const txHash: string = String(event.transaction.hash);
-    const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
-    const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
-
-    const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
-    const requestRepo: Repository = createRepository(db, request, "request");
-    const artifactsRepo: Repository = createRepository(db, artifact, "artifact");
-    const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
-
-    // Check if request exists - it should have been pre-seeded by MarketplaceRequest handler.
-    // If indexing from a later start block, we may see Deliver events for requests that were
-    // created before our indexing window. Skip these gracefully.
-    let existingRequest: any = null;
     try {
-      existingRequest = await requestRepo.findUnique({ id: requestId });
-      if (!existingRequest) {
-        logger.warn(
-          { requestId, txHash },
-          'Deliver event received for request that does not exist in database (likely created before indexing start block). Skipping.'
-        );
+      const db = (context as any).db;
+      if (!db) {
+        logger.error("Ponder context.db is not available; cannot index OlasMech Deliver");
         return;
       }
-    } catch (e: any) {
-      logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before Deliver');
-      throw e;
-    }
+      const requestId: string = String(event.args.requestId);
+      const dataBytes: string | undefined = event.args.data ? String(event.args.data) : undefined;
+      const txHash: string = String(event.transaction.hash);
+      const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
+      const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
-    // Convert raw digest bytes to gateway-compatible CIDv1 (raw codec) hex multibase
-    const ipfsHash = dataBytes ? `f01551220${String(dataBytes).replace(/^0x/, '')}` : undefined;
+      const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
+      const requestRepo: Repository = createRepository(db, request, "request");
+      const artifactsRepo: Repository = createRepository(db, artifact, "artifact");
+      const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
 
-    const baseDeliveryRecord = {
-      requestId,
-      sourceRequestId: undefined,
-      sourceJobDefinitionId: undefined,
-      mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
-      mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
-      deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
-      ipfsHash,
-      transactionHash: txHash,
-      blockNumber,
-      blockTimestamp,
-    } as const;
+      // Check if request exists - it should have been pre-seeded by MarketplaceRequest handler.
+      // If indexing from a later start block, we may see Deliver events for requests that were
+      // created before our indexing window. Skip these gracefully.
+      let existingRequest: any = null;
+      try {
+        existingRequest = await requestRepo.findUnique({ id: requestId });
+        if (!existingRequest) {
+          logger.warn(
+            { requestId, txHash },
+            'Deliver event received for request that does not exist in database (likely created before indexing start block). Skipping.'
+          );
+          return;
+        }
+      } catch (e: any) {
+        logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before Deliver');
+        throw e;
+      }
 
-    await deliveryRepo.upsert({
-      id: requestId,
-      create: baseDeliveryRecord,
-      update: baseDeliveryRecord,
-    });
+      // Convert raw digest bytes to gateway-compatible CIDv1 (raw codec) hex multibase
+      const ipfsHash = dataBytes ? `f01551220${String(dataBytes).replace(/^0x/, '')}` : undefined;
 
-    // Update request with delivery info, preserving existing fields from pre-seeded row
-    // The create path should never execute since we verified existence above, but include
-    // existing fields as safety fallback
-    const updatedRequest = await requestRepo.upsert({
-      id: requestId,
-      create: {
-        // Include existing fields if available (safety fallback)
-        mech: existingRequest?.mech || String(event.args.mech || "0x0000000000000000000000000000000000000000"),
-        sender: existingRequest?.sender || "0x0000000000000000000000000000000000000000",
-        workstreamId: existingRequest?.workstreamId || requestId,
-        transactionHash: existingRequest?.transactionHash || txHash,
-        blockNumber: existingRequest?.blockNumber || blockNumber,
-        blockTimestamp: existingRequest?.blockTimestamp || blockTimestamp,
-        delivered: true,
-        deliveryIpfsHash: ipfsHash,
-      },
-      update: {
-        // Only update delivery-specific fields; preserve all other existing fields
-        delivered: true,
-        deliveryIpfsHash: ipfsHash,
-        // Do not overwrite mech, sender, transactionHash, blockNumber, blockTimestamp here
-        // as they come from MarketplaceRequest event
-      },
-    });
+      const baseDeliveryRecord = {
+        requestId,
+        sourceRequestId: undefined,
+        sourceJobDefinitionId: undefined,
+        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
+        mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
+        deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
+        ipfsHash,
+        transactionHash: txHash,
+        blockNumber,
+        blockTimestamp,
+      } as const;
 
-    // If this is a root request (no sourceRequestId), mark the workstream as delivered
-    const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
-    const requestWorkstreamId = (updatedRequest as any)?.workstreamId || existingRequest?.workstreamId;
-    const requestSourceRequestId = (updatedRequest as any)?.sourceRequestId || existingRequest?.sourceRequestId;
-    
-    if (requestWorkstreamId && !requestSourceRequestId) {
-      // This is a root request, mark workstream as delivered
-      await workstreamRepo.upsert({
-        id: requestWorkstreamId,
-        update: {
+      await deliveryRepo.upsert({
+        id: requestId,
+        create: baseDeliveryRecord,
+        update: baseDeliveryRecord,
+      });
+
+      // Update request with delivery info, preserving existing fields from pre-seeded row
+      // The create path should never execute since we verified existence above, but include
+      // existing fields as safety fallback
+      const updatedRequest = await requestRepo.upsert({
+        id: requestId,
+        create: {
+          // Include existing fields if available (safety fallback)
+          mech: existingRequest?.mech || String(event.args.mech || "0x0000000000000000000000000000000000000000"),
+          sender: existingRequest?.sender || "0x0000000000000000000000000000000000000000",
+          workstreamId: existingRequest?.workstreamId || requestId,
+          transactionHash: existingRequest?.transactionHash || txHash,
+          blockNumber: existingRequest?.blockNumber || blockNumber,
+          blockTimestamp: existingRequest?.blockTimestamp || blockTimestamp,
           delivered: true,
-          lastActivity: blockTimestamp,
+          deliveryIpfsHash: ipfsHash,
         },
-      });
-      logger.debug({ workstreamId: requestWorkstreamId, requestId }, "Marked workstream as delivered");
-    } else if (requestWorkstreamId) {
-      // Child request delivered, update lastActivity
-      await workstreamRepo.upsert({
-        id: requestWorkstreamId,
         update: {
-          lastActivity: blockTimestamp,
+          // Only update delivery-specific fields; preserve all other existing fields
+          delivered: true,
+          deliveryIpfsHash: ipfsHash,
+          // Do not overwrite mech, sender, transactionHash, blockNumber, blockTimestamp here
+          // as they come from MarketplaceRequest event
         },
       });
-    }
 
-    // Attempt to resolve artifacts from delivery JSON
-    try {
-      if (ipfsHash) {
-        // Prefer reconstructing directory CID (dag-pb) from digest and fetch the named file (requestId)
-        // ipfsHash is 'f01551220' + 64-hex digest (raw codec). Extract digest and build CIDv1 dag-pb.
-        const digestHex = String(ipfsHash).replace(/^f01551220/i, '');
-        let url = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`; // fallback
-        try {
-          const digestBytes: number[] = [];
-          for (let i = 0; i < digestHex.length; i += 2) {
-            digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
-          }
-          // Build CIDv1 bytes: [0x01] + [0x70] (dag-pb) + multihash: [0x12, 0x20] + digest
-          const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
-          // Base32 encode (lowercase, no padding), prefix with 'b'
-          const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
-          let bitBuffer = 0;
-          let bitCount = 0;
-          let out = '';
-          for (const b of cidBytes) {
-            bitBuffer = (bitBuffer << 8) | (b & 0xff);
-            bitCount += 8;
-            while (bitCount >= 5) {
-              const idx = (bitBuffer >> (bitCount - 5)) & 0x1f;
-              bitCount -= 5;
+      // If this is a root request (no sourceRequestId), mark the workstream as delivered
+      const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
+      const requestWorkstreamId = (updatedRequest as any)?.workstreamId || existingRequest?.workstreamId;
+      const requestSourceRequestId = (updatedRequest as any)?.sourceRequestId || existingRequest?.sourceRequestId;
+
+      if (requestWorkstreamId && !requestSourceRequestId) {
+        // This is a root request, mark workstream as delivered
+        await workstreamRepo.upsert({
+          id: requestWorkstreamId,
+          update: {
+            delivered: true,
+            lastActivity: blockTimestamp,
+          },
+        });
+        logger.debug({ workstreamId: requestWorkstreamId, requestId }, "Marked workstream as delivered");
+      } else if (requestWorkstreamId) {
+        // Child request delivered, update lastActivity
+        await workstreamRepo.upsert({
+          id: requestWorkstreamId,
+          update: {
+            lastActivity: blockTimestamp,
+          },
+        });
+      }
+
+      // Attempt to resolve artifacts from delivery JSON
+      try {
+        if (ipfsHash) {
+          // Prefer reconstructing directory CID (dag-pb) from digest and fetch the named file (requestId)
+          // ipfsHash is 'f01551220' + 64-hex digest (raw codec). Extract digest and build CIDv1 dag-pb.
+          const digestHex = String(ipfsHash).replace(/^f01551220/i, '');
+          let url = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`; // fallback
+          try {
+            const digestBytes: number[] = [];
+            for (let i = 0; i < digestHex.length; i += 2) {
+              digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
+            }
+            // Build CIDv1 bytes: [0x01] + [0x70] (dag-pb) + multihash: [0x12, 0x20] + digest
+            const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
+            // Base32 encode (lowercase, no padding), prefix with 'b'
+            const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
+            let bitBuffer = 0;
+            let bitCount = 0;
+            let out = '';
+            for (const b of cidBytes) {
+              bitBuffer = (bitBuffer << 8) | (b & 0xff);
+              bitCount += 8;
+              while (bitCount >= 5) {
+                const idx = (bitBuffer >> (bitCount - 5)) & 0x1f;
+                bitCount -= 5;
+                out += base32Alphabet[idx];
+              }
+            }
+            if (bitCount > 0) {
+              const idx = (bitBuffer << (5 - bitCount)) & 0x1f;
               out += base32Alphabet[idx];
             }
-          }
-          if (bitCount > 0) {
-            const idx = (bitBuffer << (5 - bitCount)) & 0x1f;
-            out += base32Alphabet[idx];
-          }
-          const dirCid = 'b' + out;
-          url = `https://gateway.autonolas.tech/ipfs/${dirCid}/${requestId}`;
-        } catch {}
-        let res: any = null;
-        for (let attempt = 0; attempt < 5; attempt++) {
-          try {
-            res = await axios.get(url, { timeout: 8000 });
-            if (res && res.status === 200 && res.data) break;
-          } catch (e) {
-            if (attempt < 4) await new Promise(r => setTimeout(r, 1500));
-          }
-        }
-        if (res && res.status === 200 && res.data) {
-          // Ensure data is parsed if it came back as string (e.g. wrong content-type)
-          if (typeof res.data === 'string') {
-            try { res.data = JSON.parse(res.data); } catch {}
-          }
-
-          // Try to extract jobDefinitionId from delivery payload
-          const deliveryJobDefinitionId = typeof res.data.jobDefinitionId === 'string' ? res.data.jobDefinitionId : undefined;
-          const jobName = typeof res.data.jobName === 'string' ? res.data.jobName : undefined;
-          const enabledTools = Array.isArray(res.data.enabledTools) ? res.data.enabledTools.map((x: any) => String(x)) : undefined;
-          // Support both blueprint (new) and prompt (legacy)
-          const blueprint = typeof res.data.blueprint === 'string' 
-            ? res.data.blueprint 
-            : (typeof res.data.prompt === 'string' ? res.data.prompt : undefined);
-          // Extract actual job status from delivery payload (COMPLETED, FAILED, DELEGATING, WAITING)
-          const deliveryStatus = typeof res.data.status === 'string' ? res.data.status : 'COMPLETED';
-
-          // Backfill job definition on delivery if available
-          // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
-          if (deliveryJobDefinitionId) {
-            if (jobDefRepo) {
-              try {
-                // Inherit workstreamId from the request (or default to requestId if root)
-                const workstreamId = existingRequest?.workstreamId || requestId;
-                
-                // LIMITATION: lastStatus reflects the status of the most recent run only.
-                // It does NOT account for undelivered children from previous runs.
-                // Consumers should query child requests directly via sourceJobDefinitionId
-                // to determine true job-level completion status across all runs.
-                //
-                // The worker's inferStatus() already does this correctly by querying live
-                // children before each run, preventing premature COMPLETED transitions.
-                // This field is a convenience snapshot only.
-                
-                await jobDefRepo.upsert({
-                  id: deliveryJobDefinitionId,
-                  create: { 
-                    id: deliveryJobDefinitionId, 
-                    name: jobName || 'Unnamed Job', 
-                    enabledTools, 
-                    blueprint, 
-                    workstreamId,
-                    sourceRequestId: requestId,
-                    createdAt: blockTimestamp,
-                    lastInteraction: blockTimestamp,
-                    lastStatus: deliveryStatus,
-                  },
-                  update: { 
-                    name: jobName || 'Unnamed Job', 
-                    enabledTools, 
-                    blueprint, 
-                    // Don't overwrite workstreamId on update
-                    sourceRequestId: requestId,
-                    lastInteraction: blockTimestamp,
-                    lastStatus: deliveryStatus,
-                  },
-                });
-              } catch (jdErr: any) {
-                logger.error({ jobDefinitionId: deliveryJobDefinitionId, error: serializeError(jdErr) }, "Failed to backfill job definition in Deliver handler");
-              }
+            const dirCid = 'b' + out;
+            url = `https://gateway.autonolas.tech/ipfs/${dirCid}/${requestId}`;
+          } catch { }
+          let res: any = null;
+          for (let attempt = 0; attempt < 5; attempt++) {
+            try {
+              res = await axios.get(url, { timeout: 8000 });
+              if (res && res.status === 200 && res.data) break;
+            } catch (e) {
+              if (attempt < 4) await new Promise(r => setTimeout(r, 1500));
             }
-            // Backfill jobDefinitionId (target job) on delivery and request
-            await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId, sourceRequestId: requestId } });
-            await requestRepo.upsert({ id: requestId, update: { jobDefinitionId: deliveryJobDefinitionId } });
-          } else {
-            // Fallback: if request has a jobDefinitionId already, propagate it to delivery as sourceJobDefinitionId
-            try {
-              const req = await requestRepo.upsert({ id: requestId, update: {} });
-              const maybeReq = (req as any) || {};
-              if (maybeReq && typeof maybeReq.jobDefinitionId === 'string') {
-                await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: maybeReq.jobDefinitionId, sourceRequestId: requestId } });
-              }
-            } catch {}
           }
+          if (res && res.status === 200 && res.data) {
+            // Ensure data is parsed if it came back as string (e.g. wrong content-type)
+            if (typeof res.data === 'string') {
+              try { res.data = JSON.parse(res.data); } catch { }
+            }
 
-          if (Array.isArray(res.data.artifacts) && artifactsRepo) {
-            // Fetch the request to get its sourceRequestId for proper workstream attribution
-            let requestSourceRequestId: string | undefined = undefined;
-            try {
-              const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
-              const maybeReq = (req as any) || {};
-              requestSourceRequestId = maybeReq && typeof maybeReq.sourceRequestId === 'string' ? maybeReq.sourceRequestId : undefined;
-            } catch {}
-            
-            for (let idx = 0; idx < res.data.artifacts.length; idx++) {
-              const a = res.data.artifacts[idx] || {};
-              const id = `${requestId}:${idx}`;
-              const name = typeof a.name === 'string' ? a.name : `artifact-${idx}`;
-              const cid = String(a.cid || '');
-              const topic = String(a.topic || '');
-              const contentPreview = typeof a.contentPreview === 'string' ? a.contentPreview : undefined;
-              const type = typeof a.type === 'string' ? a.type : undefined;
-              const tags = Array.isArray(a.tags) ? a.tags.map((t: any) => String(t)) : undefined;
-              if (!cid || !topic) continue;
-              // Use the request's sourceRequestId if it exists (for child jobs), otherwise use requestId itself (for root jobs)
-              const artifactSourceRequestId = requestSourceRequestId || requestId;
-              const artifactPayload: any = { requestId, name, cid, topic, contentPreview, type, tags, sourceRequestId: artifactSourceRequestId, blockTimestamp: event.block.timestamp };
-              // Prefer delivery sourceJobDefinitionId; fallback to request.sourceJobDefinitionId if not present
-              if (deliveryJobDefinitionId) {
-                artifactPayload.sourceJobDefinitionId = deliveryJobDefinitionId;
-              } else {
+            // Try to extract jobDefinitionId from delivery payload
+            const deliveryJobDefinitionId = typeof res.data.jobDefinitionId === 'string' ? res.data.jobDefinitionId : undefined;
+            const jobName = typeof res.data.jobName === 'string' ? res.data.jobName : undefined;
+            const enabledTools = Array.isArray(res.data.enabledTools) ? res.data.enabledTools.map((x: any) => String(x)) : undefined;
+            // Support both blueprint (new) and prompt (legacy)
+            const blueprint = typeof res.data.blueprint === 'string'
+              ? res.data.blueprint
+              : (typeof res.data.prompt === 'string' ? res.data.prompt : undefined);
+            // Extract actual job status from delivery payload (COMPLETED, FAILED, DELEGATING, WAITING)
+            const deliveryStatus = typeof res.data.status === 'string' ? res.data.status : 'COMPLETED';
+
+            // Backfill job definition on delivery if available
+            // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
+            if (deliveryJobDefinitionId) {
+              if (jobDefRepo) {
                 try {
-                  const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
-                  const maybeReq = (req as any) || {};
-                  if (maybeReq && typeof maybeReq.sourceJobDefinitionId === 'string') {
-                    artifactPayload.sourceJobDefinitionId = maybeReq.sourceJobDefinitionId;
-                  }
-                } catch {}
-              }
-              await artifactsRepo.upsert({ id, create: artifactPayload, update: artifactPayload });
+                  // Inherit workstreamId from the request (or default to requestId if root)
+                  const workstreamId = existingRequest?.workstreamId || requestId;
 
-              // If this is a launcher_briefing artifact, update the workstream
-              if (topic === 'launcher_briefing') {
-                const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
-                const workstreamId = artifactSourceRequestId; // The sourceRequestId is the root workstream ID
-                const workstreamRecord = await workstreamRepo.findUnique({ id: workstreamId });
-                if (workstreamRecord) {
-                  await workstreamRepo.upsert({
-                    id: workstreamId,
+                  // LIMITATION: lastStatus reflects the status of the most recent run only.
+                  // It does NOT account for undelivered children from previous runs.
+                  // Consumers should query child requests directly via sourceJobDefinitionId
+                  // to determine true job-level completion status across all runs.
+                  //
+                  // The worker's inferStatus() already does this correctly by querying live
+                  // children before each run, preventing premature COMPLETED transitions.
+                  // This field is a convenience snapshot only.
+
+                  await jobDefRepo.upsert({
+                    id: deliveryJobDefinitionId,
+                    create: {
+                      id: deliveryJobDefinitionId,
+                      name: jobName || 'Unnamed Job',
+                      enabledTools,
+                      blueprint,
+                      workstreamId,
+                      sourceRequestId: requestId,
+                      createdAt: blockTimestamp,
+                      lastInteraction: blockTimestamp,
+                      lastStatus: deliveryStatus,
+                    },
                     update: {
-                      hasLauncherBriefing: true,
-                      lastActivity: blockTimestamp,
+                      name: jobName || 'Unnamed Job',
+                      enabledTools,
+                      blueprint,
+                      // Don't overwrite workstreamId on update
+                      sourceRequestId: requestId,
+                      lastInteraction: blockTimestamp,
+                      lastStatus: deliveryStatus,
                     },
                   });
-                  logger.debug({ workstreamId, artifactId: id }, "Marked workstream as having launcher briefing");
+                } catch (jdErr: any) {
+                  logger.error({ jobDefinitionId: deliveryJobDefinitionId, error: serializeError(jdErr) }, "Failed to backfill job definition in Deliver handler");
                 }
               }
+              // Backfill jobDefinitionId (target job) on delivery and request
+              await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId, sourceRequestId: requestId } });
+              await requestRepo.upsert({ id: requestId, update: { jobDefinitionId: deliveryJobDefinitionId } });
+            } else {
+              // Fallback: if request has a jobDefinitionId already, propagate it to delivery as sourceJobDefinitionId
+              try {
+                const req = await requestRepo.upsert({ id: requestId, update: {} });
+                const maybeReq = (req as any) || {};
+                if (maybeReq && typeof maybeReq.jobDefinitionId === 'string') {
+                  await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: maybeReq.jobDefinitionId, sourceRequestId: requestId } });
+                }
+              } catch { }
+            }
 
-              if (type === 'SITUATION') {
-                const pool = getVectorDbPool();
-                if (!pool) {
-                  logger.warn('node_embeddings database not configured; skipping situation indexing');
-                  continue;
+            if (Array.isArray(res.data.artifacts) && artifactsRepo) {
+              // Fetch the request to get its sourceRequestId for proper workstream attribution
+              let requestSourceRequestId: string | undefined = undefined;
+              try {
+                const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
+                const maybeReq = (req as any) || {};
+                requestSourceRequestId = maybeReq && typeof maybeReq.sourceRequestId === 'string' ? maybeReq.sourceRequestId : undefined;
+              } catch { }
+
+              for (let idx = 0; idx < res.data.artifacts.length; idx++) {
+                const a = res.data.artifacts[idx] || {};
+                const id = `${requestId}:${idx}`;
+                const name = typeof a.name === 'string' ? a.name : `artifact-${idx}`;
+                const cid = String(a.cid || '');
+                const topic = String(a.topic || '');
+                const contentPreview = typeof a.contentPreview === 'string' ? a.contentPreview : undefined;
+                const type = typeof a.type === 'string' ? a.type : undefined;
+                const tags = Array.isArray(a.tags) ? a.tags.map((t: any) => String(t)) : undefined;
+                if (!cid || !topic) continue;
+                // Use the request's sourceRequestId if it exists (for child jobs), otherwise use requestId itself (for root jobs)
+                const artifactSourceRequestId = requestSourceRequestId || requestId;
+                const artifactPayload: any = { requestId, name, cid, topic, contentPreview, type, tags, sourceRequestId: artifactSourceRequestId, blockTimestamp: event.block.timestamp };
+                // Prefer delivery sourceJobDefinitionId; fallback to request.sourceJobDefinitionId if not present
+                if (deliveryJobDefinitionId) {
+                  artifactPayload.sourceJobDefinitionId = deliveryJobDefinitionId;
+                } else {
+                  try {
+                    const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
+                    const maybeReq = (req as any) || {};
+                    if (maybeReq && typeof maybeReq.sourceJobDefinitionId === 'string') {
+                      artifactPayload.sourceJobDefinitionId = maybeReq.sourceJobDefinitionId;
+                    }
+                  } catch { }
+                }
+                await artifactsRepo.upsert({ id, create: artifactPayload, update: artifactPayload });
+
+                // If this is a launcher_briefing artifact, update the workstream
+                if (topic === 'launcher_briefing') {
+                  const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
+                  const workstreamId = artifactSourceRequestId; // The sourceRequestId is the root workstream ID
+                  const workstreamRecord = await workstreamRepo.findUnique({ id: workstreamId });
+                  if (workstreamRecord) {
+                    await workstreamRepo.upsert({
+                      id: workstreamId,
+                      update: {
+                        hasLauncherBriefing: true,
+                        lastActivity: blockTimestamp,
+                      },
+                    });
+                    logger.debug({ workstreamId, artifactId: id }, "Marked workstream as having launcher briefing");
+                  }
                 }
 
-                try {
-                  const situationUrl = `${IPFS_GATEWAY_BASE}${cid}`;
-                  const situationRes = await axios.get(situationUrl, { timeout: 8000 });
-                  let situationData = situationRes?.data || {};
-                  
-                  // IPFS artifact may be wrapped with metadata (name, topic, content fields)
-                  // If so, parse the content field which contains the actual situation JSON
-                  if (situationData.content && typeof situationData.content === 'string') {
-                    try {
-                      situationData = JSON.parse(situationData.content);
-                    } catch (parseError) {
-                      logger.warn({ requestId, cid }, 'Failed to parse artifact content field');
-                    }
-                  }
-                  
-                  const situation = situationData;
-                  const embedding = situation?.embedding;
-                  const vector: number[] | undefined = Array.isArray(embedding?.vector) ? embedding.vector : undefined;
-                  const model: string | undefined = typeof embedding?.model === 'string' ? embedding.model : undefined;
-                  const dim: number | undefined = typeof embedding?.dim === 'number' ? embedding.dim : Array.isArray(embedding?.vector) ? embedding.vector.length : undefined;
-                  const nodeId = typeof situation?.job?.requestId === 'string' ? situation.job.requestId : requestId;
-
-                  if (!vector || vector.length === 0 || !model || !dim) {
-                    logger.warn({ requestId, cid }, 'Situation artifact missing embedding payload');
+                if (type === 'SITUATION') {
+                  const pool = getVectorDbPool();
+                  if (!pool) {
+                    logger.warn('node_embeddings database not configured; skipping situation indexing');
                     continue;
                   }
 
-                  const summary =
-                    truncate(situation?.meta?.summaryText) ||
-                    truncate(situation?.execution?.finalOutputSummary) ||
-                    truncate(situation?.job?.objective) ||
-                    truncate(situation?.job?.jobName);
+                  try {
+                    const situationUrl = `${IPFS_GATEWAY_BASE}${cid}`;
+                    const situationRes = await axios.get(situationUrl, { timeout: 8000 });
+                    let situationData = situationRes?.data || {};
 
-                  const metaPayload = {
-                    version: situation?.version,
-                    artifactCid: cid,
-                    artifactId: id,
-                    job: situation?.job,
-                    context: situation?.context,
-                    artifacts: situation?.artifacts,
-                    recognition: situation?.meta?.recognition,
-                  };
+                    // IPFS artifact may be wrapped with metadata (name, topic, content fields)
+                    // If so, parse the content field which contains the actual situation JSON
+                    if (situationData.content && typeof situationData.content === 'string') {
+                      try {
+                        situationData = JSON.parse(situationData.content);
+                      } catch (parseError) {
+                        logger.warn({ requestId, cid }, 'Failed to parse artifact content field');
+                      }
+                    }
 
-                  // Use test table when running under Vitest to isolate test data
-                  const tableName = process.env.VITEST === 'true' ? 'node_embeddings_test' : 'node_embeddings';
+                    const situation = situationData;
+                    const embedding = situation?.embedding;
+                    const vector: number[] | undefined = Array.isArray(embedding?.vector) ? embedding.vector : undefined;
+                    const model: string | undefined = typeof embedding?.model === 'string' ? embedding.model : undefined;
+                    const dim: number | undefined = typeof embedding?.dim === 'number' ? embedding.dim : Array.isArray(embedding?.vector) ? embedding.vector.length : undefined;
+                    const nodeId = typeof situation?.job?.requestId === 'string' ? situation.job.requestId : requestId;
 
-                  const sql = `
+                    if (!vector || vector.length === 0 || !model || !dim) {
+                      logger.warn({ requestId, cid }, 'Situation artifact missing embedding payload');
+                      continue;
+                    }
+
+                    const summary =
+                      truncate(situation?.meta?.summaryText) ||
+                      truncate(situation?.execution?.finalOutputSummary) ||
+                      truncate(situation?.job?.objective) ||
+                      truncate(situation?.job?.jobName);
+
+                    const metaPayload = {
+                      version: situation?.version,
+                      artifactCid: cid,
+                      artifactId: id,
+                      job: situation?.job,
+                      context: situation?.context,
+                      artifacts: situation?.artifacts,
+                      recognition: situation?.meta?.recognition,
+                    };
+
+                    // Use test table when running under Vitest to isolate test data
+                    const tableName = process.env.VITEST === 'true' ? 'node_embeddings_test' : 'node_embeddings';
+
+                    const sql = `
                     INSERT INTO ${tableName} (node_id, model, dim, vec, summary, meta)
                     VALUES ($1, $2, $3, $4::vector, $5, $6)
                     ON CONFLICT (node_id)
@@ -1231,29 +1234,29 @@ ponder.on(
                       updated_at = NOW();
                   `;
 
-                  await pool.query(sql, [
-                    nodeId,
-                    model,
-                    dim,
-                    formatVectorLiteral(vector),
-                    summary,
-                    metaPayload,
-                  ]);
-                  logger.info({ requestId: nodeId, cid }, 'Indexed situation embedding');
-                } catch (indexError: any) {
-                  logger.error({ requestId, cid, error: serializeError(indexError) }, 'Failed to index situation embedding');
+                    await pool.query(sql, [
+                      nodeId,
+                      model,
+                      dim,
+                      formatVectorLiteral(vector),
+                      summary,
+                      metaPayload,
+                    ]);
+                    logger.info({ requestId: nodeId, cid }, 'Indexed situation embedding');
+                  } catch (indexError: any) {
+                    logger.error({ requestId, cid, error: serializeError(indexError) }, 'Failed to index situation embedding');
+                  }
                 }
               }
             }
           }
         }
+      } catch (e: any) {
+        logger.error({ requestId, err: e?.message || String(e) }, 'Failed to resolve delivery artifacts (OlasMech)');
       }
-    } catch (e: any) {
-      logger.error({ requestId, err: e?.message || String(e) }, 'Failed to resolve delivery artifacts (OlasMech)');
-    }
 
-    logger.info({ requestId, ipfsHash }, "Indexed OlasMech Deliver");
-  } catch (e: any) {
-    logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index OlasMech Deliver");
-  }
-});
+      logger.info({ requestId, ipfsHash }, "Indexed OlasMech Deliver");
+    } catch (e: any) {
+      logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index OlasMech Deliver");
+    }
+  });
