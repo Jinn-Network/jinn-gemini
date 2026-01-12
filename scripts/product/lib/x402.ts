@@ -12,12 +12,10 @@ const X402_GATEWAY_URL = process.env.X402_GATEWAY_URL || 'https://x402-gateway-p
  */
 interface BlogGrowthInput {
     blogName: string;
-    blogTopic: string;
-    targetAudience: string;
-    brandVoice?: string;
-    differentiation?: string;
-    brandColorPrimary?: string;
-    brandColorSecondary?: string;
+    mission: string;
+    strategy?: string;
+    sources?: string[];
+    referrals?: string;
     umamiWebsiteId: string;
     repoUrl: string;
     baseBranch?: string;

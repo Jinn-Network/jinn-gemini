@@ -39,6 +39,7 @@ interface JobTemplate {
   templateId: string
   name: string
   inputSchema?: Record<string, unknown>
+  defaultCyclic?: boolean
 }
 
 // Execute response from gateway
@@ -58,6 +59,7 @@ interface TemplateExecutionFormProps {
 
 export function TemplateExecutionForm({ template, onSuccess }: TemplateExecutionFormProps) {
   const [formData, setFormData] = React.useState<Record<string, string>>({})
+  const [cyclic, setCyclic] = React.useState(template.defaultCyclic ?? false)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [result, setResult] = React.useState<ExecuteResponse | null>(null)
@@ -100,7 +102,7 @@ export function TemplateExecutionForm({ template, onSuccess }: TemplateExecution
       const response = await fetch(`${GATEWAY_URL}/templates/${template.templateId}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: formData }),
+        body: JSON.stringify({ input: formData, cyclic }),
       })
 
       if (!response.ok) {
@@ -147,6 +149,19 @@ export function TemplateExecutionForm({ template, onSuccess }: TemplateExecution
           required={required.includes(key)}
         />
       ))}
+
+      <div className="flex items-center gap-2 py-2 border-t">
+        <input
+          type="checkbox"
+          id="cyclic"
+          checked={cyclic}
+          onChange={(e) => setCyclic(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300"
+        />
+        <label htmlFor="cyclic" className="text-sm text-muted-foreground">
+          Run continuously (auto-restart after completion)
+        </label>
+      </div>
 
       <div className="pt-2">
         <Button type="submit" disabled={loading} className="w-full">

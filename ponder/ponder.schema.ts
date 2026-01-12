@@ -185,6 +185,7 @@ export const jobTemplate = onchainTable(
     createdAt: t.bigint().notNull(), // First seen timestamp
     lastUsedAt: t.bigint(), // Most recent execution
     status: t.text().notNull(), // 'visible' | 'hidden' | 'deprecated'
+    defaultCyclic: t.boolean(), // Template-level default for cyclic mode (auto-restart)
   }),
   (table) => ({
     nameIdx: index().on(table.name),

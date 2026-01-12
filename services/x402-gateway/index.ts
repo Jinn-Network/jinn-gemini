@@ -240,6 +240,7 @@ interface ExecuteRequest {
   input?: Record<string, any>;
   context?: string;
   callerBudget?: string; // Optional budget cap in wei
+  cyclic?: boolean; // Run continuously (auto-restart after completion)
 }
 
 // Health check
@@ -462,6 +463,8 @@ app.post("/templates/:id/execute", async (c) => {
         ...(template.inputSchema && { inputSchema: template.inputSchema }),
         // Budget and pricing context
         estimatedCost,
+        // Cyclic mode: request override > template default > false
+        cyclic: body.cyclic ?? (template as any).defaultCyclic ?? false,
         // additionalContext (budget, env vars)
         ...(Object.keys(additionalContext).length > 0 && { additionalContext }),
         // Git workflow fields (if codeMetadata present)
