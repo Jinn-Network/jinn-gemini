@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { Input } from '@/components/ui/input'
+import { AutoExpandTextarea } from '@/components/ui/auto-expand-textarea'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import {
@@ -193,12 +194,26 @@ function FormField({ name, property, value, onChange, required }: FormFieldProps
             ))}
           </SelectContent>
         </Select>
-      ) : (
+      ) : property.type === 'number' ? (
         <Input
           id={id}
-          type={property.type === 'number' ? 'number' : 'text'}
+          type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          placeholder={property.default ? String(property.default) : undefined}
+        />
+      ) : property.type === 'array' ? (
+        <AutoExpandTextarea
+          id={id}
+          value={value}
+          onChange={onChange}
+          placeholder="One item per line"
+        />
+      ) : (
+        <AutoExpandTextarea
+          id={id}
+          value={value}
+          onChange={onChange}
           placeholder={property.default === '$provision' ? 'Leave blank to auto-provision' : (property.default ? String(property.default) : undefined)}
         />
       )}
