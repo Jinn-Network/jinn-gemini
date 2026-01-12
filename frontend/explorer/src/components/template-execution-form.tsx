@@ -67,11 +67,11 @@ export function TemplateExecutionForm({ template, onSuccess }: TemplateExecution
   const properties = (schema?.properties || {}) as Record<string, SchemaProperty>
   const required = schema?.required || []
 
-  // Initialize form with default values
+  // Initialize form with default values (skip $provision sentinels - leave blank to trigger auto-provisioning)
   React.useEffect(() => {
     const defaults: Record<string, string> = {}
     Object.entries(properties).forEach(([key, prop]) => {
-      if (prop.default !== undefined) {
+      if (prop.default !== undefined && prop.default !== '$provision') {
         defaults[key] = String(prop.default)
       }
     })

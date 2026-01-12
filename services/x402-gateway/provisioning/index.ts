@@ -32,8 +32,10 @@ export function detectProvisioningNeeded(
     .filter(([field, spec]: [string, any]) => {
       // Field needs provisioning if:
       // 1. Schema has default: "$provision"
-      // 2. User didn't provide a value (or provided empty string)
-      return spec.default === '$provision' && !input[field];
+      // 2. User didn't provide a value (or provided empty string or literal "$provision")
+      const value = input[field];
+      const isEmpty = !value || value === '$provision';
+      return spec.default === '$provision' && isEmpty;
     })
     .map(([field]) => field);
 }
