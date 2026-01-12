@@ -9,48 +9,35 @@
             "properties": {
                 "blogName": {
                     "type": "string",
-                    "description": "Blog display name"
+                    "description": "Blog name/identity"
                 },
-                "blogTopic": {
+                "mission": {
                     "type": "string",
-                    "description": "Primary niche/topic"
+                    "description": "One-sentence blog purpose: What is this blog for? Who does it serve?"
                 },
-                "targetAudience": {
+                "strategy": {
                     "type": "string",
-                    "description": "Who the content is for"
+                    "description": "Freeform content strategy. Include: topics/pillars, target audience, voice/tone, competitors to cover, special content angles."
                 },
-                "brandVoice": {
-                    "type": "string",
-                    "enum": [
-                        "professional",
-                        "casual",
-                        "technical",
-                        "friendly",
-                        "authoritative"
-                    ],
-                    "default": "a tone appropriate for the target audience"
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "URLs, GitHub repos, podcasts, communities to monitor for content ideas"
                 },
-                "differentiation": {
+                "referrals": {
                     "type": "string",
-                    "description": "What makes this blog unique",
-                    "default": "unique perspective derived from the blog's topic and expertise"
-                },
-                "brandColorPrimary": {
-                    "type": "string",
-                    "default": "colors you determine based on the blog's topic and brand identity"
-                },
-                "brandColorSecondary": {
-                    "type": "string",
-                    "default": "a complementary accent color"
+                    "description": "Referral/affiliate links and guidance on when to use them"
                 },
                 "umamiWebsiteId": {
                     "type": "string",
-                    "description": "Umami analytics website ID (leave blank to auto-provision)",
+                    "description": "Umami analytics website ID",
                     "default": "$provision"
                 },
                 "repoUrl": {
                     "type": "string",
-                    "description": "GitHub repository URL (leave blank to auto-provision)",
+                    "description": "GitHub repository URL",
                     "default": "$provision"
                 },
                 "baseBranch": {
@@ -60,14 +47,13 @@
                 },
                 "domain": {
                     "type": "string",
-                    "description": "Blog domain (leave blank to auto-provision via Railway)",
+                    "description": "Blog domain",
                     "default": "$provision"
                 }
             },
             "required": [
                 "blogName",
-                "blogTopic",
-                "targetAudience"
+                "mission"
             ]
         },
         "enabledTools": [
@@ -92,13 +78,73 @@
     },
     "invariants": [
         {
+            "id": "GOAL-MISSION",
+            "invariant": "{{blogName}} exists to serve this mission: {{mission}}. All content decisions must ladder up to this purpose.",
+            "measurement": "Every published post can be traced back to the stated mission",
+            "examples": {
+                "do": [
+                    "Ask 'Does this serve our mission?' before publishing",
+                    "Prioritize content that directly advances the mission"
+                ],
+                "dont": [
+                    "Publish content that dilutes focus",
+                    "Chase trends that don't align with mission"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-STRATEGY",
+            "invariant": "Execute this content strategy: {{strategy}}",
+            "measurement": "Content pillars, audience, voice, and approach align with the stated strategy",
+            "examples": {
+                "do": [
+                    "Follow the content pillars defined in the strategy",
+                    "Maintain the voice and tone specified"
+                ],
+                "dont": [
+                    "Ignore strategic guidance",
+                    "Deviate from defined content pillars without reason"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-SOURCES",
+            "invariant": "Monitor and draw insights from these sources: {{sources}}. Use google_web_search, web_fetch, and github tools to research these and discover related content.",
+            "measurement": "Each content cycle includes research from specified sources",
+            "examples": {
+                "do": [
+                    "Regularly check source URLs for updates and trends",
+                    "Use sources as starting points for broader research"
+                ],
+                "dont": [
+                    "Ignore specified sources entirely",
+                    "Plagiarize directly from sources"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-REFERRALS",
+            "invariant": "When contextually appropriate, incorporate these referral links naturally: {{referrals}}. Never force referrals - they must add value to the content.",
+            "measurement": "Referral links appear only in relevant contexts, disclosed appropriately",
+            "examples": {
+                "do": [
+                    "Include referral when genuinely recommending a relevant product",
+                    "Disclose affiliate relationships transparently"
+                ],
+                "dont": [
+                    "Shoehorn referral links into unrelated content",
+                    "Hide or obscure affiliate relationships"
+                ]
+            }
+        },
+        {
             "id": "GOAL-CONTENT",
-            "invariant": "Produce high-quality, valuable content for {{blogName}} that resonates with {{targetAudience}} and establishes thought leadership in {{blogTopic}}.",
+            "invariant": "Produce high-quality, valuable content for {{blogName}} that resonates with the target audience defined in the strategy.",
             "measurement": "Posts published per cycle, average time-on-page > 2 minutes, returning visitor rate improvement",
             "examples": {
                 "do": [
                     "Original insights backed by data and real experiments",
-                    "Tutorials solving problems {{targetAudience}} actually has"
+                    "Tutorials solving problems your audience actually has"
                 ],
                 "dont": [
                     "Regurgitated content from competitors",
@@ -108,12 +154,12 @@
         },
         {
             "id": "GOAL-DISTRIBUTION",
-            "invariant": "Ensure content reaches and engages {{targetAudience}} through multiple channels. Content that isn't distributed doesn't grow audience.",
+            "invariant": "Ensure content reaches and engages the target audience through multiple channels. Content that isn't distributed doesn't grow audience.",
             "measurement": "Referral traffic diversity (no single source > 80%), social engagement per post, backlink acquisition rate",
             "examples": {
                 "do": [
                     "SEO optimization for long-term discoverability",
-                    "Strategic social sharing where {{targetAudience}} gathers",
+                    "Strategic social sharing where target audience gathers",
                     "Genuine community participation in relevant spaces"
                 ],
                 "dont": [
@@ -156,13 +202,13 @@
         },
         {
             "id": "GOAL-SITE",
-            "invariant": "Transform the template blog into a distinctive, branded site for {{blogName}}. Apply {{brandVoice}} tone and {{differentiation}} positioning.",
+            "invariant": "Transform the template blog into a distinctive, branded site for {{blogName}}. Apply branding that reflects the mission and strategy.",
             "measurement": "Custom branding applied (logo, colors, typography), unique layout elements, improved UX based on analytics insights",
             "examples": {
                 "do": [
-                    "Custom color scheme using {{brandColorPrimary}} and {{brandColorSecondary}}",
+                    "Custom color scheme that reflects the blog's identity",
                     "Branded logo and favicon",
-                    "Unique landing page reflecting {{blogTopic}}",
+                    "Unique landing page reflecting the mission",
                     "Improved navigation and content discovery"
                 ],
                 "dont": [
