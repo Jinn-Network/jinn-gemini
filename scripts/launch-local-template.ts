@@ -236,9 +236,10 @@ async function main() {
             jobName,
             blueprint: finalBlueprint,
             model: argv.model,
-            enabledTools: blueprintJson.enabledTools || [
+            enabledTools: blueprintJson.enabledTools || blueprintJson.templateMeta?.enabledTools || [
                 'web_search', 'create_artifact', 'web_fetch', 'get_details'
             ],
+            inputSchema: blueprintJson.inputSchema || blueprintJson.templateMeta?.inputSchema,
         });
 
 

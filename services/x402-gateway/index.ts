@@ -28,11 +28,13 @@ import {
   DEFAULT_OUTPUT_SPEC,
   type OutputSpec
 } from "./output-spec.js";
+import { handleProvisioning } from "./provisioning/index.js";
 import {
   computeTemplatePrice,
   validateBudget,
   formatWei,
 } from "./pricing.js";
+import { buildJobBranchName, type CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
 
 // Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
 interface BranchSnapshot {
@@ -404,9 +406,21 @@ app.post("/templates/:id/execute", async (c) => {
     }
   }
 
+  // Handle $provision sentinels - provision resources if needed
+  let enrichedInput = input;
+  try {
+    enrichedInput = await handleProvisioning(input, inputSchema);
+  } catch (provisionError: any) {
+    console.error(`[x402] Provisioning failed: ${provisionError.message}`);
+    return c.json({
+      error: `Provisioning failed: ${provisionError.message}`,
+      phase: provisionError.errorPhase || 'unknown',
+    }, 500);
+  }
+
   // Build blueprint from template
   // If template has stored blueprint from Ponder, use it; otherwise generate
-  const { invariants } = await buildBlueprintFromTemplate(template, input);
+  const { invariants } = await buildBlueprintFromTemplate(template, enrichedInput);
 
   try {
     // Dispatch to Jinn
@@ -415,7 +429,7 @@ app.post("/templates/:id/execute", async (c) => {
     const { marketplaceInteract } = await import("@jinn-network/mech-client-ts/dist/marketplace_interact.js");
 
     // Build codeMetadata from standardized input fields (repoUrl, baseBranch)
-    const codeMetadata = buildCodeMetadataFromInput(input, jobDefinitionId, jobName);
+    const codeMetadata = buildCodeMetadataFromInput(enrichedInput, jobDefinitionId, jobName);
 
     // Build additionalContext with budget info and env vars
     const additionalContext: Record<string, any> = {};
@@ -424,8 +438,8 @@ app.post("/templates/:id/execute", async (c) => {
       additionalContext.estimatedCost = estimatedCost;
     }
     // Pass env vars from input if provided
-    if (input.env && typeof input.env === 'object') {
-      additionalContext.env = input.env;
+    if (enrichedInput.env && typeof enrichedInput.env === 'object') {
+      additionalContext.env = enrichedInput.env;
     }
 
     const result = await marketplaceInteract({

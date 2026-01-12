@@ -461,6 +461,23 @@ export async function deliverViaSafeTransaction(
         break; // Success
       } catch (e: any) {
         lastError = e;
+
+        // Extract detailed error info for debugging
+        const errorDetails = {
+          message: e.message,
+          code: e.code,
+          reason: e.reason,
+          data: e.data,
+          // Web3 specific
+          innerError: e.innerError?.message,
+          cause: e.cause?.message,
+          // Transaction details if available
+          receipt: e.receipt ? { status: e.receipt.status, gasUsed: e.receipt.gasUsed?.toString() } : undefined,
+          // Stack trace (first 500 chars)
+          stack: e.stack?.slice(0, 500),
+        };
+        workerLogger.error({ requestId: context.requestId, attempt, errorDetails }, 'Safe delivery error details');
+
         // Only retry on specific transient errors
         if (e.message?.includes('nonce too low') || e.message?.includes('replacement transaction underpriced')) {
            // Extract nonce info from error for debugging

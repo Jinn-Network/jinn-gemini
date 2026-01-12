@@ -5,10 +5,7 @@ import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketpla
 import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
-import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
-import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
-import { ensureUniversalTools } from './shared/base-tools.js';
-import { getJobContextForDispatch } from './shared/job-context-utils.js';
+import { buildIpfsPayload } from '../../shared/ipfs-payload-builder.js';
 
 // Blueprint invariant schema - minimal format
 const blueprintInvariantSchema = z.object({
@@ -34,6 +31,7 @@ const dispatchNewJobParamsBase = z.object({
   dependencies: z.array(z.string()).optional().describe('Array of job definition UUIDs (not job names) that must have at least one delivered request before this job can execute. Use get_details or search_jobs to find job definition IDs. Example: ["4eac1570-7980-4e2b-afc7-3f5159e99ea5"]'),
   skipBranch: z.boolean().optional().default(false).describe('If true, skip branch creation and code metadata collection. Auto-detected: branches are automatically skipped when CODE_METADATA_REPO_ROOT is not set and no parent branch context exists (artifact-only mode).'),
   responseTimeout: z.number().optional().default(300).describe('Response timeout in seconds for marketplace request. Defaults to 300 (5 minutes). Maximum allowed by marketplace is 300 seconds.'),
+  inputSchema: z.record(z.any()).optional().describe('Input schema for template defaults. Used by x402 gateway to substitute default values for optional fields.'),
 });
 
 export const dispatchNewJobParams = dispatchNewJobParamsBase;
@@ -160,7 +158,7 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    const { jobName, blueprint, model, enabledTools: requestedTools, message, dependencies, skipBranch, responseTimeout } = parsed.data;
+    const { jobName, blueprint, model, enabledTools: requestedTools, message, dependencies, skipBranch, responseTimeout, inputSchema } = parsed.data;
 
     if (!blueprint) {
       return {
@@ -212,151 +210,12 @@ export async function dispatchNewJob(args: unknown) {
     }
 
     const finalBlueprint = blueprint;
-    const enabledTools = ensureUniversalTools(requestedTools);
-
     const gqlUrl = getPonderGraphqlUrl();
 
-    // Always create a new job definition with a unique ID
-    // Each dispatch_new_job call creates a distinct job instance (node in the work graph)
+    // Generate unique job definition ID
     const jobDefinitionId: string = ensureUuid();
-    const context = getCurrentJobContext();
-    const lineageContext: Record<string, any> = {};
-    if (context.requestId) lineageContext.sourceRequestId = context.requestId;
-    if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
-    if (context.workstreamId) lineageContext.workstreamId = context.workstreamId;
 
-    // Fetch job context for hierarchy tracking (enables job-centric status inference)
-    // This is critical for the worker to see all children across all runs of this job
-    const jobContext = await getJobContextForDispatch(jobDefinitionId, 3);
-
-    // Build additionalContext with hierarchy, summary, and message
-    // Blueprint and dependencies are now stored at root level, not in additionalContext
-    let additionalContext: Record<string, any> = {};
-
-    // Add hierarchy and summary from job context
-    if (jobContext) {
-      if (jobContext.hierarchy) {
-        additionalContext.hierarchy = jobContext.hierarchy;
-      }
-      if (jobContext.summary) {
-        additionalContext.summary = jobContext.summary;
-      }
-    }
-
-    if (message) {
-      let messageObj: any = null;
-      try {
-        const parsedMessage = JSON.parse(message);
-        if (parsedMessage && typeof parsedMessage === 'object' && parsedMessage.content) {
-          messageObj = parsedMessage;
-        }
-      } catch {
-        // ignore parse error
-      }
-
-      additionalContext.message = messageObj || {
-        content: message,
-        to: jobDefinitionId,
-        from: context.jobDefinitionId || undefined,
-      };
-    }
-
-    // Auto-detect whether to skip branch creation:
-    // 1. If skipBranch explicitly set, respect it
-    // 2. If CODE_METADATA_REPO_ROOT not set AND no parent branch context, skip branches (artifact-only mode)
-    // 3. If inside a job with codeMetadata, inherit parent context (can create child branches)
-    const hasRepoRoot = Boolean(process.env.CODE_METADATA_REPO_ROOT);
-    const hasParentBranchContext = Boolean(context.branchName || context.baseBranch);
-    const missingRepoContext = !hasRepoRoot && !hasParentBranchContext;
-    const shouldCreateBranch = !skipBranch && !missingRepoContext;
-    const shouldKeepRepoContext = !shouldCreateBranch && !missingRepoContext;
-
-    const baseBranch =
-      context.branchName ||
-      context.baseBranch ||
-      getCodeMetadataDefaultBaseBranch();
-
-    let branchResult;
-    let codeMetadata;
-
-    // Helper to build hints
-    const getMetadataHints = (targetBranchName?: string) => ({
-      jobDefinitionId,
-      parent:
-        context.jobDefinitionId || context.requestId
-          ? {
-            jobDefinitionId: context.jobDefinitionId || undefined,
-            requestId: context.requestId || undefined,
-          }
-          : undefined,
-      baseBranch,
-      branchName: targetBranchName,
-    });
-
-    if (shouldCreateBranch) {
-      try {
-        branchResult = await ensureJobBranch({
-          jobDefinitionId,
-          jobName,
-          baseBranch,
-        });
-
-        codeMetadata = await collectLocalCodeMetadata(getMetadataHints(branchResult.branchName));
-      } catch (branchError: any) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              data: null,
-              meta: {
-                ok: false,
-                code: 'BRANCH_ERROR',
-                message: `Failed to create job branch or collect metadata: ${branchError.message}`,
-              },
-            }),
-          }],
-        };
-      }
-    } else if (shouldKeepRepoContext) {
-      // Skip creating a new branch (e.g. skipBranch=true), but preserve repo context
-      // Child will run on the current HEAD/branch of the parent
-      try {
-        codeMetadata = await collectLocalCodeMetadata(getMetadataHints(undefined));
-      } catch (metadataError: any) {
-        console.warn('[dispatch_new_job] Failed to collect local metadata (non-critical):', metadataError);
-        // Continue without code metadata - job will be artifact-only
-      }
-    }
-
-    const lineage =
-      context.requestId ||
-        context.jobDefinitionId ||
-        context.parentRequestId ||
-        context.branchName ||
-        context.baseBranch
-        ? {
-          dispatcherRequestId: context.requestId || undefined,
-          dispatcherJobDefinitionId: context.jobDefinitionId || undefined,
-          parentDispatcherRequestId: context.parentRequestId || undefined,
-          dispatcherBranchName: context.branchName || undefined,
-          dispatcherBaseBranch: context.baseBranch || undefined,
-        }
-        : undefined;
-
-    // IPFS metadata structure: blueprint at root level (not prompt)
-    const ipfsJsonContents: any[] = [{
-      blueprint: finalBlueprint,
-      jobName,
-      model: model || 'gemini-3-flash-preview',
-      enabledTools,
-      jobDefinitionId,
-      nonce: ensureUuid(),
-      additionalContext,
-      ...(branchResult ? { branchName: branchResult.branchName, baseBranch } : {}),
-      ...lineageContext,
-    }];
-
-    // Add dependencies at root level if provided
+    // Validate dependencies before building payload (agent-specific validation)
     if (dependencies && dependencies.length > 0) {
       // Validate that all dependencies are UUIDs (not job names)
       const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -380,10 +239,7 @@ export async function dispatchNewJob(args: unknown) {
       }
 
       // CRITICAL: Prevent circular dependencies with parent job
-      // A child job CANNOT depend on its parent because:
-      // - Parent waits for all children to complete before it can complete
-      // - If child depends on parent, child waits for parent to complete
-      // - Result: DEADLOCK (both waiting on each other forever)
+      const context = getCurrentJobContext();
       const parentJobDefinitionId = context.jobDefinitionId;
       if (parentJobDefinitionId && dependencies.includes(parentJobDefinitionId)) {
         console.error('[dispatch_new_job] CIRCULAR_DEPENDENCY: Child job cannot depend on its parent job:', parentJobDefinitionId);
@@ -401,23 +257,39 @@ export async function dispatchNewJob(args: unknown) {
           }],
         };
       }
-
-      ipfsJsonContents[0].dependencies = dependencies;
     }
 
-    if (lineage) {
-      ipfsJsonContents[0].lineage = lineage;
-    }
-
-    if (codeMetadata) {
-      ipfsJsonContents[0].codeMetadata = codeMetadata;
-    }
-
-    if (branchResult) {
-      ipfsJsonContents[0].executionPolicy = {
-        branch: branchResult.branchName,
-        ensureTestsPass: true,
-        description: 'Agent must work on the provided branch and pass required validations before finalizing.',
+    // Build IPFS payload using shared helper
+    // Note: Agents cannot set cyclic or additionalContextOverrides
+    let ipfsJsonContents: any[];
+    try {
+      const payloadResult = await buildIpfsPayload({
+        blueprint: finalBlueprint,
+        jobName,
+        jobDefinitionId,
+        model,
+        enabledTools: requestedTools,
+        skipBranch,
+        dependencies,
+        message,
+        inputSchema,
+        // cyclic and additionalContextOverrides intentionally NOT passed
+        // These are only available to human-initiated dispatches
+      });
+      ipfsJsonContents = payloadResult.ipfsJsonContents;
+    } catch (payloadError: any) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: {
+              ok: false,
+              code: 'PAYLOAD_BUILD_ERROR',
+              message: payloadError.message || String(payloadError),
+            },
+          }),
+        }],
       };
     }
 
@@ -439,7 +311,7 @@ export async function dispatchNewJob(args: unknown) {
       const result = await marketplaceInteract({
         prompts: [finalBlueprint],
         priorityMech: mechAddress,
-        tools: enabledTools || [],
+        tools: requestedTools || [],
         ipfsJsonContents,
         chainConfig,
         keyConfig: { source: 'value', value: privateKey },

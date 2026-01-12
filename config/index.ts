@@ -408,6 +408,23 @@ const blueprintBuilderSchema = z.object({
 });
 
 /**
+ * Blog analytics configuration schema
+ * Publishing uses CODE_METADATA_REPO_ROOT (same as other git operations)
+ * Analytics uses Umami with JWT auth (username/password)
+ */
+const blogSchema = z.object({
+  // UMAMI_HOST: Umami analytics server URL
+  UMAMI_HOST: z.string().url().optional(),
+
+  // UMAMI_WEBSITE_ID: Umami website identifier
+  UMAMI_WEBSITE_ID: z.string().optional(),
+
+  // UMAMI_USERNAME: Umami login username (self-hosted uses JWT auth)
+  UMAMI_USERNAME: z.string().optional(),
+
+  // UMAMI_PASSWORD: Umami login password
+  UMAMI_PASSWORD: z.string().optional(),
+});/**
  * Complete configuration schema
  * Combines all domain schemas
  */
@@ -425,6 +442,7 @@ const configSchema = z.object({
   ...gitWorkflowSchema.shape,
   ...devTestingSchema.shape,
   ...blueprintBuilderSchema.shape,
+  ...blogSchema.shape,
 });
 
 type ConfigType = z.infer<typeof configSchema>;
@@ -1076,3 +1094,58 @@ export function getSandboxMode(): 'sandbox-exec' | 'docker' | 'podman' | 'false'
   return getConfig().GEMINI_SANDBOX;
 }
 
+// ============================================================================
+// Public API: Blog Management Configuration
+// ============================================================================
+
+// ============================================================================
+// Public API: Blog Analytics Configuration
+// ============================================================================
+
+export function getOptionalUmamiHost(): string | undefined {
+  return getConfig().UMAMI_HOST;
+}
+
+export function getRequiredUmamiHost(): string {
+  const value = getOptionalUmamiHost();
+  if (!value) {
+    throw new Error('UMAMI_HOST is required for blog analytics but not configured');
+  }
+  return value;
+}
+
+export function getOptionalUmamiWebsiteId(): string | undefined {
+  return getConfig().UMAMI_WEBSITE_ID;
+}
+
+export function getRequiredUmamiWebsiteId(): string {
+  const value = getOptionalUmamiWebsiteId();
+  if (!value) {
+    throw new Error('UMAMI_WEBSITE_ID is required for blog analytics but not configured');
+  }
+  return value;
+}
+
+export function getOptionalUmamiUsername(): string | undefined {
+  return getConfig().UMAMI_USERNAME;
+}
+
+export function getRequiredUmamiUsername(): string {
+  const value = getOptionalUmamiUsername();
+  if (!value) {
+    throw new Error('UMAMI_USERNAME is required for blog analytics but not configured');
+  }
+  return value;
+}
+
+export function getOptionalUmamiPassword(): string | undefined {
+  return getConfig().UMAMI_PASSWORD;
+}
+
+export function getRequiredUmamiPassword(): string {
+  const value = getOptionalUmamiPassword();
+  if (!value) {
+    throw new Error('UMAMI_PASSWORD is required for blog analytics but not configured');
+  }
+  return value;
+}

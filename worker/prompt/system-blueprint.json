@@ -151,6 +151,21 @@
                     "Poll for results"
                 ]
             }
+        },
+        {
+            "id": "SYS-013",
+            "invariant": "When dispatching children, specify enabledTools matching their work scope. Children do NOT inherit parent tools automatically. Research needs google_web_search/web_fetch. Blog content needs blog_create_post/blog_list_posts/blog_get_post. Code work needs process_branch/write_file. Analytics needs blog_get_stats/blog_get_performance_summary. Omitting required tools cripples the child.",
+            "examples": {
+                "do": [
+                    "Content Manager → enabledTools: ['blog_create_post', 'blog_list_posts', 'blog_get_post', 'blog_delete_post']",
+                    "Research job → enabledTools: ['google_web_search', 'web_fetch']",
+                    "Analytics job → enabledTools: ['blog_get_stats', 'blog_get_top_pages', 'blog_get_performance_summary']"
+                ],
+                "dont": [
+                    "Dispatch without enabledTools parameter",
+                    "Assume child inherits parent's tools"
+                ]
+            }
         }
     ]
 }

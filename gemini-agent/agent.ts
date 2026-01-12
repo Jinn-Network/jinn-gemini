@@ -375,6 +375,33 @@ export class Agent {
       const geminiHome = join('/tmp', '.gemini-worker');
       try {
         mkdirSync(geminiHome, { recursive: true });
+
+        // Copy OAuth credentials from user's ~/.gemini if they exist and are newer
+        // This enables OAuth authentication for the worker process
+        const userGeminiHome = join(process.env.HOME || '', '.gemini');
+        const filesToCopy = ['oauth_creds.json', 'google_accounts.json', 'settings.json'];
+
+        for (const file of filesToCopy) {
+          const srcPath = join(userGeminiHome, file);
+          const destPath = join(geminiHome, file);
+
+          try {
+            if (existsSync(srcPath)) {
+              const srcStat = statSync(srcPath);
+              const destExists = existsSync(destPath);
+              const destStat = destExists ? statSync(destPath) : null;
+
+              // Copy if dest doesn't exist or source is newer
+              if (!destExists || srcStat.mtimeMs > destStat!.mtimeMs) {
+                const content = readFileSync(srcPath);
+                writeFileSync(destPath, content);
+                agentLogger.debug({ file, geminiHome }, 'Copied OAuth credential file to worker home');
+              }
+            }
+          } catch (copyErr: any) {
+            agentLogger.debug({ file, error: copyErr.message }, 'Failed to copy OAuth file (non-fatal)');
+          }
+        }
       } catch (err: any) {
         agentLogger.debug({ error: err.message }, 'Failed to create gemini home directory');
       }

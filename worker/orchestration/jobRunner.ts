@@ -85,6 +85,46 @@ export async function processOnce(
 
       workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Processing request');
 
+      // Inject environment variables from additionalContext.env
+      // This enables multi-tenant products to pass per-job configuration
+      if (metadata?.additionalContext?.env) {
+        const protectedVars = ['PATH', 'NODE_ENV', 'HOME', 'USER', 'SHELL'];
+        for (const [key, value] of Object.entries(metadata.additionalContext.env)) {
+          if (!protectedVars.includes(key)) {
+            process.env[key] = value;
+            workerLogger.info({ key }, 'Injected job environment variable from additionalContext.env');
+          } else {
+            workerLogger.warn({ key }, 'Skipped protected environment variable');
+          }
+        }
+        // Store as JSON for child job inheritance via dispatch_new_job
+        process.env.JINN_INHERITED_ENV = JSON.stringify(metadata.additionalContext.env);
+      }
+
+      // Bootstrap workspace from additionalContext.workspaceRepo (root jobs only)
+      // If workspaceRepo is provided AND no codeMetadata exists, clone the specified repo
+      // Children inherit codeMetadata from parent, so this only applies to root launches
+      if (metadata?.additionalContext?.workspaceRepo?.url && !metadata.codeMetadata) {
+        const { url: repoUrl, branch } = metadata.additionalContext.workspaceRepo;
+        const repoName = extractRepoName(repoUrl);
+        if (repoName) {
+          const workspaceDir = getJinnWorkspaceDir();
+          const repoRoot = `${workspaceDir}/${repoName}`;
+
+          workerLogger.info({ repoUrl, repoRoot, branch }, 'Bootstrapping workspace from additionalContext.workspaceRepo');
+
+          const cloneResult = await ensureRepoCloned(repoUrl, repoRoot);
+          process.env.CODE_METADATA_REPO_ROOT = repoRoot;
+
+          telemetry.logCheckpoint('initialization', 'workspace_repo_bootstrap', {
+            repoUrl,
+            repoRoot,
+            branch: branch || 'default',
+            wasAlreadyCloned: cloneResult.wasAlreadyCloned,
+          });
+        }
+      }
+
       // Handle code metadata if present (artifact-only jobs may not have it)
       if (metadata?.codeMetadata) {
         process.env.JINN_BASE_BRANCH = metadata.codeMetadata.branch?.name ||

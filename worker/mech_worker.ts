@@ -73,28 +73,81 @@ const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'ma
 // Job processing logic has been moved to worker/orchestration/jobRunner.ts
 // This file now serves as a CLI wrapper that handles request discovery, claiming, and orchestration delegation
 
+// Mech filter configuration
+type MechFilterMode = 'any' | 'list' | 'single';
+interface MechFilterConfig {
+  mode: MechFilterMode;
+  addresses: string[]; // lowercase, only used for 'list' and 'single' modes
+}
+
+function getMechFilterConfig(): MechFilterConfig {
+  const envValue = process.env.WORKER_MECH_FILTER_LIST;
+
+  // Mode 1: "any" - accept requests from any mech
+  if (envValue?.toLowerCase() === 'any') {
+    return { mode: 'any', addresses: [] };
+  }
+
+  // Mode 2: Comma-separated list
+  if (envValue) {
+    const addresses = envValue.split(',').map(a => a.trim().toLowerCase()).filter(Boolean);
+    if (addresses.length > 0) {
+      return { mode: 'list', addresses };
+    }
+  }
+
+  // Mode 3: Fallback to single mech from getMechAddress()
+  const single = getMechAddress();
+  if (single) {
+    return { mode: 'single', addresses: [single.toLowerCase()] };
+  }
+
+  return { mode: 'single', addresses: [] };
+}
+
 async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest[]> {
   try {
-    const workerMech = getMechAddress();
-    if (!workerMech) {
-      workerLogger.warn('Cannot fetch requests without mech address');
+    const mechFilter = getMechFilterConfig();
+
+    if (mechFilter.mode !== 'any' && mechFilter.addresses.length === 0) {
+      workerLogger.warn('Cannot fetch requests without mech address or WORKER_MECH_FILTER_LIST');
       return [];
     }
 
     workerLogger.info({
       ponderUrl: PONDER_GRAPHQL_URL,
-      mech: workerMech,
+      mechFilterMode: mechFilter.mode,
+      mechFilterAddresses: mechFilter.mode === 'any' ? 'any' : mechFilter.addresses,
       workstreamFilter: WORKSTREAM_FILTER || 'none'
     }, 'Fetching requests from Ponder');
 
-    const whereConditions: string[] = ['mech: $mech', 'delivered: false'];
+    // Build where conditions based on filter mode
+    const whereConditions: string[] = ['delivered: false'];
+    if (mechFilter.mode === 'list') {
+      whereConditions.push('mech_in: $mechs');
+    } else if (mechFilter.mode === 'single') {
+      whereConditions.push('mech: $mech');
+    }
+    // 'any' mode: no mech filter
+
     if (WORKSTREAM_FILTER) {
       whereConditions.push('workstreamId: $workstreamId');
     }
     const whereClause = `{ ${whereConditions.join(', ')} }`;
 
+    // Build query variables definition
+    const varDefs: string[] = ['$limit: Int!'];
+    if (mechFilter.mode === 'list') {
+      varDefs.push('$mechs: [String!]!');
+    } else if (mechFilter.mode === 'single') {
+      varDefs.push('$mech: String!');
+    }
+    if (WORKSTREAM_FILTER) {
+      varDefs.push('$workstreamId: String!');
+    }
+
     // Query our local Ponder GraphQL (custom schema) - FILTER BY MECH AND UNDELIVERED (and optionally WORKSTREAM)
-    const query = `query RecentRequests($limit: Int!, $mech: String!${WORKSTREAM_FILTER ? ', $workstreamId: String!' : ''}) {
+    const query = `query RecentRequests(${varDefs.join(', ')}) {
   requests(
     where: ${whereClause}
     orderBy: "blockTimestamp"
@@ -114,10 +167,12 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
   }
 }`;
 
-    const variables: any = {
-      limit,
-      mech: workerMech.toLowerCase() // Ponder stores addresses lowercase
-    };
+    const variables: any = { limit };
+    if (mechFilter.mode === 'list') {
+      variables.mechs = mechFilter.addresses;
+    } else if (mechFilter.mode === 'single') {
+      variables.mech = mechFilter.addresses[0];
+    }
     if (WORKSTREAM_FILTER) {
       variables.workstreamId = WORKSTREAM_FILTER;
     }
@@ -126,7 +181,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       url: PONDER_GRAPHQL_URL,
       query,
       variables,
-      context: { operation: 'fetchRecentRequests', mech: workerMech }
+      context: { operation: 'fetchRecentRequests', mechFilterMode: mechFilter.mode }
     });
     const items: any[] = data?.requests?.items || [];
     workerLogger.info({ totalItems: items.length, items: items.map(r => ({ id: r.id, delivered: r.delivered, dependencies: r.dependencies })) }, 'Ponder GraphQL response');

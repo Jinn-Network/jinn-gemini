@@ -24,6 +24,17 @@ export const REGISTERED_MCP_TOOLS = [
   'register_template',
   'list_tools', // Special tool registered separately
   'verify_trade_ideas',
+  // Blog management tools
+  'blog_create_post',
+  'blog_list_posts',
+  'blog_delete_post',
+  'blog_get_post',
+  'blog_get_stats',
+  'blog_get_top_pages',
+  'blog_get_referrers',
+  'blog_get_metrics',
+  'blog_get_pageviews',
+  'blog_get_performance_summary',
 ] as const;
 
 async function main() {
@@ -82,6 +93,17 @@ async function main() {
       { name: 'list_commits', schema: tools.listCommitsSchema, handler: tools.listCommits },
       { name: 'process_branch', schema: tools.process_branch_schema, handler: tools.process_branch },
       { name: 'register_template', schema: tools.registerTemplateSchema, handler: tools.registerTemplate },
+      // Blog management tools
+      { name: 'blog_create_post', schema: tools.blogCreatePostSchema, handler: tools.blogCreatePost },
+      { name: 'blog_list_posts', schema: tools.blogListPostsSchema, handler: tools.blogListPosts },
+      { name: 'blog_delete_post', schema: tools.blogDeletePostSchema, handler: tools.blogDeletePost },
+      { name: 'blog_get_post', schema: tools.blogGetPostSchema, handler: tools.blogGetPost },
+      { name: 'blog_get_stats', schema: tools.blogGetStatsSchema, handler: tools.blogGetStats },
+      { name: 'blog_get_top_pages', schema: tools.blogGetTopPagesSchema, handler: tools.blogGetTopPages },
+      { name: 'blog_get_referrers', schema: tools.blogGetReferrersSchema, handler: tools.blogGetReferrers },
+      { name: 'blog_get_metrics', schema: tools.blogGetMetricsSchema, handler: tools.blogGetMetrics },
+      { name: 'blog_get_pageviews', schema: tools.blogGetPageviewsSchema, handler: tools.blogGetPageviews },
+      { name: 'blog_get_performance_summary', schema: tools.blogGetPerformanceSummarySchema, handler: tools.blogGetPerformanceSummary },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums

@@ -11,16 +11,17 @@
  *   --model           Specify model (default: gemini-2.5-flash)
  *   --context         Additional context string to inject
  *   --skip-repo       Skip GitHub repository creation (artifact-only mode)
+ *   --repo            Use existing repo (e.g., "owner/repo"). Auto-clones locally if needed.
  *   --cyclic          Enable continuous operation (auto-redispatch after completion)
  *
  * Example:
  *   yarn launch:workstream x402-data-service
  *   yarn launch:workstream x402-data-service.json --dry-run
+ *   yarn launch:workstream blog-growth-orchestrator --repo=Jinn-Network/jinn-blog
  *   yarn launch:workstream monitoring-job --cyclic
  */
 
 import 'dotenv/config';
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getServiceProfile } from '../env/operate-profile.js';
 import { readFile, mkdir, writeFile } from 'fs/promises';
@@ -31,6 +32,7 @@ import { execSync } from 'child_process';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { scriptLogger } from '../logging/index.js';
+import { buildIpfsPayload } from '../gemini-agent/shared/ipfs-payload-builder.js';
 
 interface GitHubRepoResponse {
   id: number;
@@ -124,35 +126,16 @@ async function initializeRepo(localPath: string, repoUrl: string, repoName: stri
   execSync('git push -u origin main', { cwd: localPath, stdio: 'pipe' });
 }
 
-function parseDispatchResponse(result: any): { jobDefinitionId: string; requestId: string } {
-  if (!result.content || !result.content[0] || !result.content[0].text) {
-    throw new Error(`Invalid dispatch response format: ${JSON.stringify(result)}`);
-  }
-
-  const response = JSON.parse(result.content[0].text);
-
-  if (!response.meta?.ok) {
-    throw new Error(`Dispatch failed: ${response.meta?.message}`);
-  }
-
-  const data = response.data;
-  const requestId = Array.isArray(data.request_ids) ? data.request_ids[0] : data.request_id;
-  const jobDefinitionId = data.jobDefinitionId;
-
-  if (!jobDefinitionId) {
-    throw new Error('No jobDefinitionId in response');
-  }
-
-  return { jobDefinitionId, requestId };
-}
-
 async function main() {
   const argv = await yargs(hideBin(process.argv))
     .option('dry-run', { type: 'boolean', description: 'Simulate without creating repo or dispatching' })
     .option('model', { type: 'string', default: 'gemini-3-flash-preview', description: 'Model to use' })
     .option('context', { type: 'string', description: 'Additional context to inject' })
     .option('skip-repo', { type: 'boolean', description: 'Skip GitHub repository creation (artifact-only mode)' })
+    .option('repo', { type: 'string', description: 'Use existing repo. Format: "owner/repo" or "ssh-host:owner/repo" (e.g., "ritsukai:Jinn-Network/jinn-blog")' })
     .option('cyclic', { type: 'boolean', description: 'Enable continuous operation (auto-redispatch after completion)' })
+    .option('env', { type: 'array', description: 'Environment variables to inject (KEY=VALUE format, repeatable)' })
+    .option('workspace-repo', { type: 'string', description: 'Repository URL to clone as workspace for the agent' })
     .demandCommand(1, 'Please provide a blueprint filename (e.g., x402-data-service)')
     .help()
     .parse();
@@ -181,8 +164,60 @@ async function main() {
     let repoPath: string | undefined;
     let repoUrl: string | undefined;
 
-    // GitHub repository creation (unless --skip-repo)
-    if (!argv.skipRepo) {
+    // Option 1: Use existing repo (--repo flag)
+    if (argv.repo) {
+      const repoSpec = argv.repo as string;
+
+      // Parse formats:
+      // - "owner/repo" → ssh-host defaults to github.com
+      // - "ssh-host:owner/repo" → custom ssh-host
+      let sshHost = 'github.com';
+      let owner: string;
+      let repoName: string;
+
+      const hostMatch = repoSpec.match(/^([^:]+):([^/]+)\/([^/]+)$/);
+      const simpleMatch = repoSpec.match(/^([^/]+)\/([^/]+)$/);
+
+      if (hostMatch) {
+        // Format: ssh-host:owner/repo
+        [, sshHost, owner, repoName] = hostMatch;
+      } else if (simpleMatch) {
+        // Format: owner/repo
+        [, owner, repoName] = simpleMatch;
+      } else {
+        throw new Error(`Invalid repo format: "${repoSpec}". Expected "owner/repo" or "ssh-host:owner/repo"`);
+      }
+
+      const cloneUrl = `git@${sshHost}:${owner}/${repoName}.git`;
+      repoUrl = `https://github.com/${owner}/${repoName}`;
+
+      const workstreamsDir = join(homedir(), '.jinn', 'workstreams');
+      await mkdir(workstreamsDir, { recursive: true });
+      repoPath = join(workstreamsDir, repoName);
+
+      scriptLogger.info({ repoSpec, repoPath }, 'Using existing repository');
+
+      // Clone if doesn't exist, otherwise fetch
+      const { existsSync } = await import('fs');
+      if (!existsSync(repoPath)) {
+        scriptLogger.info({ cloneUrl, repoPath }, 'Cloning repository...');
+        execSync(`git clone ${cloneUrl} ${repoPath}`, { stdio: 'pipe' });
+        scriptLogger.info('Repository cloned');
+      } else {
+        scriptLogger.info({ repoPath }, 'Repository already exists locally, fetching...');
+        execSync('git fetch --all', { cwd: repoPath, stdio: 'pipe' });
+        scriptLogger.info('Fetched latest');
+      }
+
+      // Add repo context
+      if (!context) {
+        context = `Repository: ${repoUrl}\nLocal path: ${repoPath}`;
+      } else {
+        context = `${context}\n\nRepository: ${repoUrl}\nLocal path: ${repoPath}`;
+      }
+    }
+    // Option 2: Create new GitHub repo (default, unless --skip-repo)
+    else if (!argv.skipRepo) {
       const githubToken = process.env.GITHUB_TOKEN;
       if (!githubToken) {
         throw new Error('GITHUB_TOKEN environment variable is required for repository creation. Use --skip-repo to launch without a repository.');
@@ -284,55 +319,72 @@ async function main() {
       'dispatch_new_job',
     ];
 
-    let requestId: string;
+    // Parse --env flags into additionalContextOverrides
+    const additionalContextOverrides: {
+      env?: Record<string, string>;
+      workspaceRepo?: { url: string; branch?: string };
+    } = {};
 
-    if (argv.cyclic) {
-      // Cyclic jobs use marketplaceInteract directly to set cyclic: true in IPFS metadata
-      // This is intentional - agents cannot set cyclic, only launcher scripts can
-      scriptLogger.info({ cyclic: true }, 'Launching cyclic workstream');
-
-      const profile = getServiceProfile();
-      const jobDefinitionId = randomUUID();
-
-      const ipfsJsonContents = [{
-        blueprint: finalBlueprint,
-        jobName,
-        model: argv.model || 'gemini-3-flash-preview',
-        enabledTools,
-        jobDefinitionId,
-        nonce: randomUUID(),
-        cyclic: true,  // Enable continuous operation
-      }];
-
-      const result = await marketplaceInteract({
-        prompts: [finalBlueprint],
-        priorityMech: profile.mechAddress,
-        tools: enabledTools,
-        ipfsJsonContents,
-        chainConfig: profile.chainConfig,
-        keyConfig: { source: 'value', value: profile.privateKey },
-        postOnly: true,
-        responseTimeout: 300,
-      });
-
-      if (!result?.request_ids?.[0]) {
-        throw new Error('No request ID returned from marketplace dispatch');
+    if (argv.env && Array.isArray(argv.env) && argv.env.length > 0) {
+      additionalContextOverrides.env = {};
+      for (const pair of argv.env as string[]) {
+        const [key, ...rest] = String(pair).split('=');
+        if (key && rest.length > 0) {
+          additionalContextOverrides.env[key] = rest.join('=');
+          scriptLogger.debug({ key }, 'Parsed environment variable from --env flag');
+        }
       }
-
-      requestId = result.request_ids[0];
-    } else {
-      // Standard dispatch via MCP tool
-      const result = await dispatchNewJob({
-        jobName,
-        blueprint: finalBlueprint,
-        model: argv.model,
-        enabledTools,
-        skipBranch: false,  // Explicit branch creation for code workstreams
-      });
-
-      const parsed = parseDispatchResponse(result);
-      requestId = parsed.requestId;
     }
+
+    // Parse --workspace-repo flag
+    if (argv.workspaceRepo) {
+      additionalContextOverrides.workspaceRepo = { url: String(argv.workspaceRepo) };
+      scriptLogger.debug({ url: argv.workspaceRepo }, 'Parsed workspace repo from --workspace-repo flag');
+    }
+
+    const jobDefinitionId = randomUUID();
+    const profile = getServiceProfile();
+
+    if (!profile.mechAddress) {
+      throw new Error('No mech address found in operate-profile. Run setup:service first.');
+    }
+    if (!profile.privateKey) {
+      throw new Error('No private key found in operate-profile. Check .operate/keys directory.');
+    }
+
+    // Use shared payload builder for ALL dispatches (cyclic and non-cyclic)
+    // This ensures consistent payload structure with codeMetadata, lineage, etc.
+    scriptLogger.info({ cyclic: !!argv.cyclic }, 'Building IPFS payload...');
+
+    const { ipfsJsonContents } = await buildIpfsPayload({
+      blueprint: finalBlueprint,
+      jobName,
+      jobDefinitionId,
+      model: argv.model as string,
+      enabledTools,
+      cyclic: !!argv.cyclic,
+      additionalContextOverrides: Object.keys(additionalContextOverrides).length > 0
+        ? additionalContextOverrides
+        : undefined,
+    });
+
+    // Dispatch via marketplaceInteract
+    const result = await marketplaceInteract({
+      prompts: [finalBlueprint],
+      priorityMech: profile.mechAddress,
+      tools: enabledTools,
+      ipfsJsonContents,
+      chainConfig: profile.chainConfig,
+      keyConfig: { source: 'value', value: profile.privateKey },
+      postOnly: true,
+      responseTimeout: 300,
+    });
+
+    if (!result?.request_ids?.[0]) {
+      throw new Error('No request ID returned from marketplace dispatch');
+    }
+
+    const requestId = result.request_ids[0];
 
     scriptLogger.info({
       requestId,

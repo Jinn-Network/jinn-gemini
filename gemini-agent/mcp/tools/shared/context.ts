@@ -86,5 +86,6 @@ export function clearJobContext() {
   delete process.env.JINN_WORKSTREAM_ID;
   delete process.env.JINN_PARENT_REQUEST_ID;
   delete process.env.JINN_BRANCH_NAME;
+  delete process.env.JINN_INHERITED_ENV;
 
 }

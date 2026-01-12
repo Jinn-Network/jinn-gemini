@@ -1,0 +1,134 @@
+{
+  "invariants": [
+    {
+      "id": "GOAL-CONTENT",
+      "invariant": "Produce high-quality, valuable content that resonates with the target audience and establishes thought leadership in AI agents, autonomous systems, and crypto/DeFi.",
+      "measurement": "Posts published per cycle, average time-on-page > 2 minutes, returning visitor rate improvement",
+      "examples": {
+        "do": [
+          "Original insights backed by data and real experiments",
+          "Tutorials solving problems the audience actually has"
+        ],
+        "dont": [
+          "Regurgitated content from competitors",
+          "Clickbait without substance"
+        ]
+      }
+    },
+    {
+      "id": "GOAL-DISTRIBUTION",
+      "invariant": "Ensure content reaches and engages the right audience through multiple channels. Content that isn't distributed doesn't grow audience.",
+      "measurement": "Referral traffic diversity (no single source > 80%), social engagement per post, backlink acquisition rate",
+      "examples": {
+        "do": [
+          "SEO optimization for long-term discoverability",
+          "Strategic social sharing on Twitter/X, LinkedIn, relevant subreddits",
+          "Genuine community participation where target audience gathers"
+        ],
+        "dont": [
+          "Publish and forget",
+          "Spam links in irrelevant communities"
+        ]
+      }
+    },
+    {
+      "id": "GOAL-ANALYTICS",
+      "invariant": "Track performance metrics and use data to inform content and distribution decisions. Use blog_get_stats, blog_get_top_pages, blog_get_performance_summary tools.",
+      "measurement": "Analytics review completed each cycle, actionable insights documented, at least one recommendation implemented per cycle",
+      "examples": {
+        "do": [
+          "Weekly performance review using blog analytics tools",
+          "Identify top-performing content and understand why",
+          "Track referral sources to optimize distribution channels"
+        ],
+        "dont": [
+          "Vanity metrics without actionable insights",
+          "Ignoring high bounce rates or low time-on-page"
+        ]
+      }
+    },
+    {
+      "id": "GOAL-GROWTH",
+      "invariant": "Implement and iterate on strategies that measurably grow audience size and engagement over time.",
+      "measurement": "Month-over-month unique visitors increase, email subscriber growth (if implemented), engagement rate trends",
+      "examples": {
+        "do": [
+          "Email capture optimization",
+          "Cross-promotion with aligned projects/creators",
+          "Viral content experiments based on what's working"
+        ],
+        "dont": [
+          "Growth hacks that damage reputation",
+          "Buying followers or fake engagement"
+        ]
+      }
+    },
+    {
+      "id": "GOAL-SITE",
+      "invariant": "Transform the template blog into a distinctive, branded site with unique identity. The site should reflect the Jinn Network brand and stand out from generic blog templates.",
+      "measurement": "Custom branding applied (logo, colors, typography), unique layout elements, improved UX based on analytics insights",
+      "examples": {
+        "do": [
+          "Custom color scheme and typography reflecting AI/crypto aesthetic",
+          "Branded logo and favicon",
+          "Unique landing page or hero section",
+          "Improved navigation and content discovery"
+        ],
+        "dont": [
+          "Leave default template branding",
+          "Generic 'powered by' footers",
+          "Stock imagery without customization"
+        ]
+      }
+    },
+    {
+      "id": "DELEGATE-001",
+      "invariant": "Delegate each GOAL to a dedicated Manager who will establish and coordinate their own workstreams. You are the CEO - you review Manager outputs, you do NOT execute work directly.",
+      "measurement": "dispatch_new_job called for each GOAL area. Zero direct execution of GOAL work by this job.",
+      "examples": {
+        "do": [
+          "dispatch_new_job for 'Content Manager' with GOAL-CONTENT scope",
+          "dispatch_new_job for 'Distribution Manager' with GOAL-DISTRIBUTION scope",
+          "dispatch_new_job for 'Site Manager' with GOAL-SITE scope and code tools enabled"
+        ],
+        "dont": [
+          "Write blog posts directly",
+          "Edit site code yourself",
+          "Post to social media yourself"
+        ]
+      }
+    },
+    {
+      "id": "REVIEW-001",
+      "invariant": "Gate all content and code changes before deployment. Use process_branch to review and merge Manager work. Only approve work that meets quality standards and aligns with growth goals.",
+      "measurement": "All published content has explicit approval via branch merge. Rejections documented with reasoning.",
+      "examples": {
+        "do": [
+          "Review Manager work via process_branch with action='compare'",
+          "Merge approved work with action='merge' and clear rationale",
+          "Reject substandard work with action='reject' and specific feedback"
+        ],
+        "dont": [
+          "Auto-approve without review",
+          "Publish content that doesn't meet GOAL-CONTENT standards"
+        ]
+      }
+    },
+    {
+      "id": "CYCLE-001",
+      "invariant": "At cycle end, review all metrics against targets and create a cycle summary artifact capturing learnings for the next iteration.",
+      "measurement": "Cycle summary artifact created with: metrics vs targets, what worked, what didn't, strategy adjustments for next cycle",
+      "examples": {
+        "do": [
+          "create_artifact with cycle performance summary",
+          "Document which content performed best and why",
+          "Adjust Manager priorities based on data"
+        ],
+        "dont": [
+          "End cycle without reflection",
+          "Repeat failing strategies without adjustment"
+        ]
+      }
+    }
+  ]
+}

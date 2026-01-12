@@ -72,6 +72,47 @@ A Template is a JSON file that packages a Venture Blueprint.
 *   **Variable Substitution:** Use `{{inputVar}}` handlebars for values defined in `inputSchema`.
 *   **Measurability:** Every invariant must have a clear `measurement` string.
 
+### Input Schema Design
+
+**Use flat structures** for inputSchema. Avoid nested objects.
+
+✅ **Good (flat):**
+```json
+{
+  "inputSchema": {
+    "properties": {
+      "blogName": { "type": "string" },
+      "targetAudience": { "type": "string" },
+      "brandColor": { "type": "string", "default": "colors appropriate for the brand" }
+    },
+    "required": ["blogName", "targetAudience"]
+  }
+}
+```
+
+❌ **Avoid (nested):**
+```json
+{
+  "inputSchema": {
+    "properties": {
+      "blogSpec": {
+        "properties": { "name": {}, "colors": { "primary": {} } }
+      }
+    }
+  }
+}
+```
+
+**Why flat?**
+- Simpler variable substitution: `{{blogName}}` vs `{{blogSpec.name}}`
+- Easier default handling in the gateway
+- Better readability for both humans and agents
+
+**Defaults:** Each optional field should have a natural language `default` that makes sense if not provided:
+```json
+"brandVoice": { "type": "string", "default": "a tone appropriate for the audience" }
+```
+
 ---
 
 ## 3. Generating Venture Blueprints (The Factory Pattern)

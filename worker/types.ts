@@ -162,6 +162,25 @@ export interface AdditionalContext {
     /** Request ID of the previous cycle run */
     previousCycleRequestId?: string;
   };
+
+  /**
+   * Public environment variables to inject into the worker/agent process.
+   * These are set before the agent spawns and available via process.env.
+   * NOTE: Do NOT put secrets here (passwords, API keys) as this is stored on IPFS.
+   */
+  env?: Record<string, string>;
+
+  /**
+   * Optional repository to clone as the workspace for this job.
+   * Used for multi-tenant products where each customer has their own repo.
+   * Only applicable for root jobs; children inherit codeMetadata from parent.
+   */
+  workspaceRepo?: {
+    /** Git repository URL (e.g., https://github.com/org/repo) */
+    url: string;
+    /** Branch to checkout (defaults to main/master) */
+    branch?: string;
+  };
 }
 
 /**

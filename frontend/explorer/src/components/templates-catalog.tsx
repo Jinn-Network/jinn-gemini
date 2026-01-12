@@ -14,7 +14,8 @@ import {
   DialogTrigger 
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ExternalLink, Play, Shield, Tag, Zap } from 'lucide-react'
+import { ExternalLink, Play, Shield, Tag, Zap, ChevronDown, ChevronUp } from 'lucide-react'
+import { TemplateExecutionForm } from './template-execution-form'
 
 // Template type from x402-gateway
 interface JobTemplate {
@@ -140,14 +141,47 @@ function TemplateCard({
   )
 }
 
-function TemplateDetailDialog({ 
-  template, 
-  onClose 
-}: { 
+function TemplateDetailDialog({
+  template,
+  onClose
+}: {
   template: JobTemplate | null
-  onClose: () => void 
+  onClose: () => void
 }) {
+  const [showApiDetails, setShowApiDetails] = React.useState(false)
+  const [fullTemplate, setFullTemplate] = React.useState<JobTemplate | null>(null)
+  const [loadingDetails, setLoadingDetails] = React.useState(false)
+
+  // Fetch full template details (including inputSchema) when dialog opens
+  React.useEffect(() => {
+    if (!template) {
+      setFullTemplate(null)
+      return
+    }
+
+    async function fetchDetails() {
+      setLoadingDetails(true)
+      try {
+        const res = await fetch(`${GATEWAY_URL}/templates/${template!.templateId}`)
+        if (res.ok) {
+          setFullTemplate(await res.json())
+        } else {
+          setFullTemplate(template!)
+        }
+      } catch {
+        setFullTemplate(template!)
+      } finally {
+        setLoadingDetails(false)
+      }
+    }
+
+    fetchDetails()
+  }, [template?.templateId])
+
   if (!template) return null
+
+  // Use full template if loaded, otherwise fall back to basic info
+  const displayTemplate = fullTemplate || template
 
   const executeSnippet = `curl -X POST "${GATEWAY_URL}/templates/${template.templateId}/execute" \\
   -H "Content-Type: application/json" \\
@@ -199,23 +233,57 @@ function TemplateDetailDialog({
               </p>
             </div>
 
-            {/* Execute Snippet */}
-            <div>
-              <h4 className="text-sm font-medium mb-1">Execute via API</h4>
-              <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
-                {executeSnippet}
-              </pre>
+            {/* Execution Form */}
+            <div className="pt-2 border-t">
+              <h4 className="text-sm font-medium mb-3">Execute Template</h4>
+              {loadingDetails ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : (
+                <TemplateExecutionForm template={displayTemplate} />
+              )}
             </div>
 
-            {/* Input Schema (if available) */}
-            {template.inputSchema && Object.keys(template.inputSchema).length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium mb-1">Input Schema</h4>
-                <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
-                  {JSON.stringify(template.inputSchema, null, 2)}
-                </pre>
-              </div>
-            )}
+            {/* Collapsible API Details */}
+            <div className="pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setShowApiDetails(!showApiDetails)}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showApiDetails ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+                API Details
+              </button>
+
+              {showApiDetails && (
+                <div className="mt-3 space-y-3">
+                  {/* Execute Snippet */}
+                  <div>
+                    <h4 className="text-xs font-medium mb-1 text-muted-foreground">cURL Example</h4>
+                    <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
+                      {executeSnippet}
+                    </pre>
+                  </div>
+
+                  {/* Input Schema (if available) */}
+                  {displayTemplate.inputSchema && Object.keys(displayTemplate.inputSchema).length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium mb-1 text-muted-foreground">Input Schema</h4>
+                      <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto max-h-40">
+                        {JSON.stringify(displayTemplate.inputSchema, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </ScrollArea>
 
@@ -223,10 +291,10 @@ function TemplateDetailDialog({
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
-          <Button asChild>
-            <a 
-              href={`${GATEWAY_URL}/templates/${template.templateId}`} 
-              target="_blank" 
+          <Button asChild variant="secondary">
+            <a
+              href={`${GATEWAY_URL}/templates/${template.templateId}`}
+              target="_blank"
               rel="noopener noreferrer"
             >
               <ExternalLink className="h-4 w-4 mr-2" />

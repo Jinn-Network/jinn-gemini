@@ -20,5 +20,22 @@ export { getFileContents, getFileContentsParams, getFileContentsSchema, searchCo
 // Git tools (from worker/mcp)
 export { process_branch, process_branch_schema } from '../../../worker/mcp/tools/git.js';
 
+// Blog tools
+export {
+  blogCreatePost, blogCreatePostParams, blogCreatePostSchema,
+  blogListPosts, blogListPostsParams, blogListPostsSchema,
+  blogDeletePost, blogDeletePostParams, blogDeletePostSchema,
+  blogGetPost, blogGetPostParams, blogGetPostSchema,
+} from './blog-publish.js';
+
+export {
+  blogGetStats, blogGetStatsParams, blogGetStatsSchema,
+  blogGetTopPages, blogGetTopPagesParams, blogGetTopPagesSchema,
+  blogGetReferrers, blogGetReferrersParams, blogGetReferrersSchema,
+  blogGetMetrics, blogGetMetricsParams, blogGetMetricsSchema,
+  blogGetPageviews, blogGetPageviewsParams, blogGetPageviewsSchema,
+  blogGetPerformanceSummary, blogGetPerformanceSummaryParams, blogGetPerformanceSummarySchema,
+} from './blog-analytics.js';
+
 // Export database functions
 export { readRecords, createRecord, type ReadRecordsParams, type CreateRecordParams } from './shared/database.js';
