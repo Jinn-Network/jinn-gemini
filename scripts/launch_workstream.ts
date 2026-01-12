@@ -33,6 +33,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { scriptLogger } from '../logging/index.js';
 import { buildIpfsPayload } from '../gemini-agent/shared/ipfs-payload-builder.js';
+import { deepSubstitute, loadInputConfig } from './shared/template-substitution.js';
 
 interface GitHubRepoResponse {
   id: number;
@@ -134,6 +135,7 @@ async function main() {
     .option('skip-repo', { type: 'boolean', description: 'Skip GitHub repository creation (artifact-only mode)' })
     .option('repo', { type: 'string', description: 'Use existing repo. Format: "owner/repo" or "ssh-host:owner/repo" (e.g., "ritsukai:Jinn-Network/jinn-blog")' })
     .option('cyclic', { type: 'boolean', description: 'Enable continuous operation (auto-redispatch after completion)' })
+    .option('input', { type: 'string', description: 'Path to JSON config file with template inputs for variable substitution' })
     .option('env', { type: 'array', description: 'Environment variables to inject (KEY=VALUE format, repeatable)' })
     .option('workspace-repo', { type: 'string', description: 'Repository URL to clone as workspace for the agent' })
     .demandCommand(1, 'Please provide a blueprint filename (e.g., x402-data-service)')
@@ -267,7 +269,24 @@ async function main() {
     }
 
     // Inject context into blueprint
-    const blueprintObj = JSON.parse(blueprintContent);
+    let blueprintObj = JSON.parse(blueprintContent);
+
+    // Apply variable substitution if --input config provided
+    if (argv.input) {
+      scriptLogger.info({ inputPath: argv.input }, 'Loading input config for variable substitution...');
+      try {
+        const inputConfig = await loadInputConfig(argv.input);
+        scriptLogger.info({ keys: Object.keys(inputConfig) }, 'Input config loaded');
+
+        // Deep substitute {{variable}} placeholders throughout the blueprint
+        blueprintObj = deepSubstitute(blueprintObj, inputConfig, blueprintObj.inputSchema);
+        scriptLogger.info('Variable substitution applied to blueprint');
+      } catch (err) {
+        scriptLogger.error({ inputPath: argv.input, error: err }, 'Failed to load input config');
+        throw err;
+      }
+    }
+
     if (blueprintObj.context) {
       blueprintObj.context = `${blueprintObj.context}\n\n[LAUNCHER CONTEXT]\n${context}`;
     } else {

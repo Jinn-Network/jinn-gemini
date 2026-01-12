@@ -35,6 +35,7 @@ import {
   formatWei,
 } from "./pricing.js";
 import { buildJobBranchName, type CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
+import { deepSubstitute, buildBlueprintFromTemplate as sharedBuildBlueprint } from '../../scripts/shared/template-substitution.js';
 
 // Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
 interface BranchSnapshot {
@@ -789,109 +790,8 @@ function formatPrice(weiString: string | number | bigint): string {
 // Use imported summarizeOutputSpec from output-spec.ts
 const summarizeOutputSpec = summarizeSpec;
 
-/**
- * Substitute {{variable}} placeholders in a string with input values.
- * Supports nested variable paths like {{blogSpec.name}}.
- */
-function substituteVariables(
-  text: string,
-  input: Record<string, any>,
-  inputSchema?: Record<string, any>
-): string {
-  return text.replace(/\{\{([\w.]+)\}\}/g, (match, varPath) => {
-    // Support nested paths like blogSpec.name
-    const parts = varPath.split('.');
-    let value: any = input;
-    for (const part of parts) {
-      if (value && typeof value === 'object' && part in value) {
-        value = value[part];
-      } else {
-        value = undefined;
-        break;
-      }
-    }
-
-    if (value !== undefined) {
-      return String(value);
-    }
-
-    // Keep placeholder if no value found
-    console.warn(`No value found for template variable: ${varPath}`);
-    return match;
-  });
-}
-
-/**
- * Deep substitute variables in an object (recursively processes strings).
- */
-function deepSubstitute(
-  obj: any,
-  input: Record<string, any>,
-  inputSchema?: Record<string, any>
-): any {
-  if (typeof obj === 'string') {
-    return substituteVariables(obj, input, inputSchema);
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(item => deepSubstitute(item, input, inputSchema));
-  }
-  if (obj && typeof obj === 'object') {
-    const result: Record<string, any> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = deepSubstitute(value, input, inputSchema);
-    }
-    return result;
-  }
-  return obj;
-}
-
-// Helper: Build blueprint from template
-async function buildBlueprintFromTemplate(
-  template: PonderJobTemplate | any,
-  input: Record<string, any>
-): Promise<{ invariants: any[] }> {
-  // If template has a stored blueprint from Ponder, parse and use it
-  if (template.blueprint) {
-    try {
-      const storedBlueprint = JSON.parse(template.blueprint);
-
-      // Deep substitute {{variable}} placeholders in invariants
-      const substitutedInvariants = deepSubstitute(
-        storedBlueprint.invariants || [],
-        input,
-        template.inputSchema || undefined
-      );
-
-      return { invariants: substitutedInvariants };
-    } catch (parseError) {
-      console.warn("Failed to parse stored blueprint, falling back to generic:", parseError);
-    }
-  }
-
-  // Fallback: Generate generic blueprint for templates without stored blueprints
-  const fallbackInvariants = [
-    {
-      id: "TEMPLATE-001",
-      invariant: `Execute the ${template.name} template with the provided input parameters.`,
-      measurement: "Template execution completes successfully with expected output.",
-      examples: {
-        do: ["Follow the template's intended purpose", "Use provided input parameters"],
-        dont: ["Deviate from template scope", "Ignore input parameters"]
-      }
-    },
-    {
-      id: "OUTPUT-001",
-      invariant: "Produce output conforming to the template's output specification.",
-      measurement: "All required output fields are present and correctly formatted.",
-      examples: {
-        do: ["Include all required output fields", "Format output as specified"],
-        dont: ["Omit required fields", "Return unstructured data"]
-      }
-    }
-  ];
-
-  return { invariants: fallbackInvariants };
-}
+// Use shared template substitution functions (imported from scripts/shared/template-substitution.ts)
+const buildBlueprintFromTemplate = sharedBuildBlueprint;
 
 // Start server
 const port = parseInt(env.PORT || "3001", 10);
