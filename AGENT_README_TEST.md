@@ -1225,6 +1225,23 @@ yarn tsx scripts/check-balances.ts
 - OLAS Token: `0x54330d28ca3357F294334BDC454a032e7f353416`
 - AgentsFun1 Staking: `0x2585e63df7BD9De8e058884D496658a030b5c6ce`
 
+**Ethereum Mainnet Contracts (veOLAS):**
+- VoteWeighting: `0x95418b46d5566D3d1ea62C12Aea91227E566c5c1` (for staking nominations)
+- veOLAS: `0x7e01A500805f8A52Fad229b3015AD130A332B7b3`
+
+**Jinn Staking Contract (Base):**
+- Activity Checker: `0x1dF0be586a7273a24C7b991e37FE4C0b1C622A9B`
+- Staking Contract: `0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139`
+- Nomination: Use `addNomineeEVM(address, chainId)` NOT `addNominee`
+- Full staking guide: `docs/implementation/JINN-STAKING-GUIDE.md`
+
+**veOLAS Voting Mechanics:**
+- Vote weight decays linearly based on lock expiration (slope-based)
+- UI "veOLAS" display = projected OLAS rewards, NOT raw voting power
+- Vote cooldown: 10 days per nominee per address
+- Generate Safe batches: `yarn tsx scripts/generate-safe-batch.ts` (new lock) or `generate-safe-batch-increase.ts` (add to existing)
+- Simulate before execution: `yarn tsx scripts/simulate-safe-batch.ts <safe-address> <json-file>`
+
 **Production Endpoints:**
 - Ponder: `https://jinn-gemini-production.up.railway.app/graphql`
 - Explorer: `https://jinn-gemini-production.up.railway.app/`

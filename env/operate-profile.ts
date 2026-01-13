@@ -329,3 +329,53 @@ export function getServiceProfile() {
     chainConfig: getMechChainConfig(),
   };
 }
+
+/**
+ * Get the master wallet configuration (EOA and Safe addresses)
+ * 
+ * Reads from .operate/wallets/ethereum.json
+ * 
+ * @returns Master wallet info or null if not found
+ */
+export function getMasterWallet(): { eoa: string; safes: Record<string, string> } | null {
+  try {
+    const operateDir = getOperateDir();
+    if (!operateDir) {
+      return null;
+    }
+
+    const walletPath = join(operateDir, 'wallets', 'ethereum.json');
+    if (!existsSync(walletPath)) {
+      configLogger.warn({ walletPath }, 'Master wallet config not found');
+      return null;
+    }
+
+    const walletData = readFileSync(walletPath, 'utf-8');
+    const wallet = JSON.parse(walletData);
+
+    return {
+      eoa: wallet.address,
+      safes: wallet.safes || {},
+    };
+  } catch (error) {
+    configLogger.warn({ err: error }, 'Error reading master wallet config');
+    return null;
+  }
+}
+
+/**
+ * Get the master EOA address (Ethereum mainnet)
+ */
+export function getMasterEOA(): string | null {
+  const wallet = getMasterWallet();
+  return wallet?.eoa || null;
+}
+
+/**
+ * Get the master Safe address for a specific chain
+ * @param chain Chain name (default: 'base')
+ */
+export function getMasterSafe(chain: string = 'base'): string | null {
+  const wallet = getMasterWallet();
+  return wallet?.safes?.[chain] || null;
+}

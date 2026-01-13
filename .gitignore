@@ -240,4 +240,5 @@ ponder/.ponder-test-*/
 .git/beads-worktrees/
 
 gemini-agent/.gemini/settings.json.orig
+code-resources/olas-lst/
 .vercel
