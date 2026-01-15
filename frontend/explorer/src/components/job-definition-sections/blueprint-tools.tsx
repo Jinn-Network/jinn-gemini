@@ -3,7 +3,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import ReactMarkdown from 'react-markdown'
-import { parseInvariants, getInvariantText } from '@/lib/invariant-utils'
+import { parseInvariants } from '@/lib/invariant-utils'
+import { InvariantCard, type Invariant, type LegacyInvariant } from '@jinn/shared-ui'
 
 interface JobDefinition {
   id: string
@@ -30,57 +31,12 @@ export function JobDefinitionBlueprintTools({ jobDefinition }: BlueprintToolsPro
     if (items.length > 0) {
       blueprintRendering = (
         <div className="space-y-4">
-          {items.map((item, idx) => {
-            const text = getInvariantText(item)
-            return (
-              <Card key={item.id || idx}>
-                <CardContent className="pt-4">
-                  <div className="font-medium text-sm mb-2">{item.id}</div>
-                  {text && (
-                    <p className="text-sm text-muted-foreground mb-3">{text}</p>
-                  )}
-                  {item.description && (
-                    <p className="text-sm text-muted-foreground mb-3">{item.description}</p>
-                  )}
-                  {item.measurement && (
-                    <div className="text-xs bg-blue-50 dark:bg-blue-950 p-2 rounded mb-3">
-                      <span className="font-medium text-blue-700 dark:text-blue-300">📏 Measurement:</span>{' '}
-                      <span className="text-blue-600 dark:text-blue-400">{item.measurement}</span>
-                    </div>
-                  )}
-                  {item.examples && (
-                    <div className="space-y-2 text-xs">
-                      {item.examples.do && item.examples.do.length > 0 && (
-                        <div>
-                          <div className="font-medium text-green-700 mb-1">✓ Do:</div>
-                          <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
-                            {item.examples.do.map((example, i) => (
-                              <li key={i}>{example}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {item.examples.dont && item.examples.dont.length > 0 && (
-                        <div>
-                          <div className="font-medium text-red-700 mb-1">✗ Don&apos;t:</div>
-                          <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
-                            {item.examples.dont.map((example, i) => (
-                              <li key={i}>{example}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {item.commentary && (
-                    <div className="mt-3 pt-3 border-t">
-                      <p className="text-xs text-muted-foreground italic">{item.commentary}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })}
+          {items.map((item, idx) => (
+            <InvariantCard
+              key={item.id || idx}
+              invariant={item as Invariant | LegacyInvariant}
+            />
+          ))}
         </div>
       )
     } else {
@@ -136,4 +92,3 @@ export function JobDefinitionBlueprintTools({ jobDefinition }: BlueprintToolsPro
     </div>
   )
 }
-

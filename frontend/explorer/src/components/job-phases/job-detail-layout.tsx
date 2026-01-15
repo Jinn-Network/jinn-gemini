@@ -2,7 +2,8 @@
 
 import { useEffect, useState, ReactNode } from 'react'
 import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
-import { parseInvariants, getInvariantText } from '@/lib/invariant-utils'
+import { parseInvariants } from '@/lib/invariant-utils'
+import { InvariantCard, type Invariant, type LegacyInvariant } from '@jinn/shared-ui'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
 import { RecognitionPhaseCard } from './recognition-phase-card'
 import { WorkerTelemetryCard } from '../worker-telemetry-card'
@@ -852,64 +853,15 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
 
                             const items = parseInvariants(blueprintParsed)
                             if (items.length > 0) {
-                              // Render structured blueprint with invariants
+                              // Render structured blueprint with invariants using shared components
                               return (
                                 <div className="space-y-4">
-                                  {items.map((item, idx) => {
-                                    const text = getInvariantText(item)
-                                    return (
-                                      <Card key={idx}>
-                                        <CardContent className="pt-4">
-                                          <div className="flex items-start gap-2 mb-2">
-                                            <span className="text-xs font-mono bg-primary/20 text-primary px-2 py-1 rounded">
-                                              {item.id}
-                                            </span>
-                                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1">
-                                              {text}
-                                            </p>
-                                          </div>
-
-                                          {item.measurement && (
-                                            <div className="text-xs bg-blue-50 dark:bg-blue-950 p-2 rounded mb-2">
-                                              <span className="font-medium text-blue-700 dark:text-blue-300">📏 Measurement:</span>{' '}
-                                              <span className="text-blue-600 dark:text-blue-400">{item.measurement}</span>
-                                            </div>
-                                          )}
-
-                                          {item.examples && (
-                                            <div className="mt-3 space-y-2">
-                                              {item.examples.do && item.examples.do.length > 0 && (
-                                                <div>
-                                                  <div className="text-xs font-semibold text-green-700 mb-1">✓ Do:</div>
-                                                  <ul className="text-xs text-gray-400 space-y-1 ml-4">
-                                                    {item.examples.do.map((example: string, i: number) => (
-                                                      <li key={i} className="list-disc">{example}</li>
-                                                    ))}
-                                                  </ul>
-                                                </div>
-                                              )}
-                                              {item.examples.dont && item.examples.dont.length > 0 && (
-                                                <div>
-                                                  <div className="text-xs font-semibold text-red-700 mb-1">✗ Don&apos;t:</div>
-                                                  <ul className="text-xs text-gray-400 space-y-1 ml-4">
-                                                    {item.examples.dont.map((example: string, i: number) => (
-                                                      <li key={i} className="list-disc">{example}</li>
-                                                    ))}
-                                                  </ul>
-                                                </div>
-                                              )}
-                                            </div>
-                                          )}
-
-                                          {item.commentary && (
-                                            <div className="mt-3 pt-3 border-t">
-                                              <p className="text-xs text-muted-foreground italic">{item.commentary}</p>
-                                            </div>
-                                          )}
-                                        </CardContent>
-                                      </Card>
-                                    )
-                                  })}
+                                  {items.map((item, idx) => (
+                                    <InvariantCard
+                                      key={item.id || idx}
+                                      invariant={item as Invariant | LegacyInvariant}
+                                    />
+                                  ))}
                                 </div>
                               )
                             }

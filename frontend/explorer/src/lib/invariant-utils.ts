@@ -1,63 +1,66 @@
 /**
- * Shared utilities for parsing and displaying invariants (new schema) and assertions (legacy schema)
- * 
- * The backend blueprint system has been refactored:
- * - Old schema: { assertions: [{ id, assertion, ... }] }
- * - New schema: { invariants: [{ id, invariant, measurement?, ... }] }
- * 
- * This module provides backward-compatible utilities for both.
+ * Invariant utilities for explorer frontend.
+ *
+ * Re-exports shared utilities from @jinn/shared-ui.
+ * Explorer-specific extensions can be added here.
  */
+
+// Re-export everything from shared-ui
+export {
+  // Types
+  type Invariant,
+  type FloorInvariant,
+  type CeilingInvariant,
+  type RangeInvariant,
+  type BooleanInvariant,
+  type LegacyInvariant,
+  type InvariantType,
+  type InvariantMeasurement,
+  type HealthStatus,
+  type InvariantWithMeasurement,
+
+  // Type guards
+  isFloorInvariant,
+  isCeilingInvariant,
+  isRangeInvariant,
+  isBooleanInvariant,
+  isNewInvariant,
+  isLegacyInvariant,
+
+  // Parsing utilities
+  parseInvariants,
+  hasInvariants,
+
+  // Display utilities
+  getInvariantDisplayText,
+  getLegacyInvariantText,
+  renderInvariantAsProse,
+
+  // Health status utilities
+  determineHealthStatus,
+  countByStatus,
+
+  // Badge colors
+  invariantTypeBadgeColors,
+  healthStatusColors,
+  getInvariantTypeBadgeColor,
+  getHealthStatusColor,
+} from '@jinn/shared-ui';
 
 /**
- * Unified type for invariants (new) and assertions (legacy)
+ * Alias for backwards compatibility.
+ * Use Invariant | LegacyInvariant instead for new code.
  */
-export interface InvariantItem {
-    id: string;
-    /** New schema uses 'invariant' for the statement text */
-    invariant?: string;
-    /** Legacy schema uses 'assertion' for the statement text */
-    assertion?: string;
-    /** New field: how to measure/verify this invariant */
-    measurement?: string;
-    /** Optional description */
-    description?: string;
-    /** Optional commentary explaining the rationale */
-    commentary?: string;
-    /** Optional examples of correct and incorrect application */
-    examples?: { do?: string[]; dont?: string[] };
-}
+export type InvariantItem = import('@jinn/shared-ui').Invariant | import('@jinn/shared-ui').LegacyInvariant;
 
 /**
- * Get the display text for an invariant/assertion item.
- * Prefers 'invariant' (new schema) over 'assertion' (legacy schema).
+ * Alias for backwards compatibility.
+ * Use getInvariantDisplayText instead for new code.
  */
-export function getInvariantText(item: InvariantItem): string | undefined {
-    return item.invariant || item.assertion;
-}
+export { getInvariantDisplayText as getInvariantText } from '@jinn/shared-ui';
 
 /**
- * Parse a blueprint JSON and extract invariants/assertions array.
- * Supports both new 'invariants' and legacy 'assertions' keys.
- * 
- * @param blueprintJson - Parsed JSON object from blueprint
- * @returns Array of InvariantItem, or empty array if not found
+ * Alias for backwards compatibility.
+ * Use renderInvariantAsProse instead for new code.
  */
-export function parseInvariants(blueprintJson: unknown): InvariantItem[] {
-    if (!blueprintJson || typeof blueprintJson !== 'object') return [];
-
-    const obj = blueprintJson as Record<string, unknown>;
-    // Prefer new 'invariants' key, fall back to legacy 'assertions'
-    const items = obj.invariants || obj.assertions;
-
-    if (Array.isArray(items)) {
-        return items as InvariantItem[];
-    }
-    return [];
-}
-
-/**
- * Check if a parsed blueprint has invariants/assertions
- */
-export function hasInvariants(blueprintJson: unknown): boolean {
-    return parseInvariants(blueprintJson).length > 0;
-}
+export { renderInvariantAsProse as renderInvariantForDisplay } from '@jinn/shared-ui';

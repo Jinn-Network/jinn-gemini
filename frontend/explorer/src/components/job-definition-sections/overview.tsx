@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { queryArtifacts, queryRequests, type Artifact, type Request } from '@/lib/subgraph'
-import { parseInvariants, getInvariantText, type InvariantItem } from '@/lib/invariant-utils'
+import { parseInvariants, getInvariantDisplayText, type InvariantItem } from '@/lib/invariant-utils'
 import { StatusIcon } from '@/components/status-icon'
 import { TruncatedId } from '@/components/truncated-id'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -219,7 +219,7 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
           <CardContent>
             <div className="space-y-2">
               {invariants.map((item, idx) => {
-                const text = getInvariantText(item)
+                const text = getInvariantDisplayText(item)
                 return (
                   <div key={item.id || idx} className="text-sm">
                     <span className="font-mono font-medium">{item.id}:</span>{' '}

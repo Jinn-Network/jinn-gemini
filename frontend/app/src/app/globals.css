@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.145 0.017 285.823);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.145 0.017 285.823);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.145 0.017 285.823);
+  --color-primary: oklch(0.55 0.15 260);
+  --color-primary-foreground: oklch(0.985 0.001 285.823);
+  --color-secondary: oklch(0.97 0.001 285.823);
+  --color-secondary-foreground: oklch(0.205 0.015 285.823);
+  --color-muted: oklch(0.97 0.001 285.823);
+  --color-muted-foreground: oklch(0.556 0.015 285.823);
+  --color-accent: oklch(0.97 0.001 285.823);
+  --color-accent-foreground: oklch(0.205 0.015 285.823);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-border: oklch(0.922 0.004 285.823);
+  --color-input: oklch(0.922 0.004 285.823);
+  --color-ring: oklch(0.708 0.165 254.624);
+  --radius: 0.75rem;
+}
+
+.dark {
+  --color-background: oklch(0.145 0.017 285.823);
+  --color-foreground: oklch(0.985 0.001 285.823);
+  --color-card: oklch(0.205 0.015 285.823);
+  --color-card-foreground: oklch(0.985 0.001 285.823);
+  --color-popover: oklch(0.205 0.015 285.823);
+  --color-popover-foreground: oklch(0.985 0.001 285.823);
+  --color-primary: oklch(0.65 0.18 260);
+  --color-primary-foreground: oklch(0.145 0.017 285.823);
+  --color-secondary: oklch(0.269 0.015 285.823);
+  --color-secondary-foreground: oklch(0.985 0.001 285.823);
+  --color-muted: oklch(0.269 0.015 285.823);
+  --color-muted-foreground: oklch(0.708 0.015 285.823);
+  --color-accent: oklch(0.269 0.015 285.823);
+  --color-accent-foreground: oklch(0.985 0.001 285.823);
+  --color-destructive: oklch(0.396 0.141 25.723);
+  --color-border: oklch(0.269 0.015 285.823);
+  --color-input: oklch(0.269 0.015 285.823);
+  --color-ring: oklch(0.439 0.088 285.756);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
