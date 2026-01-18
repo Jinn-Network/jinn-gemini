@@ -122,7 +122,7 @@
     },
     "enabledTools": [
         "web_fetch",
-        "web_search",
+        "google_web_search",
         "create_artifact",
         "search_artifacts",
         "get_details"
@@ -130,9 +130,9 @@
     "invariants": [
         {
             "id": "GOAL-001",
-            "form": "directive",
-            "invariant": "PHASE 1: STRATEGY & ANALYSIS. Before writing content, create 'content-strategy.md'. 1) Analyze {{productUrl}} vs {{competitorUrls}}. 2) Identify competitor weaknesses/gaps. 3) Define our unique angle. 4) Outline the Content Waterfall strategy.",
-            "measurement": "Verify 'content-strategy.md' artifact was created before any content-{channel}.md artifacts.",
+            "type": "BOOLEAN",
+            "condition": "PHASE 1: STRATEGY & ANALYSIS. Before writing content, create 'content-strategy.md'. 1) Analyze {{productUrl}} vs {{competitorUrls}}. 2) Identify competitor weaknesses/gaps. 3) Define our unique angle. 4) Outline the Content Waterfall strategy.",
+            "assessment": "Verify 'content-strategy.md' artifact was created before any content-{channel}.md artifacts by checking artifact creation timestamps.",
             "examples": {
                 "do": [
                     "Analyze competitors, find they ignore 'Developer Experience', make DX our key differentiator"
@@ -140,14 +140,13 @@
                 "dont": [
                     "Skip analysis and write generic copy"
                 ]
-            },
-            "commentary": "Differentiation is the key to effective marketing."
+            }
         },
         {
             "id": "GOAL-002",
-            "form": "directive",
-            "invariant": "CONTENT WATERFALL: Structure content generation as a flow. 1. Deep Dive (Blog/Newsletter) -> 2. Distill (Thread/LinkedIn) -> 3. Hook (Tweet). Ensure the Core Idea flows down from long-form to short-form.",
-            "measurement": "If blog is requested, verify content-blog.md was created before content-twitter.md. Thread before post.",
+            "type": "BOOLEAN",
+            "condition": "CONTENT WATERFALL: Structure content generation as a flow. 1. Deep Dive (Blog/Newsletter) -> 2. Distill (Thread/LinkedIn) -> 3. Hook (Tweet). Ensure the Core Idea flows down from long-form to short-form.",
+            "assessment": "If blog is requested, verify content-blog.md was created before content-twitter.md by checking artifact timestamps. Verify thread before post.",
             "examples": {
                 "do": [
                     "Write blog post first, then extract key points for a Twitter thread"
@@ -155,14 +154,14 @@
                 "dont": [
                     "Write tweet first, then try to fluff it up into a blog"
                 ]
-            },
-            "commentary": "Maximizes ROI on high-quality ideas and ensures consistency."
+            }
         },
         {
             "id": "GOAL-003",
-            "form": "constraint",
-            "invariant": "HOOK THEORY LAB: For every social post (Twitter, LinkedIn), generate exactly 3 ALTERNATIVE HOOKS/HEADLINES using different triggers: 1) Curiosity, 2) Benefit, 3) Contrarian/Fear. Place these in the 'alternate_hooks' field.",
-            "measurement": "For each social post in contentItems, verify 'alternate_hooks' array exists and has exactly 3 items.",
+            "type": "FLOOR",
+            "metric": "alternative_hooks_per_social_post",
+            "min": 3,
+            "assessment": "For each social post in contentItems array, verify 'alternate_hooks' field exists and contains exactly 3 items using different psychological triggers.",
             "examples": {
                 "do": [
                     "Hook 1: 'How to X', Hook 2: 'Stop doing Y', Hook 3: 'The secret to Z'"
@@ -170,14 +169,14 @@
                 "dont": [
                     "Provide only one subject line"
                 ]
-            },
-            "commentary": "The hook determines 80% of content performance."
+            }
         },
         {
             "id": "GOAL-004",
-            "form": "directive",
-            "invariant": "VISUAL CONCEPTING: For every content item, generate a detailed 'image_prompt' suitable for Midjourney/DALL-E that visualizes the core concept abstractly or literally. Style: {{brandVoice}}.",
-            "measurement": "For each content item, verify 'image_prompt' field is present and has >20 characters.",
+            "type": "FLOOR",
+            "metric": "image_prompt_length",
+            "min": 20,
+            "assessment": "For each content item, verify 'image_prompt' field is present and has more than 20 characters.",
             "examples": {
                 "do": [
                     "Prompt: 'Cyberpunk city with glowing neon nodes connecting, isometric view, purple and blue, 4k'"
@@ -185,14 +184,13 @@
                 "dont": [
                     "Prompt: 'A graph showing growth'"
                 ]
-            },
-            "commentary": "Visuals drive engagement. Providing prompts empowers the user to create them."
+            }
         },
         {
             "id": "GOAL-005",
-            "form": "constraint",
-            "invariant": "SELF-CORRECTION LOOP: After drafting, you MUST critique your own work against {{brandVoice}} and Factual Accuracy constraints. If it fails, REWRITE it before adding to proper output. Do not output failed drafts.",
-            "measurement": "Implicit in output quality. Confirm no tone mismatches detected in final content.",
+            "type": "BOOLEAN",
+            "condition": "SELF-CORRECTION LOOP: After drafting, critique your own work against {{brandVoice}} and Factual Accuracy constraints. If it fails, rewrite it before adding to proper output.",
+            "assessment": "Verify final output quality confirms no tone mismatches with specified brandVoice.",
             "examples": {
                 "do": [
                     "Draft -> Critique: 'Too formal' -> Rewrite: 'Hey folks!' -> Final Output"
@@ -200,14 +198,13 @@
                 "dont": [
                     "Output the first draft without checking tone"
                 ]
-            },
-            "commentary": "Simulates a human editor/QA step."
+            }
         },
         {
             "id": "GOAL-006",
-            "form": "constraint",
-            "invariant": "PLATFORM-NATIVE FORMATTING: Twitter posts ≤280 chars. Twitter threads = 5-10 connected tweets. LinkedIn = professional, 1-3 paragraphs. Blog = 800-1500 words with headers. YouTube = timestamped script with hooks.",
-            "measurement": "Twitter posts: char count ≤280. Blog posts: word count between 800-1500. Thread: 5-10 items.",
+            "type": "BOOLEAN",
+            "condition": "PLATFORM-NATIVE FORMATTING: Twitter posts ≤280 chars. Twitter threads = 5-10 connected tweets. LinkedIn = professional, 1-3 paragraphs. Blog = 800-1500 words with headers. YouTube = timestamped script with hooks.",
+            "assessment": "Verify Twitter posts have character count ≤280, blog posts have word count between 800-1500, and threads contain 5-10 items.",
             "examples": {
                 "do": [
                     "Twitter: concise, punchy. LinkedIn: professional spacing."
@@ -215,14 +212,13 @@
                 "dont": [
                     "Post a wall of text on Twitter"
                 ]
-            },
-            "commentary": "Native formatting is non-negotiable for engagement."
+            }
         },
         {
             "id": "GOAL-007",
-            "form": "constraint",
-            "invariant": "Create a separate artifact for EACH channel's content: 'content-{channel}.md'. Include all items (hooks, image prompts, main text) for that channel in the artifact.",
-            "measurement": "Verify 'content-{channel}.md' artifact exists for each channel in the requested channels array.",
+            "type": "BOOLEAN",
+            "condition": "Create a separate artifact for EACH channel's content: 'content-{channel}.md'. Include all items (hooks, image prompts, main text) for that channel in the artifact.",
+            "assessment": "Verify 'content-{channel}.md' artifact exists for each channel in the requested channels array.",
             "examples": {
                 "do": [
                     "content-twitter.md includes: Tweet 1 (Body, Hooks, Image Prompt), Thread 1..."
@@ -230,8 +226,7 @@
                 "dont": [
                     "Dump everything in one file"
                 ]
-            },
-            "commentary": "Organized output aids review."
+            }
         }
     ]
 }

@@ -203,6 +203,7 @@ export interface UnclaimedRequest {
 export interface IpfsMetadata {
   blueprint?: string;  // Primary job specification
   enabledTools?: string[];
+  tools?: Array<{ name: string; required?: boolean }>;
   sourceRequestId?: string;
   sourceJobDefinitionId?: string;
   workstreamId?: string;  // ID of the root job in the hierarchy

@@ -105,7 +105,7 @@ Blueprints that prescribe delegation strategies, tool usage, or workflow pattern
 ## MCP Tool Reference
 
 ### list_tools
-- **Purpose**: Discover available core CLI and MCP tools.
+- **Purpose**: Discover tools enabled for the current workstream (universal tools + template tools).
 - **Params**: `{ include_parameters?: boolean, include_examples?: boolean, tool_name?: string }`
 - **Returns**: `{ data: { total_tools, tools: [{ name, description, parameters?, examples? }] }, meta: { ok: true } }`
 
@@ -130,7 +130,8 @@ Blueprints that prescribe delegation strategies, tool usage, or workflow pattern
 
 ### dispatch_existing_job
 - **Purpose**: Dispatch a new request for an existing job definition.
-- **Params**: `{ jobId?: string, jobName?: string, enabledTools?: string[], prompt?: string, message?: string, responseTimeout?: number }`
+- **Params**: `{ jobId?: string, jobName?: string, blueprint?: string, enabledTools?: string[], message?: string, responseTimeout?: number }`
+  - `blueprint`: Optional JSON string to override the job definition blueprint (validated like dispatch_new_job).
   - `responseTimeout`: Optional timeout in seconds for marketplace delivery (defaults to 300, max 300). Marketplace enforces a 5-minute hard limit.
 - **Returns**: Mech client result plus `ipfs_gateway_url` when indexed.
 

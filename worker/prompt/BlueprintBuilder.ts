@@ -12,10 +12,12 @@
 import { workerLogger } from '../../logging/index.js';
 import { serializeError } from '../logging/errors.js';
 import { DEFAULT_BLUEPRINT_CONFIG } from './config.js';
+import { renderBlueprintToProse } from './invariant-renderer.js';
 import type {
   BlueprintBuilderConfig,
   BlueprintContext,
   Invariant,
+  BooleanInvariant,
   UnifiedBlueprint,
   BuildContext,
   ContextProvider,
@@ -28,6 +30,7 @@ import type { RecognitionPhaseResult } from '../recognition_helpers.js';
 // Context providers
 import { JobContextProvider } from './providers/context/JobContextProvider.js';
 import { ProgressCheckpointProvider } from './providers/context/ProgressCheckpointProvider.js';
+import { MeasurementContextProvider } from './providers/context/MeasurementContextProvider.js';
 
 // Invariant providers
 import {
@@ -232,7 +235,14 @@ export class BlueprintBuilder {
   }
 
   /**
-   * Build and serialize to a JSON string (for agent consumption)
+   * Build and render to prose (for agent consumption)
+   *
+   * Returns human-readable prose with three-layer semantic grouping:
+   * - IMMEDIATE: Coordination actions (COORD-*, QUAL-*, RECOV-*)
+   * - MISSION: Goals and strategy (JOB-*, GOAL-*, OUT-*, STRAT-*)
+   * - PROTOCOL: Operating principles (SYS-*, STATE-*, TOOL-*, CYCLE-*, LEARN-*)
+   *
+   * For structured data, use build() directly.
    */
   async buildPrompt(
     requestId: string,
@@ -240,7 +250,7 @@ export class BlueprintBuilder {
     recognition?: RecognitionPhaseResult | null
   ): Promise<string> {
     const { blueprint } = await this.build(requestId, metadata, recognition);
-    const promptString = JSON.stringify(blueprint, null, 2);
+    const promptString = renderBlueprintToProse(blueprint);
 
     // Verify invariants reach agent prompt
     const coordInvariants = blueprint.invariants.filter(i => i.id.startsWith('COORD-'));
@@ -250,9 +260,22 @@ export class BlueprintBuilder {
           requestId,
           coordInvariantCount: coordInvariants.length,
           promptLength: promptString.length,
-          sample: coordInvariants[0]?.invariant.slice(0, 80)
+          sample: (coordInvariants[0] as BooleanInvariant)?.condition?.slice(0, 80)
         },
         'Blueprint prompt contains COORD invariants for agent'
+      );
+    }
+
+    // Log measurement context status
+    const measurementCount = blueprint.context.measurements?.length ?? 0;
+    if (measurementCount > 0) {
+      workerLogger.info(
+        {
+          requestId,
+          measurementCount,
+          invariantIds: blueprint.context.measurements?.map(m => m.invariantId),
+        },
+        'Blueprint includes measurement context for agent'
       );
     }
 
@@ -296,6 +319,7 @@ export function createBlueprintBuilder(
   // Phase 1: Context providers (build BlueprintContext)
   builder.registerContextProvider(new JobContextProvider());
   builder.registerContextProvider(new ProgressCheckpointProvider());
+  builder.registerContextProvider(new MeasurementContextProvider());
 
   // Phase 2: Invariant providers (have access to built context)
   // Order follows domain priority: system → strategy → recovery → goal → learning → coordination → state → tooling → quality

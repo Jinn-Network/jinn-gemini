@@ -4,7 +4,7 @@
  */
 
 import { provisionGitHubRepo, type GitHubProvisionResult } from './github.js';
-import { provisionRailwayService, type RailwayProvisionResult } from './railway.js';
+import { provisionRailwayService, setRailwayServiceVariables, type RailwayProvisionResult } from './railway.js';
 import { provisionUmamiWebsite, type UmamiProvisionResult } from './umami.js';
 import { findCustomer, saveCustomer, slugify, type CustomerRecord } from './customers.js';
 
@@ -121,6 +121,23 @@ export async function executeProvisioning(
       provisioned.umami = result;
       customer.umamiWebsiteId = result.websiteId;
       enrichedInput.umamiWebsiteId = result.websiteId;
+    }
+
+    // Phase 3.5: Configure Railway env vars for Umami tracking
+    if (provisioned.railway && provisioned.umami) {
+      console.log(`[provision] Phase 3.5: Configuring Umami tracking env vars...`);
+      const umamiHost = process.env.UMAMI_HOST;
+      if (umamiHost) {
+        await setRailwayServiceVariables(
+          provisioned.railway.projectId,
+          provisioned.railway.serviceId,
+          provisioned.railway.environmentId,
+          {
+            NEXT_PUBLIC_UMAMI_ID: provisioned.umami.websiteId,
+            NEXT_PUBLIC_UMAMI_SRC: `https://${umamiHost}/script.js`,
+          }
+        );
+      }
     }
 
     // Mark as active

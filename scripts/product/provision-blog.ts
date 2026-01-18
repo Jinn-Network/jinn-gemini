@@ -22,7 +22,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { forkBlogTemplate } from './lib/github.js';
-import { createRailwayService } from './lib/railway.js';
+import { createRailwayService, setRailwayServiceVariables } from './lib/railway.js';
 import { createUmamiWebsite, findUmamiWebsite } from './lib/umami.js';
 import { executeTemplate } from './lib/x402.js';
 
@@ -226,6 +226,21 @@ Examples:
         umamiResult = await createUmamiWebsite(displayName, railwayResult.domain, { dryRun });
     }
     console.log(`  ✓ Website ID: ${umamiResult!.websiteId}\n`);
+
+    // Step 3.5: Configure Railway environment variables for Umami tracking
+    console.log('Step 3.5/5: Configuring Umami tracking environment variables...');
+    const umamiHost = process.env.UMAMI_HOST || 'umami-production-ae2b.up.railway.app';
+    await setRailwayServiceVariables(
+        railwayResult.projectId,
+        railwayResult.serviceId,
+        railwayResult.environmentId,
+        {
+            NEXT_PUBLIC_UMAMI_ID: umamiResult!.websiteId,
+            NEXT_PUBLIC_UMAMI_SRC: `https://${umamiHost}/script.js`,
+        },
+        { dryRun }
+    );
+    console.log(`  ✓ Umami tracking configured\n`);
 
     // Step 4: Launch workstream (via x402 gateway or direct dispatch)
     let workstreamId: string | null = null;

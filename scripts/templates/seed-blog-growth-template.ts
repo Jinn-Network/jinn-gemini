@@ -15,6 +15,7 @@ import { Client } from 'pg';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import dotenv from 'dotenv';
+import { parseAnnotatedTools } from '../../gemini-agent/shared/template-tools.js';
 
 dotenv.config();
 
@@ -105,12 +106,14 @@ async function main() {
     const blueprint = JSON.stringify({ invariants, context });
     const blueprintHash = computeBlueprintHash(blueprint);
 
+    const toolPolicy = parseAnnotatedTools(templateMeta.tools);
+
     const template = {
         id: templateMeta.id,
         name: templateMeta.name,
         description: templateMeta.description,
         tags: ['blog', 'growth', 'content', 'autonomous'],
-        enabledTools: templateMeta.enabledTools,
+        enabledTools: toolPolicy.availableTools,
         blueprintHash,
         blueprint,
         inputSchema: templateMeta.inputSchema,

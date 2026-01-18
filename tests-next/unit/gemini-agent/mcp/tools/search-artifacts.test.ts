@@ -8,7 +8,7 @@
  * Coverage Target: 100% of search logic
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { searchArtifacts } from '../../../../../gemini-agent/mcp/tools/search-artifacts.js';
 
 // Mock dependencies (same structure as search-jobs)
@@ -28,6 +28,18 @@ vi.mock('../../../../../gemini-agent/mcp/tools/shared/context-management.js', ()
   decodeCursor: vi.fn((cursor: any) => cursor ? { offset: 10 } : { offset: 0 }),
 }));
 
+vi.mock('../../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+  getPonderGraphqlUrl: vi.fn(() => {
+    if (process.env.PONDER_GRAPHQL_URL) {
+      return process.env.PONDER_GRAPHQL_URL;
+    }
+    if (process.env.PONDER_PORT) {
+      return `http://localhost:${process.env.PONDER_PORT}/graphql`;
+    }
+    return 'http://localhost:42069/graphql';
+  }),
+}));
+
 import fetch from 'cross-fetch';
 import { composeSinglePageResponse, decodeCursor } from '../../../../../gemini-agent/mcp/tools/shared/context-management.js';
 
@@ -36,6 +48,10 @@ describe('searchArtifacts', () => {
     vi.clearAllMocks();
     delete process.env.PONDER_GRAPHQL_URL;
     delete process.env.PONDER_PORT;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe('validation', () => {
@@ -109,7 +125,7 @@ describe('searchArtifacts', () => {
     });
 
     it('uses correct GraphQL endpoint from env', async () => {
-      process.env.PONDER_GRAPHQL_URL = 'http://custom:9999/graphql';
+      vi.stubEnv('PONDER_GRAPHQL_URL', 'http://custom:9999/graphql');
 
       (fetch as any).mockResolvedValue({
         json: async () => ({ data: { artifacts: { items: [] } } }),

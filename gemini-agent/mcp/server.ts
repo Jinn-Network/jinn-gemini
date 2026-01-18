@@ -12,6 +12,7 @@ export const REGISTERED_MCP_TOOLS = [
   'get_details',
   'dispatch_new_job',
   'create_artifact',
+  'create_measurement',
   'dispatch_existing_job',
   'search_jobs',
   'search_artifacts',
@@ -83,6 +84,7 @@ async function main() {
       { name: 'get_details', schema: tools.getDetailsSchema, handler: tools.getDetails },
       { name: 'dispatch_new_job', schema: tools.dispatchNewJobSchema, handler: tools.dispatchNewJob },
       { name: 'create_artifact', schema: tools.createArtifactSchema, handler: tools.createArtifact },
+      { name: 'create_measurement', schema: tools.createMeasurementSchema, handler: tools.createMeasurement },
       { name: 'dispatch_existing_job', schema: tools.dispatchExistingJobSchema, handler: tools.dispatchExistingJob },
       { name: 'search_jobs', schema: tools.searchJobsSchema, handler: tools.searchJobs },
       { name: 'search_artifacts', schema: tools.searchArtifactsSchema, handler: tools.searchArtifacts },
@@ -114,6 +116,14 @@ async function main() {
     for (const tool of serverTools) {
       // get_schema is not registered; legacy tools removed
       server.registerTool(tool.name, tool.schema as any, tool.handler);
+    }
+
+    // Fix create_measurement inputSchema to allow additional properties
+    // The MCP SDK wraps inputSchema in z.object() which loses passthrough()
+    // We need to replace it with the original schema that has passthrough()
+    const serverAny = server as any;
+    if (serverAny._registeredTools?.['create_measurement']) {
+      serverAny._registeredTools['create_measurement'].inputSchema = tools.createMeasurementFlatParams;
     }
 
     // Expose list_tools for operator introspection (agents may ignore)

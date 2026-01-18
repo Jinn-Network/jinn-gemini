@@ -33,6 +33,7 @@ export {
   // Parsing utilities
   parseInvariants,
   hasInvariants,
+  isSystemInvariant,
   parseMeasurement as parseStructuredMeasurement,
   toInvariantMeasurement,
 
@@ -62,6 +63,7 @@ import type {
 import {
   getInvariantDisplayText,
   determineHealthStatus,
+  isSystemInvariant,
   parseMeasurement as sharedParseMeasurement,
   toInvariantMeasurement,
 } from '@jinn/shared-ui';
@@ -116,8 +118,10 @@ export function matchInvariantsWithMeasurements(
     }
   }
 
+  const displayInvariants = invariants.filter(inv => !isSystemInvariant(inv));
+
   // Match each invariant with its measurement
-  return invariants.map(inv => {
+  return displayInvariants.map(inv => {
     const measurement = measurements.get(inv.id);
     const status = determineHealthStatus(inv, measurement);
     return {

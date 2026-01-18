@@ -902,7 +902,7 @@ async function main() {
     } catch (e: any) {
       workerLogger.error({ error: serializeError(e) }, 'Error in mech loop');
     }
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise(r => setTimeout(r, 30000)); // 30 seconds between polls
   }
 }
 

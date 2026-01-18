@@ -104,17 +104,17 @@ export class OutputInvariantProvider implements InvariantProvider {
     return [
       {
         id: 'SYS-OUTPUT',
-        invariant: `OUTPUT SCHEMA REQUIRED: Your final delivery MUST include a structured JSON object with these fields:\n${fieldList}\n\nAfter completing your work, create this JSON object and upload it using create_artifact. Include the artifact CID in your summary.`,
-        measurement: `Verify delivery contains all required fields: ${requiredFields.join(', ')}. Verify create_artifact was called with the structured output.`,
+        type: 'BOOLEAN',
+        condition: `You produce a structured output artifact containing these fields:\n${fieldList}`,
+        assessment: `Delivery contains artifact with all required fields: ${requiredFields.join(', ')}. Artifact CID is included in summary.`,
         examples: {
           do: [
-            'Created structured output JSON with all required fields, called create_artifact → CID bafkrei..., included in summary',
-            'Final summary: "Deliverables: [Output Package](https://gateway.autonolas.tech/ipfs/bafkrei...)"',
+            'Structured output artifact with all required fields, CID in summary',
+            'Summary includes clickable artifact link: [Output](https://gateway.autonolas.tech/ipfs/...)',
           ],
           dont: [
-            'Completed work but did not create structured output artifact',
-            'Output is scattered across multiple files without a summary artifact',
-            'Summary mentions deliverables but has no clickable artifact links',
+            'Work completed but no structured output artifact exists',
+            'Output scattered across files without summary artifact',
           ],
         },
       },

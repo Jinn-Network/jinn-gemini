@@ -12,6 +12,8 @@ export interface JobContext {
   workstreamId?: string | null;
   parentRequestId?: string | null;
   branchName?: string | null;
+  requiredTools?: string[] | null;
+  availableTools?: string[] | null;
 }
 
 // Canonical: read from environment only
@@ -30,6 +32,24 @@ export function getCurrentJobContext(): JobContext {
     workstreamId: process.env.JINN_WORKSTREAM_ID || null,
     parentRequestId: process.env.JINN_PARENT_REQUEST_ID || null,
     branchName: process.env.JINN_BRANCH_NAME || null,
+    requiredTools: process.env.JINN_REQUIRED_TOOLS
+      ? (() => {
+          try {
+            return JSON.parse(process.env.JINN_REQUIRED_TOOLS as string);
+          } catch {
+            return null;
+          }
+        })()
+      : null,
+    availableTools: process.env.JINN_AVAILABLE_TOOLS
+      ? (() => {
+          try {
+            return JSON.parse(process.env.JINN_AVAILABLE_TOOLS as string);
+          } catch {
+            return null;
+          }
+        })()
+      : null,
   };
 }
 
@@ -44,7 +64,9 @@ export function setJobContext(
   baseBranch?: string | null,
   parentRequestId?: string | null,
   branchName?: string | null,
-  workstreamId?: string | null
+  workstreamId?: string | null,
+  requiredTools?: string[] | null,
+  availableTools?: string[] | null
 ) {
   if (jobId) process.env.JINN_JOB_ID = jobId; else delete process.env.JINN_JOB_ID;
   if (jobName) process.env.JINN_JOB_NAME = jobName; else delete process.env.JINN_JOB_NAME;
@@ -72,6 +94,12 @@ export function setJobContext(
   if (branchName !== undefined) {
     if (branchName) process.env.JINN_BRANCH_NAME = branchName; else delete process.env.JINN_BRANCH_NAME;
   }
+  if (requiredTools !== undefined) {
+    if (requiredTools) process.env.JINN_REQUIRED_TOOLS = JSON.stringify(requiredTools); else delete process.env.JINN_REQUIRED_TOOLS;
+  }
+  if (availableTools !== undefined) {
+    if (availableTools) process.env.JINN_AVAILABLE_TOOLS = JSON.stringify(availableTools); else delete process.env.JINN_AVAILABLE_TOOLS;
+  }
 }
 
 export function clearJobContext() {
@@ -87,5 +115,7 @@ export function clearJobContext() {
   delete process.env.JINN_PARENT_REQUEST_ID;
   delete process.env.JINN_BRANCH_NAME;
   delete process.env.JINN_INHERITED_ENV;
+  delete process.env.JINN_REQUIRED_TOOLS;
+  delete process.env.JINN_AVAILABLE_TOOLS;
 
 }

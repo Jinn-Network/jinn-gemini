@@ -123,7 +123,9 @@ export class CoordinationInvariantProvider implements InvariantProvider {
 
         return [{
             id: 'COORD-MERGE-CONFLICTS',
-            invariant: `CRITICAL: Your codebase contains ${totalFiles} file(s) with merge conflict markers from dependency branch(es): ${branchList}. Resolve all conflict markers (<<<<<<< / ======= / >>>>>>>) and amend the WIP commit(s).`,
+            type: 'BOOLEAN',
+            condition: `You must resolve ${totalFiles} merge conflict marker(s) from dependency branch(es): ${branchList}. All conflict markers (<<<<<<< / ======= / >>>>>>>) must be resolved and changes must be included in the WIP commit(s).`,
+            assessment: 'Verify all conflict markers are removed from files and changes are committed.',
             examples: {
                 do: ['Open each conflicting file, resolve markers, then git add and git commit --amend'],
                 dont: ['Proceed with your task while conflict markers remain in code'],
@@ -138,7 +140,9 @@ export class CoordinationInvariantProvider implements InvariantProvider {
 
         return {
             id: 'COORD-FAILED-CHILDREN',
-            invariant: `CRITICAL: ${failedChildren.length} child job(s) failed and need remediation: ${failedNames}. Retry with corrected blueprints or document why they are superseded.`,
+            type: 'BOOLEAN',
+            condition: `You must remediate ${failedChildren.length} failed child job(s): ${failedNames}. You must retry with corrected blueprints or document why they are superseded.`,
+            assessment: 'Verify all failed children are either successfully retried with improved blueprints or documented as superseded.',
             examples: {
                 do: ['Review failed child summaries, then dispatch_new_job with improved blueprints to retry'],
                 dont: ['Ignore failed children and mark job COMPLETED'],
@@ -154,10 +158,12 @@ export class CoordinationInvariantProvider implements InvariantProvider {
 
         return {
             id: 'COORD-BRANCH-REVIEW',
-            invariant: `Your PRIMARY TASK is to review and integrate ${children.length} child branch(es). For each, call process_branch to compare, then merge or reject.`,
+            type: 'BOOLEAN',
+            condition: `You integrate ${children.length} child branch(es) before starting new work`,
+            assessment: 'All child branches are either merged into current branch or rejected with documented rationale. No unintegrated child branches remain.',
             examples: {
-                do: [`Call process_branch({ branch_name: '<branch>', action: 'compare' }), then merge or reject with rationale`],
-                dont: ['Start new implementation without first reviewing all child branches'],
+                do: ['Review each child branch diff, merge good work, reject with explanation if needed'],
+                dont: ['Start new implementation while child branches await integration'],
             },
         };
     }
@@ -170,7 +176,9 @@ export class CoordinationInvariantProvider implements InvariantProvider {
 
         return {
             id: 'COORD-ARTIFACT-CHILDREN',
-            invariant: `${children.length} completed child job(s) produced artifacts (no branches to merge). Review their outputs in context.hierarchy.children.`,
+            type: 'BOOLEAN',
+            condition: `You must review ${children.length} completed child job(s) that produced artifacts (no branches to merge). You must check their outputs in context.hierarchy.children and build upon their work.`,
+            assessment: 'Verify child job outputs have been reviewed and incorporated into the current work.',
             examples: {
                 do: ['Check context.hierarchy.children for child job details and build upon their outputs'],
                 dont: ['Re-do work children already completed'],
@@ -181,7 +189,9 @@ export class CoordinationInvariantProvider implements InvariantProvider {
     private createParentRoleInvariant(): Invariant {
         return {
             id: 'COORD-PARENT-ROLE',
-            invariant: 'When I have completed children, my PRIMARY task is reviewing their branches with process_branch and merging - not redoing their work',
+            type: 'BOOLEAN',
+            condition: 'You must prioritize reviewing child branches with process_branch and merging them over implementing work yourself.',
+            assessment: 'Verify child branches are reviewed and integrated before starting new implementation work.',
             examples: {
                 do: [`Call process_branch({ action: 'compare' }) to review each child's diff, then merge or reject`],
                 dont: ['Ignore child branches and start fresh implementation'],

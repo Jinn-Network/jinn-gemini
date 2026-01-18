@@ -1,9 +1,49 @@
-{"level":"info","time":"2025-12-15T17:21:05.928Z","pid":62856,"hostname":"MacBook-Pro-4.local","component":"CONFIG","msg":" Found service target mech: 0xb55FaDf1f0Bb1DE99c13301397c7B67FdE44f6b1"}
+{
+  "level": "info",
+  "time": "2025-12-15T17:21:05.928Z",
+  "pid": 62856,
+  "hostname": "MacBook-Pro-4.local",
+  "component": "CONFIG",
+  "msg": " Found service target mech: 0xb55FaDf1f0Bb1DE99c13301397c7B67FdE44f6b1"
+}
 🏗️ Building Verification Prompt using BlueprintBuilder...
 
-{"level":"info","time":"2025-12-15T17:21:05.928Z","pid":62856,"hostname":"MacBook-Pro-4.local","component":"CONFIG","msg":" Found safe address from chain_configs.base: 0xC440e601e22429C8f93a65548A746F015DDa26d2"}
-{"level":"info","time":"2025-12-15T17:21:05.929Z","pid":62856,"hostname":"MacBook-Pro-4.local","component":"CONFIG","msg":" Found private key for agent 0xE0A6f3fCbf2B2cB4C315070514cA9781492B8630"}
-{"level":"info","time":"2025-12-15T17:21:05.931Z","pid":62856,"hostname":"MacBook-Pro-4.local","component":"WORKER","totalChildren":2,"completedChildren":2,"completedIds":[{"id":"mock-chi","name":"Implement Snake Game"},{"id":"mock-chi","name":"Implement 2048"}],"msg":"Hierarchy status verification: completed children detected"}
+{
+  "level": "info",
+  "time": "2025-12-15T17:21:05.928Z",
+  "pid": 62856,
+  "hostname": "MacBook-Pro-4.local",
+  "component": "CONFIG",
+  "msg": " Found safe address from chain_configs.base: 0xC440e601e22429C8f93a65548A746F015DDa26d2"
+}
+{
+  "level": "info",
+  "time": "2025-12-15T17:21:05.929Z",
+  "pid": 62856,
+  "hostname": "MacBook-Pro-4.local",
+  "component": "CONFIG",
+  "msg": " Found private key for agent 0xE0A6f3fCbf2B2cB4C315070514cA9781492B8630"
+}
+{
+  "level": "info",
+  "time": "2025-12-15T17:21:05.931Z",
+  "pid": 62856,
+  "hostname": "MacBook-Pro-4.local",
+  "component": "WORKER",
+  "totalChildren": 2,
+  "completedChildren": 2,
+  "completedIds": [
+    {
+      "id": "mock-chi",
+      "name": "Implement Snake Game"
+    },
+    {
+      "id": "mock-chi",
+      "name": "Implement 2048"
+    }
+  ],
+  "msg": "Hierarchy status verification: completed children detected"
+}
 ✅ Blueprint Built Successfully!
 ═══════════════════════════════════════════════════════════════════════
 {
@@ -778,25 +818,6 @@
       },
       "commentary": "Documentation turns a code artifact into a product. It also reveals the system's ability to reflect on and explain its own work."
     },
-    {
-      "id": "SYS-BEADS-001",
-      "category": "system",
-      "assertion": "I use beads (bd CLI) for issue tracking. At start: check ready work. During work: claim issues, create discoveries. At end: close completed work and commit .beads/issues.jsonl with code.",
-      "examples": {
-        "do": [
-          "Run 'bd ready --json' to see available work",
-          "Run 'bd update <id> --status in_progress --json' to claim",
-          "Run 'bd create \"Found X\" -t bug --deps discovered-from:<id> --json' for discoveries",
-          "Run 'bd close <id> --reason \"Done\" --json' when complete"
-        ],
-        "dont": [
-          "Create markdown TODO lists",
-          "Ignore beads issues",
-          "Forget to commit .beads/issues.jsonl with code changes"
-        ]
-      },
-      "commentary": "Beads provides dependency-aware issue tracking. Always use --json for structured output. Commit .beads/issues.jsonl together with code to keep issue state in sync."
-    }
   ],
   "context": {
     "hierarchy": {
@@ -831,7 +852,6 @@
       "system-blueprint",
       "verification-directive",
       "job-blueprint",
-      "beads-assertions"
     ]
   }
 }
@@ -839,7 +859,26 @@
 
 🔍 Validation - Injected Assertions:
   ✅ SYS-VERIFY-001 (Verification Directive) found
-  ✅ SYS-BEADS-001 (Beads Instructions) found
   ❌ SYS-PARENT-ROLE-001 missing
   ✅ SYS-DELEGATE-001 (Delegation) correctly suppressed
-{"level":"info","time":"2025-12-15T17:21:05.932Z","pid":62856,"hostname":"MacBook-Pro-4.local","component":"WORKER","excludedCount":2,"excludedChildren":[{"jobName":"Implement Snake Game","branchName":"feat/snake-game","requestId":"mock-child"},{"jobName":"Implement 2048","branchName":"feat/2048","requestId":"mock-child"}],"msg":"Excluding integrated children from assertions (commits in parent or rejected)"}
+{
+  "level": "info",
+  "time": "2025-12-15T17:21:05.932Z",
+  "pid": 62856,
+  "hostname": "MacBook-Pro-4.local",
+  "component": "WORKER",
+  "excludedCount": 2,
+  "excludedChildren": [
+    {
+      "jobName": "Implement Snake Game",
+      "branchName": "feat/snake-game",
+      "requestId": "mock-child"
+    },
+    {
+      "jobName": "Implement 2048",
+      "branchName": "feat/2048",
+      "requestId": "mock-child"
+    }
+  ],
+  "msg": "Excluding integrated children from assertions (commits in parent or rejected)"
+}

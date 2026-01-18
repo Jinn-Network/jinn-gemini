@@ -34,6 +34,8 @@ import { hideBin } from 'yargs/helpers';
 import { scriptLogger } from '../logging/index.js';
 import { buildIpfsPayload } from '../gemini-agent/shared/ipfs-payload-builder.js';
 import { deepSubstitute, loadInputConfig } from './shared/template-substitution.js';
+import { validateInvariantsStrict } from '../worker/prompt/invariant-validator.js';
+import { extractToolPolicyFromBlueprint } from '../gemini-agent/shared/template-tools.js';
 
 interface GitHubRepoResponse {
   id: number;
@@ -166,9 +168,34 @@ async function main() {
     let repoPath: string | undefined;
     let repoUrl: string | undefined;
 
-    // Option 1: Use existing repo (--repo flag)
-    if (argv.repo) {
-      const repoSpec = argv.repo as string;
+    // Load input config early if provided (needed to extract repoUrl before repo handling)
+    let inputConfig: Record<string, unknown> | undefined;
+    if (argv.input) {
+      scriptLogger.info({ inputPath: argv.input }, 'Loading input config...');
+      try {
+        inputConfig = await loadInputConfig(argv.input);
+        scriptLogger.info({ keys: Object.keys(inputConfig) }, 'Input config loaded');
+      } catch (err) {
+        scriptLogger.error({ inputPath: argv.input, error: err }, 'Failed to load input config');
+        throw err;
+      }
+    }
+
+    // Auto-detect repoUrl from input config if --repo not explicitly provided
+    let effectiveRepoArg = argv.repo as string | undefined;
+    if (!effectiveRepoArg && inputConfig?.repoUrl) {
+      const configRepoUrl = inputConfig.repoUrl as string;
+      // Extract owner/repo from GitHub URL (e.g., https://github.com/owner/repo)
+      const match = configRepoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+      if (match) {
+        effectiveRepoArg = match[1];
+        scriptLogger.info({ repoUrl: configRepoUrl, effectiveRepoArg }, 'Using repoUrl from input config');
+      }
+    }
+
+    // Option 1: Use existing repo (--repo flag or from input config)
+    if (effectiveRepoArg) {
+      const repoSpec = effectiveRepoArg;
 
       // Parse formats:
       // - "owner/repo" → ssh-host defaults to github.com
@@ -193,7 +220,8 @@ async function main() {
       const cloneUrl = `git@${sshHost}:${owner}/${repoName}.git`;
       repoUrl = `https://github.com/${owner}/${repoName}`;
 
-      const workstreamsDir = join(homedir(), '.jinn', 'workstreams');
+      const workerId = process.env.WORKER_ID || 'default';
+      const workstreamsDir = join(homedir(), '.jinn', 'workstreams', 'workers', workerId);
       await mkdir(workstreamsDir, { recursive: true });
       repoPath = join(workstreamsDir, repoName);
 
@@ -249,8 +277,9 @@ async function main() {
         repoUrl = repo.html_url;
         scriptLogger.info({ repoUrl }, 'Repository created');
 
-        // Clone to local workstream directory
-        const workstreamsDir = join(homedir(), '.jinn', 'workstreams');
+        // Clone to local workstream directory (with worker isolation)
+        const workerId = process.env.WORKER_ID || 'default';
+        const workstreamsDir = join(homedir(), '.jinn', 'workstreams', 'workers', workerId);
         repoPath = join(workstreamsDir, repoName);
 
         scriptLogger.info({ repoPath }, 'Initializing local repository');
@@ -271,20 +300,11 @@ async function main() {
     // Inject context into blueprint
     let blueprintObj = JSON.parse(blueprintContent);
 
-    // Apply variable substitution if --input config provided
-    if (argv.input) {
-      scriptLogger.info({ inputPath: argv.input }, 'Loading input config for variable substitution...');
-      try {
-        const inputConfig = await loadInputConfig(argv.input);
-        scriptLogger.info({ keys: Object.keys(inputConfig) }, 'Input config loaded');
-
-        // Deep substitute {{variable}} placeholders throughout the blueprint
-        blueprintObj = deepSubstitute(blueprintObj, inputConfig, blueprintObj.inputSchema);
-        scriptLogger.info('Variable substitution applied to blueprint');
-      } catch (err) {
-        scriptLogger.error({ inputPath: argv.input, error: err }, 'Failed to load input config');
-        throw err;
-      }
+    // Apply variable substitution if input config was loaded
+    if (inputConfig) {
+      // Deep substitute {{variable}} placeholders throughout the blueprint
+      blueprintObj = deepSubstitute(blueprintObj, inputConfig, blueprintObj.inputSchema);
+      scriptLogger.info('Variable substitution applied to blueprint');
     }
 
     if (blueprintObj.context) {
@@ -292,6 +312,20 @@ async function main() {
     } else {
       blueprintObj.context = context || `Launched via generic launcher on ${new Date().toISOString()}.\nBlueprint: ${blueprintName}`;
     }
+
+    // Validate invariants early (before dispatch) to catch schema errors
+    const invariants = blueprintObj.invariants || blueprintObj.assertions || [];
+    if (invariants.length > 0) {
+      scriptLogger.info({ count: invariants.length }, 'Validating invariants...');
+      try {
+        validateInvariantsStrict(invariants);
+        scriptLogger.info('Invariants valid');
+      } catch (err) {
+        scriptLogger.error({ error: err instanceof Error ? err.message : String(err) }, 'Invalid invariants in blueprint');
+        throw new Error(`Blueprint has invalid invariants: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     // Strip template metadata before dispatching
     // We only want the agent to see invariants, context, and outputSpec
     const cleanBlueprint: Record<string, unknown> = {
@@ -304,31 +338,11 @@ async function main() {
     }
     const finalBlueprint = JSON.stringify(cleanBlueprint);
 
-    scriptLogger.info({
-      jobName,
-      blueprint: blueprintName,
-      model: argv.model,
-      repoPath,
-    }, 'Job configuration');
-
-    if (argv.dryRun) {
-      scriptLogger.info('Dry run complete. No job dispatched.');
-      if (repoPath) {
-        scriptLogger.info('Note: Repository was NOT created (dry run mode).');
-      }
-      return;
-    }
-
-    scriptLogger.info('Dispatching job...');
-
-    // Set CODE_METADATA_REPO_ROOT if we created a repo
-    if (repoPath) {
-      process.env.CODE_METADATA_REPO_ROOT = repoPath;
-      scriptLogger.debug({ CODE_METADATA_REPO_ROOT: repoPath }, 'Set CODE_METADATA_REPO_ROOT');
-    }
-
-    const enabledTools = blueprintObj.enabledTools || [
-      'web_search',
+    const { requiredTools, availableTools } = extractToolPolicyFromBlueprint(blueprintObj);
+    const enabledTools = requiredTools.length > 0
+      ? requiredTools
+      : (availableTools.length > 0 ? availableTools : [
+      'google_web_search',
       'create_artifact',
       'write_file',
       'read_file',
@@ -336,7 +350,7 @@ async function main() {
       'list_directory',
       'run_shell_command',
       'dispatch_new_job',
-    ];
+    ]);
 
     // Parse --env flags into additionalContextOverrides
     const additionalContextOverrides: {
@@ -361,6 +375,49 @@ async function main() {
       scriptLogger.debug({ url: argv.workspaceRepo }, 'Parsed workspace repo from --workspace-repo flag');
     }
 
+    // Extract env vars from inputConfig using inputSchema.envVar mappings
+    // inputSchema can be at root level or inside templateMeta
+    const inputSchema = blueprintObj.templateMeta?.inputSchema ?? blueprintObj.inputSchema;
+    if (inputConfig && inputSchema?.properties) {
+      const extractedEnv: Record<string, string> = {};
+      for (const [field, spec] of Object.entries(inputSchema.properties)) {
+        const fieldSpec = spec as { envVar?: string };
+        if (fieldSpec.envVar && inputConfig[field] !== undefined) {
+          extractedEnv[fieldSpec.envVar] = String(inputConfig[field]);
+          scriptLogger.debug({ field, envVar: fieldSpec.envVar }, 'Extracted env var from inputConfig');
+        }
+      }
+      if (Object.keys(extractedEnv).length > 0) {
+        // Merge with CLI --env flags (CLI takes precedence)
+        additionalContextOverrides.env = { ...extractedEnv, ...additionalContextOverrides.env };
+        scriptLogger.info({ count: Object.keys(extractedEnv).length }, 'Extracted env vars from inputConfig');
+      }
+    }
+
+    scriptLogger.info({
+      jobName,
+      blueprint: blueprintName,
+      model: argv.model,
+      repoPath,
+      envVars: additionalContextOverrides.env ? Object.keys(additionalContextOverrides.env) : [],
+    }, 'Job configuration');
+
+    if (argv.dryRun) {
+      scriptLogger.info('Dry run complete. No job dispatched.');
+      if (repoPath) {
+        scriptLogger.info('Note: Repository was NOT created (dry run mode).');
+      }
+      return;
+    }
+
+    scriptLogger.info('Dispatching job...');
+
+    // Set CODE_METADATA_REPO_ROOT if we created a repo
+    if (repoPath) {
+      process.env.CODE_METADATA_REPO_ROOT = repoPath;
+      scriptLogger.debug({ CODE_METADATA_REPO_ROOT: repoPath }, 'Set CODE_METADATA_REPO_ROOT');
+    }
+
     const jobDefinitionId = randomUUID();
     const profile = getServiceProfile();
 
@@ -381,6 +438,7 @@ async function main() {
       jobDefinitionId,
       model: argv.model as string,
       enabledTools,
+      tools: blueprintObj?.templateMeta?.tools ?? blueprintObj?.tools,
       cyclic: !!argv.cyclic,
       additionalContextOverrides: Object.keys(additionalContextOverrides).length > 0
         ? additionalContextOverrides
@@ -411,6 +469,7 @@ async function main() {
       repoPath,
       explorerUrl: `https://explorer.jinn.network/workstreams/${requestId}`,
       runCommand: `yarn dev:mech --workstream=${requestId} --runs=15`,
+      runParallelCommand: `yarn dev:mech:parallel --workstream=${requestId} --runs=15`,
     }, 'Workstream dispatched successfully');
 
   } catch (error) {

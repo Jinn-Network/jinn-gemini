@@ -17,5 +17,10 @@
         "https://www.latent.space/podcast",
         "https://news.ycombinator.com"
     ],
-    "referrals": ""
+    "referrals": "",
+    "umamiWebsiteId": "0d8e685a-d498-445d-99c6-671bf3d63b1d",
+    "repoUrl": "https://github.com/Jinn-Network/blog-the-lamp",
+    "sshHost": "ritsukai",
+    "domain": "blog-the-lamp-production.up.railway.app",
+    "baseBranch": "main"
 }

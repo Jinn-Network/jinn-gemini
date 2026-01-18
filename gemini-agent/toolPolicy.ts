@@ -22,6 +22,7 @@ export const BASE_UNIVERSAL_TOOLS = [
   'dispatch_new_job',
   'dispatch_existing_job',
   'create_artifact',
+  'create_measurement',
   'search_jobs',
   'search_artifacts',
   'google_web_search',
@@ -33,6 +34,19 @@ export const BASE_UNIVERSAL_TOOLS = [
   'glob',
   'read_many_files',
 ] as const;
+
+function normalizeTools(tools?: string[] | null): string[] {
+  if (!Array.isArray(tools)) {
+    return [];
+  }
+  return tools.filter((tool): tool is string => typeof tool === 'string' && tool.trim().length > 0);
+}
+
+export const ensureUniversalTools = (tools?: string[] | null): string[] => {
+  const merged = [...normalizeTools(tools), ...BASE_UNIVERSAL_TOOLS];
+  return Array.from(new Set(merged));
+};
+
 
 /**
  * Coding tools available only to coding jobs

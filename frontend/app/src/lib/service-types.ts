@@ -41,3 +41,14 @@ export interface ServiceInstanceDisplay {
   lastActivity: string;
   requestCount: number;
 }
+
+/**
+ * Parsed output from a SERVICE_OUTPUT artifact
+ * Stored in artifact contentPreview as compact JSON
+ */
+export interface ServiceOutput {
+  type: 'website' | 'api' | 'data_feed' | string;
+  url: string;
+  label?: string;
+  primary?: boolean;
+}

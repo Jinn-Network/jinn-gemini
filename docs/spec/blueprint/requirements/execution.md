@@ -232,7 +232,7 @@ Agents are untrusted by design. Tools are the trusted, validated interface to th
 ## EXQ-006: Tool Enablement Control
 
 **Assertion:**  
-Agent toolsets must be strictly limited to universal tools plus job-specific `enabledTools`, with native Gemini CLI tools excluded by default.
+Agent toolsets must be strictly limited to universal tools plus template-required tools and job-specific `enabledTools`, with native Gemini CLI tools excluded by default. When a template declares a `tools` list, child jobs may only request tools from that whitelist.
 
 **Examples:**
 
@@ -249,9 +249,11 @@ Tool enablement prevents privilege escalation:
 
 **Settings Generation:**
 ```typescript
+const templatePolicy = parseAnnotatedTools(metadata.tools);
 const toolsToInclude = [
-  ...UNIVERSAL_TOOLS,           // Always available
-  ...metadata.enabledTools      // Job-specific
+  ...UNIVERSAL_TOOLS,            // Always available
+  ...templatePolicy.requiredTools, // Template-required
+  ...metadata.enabledTools         // Job-specific (must be subset of tools list)
 ];
 
 // Generate .gemini/settings.json with only toolsToInclude
@@ -264,7 +266,7 @@ const toolsToInclude = [
 - `list_tools`
 
 **Conditional Tools (must be explicitly enabled):**
-- Native Gemini CLI tools: `file_*`, `web_search`, `terminal`
+- Native Gemini CLI tools: `file_*`, `terminal`
 - Code tools: `get_file_contents`, `search_code`, `list_commits`
 - Search tools: `google_web_search`, `web_fetch`
 
@@ -274,7 +276,7 @@ const toolsToInclude = [
 - Web search could leak information about job context
 - Not all jobs need these capabilities
 
-Job creators specify `enabledTools` based on job requirements. Workers validate tools against whitelist and generate restrictive settings.
+Job creators specify `enabledTools` based on job requirements. Templates declare a `tools` list with `{ name, required }` annotations. Workers validate tools against the whitelist and generate restrictive settings.
 
 This principle of least privilege minimizes attack surface.
 
@@ -463,7 +465,7 @@ for (const { name, tool } of serverTools) {
 - Easy testing (import and call handler)
 - Clear tool catalog
 
-The `list_tools` MCP tool introspects registered tools, providing agents with a self-documenting catalog.
+The `list_tools` MCP tool returns the effective tools for the current workstream (universal tools + template tools), not the full global catalog.
 
 ---
 

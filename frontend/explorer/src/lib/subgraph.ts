@@ -1035,6 +1035,26 @@ export async function getDependencyInfo(jobDefIds: string[]): Promise<Dependency
   }
 }
 
+/**
+ * Fetch MEASUREMENT artifacts for a workstream.
+ * Returns all measurement artifacts from any job in the workstream.
+ */
+export async function getWorkstreamMeasurements(workstreamId: string): Promise<Artifact[]> {
+  // Query artifacts with topic=MEASUREMENT where sourceRequestId matches the workstream
+  const response = await queryArtifacts({
+    where: {
+      AND: [
+        { sourceRequestId: workstreamId },
+        { topic: 'MEASUREMENT' }
+      ]
+    },
+    orderBy: 'blockTimestamp',
+    orderDirection: 'desc',
+    limit: 100
+  })
+  return response.items
+}
+
 // Find all requests that depend on a given request ID
 export async function getDependents(requestId: string): Promise<DependencyInfo[]> {
   const query = `

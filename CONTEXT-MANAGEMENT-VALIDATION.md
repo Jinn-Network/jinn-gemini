@@ -14,7 +14,7 @@ Validated the context management system's blueprint-driven execution using a sin
 
 **Job:** `ethereum-protocol-research`  
 **Model:** `gemini-2.5-pro`  
-**Tools:** `web_search`, `create_artifact` (web_fetch not currently available)  
+**Tools:** `google_web_search`, `create_artifact` (web_fetch not currently available)  
 **Blueprint:** 5 assertions covering complete research scope
 
 ### Blueprint Structure
@@ -160,7 +160,7 @@ Updated `AGENT_README.md` and dispatch scripts to clarify:
 Worker is currently running with Gemini 2.5 Pro model processing the research job. Pending validation:
 
 - [ ] Agent processes all 5 blueprint assertions
-- [ ] Agent uses `web_fetch` and `web_search` for data collection
+- [ ] Agent uses `web_fetch` and `google_web_search` for data collection
 - [ ] No external blueprint search attempts in telemetry
 - [ ] Final output contains DeFi protocol analysis
 - [ ] Final output contains top 3 trade ideas with parameters
@@ -246,6 +246,6 @@ The context management system correctly:
 ## Corrected Job Dispatch
 
 **Updated Request ID:** `0x594c319ff0a12fc229f0bd134d56378b7f38ccd0349c76745f2934e05b5d73ad`  
-**Tool Correction:** Removed `web_fetch` (not currently available), using only `web_search` and `create_artifact`  
+**Tool Correction:** Removed `web_fetch` (not currently available), using only `google_web_search` and `create_artifact`  
 **Blueprint Update:** Modified DATA-001 assertion to use web search for finding data sources
 

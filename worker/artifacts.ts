@@ -78,9 +78,11 @@ export function extractArtifactsFromTelemetry(telemetry: any): ExtractedArtifact
   if (!telemetry) return artifacts;
 
   // NEW: Extract artifacts directly from structured tool calls
+  // Both create_artifact and create_measurement produce artifacts with cid/topic
   if (Array.isArray(telemetry.toolCalls)) {
     for (const toolCall of telemetry.toolCalls) {
-      if (toolCall.tool === 'create_artifact' && toolCall.success && toolCall.result) {
+      const isArtifactTool = toolCall.tool === 'create_artifact' || toolCall.tool === 'create_measurement';
+      if (isArtifactTool && toolCall.success && toolCall.result) {
         const result = toolCall.result;
         if (result.cid && result.topic) {
           const artifact: ExtractedArtifact = {

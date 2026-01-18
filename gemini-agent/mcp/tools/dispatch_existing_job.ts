@@ -7,7 +7,10 @@ import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
 import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
-import { ensureUniversalTools } from './shared/base-tools.js';
+import { ensureUniversalTools, BASE_UNIVERSAL_TOOLS } from '../../toolPolicy.js';
+import { buildAnnotatedTools } from '../../shared/template-tools.js';
+import { blueprintStructureSchema } from '../../shared/blueprint-schema.js';
+import { validateInvariantsStrict } from '../../../worker/prompt/invariant-validator.js';
 
 const dispatchExistingJobParamsBase = z.object({
   jobId: z.string().uuid().optional(),
@@ -15,7 +18,7 @@ const dispatchExistingJobParamsBase = z.object({
   // Optional overrides for tools/blueprint if caller wants to tweak minor fields
   // If not provided, we use the values from the job definition as-is
   enabledTools: z.array(z.string()).optional(),
-  prompt: z.string().optional().describe('DEPRECATED: Use blueprint instead. For backward compatibility only.'),
+  blueprint: z.string().optional().describe('JSON string containing structured blueprint with invariants array. If provided, replaces the job definition blueprint for this run and updates the job definition.'),
   message: z.string().optional(),
   workstreamId: z.string().optional().describe('Workstream ID to preserve when re-dispatching parent jobs. If provided, ensures the new request maintains the same workstream as the child that triggered it.'),
   responseTimeout: z.number().optional().default(300).describe('Response timeout in seconds for marketplace request. Defaults to 300 (5 minutes). Maximum allowed by marketplace is 300 seconds.'),
@@ -35,6 +38,7 @@ WHEN TO USE THIS TOOL:
 - You want multiple requests to share the same job container and workstream
 - Continuing work in an established job context
 - You can reference by job definition ID or job name
+- You need to update the blueprint for an existing job definition (provide blueprint override)
 
 WHEN NOT TO USE (use dispatch_new_job instead):
 - Creating a new child job with a different purpose
@@ -55,13 +59,73 @@ export async function dispatchExistingJob(args: unknown) {
   if (!parse.success) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'VALIDATION_ERROR', message: parse.error.message } }) }] };
   }
-  const { jobId, jobName, enabledTools: overridesTools, prompt: overridePrompt, message, workstreamId: explicitWorkstreamId, responseTimeout, additionalContext: extraContext } = parse.data;
+  const { jobId, jobName, enabledTools: overridesTools, blueprint: overrideBlueprint, message, workstreamId: explicitWorkstreamId, responseTimeout, additionalContext: extraContext } = parse.data;
 
   // Auto-populate workstreamId from context if not explicitly provided
   const context = getCurrentJobContext();
   const workstreamId = explicitWorkstreamId || context.workstreamId || undefined;
 
   const gqlUrl = getPonderGraphqlUrl();
+
+  // Validate blueprint override if provided
+  let validatedBlueprint: string | undefined;
+  if (overrideBlueprint) {
+    let blueprintObj: any;
+    try {
+      blueprintObj = JSON.parse(overrideBlueprint);
+    } catch (error: any) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: {
+              ok: false,
+              code: 'INVALID_BLUEPRINT',
+              message: `blueprint must be valid JSON: ${error?.message || String(error)}`,
+            },
+          }),
+        }],
+      };
+    }
+
+    const blueprintValidation = blueprintStructureSchema.safeParse(blueprintObj);
+    if (!blueprintValidation.success) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: {
+              ok: false,
+              code: 'INVALID_BLUEPRINT_STRUCTURE',
+              message: `blueprint structure is invalid: ${blueprintValidation.error.message}`,
+            },
+          }),
+        }],
+      };
+    }
+
+    try {
+      validateInvariantsStrict(blueprintObj.invariants);
+    } catch (validationError: any) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: {
+              ok: false,
+              code: 'INVALID_INVARIANT_SEMANTICS',
+              message: validationError?.message || String(validationError),
+            },
+          }),
+        }],
+      };
+    }
+
+    validatedBlueprint = overrideBlueprint;
+  }
 
   // Find job definition by id or name
   let jobDef: any | null = null;
@@ -116,11 +180,27 @@ export async function dispatchExistingJob(args: unknown) {
   const baseTools: string[] | undefined = Array.isArray(jobDef.enabledTools) ? jobDef.enabledTools : undefined;
   const baseBlueprint: string | undefined = typeof jobDef.blueprint === 'string' ? jobDef.blueprint : undefined;
 
+  const requiredTools = Array.isArray(context.requiredTools) ? context.requiredTools : [];
+  const availableTools = Array.isArray(context.availableTools) ? context.availableTools : undefined;
+  if (Array.isArray(overridesTools) && Array.isArray(availableTools) && availableTools.length > 0) {
+    // Universal tools are always allowed - filter them out before validation
+    const universalSet = new Set(BASE_UNIVERSAL_TOOLS.map(t => t.toLowerCase()));
+    const toolsToValidate = overridesTools.filter(
+      (tool) => !universalSet.has(String(tool).toLowerCase())
+    );
+
+    const availableSet = new Set(availableTools.map((tool) => tool.toLowerCase()));
+    const disallowedTools = toolsToValidate.filter((tool) => !availableSet.has(String(tool).toLowerCase()));
+    if (disallowedTools.length > 0) {
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'UNAUTHORIZED_TOOLS', message: `enabledTools not allowed by template policy: ${disallowedTools.join(', ')}.`, details: { disallowedTools, availableTools } } }) }] };
+    }
+  }
+
   const requestedTools = overridesTools
-    ? [...(baseTools ?? []), ...overridesTools]  // Merge: base tools + override tools
-    : baseTools ?? [];
+    ? [...(baseTools ?? []), ...overridesTools, ...requiredTools]  // Merge: base tools + override tools + required tools
+    : [...(baseTools ?? []), ...requiredTools];
   const finalTools = ensureUniversalTools(requestedTools);
-  const finalBlueprint = overridePrompt ?? baseBlueprint ?? '';
+  const finalBlueprint = validatedBlueprint ?? baseBlueprint ?? '';
   if (!finalBlueprint) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'MISSING_BLUEPRINT', message: 'No blueprint content available to dispatch. Use dispatch_new_job to create a job definition with a blueprint first.' } }) }] };
   }
@@ -273,11 +353,17 @@ export async function dispatchExistingJob(args: unknown) {
       }
       : undefined;
 
+  const toolPolicy = availableTools && availableTools.length > 0
+    ? { requiredTools, availableTools }
+    : (requiredTools.length > 0 ? { requiredTools, availableTools: requiredTools } : null);
+  const tools = toolPolicy ? buildAnnotatedTools(toolPolicy) : undefined;
+
   const ipfsJsonContents: any[] = [{
     networkId: 'jinn', // Identify Jinn network requests for Ponder filtering
     blueprint: finalBlueprint,
     jobName: name,
     enabledTools: finalTools,
+    ...(tools?.length ? { tools } : {}),
     jobDefinitionId,
     additionalContext,
     ...lineageContext,

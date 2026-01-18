@@ -213,18 +213,28 @@ async function createBranchLocal(branchName: string, baseBranch: string): Promis
       debugLog(`Using existing parent branch ${baseBranch} as base`);
     }
   } else {
-    // For non-job branches (e.g., main, master), verify they exist
-    const branchRefExists = await runGit(['rev-parse', '--verify', baseBranch]);
-    
-    if (!branchRefExists) {
-      throw new Error(
-        `Cannot create branch ${branchName}: base branch '${baseBranch}' does not exist.\n\n` +
-        `💡 This repository needs a '${baseBranch}' branch to branch from.\n` +
-        `   Please create it with:\n` +
-        `   git checkout -b ${baseBranch}\n` +
-        `   git commit --allow-empty -m "Initial commit"\n` +
-        `   git push -u origin ${baseBranch}\n`
-      );
+    // For non-job branches (e.g., main, master), prefer origin/{branch} to ensure latest
+    const remoteRef = `origin/${baseBranch}`;
+    const remoteRefExists = await runGit(['rev-parse', '--verify', remoteRef]);
+
+    if (remoteRefExists) {
+      // Use remote ref to ensure we branch from latest
+      baseRef = remoteRef;
+      debugLog(`Using remote ${remoteRef} as base for ${branchName}`);
+    } else {
+      // Fall back to local if remote doesn't exist (offline mode / new repo)
+      const localRefExists = await runGit(['rev-parse', '--verify', baseBranch]);
+      if (!localRefExists) {
+        throw new Error(
+          `Cannot create branch ${branchName}: base branch '${baseBranch}' does not exist.\n\n` +
+          `💡 This repository needs a '${baseBranch}' branch to branch from.\n` +
+          `   Please create it with:\n` +
+          `   git checkout -b ${baseBranch}\n` +
+          `   git commit --allow-empty -m "Initial commit"\n` +
+          `   git push -u origin ${baseBranch}\n`
+        );
+      }
+      debugLog(`Remote ${remoteRef} not found, falling back to local ${baseBranch}`);
     }
   }
 

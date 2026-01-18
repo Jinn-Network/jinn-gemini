@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Client } from 'pg';
 import { loadEnvOnce } from './shared/env.js';
 import { mcpLogger } from '../../../logging/index.js';
+import { parseAnnotatedTools } from '../../shared/template-tools.js';
 
 loadEnvOnce();
 
@@ -46,7 +47,13 @@ export const registerTemplateParams = z.object({
     // Template specs
     inputSchema: z.record(z.any()).optional().describe('JSON Schema for input validation'),
     outputSpec: z.record(z.any()).optional().describe('Output contract (schema + mapping)'),
-    enabledTools: z.array(z.string()).optional().describe('Allowed tools for this template'),
+    tools: z.array(z.union([
+        z.string(),
+        z.object({
+            name: z.string(),
+            required: z.boolean().optional(),
+        })
+    ])).describe('Tool policy list. Use { name, required } to mark required tools.'),
     tags: z.array(z.string()).optional().describe('Searchable tags for discovery'),
 
     // Pricing (empirical from test run)
@@ -84,7 +91,7 @@ Parameters:
 - priceWei: Price in wei from observed test run cost (required)
 - inputSchema: JSON Schema for input validation
 - outputSpec: Output contract for result extraction
-- enabledTools: Allowed tools array
+- tools: Tool policy list (required)
 - tags: Discovery tags
 - canonicalJobDefinitionId: Job ID from test run
 - status: 'visible' or 'hidden' (default: 'hidden')
@@ -162,7 +169,7 @@ export async function registerTemplate(args: unknown) {
             blueprint,
             inputSchema,
             outputSpec,
-            enabledTools,
+            tools,
             tags,
             priceWei,
             priceUsd,
@@ -182,6 +189,8 @@ export async function registerTemplate(args: unknown) {
         const templateId = `${baseTemplateId}-${blueprintHash.substring(4, 12)}`;
 
         const now = Math.floor(Date.now() / 1000);
+        const toolPolicy = parseAnnotatedTools(tools);
+        const templateAvailableTools = toolPolicy.availableTools;
 
         await client.connect();
 
@@ -218,7 +227,7 @@ export async function registerTemplate(args: unknown) {
                 name,
                 description,
                 tags || [],
-                enabledTools || [],
+                templateAvailableTools,
                 blueprint || null,
                 inputSchema ? JSON.stringify(inputSchema) : null,
                 outputSpec ? JSON.stringify(outputSpec) : null,
@@ -263,7 +272,7 @@ export async function registerTemplate(args: unknown) {
             name,
             description,
             tags || [],
-            enabledTools || [],
+            templateAvailableTools,
             blueprintHash,
             blueprint || null,
             inputSchema ? JSON.stringify(inputSchema) : null,

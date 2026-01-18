@@ -11,6 +11,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { dispatchNewJob } from '../../../../../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { setToolRegistry } from '../../../../../gemini-agent/mcp/tools/shared/tool-registry.js';
 
 // Mock dependencies
 vi.mock('../../../../../http/client.js', () => ({
@@ -53,18 +54,43 @@ import { collectLocalCodeMetadata, ensureJobBranch } from '../../../../../gemini
 import { getCodeMetadataDefaultBaseBranch } from '../../../../../config/index.js';
 
 // Helper to create valid blueprint JSON
-function createBlueprint(assertions: Array<{
+function createBlueprint(invariants: Array<{
   id: string;
-  assertion: string;
+  condition: string;
   examples?: { do: string[]; dont: string[] };
-  commentary?: string;
+  assessment?: string;
 }>) {
   return JSON.stringify({
-    assertions: assertions.map(a => ({
-      id: a.id,
-      assertion: a.assertion,
-      examples: a.examples || { do: ['Example'], dont: ['Anti-example'] },
-      commentary: a.commentary || 'Test assertion',
+    invariants: invariants.map((inv) => ({
+      id: inv.id,
+      type: 'BOOLEAN',
+      condition: inv.condition,
+      assessment: inv.assessment || 'Verify condition is met',
+      examples: inv.examples || { do: ['Example'], dont: ['Anti-example'] },
+    })),
+  });
+}
+
+function createInvariantBlueprint(invariants: Array<{
+  id: string;
+  type: 'FLOOR' | 'CEILING' | 'RANGE' | 'BOOLEAN';
+  metric?: string;
+  min?: number;
+  max?: number;
+  condition?: string;
+  assessment: string;
+  examples?: { do: string[]; dont: string[] };
+}>) {
+  return JSON.stringify({
+    invariants: invariants.map((inv) => ({
+      id: inv.id,
+      type: inv.type,
+      metric: inv.metric,
+      min: inv.min,
+      max: inv.max,
+      condition: inv.condition,
+      assessment: inv.assessment,
+      examples: inv.examples || { do: ['Example'], dont: ['Anti-example'] },
     })),
   });
 }
@@ -112,6 +138,16 @@ describe('dispatchNewJob', () => {
     (ensureJobBranch as any).mockResolvedValue({ branchName: 'job/test-branch' });
     (collectLocalCodeMetadata as any).mockResolvedValue({ repo: 'test-repo', commit: 'abc123' });
     (marketplaceInteract as any).mockResolvedValue({ request_ids: ['0xRequest123'] });
+
+    setToolRegistry([
+      { name: 'create_artifact', schema: { description: 'Create artifact', inputSchema: {} } },
+      { name: 'dispatch_new_job', schema: { description: 'Dispatch job', inputSchema: {} } },
+      { name: 'read_file', schema: { description: 'Read file', inputSchema: {} } },
+      { name: 'write_file', schema: { description: 'Write file', inputSchema: {} } },
+      { name: 'replace', schema: { description: 'Replace content', inputSchema: {} } },
+      { name: 'list_directory', schema: { description: 'List directory', inputSchema: {} } },
+      { name: 'run_shell_command', schema: { description: 'Run shell command', inputSchema: {} } },
+    ]);
   });
 
   afterEach(() => {
@@ -123,7 +159,7 @@ describe('dispatchNewJob', () => {
   describe('validation', () => {
     it('validates required jobName field', async () => {
       const args = {
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       const result = await dispatchNewJob(args);
@@ -137,7 +173,7 @@ describe('dispatchNewJob', () => {
     it('validates minimum length for jobName (min 1 char)', async () => {
       const args = {
         jobName: '',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       const result = await dispatchNewJob(args);
@@ -164,7 +200,7 @@ describe('dispatchNewJob', () => {
       const args = {
         jobName: 'test-job',
         blueprint: createBlueprint([
-          { id: 'TST-001', assertion: 'Must complete task successfully' },
+          { id: 'TST-001', condition: 'Must complete task successfully' },
         ]),
       };
 
@@ -178,7 +214,7 @@ describe('dispatchNewJob', () => {
     it('accepts job with all optional fields', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
         model: 'gemini-2.5-pro',
         enabledTools: ['read_file', 'write_file'],
         message: 'Please start working on this',
@@ -240,12 +276,13 @@ describe('dispatchNewJob', () => {
       expect(response.meta.ok).toBe(false);
       expect(response.meta.code).toBe('INVALID_BLUEPRINT_STRUCTURE');
     });
+
   });
 
   describe('blueprint handling', () => {
     it('stores blueprint in IPFS metadata', async () => {
       const blueprint = createBlueprint([
-        { id: 'TST-001', assertion: 'Must complete successfully' },
+        { id: 'TST-001', condition: 'Must complete successfully' },
       ]);
       const args = {
         jobName: 'test-job',
@@ -260,9 +297,9 @@ describe('dispatchNewJob', () => {
 
     it('handles multiple assertions in blueprint', async () => {
       const blueprint = createBlueprint([
-        { id: 'TST-001', assertion: 'First requirement' },
-        { id: 'TST-002', assertion: 'Second requirement' },
-        { id: 'TST-003', assertion: 'Third requirement' },
+        { id: 'TST-001', condition: 'First requirement' },
+        { id: 'TST-002', condition: 'Second requirement' },
+        { id: 'TST-003', condition: 'Third requirement' },
       ]);
       const args = {
         jobName: 'test-job',
@@ -275,7 +312,7 @@ describe('dispatchNewJob', () => {
       expect(response.meta.ok).toBe(true);
       const call = (marketplaceInteract as any).mock.calls[0][0];
       const storedBlueprint = JSON.parse(call.ipfsJsonContents[0].blueprint);
-      expect(storedBlueprint.assertions).toHaveLength(3);
+      expect(storedBlueprint.invariants).toHaveLength(3);
     });
   });
 
@@ -283,7 +320,7 @@ describe('dispatchNewJob', () => {
     it('stores dependencies in IPFS metadata', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
         dependencies: ['4eac1570-7980-4e2b-afc7-3f5159e99ea5', 'b2c3d4e5-6789-4abc-def0-123456789abc'],
       };
 
@@ -296,7 +333,7 @@ describe('dispatchNewJob', () => {
     it('omits dependencies when empty array provided', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
         dependencies: [],
       };
 
@@ -309,7 +346,7 @@ describe('dispatchNewJob', () => {
     it('omits dependencies field when not provided', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       await dispatchNewJob(args);
@@ -323,7 +360,7 @@ describe('dispatchNewJob', () => {
     it('uses provided model', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
         model: 'gemini-2.5-pro',
       };
 
@@ -333,16 +370,16 @@ describe('dispatchNewJob', () => {
       expect(call.ipfsJsonContents[0].model).toBe('gemini-2.5-pro');
     });
 
-    it('defaults to gemini-2.5-flash when not provided', async () => {
+    it('defaults to gemini-3-flash-preview when not provided', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       await dispatchNewJob(args);
 
       const call = (marketplaceInteract as any).mock.calls[0][0];
-      expect(call.ipfsJsonContents[0].model).toBe('gemini-2.5-flash');
+      expect(call.ipfsJsonContents[0].model).toBe('gemini-3-flash-preview');
     });
   });
 
@@ -350,7 +387,7 @@ describe('dispatchNewJob', () => {
     it('includes enabledTools in IPFS metadata', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
         enabledTools: ['read_file', 'write_file', 'create_artifact'],
       };
 
@@ -361,21 +398,69 @@ describe('dispatchNewJob', () => {
         'read_file',
         'write_file',
         'create_artifact',
+        'list_tools',
         'get_details',
+        'inspect_situation',
+        'dispatch_new_job',
+        'dispatch_existing_job',
+        'create_measurement',
+        'search_jobs',
         'search_artifacts',
+        'google_web_search',
+        'web_fetch',
+        'list_directory',
+        'search_file_content',
+        'glob',
+        'read_many_files',
       ]);
     });
 
     it('omits enabledTools when not provided', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       await dispatchNewJob(args);
 
       const call = (marketplaceInteract as any).mock.calls[0][0];
-      expect(call.ipfsJsonContents[0].enabledTools).toEqual(['get_details', 'search_artifacts']);
+      expect(call.ipfsJsonContents[0].enabledTools).toEqual([
+        'list_tools',
+        'get_details',
+        'inspect_situation',
+        'dispatch_new_job',
+        'dispatch_existing_job',
+        'create_artifact',
+        'create_measurement',
+        'search_jobs',
+        'search_artifacts',
+        'google_web_search',
+        'web_fetch',
+        'list_directory',
+        'read_file',
+        'search_file_content',
+        'glob',
+        'read_many_files',
+      ]);
+    });
+    it('includes tool policy from job context', async () => {
+      (getCurrentJobContext as any).mockReturnValue({
+        requestId: '0xParent123',
+        jobDefinitionId: 'parent-job-uuid',
+        requiredTools: ['read_file'],
+      });
+      const args = {
+        jobName: 'test-job',
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
+      };
+
+      await dispatchNewJob(args);
+
+      const call = (marketplaceInteract as any).mock.calls[0][0];
+      expect(call.ipfsJsonContents[0].enabledTools).toContain('read_file');
+      expect(call.ipfsJsonContents[0].tools).toEqual([
+        { name: 'read_file', required: true },
+      ]);
     });
   });
 
@@ -383,20 +468,20 @@ describe('dispatchNewJob', () => {
     it('skips branch creation when skipBranch is true', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
         skipBranch: true,
       };
 
       await dispatchNewJob(args);
 
       expect(ensureJobBranch).not.toHaveBeenCalled();
-      expect(collectLocalCodeMetadata).not.toHaveBeenCalled();
+      expect(collectLocalCodeMetadata).toHaveBeenCalled();
     });
 
     it('creates branch by default', async () => {
       const args = {
         jobName: 'branch-test',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       await dispatchNewJob(args);
@@ -411,7 +496,7 @@ describe('dispatchNewJob', () => {
     it('calls collectLocalCodeMetadata after branch creation', async () => {
       const args = {
         jobName: 'metadata-test',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       await dispatchNewJob(args);
@@ -426,7 +511,7 @@ describe('dispatchNewJob', () => {
     it('includes code metadata in IPFS payload', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       await dispatchNewJob(args);
@@ -442,7 +527,7 @@ describe('dispatchNewJob', () => {
       (ensureJobBranch as any).mockRejectedValue(new Error('Git error'));
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       const result = await dispatchNewJob(args);
@@ -457,7 +542,7 @@ describe('dispatchNewJob', () => {
     it('includes message in additionalContext', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
         message: 'Please prioritize this task',
       };
 
@@ -472,7 +557,7 @@ describe('dispatchNewJob', () => {
     it('always creates a new job definition with unique ID', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       const result = await dispatchNewJob(args);
@@ -485,7 +570,7 @@ describe('dispatchNewJob', () => {
     it('creates distinct job definitions for same job name', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       const result1 = await dispatchNewJob(args);
@@ -502,7 +587,7 @@ describe('dispatchNewJob', () => {
     it('does not include reusedDefinition in meta', async () => {
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       const result = await dispatchNewJob(args);
@@ -518,7 +603,7 @@ describe('dispatchNewJob', () => {
       (marketplaceInteract as any).mockRejectedValue(new Error('Transaction failed'));
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       const result = await dispatchNewJob(args);
@@ -541,7 +626,7 @@ describe('dispatchNewJob', () => {
 
       const args = {
         jobName: 'test-job',
-        blueprint: createBlueprint([{ id: 'TST-001', assertion: 'Must complete task' }]),
+        blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
       };
 
       const result = await dispatchNewJob(args);

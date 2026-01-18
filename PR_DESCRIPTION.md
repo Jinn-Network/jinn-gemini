@@ -112,8 +112,6 @@ This PR introduces a major architectural refactor of the blueprint system, adds 
 ### 5. Git Workflow Improvements
 
 **Auto-commit beads files:**
-- Automatically commits `.beads/` files when they're the only uncommitted changes
-- Prevents merge/checkout failures from beads runtime state
 - Applies to both `merge` and `checkout` operations
 - Logs auto-commit actions for debugging
 

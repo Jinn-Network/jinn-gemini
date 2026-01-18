@@ -71,6 +71,28 @@ A Template is a JSON file that packages a Venture Blueprint.
 *   **Pure Goals:** Only define `GOAL` invariants. Do not try to redefine `SYSTEM` rules (e.g., "You are an AI"). The System will handle that.
 *   **Variable Substitution:** Use `{{inputVar}}` handlebars for values defined in `inputSchema`.
 *   **Measurability:** Every invariant must have a clear `measurement` string.
+*   **Tool Policy:** Templates declare tool policy via a single `tools` list with `required` annotations. Universal tools are injected by the platform and must not be listed in templates.
+
+### Tool Policy Fields
+
+Templates may include tool policy fields at the top level (preferred) or inside `templateMeta`:
+
+```json
+{
+  "tools": [
+    { "name": "blog_create_post", "required": true },
+    { "name": "process_branch", "required": true },
+    { "name": "write_file" },
+    { "name": "replace" }
+  ]
+}
+```
+
+**Rules:**
+- Tools marked `required: true` are always enabled for the workstream (in addition to universal tools).
+- All listed tools are part of the whitelist for child jobs. Child jobs may only request tools from this list.
+- Do **not** include universal tools (e.g., `dispatch_new_job`, `create_artifact`, `google_web_search`). The platform injects them automatically.
+ 
 
 ### Input Schema Design
 

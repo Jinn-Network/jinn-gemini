@@ -9,6 +9,7 @@ export interface RailwayServiceResult {
     serviceId: string;
     domain: string;
     projectId: string;
+    environmentId: string;
 }
 
 /**
@@ -30,6 +31,7 @@ export async function createRailwayService(
             serviceId: 'srv_dryrun',
             domain,
             projectId: 'proj_dryrun',
+            environmentId: 'env_dryrun',
         };
     }
 
@@ -186,6 +188,67 @@ export async function createRailwayService(
         serviceId,
         domain: generatedDomain,
         projectId,
+        environmentId: environmentId || '',
     };
 }
 
+/**
+ * Set environment variables on a Railway service
+ */
+export async function setRailwayServiceVariables(
+    projectId: string,
+    serviceId: string,
+    environmentId: string,
+    variables: Record<string, string>,
+    options: { dryRun?: boolean } = {}
+): Promise<void> {
+    if (options.dryRun) {
+        console.log(`[DRY RUN] Would set Railway variables on service ${serviceId}:`);
+        for (const [key, value] of Object.entries(variables)) {
+            console.log(`[DRY RUN]   ${key}=${value}`);
+        }
+        return;
+    }
+
+    const token = process.env.RAILWAY_API_TOKEN;
+    if (!token) {
+        throw new Error('RAILWAY_API_TOKEN environment variable is required');
+    }
+
+    const upsertMutation = `
+    mutation VariableUpsert($input: VariableUpsertInput!) {
+      variableUpsert(input: $input)
+    }
+  `;
+
+    for (const [name, value] of Object.entries(variables)) {
+        console.log(`Setting Railway variable: ${name}...`);
+
+        const response = await fetch(RAILWAY_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                query: upsertMutation,
+                variables: {
+                    input: {
+                        projectId,
+                        serviceId,
+                        environmentId,
+                        name,
+                        value,
+                    },
+                },
+            }),
+        });
+
+        const result = await response.json();
+        if (result.errors) {
+            console.warn(`Warning: Failed to set ${name}: ${JSON.stringify(result.errors)}`);
+        }
+    }
+
+    console.log(`Railway variables configured successfully`);
+}

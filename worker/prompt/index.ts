@@ -33,6 +33,14 @@ export { DEFAULT_BLUEPRINT_CONFIG, createConfigFromEnv } from './config.js';
 // Builder
 export { BlueprintBuilder, createBlueprintBuilder } from './BlueprintBuilder.js';
 
+// Renderer - for direct prose rendering of blueprints
+export {
+  renderBlueprintToProse,
+  renderInvariantsByLayer,
+  renderInvariant,
+  renderInvariantCompact,
+} from './invariant-renderer.js';
+
 // Context providers
 export { JobContextProvider } from './providers/context/JobContextProvider.js';
 export { ProgressCheckpointProvider } from './providers/context/ProgressCheckpointProvider.js';

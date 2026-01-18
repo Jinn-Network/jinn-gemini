@@ -1,8 +1,8 @@
 'use client';
 
 import type { CeilingInvariant, InvariantMeasurement, HealthStatus } from '../../lib/invariant-types';
-import { getHealthStatusColor, invariantTypeBadgeColors } from '../../lib/invariant-utils';
 import { cn } from '../../lib/utils';
+import { invariantTypeBadgeColors } from '../../lib/invariant-utils';
 
 export interface CeilingInvariantCardProps {
   invariant: CeilingInvariant;
@@ -19,88 +19,138 @@ export function CeilingInvariantCard({
   compact = false,
   className,
 }: CeilingInvariantCardProps) {
-  const formatScore = (score: number | boolean | undefined): string => {
-    if (score === undefined) return '—';
-    if (typeof score === 'boolean') return score ? 'PASS' : 'FAIL';
-    return String(score);
+  const value = typeof measurement?.score === 'number' ? measurement.score : null;
+  const max = invariant.max ?? 100;
+
+  // Visual range setting
+  // Min is 0 or value * 0.5? Maybe 0 is safer for most metrics.
+  // Max should be max * 1.2 or value * 1.1 if value exceeds max.
+  const logicalMax = Math.max(max * 1.2, value ?? 0);
+  const visualMax = logicalMax;
+  const visualMin = 0; // Assuming 0-based metrics usually
+  const visualRange = visualMax - visualMin || 100;
+
+  const getPercent = (val: number) => {
+    return Math.min(Math.max(((val - visualMin) / visualRange) * 100, 0), 100);
   };
+
+  const maxPos = getPercent(max);
+  const valuePos = value !== null ? getPercent(value) : 0;
+
+  const isHealthy = status === 'healthy';
+  const isCritical = status === 'critical';
+
+  const gaugeColor = isHealthy
+    ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]'
+    : isCritical
+      ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'
+      : 'bg-muted-foreground';
 
   if (compact) {
     return (
-      <div className={cn('flex items-center justify-between gap-4 py-2', className)}>
-        <div className="flex items-center gap-2 min-w-0">
-          <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">
+      <div className={cn('flex items-center justify-between gap-4 py-2 bg-card border-b border-border text-foreground font-mono', className)}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-16 h-2 bg-muted rounded-full relative overflow-hidden border border-border">
+            {/* Safe Zone (Left of Ceiling) */}
+            <div
+              className="absolute top-0 bottom-0 bg-muted-foreground/30"
+              style={{ left: 0, width: `${maxPos}%` }}
+            />
+            {value !== null && (
+              <div
+                className={cn("absolute top-0 bottom-0 w-1", gaugeColor)}
+                style={{ left: `${valuePos}%` }}
+              />
+            )}
+          </div>
+
+          <code className="text-[10px] uppercase tracking-wider text-muted-foreground">
             {invariant.id}
           </code>
-          <span className={cn('text-xs px-1.5 py-0.5 rounded border', invariantTypeBadgeColors.CEILING)}>
-            CEILING
+          <span className="text-sm truncate font-medium text-foreground">
+            {invariant.metric} ≤ {invariant.max}
           </span>
-          <span className="text-sm truncate">{invariant.metric} ≤ {invariant.max}</span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className={cn('text-xs px-1.5 py-0.5 rounded border', getHealthStatusColor(status))}>
-            {status}
-          </span>
-          <span className="text-lg font-semibold">{formatScore(measurement?.score)}</span>
+
+        <div className="shrink-0 font-bold tracking-widest text-xs">
+          {value !== null ? value : '—'}
         </div>
       </div>
     );
   }
 
   return (
-    <div className={cn('p-4 rounded-lg border bg-card', className)}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">
-              {invariant.id}
-            </code>
-            <span className={cn('text-xs px-1.5 py-0.5 rounded border', invariantTypeBadgeColors.CEILING)}>
-              CEILING
+    <div className={cn('relative rounded overflow-hidden bg-card border-2 border-border shadow-inner', className)}>
+      {/* Panel Decoration */}
+      <div className="absolute top-2 left-2 w-1.5 h-1.5 rounded-full bg-muted shadow-[inset_0_1px_1px_rgba(0,0,0,0.08)]" />
+      <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-muted shadow-[inset_0_1px_1px_rgba(0,0,0,0.08)]" />
+      <div className="absolute bottom-2 left-2 w-1.5 h-1.5 rounded-full bg-muted shadow-[inset_0_1px_1px_rgba(0,0,0,0.08)]" />
+      <div className="absolute bottom-2 right-2 w-1.5 h-1.5 rounded-full bg-muted shadow-[inset_0_1px_1px_rgba(0,0,0,0.08)]" />
+
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-4 border-b border-border pb-2">
+          <div className="flex items-center gap-2">
+            <div className="px-1.5 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-muted-foreground shadow-sm">
+              ID: {invariant.id}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+              CEILING LIMIT
+            </div>
+          </div>
+
+          <div className="rounded px-2 py-1 min-w-[60px] text-right bg-background border border-border shadow-[inset_0_1px_2px_rgba(0,0,0,0.12)]">
+            <span className={cn("font-mono font-bold text-lg leading-none tracking-widest", isHealthy ? "text-green-500" : isCritical ? "text-red-500" : "text-muted-foreground")}>
+              {value ?? '---'}
             </span>
-            {status !== 'unknown' && (
-              <span className={cn('text-xs px-1.5 py-0.5 rounded border', getHealthStatusColor(status))}>
-                {status}
-              </span>
-            )}
+          </div>
+        </div>
+
+        {/* Gauge */}
+        <div className="relative h-16 mb-4 rounded border border-border shadow-inner px-4 overflow-hidden bg-muted">
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{ backgroundImage: 'linear-gradient(to right, rgba(100,116,139,0.35) 1px, transparent 1px)', backgroundSize: '10% 100%' }}
+          />
+
+          {/* Safe Zone (Left of Ceiling) */}
+          <div
+            className="absolute top-2 bottom-0 bg-orange-500/10 border-r border-orange-500/30"
+            style={{ left: 0, width: `${maxPos}%` }}
+          >
+            <div
+              className="w-full h-full opacity-50 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmJlOGQwIiBmaWxsLW9wYWNpdHk9IjAuNSIvPgo8cGF0aCBkPSJNTAgNEw0IiBzdHJva2U9IiNkOTc3MDYiIHN0cm9rZS13aWR0aD0iMSIvPgo8L3N2Zz4=')]"
+            />
           </div>
 
-          <div className="mb-2">
-            <span className="text-sm font-medium">{invariant.metric}</span>
-            <span className="text-muted-foreground"> must not exceed </span>
-            <span className="text-sm font-semibold text-orange-500">{invariant.max}</span>
+          {/* Ceiling Marker */}
+          <div className="absolute top-0 bottom-0 border-l-2 border-dashed border-orange-500 z-0" style={{ left: `${maxPos}%` }}>
+            <span className="absolute top-1 left-1 text-[9px] font-mono px-1 rounded text-orange-600 bg-background/80 border border-border">
+              MAX {max}
+            </span>
           </div>
 
-          <p className="text-sm text-muted-foreground">{invariant.assessment}</p>
-
-          {invariant.examples && (
-            <div className="mt-3 text-xs space-y-1">
-              {invariant.examples.do && invariant.examples.do.length > 0 && (
-                <div>
-                  <span className="text-green-500 font-medium">Do:</span>{' '}
-                  <span className="text-muted-foreground">{invariant.examples.do.join('; ')}</span>
-                </div>
-              )}
-              {invariant.examples.dont && invariant.examples.dont.length > 0 && (
-                <div>
-                  <span className="text-red-500 font-medium">Don't:</span>{' '}
-                  <span className="text-muted-foreground">{invariant.examples.dont.join('; ')}</span>
-                </div>
-              )}
+          {/* Needle */}
+          {value !== null && (
+            <div
+              className="absolute top-2 bottom-0 w-0.5 bg-yellow-500 transition-all duration-500 ease-out z-10"
+              style={{ left: `${valuePos}%` }}
+            >
+              <div className="absolute -top-1 -left-1.5 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-yellow-500 drop-shadow-md" />
+              <div className="absolute inset-0 bg-yellow-500 blur-[2px] opacity-70" />
             </div>
           )}
         </div>
 
-        {measurement && (
-          <div className="text-right shrink-0">
-            <div className="text-2xl font-semibold">{formatScore(measurement.score)}</div>
-            {measurement.context && (
-              <div className="text-xs text-muted-foreground mt-1 max-w-[150px] truncate">
-                {measurement.context}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="flex justify-between items-baseline">
+          <h3 className="font-mono text-sm text-foreground">{invariant.metric} ≤ {invariant.max}</h3>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Metric: {invariant.metric}
+          </p>
+        </div>
+
+        <div className="mt-3 text-xs text-muted-foreground border-l-2 border-border pl-3">
+          {invariant.assessment}
+        </div>
       </div>
     </div>
   );

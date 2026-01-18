@@ -14,7 +14,8 @@
 import { randomUUID } from 'node:crypto';
 import { getCurrentJobContext } from '../mcp/tools/shared/context.js';
 import { getJobContextForDispatch } from '../mcp/tools/shared/job-context-utils.js';
-import { ensureUniversalTools } from '../mcp/tools/shared/base-tools.js';
+import { ensureUniversalTools } from '../toolPolicy.js';
+import { parseAnnotatedTools, type TemplateToolSpec } from './template-tools.js';
 import { getCodeMetadataDefaultBaseBranch } from '../../config/index.js';
 import {
     ensureJobBranch,
@@ -35,6 +36,7 @@ export interface BuildIpfsPayloadOptions {
     // Optional behavior modifiers
     model?: string;
     enabledTools?: string[];
+    tools?: TemplateToolSpec[];
     skipBranch?: boolean;
     dependencies?: string[];
     message?: string;
@@ -93,6 +95,7 @@ export async function buildIpfsPayload(
         jobDefinitionId,
         model = 'gemini-3-flash-preview',
         enabledTools: requestedTools,
+        tools,
         skipBranch = false,
         dependencies,
         message,
@@ -103,6 +106,7 @@ export async function buildIpfsPayload(
 
     // Ensure universal tools are included
     const enabledTools = ensureUniversalTools(requestedTools);
+    const toolPolicy = parseAnnotatedTools(tools);
 
     // Get current job context (if running inside an agent)
     const context = getCurrentJobContext();
@@ -244,6 +248,7 @@ export async function buildIpfsPayload(
         jobName,
         model,
         enabledTools,
+        ...(toolPolicy.availableTools.length > 0 ? { tools } : {}),
         jobDefinitionId,
         nonce: randomUUID(),
         networkId: 'jinn',

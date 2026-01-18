@@ -26,12 +26,16 @@ const DISPATCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes - long enough for jobs 
 const MAX_VERIFICATION_ATTEMPTS = 3;
 
 /**
- * Check if parent was already dispatched for this child by querying on-chain state.
+ * Check if parent was already dispatched for this child JOB DEFINITION by querying on-chain state.
  * This survives worker restarts, unlike in-memory tracking.
+ *
+ * NOTE: We check by child JOB DEFINITION ID (not request ID) to ensure the parent is only
+ * dispatched once per child job, regardless of how many times that child runs (initial,
+ * verification, review, etc.).
  */
 async function wasRecentlyDispatched(
   parentJobDefId: string,
-  childRequestId: string
+  childJobDefId: string
 ): Promise<boolean> {
   try {
     const ponderUrl = getPonderGraphqlUrl();
@@ -40,11 +44,11 @@ async function wasRecentlyDispatched(
       requests: { items: Array<{ id: string; blockTimestamp: string }> }
     }>({
       url: ponderUrl,
-      query: `query CheckRecentDispatch($jobDefId: String!, $sourceReqId: String!) {
+      query: `query CheckRecentDispatch($jobDefId: String!, $sourceJobDefId: String!) {
         requests(
-          where: { 
+          where: {
             jobDefinitionId: $jobDefId,
-            sourceRequestId: $sourceReqId
+            sourceJobDefinitionId: $sourceJobDefId
           },
           orderBy: "blockTimestamp",
           orderDirection: "desc",
@@ -58,9 +62,9 @@ async function wasRecentlyDispatched(
       }`,
       variables: {
         jobDefId: parentJobDefId,
-        sourceReqId: childRequestId
+        sourceJobDefId: childJobDefId
       },
-      context: { operation: 'checkRecentDispatch', parentJobDefId, childRequestId }
+      context: { operation: 'checkRecentDispatch', parentJobDefId, childJobDefId }
     });
 
     const recentRequest = response?.requests?.items?.[0];
@@ -72,16 +76,16 @@ async function wasRecentlyDispatched(
     if (timeSince < DISPATCH_COOLDOWN_MS) {
       workerLogger.debug({
         parentJobDefId,
-        childRequestId,
+        childJobDefId,
         recentRequestId: recentRequest.id,
         timeSince
-      }, 'Found recent dispatch from this child');
+      }, 'Found recent dispatch from this child job');
       return true;
     }
 
     return false;
   } catch (error) {
-    workerLogger.warn({ error: serializeError(error), parentJobDefId, childRequestId }, 'Failed to check recent dispatch, allowing dispatch (fail-open)');
+    workerLogger.warn({ error: serializeError(error), parentJobDefId, childJobDefId }, 'Failed to check recent dispatch, allowing dispatch (fail-open)');
     return false;
   }
 }
@@ -781,6 +785,149 @@ export async function dispatchForLoopRecovery(
   }
 }
 
+/**
+ * Dispatch job for timeout recovery (re-dispatch self after process timeout)
+ *
+ * When a job is terminated due to process timeout (15 min), we re-dispatch it with context
+ * so the system can track retry attempts. Fewer retries than loop recovery since timeout
+ * is often a systemic issue (API downtime, network issues).
+ */
+const MAX_TIMEOUT_RECOVERY_ATTEMPTS = 2;
+
+export async function dispatchForTimeoutRecovery(
+  metadata: any,
+  requestId: string,
+  timeoutMessage: string,
+  telemetry?: WorkerTelemetryService
+): Promise<boolean> {
+  const jobDefinitionId = metadata?.jobDefinitionId;
+  if (!jobDefinitionId) {
+    workerLogger.error({ requestId }, 'Cannot dispatch for timeout recovery: missing jobDefinitionId');
+    return false;
+  }
+
+  const additionalContext = metadata?.additionalContext ?? {};
+  const currentAttempt = additionalContext?.timeoutRecovery?.attempt ?? 0;
+  const nextAttempt = currentAttempt + 1;
+
+  if (nextAttempt > MAX_TIMEOUT_RECOVERY_ATTEMPTS) {
+    workerLogger.error(
+      { requestId, jobDefinitionId, attempts: nextAttempt },
+      'Max timeout recovery attempts exceeded - job requires human review'
+    );
+    // Don't dispatch for recovery, let it fail permanently
+    return false;
+  }
+
+  workerLogger.info(
+    { requestId, jobDefinitionId, timeoutRecoveryAttempt: nextAttempt },
+    'Dispatching job for timeout recovery'
+  );
+
+  if (telemetry) {
+    telemetry.startPhase('timeout_recovery_dispatch');
+    telemetry.logCheckpoint('timeout_recovery_dispatch', 'dispatching_for_timeout_recovery', {
+      jobDefinitionId,
+      timeoutRecoveryAttempt: nextAttempt
+    });
+  }
+
+  try {
+    const lineageInfo = metadata?.lineage;
+    const baseBranch =
+      lineageInfo?.dispatcherBranchName ||
+      lineageInfo?.dispatcherBaseBranch ||
+      metadata?.codeMetadata?.baseBranch ||
+      metadata?.codeMetadata?.branch?.name ||
+      undefined;
+    const mechAddress = metadata?.workerAddress || metadata?.mech || undefined;
+
+    // Query workstreamId from Ponder
+    let workstreamId: string | undefined;
+    try {
+      const ponderUrl = getPonderGraphqlUrl();
+      const response = await graphQLRequest<{ request: { workstreamId?: string } | null }>({
+        url: ponderUrl,
+        query: `query GetWorkstreamId($id: String!) { request(id: $id) { workstreamId } }`,
+        variables: { id: requestId },
+        context: { operation: 'getTimeoutRecoveryWorkstreamId', requestId }
+      });
+      workstreamId = response?.request?.workstreamId;
+    } catch (error) {
+      workerLogger.warn({ requestId, error: serializeError(error) }, 'Failed to query workstream ID for timeout recovery');
+    }
+
+    // Build timeout recovery context - preserve existing context and add timeout info
+    const timeoutRecoveryContext = {
+      ...additionalContext,
+      timeoutRecovery: {
+        attempt: nextAttempt,
+        timeoutMessage,
+        triggeredAt: new Date().toISOString(),
+        previousRequestId: requestId,
+      },
+      // Clear verification flags if any (timeout recovery is a fresh attempt)
+      verificationRequired: undefined,
+      verificationAttempt: undefined,
+    };
+
+    const rawResult = await withJobContext(
+      {
+        requestId: lineageInfo?.parentDispatcherRequestId || undefined,
+        jobDefinitionId,
+        baseBranch,
+        mechAddress,
+        branchName: lineageInfo?.dispatcherBranchName || metadata?.codeMetadata?.branch?.name || undefined,
+        workstreamId,
+      },
+      async () =>
+        dispatchExistingJob({
+          jobId: jobDefinitionId,
+          message: JSON.stringify({
+            content: `Timeout recovery: Previous run timed out after 15 minutes. Retrying.`,
+            type: 'timeout_recovery',
+            timeoutMessage: timeoutMessage.slice(0, 500), // Truncate for message field
+          }),
+          workstreamId,
+          additionalContext: timeoutRecoveryContext,
+        })
+    );
+
+    const dispatchResult = safeParseToolResponse(rawResult);
+
+    if (dispatchResult.ok) {
+      if (telemetry) {
+        telemetry.logCheckpoint('timeout_recovery_dispatch', 'dispatch_success', {
+          jobDefinitionId,
+          newRequestId: dispatchResult.data?.request_ids?.[0],
+          timeoutRecoveryAttempt: nextAttempt,
+        });
+      }
+      workerLogger.info(
+        { jobDefinitionId, newRequestId: dispatchResult.data?.request_ids?.[0], timeoutRecoveryAttempt: nextAttempt },
+        'Timeout recovery dispatch successful'
+      );
+      return true;
+    } else {
+      if (telemetry) {
+        telemetry.logError('timeout_recovery_dispatch', dispatchResult?.message || 'Unknown error');
+      }
+      workerLogger.error({ jobDefinitionId, error: dispatchResult?.message }, 'Failed to dispatch for timeout recovery');
+      return false;
+    }
+  } catch (error) {
+    if (telemetry) {
+      telemetry.logError('timeout_recovery_dispatch', error instanceof Error ? error.message : String(error));
+    }
+    workerLogger.error({ jobDefinitionId, error: serializeError(error) }, 'Error dispatching for timeout recovery');
+    return false;
+  } finally {
+    if (telemetry) {
+      telemetry.endPhase('timeout_recovery_dispatch');
+    }
+  }
+}
+
 // Ponder indexing lag tolerance: poll up to N times before deciding children are incomplete
 // Reduced from 10x1000ms since we now self-exclude from sibling check (only need to wait for near-simultaneous siblings)
 const PONDER_INDEX_POLL_COUNT = Number(process.env.PONDER_INDEX_POLL_COUNT ?? 3);
@@ -1092,8 +1239,9 @@ export async function dispatchParentIfNeeded(
 
   const parentJobDefId = decision.parentJobDefId!;
 
-  if (await wasRecentlyDispatched(parentJobDefId, requestId)) {
-    workerLogger.info({ parentJobDefId, childRequestId: requestId }, 'Skipping duplicate parent dispatch (found recent on-chain dispatch from this child)');
+  const childJobDefId = metadata?.jobDefinitionId;
+  if (childJobDefId && await wasRecentlyDispatched(parentJobDefId, childJobDefId)) {
+    workerLogger.info({ parentJobDefId, childJobDefId }, 'Skipping duplicate parent dispatch (found recent on-chain dispatch from this child job)');
     return;
   }
 

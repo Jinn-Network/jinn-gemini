@@ -89,7 +89,7 @@
         "search_code",
         "list_commits",
         "web_fetch",
-        "web_search",
+        "google_web_search",
         "create_artifact",
         "search_artifacts",
         "get_details"

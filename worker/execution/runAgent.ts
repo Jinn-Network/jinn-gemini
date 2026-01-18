@@ -5,6 +5,7 @@
 import { Agent } from '../../gemini-agent/agent.js';
 import { createBlueprintBuilder } from '../prompt/index.js';
 import { setJobContext, clearJobContext, snapshotJobContext, restoreJobContext } from '../metadata/jobContext.js';
+import { parseAnnotatedTools } from '../../gemini-agent/shared/template-tools.js';
 import { didDispatchChild } from '../status/dispatchUtils.js';
 import type { UnclaimedRequest, IpfsMetadata, AdditionalContext, AgentExecutionResult } from '../types.js';
 
@@ -52,6 +53,9 @@ export async function runAgentForRequest(
   // Model comes from job metadata (set at dispatch time), fallback to flash
   const model = metadata?.model || 'gemini-3-flash-preview';
   const enabledTools = Array.isArray(metadata?.enabledTools) ? metadata.enabledTools : [];
+  const toolPolicy = Array.isArray(metadata?.tools) ? parseAnnotatedTools(metadata.tools) : null;
+  const requiredTools = toolPolicy?.requiredTools ?? undefined;
+  const availableTools = toolPolicy?.availableTools ?? undefined;
   const completedChildRequestIds = extractCompletedChildRequestIds(metadata?.additionalContext);
 
   // Determine if this is a coding job based on presence of code metadata
@@ -99,6 +103,8 @@ export async function runAgentForRequest(
       parentRequestId: metadata?.sourceRequestId || undefined,
       branchName: metadata?.codeMetadata?.branch?.name || undefined,
       completedChildRequestIds,
+      requiredTools,
+      availableTools,
     });
 
     const result = await agent.run(prompt);

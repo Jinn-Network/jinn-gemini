@@ -4,6 +4,11 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { BlueprintBuilder, createBlueprintBuilder } from '../../../../worker/prompt/BlueprintBuilder.js';
+import {
+  getBlueprintEnableContextPhases,
+  getBlueprintEnableRecognition,
+  getBlueprintEnableProgress,
+} from '../../../../config/index.js';
 import type {
   IpfsMetadata,
 } from '../../../../worker/types.js';
@@ -23,11 +28,13 @@ describe('BlueprintBuilder', () => {
       expect(builder).toBeInstanceOf(BlueprintBuilder);
 
       const config = builder.getConfig();
+      const expectedRecognition = getBlueprintEnableContextPhases() && getBlueprintEnableRecognition();
+      const expectedProgress = getBlueprintEnableContextPhases() && getBlueprintEnableProgress();
       expect(config.enableSystemBlueprint).toBe(true);
       expect(config.enableContextAssertions).toBe(true);
-      expect(config.enableRecognitionLearnings).toBe(true);
+      expect(config.enableRecognitionLearnings).toBe(expectedRecognition);
       expect(config.enableJobContext).toBe(true);
-      expect(config.enableProgressCheckpoint).toBe(true);
+      expect(config.enableProgressCheckpoint).toBe(expectedProgress);
     });
 
     it('should allow config overrides', () => {
@@ -178,7 +185,7 @@ describe('BlueprintBuilder', () => {
   });
 
   describe('buildPrompt', () => {
-    it('should return JSON string', async () => {
+    it('should return prose string for agent consumption', async () => {
       const builder = new BlueprintBuilder({
         enableSystemBlueprint: false,
         enableContextAssertions: false,
@@ -189,11 +196,52 @@ describe('BlueprintBuilder', () => {
 
       const prompt = await builder.buildPrompt('req-123', {});
 
+      // buildPrompt returns prose, not JSON
       expect(typeof prompt).toBe('string');
-      const parsed = JSON.parse(prompt);
-      expect(parsed.invariants).toBeDefined();
-      expect(parsed.context).toBeDefined();
-      expect(parsed.metadata).toBeDefined();
+      // Prose contains "No invariants defined" when empty
+      expect(prompt).toContain('No invariants defined');
+    });
+
+    it('should render invariants in three-layer structure', async () => {
+      // Use createBlueprintBuilder which registers all providers including system
+      const builder = createBlueprintBuilder({
+        enableContextAssertions: false,
+        enableRecognitionLearnings: false,
+        enableJobContext: false,
+        enableProgressCheckpoint: false,
+      });
+
+      const prompt = await builder.buildPrompt('req-123', {});
+
+      // Should contain PROTOCOL layer header for SYS-* invariants
+      expect(prompt).toContain('PROTOCOL: Operating Principles');
+      // Should contain system invariants
+      expect(prompt).toContain('SYS-');
+    });
+  });
+
+  describe('build vs buildPrompt separation', () => {
+    it('build() returns structured data, buildPrompt() returns prose', async () => {
+      const builder = new BlueprintBuilder({
+        enableSystemBlueprint: false,
+        enableContextAssertions: false,
+        enableRecognitionLearnings: false,
+        enableJobContext: false,
+        enableProgressCheckpoint: false,
+      });
+
+      // build() returns structured UnifiedBlueprint
+      const { blueprint } = await builder.build('req-123', {});
+      expect(blueprint.invariants).toBeDefined();
+      expect(blueprint.context).toBeDefined();
+      expect(blueprint.metadata).toBeDefined();
+      expect(Array.isArray(blueprint.invariants)).toBe(true);
+
+      // buildPrompt() returns prose string
+      const prompt = await builder.buildPrompt('req-123', {});
+      expect(typeof prompt).toBe('string');
+      // Not JSON - should throw if we try to parse
+      expect(() => JSON.parse(prompt)).toThrow();
     });
   });
 

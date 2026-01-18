@@ -9,6 +9,7 @@ export interface RailwayProvisionResult {
   serviceId: string;
   domain: string;
   projectId: string;
+  environmentId: string;
 }
 
 /**
@@ -174,5 +175,58 @@ export async function provisionRailwayService(
     serviceId,
     domain: generatedDomain,
     projectId,
+    environmentId: environmentId || '',
   };
+}
+
+/**
+ * Set environment variables on a Railway service
+ */
+export async function setRailwayServiceVariables(
+  projectId: string,
+  serviceId: string,
+  environmentId: string,
+  variables: Record<string, string>
+): Promise<void> {
+  const token = process.env.RAILWAY_API_TOKEN;
+  if (!token) {
+    throw new Error('RAILWAY_API_TOKEN environment variable is required');
+  }
+
+  const upsertMutation = `
+    mutation VariableUpsert($input: VariableUpsertInput!) {
+      variableUpsert(input: $input)
+    }
+  `;
+
+  for (const [name, value] of Object.entries(variables)) {
+    console.log(`[provision] Setting Railway variable: ${name}...`);
+
+    const response = await fetch(RAILWAY_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        query: upsertMutation,
+        variables: {
+          input: {
+            projectId,
+            serviceId,
+            environmentId,
+            name,
+            value,
+          },
+        },
+      }),
+    });
+
+    const result = await response.json();
+    if (result.errors) {
+      console.warn(`[provision] Warning: Failed to set ${name}: ${JSON.stringify(result.errors)}`);
+    }
+  }
+
+  console.log(`[provision] Railway variables configured successfully`);
 }

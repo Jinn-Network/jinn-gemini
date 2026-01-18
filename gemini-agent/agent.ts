@@ -449,7 +449,16 @@ export class Agent {
       let lineCount = 0;
       let lastLineTime = Date.now();
 
-      // Removed time-based process timeout
+      // Process timeout: kill after 15 minutes to prevent zombie processes
+      const PROCESS_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+      const processTimeout = setTimeout(() => {
+        if (!terminated) {
+          terminated = true;
+          terminationReason = `Process timeout after ${PROCESS_TIMEOUT_MS >= 60000 ? PROCESS_TIMEOUT_MS / 60000 + ' minutes' : PROCESS_TIMEOUT_MS / 1000 + ' seconds'}`;
+          agentLogger.warn({ timeoutMs: PROCESS_TIMEOUT_MS }, 'Terminating process due to timeout');
+          geminiProcess.kill('SIGTERM');
+        }
+      }, PROCESS_TIMEOUT_MS);
 
       // Prompt is provided as positional argument, no stdin needed
 
@@ -557,7 +566,7 @@ export class Agent {
       });
 
       geminiProcess.on('close', (code) => {
-        // No timeout to clear
+        clearTimeout(processTimeout);
 
         // Inspect stderr for API/tool errors even if process exits 0
         let hasApiError = (stderr && (
@@ -588,7 +597,7 @@ export class Agent {
       });
 
       geminiProcess.on('error', (err) => {
-        // No timeout to clear
+        clearTimeout(processTimeout);
 
         // Surface as a synthetic non-zero exit with captured streams
         const exitCode = 1;

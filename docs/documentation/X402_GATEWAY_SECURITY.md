@@ -79,7 +79,7 @@ Three safety tiers control tool access (`services/x402-gateway/security.ts`):
 **Public Tier (ALLOWED_TOOLS_PUBLIC):**
 ```typescript
 [
-  'web_search',             // Read-only web search
+  'google_web_search',      // Read-only web search
   'web_fetch',              // Read-only web fetch  
   'create_artifact',        // Create IPFS artifact (no local side effects)
   'search_artifacts',       // Read-only artifact search
@@ -284,7 +284,7 @@ Per-tier rate limits (not yet enforced at gateway):
 ## Security Guidelines for Template Creators
 
 ### Public Templates
-- Use only read-only tools (`web_search`, `web_fetch`, `search_artifacts`)
+- Use only read-only tools (`google_web_search`, `web_fetch`, `search_artifacts`)
 - Do not request shell access or file writes
 - Avoid recursive dispatch to prevent cost amplification
 - Keep output deterministic and schema-validated

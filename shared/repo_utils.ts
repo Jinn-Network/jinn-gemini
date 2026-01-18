@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, existsSync } from 'node:fs';
 import type { CodeMetadata } from '../gemini-agent/shared/code_metadata.js';
-import { getJinnWorkspaceDir as getConfigJinnWorkspaceDir } from '../config/index.js';
+import { getJinnWorkspaceDir as getConfigJinnWorkspaceDir, getOptionalWorkerId } from '../config/index.js';
 
 /**
  * Extract repository name from a remote URL
@@ -35,22 +35,33 @@ export function extractRepoName(remoteUrl: string): string | null {
  * Get the Jinn workspace directory where ventures are cloned
  * Expands ~ to home directory and creates directory if needed
  *
+ * When WORKER_ID is set, returns a worker-specific subdirectory to enable
+ * parallel workers on the same workstream without git conflicts.
+ *
+ * Structure:
+ *   ~/.jinn-repos/workers/{worker-id}/{repo-name}/
+ *   ~/.jinn-repos/workers/default/{repo-name}/  (single worker fallback)
+ *
  * @returns Absolute path to workspace directory
  */
 export function getJinnWorkspaceDir(): string {
-  const workspaceDir = getConfigJinnWorkspaceDir() || '~/jinn-repos';
+  const baseDir = getConfigJinnWorkspaceDir() || '~/jinn-repos';
+  const workerId = getOptionalWorkerId() || 'default';
 
   // Expand ~ to home directory
-  const expandedPath = workspaceDir.startsWith('~')
-    ? join(homedir(), workspaceDir.slice(1))
-    : workspaceDir;
+  const expandedBase = baseDir.startsWith('~')
+    ? join(homedir(), baseDir.slice(1))
+    : baseDir;
+
+  // Include worker ID in path for isolation
+  const workspaceDir = join(expandedBase, 'workers', workerId);
 
   // Create directory if it doesn't exist
-  if (!existsSync(expandedPath)) {
-    mkdirSync(expandedPath, { recursive: true });
+  if (!existsSync(workspaceDir)) {
+    mkdirSync(workspaceDir, { recursive: true });
   }
 
-  return expandedPath;
+  return workspaceDir;
 }
 
 /**

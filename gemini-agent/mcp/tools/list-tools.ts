@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { graphQLRequest } from '../../../http/client.js';
+import { getPonderGraphqlUrl } from './shared/env.js';
+import { getCurrentJobContext } from './shared/context.js';
+import { BASE_UNIVERSAL_TOOLS, computeToolPolicy } from '../../toolPolicy.js';
 
 // Define the structure for tool information, including optional examples
 interface ToolInfo {
@@ -160,11 +164,11 @@ export const listToolsParams = z.object({
 });
 
 export const listToolsSchema = {
-  description: `Lists all available tools (core CLI + MCP server tools).
+  description: `Lists the effective tools for the current workstream (core CLI + MCP server tools).
 
 MANDATORY: Call this BEFORE using create_job or create_job_batch so you select appropriate enabled_tools. Research jobs should include web search tools (google_web_search or web_fetch) when internet research is required.
 
-Important scope note: This list is a catalog of tools that CAN be enabled for jobs. It does not guarantee they are currently enabled for your job/run. Your effective toolset at runtime is controlled by each job's enabled_tools (plus any universal tools and server exclusions). Use this list to decide which tools to include in enabled_tools when creating jobs.
+Important scope note: If job context provides template tool policy (JINN_AVAILABLE_TOOLS or JINN_REQUIRED_TOOLS), this returns ONLY the tools that are actually enabled in the current workstream (universal tools + template tools). If no policy is provided, it falls back to the full tool catalog.
 
 Usage:
 - Default: returns tool names and descriptions
@@ -175,6 +179,68 @@ Usage:
 Response: { data: { total_tools, tools: [{ name, description, parameters?, examples? }] }, meta: { ok: true } }`,
   inputSchema: listToolsParams.shape,
 };
+
+const listToolsForTemplateParamsBase = z.object({
+  templateId: z.string().optional().describe('Template ID to scope tools (jobTemplate.id)'),
+  jobDefinitionId: z.string().optional().describe('Job definition ID to resolve template tools'),
+});
+
+export const listToolsForTemplateParams = listToolsForTemplateParamsBase.refine(
+  (val) => !!val.templateId || !!val.jobDefinitionId,
+  { message: 'Provide templateId or jobDefinitionId' }
+);
+
+export const listToolsForTemplateSchema = {
+  description: `Lists the effective tool catalog for a template (universal tools + template tools).
+
+Provide templateId (jobTemplate.id) or jobDefinitionId (canonical job definition ID).
+Returns:
+- universalTools: platform-required tools (always available)
+- availableTools: tools declared by the template
+- effectiveTools: union of universal + template tools`,
+  inputSchema: listToolsForTemplateParamsBase.shape,
+};
+
+function normalizeTemplateTools(enabledTools: unknown): string[] {
+  if (Array.isArray(enabledTools)) {
+    return enabledTools.filter((tool): tool is string => typeof tool === 'string' && tool.trim().length > 0);
+  }
+  if (typeof enabledTools === 'string') {
+    try {
+      const parsed = JSON.parse(enabledTools);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((tool): tool is string => typeof tool === 'string' && tool.trim().length > 0);
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function inferIsCodingJob(): boolean {
+  return Boolean(process.env.CODE_METADATA_REPO_ROOT || process.env.JINN_WORKSPACE_DIR);
+}
+
+function getScopedToolsFromContext(): { allowList: string[] | null; source: 'available' | 'required' | null } {
+  const { availableTools, requiredTools } = getCurrentJobContext();
+  const normalizedAvailable = normalizeTemplateTools(availableTools);
+  const normalizedRequired = normalizeTemplateTools(requiredTools);
+  const hasAvailableTools = process.env.JINN_AVAILABLE_TOOLS !== undefined;
+  const hasRequiredTools = process.env.JINN_REQUIRED_TOOLS !== undefined;
+
+  if (hasAvailableTools) {
+    const { mcpIncludeTools } = computeToolPolicy(normalizedAvailable, { isCodingJob: inferIsCodingJob() });
+    return { allowList: mcpIncludeTools, source: 'available' };
+  }
+
+  if (hasRequiredTools) {
+    const { mcpIncludeTools } = computeToolPolicy(normalizedRequired, { isCodingJob: inferIsCodingJob() });
+    return { allowList: mcpIncludeTools, source: 'required' };
+  }
+
+  return { allowList: null, source: null };
+}
 
 export async function listTools(params: any, serverTools: any[]) {
   try {
@@ -197,11 +263,19 @@ export async function listTools(params: any, serverTools: any[]) {
     }));
 
     let allTools: ToolInfo[] = [...CORE_CLI_TOOLS, ...dynamicTools];
+    const { allowList } = getScopedToolsFromContext();
+    if (allowList && allowList.length > 0) {
+      const allowed = new Set(allowList);
+      allTools = allTools.filter(tool => allowed.has(tool.name));
+    }
 
     if (tool_name) {
       allTools = allTools.filter(tool => tool.name.toLowerCase() === tool_name.toLowerCase());
       if (allTools.length === 0) {
-        const availableToolNames = [...CORE_CLI_TOOLS, ...dynamicTools].map(t => t.name).join(', ');
+        const availableToolNames = [...CORE_CLI_TOOLS, ...dynamicTools]
+          .filter(tool => !allowList || allowList.includes(tool.name))
+          .map(t => t.name)
+          .join(', ');
         return {
           isError: true,
           content: [{
@@ -233,6 +307,100 @@ export async function listTools(params: any, serverTools: any[]) {
     return {
       content: [
         { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'RUNTIME_ERROR', message: `Error listing tools: ${e.message}` } }, null, 2) },
+      ],
+    };
+  }
+}
+
+export async function listToolsForTemplate(params: any) {
+  try {
+    const parseResult = listToolsForTemplateParams.safeParse(params);
+    if (!parseResult.success) {
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'VALIDATION_ERROR', message: `Invalid parameters: ${parseResult.error.message}`, details: parseResult.error.flatten?.() ?? undefined }, null, 2)
+        }]
+      };
+    }
+
+    const { templateId, jobDefinitionId } = parseResult.data;
+    const gqlUrl = getPonderGraphqlUrl();
+    let template: { id: string; name: string; enabledTools?: any } | null = null;
+
+    if (templateId) {
+      const query = `
+        query GetTemplate($id: String!) {
+          jobTemplate(id: $id) {
+            id
+            name
+            enabledTools
+          }
+        }
+      `;
+      const data = await graphQLRequest<{ jobTemplate: { id: string; name: string; enabledTools?: any } | null }>({
+        url: gqlUrl,
+        query,
+        variables: { id: templateId },
+        context: { operation: 'listToolsForTemplate', templateId },
+      });
+      template = data?.jobTemplate || null;
+    }
+
+    if (!template && jobDefinitionId) {
+      const query = `
+        query GetTemplateByJobDefinition($jobDefinitionId: String!) {
+          jobTemplates(where: { canonicalJobDefinitionId: $jobDefinitionId }, limit: 1) {
+            items {
+              id
+              name
+              enabledTools
+            }
+          }
+        }
+      `;
+      const data = await graphQLRequest<{ jobTemplates: { items: Array<{ id: string; name: string; enabledTools?: any }> } }>({
+        url: gqlUrl,
+        query,
+        variables: { jobDefinitionId },
+        context: { operation: 'listToolsForTemplate', jobDefinitionId },
+      });
+      template = data?.jobTemplates?.items?.[0] || null;
+    }
+
+    if (!template) {
+      return {
+        isError: true,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ok: false, code: 'NOT_FOUND', message: 'Template not found for provided identifier.' }, null, 2)
+        }]
+      };
+    }
+
+    const availableTools = normalizeTemplateTools(template.enabledTools);
+    const effectiveTools = Array.from(new Set([...BASE_UNIVERSAL_TOOLS, ...availableTools]));
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          data: {
+            templateId: template.id,
+            templateName: template.name,
+            universalTools: BASE_UNIVERSAL_TOOLS,
+            availableTools,
+            effectiveTools,
+          },
+          meta: { ok: true },
+        }, null, 2)
+      }]
+    };
+  } catch (e: any) {
+    return {
+      content: [
+        { type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'RUNTIME_ERROR', message: `Error listing template tools: ${e.message}` } }, null, 2) },
       ],
     };
   }

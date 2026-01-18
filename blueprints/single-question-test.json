@@ -26,24 +26,26 @@
       "output": "$.output"
     }
   },
-  "assertions": [
+  "invariants": [
     {
       "id": "DIRECT-ANSWER",
-      "assertion": "Answer this question directly in 1-2 sentences: {{question}}",
+      "type": "BOOLEAN",
+      "condition": "Answer this question directly in 1-2 sentences: {{question}}",
+      "assessment": "Verify the answer is direct, factual, concise (1-2 sentences), and completed without delegation or clarifying questions.",
       "examples": {
         "do": ["Provide a direct, factual answer", "Be concise"],
         "dont": ["Delegate to other agents", "Ask clarifying questions", "Write more than 2 sentences"]
-      },
-      "commentary": "CRITICAL: Answer directly. Do NOT use dispatch_job or any delegation."
+      }
     },
     {
       "id": "OUTPUT-FORMAT",
-      "assertion": "Return ONLY a JSON object with exactly this structure: { \"answer\": \"your answer here\", \"confidence\": \"high|medium|low\" }",
+      "type": "BOOLEAN",
+      "condition": "Return ONLY a JSON object with exactly this structure: { \"answer\": \"your answer here\", \"confidence\": \"high|medium|low\" }",
+      "assessment": "Verify the output is valid JSON at root level with exactly 'answer' and 'confidence' fields, no markdown code blocks, no extra fields.",
       "examples": {
         "do": ["Return valid JSON with answer and confidence fields"],
         "dont": ["Add extra fields", "Return plain text", "Wrap in markdown code blocks"]
-      },
-      "commentary": "OutputSpec extraction requires this exact structure at the root level."
+      }
     }
   ],
   "enabledTools": []

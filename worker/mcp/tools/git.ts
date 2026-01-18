@@ -8,6 +8,7 @@ import { workerLogger } from '../../../logging/index.js';
 import { serializeError } from '../../logging/errors.js';
 import { getCurrentJobContext } from '../../../gemini-agent/mcp/tools/shared/context.js';
 import { composeSinglePageResponse, decodeCursor, type ComposeSinglePageResult } from '../../../gemini-agent/mcp/tools/shared/context-management.js';
+import { getBlueprintEnableBeads } from '../../../config/index.js';
 
 interface ProcessBranchArgs {
     branch_name: string;
@@ -192,32 +193,35 @@ async function handleMerge(
 
     // Check for uncommitted changes - auto-commit beads files if they're the only changes
     if (hasUncommittedChanges(repoPath)) {
-        const statusOutput = execSync('git status --porcelain', {
-            cwd: repoPath,
-            encoding: 'utf-8',
-        });
-        const changedFiles = statusOutput.trim().split('\n').filter(line => line.trim());
-        const onlyBeadsChanges = changedFiles.every(line => {
-            // Status format: "XY path" - extract the path part
-            const filePath = line.slice(3).trim();
-            return filePath.startsWith('.beads/') || filePath.startsWith('.beads\\');
-        });
+        // Only attempt beads auto-commit if beads is enabled
+        if (getBlueprintEnableBeads()) {
+            const statusOutput = execSync('git status --porcelain', {
+                cwd: repoPath,
+                encoding: 'utf-8',
+            });
+            const changedFiles = statusOutput.trim().split('\n').filter(line => line.trim());
+            const onlyBeadsChanges = changedFiles.every(line => {
+                // Status format: "XY path" - extract the path part
+                const filePath = line.slice(3).trim();
+                return filePath.startsWith('.beads/') || filePath.startsWith('.beads\\');
+            });
 
-        if (onlyBeadsChanges && changedFiles.length > 0) {
-            // Auto-commit beads runtime files to unblock the merge
-            try {
-                execSync('git add .beads/', {
-                    cwd: repoPath,
-                    stdio: 'ignore',
-                });
-                execSync('git commit -m "chore: sync beads state before merge"', {
-                    cwd: repoPath,
-                    stdio: 'ignore',
-                });
-                workerLogger.info({ repoPath, filesCommitted: changedFiles.length }, 'Auto-committed beads files before merge');
-            } catch (commitError) {
-                // If commit fails, continue with the original error
-                workerLogger.warn({ repoPath, error: serializeError(commitError) }, 'Failed to auto-commit beads files');
+            if (onlyBeadsChanges && changedFiles.length > 0) {
+                // Auto-commit beads runtime files to unblock the merge
+                try {
+                    execSync('git add .beads/', {
+                        cwd: repoPath,
+                        stdio: 'ignore',
+                    });
+                    execSync('git commit -m "chore: sync beads state before merge"', {
+                        cwd: repoPath,
+                        stdio: 'ignore',
+                    });
+                    workerLogger.info({ repoPath, filesCommitted: changedFiles.length }, 'Auto-committed beads files before merge');
+                } catch (commitError) {
+                    // If commit fails, continue with the original error
+                    workerLogger.warn({ repoPath, error: serializeError(commitError) }, 'Failed to auto-commit beads files');
+                }
             }
         }
 
@@ -443,29 +447,32 @@ async function handleCheckout(
 
     // Check for uncommitted changes - auto-commit beads files if they're the only changes
     if (hasUncommittedChanges(repoPath)) {
-        const statusOutput = execSync('git status --porcelain', {
-            cwd: repoPath,
-            encoding: 'utf-8',
-        });
-        const changedFiles = statusOutput.trim().split('\n').filter(line => line.trim());
-        const onlyBeadsChanges = changedFiles.every(line => {
-            const filePath = line.slice(3).trim();
-            return filePath.startsWith('.beads/') || filePath.startsWith('.beads\\');
-        });
+        // Only attempt beads auto-commit if beads is enabled
+        if (getBlueprintEnableBeads()) {
+            const statusOutput = execSync('git status --porcelain', {
+                cwd: repoPath,
+                encoding: 'utf-8',
+            });
+            const changedFiles = statusOutput.trim().split('\n').filter(line => line.trim());
+            const onlyBeadsChanges = changedFiles.every(line => {
+                const filePath = line.slice(3).trim();
+                return filePath.startsWith('.beads/') || filePath.startsWith('.beads\\');
+            });
 
-        if (onlyBeadsChanges && changedFiles.length > 0) {
-            try {
-                execSync('git add .beads/', {
-                    cwd: repoPath,
-                    stdio: 'ignore',
-                });
-                execSync('git commit -m "chore: sync beads state before checkout"', {
-                    cwd: repoPath,
-                    stdio: 'ignore',
-                });
-                workerLogger.info({ repoPath, filesCommitted: changedFiles.length }, 'Auto-committed beads files before checkout');
-            } catch (commitError) {
-                workerLogger.warn({ repoPath, error: serializeError(commitError) }, 'Failed to auto-commit beads files');
+            if (onlyBeadsChanges && changedFiles.length > 0) {
+                try {
+                    execSync('git add .beads/', {
+                        cwd: repoPath,
+                        stdio: 'ignore',
+                    });
+                    execSync('git commit -m "chore: sync beads state before checkout"', {
+                        cwd: repoPath,
+                        stdio: 'ignore',
+                    });
+                    workerLogger.info({ repoPath, filesCommitted: changedFiles.length }, 'Auto-committed beads files before checkout');
+                } catch (commitError) {
+                    workerLogger.warn({ repoPath, error: serializeError(commitError) }, 'Failed to auto-commit beads files');
+                }
             }
         }
 

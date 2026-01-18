@@ -1,9 +1,15 @@
 /**
  * Test data builders for blueprint structures
  * Used across unit, integration, and system tests for Phase 1 verification
+ *
+ * Uses the four-type invariant schema:
+ * - FLOOR: metric must be at least min
+ * - CEILING: metric must be at most max
+ * - RANGE: metric must be between min and max
+ * - BOOLEAN: condition must be true
  */
 
-import type { Invariant } from '../../worker/prompt/types.js';
+import type { Invariant, BooleanInvariant } from '../../worker/prompt/types.js';
 
 export interface BlueprintStructure {
   invariants: Invariant[];
@@ -17,12 +23,14 @@ export function buildTestBlueprint(invariants: Invariant[]): string {
 }
 
 /**
- * Build a minimal valid invariant for testing
+ * Build a minimal valid BOOLEAN invariant for testing
  */
-export function buildMinimalInvariant(id: string): Invariant {
+export function buildMinimalInvariant(id: string): BooleanInvariant {
   return {
     id,
-    invariant: `Test invariant ${id}`,
+    type: 'BOOLEAN',
+    condition: `You satisfy test invariant ${id}`,
+    assessment: `Verify that ${id} requirements are met`,
     examples: {
       do: ['Example positive behavior'],
       dont: ['Example negative behavior'],
@@ -31,17 +39,20 @@ export function buildMinimalInvariant(id: string): Invariant {
 }
 
 /**
- * Build an invariant with custom content
+ * Build a BOOLEAN invariant with custom content
  */
 export function buildCustomInvariant(
   id: string,
-  invariantText: string,
+  condition: string,
   doExamples: string[],
-  dontExamples: string[]
-): Invariant {
+  dontExamples: string[],
+  assessment?: string
+): BooleanInvariant {
   return {
     id,
-    invariant: invariantText,
+    type: 'BOOLEAN',
+    condition,
+    assessment: assessment || `Verify: ${condition}`,
     examples: {
       do: doExamples,
       dont: dontExamples,
@@ -63,21 +74,22 @@ export function buildMultiInvariantBlueprint(count: number): string {
 /**
  * Build an invalid blueprint for negative testing
  */
-export function buildInvalidBlueprint(issue: 'missing-id' | 'missing-description' | 'invalid-structure'): string {
+export function buildInvalidBlueprint(issue: 'missing-id' | 'missing-type' | 'invalid-structure'): string {
   switch (issue) {
     case 'missing-id':
       return JSON.stringify({
         invariants: [{
-          invariant: 'Test invariant',
-          examples: { do: ['example'], dont: ['example'] },
+          type: 'BOOLEAN',
+          condition: 'Test condition',
+          assessment: 'Test assessment',
         }],
       });
-    case 'missing-description':
+    case 'missing-type':
       return JSON.stringify({
         invariants: [{
           id: 'JOB-001',
-          // Missing 'invariant' field
-          examples: { do: ['example'], dont: ['example'] },
+          condition: 'Test condition',
+          assessment: 'Test assessment',
         }],
       });
     case 'invalid-structure':

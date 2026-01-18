@@ -20,7 +20,7 @@ describe('Worker blueprint processing flow integration', () => {
   describe('Blueprint extraction from IPFS metadata', () => {
     it('should extract blueprint from root level of metadata', () => {
       const blueprint = buildTestBlueprint([buildMinimalAssertion('EXTRACT-001')]);
-      
+
       // Simulated IPFS metadata response
       const ipfsMetadata: IpfsMetadata = {
         blueprint,
@@ -33,10 +33,10 @@ describe('Worker blueprint processing flow integration', () => {
       // Worker extracts blueprint
       expect(ipfsMetadata.blueprint).toBe(blueprint);
       expect(ipfsMetadata.blueprint).toContain('EXTRACT-001');
-      
-      // Blueprint is parseable
+
+      // Blueprint is parseable and uses invariants array
       const parsed = JSON.parse(ipfsMetadata.blueprint);
-      expect(parsed.assertions).toHaveLength(1);
+      expect(parsed.invariants).toHaveLength(1);
     });
 
     it('should prioritize root-level blueprint over additionalContext', () => {
@@ -91,14 +91,14 @@ describe('Worker blueprint processing flow integration', () => {
   describe('Enhanced prompt building from blueprint', () => {
     it('should build prompt with blueprint as primary content', async () => {
       const assertion = buildCustomAssertion(
-        'PROMPT-001',
-        'All functions must have JSDoc comments',
+        'JOB-PROMPT-001',
+        'You ensure all functions have JSDoc comments',
         ['Add @param and @return tags', 'Include description'],
         ['Skip documentation', 'Use inline comments only'],
-        'Documentation enables IDE tooltips and maintainability'
+        'Verify JSDoc comments exist on all functions'
       );
       const blueprint = buildTestBlueprint([assertion]);
-      
+
       const metadata: IpfsMetadata = {
         blueprint,
         jobName: 'prompt-test',
@@ -107,17 +107,18 @@ describe('Worker blueprint processing flow integration', () => {
 
       const prompt = await createBlueprintBuilder().buildPrompt('test-req-001', metadata, null);
 
-      // Prompt should include blueprint content
-      expect(prompt).toContain('PROMPT-001');
-      expect(prompt).toContain('All functions must have JSDoc comments');
+      // Prompt should include blueprint content (condition, assessment, examples)
+      expect(prompt).toContain('JOB-PROMPT-001');
+      expect(prompt).toContain('all functions have JSDoc comments');
       expect(prompt).toContain('Add @param and @return tags');
       expect(prompt).toContain('Skip documentation');
-      expect(prompt).toContain('Documentation enables IDE tooltips');
+      // Assessment is included for MISSION layer
+      expect(prompt).toContain('Verify JSDoc comments');
     });
 
     it('should build prompt with multi-assertion blueprint', async () => {
       const blueprint = buildMultiAssertionBlueprint(4);
-      
+
       const metadata: IpfsMetadata = {
         blueprint,
         jobName: 'multi-prompt-test',
@@ -126,27 +127,23 @@ describe('Worker blueprint processing flow integration', () => {
 
       const prompt = await createBlueprintBuilder().buildPrompt('test-req-002', metadata, null);
 
-      // All assertions should be included
-      expect(prompt).toContain('TEST-001');
-      expect(prompt).toContain('TEST-002');
-      expect(prompt).toContain('TEST-003');
-      expect(prompt).toContain('TEST-004');
+      // All invariants should be included (JOB-001 through JOB-004)
+      expect(prompt).toContain('JOB-001');
+      expect(prompt).toContain('JOB-002');
+      expect(prompt).toContain('JOB-003');
+      expect(prompt).toContain('JOB-004');
     });
 
     it('should augment blueprint with job context when available', async () => {
-      const blueprint = buildTestBlueprint([buildMinimalAssertion('CONTEXT-001')]);
-      
+      const blueprintJson = buildTestBlueprint([buildMinimalAssertion('JOB-CONTEXT-001')]);
+
       const metadata: IpfsMetadata = {
-        blueprint,
+        blueprint: blueprintJson,
         jobName: 'context-augment-test',
         model: 'gemini-2.5-flash',
         additionalContext: {
-          summary: {
-            totalJobs: 3,
-            completedJobs: 2,
-            activeJobs: 1,
-            totalArtifacts: 5,
-          },
+          // Hierarchy is fetched from Ponder, not additionalContext
+          // For test, we focus on artifacts which ARE extracted from additionalContext
           hierarchy: [
             {
               name: 'parent-job',
@@ -164,28 +161,26 @@ describe('Worker blueprint processing flow integration', () => {
         },
       };
 
-      const prompt = await createBlueprintBuilder().buildPrompt('test-req-003', metadata, null);
+      // Use build() for structure validation
+      const { blueprint } = await createBlueprintBuilder().build('test-req-003', metadata, null);
 
-      // Prompt is now JSON, parse and verify structure
-      const parsed = JSON.parse(prompt);
-      
-      // Should include blueprint assertions
-      expect(parsed.assertions).toBeDefined();
-      expect(parsed.assertions.some((a: any) => a.id === 'CONTEXT-001')).toBe(true);
-      
-      // Should include context from additionalContext
-      expect(parsed.context).toBeDefined();
-      expect(parsed.context.hierarchy).toBeDefined();
-      expect(parsed.context.hierarchy.totalJobs).toBe(3);
-      expect(parsed.context.hierarchy.completedJobs).toBe(2);
-      
-      // Should include child information
-      expect(parsed.context.hierarchy.children).toBeDefined();
-      expect(parsed.context.hierarchy.children.some((c: any) => c.jobName === 'parent-job')).toBe(true);
-      
-      // Should include artifact information
-      expect(parsed.context.artifacts).toBeDefined();
-      expect(parsed.context.artifacts.some((a: any) => a.name === 'analysis-doc')).toBe(true);
+      // Should include blueprint invariants (JOB-CONTEXT-001)
+      expect(blueprint.invariants).toBeDefined();
+      expect(blueprint.invariants.some((inv) => inv.id === 'JOB-CONTEXT-001')).toBe(true);
+
+      // Context should exist
+      expect(blueprint.context).toBeDefined();
+
+      // Artifacts are extracted from additionalContext.hierarchy[].artifactRefs
+      expect(blueprint.context.artifacts).toBeDefined();
+      expect(blueprint.context.artifacts?.some((a) => a.name === 'analysis-doc')).toBe(true);
+
+      // Note: hierarchy context comes from Ponder (fetchAllChildren), not additionalContext
+      // In integration tests without Ponder, hierarchy will be undefined
+
+      // buildPrompt() returns prose containing the invariant ID
+      const prompt = await createBlueprintBuilder().buildPrompt('test-req-003', metadata, null);
+      expect(prompt).toContain('JOB-CONTEXT-001');
     });
 
     it('should handle blueprint without job context', async () => {
@@ -207,8 +202,8 @@ describe('Worker blueprint processing flow integration', () => {
 
   describe('Agent execution with blueprint (no external search)', () => {
     it('should use blueprint directly without searching', async () => {
-      const blueprint = buildTestBlueprint([buildMinimalAssertion('NO-SEARCH-001')]);
-      
+      const blueprint = buildTestBlueprint([buildMinimalAssertion('JOB-NO-SEARCH-001')]);
+
       const metadata: IpfsMetadata = {
         blueprint,
         jobName: 'no-search-test',
@@ -219,20 +214,20 @@ describe('Worker blueprint processing flow integration', () => {
       const prompt = await createBlueprintBuilder().buildPrompt('test-req-005', metadata, null);
 
       // Blueprint content should be in prompt
-      expect(prompt).toContain('NO-SEARCH-001');
-      
+      expect(prompt).toContain('JOB-NO-SEARCH-001');
+
       // In actual execution, agent should NOT use search tools for blueprint
       // This would be verified in telemetry (no search_artifacts calls for blueprint)
       // For integration test, we verify the prompt has everything needed
-      expect(prompt).toContain('Test assertion NO-SEARCH-001');
+      expect(prompt).toContain('satisfy test invariant JOB-NO-SEARCH-001');
       expect(prompt).toContain('Example positive behavior');
       expect(prompt).toContain('Example negative behavior');
     });
 
     it('should provide complete assertion structure to agent', async () => {
       const detailedAssertion = buildCustomAssertion(
-        'COMPLETE-001',
-        'API endpoints must validate all input parameters',
+        'JOB-COMPLETE-001',
+        'You ensure API endpoints validate all input parameters',
         [
           'Use Zod schemas for validation',
           'Return 400 with detailed error messages',
@@ -243,10 +238,10 @@ describe('Worker blueprint processing flow integration', () => {
           'Return generic error messages',
           'Skip optional parameter validation',
         ],
-        'Input validation prevents security vulnerabilities and improves error messages'
+        'Verify all API endpoints have input validation'
       );
       const blueprint = buildTestBlueprint([detailedAssertion]);
-      
+
       const metadata: IpfsMetadata = {
         blueprint,
         jobName: 'complete-structure-test',
@@ -255,12 +250,13 @@ describe('Worker blueprint processing flow integration', () => {
 
       const prompt = await createBlueprintBuilder().buildPrompt('test-req-006', metadata, null);
 
-      // All parts of assertion should be present
-      expect(prompt).toContain('COMPLETE-001');
-      expect(prompt).toContain('API endpoints must validate all input parameters');
+      // All parts of assertion should be present (condition, examples, assessment for MISSION layer)
+      expect(prompt).toContain('JOB-COMPLETE-001');
+      expect(prompt).toContain('API endpoints validate all input parameters');
       expect(prompt).toContain('Use Zod schemas for validation');
       expect(prompt).toContain('Trust client input without validation');
-      expect(prompt).toContain('Input validation prevents security vulnerabilities');
+      // Assessment is included for MISSION layer (JOB-* prefix)
+      expect(prompt).toContain('Verify all API endpoints have input validation');
     });
 
     it('should handle blueprint with model selection', async () => {
@@ -302,16 +298,16 @@ describe('Worker blueprint processing flow integration', () => {
         },
       };
 
-      // Step 2: Worker extracts blueprint
+      // Step 2: Worker extracts blueprint (uses invariants array)
       expect(ipfsMetadata.blueprint).toBeTruthy();
       const parsed = JSON.parse(ipfsMetadata.blueprint!);
-      expect(parsed.assertions).toHaveLength(3);
+      expect(parsed.invariants).toHaveLength(3);
 
-      // Step 3: Enhanced prompt is built
+      // Step 3: Enhanced prompt is built (invariants are prefixed with JOB-)
       const prompt = await createBlueprintBuilder().buildPrompt('test-req-008', ipfsMetadata, null);
-      expect(prompt).toContain('TEST-001');
-      expect(prompt).toContain('TEST-002');
-      expect(prompt).toContain('TEST-003');
+      expect(prompt).toContain('JOB-001');
+      expect(prompt).toContain('JOB-002');
+      expect(prompt).toContain('JOB-003');
 
       // Step 4: Verify all metadata is preserved
       expect(ipfsMetadata.jobName).toBe('e2e-flow-test');

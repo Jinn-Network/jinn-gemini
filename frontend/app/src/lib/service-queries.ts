@@ -15,6 +15,7 @@ import {
   type Workstream,
   type JobTemplate,
   type JobDefinition,
+  type Request,
   type Artifact
 } from '@jinn/shared-ui';
 import type { Service, ServiceInstance } from './service-types';
@@ -81,8 +82,8 @@ export async function getServiceInstances(): Promise<ServiceInstance[]> {
  * Fetch a single service instance by ID
  */
 export async function getServiceInstance(workstreamId: string): Promise<ServiceInstance | null> {
-  const response = await getWorkstreams();
-  const workstream = response.requests.items.find(w => w.id === workstreamId);
+  // Use direct lookup instead of fetching all and filtering
+  const workstream = await getWorkstream(workstreamId);
   return workstream ? toServiceInstance(workstream) : null;
 }
 
@@ -109,6 +110,13 @@ export async function getRootJobDefinition(workstreamId: string): Promise<JobDef
 }
 
 /**
+ * Get the root request for a workstream (ID is the same)
+ */
+export async function getRootRequest(workstreamId: string): Promise<Request | null> {
+  return getRequest(workstreamId);
+}
+
+/**
  * Get MEASUREMENT artifacts for a workstream
  * These are artifacts created by agents when they measure invariants
  */
@@ -121,6 +129,23 @@ export async function getMeasurementArtifacts(workstreamId: string): Promise<Art
     orderBy: 'blockTimestamp',
     orderDirection: 'desc',
     limit: 100
+  });
+  return response.items;
+}
+
+/**
+ * Get SERVICE_OUTPUT artifacts for a workstream
+ * These are external outputs like deployed websites, APIs, data feeds, etc.
+ */
+export async function getServiceOutputs(workstreamId: string): Promise<Artifact[]> {
+  const response = await queryArtifacts({
+    where: {
+      sourceRequestId: workstreamId,
+      topic: 'SERVICE_OUTPUT'
+    },
+    orderBy: 'blockTimestamp',
+    orderDirection: 'desc',
+    limit: 10
   });
   return response.items;
 }

@@ -1,16 +1,39 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { NavHeader } from '@/components/nav-header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ExplorerLink } from '@/components/explorer-link';
-import { InvariantList, HealthSummary } from '@/components/dashboard';
-import { getServiceInstance, getRootJobDefinition, getMeasurementArtifacts } from '@/lib/service-queries';
+import { InvariantList, HealthSummary, ServiceOutputCard } from '@/components/dashboard';
+import { getServiceInstance, getRootJobDefinition, getMeasurementArtifacts, getRootRequest, getServiceOutputs } from '@/lib/service-queries';
 import { parseInvariants, matchInvariantsWithMeasurements, countByStatus } from '@/lib/invariant-utils';
-import { formatRelativeTime, truncateAddress } from '@jinn/shared-ui';
+import { fetchIpfsContent } from '@/lib/ipfs';
+import { formatRelativeTime, truncateAddress, type Artifact } from '@jinn/shared-ui';
+import type { ServiceOutput } from '@/lib/service-types';
+
+/**
+ * Parse SERVICE_OUTPUT artifact contentPreview to get output metadata
+ */
+function parseServiceOutput(artifact: Artifact): ServiceOutput | null {
+  if (!artifact.contentPreview) return null;
+  try {
+    const parsed = JSON.parse(artifact.contentPreview);
+    if (parsed.url && typeof parsed.url === 'string') {
+      return {
+        type: parsed.type || 'website',
+        url: parsed.url,
+        label: parsed.label,
+        primary: parsed.primary
+      };
+    }
+  } catch {
+    // Not valid JSON, ignore
+  }
+  return null;
+}
 
 interface InstancePageProps {
   params: Promise<{ id: string }>;
@@ -23,19 +46,51 @@ async function InstanceDetail({ id }: { id: string }) {
     notFound();
   }
 
-  // Fetch blueprint and measurements
-  const [rootJobDef, measurementArtifacts] = await Promise.all([
+  // Fetch blueprint, measurements, and outputs
+  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts] = await Promise.all([
     getRootJobDefinition(id),
-    getMeasurementArtifacts(id)
+    getRootRequest(id),
+    getMeasurementArtifacts(id),
+    getServiceOutputs(id)
   ]);
+
+  // Parse service outputs from artifacts
+  const serviceOutputs = outputArtifacts
+    .map(parseServiceOutput)
+    .filter((o): o is ServiceOutput => o !== null);
+  const primaryOutput = serviceOutputs.find(o => o.primary) || serviceOutputs[0];
 
   // Parse invariants from blueprint
   let blueprintJson: unknown = null;
-  if (rootJobDef?.blueprint) {
+  let rawBlueprintContent: string | null = null;
+
+  // Try to fetch from IPFS first (source of truth)
+  if (rootRequest?.ipfsHash) {
     try {
-      blueprintJson = JSON.parse(rootJobDef.blueprint);
+      const ipfsResult = await fetchIpfsContent(rootRequest.ipfsHash);
+      if (ipfsResult) {
+        const parsed = JSON.parse(ipfsResult.content);
+        // Extract blueprint (new architecture) or fall back to prompt (legacy)
+        rawBlueprintContent = parsed.blueprint || parsed.prompt || ipfsResult.content;
+      }
+    } catch (e) {
+      console.error('Failed to fetch/parse IPFS content', e);
+    }
+  }
+
+  // Fallback to subgraph blueprint if IPFS failed or missing
+  if (!rawBlueprintContent && rootJobDef?.blueprint) {
+    rawBlueprintContent = rootJobDef.blueprint;
+  }
+
+  if (rawBlueprintContent) {
+    try {
+      // If it's a string, try to parse it as JSON
+      blueprintJson = typeof rawBlueprintContent === 'string'
+        ? JSON.parse(rawBlueprintContent)
+        : rawBlueprintContent;
     } catch {
-      // Invalid JSON, ignore
+      // Invalid JSON, might be raw text, ignore for invariants
     }
   }
 
@@ -97,6 +152,12 @@ async function InstanceDetail({ id }: { id: string }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Service Output - only show if we have outputs */}
+      {/* Service Output - only show if we have outputs */}
+      {primaryOutput && (
+        <ServiceOutputCard output={primaryOutput} />
+      )}
 
       {/* Health Summary */}
       {invariants.length > 0 && (

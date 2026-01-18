@@ -123,7 +123,9 @@ export class LearningInvariantProvider implements InvariantProvider {
 
         return {
             id: `LEARN-${String(index).padStart(3, '0')}`,
-            invariant: description,
+            type: 'BOOLEAN',
+            condition: `You must apply this learning from similar jobs: ${description}`,
+            assessment: 'Verify the learning has been applied and the warning has been heeded.',
             examples: {
                 do: [doExample],
                 dont: [dontExample],

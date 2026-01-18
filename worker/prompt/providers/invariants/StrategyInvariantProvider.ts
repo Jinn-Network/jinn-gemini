@@ -50,18 +50,17 @@ export class StrategyInvariantProvider implements InvariantProvider {
         return [
             {
                 id: 'STRAT-DELEGATE',
-                invariant: `MANDATORY DELEGATION: You have ${goalInvariantCount} goal invariants (threshold: ${DELEGATION_THRESHOLD}). You MUST NOT execute GOAL-* invariants directly. Instead: (1) Analyze GOALs and group by theme, (2) Call dispatch_new_job for each group with focused child invariants, (3) Report DELEGATING status. Direct execution of GOALs when this constraint exists is a CRITICAL FAILURE.`,
-                measurement: `Verify dispatch_new_job was called at least once. If no dispatch_new_job calls exist in tool history, this constraint is violated.`,
+                type: 'BOOLEAN',
+                condition: `You decompose work across children rather than executing ${goalInvariantCount} goal invariants directly`,
+                assessment: `Work is distributed: each child has fewer or more specific invariants than parent. No child mirrors parent 1:1.`,
                 examples: {
                     do: [
-                        'First tool call should be dispatch_new_job to create a child job',
-                        'Create 3-5 child jobs, each handling 1-3 related GOAL invariants',
-                        'Report DELEGATING after all dispatch_new_job calls complete'
+                        `${goalInvariantCount} GOALs -> 3 children, each handling 2-3 related GOALs`,
+                        'Complex GOAL -> split into specific sub-tasks for children',
                     ],
                     dont: [
-                        'Call google_web_search or write_file before dispatching children',
-                        `Execute any of the ${goalInvariantCount} GOAL invariants yourself`,
-                        'Skip delegation because you think you can handle it'
+                        `Execute all ${goalInvariantCount} GOALs inline`,
+                        `1 child with same ${goalInvariantCount} GOALs (deferral, not decomposition)`,
                     ],
                 },
             },

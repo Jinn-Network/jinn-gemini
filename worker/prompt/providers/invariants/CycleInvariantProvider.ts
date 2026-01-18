@@ -44,7 +44,9 @@ export class CycleInvariantProvider implements InvariantProvider {
         const invariants: Invariant[] = [
             {
                 id: 'CYCLE-001',
-                invariant: `CYCLIC OPERATION (Cycle ${cycleNumber}): This job's invariants represent ongoing requirements that must remain satisfied. Evaluate current state and take whatever action is needed—direct work, delegation for assessment, or delegation for remediation.`,
+                type: 'BOOLEAN',
+                condition: `You must evaluate the current state of all job invariants (Cycle ${cycleNumber}) and take action to ensure they remain satisfied. You must perform direct work, dispatch child jobs for assessment, or dispatch child jobs for remediation as needed.`,
+                assessment: 'Verify current state has been evaluated and appropriate action has been taken to maintain satisfaction of all job invariants.',
                 examples: {
                     do: [
                         'Dispatch child jobs to assess invariant satisfaction if assessment is complex',
@@ -59,14 +61,19 @@ export class CycleInvariantProvider implements InvariantProvider {
             },
             {
                 id: 'CYCLE-002',
-                invariant: `CYCLE CONTEXT: Previous cycle completed at ${previousCycleCompletedAt || 'unknown'}. Build on prior work rather than starting fresh.`,
+                type: 'BOOLEAN',
+                condition: `You must build on work from the previous cycle (completed at ${previousCycleCompletedAt || 'unknown'}). Check hierarchy.children for existing child jobs and use dispatch_existing_job to continue their work. Only use dispatch_new_job for genuinely new work scopes.`,
+                assessment: 'Verify existing children are re-dispatched via dispatch_existing_job by jobName. Only new work scopes use dispatch_new_job.',
                 examples: {
                     do: [
-                        'Review artifacts and hierarchy from previous cycles',
-                        'Continue or extend work from prior cycles where appropriate',
+                        'Check hierarchy.children for existing child jobs before dispatching',
+                        'Use dispatch_existing_job({ jobName: "Content Manager" }) for existing children',
+                        'Use dispatch_new_job only for new capabilities not in hierarchy',
                     ],
                     dont: [
-                        'Duplicate work already completed in previous cycles',
+                        'Use dispatch_new_job for a child that already exists in hierarchy',
+                        'Duplicate job definitions for recurring work',
+                        'Lose context between cycles by always using dispatch_new_job',
                     ],
                 },
             },

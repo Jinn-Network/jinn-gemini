@@ -18,6 +18,7 @@ import { execSync } from 'child_process';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { scriptLogger } from '../logging/index.js';
+import { extractToolPolicyFromBlueprint } from '../gemini-agent/shared/template-tools.js';
 
 // --- Helper Functions (Reused from x402-execute-template.ts) ---
 
@@ -236,9 +237,15 @@ async function main() {
             jobName,
             blueprint: finalBlueprint,
             model: argv.model,
-            enabledTools: blueprintJson.enabledTools || blueprintJson.templateMeta?.enabledTools || [
-                'web_search', 'create_artifact', 'web_fetch', 'get_details'
-            ],
+            enabledTools: (() => {
+                const { requiredTools, availableTools } = extractToolPolicyFromBlueprint(blueprintJson);
+                const tools = requiredTools.length > 0
+                    ? requiredTools
+                    : (availableTools.length > 0 ? availableTools : [
+                    'google_web_search', 'create_artifact', 'web_fetch', 'get_details'
+                    ]);
+                return tools;
+            })(),
             inputSchema: blueprintJson.inputSchema || blueprintJson.templateMeta?.inputSchema,
         });
 

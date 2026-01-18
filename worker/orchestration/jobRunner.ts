@@ -28,7 +28,7 @@ import { runRecognitionPhase } from '../recognition/runRecognition.js';
 // Recognition augmentation now handled by BlueprintBuilder's RecognitionProvider
 import { runAgentForRequest, consolidateArtifacts, parseTelemetry, extractOutput, mergeTelemetry, extractArtifactsFromError } from '../execution/index.js';
 import { runReflection } from '../reflection/runReflection.js';
-import { inferJobStatus, dispatchParentIfNeeded, dispatchForLoopRecovery, extractSemanticFailure } from '../status/index.js';
+import { inferJobStatus, dispatchParentIfNeeded, dispatchForLoopRecovery, dispatchForTimeoutRecovery, extractSemanticFailure } from '../status/index.js';
 import { storeOnchainReport } from '../delivery/report.js';
 import { deliverViaSafeTransaction } from '../delivery/transaction.js';
 import { createSituationArtifactForRequest } from '../situation_artifact.js';
@@ -38,7 +38,7 @@ import { getJinnWorkspaceDir, extractRepoName, getRepoRoot } from '../../shared/
 import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult, AdditionalContext } from '../types.js';
 import { getDependencyBranchInfo } from '../mech_worker.js';
-import { getBlueprintEnableContextPhases } from '../../config/index.js';
+import { getBlueprintEnableContextPhases, getBlueprintEnableBeads } from '../../config/index.js';
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
 
@@ -172,7 +172,9 @@ export async function processOnce(
         const setupRepoRoot = getRepoRoot(metadata.codeMetadata);
         if (setupRepoRoot) {
           ensureGitignore(setupRepoRoot);
-          await ensureBeadsInit(setupRepoRoot);
+          if (getBlueprintEnableBeads()) {
+            await ensureBeadsInit(setupRepoRoot);
+          }
           await commitRepoSetup(setupRepoRoot);
         }
 
@@ -413,8 +415,32 @@ export async function processOnce(
         await dispatchForLoopRecovery(metadata, target.id, fullLoopMessage, telemetry);
       }
 
-      // Transport error recovery: only for genuine transport failures, NOT loop protection
-      if (parsed.processExitError && !isLoopProtection) {
+      // Detect process timeout terminations
+      const isTimeout =
+        stderrWarnings.includes('Process timeout after') ||
+        outputText.includes('[PROCESS TERMINATED: Process timeout');
+
+      // If timeout triggered, ensure FAILED status and dispatch for recovery
+      if (isTimeout && finalStatus) {
+        const timeoutMessage = 'Agent terminated: process timed out after 15 minutes';
+
+        finalStatus = {
+          status: 'FAILED',
+          message: timeoutMessage,
+        };
+
+        workerLogger.warn({
+          requestId: target.id,
+          jobName: metadata?.jobName,
+          timeoutMessage,
+        }, 'Job failed due to process timeout - attempting recovery dispatch');
+
+        // Auto-dispatch for timeout recovery (if not at max attempts)
+        await dispatchForTimeoutRecovery(metadata, target.id, timeoutMessage, telemetry);
+      }
+
+      // Transport error recovery: only for genuine transport failures, NOT loop protection or timeout
+      if (parsed.processExitError && !isLoopProtection && !isTimeout) {
         if (!finalStatus || finalStatus.status === 'FAILED') {
           try {
             finalStatus = await inferJobStatus({

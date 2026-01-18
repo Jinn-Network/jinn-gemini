@@ -48,6 +48,7 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
           : (json?.prompt || json?.input || undefined));
     
     const enabledTools = Array.isArray(json?.enabledTools) ? json.enabledTools : undefined;
+    const tools = Array.isArray(json?.tools) ? json.tools : undefined;
     const sourceRequestId = json?.sourceRequestId ? String(json.sourceRequestId) : undefined;
     const sourceJobDefinitionId = json?.sourceJobDefinitionId ? String(json.sourceJobDefinitionId) : undefined;
     const workstreamId = json?.workstreamId ? String(json.workstreamId) : undefined;
@@ -87,6 +88,7 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
     return {
       blueprint,
       enabledTools,
+      tools,
       sourceRequestId,
       sourceJobDefinitionId,
       workstreamId,

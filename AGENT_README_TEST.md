@@ -18,7 +18,6 @@ For deep architecture and implementation details, see the linked files in `docs/
 
 ## Critical Agent Rules
 
-- Use bd (beads) for all issue tracking; no markdown TODO lists; see AGENTS.md
 - **DO NOT** create .md documentation files for progress summaries
 - **DO** incorporate learnings into AGENT_README.md or `docs/spec/`
 - **DO** write progress summaries to corresponding Linear issues
@@ -105,6 +104,28 @@ yarn dev:mech               # Worker only
 yarn dev:mech --single      # Single job (exit after)
 yarn dev:mech --workstream=0x...  # Filter by workstream
 yarn mcp:start              # MCP server only
+```
+
+**Parallel Workers:**
+```bash
+# Easy way: use the parallel launcher
+yarn dev:mech:parallel --workers=3 --workstream=0x...
+yarn dev:mech:parallel -w 3 -s 0x... --runs=10  # limit to 10 jobs per worker
+
+# Manual way: set WORKER_ID per process
+WORKER_ID=worker-1 yarn dev:mech --workstream=0x... &
+WORKER_ID=worker-2 yarn dev:mech --workstream=0x... &
+WORKER_ID=worker-3 yarn dev:mech --workstream=0x... &
+
+# Directory structure (each worker gets isolated clone):
+# ~/.jinn-repos/workers/worker-1/{repo}/
+# ~/.jinn-repos/workers/worker-2/{repo}/
+# ~/.jinn-repos/workers/default/{repo}/   (no WORKER_ID)
+
+# Cleanup orphaned worker directories
+yarn cleanup:workers --dry-run  # preview what would be deleted
+yarn cleanup:workers            # interactive delete
+yarn cleanup:workers --force    # delete without prompting
 ```
 
 **Inspection:**
@@ -939,6 +960,69 @@ Without `codeMetadata`, the worker treats the job as artifact-only (`isCodingJob
 - Include measurement fields that can detect violation (e.g., "dispatch_new_job must be called")
 - Add explicit negative examples showing what NOT to do first
 
+### 38. Invalid Tool Name `web_search` (2026-01-15)
+**Issue:** Default tool lists referenced `web_search`, but the registry/policy expects `google_web_search`. This causes "tool not found" failures at runtime.
+**Root Cause:** Tool name drift between launcher defaults/docs and the actual registry.
+**Prevention:**
+- Use `google_web_search` (and `web_fetch` where needed) for web research tools
+- Validate enabledTools against the tool registry before dispatch
+
+### 39. Avoid Registry-Based enabledTools Validation (2026-01-16)
+**Issue:** `validateEnabledTools` depended on a runtime registry that was empty in some contexts (gateway/launchers), rejecting valid tools and blocking dispatch.
+**Prevention:**
+- Rely on `computeToolPolicy()` + settings `includeTools` to enforce access
+- Keep template `availableTools` whitelist enforcement for child dispatch
+
+### 40. Universal Tools Must Have a Single Source (2026-01-15)
+**Issue:** Different "universal tools" lists in IPFS payload builder and tool policy caused drift and confusion about actual tool availability.
+**Prevention:**
+- Define universal tools in one module (`toolPolicy.ts`)
+- Import from that module rather than duplicating lists in helpers
+
+### 45. Template Tool Policy Split (2026-01-16)
+**Issue:** Templates mixed universal tools with template-specific tools, and child jobs could request tools outside the intended scope.
+**Prevention:**
+- Keep universal tools centralized in `toolPolicy.ts`
+- Templates declare `requiredTools` and `availableTools` (whitelist)
+- Dispatch enforces `enabledTools ⊆ availableTools`
+
+### 46. list_tools Must Be Policy-Scoped (2026-01-16)
+**Issue:** `list_tools` returned the full tool catalog, leading agents to attempt tools that were not enabled for the current workstream.
+**Prevention:**
+- Scope `list_tools` to `JINN_AVAILABLE_TOOLS` or `JINN_REQUIRED_TOOLS` plus universal tools
+- Fall back to the full catalog only when no tool policy is provided in job context
+
+### 47. Template Tool Policy Uses Annotated Tools List (2026-01-16)
+**Issue:** Duplicating `requiredTools` and `availableTools` in template metadata caused drift and accidental mismatches.
+**Prevention:**
+- Use a single `tools` list with `{ name, required }` annotations
+- Reject templates that do not provide an annotated `tools` list
+
+### 48. Universal + Required Tools Are Always Available (2026-01-16)
+**Issue:** Agents assumed child jobs could not delegate/search because those tools weren't listed in enabledTools.
+**Prevention:**
+- Universal tools are always available to every agent (dispatch, search, artifact, file ops)
+- Template required tools are always inherited by all children in the workstream
+- Use `enabledTools` to add domain-specific tools only (blog_*, analytics, etc.)
+
+### 49. dispatch_existing_job Supports Blueprint Override (2026-01-17)
+**Feature:** `dispatch_existing_job` accepts a `blueprint` parameter to override the job definition blueprint.
+**Behavior:**
+- Blueprint is validated like `dispatch_new_job` (JSON parse, schema validation, semantic validation)
+- Ponder updates the job definition blueprint on the next request
+- Supports iterating on job behavior without creating a new job definition
+**Deprecated:** The `prompt` parameter has been removed.
+
+### 50. Cyclic Re-dispatch Requires Script Support (2026-01-17)
+**Issue:** `dispatch_existing_job` does not accept a `cyclic` flag.
+**Prevention:**
+- Use `scripts/redispatch-job.ts --cyclic` to re-dispatch an existing job into the same workstream with `cyclic: true`
+- The script builds IPFS metadata directly; MCP tool does not support cyclic overrides
+
+### 51. Beads Runtime Files Should Be Ignored (2026-01-17)
+**Issue:** `.beads/daemon.lock` and `.beads/metadata.json` are local runtime artifacts and should not be tracked.
+**Prevention:**
+- Add them to `.gitignore` and keep them untracked.
 ---
 
 ## Test Infrastructure Gotchas

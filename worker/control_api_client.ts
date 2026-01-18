@@ -79,13 +79,12 @@ async function fetchWithRetry(body: any, headers: Record<string, string>, attemp
 
 export async function claimRequest(requestId: string): Promise<{ request_id: string; status: string; claimed_at?: string; alreadyClaimed?: boolean }> {
   const headers = buildHeaders(requestId, 'claim');
-  const query = `mutation Claim($requestId: String!) { claimRequest(requestId: $requestId) { request_id status claimed_at } }`;
+  const query = `mutation Claim($requestId: String!) { claimRequest(requestId: $requestId) { request_id status claimed_at alreadyClaimed } }`;
   try {
     const json = await fetchWithRetry({ query, variables: { requestId } }, headers);
     const claim = json.data.claimRequest;
-    // Control API now handles stale claim detection and re-claiming
-    // Return with alreadyClaimed=false for freshly claimed jobs
-    return { ...claim, alreadyClaimed: false };
+    // Control API returns alreadyClaimed=true if another worker has active claim
+    return claim;
   } catch (e: any) {
     const msg = String(e?.message || e);
     if (msg.toLowerCase().includes('already claimed')) {

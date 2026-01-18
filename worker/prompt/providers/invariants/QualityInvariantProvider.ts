@@ -54,7 +54,9 @@ export class QualityInvariantProvider implements InvariantProvider {
         const invariants: Invariant[] = [
             {
                 id: 'QUAL-VERIFY',
-                invariant: `VERIFICATION REQUIRED (attempt ${verificationAttempt}/${MAX_VERIFICATION_ATTEMPTS}): You merged child work in the previous run. Now VERIFY deliverables satisfy your goal invariants. For UI work, use browser_automation tools.`,
+                type: 'BOOLEAN',
+                condition: `You must verify deliverables satisfy your goal invariants after merging child work (attempt ${verificationAttempt}/${MAX_VERIFICATION_ATTEMPTS}). For UI work, you must use browser_automation tools.`,
+                assessment: 'Verify that each GOAL-* invariant has been explicitly checked against the merged deliverables.',
                 examples: {
                     do: ['For each GOAL-* invariant, verify it is actually satisfied; for UI: use browser_automation to run the app'],
                     dont: ['Report COMPLETED without explicitly verifying each invariant against deliverables'],
@@ -65,7 +67,9 @@ export class QualityInvariantProvider implements InvariantProvider {
         if (isLastAttempt) {
             invariants.push({
                 id: 'QUAL-VERIFY-FINAL',
-                invariant: `FINAL VERIFICATION ATTEMPT: If you cannot verify all invariants are satisfied, report FAILED with explanation.`,
+                type: 'BOOLEAN',
+                condition: `You must report FAILED with explanation if you cannot verify all invariants are satisfied (final attempt).`,
+                assessment: 'Verify that if any invariants cannot be satisfied, the status is FAILED with specific explanations.',
                 examples: {
                     do: ['If invariants cannot be satisfied, report FAILED with specifics'],
                     dont: ['Report COMPLETED if invariants remain unverified'],
@@ -86,10 +90,12 @@ export class QualityInvariantProvider implements InvariantProvider {
         return [
             {
                 id: 'QUAL-CODING',
-                invariant: 'I write observable, testable code. Key functions are externally callable, state is inspectable, and structure supports automation.',
+                type: 'BOOLEAN',
+                condition: 'You write code that can be tested and automated',
+                assessment: 'Key functionality is accessible for testing. UI elements can be reliably selected. State can be inspected.',
                 examples: {
-                    do: ['Expose entry points globally; use data attributes and unique IDs for reliable element selection'],
-                    dont: ['Bury all logic in closures with no external entry point'],
+                    do: ['Expose entry points for testing', 'Use stable selectors (data attributes, unique IDs)'],
+                    dont: ['Bury all logic in closures with no external access', 'Use fragile CSS selectors'],
                 },
             }
         ];

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import fetch from 'cross-fetch';
 import { composeSinglePageResponse, decodeCursor } from './shared/context-management.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
+import { getCurrentJobContext } from './shared/context.js';
 
 const base = z.object({
   query: z.string().min(1).describe('Case-insensitive text to match against job name and description.'),
@@ -53,21 +54,45 @@ export async function searchJobs(params: SearchJobsParams) {
     const { query, cursor, include_requests, max_requests_per_job } = parsed.data;
     const keyset = decodeCursor<{ offset: number }>(cursor) ?? { offset: 0 };
 
-    // Step 1: Search job definitions by name and blueprint
-    const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
-    const jobsGql = `query SearchJobs($q: String!, $limit: Int!) {
-      jobDefinitions(where: { OR: [
-        { name_contains: $q }, 
-        { blueprint_contains: $q }
-      ] }, limit: $limit) {
-        items { 
-          id name blueprint enabledTools 
-          sourceJobDefinitionId sourceRequestId
-        }
-      }
-    }`;
+    // Get workstream context for scoping (if available)
+    const context = getCurrentJobContext();
+    const workstreamId = context.workstreamId;
 
-    const variables = { q: query, limit: 100 }; // Get more jobs to allow for pagination
+    // Step 1: Search job definitions by name and blueprint
+    // Scope to current workstream if context is available
+    const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
+
+    // Build query conditionally based on workstream context
+    const jobsGql = workstreamId
+      ? `query SearchJobs($q: String!, $workstreamId: String!, $limit: Int!) {
+          jobDefinitions(where: {
+            workstreamId: $workstreamId,
+            OR: [
+              { name_contains: $q },
+              { blueprint_contains: $q }
+            ]
+          }, limit: $limit) {
+            items {
+              id name blueprint enabledTools
+              sourceJobDefinitionId sourceRequestId workstreamId
+            }
+          }
+        }`
+      : `query SearchJobs($q: String!, $limit: Int!) {
+          jobDefinitions(where: { OR: [
+            { name_contains: $q },
+            { blueprint_contains: $q }
+          ] }, limit: $limit) {
+            items {
+              id name blueprint enabledTools
+              sourceJobDefinitionId sourceRequestId workstreamId
+            }
+          }
+        }`;
+
+    const variables = workstreamId
+      ? { q: query, workstreamId, limit: 100 }
+      : { q: query, limit: 100 };
     const res = await fetch(PONDER_GRAPHQL_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -100,7 +125,7 @@ export async function searchJobs(params: SearchJobsParams) {
       perFieldMaxChars: 5000,
       pageTokenBudget: 10000, // 10k token budget per page
       upstreamLimit: 100, // Database limit - prevents false has_more when offset >= database page
-      requestedMeta: { cursor, query, include_requests, max_requests_per_job }
+      requestedMeta: { cursor, query, include_requests, max_requests_per_job, workstreamId: workstreamId || null }
     });
 
     return {

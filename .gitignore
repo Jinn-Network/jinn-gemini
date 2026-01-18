@@ -22,6 +22,17 @@ build/
 logs/
 **/logs/
 *.log
+#
+# Beads local artifacts
+.beads/beads.db
+.beads/beads.db-*
+.beads/bd.sock
+.beads/bd.pipe
+.beads/.exclusive-lock
+.beads/.local_version
+.beads/daemon*.log*
+.beads/daemon.lock
+.beads/metadata.json
 
 yarn-debug.log*
 yarn-error.log*
@@ -231,14 +242,12 @@ ponder/.ponder-test-*/
 .jinn/
 **/.jinn/
 
-# Beads issue tracker - local files only (JSONL files are tracked in git)
-.beads/beads.db
-.beads/beads.db-*
-.beads/bd.sock
-.beads/bd.pipe
-.beads/.exclusive-lock
-.git/beads-worktrees/
-
 gemini-agent/.gemini/settings.json.orig
 code-resources/olas-lst/
 .vercel
+
+# Build artifacts
+*.tsbuildinfo
+
+# External code resources
+code-resources/

@@ -46,7 +46,9 @@ export class RecoveryInvariantProvider implements InvariantProvider {
         const invariants: Invariant[] = [
             {
                 id: 'RECOV-LOOP',
-                invariant: `LOOP RECOVERY (attempt ${attempt}/${MAX_LOOP_RECOVERY_ATTEMPTS}): Previous run was terminated because: "${loopMessage}". You MUST approach this task differently.`,
+                type: 'BOOLEAN',
+                condition: `You must approach this task differently (attempt ${attempt}/${MAX_LOOP_RECOVERY_ATTEMPTS}). Previous run was terminated because: "${loopMessage}".`,
+                assessment: 'Verify that the current approach differs from the sequence of actions that caused the loop.',
                 examples: {
                     do: ['Verify CURRENT state of files before making changes; if already correct, acknowledge and move on'],
                     dont: ['Repeat the same sequence of actions that caused the loop'],
@@ -57,7 +59,9 @@ export class RecoveryInvariantProvider implements InvariantProvider {
         if (isLastAttempt) {
             invariants.push({
                 id: 'RECOV-FINAL',
-                invariant: `FINAL LOOP RECOVERY ATTEMPT: If you cannot complete the task without entering a loop, report FAILED with an explanation.`,
+                type: 'BOOLEAN',
+                condition: `You must report FAILED with explanation if you cannot complete the task without entering a loop (final attempt).`,
+                assessment: 'Verify that if the task is genuinely blocked, the status is FAILED with specific details about the blocking issue.',
                 examples: {
                     do: ['If genuinely blocked, report FAILED with specifics about what is preventing completion'],
                     dont: ['Enter another loop on the final attempt'],

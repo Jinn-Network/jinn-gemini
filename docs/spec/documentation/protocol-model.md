@@ -419,7 +419,7 @@ Status is automatically inferred by the worker based on agent actions (not manua
 - `get_details`: Retrieve detailed on-chain records by ID and hierarchy context
 - `search_jobs`: Search job definitions
 - `search_artifacts`: Search artifacts by name, topic, content to find child work
-- `list_tools`: Introspection of available tools
+- `list_tools`: Introspection of tools enabled for the current workstream
 
 Native Gemini CLI tools (file operations, web search) are excluded by default unless explicitly enabled in job's `enabledTools` list.
 

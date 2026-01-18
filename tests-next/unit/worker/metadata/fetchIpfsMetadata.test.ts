@@ -66,10 +66,16 @@ describe('fetchIpfsMetadata', () => {
         sourceRequestId: undefined,
         sourceJobDefinitionId: undefined,
         additionalContext: undefined,
+        workstreamId: undefined,
+        templateId: undefined,
+        outputSpec: undefined,
+        lineage: undefined,
         jobDefinitionId: undefined,
         codeMetadata: undefined,
         model: undefined,
         dependencies: undefined,
+        tools: undefined,
+        cyclic: false,
       });
     });
 
@@ -96,7 +102,15 @@ describe('fetchIpfsMetadata', () => {
 
       const result = await fetchIpfsMetadata('Qmhash');
 
-      expect(result).toEqual(metadata);
+      expect(result).toEqual({
+        ...metadata,
+        workstreamId: undefined,
+        templateId: undefined,
+        outputSpec: undefined,
+        lineage: undefined,
+        tools: undefined,
+        cyclic: false,
+      });
     });
 
     it('uses Autonolas gateway by default', async () => {

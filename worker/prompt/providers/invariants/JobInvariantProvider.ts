@@ -22,12 +22,16 @@ import type {
 interface JobBlueprint {
     invariants: Array<{
         id: string;
-        invariant: string;
-        measurement?: string;
+        type: string;
+        condition: string;
+        assessment?: string;
         examples?: {
             do: string[];
             dont: string[];
         };
+        // Legacy fields for backward compatibility
+        invariant?: string;
+        measurement?: string;
     }>;
 }
 
@@ -55,13 +59,38 @@ export class GoalInvariantProvider implements InvariantProvider {
         // Parse the blueprint JSON - fail fast if invalid
         const blueprint = this.parseBlueprint(blueprintStr, ctx.requestId);
 
-        // Map to Invariant format with JOB- prefix (accept GOAL- for backward compat)
-        return blueprint.invariants.map((inv) => ({
-            id: inv.id.startsWith('JOB-') || inv.id.startsWith('GOAL-') ? inv.id : `JOB-${inv.id}`,
-            invariant: inv.invariant || (inv as unknown as { description?: string }).description || '',
-            measurement: inv.measurement,
-            examples: inv.examples,
-        }));
+        // Map to Invariant format - preserve original IDs from template
+        // Template authors should use appropriate prefixes (GOAL-, JOB-, DELEGATE-, etc.)
+        // This ensures measurement IDs match exactly for proper UI rendering
+        return blueprint.invariants.map((inv) => {
+            const id = inv.id;
+            const condition = inv.condition || inv.invariant || (inv as unknown as { description?: string }).description || '';
+            const assessment = inv.assessment || inv.measurement || '';
+
+            // Create the appropriate invariant type based on the type field
+            if (inv.type === 'FLOOR' || inv.type === 'CEILING' || inv.type === 'RANGE') {
+                // For numeric types, we need metric and numeric values
+                // These should be passed through from the blueprint
+                return {
+                    id,
+                    type: inv.type,
+                    metric: (inv as any).metric || '',
+                    min: (inv as any).min,
+                    max: (inv as any).max,
+                    assessment,
+                    examples: inv.examples,
+                } as Invariant;
+            } else {
+                // Default to BOOLEAN type
+                return {
+                    id,
+                    type: 'BOOLEAN' as const,
+                    condition,
+                    assessment,
+                    examples: inv.examples,
+                };
+            }
+        });
     }
 
     /**

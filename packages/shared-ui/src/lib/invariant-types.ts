@@ -107,13 +107,12 @@ export interface InvariantMeasurement {
  */
 export interface StructuredMeasurement {
   invariant_id: string;
-  invariant_type: 'FLOOR' | 'CEILING' | 'RANGE' | 'BOOLEAN' | 'DELEGATED';
+  invariant_type: 'FLOOR' | 'CEILING' | 'RANGE' | 'BOOLEAN';
   score: number | boolean;
   measured_value?: number;
   threshold?: { min?: number; max?: number };
   passed: boolean;
   context: string;
-  delegated_to?: string;
   timestamp?: string;
 }
 

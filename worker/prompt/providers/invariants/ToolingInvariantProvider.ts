@@ -37,10 +37,12 @@ export class ToolingInvariantProvider implements InvariantProvider {
 
         return [{
             id: 'TOOL-BEADS',
-            invariant: 'I use beads (bd CLI) for issue tracking. At start: bd ready --json. During work: claim issues, create discoveries. At end: bd close and commit .beads/issues.jsonl with code.',
+            type: 'BOOLEAN',
+            condition: 'You track work using beads issue tracking, closing issues when complete',
+            assessment: 'Issues relevant to this work are closed. .beads/issues.jsonl reflects completed work and is committed.',
             examples: {
-                do: [`Run 'bd ready --json' at start, 'bd close <id> --reason "Done" --json' at end, commit .beads/issues.jsonl`],
-                dont: ['Create markdown TODO lists instead of using beads'],
+                do: ['Claim relevant issues, close them when done, commit .beads/issues.jsonl'],
+                dont: ['Use markdown TODOs instead of beads', 'Leave issues open after completing work'],
             },
         }];
     }

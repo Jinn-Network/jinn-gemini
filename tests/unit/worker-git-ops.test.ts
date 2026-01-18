@@ -36,7 +36,7 @@ describe('Worker Git Operations', () => {
     }
     try {
       fs.rmSync(repoDir, { recursive: true, force: true });
-    } catch {}
+    } catch { }
   });
 
   it('autoCommitIfNeeded commits pending changes and leaves clean state', async () => {
@@ -93,5 +93,37 @@ describe('Worker Git Operations', () => {
     expect(summaryBlock).toContain('### Execution Summary');
     expect(summaryBlock).toContain('- Added feature.txt for PR workflow');
     expect(summaryBlock).toContain('- Reviewed tests');
+  });
+
+  it('checkoutJobBranch clears build cache directories after checkout', async () => {
+    // Switch back to main first so we can checkout to a new branch
+    // Note: beforeEach creates main as the initial branch and then checks out job/test-branch
+    run('git checkout main', repoDir);
+
+    // Create cache directories that would become stale
+    const nextDir = path.join(repoDir, '.next');
+    const contentlayerDir = path.join(repoDir, '.contentlayer');
+    const turboDir = path.join(repoDir, '.turbo');
+    fs.mkdirSync(nextDir);
+    fs.mkdirSync(contentlayerDir);
+    fs.mkdirSync(turboDir);
+    fs.writeFileSync(path.join(nextDir, 'cache.json'), '{"stale": true}');
+    fs.writeFileSync(path.join(contentlayerDir, 'generated.json'), '{}');
+
+    // Import and call checkoutJobBranch
+    const { checkoutJobBranch } = await import('../../worker/git/branch.js');
+    const metadata: CodeMetadata = {
+      branch: { name: 'job/cache-test-branch', headCommit: '', status: { isDirty: false } },
+      baseBranch: 'main',
+      capturedAt: new Date().toISOString(),
+      jobDefinitionId: 'job-cache-clear-test'
+    };
+
+    await checkoutJobBranch(metadata);
+
+    // Verify cache directories are gone
+    expect(fs.existsSync(nextDir)).toBe(false);
+    expect(fs.existsSync(contentlayerDir)).toBe(false);
+    expect(fs.existsSync(turboDir)).toBe(false);
   });
 });

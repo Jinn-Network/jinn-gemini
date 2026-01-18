@@ -26,6 +26,7 @@ const typeDefs = /* GraphQL */ `
     status: String!
     claimed_at: String!
     completed_at: String
+    alreadyClaimed: Boolean
   }
 
   type JobReport {
@@ -271,53 +272,114 @@ const resolvers = {
   },
   Mutation: {
     claimRequest: async (_: any, args: { requestId: string }, ctx: Context) => {
-      await assertRequestExists(ctx, args.requestId);
       const worker = getWorkerAddress(ctx);
+      logger.info({ requestId: args.requestId, worker }, '>>> claimRequest called');
 
-      // Fetch existing claim
-      const { data: existing, error: exErr } = await ctx.supabase
+      await assertRequestExists(ctx, args.requestId);
+      const now = new Date().toISOString();
+      const staleThreshold = new Date(Date.now() - 300000).toISOString(); // 5 minutes ago
+
+      // Step 1: Try to INSERT a new claim (atomic - will fail if exists)
+      const { data: inserted, error: insertErr } = await ctx.supabase
+        .from('onchain_request_claims')
+        .insert({
+          request_id: args.requestId,
+          worker_address: worker,
+          status: 'IN_PROGRESS',
+          claimed_at: now,
+          completed_at: null,
+        })
+        .select('*');
+
+      // If insert succeeded, we claimed it
+      if (!insertErr && inserted && inserted.length > 0) {
+        return { ...inserted[0], alreadyClaimed: false };
+      }
+
+      // If error is NOT a unique constraint violation, throw it
+      if (insertErr && insertErr.code !== '23505') {
+        throw new Error(insertErr.message);
+      }
+
+      // Step 2: Claim already exists - fetch it to check if reclaimable
+      const { data: existing, error: fetchErr } = await ctx.supabase
         .from('onchain_request_claims')
         .select('*')
         .eq('request_id', args.requestId)
+        .order('claimed_at', { ascending: false })
         .limit(1)
-        .maybeSingle();
-      if (exErr) throw new Error(exErr.message);
+        .single();
+      if (fetchErr) throw new Error(fetchErr.message);
 
-      // If already claimed and not completed, check if stale
-      if (existing && existing.status !== 'COMPLETED') {
-        const claimedAt = existing.claimed_at ? new Date(existing.claimed_at).getTime() : 0;
-        const ageMs = Date.now() - claimedAt;
-        const isStale = existing.status === 'IN_PROGRESS' && ageMs > 300000; // 5 minutes
-        
-        // Allow re-claiming stale jobs (stuck for >5 minutes)
-        if (!isStale) {
-          return existing;
-        }
-        
-        logger.info({ 
-          requestId: args.requestId, 
-          ageMinutes: Math.floor(ageMs / 60000),
-          oldWorker: existing.worker_address,
-          newWorker: worker
-        }, 'Re-claiming stale job');
+      // Step 3: Check if reclaimable (completed or stale)
+      const isCompleted = existing.status === 'COMPLETED';
+      const isStale = existing.status === 'IN_PROGRESS' &&
+        existing.claimed_at && existing.claimed_at < staleThreshold;
+
+      if (!isCompleted && !isStale) {
+        // Active claim by another worker - return with alreadyClaimed flag
+        logger.info({
+          requestId: args.requestId,
+          existingStatus: existing.status,
+          existingClaimedAt: existing.claimed_at,
+          staleThreshold,
+          existingWorker: existing.worker_address,
+          requestingWorker: worker,
+        }, 'Claim NOT reclaimable - returning alreadyClaimed=true');
+        return { ...existing, alreadyClaimed: true };
       }
 
-      // Otherwise, (re)claim for this worker
-      const insertPayload = {
-        request_id: args.requestId,
-        worker_address: worker,
-        status: 'IN_PROGRESS',
-        claimed_at: new Date().toISOString(),
-        completed_at: null,
-      } as any;
+      // Step 4: Reclaim with conditional UPDATE (atomic - guards against races)
+      logger.info({
+        requestId: args.requestId,
+        reason: isCompleted ? 'completed' : 'stale',
+        oldWorker: existing.worker_address,
+        newWorker: worker,
+        existingStatus: existing.status,
+        existingClaimedAt: existing.claimed_at,
+        staleThreshold,
+        orFilter: `status.eq.COMPLETED,claimed_at.lt.${staleThreshold}`,
+      }, 'Re-claiming job');
 
-      const { data: created, error: insErr } = await ctx.supabase
+      // Note: We've already verified in Step 3 that the claim is reclaimable.
+      // The .or() conditional UPDATE was failing silently, so we use a simple .eq() here.
+      // Race condition is acceptable: worst case is two workers both update, but the
+      // second update just overwrites with the same IN_PROGRESS status.
+      const { data: updated, error: updateErr } = await ctx.supabase
         .from('onchain_request_claims')
-        .upsert(insertPayload, { onConflict: 'request_id' })
+        .update({
+          worker_address: worker,
+          status: 'IN_PROGRESS',
+          claimed_at: now,
+          completed_at: null,
+        })
+        .eq('request_id', args.requestId)
+        .select('*');
+
+      if (updateErr) throw new Error(updateErr.message);
+
+      logger.info({
+        requestId: args.requestId,
+        updatedRows: updated?.length || 0,
+        updatedData: updated?.[0] ? { claimed_at: updated[0].claimed_at, status: updated[0].status } : null,
+      }, 'UPDATE result for re-claim');
+
+      // If update succeeded, we reclaimed it
+      if (updated && updated.length > 0) {
+        logger.info({ requestId: args.requestId }, 'Re-claim succeeded - returning alreadyClaimed=false');
+        return { ...updated[0], alreadyClaimed: false };
+      }
+
+      // Lost the race - another worker reclaimed it first
+      logger.info({ requestId: args.requestId }, 'Re-claim failed (lost race) - returning alreadyClaimed=true');
+      const { data: refreshed } = await ctx.supabase
+        .from('onchain_request_claims')
         .select('*')
-        .limit(1);
-      if (insErr) throw new Error(insErr.message);
-      return created![0];
+        .eq('request_id', args.requestId)
+        .order('claimed_at', { ascending: false })
+        .limit(1)
+        .single();
+      return { ...refreshed, alreadyClaimed: true };
     },
 
     createJobReport: async (

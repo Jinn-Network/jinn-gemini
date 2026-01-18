@@ -1,8 +1,10 @@
 {
-  "assertions": [
+  "invariants": [
     {
       "id": "INV-PROD-001",
-      "assertion": "The data service codebase must exist, pass all automated tests, and be running in a production-like environment.",
+      "type": "BOOLEAN",
+      "condition": "You must ensure the data service codebase exists, passes all automated tests, and is running in a production-like environment.",
+      "assessment": "Verify the codebase repository exists with valid structure, confirm all tests pass (CI/CD green), and check the service is deployed and responding to health checks.",
       "examples": {
         "do": [
           "Verify the codebase repository exists and has a valid structure",
@@ -14,12 +16,13 @@
           "Ignore failing tests or missing repositories",
           "Consider a local dev environment as 'production'"
         ]
-      },
-      "commentary": "Base requirement: the software must exist, be verifiable, and be operational to serve its purpose."
+      }
     },
     {
       "id": "INV-X402-001",
-      "assertion": "The service must accept and process data requests via the X402 standard (payment + query).",
+      "type": "BOOLEAN",
+      "condition": "You must ensure the service accepts and processes data requests via the X402 standard (payment + query).",
+      "assessment": "Demonstrate a successful X402 request/response cycle, verify payment processing logic, and confirm API endpoints conform to X402 specifications.",
       "examples": {
         "do": [
           "Demonstrate a successful X402 request/response cycle",
@@ -31,12 +34,13 @@
           "Allow free access where payment is required by the protocol",
           "Fail to validate X402 headers, tokens, or proofs"
         ]
-      },
-      "commentary": "The primary interface for agents to consume data must be X402, enabling the agent economy."
+      }
     },
     {
       "id": "INV-DATA-001",
-      "assertion": "The service must autonomously research the X402 ecosystem and monotonically increase its structured knowledge base.",
+      "type": "BOOLEAN",
+      "condition": "You must autonomously research the X402 ecosystem and monotonically increase the structured knowledge base.",
+      "assessment": "Show evidence of new X402 ecosystem data being added to the database, log active research activities (web searches, chain scanning) and their outcomes, and maintain a growing history of ecosystem state changes.",
       "examples": {
         "do": [
           "Show evidence of new X402 ecosystem data being added to the database",
@@ -48,12 +52,13 @@
           "Delete historical data without a valid compaction reason",
           "Stop researching new ecosystem developments"
         ]
-      },
-      "commentary": "The service is not just a database; it is an active agent that grows its value over time through research."
+      }
     },
     {
       "id": "VERIFICATION-001",
-      "assertion": "All invariants must be verified by concrete evidence (logs, test outputs, live endpoint checks) in the final report.",
+      "type": "BOOLEAN",
+      "condition": "Verify all invariants with concrete evidence (logs, test outputs, live endpoint checks) in the final report.",
+      "assessment": "Include screenshots or log snippets showing successful health checks, link to specific commit hash deployed and verified, and provide transaction hash or log for test X402 payment.",
       "examples": {
         "do": [
           "Include screenshots or log snippets showing successful health checks",
@@ -65,10 +70,7 @@
           "Omit verification steps for any invariant",
           "Use vague language like 'checked successfully' without data"
         ]
-      },
-      "commentary": "Meta-invariant: Trust but verify. This ensures the agent is actually performing the checks and providing proof of state."
+      }
     }
   ]
 }
-
-

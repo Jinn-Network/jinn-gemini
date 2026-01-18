@@ -9,7 +9,8 @@ import { JobGraphView } from '@/components/graph/job-graph-view'
 import { WorkstreamTreeList } from '@/components/workstream-tree-list'
 import { SiteHeader } from '@/components/site-header'
 import { WorkstreamJobDefinitionsList, WorkstreamJobRunsList } from '@/components/workstream-job-lists'
-import { Network, GitBranch, Play, FileCode, FileText } from 'lucide-react'
+import { Network, GitBranch, Play, FileCode, FileText, Heart } from 'lucide-react'
+import { WorkstreamHealth } from '@/components/workstream-health'
 
 interface WorkstreamPageProps {
   params: Promise<{ id: string }>
@@ -144,6 +145,10 @@ export default function WorkstreamPage({ params }: WorkstreamPageProps) {
               <Play className="h-4 w-4" />
               Job Runs {runsCount > 0 && `(${runsCount})`}
             </TabsTrigger>
+            <TabsTrigger value="health" className="gap-2">
+              <Heart className="h-4 w-4" />
+              Health
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="tree" className="mt-0">
@@ -182,10 +187,14 @@ export default function WorkstreamPage({ params }: WorkstreamPageProps) {
           </TabsContent>
 
           <TabsContent value="runs" className="mt-0">
-            <WorkstreamJobRunsList 
+            <WorkstreamJobRunsList
               workstreamId={workstreamId}
               onCountUpdate={setRunsCount}
             />
+          </TabsContent>
+
+          <TabsContent value="health" className="mt-0">
+            <WorkstreamHealth workstreamId={workstreamId} />
           </TabsContent>
         </Tabs>
       </div>

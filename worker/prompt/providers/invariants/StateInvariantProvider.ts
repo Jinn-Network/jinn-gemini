@@ -52,7 +52,9 @@ export class StateInvariantProvider implements InvariantProvider {
 
         return {
             id: 'STATE-PROGRESS',
-            invariant: `Prior work has been completed in this workstream. You MUST NOT repeat this work: ${truncatedSummary}`,
+            type: 'BOOLEAN',
+            condition: `You must not repeat prior work that has been completed in this workstream: ${truncatedSummary}`,
+            assessment: 'Verify that work continues from where prior work left off and does not duplicate completed tasks.',
             examples: {
                 do: ['Continue from where prior work left off, building upon existing progress'],
                 dont: ['Start from scratch ignoring the prior work described above'],
@@ -66,7 +68,9 @@ export class StateInvariantProvider implements InvariantProvider {
 
         return {
             id: 'STATE-PHASES',
-            invariant: `The following phases have been completed and MUST NOT be repeated: ${phaseList}`,
+            type: 'BOOLEAN',
+            condition: `You must not repeat the following completed phases: ${phaseList}`,
+            assessment: 'Verify that completed phases are skipped and work continues after the last completed phase.',
             examples: {
                 do: [`Skip completed phases and continue after: ${lastPhase}`],
                 dont: [`Re-run any of: ${phases.slice(0, 2).join(', ')}`],

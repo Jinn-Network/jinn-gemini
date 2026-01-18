@@ -28,7 +28,7 @@ Blueprints define **what** must be true about the system state after job complet
 **BAD** - Prescribes implementation steps:
 ```json
 {
-  "description": "Agent must call web_search with 'DeFi Llama TVL' then parse the results"
+  "description": "Agent must call google_web_search with 'DeFi Llama TVL' then parse the results"
 }
 ```
 
@@ -113,7 +113,7 @@ Use `GOAL-NNN` format for venture blueprints. System invariants use domain prefi
 **BAD**:
 ```json
 {
-  "assertion": "Must use web_search and create_artifact tools"
+  "assertion": "Must use google_web_search and create_artifact tools"
 }
 ```
 
@@ -191,6 +191,12 @@ The execution system (agent, worker, orchestrator) has **full autonomy** to dete
 - Error recovery strategies
 
 Blueprints constrain **what is acceptable**, not **how to get there**.
+
+### Tool Policy for Templates
+
+- Templates declare a `tools` list with `{ name, required }` annotations.
+- Do **not** include universal tools in template tool lists; universals are injected by the platform.
+- Child jobs may only request tools present in the `tools` list.
 
 ## Job Homomorphism
 
@@ -443,7 +449,7 @@ Before finalizing a blueprint, verify:
 
 ### Style Compliance
 - [ ] No imperative verbs (use, call, execute, run, dispatch)
-- [ ] No tool names (web_search, create_artifact, dispatch_new_job)
+- [ ] No tool names (google_web_search, create_artifact, dispatch_new_job)
 - [ ] No architectural prescriptions (decompose, delegate, parallelize)
 - [ ] All assertions are testable/verifiable
 - [ ] Examples are concrete and specific

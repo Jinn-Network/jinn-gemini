@@ -6,25 +6,14 @@ import { getCurrentJobContext } from './shared/context.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../env/operate-profile.js';
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { buildIpfsPayload } from '../../shared/ipfs-payload-builder.js';
-
-// Blueprint invariant schema - minimal format
-const blueprintInvariantSchema = z.object({
-  id: z.string().describe('Unique identifier for this invariant (e.g., "JOB-001")'),
-  invariant: z.string().min(10).describe('Brief, declarative statement defining the property that must hold'),
-  measurement: z.string().optional().describe('Natural language guidance on how to verify/measure this invariant'),
-  examples: z.object({
-    do: z.array(z.string()).min(1).describe('Positive examples showing correct application'),
-    dont: z.array(z.string()).min(1).describe('Negative examples showing violation or anti-pattern'),
-  }).optional().describe('Two-column guidance with concrete positive and negative examples'),
-});
-
-const blueprintStructureSchema = z.object({
-  invariants: z.array(blueprintInvariantSchema).min(1).describe('Array of invariants defining the job requirements'),
-});
+import { validateInvariantsStrict } from '../../../worker/prompt/invariant-validator.js';
+import { buildAnnotatedTools } from '../../shared/template-tools.js';
+import { blueprintStructureSchema } from '../../shared/blueprint-schema.js';
+import { BASE_UNIVERSAL_TOOLS } from '../../toolPolicy.js';
 
 const dispatchNewJobParamsBase = z.object({
   jobName: z.string().min(1).describe('Name for this job definition'),
-  blueprint: z.string().optional().describe('JSON string containing structured blueprint with invariants array. Each invariant must have: id, invariant. Optional: measurement, examples.'),
+  blueprint: z.string().optional().describe('JSON string containing structured blueprint with invariants array. Each invariant must have: id, type (FLOOR/CEILING/RANGE/BOOLEAN), assessment, and type-specific fields (metric+min for FLOOR, metric+max for CEILING, metric+min+max for RANGE, condition for BOOLEAN). Optional: examples.'),
   model: z.string().optional().describe('Gemini model to use for this job (e.g., "gemini-3-flash-preview", "gemini-2.5-pro"). Defaults to "gemini-3-flash-preview" if not specified.'),
   enabledTools: z.array(z.string()).optional().describe('Array of tool names to enable for this job'),
   message: z.string().optional().describe('Optional message to include in the job request'),
@@ -54,17 +43,46 @@ WHEN NOT TO USE (use dispatch_existing_job instead):
 - Continuing work in an established job context
 
 BLUEPRINT FORMAT (REQUIRED):
-The blueprint must be a JSON string with the following structure:
+The blueprint must be a JSON string with an invariants array. Each invariant has:
+- id: Unique identifier (e.g., "JOB-001")
+- type: One of "FLOOR", "CEILING", "RANGE", or "BOOLEAN"
+- assessment: How to verify/measure this invariant
+- Type-specific fields:
+  - FLOOR: metric (string), min (number) - "metric must be at least min"
+  - CEILING: metric (string), max (number) - "metric must be at most max"
+  - RANGE: metric (string), min (number), max (number) - "metric must be between min and max"
+  - BOOLEAN: condition (string) - "condition must be true"
+
+Example with all four types:
 {
   "invariants": [
     {
-      "id": "JOB-001",
-      "invariant": "Brief declarative statement of requirement",
-      "measurement": "How to verify this is satisfied",
-      "examples": {
-        "do": ["Positive example 1"],
-        "dont": ["Negative example 1"]
-      }
+      "id": "QUAL-001",
+      "type": "FLOOR",
+      "metric": "content_quality_score",
+      "min": 70,
+      "assessment": "Rate 0-100 based on originality and depth"
+    },
+    {
+      "id": "COST-001",
+      "type": "CEILING",
+      "metric": "compute_cost_usd",
+      "max": 20,
+      "assessment": "Sum API costs from telemetry"
+    },
+    {
+      "id": "FREQ-001",
+      "type": "RANGE",
+      "metric": "posts_per_week",
+      "min": 3,
+      "max": 7,
+      "assessment": "Count posts published in last 7 days"
+    },
+    {
+      "id": "BUILD-001",
+      "type": "BOOLEAN",
+      "condition": "You ensure the build passes without errors",
+      "assessment": "Run yarn build and verify exit code is 0"
     }
   ]
 }
@@ -72,10 +90,10 @@ The blueprint must be a JSON string with the following structure:
 INVARIANT SCOPING (CRITICAL):
 When creating child jobs, write NEW invariants specific to that child's responsibility.
 Do NOT copy-paste parent invariants that span multiple concerns.
-Example - If parent invariant is "ship 3 games: Snake, 2048, Minesweeper":
-  - 2048-child: "Implement 2048 tile-merging puzzle with score tracking and win/loss conditions"
-  - Snake-child: "Implement Snake game with growing snake, food collection, and collision detection"
-  - Minesweeper-child: "Implement Minesweeper with mine placement, reveal logic, and flag system"
+Example - If parent has "ship 3 games: Snake, 2048, Minesweeper":
+  - 2048-child: { type: "BOOLEAN", condition: "You implement 2048 tile-merging puzzle with score tracking", assessment: "Verify game loads and tiles merge correctly" }
+  - Snake-child: { type: "BOOLEAN", condition: "You implement Snake with growing snake and collision", assessment: "Verify snake grows when eating food" }
+  - Minesweeper-child: { type: "BOOLEAN", condition: "You implement Minesweeper with mine reveal logic", assessment: "Verify mines trigger game over on click" }
 Each child sees only its own scope, not requirements for sibling work.
 
 PARAMETERS:
@@ -159,6 +177,13 @@ export async function dispatchNewJob(args: unknown) {
     }
 
     const { jobName, blueprint, model, enabledTools: requestedTools, message, dependencies, skipBranch, responseTimeout, inputSchema } = parsed.data;
+    const context = getCurrentJobContext();
+    const requiredTools = Array.isArray(context.requiredTools) ? context.requiredTools : [];
+    const availableTools = Array.isArray(context.availableTools) ? context.availableTools : undefined;
+    const mergedRequestedTools = [
+      ...(requestedTools ?? []),
+      ...requiredTools,
+    ];
 
     if (!blueprint) {
       return {
@@ -170,6 +195,36 @@ export async function dispatchNewJob(args: unknown) {
           }),
         }],
       };
+    }
+
+    if (Array.isArray(availableTools) && availableTools.length > 0) {
+      // Universal tools are always allowed - filter them out before validation
+      const universalSet = new Set(BASE_UNIVERSAL_TOOLS.map(t => t.toLowerCase()));
+      const toolsToValidate = mergedRequestedTools.filter(
+        (tool) => !universalSet.has(String(tool).toLowerCase())
+      );
+
+      const availableSet = new Set(availableTools.map((tool) => tool.toLowerCase()));
+      const disallowedTools = toolsToValidate.filter((tool) => !availableSet.has(String(tool).toLowerCase()));
+      if (disallowedTools.length > 0) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              data: null,
+              meta: {
+                ok: false,
+                code: 'UNAUTHORIZED_TOOLS',
+                message: `enabledTools not allowed by template policy: ${disallowedTools.join(', ')}.`,
+                details: {
+                  disallowedTools,
+                  availableTools,
+                },
+              },
+            }),
+          }],
+        };
+      }
     }
 
     // Validate blueprint structure
@@ -203,6 +258,26 @@ export async function dispatchNewJob(args: unknown) {
               ok: false,
               code: 'INVALID_BLUEPRINT_STRUCTURE',
               message: `blueprint structure is invalid: ${blueprintValidation.error.message}`
+            },
+          }),
+        }],
+      };
+    }
+
+    // Semantic validation using the comprehensive invariant validator
+    // This catches errors like RANGE with min > max
+    try {
+      validateInvariantsStrict(blueprintObj.invariants);
+    } catch (validationError: any) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: {
+              ok: false,
+              code: 'INVALID_INVARIANT_SEMANTICS',
+              message: validationError.message || String(validationError)
             },
           }),
         }],
@@ -263,12 +338,17 @@ export async function dispatchNewJob(args: unknown) {
     // Note: Agents cannot set cyclic or additionalContextOverrides
     let ipfsJsonContents: any[];
     try {
+      const toolPolicy = availableTools && availableTools.length > 0
+        ? { requiredTools, availableTools }
+        : (requiredTools.length > 0 ? { requiredTools, availableTools: requiredTools } : null);
+      const tools = toolPolicy ? buildAnnotatedTools(toolPolicy) : undefined;
       const payloadResult = await buildIpfsPayload({
         blueprint: finalBlueprint,
         jobName,
         jobDefinitionId,
         model,
-        enabledTools: requestedTools,
+        enabledTools: mergedRequestedTools,
+        tools,
         skipBranch,
         dependencies,
         message,
@@ -311,7 +391,7 @@ export async function dispatchNewJob(args: unknown) {
       const result = await marketplaceInteract({
         prompts: [finalBlueprint],
         priorityMech: mechAddress,
-        tools: requestedTools || [],
+        tools: mergedRequestedTools,
         ipfsJsonContents,
         chainConfig,
         keyConfig: { source: 'value', value: privateKey },

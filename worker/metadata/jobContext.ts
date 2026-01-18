@@ -14,6 +14,8 @@ export function setJobContext(params: {
   parentRequestId?: string;
   branchName?: string;
   completedChildRequestIds?: string[];
+  requiredTools?: string[];
+  availableTools?: string[];
 }): void {
   const {
     requestId,
@@ -24,6 +26,8 @@ export function setJobContext(params: {
     parentRequestId,
     branchName,
     completedChildRequestIds,
+    requiredTools,
+    availableTools,
   } = params;
   
   if (requestId) {
@@ -66,6 +70,18 @@ export function setJobContext(params: {
     delete process.env.JINN_COMPLETED_CHILDREN;
     delete process.env.JINN_CHILD_WORK_REVIEWED;
   }
+
+  if (Array.isArray(requiredTools)) {
+    process.env.JINN_REQUIRED_TOOLS = JSON.stringify(requiredTools);
+  } else {
+    delete process.env.JINN_REQUIRED_TOOLS;
+  }
+
+  if (Array.isArray(availableTools)) {
+    process.env.JINN_AVAILABLE_TOOLS = JSON.stringify(availableTools);
+  } else {
+    delete process.env.JINN_AVAILABLE_TOOLS;
+  }
 }
 
 /**
@@ -81,6 +97,8 @@ export function clearJobContext(): void {
   delete process.env.JINN_BRANCH_NAME;
   delete process.env.JINN_COMPLETED_CHILDREN;
   delete process.env.JINN_CHILD_WORK_REVIEWED;
+  delete process.env.JINN_REQUIRED_TOOLS;
+  delete process.env.JINN_AVAILABLE_TOOLS;
 }
 
 /**
@@ -96,6 +114,9 @@ export function snapshotJobContext(): {
   branchName?: string;
   completedChildRequestIds?: string[];
   childWorkReviewed?: string;
+  requiredTools?: string[];
+  availableTools?: string[];
+  inheritedEnv?: string;
 } {
   return {
     requestId: process.env.JINN_REQUEST_ID,
@@ -115,6 +136,25 @@ export function snapshotJobContext(): {
         })()
       : undefined,
     childWorkReviewed: process.env.JINN_CHILD_WORK_REVIEWED,
+    requiredTools: process.env.JINN_REQUIRED_TOOLS
+      ? (() => {
+          try {
+            return JSON.parse(process.env.JINN_REQUIRED_TOOLS as string);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined,
+    availableTools: process.env.JINN_AVAILABLE_TOOLS
+      ? (() => {
+          try {
+            return JSON.parse(process.env.JINN_AVAILABLE_TOOLS as string);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined,
+    inheritedEnv: process.env.JINN_INHERITED_ENV,
   };
 }
 
@@ -131,6 +171,7 @@ export function restoreJobContext(snapshot: {
   branchName?: string;
   completedChildRequestIds?: string[];
   childWorkReviewed?: string;
+  inheritedEnv?: string;
 }): void {
   clearJobContext();
   setJobContext({
@@ -145,5 +186,8 @@ export function restoreJobContext(snapshot: {
   });
   if (snapshot.childWorkReviewed) {
     process.env.JINN_CHILD_WORK_REVIEWED = snapshot.childWorkReviewed;
+  }
+  if (snapshot.inheritedEnv) {
+    process.env.JINN_INHERITED_ENV = snapshot.inheritedEnv;
   }
 }

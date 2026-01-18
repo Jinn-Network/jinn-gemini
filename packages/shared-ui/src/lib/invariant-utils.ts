@@ -15,6 +15,7 @@ import type {
   CeilingInvariant,
   RangeInvariant,
   BooleanInvariant,
+  InvariantWithMeasurement,
 } from './invariant-types';
 
 import {
@@ -50,6 +51,13 @@ export function parseInvariants(blueprintJson: unknown): (Invariant | LegacyInva
  */
 export function hasInvariants(blueprintJson: unknown): boolean {
   return parseInvariants(blueprintJson).length > 0;
+}
+
+/**
+ * Check if invariant is a system (SYS-*) invariant.
+ */
+export function isSystemInvariant(inv: Invariant | LegacyInvariant): boolean {
+  return typeof inv.id === 'string' && inv.id.startsWith('SYS-');
 }
 
 // ============================================================================
@@ -257,6 +265,7 @@ export type MeasurementArtifact = {
 
 /**
  * Type guard for structured measurement format (from create_measurement tool).
+ * Note: DELEGATED type is deprecated and will not match.
  */
 function isStructuredMeasurement(data: unknown): data is StructuredMeasurement {
   if (!data || typeof data !== 'object') return false;
@@ -264,7 +273,7 @@ function isStructuredMeasurement(data: unknown): data is StructuredMeasurement {
   return (
     typeof obj.invariant_id === 'string' &&
     typeof obj.invariant_type === 'string' &&
-    ['FLOOR', 'CEILING', 'RANGE', 'BOOLEAN', 'DELEGATED'].includes(obj.invariant_type as string) &&
+    ['FLOOR', 'CEILING', 'RANGE', 'BOOLEAN'].includes(obj.invariant_type as string) &&
     typeof obj.passed === 'boolean'
   );
 }
@@ -272,6 +281,7 @@ function isStructuredMeasurement(data: unknown): data is StructuredMeasurement {
 /**
  * Parse measurement from artifact contentPreview JSON.
  * Supports both new structured format and legacy format.
+ * Also handles truncated JSON (contentPreview may be limited to 100 chars).
  *
  * @param artifact - Artifact with contentPreview field
  * @returns StructuredMeasurement if valid, null otherwise
@@ -279,44 +289,104 @@ function isStructuredMeasurement(data: unknown): data is StructuredMeasurement {
 export function parseMeasurement(artifact: MeasurementArtifact): StructuredMeasurement | null {
   if (!artifact.contentPreview) return null;
 
+  const content = artifact.contentPreview;
+  const timestamp = artifact.blockTimestamp
+    ? typeof artifact.blockTimestamp === 'bigint'
+      ? new Date(Number(artifact.blockTimestamp) * 1000).toISOString()
+      : artifact.blockTimestamp
+    : undefined;
+
+  // Try to parse as complete JSON first
   try {
-    const data = JSON.parse(artifact.contentPreview);
+    const data = JSON.parse(content);
 
     // Handle new structured format (from create_measurement tool)
     if (isStructuredMeasurement(data)) {
-      return {
-        ...data,
-        timestamp: artifact.blockTimestamp
-          ? typeof artifact.blockTimestamp === 'bigint'
-            ? new Date(Number(artifact.blockTimestamp) * 1000).toISOString()
-            : artifact.blockTimestamp
-          : undefined,
-      };
+      return { ...data, timestamp };
     }
 
     // Handle legacy format (from create_artifact with manual JSON)
     if (data.invariant_id && (data.score !== undefined || data.passed !== undefined)) {
       const score = data.score ?? data.passed;
-      const passed = typeof score === 'boolean' ? score : (score >= 0); // Assume positive scores pass
+      const passed = typeof score === 'boolean' ? score : (score >= 0);
 
       return {
         invariant_id: data.invariant_id,
-        invariant_type: typeof score === 'boolean' ? 'BOOLEAN' : 'FLOOR', // Infer type from score
+        invariant_type: typeof score === 'boolean' ? 'BOOLEAN' : 'FLOOR',
         score,
         passed,
         context: data.context || '',
-        timestamp: artifact.blockTimestamp
-          ? typeof artifact.blockTimestamp === 'bigint'
-            ? new Date(Number(artifact.blockTimestamp) * 1000).toISOString()
-            : artifact.blockTimestamp
-          : undefined,
+        timestamp,
       };
     }
 
     return null;
   } catch {
-    return null;
+    // JSON parsing failed - content is likely truncated
+    // Try to extract fields using regex patterns
+    return parseTruncatedMeasurement(content, timestamp);
   }
+}
+
+/**
+ * Extract measurement data from truncated JSON using regex.
+ * contentPreview is often limited to 100 chars, truncating the JSON.
+ */
+function parseTruncatedMeasurement(
+  content: string,
+  timestamp?: string
+): StructuredMeasurement | null {
+  // Extract invariant_id: "SOME-ID"
+  const idMatch = content.match(/"invariant_id":\s*"([^"]+)"/);
+  if (!idMatch) return null;
+
+  const invariant_id = idMatch[1];
+
+  // Extract invariant_type if present (prefer explicit type over inference)
+  // Note: DELEGATED type is deprecated and will be ignored
+  const typeMatch = content.match(/"invariant_type":\s*"(FLOOR|CEILING|RANGE|BOOLEAN)"/);
+  const explicitType = typeMatch
+    ? (typeMatch[1] as 'FLOOR' | 'CEILING' | 'RANGE' | 'BOOLEAN')
+    : null;
+
+  // Extract score/passed - try multiple patterns
+  // "score": true/false or "score": 85 or "passed": true/false
+  const boolScoreMatch = content.match(/"(?:score|passed)":\s*(true|false)/);
+  const numScoreMatch = content.match(/"(?:score|measured_value)":\s*(\d+(?:\.\d+)?)/);
+
+  let score: boolean | number;
+  let passed: boolean;
+  let invariant_type: 'FLOOR' | 'CEILING' | 'RANGE' | 'BOOLEAN';
+
+  if (boolScoreMatch) {
+    score = boolScoreMatch[1] === 'true';
+    passed = score as boolean;
+    // Use explicit type if available, otherwise infer BOOLEAN
+    invariant_type = explicitType || 'BOOLEAN';
+  } else if (numScoreMatch) {
+    score = parseFloat(numScoreMatch[1]);
+    passed = score >= 0; // Assume positive scores pass
+    // Use explicit type if available, otherwise infer FLOOR
+    invariant_type = explicitType || 'FLOOR';
+  } else {
+    // No score found, assume passed based on context
+    score = true;
+    passed = true;
+    invariant_type = explicitType || 'BOOLEAN';
+  }
+
+  // Try to extract context (likely truncated)
+  const contextMatch = content.match(/"context":\s*"([^"]*)/);
+  const context = contextMatch ? contextMatch[1] : '';
+
+  return {
+    invariant_id,
+    invariant_type,
+    score,
+    passed,
+    context,
+    timestamp,
+  };
 }
 
 /**
@@ -329,4 +399,53 @@ export function toInvariantMeasurement(structured: StructuredMeasurement): Invar
     context: structured.context,
     timestamp: structured.timestamp || new Date().toISOString(),
   };
+}
+
+// ============================================================================
+// Invariant + Measurement Matching
+// ============================================================================
+
+/**
+ * Extended invariant with measurement for display purposes.
+ * Adds convenience fields beyond the base InvariantWithMeasurement type.
+ */
+export interface InvariantWithMeasurementDisplay extends InvariantWithMeasurement {
+  id: string;
+  text: string;
+}
+
+/**
+ * Match invariants with their latest measurements from artifacts.
+ * Artifacts should be sorted descending by timestamp (newest first).
+ */
+export function matchInvariantsWithMeasurements(
+  invariants: (Invariant | LegacyInvariant)[],
+  artifacts: MeasurementArtifact[]
+): InvariantWithMeasurementDisplay[] {
+  // Parse all measurements from artifacts
+  const measurements = new Map<string, InvariantMeasurement>();
+  for (const artifact of artifacts) {
+    const structured = parseMeasurement(artifact);
+    if (structured) {
+      // Keep the first (latest) measurement for each invariant
+      if (!measurements.has(structured.invariant_id)) {
+        measurements.set(structured.invariant_id, toInvariantMeasurement(structured));
+      }
+    }
+  }
+
+  const displayInvariants = invariants.filter(inv => !isSystemInvariant(inv));
+
+  // Match each invariant with its measurement
+  return displayInvariants.map(inv => {
+    const measurement = measurements.get(inv.id);
+    const status = determineHealthStatus(inv, measurement);
+    return {
+      id: inv.id,
+      invariant: inv,
+      text: getInvariantDisplayText(inv),
+      measurement,
+      status
+    };
+  });
 }

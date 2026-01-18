@@ -55,7 +55,6 @@ describe('Control API Client', () => {
         request_id: '0xREQ123',
         status: 'IN_PROGRESS',
         claimed_at: '2025-01-01T00:00:00.000Z',
-        alreadyClaimed: false
       });
     });
 
@@ -160,7 +159,7 @@ describe('Control API Client', () => {
 
       expect(postJson).toHaveBeenCalledTimes(3); // 2 failures + 1 success
       expect(result.request_id).toBe('0xREQ123');
-      expect(result.alreadyClaimed).toBe(false);
+      expect(result.alreadyClaimed).toBeFalsy();
     });
 
     it('retries up to 3 attempts', async () => {
@@ -273,7 +272,7 @@ describe('Control API Client', () => {
       expect(result.claimed_at).toBe(expectedTime);
     });
 
-    it('returns alreadyClaimed=false for successful fresh claims', async () => {
+    it('returns alreadyClaimed falsy for successful fresh claims', async () => {
       const mockResponse = {
         data: {
           claimRequest: {
@@ -288,7 +287,7 @@ describe('Control API Client', () => {
 
       const result = await claimRequest('0xREQ123');
 
-      expect(result.alreadyClaimed).toBe(false);
+      expect(result.alreadyClaimed).toBeFalsy();
     });
 
     it('includes alreadyClaimed=true when claim error detected', async () => {

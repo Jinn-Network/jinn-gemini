@@ -36,6 +36,7 @@ import {
 } from "./pricing.js";
 import { buildJobBranchName, type CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
 import { deepSubstitute, buildBlueprintFromTemplate as sharedBuildBlueprint } from '../../scripts/shared/template-substitution.js';
+import { buildAnnotatedTools, parseAnnotatedTools } from '../../gemini-agent/shared/template-tools.js';
 
 // Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
 interface BranchSnapshot {
@@ -107,6 +108,22 @@ interface PonderJobTemplate {
   status: string;
 }
 
+function parseTemplateToolPolicy(template: PonderJobTemplate): {
+  requiredTools: string[];
+  availableTools: string[];
+} {
+  if (!template.blueprint) {
+    return { requiredTools: [], availableTools: [] };
+  }
+    try {
+      const parsed = JSON.parse(template.blueprint);
+    const tools = parsed?.templateMeta?.tools ?? parsed?.tools;
+    return parseAnnotatedTools(tools);
+    } catch {
+      // Ignore malformed blueprint tool metadata
+    return { requiredTools: [], availableTools: [] };
+  }
+}
 /**
  * Query Ponder GraphQL for job templates
  */
@@ -375,8 +392,26 @@ app.post("/templates/:id/execute", async (c) => {
     body = {};
   }
 
-  const enabledTools = template.enabledTools || [];
-
+  const { requiredTools, availableTools } = parseTemplateToolPolicy(template);
+  if (requiredTools.length === 0 && availableTools.length === 0) {
+    return c.json({
+      error: "Template tool policy missing",
+      details: "Template blueprint must include a tools list with required annotations.",
+    }, 400);
+  }
+  const enabledTools = requiredTools.length > 0 ? requiredTools : availableTools;
+  if (availableTools.length > 0) {
+    const availableSet = new Set(availableTools.map((tool) => tool.toLowerCase()));
+    const disallowedRequired = requiredTools.filter((tool) => !availableSet.has(String(tool).toLowerCase()));
+    if (disallowedRequired.length > 0) {
+      return c.json({
+        error: "Template has invalid tool policy",
+        details: `requiredTools must be a subset of availableTools. Invalid: ${disallowedRequired.join(', ')}.`,
+        invalidTools: disallowedRequired,
+        availableTools,
+      }, 400);
+    }
+  }
   // Compute estimated cost (from template price or historical data)
   const estimatedCost = template.priceWei ||
     await computeTemplatePrice(ponderUrl, template.canonicalJobDefinitionId);
@@ -439,11 +474,26 @@ app.post("/templates/:id/execute", async (c) => {
       additionalContext.budgetCap = body.callerBudget;
       additionalContext.estimatedCost = estimatedCost;
     }
-    // Pass env vars from input if provided
-    if (enrichedInput.env && typeof enrichedInput.env === 'object') {
-      additionalContext.env = enrichedInput.env;
+    // Extract env vars from inputSchema.envVar mappings (like launch_workstream.ts)
+    // This maps input fields (e.g., umamiWebsiteId) to env vars (e.g., UMAMI_WEBSITE_ID)
+    const extractedEnv: Record<string, string> = {};
+    if (inputSchema.properties) {
+      for (const [field, spec] of Object.entries(inputSchema.properties)) {
+        const fieldSpec = spec as { envVar?: string };
+        if (fieldSpec.envVar && enrichedInput[field] !== undefined) {
+          extractedEnv[fieldSpec.envVar] = String(enrichedInput[field]);
+        }
+      }
+    }
+    // Merge: extracted envVars first, then explicit enrichedInput.env (takes precedence)
+    if (Object.keys(extractedEnv).length > 0 || (enrichedInput.env && typeof enrichedInput.env === 'object')) {
+      additionalContext.env = {
+        ...extractedEnv,
+        ...(enrichedInput.env && typeof enrichedInput.env === 'object' ? enrichedInput.env : {}),
+      };
     }
 
+    const tools = buildAnnotatedTools({ requiredTools, availableTools });
     const result = await marketplaceInteract({
       prompts: [JSON.stringify({ invariants })],
       priorityMech: mechAddress,
@@ -458,6 +508,7 @@ app.post("/templates/:id/execute", async (c) => {
         templateId: template.id,
         templateVersion: "1.0.0",
         enabledTools,
+        ...(tools.length > 0 ? { tools } : {}),
         // OutputSpec passthrough: include in dispatch so worker can pass through to delivery
         ...(template.outputSpec && { outputSpec: template.outputSpec }),
         // InputSchema for default value resolution

@@ -71,6 +71,26 @@ Templates can define fields with `"default": "$provision"` in their inputSchema.
 - `blog_get_pageviews` - Time series data
 - `blog_get_performance_summary` - Combined summary for AI analysis
 
+### Blueprint envVar Mapping
+
+Templates can map input fields to environment variables using the `envVar` property in `inputSchema`:
+
+```json
+"umamiWebsiteId": {
+  "type": "string",
+  "description": "Umami analytics website ID",
+  "default": "$provision",
+  "envVar": "UMAMI_WEBSITE_ID"
+}
+```
+
+When a user provides `umamiWebsiteId` (or it's auto-provisioned), `launch_workstream.ts` automatically:
+1. Extracts the value
+2. Maps it to `UMAMI_WEBSITE_ID`
+3. Passes via `additionalContextOverrides.env` to the job
+
+This allows analytics tools in child jobs to access the website ID without manual configuration. Child jobs inherit these env vars via `JINN_INHERITED_ENV`.
+
 ### Template Invariants
 
 The blog-growth-template defines goals that agents work toward:
@@ -113,19 +133,44 @@ yarn tsx scripts/product/provision-blog.ts \
 
 ## Environment Variables
 
-### Gateway (services/x402-gateway)
-Required for $provision to work on deployed gateway:
-```
-GITHUB_TOKEN=ghp_...
-RAILWAY_API_TOKEN=...
-BLOG_RAILWAY_PROJECT_ID=...    # Note: NOT RAILWAY_PROJECT_ID (Railway overrides that)
-UMAMI_HOST=https://...
-UMAMI_USERNAME=admin
-UMAMI_PASSWORD=...
-```
+### Gateway Provisioning (services/x402-gateway)
+
+Required for `$provision` to auto-create blog infrastructure:
+
+| Variable | Description |
+|----------|-------------|
+| `GITHUB_TOKEN` | GitHub PAT for repo creation |
+| `RAILWAY_API_TOKEN` | Railway API token |
+| `BLOG_RAILWAY_PROJECT_ID` | Railway project ID (NOT `RAILWAY_PROJECT_ID` - Railway overrides that) |
+| `UMAMI_HOST` | Umami server URL (e.g., `https://analytics.jinn.network`) |
+| `UMAMI_USERNAME` | Umami login username |
+| `UMAMI_PASSWORD` | Umami login password |
+
+### Provisioned Blog Service (Railway)
+
+These are **automatically set** on the Railway blog service during provisioning:
+
+| Variable | Source | Purpose |
+|----------|--------|---------|
+| `NEXT_PUBLIC_UMAMI_ID` | `provisioned.umami.websiteId` | Website ID for client-side tracking |
+| `NEXT_PUBLIC_UMAMI_SRC` | `https://${UMAMI_HOST}/script.js` | Umami script URL for client-side |
+
+### Analytics Tools (MCP)
+
+Required for blog analytics tools (`blog_get_stats`, `blog_get_top_pages`, etc.):
+
+| Variable | Source |
+|----------|--------|
+| `UMAMI_HOST` | From `.env` |
+| `UMAMI_USERNAME` | From `.env` |
+| `UMAMI_PASSWORD` | From `.env` |
+| `UMAMI_WEBSITE_ID` | From template input via `envVar` mapping (NOT from `.env`) |
+
+**Note:** Publishing tools (`blog_create_post`, etc.) only require `CODE_METADATA_REPO_ROOT`.
 
 ### Local Development
-Same variables in `.env` file at repo root.
+
+Same variables in `.env` file at repo root. See `.env.template` for the full list.
 
 ## Customer Registry
 

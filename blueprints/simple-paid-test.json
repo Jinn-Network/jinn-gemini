@@ -37,10 +37,12 @@
       }
     ]
   },
-  "assertions": [
+  "invariants": [
     {
       "id": "ANSWER-Q1",
-      "assertion": "Answer the question: What is the most important concept to understand about {{topic}}? Keep the answer to 2-3 sentences maximum.",
+      "type": "BOOLEAN",
+      "condition": "Answer the question: What is the most important concept to understand about {{topic}}? Keep the answer to 2-3 sentences maximum.",
+      "assessment": "Verify the answer is 2-3 sentences, focuses on a single most important concept, and uses clear language without delegation.",
       "examples": {
         "do": [
           "Provide a direct, concise answer",
@@ -52,12 +54,13 @@
           "Write more than 3 sentences",
           "List multiple concepts instead of the most important one"
         ]
-      },
-      "commentary": "Direct execution required. No delegation."
+      }
     },
     {
       "id": "ANSWER-Q2",
-      "assertion": "Answer the question: What is one common misconception about {{topic}}? Keep the answer to 2-3 sentences maximum.",
+      "type": "BOOLEAN",
+      "condition": "Answer the question: What is one common misconception about {{topic}}? Keep the answer to 2-3 sentences maximum.",
+      "assessment": "Verify the answer identifies a specific common misconception, briefly explains why it's wrong, and stays within 2-3 sentences without delegation.",
       "examples": {
         "do": [
           "Identify a specific, common misconception",
@@ -69,12 +72,13 @@
           "List multiple misconceptions",
           "Write an essay"
         ]
-      },
-      "commentary": "Direct execution required. No delegation."
+      }
     },
     {
       "id": "SUMMARY",
-      "assertion": "Provide a 1-sentence summary that captures the essence of the topic based on your two answers.",
+      "type": "BOOLEAN",
+      "condition": "Provide a 1-sentence summary that captures the essence of the topic based on your two answers.",
+      "assessment": "Verify exactly one sentence is provided that synthesizes the key insight from both answers.",
       "examples": {
         "do": [
           "Write exactly one sentence",
@@ -84,12 +88,13 @@
           "Write multiple sentences",
           "Repeat the answers verbatim"
         ]
-      },
-      "commentary": "Synthesis of the two answers into a single takeaway."
+      }
     },
     {
       "id": "OUTPUT-FORMAT",
-      "assertion": "Structure the final output as JSON with the schema: { result: { answers: [string, string], summary: string } }",
+      "type": "BOOLEAN",
+      "condition": "Structure the final output as JSON with the schema: { result: { answers: [string, string], summary: string } }",
+      "assessment": "Verify the output is valid JSON matching the schema with Q1 answer in answers[0] and Q2 answer in answers[1].",
       "examples": {
         "do": [
           "Return valid JSON matching the schema",
@@ -99,8 +104,7 @@
           "Return plain text",
           "Use a different JSON structure"
         ]
-      },
-      "commentary": "OutputSpec extraction depends on this exact structure."
+      }
     }
   ],
   "enabledTools": ["openai-gpt-4o"]

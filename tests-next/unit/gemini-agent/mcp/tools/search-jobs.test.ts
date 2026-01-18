@@ -8,7 +8,7 @@
  * Coverage Target: 100% of search logic
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { searchJobs } from '../../../../../gemini-agent/mcp/tools/search-jobs.js';
 
 // Mock dependencies
@@ -28,14 +28,49 @@ vi.mock('../../../../../gemini-agent/mcp/tools/shared/context-management.js', ()
   decodeCursor: vi.fn((cursor: any) => cursor ? { offset: 10 } : { offset: 0 }),
 }));
 
+vi.mock('../../../../../gemini-agent/mcp/tools/shared/context.js', () => ({
+  getCurrentJobContext: vi.fn(() => ({
+    workstreamId: null, // Default to null (global search) for existing tests
+    jobId: null,
+    jobDefinitionId: null,
+    jobName: null,
+    threadId: null,
+    requestId: null,
+    mechAddress: null,
+    baseBranch: null,
+    parentRequestId: null,
+    branchName: null,
+    requiredTools: null,
+    availableTools: null,
+  })),
+}));
+
+vi.mock('../../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+  getPonderGraphqlUrl: vi.fn(() => {
+    if (process.env.PONDER_GRAPHQL_URL) {
+      return process.env.PONDER_GRAPHQL_URL;
+    }
+    if (process.env.PONDER_PORT) {
+      return `http://localhost:${process.env.PONDER_PORT}/graphql`;
+    }
+    return 'http://localhost:42069/graphql';
+  }),
+  getPonderPort: vi.fn(() => process.env.PONDER_PORT ? parseInt(process.env.PONDER_PORT) : 42069),
+}));
+
 import fetch from 'cross-fetch';
 import { composeSinglePageResponse, decodeCursor } from '../../../../../gemini-agent/mcp/tools/shared/context-management.js';
+import { getCurrentJobContext } from '../../../../../gemini-agent/mcp/tools/shared/context.js';
 
 describe('searchJobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.PONDER_GRAPHQL_URL;
     delete process.env.PONDER_PORT;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe('validation', () => {
@@ -149,7 +184,7 @@ describe('searchJobs', () => {
     });
 
     it('uses correct GraphQL endpoint from env', async () => {
-      process.env.PONDER_GRAPHQL_URL = 'http://custom:9999/graphql';
+      vi.stubEnv('PONDER_GRAPHQL_URL', 'http://custom:9999/graphql');
 
       (fetch as any).mockResolvedValue({
         json: async () => ({ data: { jobDefinitions: { items: [] } } }),
@@ -181,7 +216,7 @@ describe('searchJobs', () => {
     });
 
     it('uses PONDER_PORT env variable', async () => {
-      process.env.PONDER_PORT = '8080';
+      vi.stubEnv('PONDER_PORT', '8080');
 
       (fetch as any).mockResolvedValue({
         json: async () => ({ data: { jobDefinitions: { items: [] } } }),
@@ -337,6 +372,7 @@ describe('searchJobs', () => {
             query: 'test',
             include_requests: true,
             max_requests_per_job: 15,
+            workstreamId: null, // From mocked context
           },
         })
       );
@@ -438,6 +474,79 @@ describe('searchJobs', () => {
       expect(response.meta.ok).toBe(false);
       expect(response.meta.code).toBe('UNEXPECTED_ERROR');
       expect(response.meta.message).toBe('String error');
+    });
+  });
+
+  describe('workstream filtering', () => {
+    it('filters by workstreamId when context provides one', async () => {
+      const testWorkstreamId = '0xworkstream123';
+      (getCurrentJobContext as any).mockReturnValue({
+        workstreamId: testWorkstreamId,
+        jobId: null,
+        jobDefinitionId: null,
+      });
+
+      (fetch as any).mockResolvedValue({
+        json: async () => ({ data: { jobDefinitions: { items: [] } } }),
+      });
+
+      const params = { query: 'test', include_requests: false };
+
+      await searchJobs(params);
+
+      const call = (fetch as any).mock.calls[0];
+      const body = JSON.parse(call[1].body);
+
+      expect(body.query).toContain('workstreamId: $workstreamId');
+      expect(body.variables.workstreamId).toBe(testWorkstreamId);
+    });
+
+    it('does not filter by workstreamId when context has none', async () => {
+      (getCurrentJobContext as any).mockReturnValue({
+        workstreamId: null,
+        jobId: null,
+        jobDefinitionId: null,
+      });
+
+      (fetch as any).mockResolvedValue({
+        json: async () => ({ data: { jobDefinitions: { items: [] } } }),
+      });
+
+      const params = { query: 'test', include_requests: false };
+
+      await searchJobs(params);
+
+      const call = (fetch as any).mock.calls[0];
+      const body = JSON.parse(call[1].body);
+
+      expect(body.query).not.toContain('workstreamId: $workstreamId');
+      expect(body.variables.workstreamId).toBeUndefined();
+    });
+
+    it('includes workstreamId in response meta', async () => {
+      const testWorkstreamId = '0xworkstream456';
+      (getCurrentJobContext as any).mockReturnValue({
+        workstreamId: testWorkstreamId,
+        jobId: null,
+        jobDefinitionId: null,
+      });
+
+      (fetch as any).mockResolvedValue({
+        json: async () => ({ data: { jobDefinitions: { items: [] } } }),
+      });
+
+      const params = { query: 'test', include_requests: false };
+
+      await searchJobs(params);
+
+      expect(composeSinglePageResponse).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          requestedMeta: expect.objectContaining({
+            workstreamId: testWorkstreamId,
+          }),
+        })
+      );
     });
   });
 });
