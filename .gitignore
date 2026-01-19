@@ -251,3 +251,6 @@ code-resources/olas-lst/
 
 # External code resources
 code-resources/
+
+# Auto Claude data directory
+.auto-claude/

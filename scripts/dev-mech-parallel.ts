@@ -8,11 +8,42 @@
  * Usage:
  *   yarn dev:mech:parallel --workers=3 --workstream=0x...
  *   yarn dev:mech:parallel -w 3 -s 0x... --runs=10
+ *   yarn dev:mech:parallel -w 2 -s 0x... --no-fresh  # Keep existing clones
  */
 
 import { spawn, ChildProcess } from 'child_process';
+import { rmSync, existsSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+
+/**
+ * Get the base directory for worker clones
+ * Matches the logic in shared/repo_utils.ts
+ */
+function getWorkerClonesBaseDir(): string {
+  const baseDir = process.env.JINN_WORKSPACE_DIR || '~/jinn-repos';
+  const expandedBase = baseDir.startsWith('~')
+    ? join(homedir(), baseDir.slice(1))
+    : baseDir;
+  return join(expandedBase, 'workers');
+}
+
+/**
+ * Delete all worker clone directories to ensure fresh state
+ */
+function cleanWorkerClones(workerCount: number): void {
+  const baseDir = getWorkerClonesBaseDir();
+  
+  for (let i = 1; i <= workerCount; i++) {
+    const workerDir = join(baseDir, `worker-${i}`);
+    if (existsSync(workerDir)) {
+      console.log(`[cleanup] Removing ${workerDir}`);
+      rmSync(workerDir, { recursive: true, force: true });
+    }
+  }
+}
 
 async function main() {
   const argv = await yargs(hideBin(process.argv))
@@ -36,13 +67,26 @@ async function main() {
       type: 'boolean',
       description: 'Exit after processing one job per worker',
     })
+    .option('fresh', {
+      type: 'boolean',
+      default: true,
+      description: 'Delete worker clones before starting (default: true)',
+    })
     .example('$0 -w 3 -s 0x123...', 'Run 3 workers on workstream 0x123...')
     .example('$0 -w 2 -s 0x123... --runs=5', 'Run 2 workers, 5 jobs each')
+    .example('$0 -w 2 -s 0x123... --no-fresh', 'Keep existing clones')
     .help()
     .parse();
 
   const children: ChildProcess[] = [];
   const workerCount = argv.workers;
+
+  // Clean worker clones if --fresh (default)
+  if (argv.fresh) {
+    console.log('Cleaning worker clone directories for fresh start...');
+    cleanWorkerClones(workerCount);
+    console.log('');
+  }
 
   console.log(`Starting ${workerCount} parallel workers on workstream ${argv.workstream.slice(0, 10)}...`);
   console.log('Press Ctrl+C to stop all workers\n');

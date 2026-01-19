@@ -54,6 +54,11 @@ export interface BuildIpfsPayloadOptions {
     cyclic?: boolean;
 
     /**
+     * Explicit workstream override for human-initiated dispatches.
+     */
+    workstreamId?: string;
+
+    /**
      * Additional context overrides for multi-tenant products.
      * Only available to human-initiated dispatches, not agent tools.
      * 
@@ -100,6 +105,7 @@ export async function buildIpfsPayload(
         dependencies,
         message,
         cyclic = false,
+        workstreamId,
         additionalContextOverrides,
         inputSchema,
     } = options;
@@ -115,7 +121,11 @@ export async function buildIpfsPayload(
     const lineageContext: Record<string, any> = {};
     if (context.requestId) lineageContext.sourceRequestId = context.requestId;
     if (context.jobDefinitionId) lineageContext.sourceJobDefinitionId = context.jobDefinitionId;
-    if (context.workstreamId) lineageContext.workstreamId = context.workstreamId;
+    if (workstreamId) {
+        lineageContext.workstreamId = workstreamId;
+    } else if (context.workstreamId) {
+        lineageContext.workstreamId = context.workstreamId;
+    }
 
     // Fetch job hierarchy for additionalContext
     const jobContext = await getJobContextForDispatch(jobDefinitionId, 3);

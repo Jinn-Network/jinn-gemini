@@ -458,7 +458,15 @@ export async function processOnce(
           }
         }
 
-        if (finalStatus?.status === 'COMPLETED') {
+        const hasAgentOutput = Boolean(result.output && result.output.trim().length > 0);
+        const hasToolCalls = Boolean(
+          (result.telemetry?.toolCalls && result.telemetry.toolCalls.length > 0) ||
+          (parsed.telemetry?.toolCalls && parsed.telemetry.toolCalls.length > 0)
+        );
+        const hasPartialOutput = Boolean(parsed.telemetry?.raw?.partialOutput);
+        const agentActuallyRan = hasAgentOutput || hasToolCalls || hasPartialOutput;
+
+        if (finalStatus?.status === 'COMPLETED' && agentActuallyRan) {
           workerLogger.warn(
             { jobName: metadata?.jobName, requestId: target.id },
             'Gemini CLI transport failed after agent completed; accepting completed result',
@@ -482,6 +490,11 @@ export async function processOnce(
           }
 
           error = null;
+        } else if (finalStatus?.status === 'COMPLETED' && !agentActuallyRan) {
+          workerLogger.warn(
+            { jobName: metadata?.jobName, requestId: target.id },
+            'Gemini CLI transport failed with no agent execution evidence; rejecting COMPLETED status',
+          );
         }
       }
     }

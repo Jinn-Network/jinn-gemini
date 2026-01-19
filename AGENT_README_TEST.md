@@ -458,6 +458,19 @@ When no code metadata is present (pure research/analysis jobs), the system autom
 
 This ensures artifact-only agents cannot attempt code modifications and focus solely on research, analysis, and artifact creation.
 
+### 9. Beads Lock File Blocks Branch Checkout
+**Issue:** `git checkout` fails if a worker repo has a dirty `.beads/daemon.lock`, causing job runs to fail before execution.  
+**Solution:** Remove stray lock files in worker clones or disable beads/hooks for the repo; keep worker repos clean before checkout.
+
+### 52. Transport Error Should Not Auto-Complete Jobs (2026-01-18)
+**Issue:** Jobs marked COMPLETED when Gemini CLI crashes, because status inference sees old children delivered.  
+**Root Cause:** Transport error recovery accepted COMPLETED from `inferJobStatus` without verifying agent actually ran.  
+**Fix:** Only accept COMPLETED if there's evidence of execution (output, tool calls, or partial output).
+
+### 53. Workstream Overrides Must Be Explicit in IPFS Payloads (2026-01-18)
+**Issue:** Redispatch scripts attempted to preserve `workstreamId`, but the payload builder dropped the value when run outside an agent context, creating a new workstream.  
+**Fix:** Accept `workstreamId` in `buildIpfsPayload` and include it in the payload when provided.
+
 ### 9. Job Status from Ponder
 **Architecture:** Job status comes from `job_definition.lastStatus` field in Ponder (extracted from delivery payloads)  
 **Never Infer:** Don't check individual requests to guess status - Ponder already has the correct value  
@@ -1023,6 +1036,10 @@ Without `codeMetadata`, the worker treats the job as artifact-only (`isCodingJob
 **Issue:** `.beads/daemon.lock` and `.beads/metadata.json` are local runtime artifacts and should not be tracked.
 **Prevention:**
 - Add them to `.gitignore` and keep them untracked.
+
+### 54. Worker Auto-Adds `.beads/beads.db` to Job Branches (2026-01-18)
+**Issue:** Worker repo setup can auto-add `.beads/beads.db` to `.gitignore` and commit it on job branches, reintroducing beads references.
+**Prevention:** Disable beads-related repo setup for workstreams that must remain bead-free; scrub job branches if any `.beads` entries appear.
 ---
 
 ## Test Infrastructure Gotchas
