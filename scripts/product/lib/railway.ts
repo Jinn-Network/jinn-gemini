@@ -45,6 +45,85 @@ export async function createRailwayService(
         throw new Error('RAILWAY_PROJECT_ID environment variable is required');
     }
 
+    // Check if service already exists
+    const listServicesQuery = `
+    query GetProjectServices($projectId: String!) {
+      project(id: $projectId) {
+        services {
+          edges {
+            node {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+  `;
+
+    const listResponse = await fetch(RAILWAY_API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+            query: listServicesQuery,
+            variables: { projectId },
+        }),
+    });
+
+    const listResult = await listResponse.json();
+    const services = listResult.data?.project?.services?.edges || [];
+    const existingService = services.find((s: any) => s.node.name === serviceName);
+
+    if (existingService) {
+        console.log(`Railway service ${serviceName} already exists, using existing`);
+        const serviceId = existingService.node.id;
+
+        // Get the domain for the existing service
+        const domainQuery = `
+        query GetServiceDomains($projectId: String!, $serviceId: String!) {
+          project(id: $projectId) {
+            environments {
+              edges {
+                node {
+                  id
+                  name
+                  serviceDomains(serviceId: $serviceId) {
+                    domain
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+        const domainResponse = await fetch(RAILWAY_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                query: domainQuery,
+                variables: { projectId, serviceId },
+            }),
+        });
+
+        const domainResult = await domainResponse.json();
+        const environments = domainResult.data?.project?.environments?.edges || [];
+        const prodEnv = environments.find((e: any) => e.node.name === 'production') || environments[0];
+        const existingDomain = prodEnv?.node?.serviceDomains?.[0]?.domain || domain;
+
+        return {
+            serviceId,
+            domain: existingDomain,
+            projectId,
+        };
+    }
+
     // Create service
     const createServiceMutation = `
     mutation ServiceCreate($input: ServiceCreateInput!) {

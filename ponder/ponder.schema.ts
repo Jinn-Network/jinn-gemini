@@ -15,6 +15,7 @@ export const jobDefinition = onchainTable(
     createdAt: t.bigint(),
     lastInteraction: t.bigint(),
     lastStatus: t.text(),
+    latestStatusUpdate: t.text(),
   }),
   (table) => ({
     nameIdx: index().on(table.name),
@@ -75,6 +76,7 @@ export const delivery = onchainTable(
     transactionHash: t.text().notNull(),
     blockNumber: t.bigint().notNull(),
     blockTimestamp: t.bigint().notNull(),
+    jobInstanceStatusUpdate: t.text(),
   }),
   (table) => ({
     ts: index().on(table.blockTimestamp),

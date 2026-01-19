@@ -53,6 +53,7 @@ interface JobTelemetry {
 interface AgentResult {
   output: string;
   structuredSummary?: string;
+  jobInstanceStatusUpdate?: string;
   telemetry: JobTelemetry;
 }
 
@@ -66,6 +67,7 @@ export class Agent {
   private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
   private cachedToolPolicy: ToolPolicyResult | null = null;
   private isCodingJob: boolean;
+  private onStatusUpdate?: (status: string) => void;
 
   // Stdout protection limits (configurable via environment variables)
   private readonly MAX_STDOUT_SIZE = parseInt(process.env.AGENT_MAX_STDOUT_SIZE || '5242880'); // 5MB default
@@ -82,11 +84,12 @@ export class Agent {
     enabledTools: string[],
     jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null },
     codeWorkspace?: string | null,
-    options?: { isCodingJob?: boolean }
+    options?: { isCodingJob?: boolean; onStatusUpdate?: (status: string) => void }
   ) {
     this.model = model;
     this.enabledTools = enabledTools || [];
     this.jobContext = jobContext;
+    this.onStatusUpdate = options?.onStatusUpdate;
 
     // Determine if this is a coding job
     // Primary source: explicit option, fallback to inferring from codeWorkspace
@@ -219,7 +222,10 @@ export class Agent {
       // Extract structured summary from output (Phase 4)
       const structuredSummary = extractStructuredSummary(output) ?? undefined;
 
-      return { output, structuredSummary, telemetry };
+      // Extract job instance status update (Phase 5)
+      const jobInstanceStatusUpdate = extractJobInstanceStatusUpdate(output) ?? undefined;
+
+      return { output, structuredSummary, jobInstanceStatusUpdate, telemetry };
     } catch (error) {
       // Preserve telemetry if the thrown error already includes it (e.g., from non-zero exit path)
       const nestedError = (error as any)?.error ?? error;
@@ -537,10 +543,24 @@ export class Agent {
               consecutiveRepeatCount = 0;
             }
 
-            // Console logging (existing logic)
-            const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
-            agentLogger.output(truncatedLine);
           }
+
+          // Detect TaskStatus updates in the output stream
+          if (this.onStatusUpdate) {
+            // Regex to capture "TaskStatus": "Value" or TaskStatus: "Value" from tool calls
+            // Matches both JSON style and potentially log style
+            const statusMatch = line.match(/"?TaskStatus"?\s*[:=]\s*"([^"]+)"/);
+            if (statusMatch && statusMatch[1]) {
+              const status = statusMatch[1];
+              // Simple debounce/dedupe is handled by the caller or we can do it here if needed
+              // For now, emit every detection
+              this.onStatusUpdate(status);
+            }
+          }
+
+          // Console logging (existing logic)
+          const truncatedLine = line.length > 200 ? line.substring(0, 200) + '...' : line;
+          agentLogger.output(truncatedLine);
         }
 
         // Add chunk to stdout if not terminated
@@ -1182,4 +1202,48 @@ export function extractStructuredSummary(output: string): string | null {
 
   // Fallback: Last 1200 chars (current behavior)
   return output.slice(-1200);
+}
+
+/**
+ * Extract job instance status update from agent output
+ * Looks for explicit marker or infers from final lines
+ * Constrained to 144 characters
+ */
+export function extractJobInstanceStatusUpdate(output: string): string | null {
+  if (!output || output.length === 0) {
+    return null;
+  }
+
+  const MAX_LENGTH = 144;
+  let status: string | null = null;
+  let lastMatchIndex = -1;
+
+  // Helper to update status if match is found later in the output
+  const updateIfLater = (match: RegExpMatchArray | null) => {
+    if (match && match.index !== undefined && match.index > lastMatchIndex) {
+      status = match[1];
+      lastMatchIndex = match.index;
+    }
+  };
+
+  // 1. Look for explicit text markers (Status Update: ...)
+  const textMatches = output.matchAll(/(?:\*\*|#+\s*)?Status Update:?(?:\*\*)?\s*(.+?)(?:\n|$)/gi);
+  for (const match of textMatches) {
+    updateIfLater(match);
+  }
+
+  // 2. Look for TaskStatus from task_boundary tool calls
+  // Supports strictly quoted JSON ("TaskStatus": "...") and looser CLI args (TaskStatus="...")
+  const taskStatusMatches = output.matchAll(/["']?TaskStatus["']?\s*[:=]\s*["']([^"']+)["']/g);
+  for (const match of taskStatusMatches) {
+    updateIfLater(match);
+  }
+
+  // 3. Look for explicit JSON property (jobInstanceStatusUpdate)
+  const jsonMatches = output.matchAll(/"jobInstanceStatusUpdate"\s*:\s*"([^"]+)"/g);
+  for (const match of jsonMatches) {
+    updateIfLater(match);
+  }
+
+  return status ? status.trim().slice(0, MAX_LENGTH) : null;
 }

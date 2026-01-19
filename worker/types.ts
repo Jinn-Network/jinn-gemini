@@ -243,6 +243,7 @@ export interface IpfsMetadata {
 export interface AgentExecutionResult {
   output: string;
   structuredSummary?: string;
+  jobInstanceStatusUpdate?: string;
   telemetry: any;
   delegated?: boolean;
   artifacts?: Array<{

@@ -18,6 +18,7 @@ interface JobDefinition {
   sourceRequestId?: string
   lastStatus?: string
   lastInteraction?: string
+  latestStatusUpdate?: string
 }
 
 interface JobDefinitionDetailLayoutProps {

@@ -138,3 +138,21 @@ export async function updateTransactionStatus(args: { id: string; status: string
   return json.data.updateTransactionStatus;
 }
 
+export async function updateJobStatus(requestId: string, statusUpdate: string, workerAddress?: string): Promise<string | null> {
+  const report: JobReportInput = {
+    status: 'IN_PROGRESS',
+    duration_ms: 0, // Intermediate update
+    raw_telemetry: JSON.stringify({ jobInstanceStatusUpdate: statusUpdate })
+  };
+  try {
+    const headers = buildHeaders(requestId, `status-update:${Date.now()}`, workerAddress);
+    const query = `mutation Report($requestId: String!, $data: JobReportInput!) { createJobReport(requestId: $requestId, reportData: $data) { id } }`;
+    const json = await fetchWithRetry({ query, variables: { requestId, data: report } }, headers);
+    return json?.data?.createJobReport?.id as string;
+  } catch (e: any) {
+    // Log warning locally if needed, but return null to avoid breaking execution
+    if (process.env.DEBUG) console.warn(`[updateJobStatus] Failed to send update: ${e?.message || e}`);
+    return null;
+  }
+}
+

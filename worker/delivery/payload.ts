@@ -24,6 +24,7 @@ export function buildDeliveryPayload(params: {
     structuredSummary: result.structuredSummary || result.output?.slice(-1200) || '',
     telemetry: result.telemetry || {},
     artifacts: result.artifacts || [],
+    ...(result.jobInstanceStatusUpdate ? { jobInstanceStatusUpdate: result.jobInstanceStatusUpdate } : {}),
     ...(metadata?.jobDefinitionId ? { jobDefinitionId: metadata.jobDefinitionId } : {}),
     ...(metadata?.jobName ? { jobName: metadata.jobName } : {}),
     ...(metadata?.blueprint ? { blueprint: metadata.blueprint } : {}),
@@ -34,34 +35,34 @@ export function buildDeliveryPayload(params: {
     ...(workerTelemetry ? { workerTelemetry } : {}),
     ...(recognition
       ? {
-          recognition: {
-            initialSituation: recognition.initialSituation,
-            embeddingStatus: recognition.embeddingStatus,
-            similarJobs: recognition.similarJobs,
-            learnings: recognition.rawLearnings,
-            learningsMarkdown: recognition.learningsMarkdown,
-            searchQuery: recognition.searchQuery,
-            progressCheckpoint: recognition.progressCheckpoint,
-          },
-        }
+        recognition: {
+          initialSituation: recognition.initialSituation,
+          embeddingStatus: recognition.embeddingStatus,
+          similarJobs: recognition.similarJobs,
+          learnings: recognition.rawLearnings,
+          learningsMarkdown: recognition.learningsMarkdown,
+          searchQuery: recognition.searchQuery,
+          progressCheckpoint: recognition.progressCheckpoint,
+        },
+      }
       : {}),
     ...(reflection
       ? {
-          reflection: {
-            output: reflection.output,
-            telemetry: reflection.telemetry,
-          },
-        }
+        reflection: {
+          output: reflection.output,
+          telemetry: reflection.telemetry,
+        },
+      }
       : {}),
     ...(result.pullRequestUrl ? { pullRequestUrl: result.pullRequestUrl } : {}),
     ...(metadata?.codeMetadata?.branch?.name
       ? {
-          executionPolicy: {
-            branch: metadata.codeMetadata.branch.name,
-            ensureTestsPass: true,
-            description: 'Agent executed work on the provided branch and passed required validations.',
-          },
-        }
+        executionPolicy: {
+          branch: metadata.codeMetadata.branch.name,
+          ensureTestsPass: true,
+          description: 'Agent executed work on the provided branch and passed required validations.',
+        },
+      }
       : {}),
   };
 }

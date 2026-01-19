@@ -18,6 +18,7 @@ interface JobDefinition {
   blueprint?: string
   lastStatus?: string
   lastInteraction?: string
+  latestStatusUpdate?: string
 }
 
 interface OverviewProps {
@@ -147,18 +148,23 @@ export function JobDefinitionOverview({ jobDefinition }: OverviewProps) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
+            {jobDefinition.latestStatusUpdate && (
+              <div className="text-sm italic text-muted-foreground border-l-2 border-primary pl-3">
+                "{jobDefinition.latestStatusUpdate}"
+              </div>
+            )}
             {jobDefinition.lastStatus && (
               <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap ${jobDefinition.lastStatus === 'COMPLETED'
-                  ? 'bg-green-500/10 text-green-700 dark:text-green-400'
-                  : jobDefinition.lastStatus === 'FAILED'
-                    ? 'bg-red-500/10 text-red-700 dark:text-red-400'
-                    : jobDefinition.lastStatus === 'DELEGATING'
-                      ? 'bg-primary/20 text-primary'
-                      : jobDefinition.lastStatus === 'WAITING'
-                        ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
-                        : jobDefinition.lastStatus === 'PENDING'
-                          ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
-                          : 'bg-muted text-gray-800'
+                ? 'bg-green-500/10 text-green-700 dark:text-green-400'
+                : jobDefinition.lastStatus === 'FAILED'
+                  ? 'bg-red-500/10 text-red-700 dark:text-red-400'
+                  : jobDefinition.lastStatus === 'DELEGATING'
+                    ? 'bg-primary/20 text-primary'
+                    : jobDefinition.lastStatus === 'WAITING'
+                      ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
+                      : jobDefinition.lastStatus === 'PENDING'
+                        ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
+                        : 'bg-muted text-gray-800'
                 }`}>
                 <StatusIcon status={jobDefinition.lastStatus} size={16} />
                 {jobDefinition.lastStatus}

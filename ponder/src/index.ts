@@ -447,8 +447,8 @@ ponder.on(
         return;
       }
 
-      const mech: string = String(event.args.priorityMech);
-      const sender: string = String(event.args.requester);
+      const mech: string = String(event.args.priorityMech).toLowerCase();
+      const sender: string = String(event.args.requester).toLowerCase();
       const requestIds: string[] = toStringArray((event.args as any).requestIds);
       const requestDatas: string[] = toStringArray((event.args as any).requestDatas);
       const txHash: string = String(event.transaction.hash);
@@ -836,7 +836,7 @@ ponder.on(
       }
 
       const requestId: string = String(event.args.requestId);
-      const deliveryMech: string = String(event.args.mech);
+      const deliveryMech: string = String(event.args.mech).toLowerCase();
       const txHash: string = String(event.transaction.hash);
       const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
@@ -931,8 +931,8 @@ ponder.on(
         requestId,
         sourceRequestId: undefined,
         sourceJobDefinitionId: undefined,
-        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000"),
-        mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000"),
+        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000").toLowerCase(),
+        mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000").toLowerCase(),
         deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
         ipfsHash,
         transactionHash: txHash,
@@ -953,8 +953,8 @@ ponder.on(
         id: requestId,
         create: {
           // Include existing fields if available (safety fallback)
-          mech: existingRequest?.mech || String(event.args.mech || "0x0000000000000000000000000000000000000000"),
-          sender: existingRequest?.sender || "0x0000000000000000000000000000000000000000",
+          mech: existingRequest?.mech || String(event.args.mech || "0x0000000000000000000000000000000000000000").toLowerCase(),
+          sender: (existingRequest?.sender || "0x0000000000000000000000000000000000000000").toLowerCase(),
           workstreamId: existingRequest?.workstreamId || requestId,
           transactionHash: existingRequest?.transactionHash || txHash,
           blockNumber: existingRequest?.blockNumber || blockNumber,
@@ -1057,6 +1057,11 @@ ponder.on(
             // Extract actual job status from delivery payload (COMPLETED, FAILED, DELEGATING, WAITING)
             const deliveryStatus = typeof res.data.status === 'string' ? res.data.status : 'COMPLETED';
 
+            // Extract job instance status update (if available) - max 144 chars
+            const jobInstanceStatusUpdate = typeof res.data.jobInstanceStatusUpdate === 'string'
+              ? res.data.jobInstanceStatusUpdate.slice(0, 144)
+              : undefined;
+
             // Backfill job definition on delivery if available
             // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
             if (deliveryJobDefinitionId) {
@@ -1086,6 +1091,7 @@ ponder.on(
                       createdAt: blockTimestamp,
                       lastInteraction: blockTimestamp,
                       lastStatus: deliveryStatus,
+                      latestStatusUpdate: jobInstanceStatusUpdate,
                     },
                     update: {
                       name: jobName || 'Unnamed Job',
@@ -1095,14 +1101,22 @@ ponder.on(
                       sourceRequestId: requestId,
                       lastInteraction: blockTimestamp,
                       lastStatus: deliveryStatus,
+                      latestStatusUpdate: jobInstanceStatusUpdate,
                     },
                   });
                 } catch (jdErr: any) {
                   logger.error({ jobDefinitionId: deliveryJobDefinitionId, error: serializeError(jdErr) }, "Failed to backfill job definition in Deliver handler");
                 }
               }
-              // Backfill jobDefinitionId (target job) on delivery and request
-              await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: deliveryJobDefinitionId, sourceRequestId: requestId } });
+              // Backfill jobDefinitionId (target job) on delivery and request, including status update
+              await deliveryRepo.upsert({
+                id: requestId,
+                update: {
+                  sourceJobDefinitionId: deliveryJobDefinitionId,
+                  sourceRequestId: requestId,
+                  jobInstanceStatusUpdate
+                }
+              });
               await requestRepo.upsert({ id: requestId, update: { jobDefinitionId: deliveryJobDefinitionId } });
             } else {
               // Fallback: if request has a jobDefinitionId already, propagate it to delivery as sourceJobDefinitionId
@@ -1110,7 +1124,14 @@ ponder.on(
                 const req = await requestRepo.upsert({ id: requestId, update: {} });
                 const maybeReq = (req as any) || {};
                 if (maybeReq && typeof maybeReq.jobDefinitionId === 'string') {
-                  await deliveryRepo.upsert({ id: requestId, update: { sourceJobDefinitionId: maybeReq.jobDefinitionId, sourceRequestId: requestId } });
+                  await deliveryRepo.upsert({
+                    id: requestId,
+                    update: {
+                      sourceJobDefinitionId: maybeReq.jobDefinitionId,
+                      sourceRequestId: requestId,
+                      jobInstanceStatusUpdate
+                    }
+                  });
                 }
               } catch { }
             }

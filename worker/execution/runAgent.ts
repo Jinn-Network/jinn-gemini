@@ -7,6 +7,7 @@ import { createBlueprintBuilder } from '../prompt/index.js';
 import { setJobContext, clearJobContext, snapshotJobContext, restoreJobContext } from '../metadata/jobContext.js';
 import { parseAnnotatedTools } from '../../gemini-agent/shared/template-tools.js';
 import { didDispatchChild } from '../status/dispatchUtils.js';
+import { updateJobStatus } from '../control_api_client.js';
 import type { UnclaimedRequest, IpfsMetadata, AdditionalContext, AgentExecutionResult } from '../types.js';
 
 /**
@@ -80,7 +81,13 @@ export async function runAgentForRequest(
       projectDefinitionId: null
     },
     codeWorkspace,
-    { isCodingJob }
+    {
+      isCodingJob,
+      onStatusUpdate: (status: string) => {
+        // Fire-and-forget status update to Control API
+        updateJobStatus(request.id, status).catch(() => { });
+      }
+    }
   );
 
   // Build unified prompt from BlueprintBuilder
@@ -113,6 +120,8 @@ export async function runAgentForRequest(
 
     return {
       output: result.output || '',
+      structuredSummary: result.structuredSummary,
+      jobInstanceStatusUpdate: result.jobInstanceStatusUpdate,
       telemetry,
       delegated,
     };

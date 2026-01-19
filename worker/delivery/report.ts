@@ -30,7 +30,8 @@ export async function storeOnchainReport(
       raw_telemetry: JSON.stringify({
         ...result?.telemetry ?? {},
         finalStatus,  // Include inferred status in telemetry
-        sourceJobDefinitionId: metadata?.sourceJobDefinitionId  // Preserve parent reference
+        sourceJobDefinitionId: metadata?.sourceJobDefinitionId,  // Preserve parent reference
+        jobInstanceStatusUpdate: result.jobInstanceStatusUpdate // Include extracted status update string
       })
     };
     await apiCreateJobReport(request.id, payload, workerAddress);

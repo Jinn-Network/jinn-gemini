@@ -42,6 +42,9 @@ interface JobDefinition {
   promptContent?: string
   sourceJobDefinitionId?: string
   sourceRequestId?: string
+  lastStatus?: string
+  lastInteraction?: string
+  latestStatusUpdate?: string
 }
 
 // Artifact detail layout component
@@ -63,7 +66,7 @@ function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fiel
               // Extract the `.content` field if it exists
               const contentValue = parsed.content
               setArtifactContent(typeof contentValue === 'string' ? contentValue : JSON.stringify(contentValue, null, 2))
-              
+
               // Store type and tags for metadata display
               setParsedData({
                 type: parsed.type,
@@ -126,7 +129,7 @@ function ArtifactDetailLayout({ record, fields }: { record: SubgraphRecord; fiel
                   </div>
                 </div>
               )}
-              
+
               {/* Tags field from parsed content */}
               {parsedData?.tags && parsedData.tags.length > 0 && (
                 <div className="border-b border-gray-100 pb-3">
@@ -199,6 +202,7 @@ const FIELD_ORDER: Record<string, string[]> = {
   deliveries: [
     'id',
     'requestId',
+    'jobInstanceStatusUpdate',
     'executionSummary',
     'telemetry',
     'actionsTaken',
@@ -407,12 +411,12 @@ function DeliveryContentDisplay({ cid, requestId }: { cid: string; requestId: st
             const jobParams = (job.params || {}) as Record<string, unknown>
             const jobArgs = (job.args || {}) as Record<string, unknown>
             const jobName = (functionCallArgs?.jobName ||
-                           jobInput?.jobName ||
-                           jobParams?.jobName ||
-                           jobArgs?.jobName ||
-                           result.job_name ||
-                           result.jobName ||
-                           'Unnamed Job') as string
+              jobInput?.jobName ||
+              jobParams?.jobName ||
+              jobArgs?.jobName ||
+              result.job_name ||
+              result.jobName ||
+              'Unnamed Job') as string
             return (
               <div key={idx} className="bg-white p-3 rounded border space-y-2">
                 <div className="font-medium text-sm text-gray-900">
@@ -520,11 +524,10 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
 
   if (typeof value === 'boolean') {
     return (
-      <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
-        value 
-          ? 'text-green-600 bg-green-50 border border-green-200' 
-          : 'text-red-600 bg-red-50 border border-red-200'
-      }`}>
+      <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${value
+        ? 'text-green-600 bg-green-50 border border-green-200'
+        : 'text-red-600 bg-red-50 border border-red-200'
+        }`}>
         {value ? '✓ true' : '✗ false'}
       </span>
     )
@@ -570,7 +573,7 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
     // Handle IPFS hashes - use structured display for deliveries and requests
     if (fieldName === 'deliveryIpfsHash') {
       const requestId = 'requestId' in record ? String(record.requestId) :
-                       'id' in record ? String(record.id) : undefined
+        'id' in record ? String(record.id) : undefined
       if (requestId) {
         return <DeliveryContentDisplay cid={value} requestId={requestId} />
       }
@@ -579,7 +582,7 @@ function ValueDisplay({ value, fieldName, record, collectionName }: { value: unk
     // Handle delivery ipfsHash (when viewing deliveries directly)
     if (fieldName === 'ipfsHash' && collectionName === 'deliveries') {
       const requestId = 'requestId' in record ? String(record.requestId) :
-                       'id' in record ? String(record.id) : undefined
+        'id' in record ? String(record.id) : undefined
       if (requestId) {
         return <DeliveryContentDisplay cid={value} requestId={requestId} />
       }
@@ -716,6 +719,9 @@ function getFieldLabel(fieldName: string, collectionName: CollectionName): strin
     jobDefinitionId: 'Job Definition',
     jobName: 'Job Name',
     enabledTools: 'Enabled Tools',
+    lastStatus: 'Last Status',
+    latestStatusUpdate: 'Latest Status Update',
+    jobInstanceStatusUpdate: 'Status Update',
 
     // Request/Delivery content fields
     deliveryIpfsHash: 'Execution Results',
@@ -797,12 +803,12 @@ export function SubgraphDetailView({ record, collectionName }: SubgraphDetailVie
 
   // Get display title - use name or jobName if available
   const displayTitle = ('name' in record && record.name) ||
-                       ('jobName' in record && record.jobName) ||
-                       (collectionName === 'jobDefinitions' ? 'Job Definition' :
-                        collectionName === 'requests' ? 'Job Execution' :
-                        collectionName === 'deliveries' ? 'Job Execution' :
-                        collectionName === 'artifacts' ? 'Artifact' :
-                        collectionName.slice(0, -1))
+    ('jobName' in record && record.jobName) ||
+    (collectionName === 'jobDefinitions' ? 'Job Definition' :
+      collectionName === 'requests' ? 'Job Execution' :
+        collectionName === 'deliveries' ? 'Job Execution' :
+          collectionName === 'artifacts' ? 'Artifact' :
+            collectionName.slice(0, -1))
 
   // Use the new 4-phase layout for requests
   if (collectionName === 'requests') {
