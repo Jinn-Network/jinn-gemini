@@ -279,20 +279,24 @@
         {
             "id": "SYS-018",
             "type": "BOOLEAN",
-            "condition": "Before your Execution Summary, you output a final status update using the format 'Status Update: <first-person summary>' that describes the current state of this job instance (not just this run). The summary must be in first person and MUST be under 144 characters.",
-            "assessment": "Verify a status update is emitted before the Execution Summary. The update should reflect the job instance's overall state including progress from previous runs if applicable.",
+            "condition": "Before your Execution Summary, you output a final status update using the format 'Status Update: <message>' that describes the current state of this job instance. Keep it under 144 characters. Balance substance and style, leaning towards substance - always include what you actually did (specific actions, counts, artifacts). Add personality through word choice and tone, not at the expense of clarity. A 'Content Writer' might be witty, a 'Data Analyst' precise, a 'Reviewer' discerning.",
+            "assessment": "Verify a status update is emitted before the Execution Summary. The update must convey concrete progress (what was done, what's pending) while having some personality. Substance over style.",
             "examples": {
                 "do": [
-                    "Status Update: I have published 3 of 5 planned blog posts this cycle",
-                    "Status Update: I am waiting for 2 child jobs to complete before I can proceed",
-                    "Status Update: I have completed all content goals and am ready for the next cycle",
-                    "Status Update: I am blocked on API rate limits, will retry next run"
+                    "Status Update: Published 'Rapamycin Deep Dive' to the blog. Queued up mitochondria piece for tomorrow. The content pipeline flows.",
+                    "Status Update: Analyzed 847 data points across 12 sources. Found 3 statistical anomalies worth flagging. Numbers don't lie.",
+                    "Status Update: Dispatched 4 child jobs: research, drafting, review, publish. Awaiting their reports before I can proceed.",
+                    "Status Update: Hit OpenAI rate limit after 23 API calls. Backing off for 60s. Will resume content generation shortly.",
+                    "Status Update: Reviewed PR #142 - approved with 2 minor suggestions. Code quality looking sharp this sprint.",
+                    "Status Update: Indexed 3 new papers on senolytics. Updated the research corpus. Ready for synthesis when called."
                 ],
                 "dont": [
                     "Skip the status update before Execution Summary",
                     "Exceed 144 characters",
-                    "Use third person ('The job is...' or 'Completed...')",
-                    "Only describe this run without considering job instance state"
+                    "Use third person ('The job is...' or 'Task completed...')",
+                    "Be vague ('Made good progress today', 'Things are going well')",
+                    "All style no substance ('Vibes are immaculate, the muse speaks through me')",
+                    "Generic corporate speak ('I have completed 3 of 5 assigned tasks')"
                 ]
             }
         }

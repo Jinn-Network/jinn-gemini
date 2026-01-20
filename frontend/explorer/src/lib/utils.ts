@@ -28,10 +28,11 @@ export interface NavigationItem {
 }
 
 export const navigationItems: NavigationItem[] = [
+  { label: 'Ventures', collection: 'ventures' },
   { label: 'Workstreams', collection: 'workstreams' },
   { label: 'Templates', collection: 'templates' },
-  { 
-    label: 'Jobs', 
+  {
+    label: 'Jobs',
     collection: 'requests',
     subItems: [
       { label: 'Definitions', collection: 'jobDefinitions' },

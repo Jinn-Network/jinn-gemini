@@ -1,0 +1,202 @@
+'use client';
+
+import Link from 'next/link';
+import { HeartPulse, Activity, ArrowRight, Bot } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LiveOutputView } from './live-output-view';
+import { ActivityFeed } from './activity-feed';
+import { HealthSummary } from './health-summary';
+import { InvariantList, type InvariantWithMeasurement } from './invariant-list';
+import { ServiceOutputCard } from './service-output-card';
+import { transformToActivityItems } from '@/lib/ventures/activity-utils';
+import type { ServiceOutput } from '@/lib/ventures/service-types';
+import type { JobDefinition } from '@/lib/subgraph';
+import { formatRelativeTime, type HealthStatus } from '@jinn/shared-ui';
+
+interface VentureDashboardProps {
+    liveOutputUrl: string | null;
+    activityData: { jobDefinitions: JobDefinition[] };
+    workstreamId: string;
+    invariants: InvariantWithMeasurement[];
+    statusCounts: Record<HealthStatus, number>;
+    primaryOutput: ServiceOutput | null;
+    fetchActivity: (workstreamId: string) => Promise<{ jobDefinitions: JobDefinition[] }>;
+}
+
+export function VentureDashboard({
+    liveOutputUrl,
+    activityData,
+    workstreamId,
+    invariants,
+    statusCounts,
+    primaryOutput,
+    fetchActivity,
+}: VentureDashboardProps) {
+    // Fallback URL if no SERVICE_OUTPUT
+    const LIVE_OUTPUT_URL = liveOutputUrl || "https://blog-the-long-run-production.up.railway.app/";
+
+    // Get latest 10 activity items for preview
+    const activityItems = transformToActivityItems(activityData.jobDefinitions).slice(0, 10);
+
+    const total = statusCounts.healthy + statusCounts.warning + statusCounts.critical + statusCounts.unknown;
+    const measured = total - statusCounts.unknown;
+    const passing = statusCounts.healthy;
+
+    return (
+        <Tabs defaultValue="dashboard" className="flex-1 flex flex-col min-h-0">
+            <TabsList className="w-fit">
+                <TabsTrigger value="dashboard" className="gap-2">
+                    Dashboard
+                </TabsTrigger>
+                <TabsTrigger value="health" className="gap-2">
+                    <HeartPulse className="h-4 w-4" />
+                    Health ({invariants.length})
+                </TabsTrigger>
+                <TabsTrigger value="activity" className="gap-2">
+                    <Activity className="h-4 w-4" />
+                    Activity
+                </TabsTrigger>
+            </TabsList>
+
+            {/* Dashboard Tab */}
+            <TabsContent value="dashboard" className="flex-1 min-h-0 mt-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-full">
+                    {/* Left Column: Blog iframe (2/3) */}
+                    <div className="lg:col-span-2 flex flex-col min-h-[500px]">
+                        <LiveOutputView url={LIVE_OUTPUT_URL} />
+                    </div>
+
+                    {/* Right Column: Health + Activity (1/3) */}
+                    <div className="lg:col-span-1 flex flex-col gap-4">
+                        {/* Health Summary Card */}
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <div className="flex items-center justify-between">
+                                    <CardTitle className="text-base flex items-center gap-2">
+                                        <HeartPulse className="h-4 w-4" />
+                                        Health
+                                    </CardTitle>
+                                    <TabsList className="h-auto p-0 bg-transparent">
+                                        <TabsTrigger
+                                            value="health"
+                                            className="text-xs text-primary hover:underline px-0 py-0 h-auto data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                                        >
+                                            View all <ArrowRight className="h-3 w-3 ml-1" />
+                                        </TabsTrigger>
+                                    </TabsList>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex gap-4 text-center">
+                                    <div className="flex-1">
+                                        <div className="text-2xl font-bold text-green-500">{statusCounts.healthy}</div>
+                                        <div className="text-xs text-muted-foreground">Healthy</div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="text-2xl font-bold text-yellow-500">{statusCounts.warning}</div>
+                                        <div className="text-xs text-muted-foreground">Warning</div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="text-2xl font-bold text-red-500">{statusCounts.critical}</div>
+                                        <div className="text-xs text-muted-foreground">Critical</div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="text-2xl font-bold text-muted-foreground">{statusCounts.unknown}</div>
+                                        <div className="text-xs text-muted-foreground">Unknown</div>
+                                    </div>
+                                </div>
+                                {measured > 0 && (
+                                    <p className="text-sm text-muted-foreground mt-3 text-center">
+                                        {passing}/{measured} invariants passing
+                                    </p>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Activity Preview Card */}
+                        <Card className="flex-1 flex flex-col min-h-0">
+                            <CardHeader className="pb-2">
+                                <div className="flex items-center justify-between">
+                                    <CardTitle className="text-base flex items-center gap-2">
+                                        <Activity className="h-4 w-4" />
+                                        Recent Activity
+                                    </CardTitle>
+                                    <TabsList className="h-auto p-0 bg-transparent">
+                                        <TabsTrigger
+                                            value="activity"
+                                            className="text-xs text-primary hover:underline px-0 py-0 h-auto data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                                        >
+                                            View all <ArrowRight className="h-3 w-3 ml-1" />
+                                        </TabsTrigger>
+                                    </TabsList>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="flex-1 overflow-auto">
+                                {activityItems.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground text-center py-4">No activity yet</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {activityItems.map((item) => (
+                                            <div key={item.id} className="flex gap-2">
+                                                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                                    <Bot className="h-3 w-3 text-primary" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-baseline gap-1.5 mb-0.5">
+                                                        <span className="font-medium text-xs text-foreground">{item.jobName}</span>
+                                                        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(item.timestamp)}</span>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground line-clamp-2">
+                                                        {item.message}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            </TabsContent>
+
+            {/* Health Tab */}
+            <TabsContent value="health" className="flex-1 min-h-0 mt-4 overflow-auto">
+                <div className="space-y-6 max-w-4xl">
+                    {/* Service Output Card */}
+                    {primaryOutput && (
+                        <ServiceOutputCard output={primaryOutput} />
+                    )}
+
+                    {/* Health Summary */}
+                    {invariants.length > 0 && (
+                        <HealthSummary counts={statusCounts} />
+                    )}
+
+                    {/* Invariants List */}
+                    {invariants.length > 0 ? (
+                        <InvariantList invariants={invariants} />
+                    ) : (
+                        <Card>
+                            <CardContent className="py-8 text-center text-muted-foreground">
+                                No blueprint invariants found for this venture
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+            </TabsContent>
+
+            {/* Activity Tab */}
+            <TabsContent value="activity" className="flex-1 min-h-0 mt-4">
+                <div className="h-[600px] max-w-4xl">
+                    <ActivityFeed
+                        initialData={activityData}
+                        workstreamId={workstreamId}
+                        fetchActivity={fetchActivity}
+                    />
+                </div>
+            </TabsContent>
+        </Tabs>
+    );
+}

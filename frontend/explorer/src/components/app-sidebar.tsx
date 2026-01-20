@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ChevronRight, Workflow, Briefcase, FileText, Home, Info } from "lucide-react"
+import { ChevronRight, Workflow, Briefcase, FileText, Home, Info, Rocket } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 import {
@@ -97,7 +97,9 @@ export function AppSidebar() {
                 }
 
                 // Regular menu item without sub-items
-                const Icon = item.collection === 'workstreams' ? Workflow : FileText
+                const Icon = item.collection === 'ventures' ? Rocket
+                  : item.collection === 'workstreams' ? Workflow
+                  : FileText
                 return (
                   <SidebarMenuItem key={item.collection}>
                     <SidebarMenuButton asChild isActive={isActive}>

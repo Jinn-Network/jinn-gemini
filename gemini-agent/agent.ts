@@ -1322,8 +1322,8 @@ export function extractStructuredSummary(output: string): string | null {
 
 /**
  * Extract job instance status update from agent output
- * Looks for explicit marker or infers from final lines
- * Constrained to 144 characters
+ * Looks for explicit marker and captures until section boundary
+ * Status updates should be single sentences, but we handle line wrapping gracefully
  */
 export function extractJobInstanceStatusUpdate(output: string): string | null {
   if (!output || output.length === 0) {
@@ -1333,36 +1333,46 @@ export function extractJobInstanceStatusUpdate(output: string): string | null {
   // Strip ANSI codes to ensure reliable pattern matching
   const cleanOutput = stripAnsi(output);
 
-  const MAX_LENGTH = 144;
-  let status: string | null = null;
-  let lastMatchIndex = -1;
-
-  // Helper to update status if match is found later in the output
-  const updateIfLater = (match: RegExpMatchArray | null) => {
-    if (match && match.index !== undefined && match.index > lastMatchIndex) {
-      status = match[1];
-      lastMatchIndex = match.index;
-    }
-  };
+  // Collect all matches with their positions
+  const candidates: Array<{ text: string; index: number }> = [];
 
   // 1. Look for explicit text markers (Status Update: ...)
-  const textMatches = cleanOutput.matchAll(/(?:\*\*|#+\s*)?Status Update:?(?:\*\*)?\s*(.+?)(?:\n|$)/gi);
+  // Capture content until: blank line, Execution Summary, another Status Update, or section header
+  // The pattern captures across line breaks until a clear boundary
+  const textMatches = cleanOutput.matchAll(
+    /(?:\*\*|#+\s*)?Status Update:?(?:\*\*)?\s*([\s\S]+?)(?=\n\s*\n|\nExecution Summary|\n(?:\*\*|#+\s*)?Status Update|\n---|\n#{1,3}\s|$)/gi
+  );
   for (const match of textMatches) {
-    updateIfLater(match);
+    if (match[1] && match.index !== undefined) {
+      candidates.push({ text: match[1], index: match.index });
+    }
   }
 
   // 2. Look for TaskStatus from task_boundary tool calls
   // Supports strictly quoted JSON ("TaskStatus": "...") and looser CLI args (TaskStatus="...")
   const taskStatusMatches = cleanOutput.matchAll(/["']?TaskStatus["']?\s*[:=]\s*["']([^"']+)["']/g);
   for (const match of taskStatusMatches) {
-    updateIfLater(match);
+    if (match[1] && match.index !== undefined) {
+      candidates.push({ text: match[1], index: match.index });
+    }
   }
 
   // 3. Look for explicit JSON property (jobInstanceStatusUpdate)
   const jsonMatches = cleanOutput.matchAll(/"jobInstanceStatusUpdate"\s*:\s*"([^"]+)"/g);
   for (const match of jsonMatches) {
-    updateIfLater(match);
+    if (match[1] && match.index !== undefined) {
+      candidates.push({ text: match[1], index: match.index });
+    }
   }
 
-  return status ? status.trim().slice(0, MAX_LENGTH) : null;
+  // Return the last match (furthest in the output)
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const lastMatch = candidates.reduce((a, b) => (a.index > b.index ? a : b));
+
+  // Clean up: collapse multiple whitespace/newlines into single space
+  const cleaned = lastMatch.text.replace(/\s+/g, ' ').trim();
+  return cleaned || null;
 }

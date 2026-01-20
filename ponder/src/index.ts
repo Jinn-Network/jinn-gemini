@@ -1057,9 +1057,9 @@ ponder.on(
             // Extract actual job status from delivery payload (COMPLETED, FAILED, DELEGATING, WAITING)
             const deliveryStatus = typeof res.data.status === 'string' ? res.data.status : 'COMPLETED';
 
-            // Extract job instance status update (if available) - max 144 chars
+            // Extract job instance status update (if available)
             const jobInstanceStatusUpdate = typeof res.data.jobInstanceStatusUpdate === 'string'
-              ? res.data.jobInstanceStatusUpdate.slice(0, 144)
+              ? res.data.jobInstanceStatusUpdate
               : undefined;
 
             // Backfill job definition on delivery if available
