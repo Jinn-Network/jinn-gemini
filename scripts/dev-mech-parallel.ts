@@ -79,7 +79,7 @@ function cleanWorkerClones(workerCount: number): void {
   killProcessesUsingWorkerDirs();
 
   const baseDir = getWorkerClonesBaseDir();
-  
+
   for (let i = 1; i <= workerCount; i++) {
     const workerDir = join(baseDir, `worker-${i}`);
     if (existsSync(workerDir)) {
@@ -117,25 +117,31 @@ async function main() {
     })
     .option('fresh', {
       type: 'boolean',
-      default: true,
-      description: 'Delete worker clones before starting (default: true)',
+      default: false,
+      description: 'Delete worker clones before starting. Use --fresh for clean state, but may cause SSH exhaustion if cloning concurrently.',
+    })
+    .option('stagger', {
+      type: 'number',
+      default: 10,
+      description: 'Delay in seconds between starting workers (default: 10)',
     })
     .example('$0 -w 3 -s 0x123...', 'Run 3 workers on workstream 0x123...')
     .example('$0 -w 2 -s 0x123... --runs=5', 'Run 2 workers, 5 jobs each')
-    .example('$0 -w 2 -s 0x123... --no-fresh', 'Keep existing clones')
+    .example('$0 -w 2 -s 0x123... --fresh', 'Fresh start with clean clones')
     .help()
     .parse();
 
   const children: ChildProcess[] = [];
   const workerCount = argv.workers;
   const maxCycles = argv['max-cycles'];
+  const startDelayMs = (argv.stagger || 0) * 1000;
   const stopFilePath = maxCycles ? `/tmp/jinn-stop-cycle-${argv.workstream}` : undefined;
 
-  // Clean worker clones if --fresh (default)
+  // Clean worker clones if --fresh is explicitly requested
   if (argv.fresh) {
-    console.log('Cleaning worker clone directories for fresh start...');
+    console.log('[cleanup] --fresh requested: cleaning worker clone directories...');
     cleanWorkerClones(workerCount);
-    console.log('');
+    console.log('[cleanup] Clean complete. Note: Fresh clones may cause SSH rate limiting with many workers.\n');
   }
 
   if (stopFilePath && existsSync(stopFilePath)) {
@@ -143,10 +149,19 @@ async function main() {
   }
 
   console.log(`Starting ${workerCount} parallel workers on workstream ${argv.workstream.slice(0, 10)}...`);
+  if (startDelayMs > 0) {
+    console.log(`Staggering start by ${argv.stagger} seconds.`);
+  }
   console.log('Press Ctrl+C to stop all workers\n');
 
   // Spawn workers
   for (let i = 1; i <= workerCount; i++) {
+    // Stagger delay (skip for first worker)
+    if (i > 1 && startDelayMs > 0) {
+      console.log(`Waiting ${argv.stagger}s before starting worker-${i}...`);
+      await new Promise(resolve => setTimeout(resolve, startDelayMs));
+    }
+
     const workerId = `worker-${i}`;
     const args = ['dev:mech:raw', `--workstream=${argv.workstream}`];
 

@@ -94,6 +94,20 @@ export async function claimRequest(requestId: string): Promise<{ request_id: str
   }
 }
 
+export async function claimParentDispatch(
+  parentJobDefId: string,
+  childJobDefId: string
+): Promise<{ allowed: boolean; claimed_by?: string }> {
+  const headers = buildHeaders(childJobDefId, 'claim-parent');
+  const query = `mutation Claim($p: String!, $c: String!) { 
+    claimParentDispatch(parentJobDefId: $p, childJobDefId: $c) { 
+      allowed claimed_by 
+    } 
+  }`;
+  const json = await fetchWithRetry({ query, variables: { p: parentJobDefId, c: childJobDefId } }, headers);
+  return json.data.claimParentDispatch;
+}
+
 export async function createJobReport(requestId: string, report: JobReportInput, workerAddress?: string): Promise<string> {
   const headers = buildHeaders(requestId, 'report', workerAddress);
   const query = `mutation Report($requestId: String!, $data: JobReportInput!) { createJobReport(requestId: $requestId, reportData: $data) { id } }`;

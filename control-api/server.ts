@@ -29,6 +29,12 @@ const typeDefs = /* GraphQL */ `
     alreadyClaimed: Boolean
   }
 
+  type DispatchClaim {
+    parent_job_def_id: String!
+    allowed: Boolean!
+    claimed_by: String
+  }
+
   type JobReport {
     id: String!
     request_id: String!
@@ -141,6 +147,7 @@ const typeDefs = /* GraphQL */ `
 
   type Mutation {
     claimRequest(requestId: String!): RequestClaim!
+    claimParentDispatch(parentJobDefId: String!, childJobDefId: String!): DispatchClaim!
     createJobReport(requestId: String!, reportData: JobReportInput!): JobReport!
     createArtifact(requestId: String!, artifactData: ArtifactInput!): Artifact!
     createMessage(requestId: String!, messageData: MessageInput!): Message!
@@ -162,37 +169,37 @@ const typeDefs = /* GraphQL */ `
 
 async function assertRequestExists(ctx: Context, requestId: string) {
   if (!ctx.ponderUrl) return; // allow skip if not configured
-  
+
   const body = {
     query: `query($id: String!) { request(id: $id) { id } }`,
     variables: { id: requestId },
   };
-  
+
   try {
     // Add timeout to prevent hanging on slow/unavailable endpoints
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    
+
     const res = await fetch(`${ctx.ponderUrl}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    
+
     clearTimeout(timeout);
-    
+
     // Check if response is actually JSON before parsing
     const contentType = res.headers.get('content-type');
     if (!contentType?.includes('application/json')) {
-      logger.warn({ 
-        requestId, 
-        status: res.status, 
-        contentType 
+      logger.warn({
+        requestId,
+        status: res.status,
+        contentType
       }, 'Ponder returned non-JSON response, skipping validation');
       return; // Skip validation rather than failing
     }
-    
+
     const json = await res.json();
     if (!json?.data?.request?.id) {
       throw new Error(`Unknown request_id: ${requestId}`);
@@ -215,7 +222,7 @@ function getWorkerAddress(ctx: Context): string {
 const resolvers = {
   Query: {
     _health: () => 'ok',
-    
+
     jobTemplates: async (
       _: any,
       args: { status?: string; safety_tier?: string; limit?: number },
@@ -225,7 +232,7 @@ const resolvers = {
         .from('job_templates')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (args.status) {
         query = query.eq('status', args.status);
       }
@@ -235,10 +242,10 @@ const resolvers = {
       if (args.limit) {
         query = query.limit(args.limit);
       }
-      
+
       const { data, error } = await query;
       if (error) throw new Error(error.message);
-      
+
       // Transform JSONB fields to strings for GraphQL
       return (data || []).map((t: any) => ({
         ...t,
@@ -249,17 +256,17 @@ const resolvers = {
         x402_price: String(t.x402_price || 0),
       }));
     },
-    
+
     jobTemplate: async (_: any, args: { id: string }, ctx: Context) => {
       const { data, error } = await ctx.supabase
         .from('job_templates')
         .select('*')
         .eq('id', args.id)
         .maybeSingle();
-      
+
       if (error) throw new Error(error.message);
       if (!data) return null;
-      
+
       return {
         ...data,
         tags: data.tags || [],
@@ -380,6 +387,87 @@ const resolvers = {
         .limit(1)
         .single();
       return { ...refreshed, alreadyClaimed: true };
+    },
+
+    claimParentDispatch: async (_: any, args: { parentJobDefId: string; childJobDefId: string }, ctx: Context) => {
+      const worker = getWorkerAddress(ctx);
+      const now = new Date().toISOString();
+      const expirationDate = new Date();
+      // 5 minutes from now
+      expirationDate.setMinutes(expirationDate.getMinutes() + 5);
+      const expiresAt = expirationDate.toISOString();
+
+      // Step 0: Clean up expired claims (maintenance)
+      // We don't await this to keep latency low, just fire and forget or let background process handle
+      // But for strict correctness, we should clear expired for *this* parent before checking
+      await ctx.supabase
+        .from('parent_dispatch_claims')
+        .delete()
+        .lt('expires_at', now)
+        .eq('parent_job_def_id', args.parentJobDefId);
+
+      // Step 1: Try INSERT (atomic claim)
+      const { data: inserted, error: insertErr } = await ctx.supabase
+        .from('parent_dispatch_claims')
+        .insert({
+          parent_job_def_id: args.parentJobDefId,
+          child_job_def_id: args.childJobDefId,
+          worker_address: worker,
+          claimed_at: now,
+          expires_at: expiresAt
+        })
+        .select('*');
+
+      // Success - we claimed it
+      if (!insertErr && inserted && inserted.length > 0) {
+        logger.info({
+          parent: args.parentJobDefId,
+          child: args.childJobDefId,
+          worker
+        }, 'Claimed parent dispatch');
+        return {
+          parent_job_def_id: args.parentJobDefId,
+          allowed: true,
+          claimed_by: args.childJobDefId // It's us
+        };
+      }
+
+      // Error - likely already claimed
+      if (insertErr && insertErr.code === '23505') { // Unique violation
+        // Fetch existing to see who claimed it
+        const { data: existing } = await ctx.supabase
+          .from('parent_dispatch_claims')
+          .select('child_job_def_id')
+          .eq('parent_job_def_id', args.parentJobDefId)
+          .single();
+
+        const owner = existing?.child_job_def_id || 'unknown';
+
+        // If WE already claimed it (e.g. retry), allow it
+        if (owner === args.childJobDefId) {
+          return {
+            parent_job_def_id: args.parentJobDefId,
+            allowed: true,
+            claimed_by: owner
+          };
+        }
+
+        logger.info({
+          parent: args.parentJobDefId,
+          child: args.childJobDefId,
+          existingOwner: owner
+        }, 'Parent dispatch already claimed by sibling');
+
+        return {
+          parent_job_def_id: args.parentJobDefId,
+          allowed: false,
+          claimed_by: owner
+        };
+      }
+
+      // Other error
+      logger.error({ error: insertErr.message }, 'Error claiming parent dispatch');
+      throw new Error(insertErr.message);
     },
 
     createJobReport: async (
@@ -657,17 +745,17 @@ const resolvers = {
         name: args.templateData.name,
         description: args.templateData.description ?? null,
         tags: args.templateData.tags ?? [],
-        enabled_tools_policy: args.templateData.enabled_tools_policy 
-          ? JSON.parse(args.templateData.enabled_tools_policy) 
+        enabled_tools_policy: args.templateData.enabled_tools_policy
+          ? JSON.parse(args.templateData.enabled_tools_policy)
           : [],
-        input_schema: args.templateData.input_schema 
-          ? JSON.parse(args.templateData.input_schema) 
+        input_schema: args.templateData.input_schema
+          ? JSON.parse(args.templateData.input_schema)
           : {},
-        output_spec: args.templateData.output_spec 
-          ? JSON.parse(args.templateData.output_spec) 
+        output_spec: args.templateData.output_spec
+          ? JSON.parse(args.templateData.output_spec)
           : {},
-        x402_price: args.templateData.x402_price 
-          ? BigInt(args.templateData.x402_price) 
+        x402_price: args.templateData.x402_price
+          ? BigInt(args.templateData.x402_price)
           : 0,
         safety_tier: args.templateData.safety_tier ?? 'public',
         status: args.templateData.status ?? 'visible',
@@ -680,7 +768,7 @@ const resolvers = {
         .select()
         .limit(1);
       if (error) throw new Error(error.message);
-      
+
       const t = data![0];
       return {
         ...t,
@@ -698,7 +786,7 @@ const resolvers = {
       ctx: Context
     ) => {
       const patch: any = {};
-      
+
       if (args.templateData.name !== undefined) patch.name = args.templateData.name;
       if (args.templateData.description !== undefined) patch.description = args.templateData.description;
       if (args.templateData.tags !== undefined) patch.tags = args.templateData.tags;
@@ -728,7 +816,7 @@ const resolvers = {
         .limit(1);
       if (error) throw new Error(error.message);
       if (!data || data.length === 0) throw new Error('Template not found');
-      
+
       const t = data[0];
       return {
         ...t,

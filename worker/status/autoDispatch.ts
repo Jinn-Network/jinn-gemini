@@ -22,6 +22,7 @@ import { serializeError } from '../logging/errors.js';
 import { isChildIntegrated, batchFetchBranches } from '../git/integration.js';
 import { fetchAllChildren } from '../prompt/providers/context/fetchChildren.js';
 import { getMaxCycles, requestStop } from '../cycleControl.js';
+import { claimParentDispatch } from '../control_api_client.js';
 
 const DISPATCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes - long enough for jobs to process
 const MAX_VERIFICATION_ATTEMPTS = 3;
@@ -1259,8 +1260,38 @@ export async function dispatchParentIfNeeded(
   const parentJobDefId = decision.parentJobDefId!;
 
   const childJobDefId = metadata?.jobDefinitionId;
-  if (childJobDefId && await wasRecentlyDispatched(parentJobDefId, childJobDefId)) {
-    workerLogger.info({ parentJobDefId, childJobDefId }, 'Skipping duplicate parent dispatch (found recent on-chain dispatch from this child job)');
+
+  // Check if any sibling has already dispatched the parent using atomic Control API claim
+  // This prevents race conditions where Ponder indexing lag causes duplicates
+  let alreadyClaimed = false;
+  let claimingSibling: string | undefined;
+
+  try {
+    if (childJobDefId) {
+      const claim = await claimParentDispatch(parentJobDefId, childJobDefId);
+      if (!claim.allowed) {
+        alreadyClaimed = true;
+        claimingSibling = claim.claimed_by;
+      }
+    }
+  } catch (error) {
+    // If Control API fails, we fail OPEN (allow dispatch) but log warning
+    // This maintains system liveness if Control API is down, though risks duplicates
+    // But since Control API is now critical for dedupe, we might want to reconsider this policy
+    // For now, mirroring old behavior: warn and proceed
+    workerLogger.warn({
+      parentJobDefId,
+      childJobDefId,
+      error: serializeError(error)
+    }, 'Failed to check parent dispatch claim via Control API - proceeding (risk of duplicates)');
+  }
+
+  if (alreadyClaimed) {
+    workerLogger.info({
+      parentJobDefId,
+      childJobDefId,
+      claimingSibling
+    }, 'Skipping parent dispatch (already claimed by sibling via atomic check)');
     return;
   }
 
