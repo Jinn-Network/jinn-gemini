@@ -3,6 +3,7 @@ import fetch from "cross-fetch";
 import axios from "axios";
 import { logger, serializeError } from "../../logging/index.js";
 import { Pool } from "pg";
+import { extractToolName } from "../../gemini-agent/shared/template-tools.js";
 import { jobDefinition, request, delivery, artifact, message, workstream, jobTemplate } from "ponder:schema";
 
 // Minimal local types to avoid implicit any in handler params and align with Ponder 0.7+ DB API
@@ -535,10 +536,12 @@ ponder.on(
         let codeMetadata: any = undefined;
         let dependencies: string[] | undefined;
         jobName = typeof content.jobName === "string" ? content.jobName : undefined;
+        // Extract tool names using shared utility (handles both string and {name, required} formats)
+        // Filter out nulls from invalid entries
         enabledTools = Array.isArray(content.tools)
-          ? content.tools.map((tool: any) => String(tool))
+          ? content.tools.map(extractToolName).filter((name: string | null): name is string => name !== null)
           : Array.isArray(content.enabledTools)
-            ? content.enabledTools.map((tool: any) => String(tool))
+            ? content.enabledTools.map(extractToolName).filter((name: string | null): name is string => name !== null)
             : undefined;
         jobDefinitionId = typeof content.jobDefinitionId === "string" ? content.jobDefinitionId : undefined;
         // Support both blueprint (new) and prompt (legacy)
@@ -1049,7 +1052,10 @@ ponder.on(
             // Try to extract jobDefinitionId from delivery payload
             const deliveryJobDefinitionId = typeof res.data.jobDefinitionId === 'string' ? res.data.jobDefinitionId : undefined;
             const jobName = typeof res.data.jobName === 'string' ? res.data.jobName : undefined;
-            const enabledTools = Array.isArray(res.data.enabledTools) ? res.data.enabledTools.map((x: any) => String(x)) : undefined;
+            // Use shared extractToolName utility (handles both string and {name, required} formats)
+            const enabledTools = Array.isArray(res.data.enabledTools)
+              ? res.data.enabledTools.map(extractToolName).filter((name: string | null): name is string => name !== null)
+              : undefined;
             // Support both blueprint (new) and prompt (legacy)
             const blueprint = typeof res.data.blueprint === 'string'
               ? res.data.blueprint
