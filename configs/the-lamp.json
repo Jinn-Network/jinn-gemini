@@ -22,5 +22,7 @@
     "repoUrl": "https://github.com/Jinn-Network/blog-the-lamp",
     "sshHost": "ritsukai",
     "domain": "blog-the-lamp-production.up.railway.app",
-    "baseBranch": "main"
+    "baseBranch": "main",
+    "telegramChatId": "-1003682777125",
+    "telegramTopicId": "2"
 }
