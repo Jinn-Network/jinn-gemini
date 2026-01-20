@@ -61,6 +61,7 @@ export interface Delivery {
   transactionHash: string
   blockNumber: string
   blockTimestamp: string
+  jobInstanceStatusUpdate?: string
 }
 
 export interface Artifact {
@@ -351,6 +352,7 @@ export async function queryDeliveries(options: QueryOptions = {}): Promise<Pagin
           transactionHash
           blockNumber
           blockTimestamp
+          jobInstanceStatusUpdate
         }
         pageInfo {
           hasNextPage

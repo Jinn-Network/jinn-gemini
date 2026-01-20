@@ -17,10 +17,15 @@ export const FEATURED_SERVICE_ID = 'blog-growth-template-2b053250';
 // Known service instances (workstreams) to feature
 export const FEATURED_INSTANCES: FeaturedInstance[] = [
   {
-    id: '0x1a109927c66ca50fec22d22336082a99694294f537e87d9b8ada45c51d83129b',
-    name: 'Blog Growth Template – YBT',
-    description: 'Autonomous blog covering Jinn development and AI agents'
+    id: '0xa6de04ee01994d2fc5e591f829bf6b7abc749f17cc66bb46b60f6bb628bf8d15',
+    name: 'Jinn Marketing',
+    description: 'Educating people about autonomous software ventures and driving exposure for the Jinn ecosystem'
   },
+  {
+    id: '0x6c3a5c27b0363175f460539070d2152d570ea894735e891d90d45d44a410244d',
+    name: 'The Long Run',
+    description: 'Processing cutting-edge longevity research into actionable health optimization protocols'
+  }
 ];
 
 // Explorer base URL for deep linking

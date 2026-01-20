@@ -88,7 +88,7 @@ export class SystemInvariantProvider implements InvariantProvider {
         // If this is an artifact-only job (no code metadata), exclude coding-specific system invariants
         // that mandate git workflows (branches, commits, process_branch)
         if (!ctx.metadata.codeMetadata) {
-            const CODING_INVARIANTS = ['SYS-018']; // Git workflow invariant
+            const CODING_INVARIANTS = ['SYS-010']; // SYS-010 is the git workflow invariant
             invariants = invariants.filter((i) => !CODING_INVARIANTS.includes(i.id));
         }
 

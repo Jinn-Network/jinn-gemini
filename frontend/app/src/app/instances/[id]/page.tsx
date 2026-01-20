@@ -1,18 +1,29 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Globe, HeartPulse, Info } from 'lucide-react';
 import { NavHeader } from '@/components/nav-header';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { SiteHeader } from '@/components/site-header';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExplorerLink } from '@/components/explorer-link';
-import { InvariantList, HealthSummary, ServiceOutputCard } from '@/components/dashboard';
-import { getServiceInstance, getRootJobDefinition, getMeasurementArtifacts, getRootRequest, getServiceOutputs } from '@/lib/service-queries';
+import {
+  getServiceInstance,
+  getRootJobDefinition,
+  getRootRequest,
+  getMeasurementArtifacts,
+  getServiceOutputs,
+  getWorkstreamActivity
+} from '@/lib/service-queries';
 import { parseInvariants, matchInvariantsWithMeasurements, countByStatus } from '@/lib/invariant-utils';
 import { fetchIpfsContent } from '@/lib/ipfs';
-import { formatRelativeTime, truncateAddress, type Artifact } from '@jinn/shared-ui';
+import { truncateAddress, type Request } from '@jinn/shared-ui';
+import { LiveOutputView } from '@/components/live-output-view';
+import { ActivityFeed } from '@/components/activity-feed';
+import { InvariantList, HealthSummary, ServiceOutputCard } from '@/components/dashboard';
 import type { ServiceOutput } from '@/lib/service-types';
+import type { Artifact } from '@jinn/shared-ui';
 
 /**
  * Parse SERVICE_OUTPUT artifact contentPreview to get output metadata
@@ -46,12 +57,13 @@ async function InstanceDetail({ id }: { id: string }) {
     notFound();
   }
 
-  // Fetch blueprint, measurements, and outputs
-  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts] = await Promise.all([
+  // Fetch all data in parallel
+  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts, activityData] = await Promise.all([
     getRootJobDefinition(id),
     getRootRequest(id),
     getMeasurementArtifacts(id),
-    getServiceOutputs(id)
+    getServiceOutputs(id),
+    getWorkstreamActivity(id)
   ]);
 
   // Parse service outputs from artifacts
@@ -70,7 +82,6 @@ async function InstanceDetail({ id }: { id: string }) {
       const ipfsResult = await fetchIpfsContent(rootRequest.ipfsHash);
       if (ipfsResult) {
         const parsed = JSON.parse(ipfsResult.content);
-        // Extract blueprint (new architecture) or fall back to prompt (legacy)
         rawBlueprintContent = parsed.blueprint || parsed.prompt || ipfsResult.content;
       }
     } catch (e) {
@@ -85,7 +96,6 @@ async function InstanceDetail({ id }: { id: string }) {
 
   if (rawBlueprintContent) {
     try {
-      // If it's a string, try to parse it as JSON
       blueprintJson = typeof rawBlueprintContent === 'string'
         ? JSON.parse(rawBlueprintContent)
         : rawBlueprintContent;
@@ -100,92 +110,115 @@ async function InstanceDetail({ id }: { id: string }) {
 
   const status = instance.delivered ? 'completed' : 'active';
 
+  // Use SERVICE_OUTPUT URL if available, otherwise fallback to hardcoded
+  const LIVE_OUTPUT_URL = primaryOutput?.url || "https://blog-the-long-run-production.up.railway.app/";
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{instance.jobName}</h1>
-          <p className="mt-2 text-muted-foreground">
-            Created by {truncateAddress(instance.sender)}
-          </p>
-        </div>
-        <Badge variant={status === 'active' ? 'default' : 'secondary'} className="text-sm">
-          {status}
-        </Badge>
-      </div>
+    <div className="flex flex-col h-full gap-6">
+      {/* Main Dashboard Grid with Tabs */}
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Created
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">
-              {formatRelativeTime(instance.blockTimestamp)}
-            </p>
-          </CardContent>
-        </Card>
+      {/* Main Dashboard Grid with Tabs */}
+      <Tabs defaultValue="output" className="flex-1 flex flex-col min-h-0">
+        <TabsList className="w-fit">
+          <TabsTrigger value="output" className="gap-2">
+            <Globe className="h-4 w-4" />
+            Live Output
+          </TabsTrigger>
+          <TabsTrigger value="health" className="gap-2">
+            <HeartPulse className="h-4 w-4" />
+            Health ({invariants.length})
+          </TabsTrigger>
+          <TabsTrigger value="details" className="gap-2">
+            <Info className="h-4 w-4" />
+            Details
+          </TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Requests
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">{instance.childRequestCount}</p>
-          </CardContent>
-        </Card>
+        {/* Live Output Tab */}
+        <TabsContent value="output" className="flex-1 min-h-0 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+            {/* Left Column: Live Output (Takes up 2/3) */}
+            <div className="lg:col-span-2 flex flex-col min-h-0 bg-muted/10 rounded-xl border-dashed border-2 border-border/50 p-1">
+              <LiveOutputView url={LIVE_OUTPUT_URL} />
+            </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Mech
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-lg font-mono">{truncateAddress(instance.mech)}</p>
-          </CardContent>
-        </Card>
-      </div>
+            {/* Right Column: Activity Feed (Takes up 1/3) */}
+            <div className="lg:col-span-1 flex flex-col min-h-0">
+              <ActivityFeed initialData={activityData} workstreamId={id} />
+            </div>
+          </div>
+        </TabsContent>
 
-      {/* Service Output - only show if we have outputs */}
-      {/* Service Output - only show if we have outputs */}
-      {primaryOutput && (
-        <ServiceOutputCard output={primaryOutput} />
-      )}
+        {/* Health Tab */}
+        <TabsContent value="health" className="flex-1 min-h-0 mt-4 overflow-auto">
+          <div className="space-y-6">
+            {/* Service Output Card */}
+            {primaryOutput && (
+              <ServiceOutputCard output={primaryOutput} />
+            )}
 
-      {/* Health Summary */}
-      {invariants.length > 0 && (
-        <HealthSummary counts={statusCounts} />
-      )}
+            {/* Health Summary */}
+            {invariants.length > 0 && (
+              <HealthSummary counts={statusCounts} />
+            )}
 
-      {/* Invariants List */}
-      {invariants.length > 0 && (
-        <InvariantList invariants={invariantsWithMeasurements} />
-      )}
+            {/* Invariants List */}
+            {invariants.length > 0 ? (
+              <InvariantList invariants={invariantsWithMeasurements} />
+            ) : (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  No blueprint invariants found for this workstream
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
 
-      {/* No Blueprint Message */}
-      {invariants.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            No blueprint invariants found for this workstream
-          </CardContent>
-        </Card>
-      )}
+        {/* Details Tab */}
+        <TabsContent value="details" className="flex-1 min-h-0 mt-4 overflow-auto">
+          <div className="max-w-2xl space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Instance Details</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">Instance ID</p>
+                    <p className="text-sm font-mono truncate" title={id}>{id}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">Created By</p>
+                    <p className="text-sm font-mono truncate" title={instance.sender}>{truncateAddress(instance.sender)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">Created At</p>
+                    <p className="text-sm text-foreground">
+                      {new Date(Number(instance.blockTimestamp) * 1000).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">Status</p>
+                    <Badge variant={status === 'active' ? 'default' : 'secondary'} className="text-xs uppercase">
+                      {status}
+                    </Badge>
+                  </div>
+                </div>
 
-      {/* Explorer Link */}
-      <div className="flex justify-center pt-4">
-        <Button variant="outline" size="lg" asChild>
-          <ExplorerLink type="workstream" id={instance.workstreamId} className="no-underline hover:no-underline">
-            View Full Details in Explorer
-          </ExplorerLink>
-        </Button>
-      </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Debug</p>
+                  <ExplorerLink type="workstream" id={instance.workstreamId} className="no-underline hover:no-underline">
+                    <span className="text-sm text-primary underline hover:text-foreground transition-colors flex items-center gap-1 w-fit">
+                      View Debug Config in Explorer
+                    </span>
+                  </ExplorerLink>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -193,98 +226,40 @@ async function InstanceDetail({ id }: { id: string }) {
 function InstanceDetailSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="h-9 w-64 animate-pulse rounded bg-muted" />
-          <div className="mt-2 h-5 w-48 animate-pulse rounded bg-muted" />
-        </div>
-        <div className="h-6 w-20 animate-pulse rounded bg-muted" />
+      {/* Removed header skeleton */}
+      <div className="h-10 w-64 animate-pulse rounded bg-muted" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[500px]">
+        <div className="lg:col-span-2 bg-muted/20 animate-pulse rounded-xl" />
+        <div className="lg:col-span-1 bg-muted/20 animate-pulse rounded-xl" />
       </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        {[...Array(3)].map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <div className="h-4 w-16 animate-pulse rounded bg-muted" />
-            </CardHeader>
-            <CardContent>
-              <div className="h-8 w-24 animate-pulse rounded bg-muted" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Health Summary Skeleton */}
-      <Card>
-        <CardContent className="py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="h-6 w-32 animate-pulse rounded bg-muted" />
-              <div className="mt-2 h-4 w-48 animate-pulse rounded bg-muted" />
-            </div>
-            <div className="flex gap-4">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="text-center">
-                  <div className="h-8 w-8 mx-auto animate-pulse rounded bg-muted" />
-                  <div className="mt-1 h-3 w-12 animate-pulse rounded bg-muted" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Invariants Skeleton */}
-      <Card>
-        <CardHeader>
-          <div className="h-6 w-24 animate-pulse rounded bg-muted" />
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="h-5 w-20 animate-pulse rounded bg-muted" />
-                      <div className="h-5 w-16 animate-pulse rounded bg-muted" />
-                    </div>
-                    <div className="h-4 w-full animate-pulse rounded bg-muted" />
-                  </div>
-                  <div className="h-8 w-12 animate-pulse rounded bg-muted" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
 
 export default async function InstancePage({ params }: InstancePageProps) {
   const { id } = await params;
+  const instance = await getServiceInstance(id);
+
+  if (!instance) {
+    notFound();
+  }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <NavHeader />
+    <div className="flex min-h-screen flex-col bg-background">
+      <SiteHeader
+        breadcrumbs={[
+          { label: 'Jinn', href: '/' },
+          { label: instance.jobName }
+        ]}
+      />
 
-      <div className="flex-1 py-8">
-        <div className="container mx-auto px-4">
-          {/* Back Link */}
-          <Link
-            href="/"
-            className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Services
-          </Link>
-
+      <main className="flex-1 py-6 flex flex-col min-h-0">
+        <div className="container mx-auto px-4 flex-1 flex flex-col min-h-0">
           <Suspense fallback={<InstanceDetailSkeleton />}>
             <InstanceDetail id={id} />
           </Suspense>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

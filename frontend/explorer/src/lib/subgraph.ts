@@ -15,6 +15,7 @@ export interface JobDefinition {
   createdAt?: string
   lastInteraction?: string
   lastStatus?: string
+  latestStatusUpdate?: string
 }
 
 export interface Request {
@@ -62,6 +63,7 @@ export interface Delivery {
   transactionHash: string
   blockNumber: string
   blockTimestamp: string
+  jobInstanceStatusUpdate?: string
 }
 
 export interface Artifact {
@@ -186,6 +188,7 @@ export const JOB_DEFINITIONS_QUERY = `
         createdAt
         lastInteraction
         lastStatus
+        latestStatusUpdate
       }
       pageInfo {
         hasNextPage
@@ -324,6 +327,7 @@ export async function queryDeliveries(options: QueryOptions = {}): Promise<Pagin
           transactionHash
           blockNumber
           blockTimestamp
+          jobInstanceStatusUpdate
         }
         pageInfo {
           hasNextPage
@@ -423,6 +427,7 @@ export const JOB_DEFINITION_QUERY = `
       createdAt
       lastInteraction
       lastStatus
+      latestStatusUpdate
     }
   }
 `
@@ -489,6 +494,7 @@ export async function getDelivery(id: string): Promise<Delivery | null> {
         transactionHash
         blockNumber
         blockTimestamp
+        jobInstanceStatusUpdate
       }
     }
   `

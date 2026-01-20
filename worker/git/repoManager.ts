@@ -26,6 +26,8 @@ export interface RepoCloneResult {
 export async function ensureRepoCloned(remoteUrl: string, targetPath: string): Promise<RepoCloneResult> {
   const { execFileSync } = await import('node:child_process');
 
+  // URL should already be normalized at dispatch time (stored in IPFS metadata)
+  // Clone using the URL as-is from the job metadata
   if (existsSync(targetPath)) {
     workerLogger.info({ targetPath }, 'Repository already cloned');
 

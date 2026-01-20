@@ -16,7 +16,10 @@ import {
   type JobTemplate,
   type JobDefinition,
   type Request,
-  type Artifact
+  type Delivery,
+  type Artifact,
+  getRequestsAndDeliveries,
+  queryDeliveries
 } from '@jinn/shared-ui';
 import type { Service, ServiceInstance } from './service-types';
 
@@ -148,4 +151,55 @@ export async function getServiceOutputs(workstreamId: string): Promise<Artifact[
     limit: 10
   });
   return response.items;
+}
+
+/**
+ * Get child requests (activity) for a workstream
+ * Returns requests ordered by timestamp, showing job creation and completion events
+ */
+export async function getWorkstreamActivity(workstreamId: string, limit: number = 50): Promise<{ requests: Request[], deliveries: Delivery[] }> {
+  const { queryRequests, queryDeliveries } = await import('@jinn/shared-ui');
+
+  // First fetch requests for this workstream
+  const requestsResponse = await queryRequests({
+    where: { workstreamId },
+    orderBy: 'blockTimestamp',
+    orderDirection: 'desc',
+    limit
+  });
+
+  const requests = requestsResponse.items;
+
+  // If no requests, no deliveries to fetch
+  if (requests.length === 0) {
+    return { requests: [], deliveries: [] };
+  }
+
+  // Fetch deliveries for the requests in this workstream
+  // The delivery.requestId matches request.id, so we filter client-side
+  // after fetching recent deliveries globally (Ponder doesn't support _in filters easily)
+  const requestIds = new Set(requests.map(r => r.id));
+
+  // Fetch recent deliveries - more than we need to ensure coverage
+  const deliveriesResponse = await queryDeliveries({
+    orderBy: 'blockTimestamp',
+    orderDirection: 'desc',
+    limit: limit * 2
+  });
+
+  // Filter to only deliveries for requests in this workstream
+  const deliveries = deliveriesResponse.items.filter(d => requestIds.has(d.requestId));
+
+  return { requests, deliveries };
+}
+
+/**
+ * Get global activity (recent requests and deliveries)
+ */
+export async function getGlobalActivity(limit: number = 20): Promise<{ requests: Request[], deliveries: Delivery[] }> {
+  return getRequestsAndDeliveries({
+    limit,
+    orderBy: 'blockTimestamp',
+    orderDirection: 'desc'
+  });
 }

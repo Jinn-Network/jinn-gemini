@@ -1,17 +1,35 @@
 #!/usr/bin/env tsx
 /**
  * Re-dispatch a failed or completed job by jobId or jobName
+ *
  * Usage: tsx scripts/redispatch-job.ts --jobId <uuid> [--message "optional message"] [--workstreamId <0x...>]
  *        tsx scripts/redispatch-job.ts --jobName <name> [--message "optional message"] [--workstreamId <0x...>]
+ *
+ * To update invariants on the fly (relaunch with new config):
+ *        tsx scripts/redispatch-job.ts --jobName <name> --input configs/longevity.json --template blueprints/blog-growth-template.json --cyclic
+ *
+ * Options:
+ *   --jobId <uuid>         Job definition UUID to re-dispatch
+ *   --jobName <name>       Job name to re-dispatch (alternative to --jobId)
+ *   --message <msg>        Optional message to include with dispatch
+ *   --workstreamId <0x...> Keep dispatch in existing workstream
+ *   --cyclic               Enable continuous operation (auto-redispatch after completion)
+ *   --input <path>         Path to input config JSON for variable substitution
+ *   --template <path>      Path to blueprint template JSON (required with --input)
  */
 
 import '../env/index.js';
+import { readFile } from 'fs/promises';
+import { join, resolve } from 'path';
 import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import { graphQLRequest } from '../http/client.js';
 import { getPonderGraphqlUrl } from '../gemini-agent/mcp/tools/shared/env.js';
 import { buildIpfsPayload } from '../gemini-agent/shared/ipfs-payload-builder.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../env/operate-profile.js';
+import { deepSubstitute, loadInputConfig } from './shared/template-substitution.js';
+import { validateInvariantsStrict } from '../worker/prompt/invariant-validator.js';
+import { extractToolPolicyFromBlueprint } from '../gemini-agent/shared/template-tools.js';
 
 const args = process.argv.slice(2);
 const jobIdIndex = args.indexOf('--jobId');
@@ -19,12 +37,16 @@ const jobNameIndex = args.indexOf('--jobName');
 const messageIndex = args.indexOf('--message');
 const workstreamIdIndex = args.indexOf('--workstreamId');
 const cyclicIndex = args.indexOf('--cyclic');
+const inputIndex = args.indexOf('--input');
+const templateIndex = args.indexOf('--template');
 
 let jobId: string | undefined;
 let jobName: string | undefined;
 let message: string | undefined;
 let workstreamId: string | undefined;
 let cyclic = false;
+let inputConfigPath: string | undefined;
+let templatePath: string | undefined;
 
 if (jobIdIndex !== -1 && args[jobIdIndex + 1]) {
   jobId = args[jobIdIndex + 1];
@@ -41,15 +63,101 @@ if (messageIndex !== -1 && args[messageIndex + 1]) {
 if (workstreamIdIndex !== -1 && args[workstreamIdIndex + 1]) {
   workstreamId = args[workstreamIdIndex + 1];
 }
+
 if (cyclicIndex !== -1) {
   cyclic = true;
+}
+
+if (inputIndex !== -1 && args[inputIndex + 1]) {
+  inputConfigPath = args[inputIndex + 1];
+}
+
+if (templateIndex !== -1 && args[templateIndex + 1]) {
+  templatePath = args[templateIndex + 1];
+}
+
+// Validate input/template pairing
+if (inputConfigPath && !templatePath) {
+  console.error('Error: --input requires --template to specify the blueprint template');
+  process.exit(1);
 }
 
 if (!jobId && !jobName) {
   console.error('Error: Must provide either --jobId or --jobName');
   console.error('Usage: tsx scripts/redispatch-job.ts --jobId <uuid> [--message "optional message"] [--workstreamId <0x...>] [--cyclic]');
   console.error('       tsx scripts/redispatch-job.ts --jobName <name> [--message "optional message"] [--workstreamId <0x...>] [--cyclic]');
+  console.error('');
+  console.error('To update invariants on the fly:');
+  console.error('       tsx scripts/redispatch-job.ts --jobName <name> --input <config.json> --template <blueprint.json> [--cyclic]');
   process.exit(1);
+}
+
+/**
+ * Load and substitute a blueprint template with input config values.
+ * Returns the final blueprint JSON string ready for dispatch.
+ */
+async function buildSubstitutedBlueprint(templatePath: string, inputConfigPath: string): Promise<{
+  blueprint: string;
+  enabledTools: string[];
+}> {
+  // Load template
+  let resolvedTemplatePath = templatePath;
+  if (!templatePath.includes('/')) {
+    resolvedTemplatePath = join(process.cwd(), 'blueprints', templatePath.endsWith('.json') ? templatePath : `${templatePath}.json`);
+  } else {
+    resolvedTemplatePath = resolve(process.cwd(), templatePath);
+  }
+
+  const templateContent = await readFile(resolvedTemplatePath, 'utf-8');
+  let blueprintObj = JSON.parse(templateContent);
+
+  // Load input config
+  const inputConfig = await loadInputConfig(inputConfigPath);
+  console.log(`  Loaded input config: ${Object.keys(inputConfig).join(', ')}`);
+
+  // Get inputSchema from template (can be at root or in templateMeta)
+  const inputSchema = blueprintObj.templateMeta?.inputSchema ?? blueprintObj.inputSchema;
+
+  // Apply variable substitution
+  blueprintObj = deepSubstitute(blueprintObj, inputConfig, inputSchema);
+  console.log('  Variable substitution applied');
+
+  // Validate invariants
+  const invariants = blueprintObj.invariants || blueprintObj.assertions || [];
+  if (invariants.length > 0) {
+    console.log(`  Validating ${invariants.length} invariants...`);
+    validateInvariantsStrict(invariants);
+    console.log('  Invariants valid');
+  }
+
+  // Extract tool policy
+  const { requiredTools, availableTools } = extractToolPolicyFromBlueprint(blueprintObj);
+  const enabledTools = requiredTools.length > 0
+    ? requiredTools
+    : (availableTools.length > 0 ? availableTools : [
+      'google_web_search',
+      'create_artifact',
+      'write_file',
+      'read_file',
+      'replace',
+      'list_directory',
+      'run_shell_command',
+      'dispatch_new_job',
+    ]);
+
+  // Build clean blueprint (strip template metadata)
+  const cleanBlueprint: Record<string, unknown> = {
+    invariants: blueprintObj.invariants || blueprintObj.assertions || [],
+    context: blueprintObj.context,
+  };
+  if (blueprintObj.outputSpec) {
+    cleanBlueprint.outputSpec = blueprintObj.outputSpec;
+  }
+
+  return {
+    blueprint: JSON.stringify(cleanBlueprint),
+    enabledTools,
+  };
 }
 
 async function main() {
@@ -59,16 +167,32 @@ async function main() {
   if (message) console.log(`  message: ${message}`);
   if (workstreamId) console.log(`  workstreamId: ${workstreamId}`);
   if (cyclic) console.log('  cyclic: true');
+  if (inputConfigPath) console.log(`  input: ${inputConfigPath}`);
+  if (templatePath) console.log(`  template: ${templatePath}`);
+
+  // If --input provided, build substituted blueprint
+  let overrideBlueprint: string | undefined;
+  let overrideEnabledTools: string[] | undefined;
+  if (inputConfigPath && templatePath) {
+    console.log('\nBuilding substituted blueprint...');
+    const result = await buildSubstitutedBlueprint(templatePath, inputConfigPath);
+    overrideBlueprint = result.blueprint;
+    overrideEnabledTools = result.enabledTools;
+    console.log('  Blueprint ready for dispatch\n');
+  }
 
   let result: any;
   if (!cyclic) {
+    // Non-cyclic: use dispatchExistingJob which supports blueprint override
     result = await dispatchExistingJob({
       jobId,
       jobName,
       message,
       workstreamId,
+      blueprint: overrideBlueprint,
     });
   } else {
+    // Cyclic: need to fetch job def and dispatch directly
     const ponderUrl = getPonderGraphqlUrl();
     let jobDef: any | null = null;
     if (jobId) {
@@ -107,11 +231,13 @@ async function main() {
     }
 
     const jobDefinitionId = jobDef.id;
-    const enabledTools = Array.isArray(jobDef.enabledTools) ? jobDef.enabledTools : [];
-    const blueprint = typeof jobDef.blueprint === 'string' ? jobDef.blueprint : undefined;
+    // Use override tools if provided, otherwise fall back to job def tools
+    const enabledTools = overrideEnabledTools || (Array.isArray(jobDef.enabledTools) ? jobDef.enabledTools : []);
+    // Use override blueprint if provided, otherwise use existing blueprint
+    const blueprint = overrideBlueprint || (typeof jobDef.blueprint === 'string' ? jobDef.blueprint : undefined);
 
     if (!blueprint) {
-      console.error('Job definition has no blueprint; cannot redispatch with cyclic flag.');
+      console.error('Job definition has no blueprint and no --input/--template provided; cannot redispatch.');
       process.exit(1);
     }
 

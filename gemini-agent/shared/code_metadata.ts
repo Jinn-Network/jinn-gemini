@@ -5,6 +5,7 @@ import {
   getCodeMetadataDefaultBaseBranch,
   isCodeMetadataDebugEnabled,
 } from '../../config/index.js';
+import { normalizeSshUrl } from '../../shared/repo_utils.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -304,12 +305,14 @@ export async function collectLocalCodeMetadata(
 
   const upstream = await runGit(['rev-parse', '--abbrev-ref', '@{u}']);
 
-  const remoteCandidate =
-    (await runGit([
-      'remote',
-      'get-url',
-      parseRemoteFromUpstream(upstream) || 'origin',
-    ])) || undefined;
+  // Get the raw remote URL and normalize it for portability
+  // Custom SSH aliases (e.g., git@ritsukai:) are converted to git@github.com:
+  const rawRemoteUrl = await runGit([
+    'remote',
+    'get-url',
+    parseRemoteFromUpstream(upstream) || 'origin',
+  ]);
+  const remoteCandidate = rawRemoteUrl ? normalizeSshUrl(rawRemoteUrl) : undefined;
 
   const porcelain = await runGit(['status', '--porcelain']);
   const aheadBehindRaw = upstream

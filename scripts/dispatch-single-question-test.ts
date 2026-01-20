@@ -13,9 +13,9 @@ import { getServiceProfile } from "../env/operate-profile.js";
 const template = JSON.parse(fs.readFileSync("blueprints/single-question-test.json", "utf8"));
 const question = process.argv[2] || "What is 2+2?";
 
-// Substitute {{question}} in assertions
-const assertions = JSON.parse(JSON.stringify(template.assertions).replace(/\{\{question\}\}/g, question));
-const blueprint = JSON.stringify({ assertions });
+// Substitute {{question}} in invariants
+const invariants = JSON.parse(JSON.stringify(template.invariants).replace(/\{\{question\}\}/g, question));
+const blueprint = JSON.stringify({ invariants });
 
 // Generate unique job definition ID with hash for template matching
 const contentHash = crypto.createHash('md5').update(blueprint).digest('hex').slice(0, 8);

@@ -275,6 +275,26 @@
                     "Ignore hierarchy context when deciding dispatch method"
                 ]
             }
+        },
+        {
+            "id": "SYS-018",
+            "type": "BOOLEAN",
+            "condition": "Before your Execution Summary, you output a final status update using the format 'Status Update: <first-person summary>' that describes the current state of this job instance (not just this run). The summary must be in first person and MUST be under 144 characters.",
+            "assessment": "Verify a status update is emitted before the Execution Summary. The update should reflect the job instance's overall state including progress from previous runs if applicable.",
+            "examples": {
+                "do": [
+                    "Status Update: I have published 3 of 5 planned blog posts this cycle",
+                    "Status Update: I am waiting for 2 child jobs to complete before I can proceed",
+                    "Status Update: I have completed all content goals and am ready for the next cycle",
+                    "Status Update: I am blocked on API rate limits, will retry next run"
+                ],
+                "dont": [
+                    "Skip the status update before Execution Summary",
+                    "Exceed 144 characters",
+                    "Use third person ('The job is...' or 'Completed...')",
+                    "Only describe this run without considering job instance state"
+                ]
+            }
         }
     ]
 }

@@ -32,6 +32,57 @@ export function extractRepoName(remoteUrl: string): string | null {
 }
 
 /**
+ * Normalize SSH remote URLs to portable format for IPFS storage
+ *
+ * Custom SSH host aliases (e.g., `ritsukai` in ~/.ssh/config) are machine-specific
+ * and won't work on other machines. This function converts them to standard
+ * github.com URLs for portability.
+ *
+ * IMPORTANT: This should be called at DISPATCH time (when storing metadata in IPFS),
+ * NOT at clone time. Workers cloning repos should use the already-normalized URL.
+ *
+ * Converts:
+ * - git@ritsukai:owner/repo.git -> git@github.com:owner/repo.git
+ * - git@custom-host:owner/repo.git -> git@github.com:owner/repo.git
+ *
+ * Preserves:
+ * - git@github.com:owner/repo.git -> unchanged
+ * - https://github.com/owner/repo.git -> unchanged
+ *
+ * @param remoteUrl - Git remote URL (potentially with custom SSH alias)
+ * @returns Normalized URL with github.com as host
+ */
+export function normalizeSshUrl(remoteUrl: string): string {
+  if (!remoteUrl) return remoteUrl;
+
+  // Already HTTPS - no change needed
+  if (remoteUrl.startsWith('https://') || remoteUrl.startsWith('http://')) {
+    return remoteUrl;
+  }
+
+  // Standard git@github.com format - no change needed
+  if (remoteUrl.startsWith('git@github.com:')) {
+    return remoteUrl;
+  }
+
+  // Match custom SSH alias format: git@alias:owner/repo.git
+  // Examples:
+  //   git@ritsukai:Jinn-Network/jinn-blog.git
+  //   git@custom-host:owner/repo.git
+  const sshAliasMatch = remoteUrl.match(/^git@([^:]+):(.+)$/);
+  if (sshAliasMatch) {
+    const [, host, path] = sshAliasMatch;
+    // If not already github.com, convert to standard format
+    if (host !== 'github.com') {
+      return `git@github.com:${path}`;
+    }
+  }
+
+  // Return unchanged if we can't parse it
+  return remoteUrl;
+}
+
+/**
  * Get the Jinn workspace directory where ventures are cloned
  * Expands ~ to home directory and creates directory if needed
  *

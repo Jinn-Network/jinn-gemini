@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, ReactNode } from 'react'
-import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition } from '@/lib/subgraph'
+import { fetchIpfsContent, getJobDefinition, getRequest, queryRequests, queryDeliveries, queryArtifacts, queryMessages, type Request as SubgraphRequest, type JobDefinition as SubgraphJobDefinition, type Delivery as SubgraphDelivery } from '@/lib/subgraph'
 import { parseInvariants } from '@/lib/invariant-utils'
 import { InvariantCard, type Invariant, type LegacyInvariant } from '@jinn/shared-ui'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
@@ -512,6 +512,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
   const [loadingArtifacts, setLoadingArtifacts] = useState(true)
   const [workerTelemetry, setWorkerTelemetry] = useState<WorkerTelemetryLog | null>(null)
   const [loadingWorkerTelemetry, setLoadingWorkerTelemetry] = useState(true)
+  const [deliveryRecord, setDeliveryRecord] = useState<SubgraphDelivery | null>(null)
 
   // Get workstream ID from Ponder (already indexed and computed)
   useEffect(() => {
@@ -727,9 +728,20 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
     }
   }, [record.deliveryIpfsHash, record.id, record.delivered])
 
+  // Fetch delivery record from Ponder for status updates
+  useEffect(() => {
+    if (record.delivered) {
+      queryDeliveries({ where: { requestId: record.id }, limit: 1 })
+        .then(res => {
+          if (res.items.length > 0) setDeliveryRecord(res.items[0])
+        })
+        .catch(err => console.error('Error fetching delivery record:', err))
+    }
+  }, [record.id, record.delivered])
+
   // Extract execution data - prioritize delivery data as ground truth
   const executionData = record.delivered ? {
-    status: memoryData?.situation?.execution?.status || 'COMPLETED',
+    status: deliveryRecord?.jobInstanceStatusUpdate || memoryData?.situation?.execution?.status || 'COMPLETED',
     trace: deliveryData?.telemetry?.toolCalls,
     finalOutput: (() => {
       // Try deliveryData.output first
@@ -1472,8 +1484,8 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                   <div>
                     <div className="text-sm font-medium text-gray-400 mb-1">Delivered Status</div>
                     <span className={`inline-flex items-center px-2 py-1 rounded text-xs border ${record.delivered
-                        ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30'
-                        : 'bg-muted text-muted-foreground border-muted-foreground/30'
+                      ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30'
+                      : 'bg-muted text-muted-foreground border-muted-foreground/30'
                       }`}>
                       {record.delivered ? '✓ Delivered' : '⏳ Pending'}
                     </span>
@@ -1572,16 +1584,16 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                     </div>
                     {(deliveryData || executionData) && executionData?.status ? (
                       <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${executionData.status === 'COMPLETED'
-                          ? 'bg-green-500/10 text-green-700 dark:text-green-400'
-                          : executionData.status === 'FAILED'
-                            ? 'bg-red-500/10 text-red-700 dark:text-red-400'
-                            : executionData.status === 'DELEGATING'
-                              ? 'bg-primary/20 text-primary'
-                              : executionData.status === 'WAITING'
-                                ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
-                                : executionData.status === 'PENDING'
-                                  ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
-                                  : 'bg-muted text-muted-foreground'
+                        ? 'bg-green-500/10 text-green-700 dark:text-green-400'
+                        : executionData.status === 'FAILED'
+                          ? 'bg-red-500/10 text-red-700 dark:text-red-400'
+                          : executionData.status === 'DELEGATING'
+                            ? 'bg-primary/20 text-primary'
+                            : executionData.status === 'WAITING'
+                              ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400'
+                              : executionData.status === 'PENDING'
+                                ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400'
+                                : 'bg-muted text-muted-foreground'
                         }`}>
                         <StatusIcon status={executionData.status} size={14} />
                         {executionData.status}

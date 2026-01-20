@@ -2,131 +2,69 @@
 
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Activity, CheckCircle2, Rocket, ArrowRight } from "lucide-react";
-import { formatRelativeTime, type Request } from "@jinn/shared-ui";
+import { CheckCircle2, Rocket, Brain, Terminal, AlertCircle, Quote } from "lucide-react";
+import { formatRelativeTime, type Request, type Delivery } from "@jinn/shared-ui";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { fetchWorkstreamActivityAction } from "@/app/actions";
+import { transformToActivityItems, type ActivityItem } from "@/lib/activity-utils";
 
 const EXPLORER_BASE_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || "http://localhost:3000";
 
-/**
- * Activity Event Types for the stream
- */
-type ActivityEventType = 'started' | 'completed';
-
-interface ActivityEvent {
-    id: string;
-    type: ActivityEventType;
-    jobName: string;
-    timestamp: number;
-    workstreamId: string;
-}
-
-/**
- * Transform requests into activity events
- * Each request can generate both a "started" and "completed" event
- */
-function requestsToEvents(requests: Request[]): ActivityEvent[] {
-    const events: ActivityEvent[] = [];
-
-    for (const request of requests) {
-        const jobName = request.jobName || `Job ${request.id.slice(0, 8)}`;
-        const workstreamId = request.workstreamId || request.id;
-
-        // Always add a "started" event
-        events.push({
-            id: `${request.id}-started`,
-            type: 'started',
-            jobName,
-            timestamp: parseInt(request.blockTimestamp),
-            workstreamId,
-        });
-
-        // Add "completed" event if delivered
-        if (request.delivered) {
-            events.push({
-                id: `${request.id}-completed`,
-                type: 'completed',
-                jobName,
-                // Assume completion is slightly after start (we don't have exact delivery time)
-                timestamp: parseInt(request.blockTimestamp) + 1,
-                workstreamId,
-            });
-        }
-    }
-
-    // Sort by timestamp descending (most recent first)
-    return events.sort((a, b) => b.timestamp - a.timestamp);
-}
-
-/**
- * Get human-friendly action text for event type
- */
-function getEventActionText(type: ActivityEventType): string {
-    switch (type) {
-        case 'started':
-            return 'has started';
-        case 'completed':
-            return 'has completed';
-        default:
-            return '';
-    }
-}
-
 interface ActivityFeedProps {
-    requests: Request[];
-    workstreamId?: string; // Optional context for polling if needed, though we can infer from requests if strictly same stream
+    initialData: { requests: Request[], deliveries: Delivery[] };
+    workstreamId?: string;
 }
 
 /**
- * ActivityFeed - An event-based stream showing job lifecycle events
- * Auto-polls for new updates every 5 seconds
+ * ActivityFeed - Uses real data with transformed items
  */
-export function ActivityFeed({ requests: initialRequests, workstreamId }: ActivityFeedProps) {
-    const [requests, setRequests] = useState<Request[]>(initialRequests);
+export function ActivityFeed({ initialData, workstreamId }: ActivityFeedProps) {
+    const [data, setData] = useState(initialData);
 
     // Update local state if props change (re-hydration or navigation)
     useEffect(() => {
-        setRequests(initialRequests);
-    }, [initialRequests]);
+        setData(initialData);
+    }, [initialData]);
 
     // Polling logic
     useEffect(() => {
-        // Only poll if we have a context ID (workstreamId) or can derive one
-        // We'll prefer the explicit prop if passed
-        const targetId = workstreamId || (requests.length > 0 ? requests[0].workstreamId : null);
-
+        const targetId = workstreamId || (data.requests.length > 0 ? data.requests[0].workstreamId : null);
         if (!targetId) return;
 
         const interval = setInterval(async () => {
             try {
-                const newRequests = await fetchWorkstreamActivityAction(targetId);
-                if (newRequests && newRequests.length > 0) {
-                    // Simple dedup/update: just replace if different count or latest ID differs
-                    setRequests(prev => {
-                        // Only update if data actually changed to avoid re-renders if referentially different but same content
-                        if (newRequests.length !== prev.length || newRequests[0]?.id !== prev[0]?.id) {
-                            return newRequests;
-                        }
+                const newData = await fetchWorkstreamActivityAction(targetId);
+                if (newData.requests.length > 0 || newData.deliveries.length > 0) {
+                    setData(prev => {
+                        // Simple check if counts changed or latest ID changed
+                        const prevReqCount = prev.requests.length;
+                        const newReqCount = newData.requests.length;
+                        if (prevReqCount !== newReqCount) return newData;
+
+                        const prevDevCount = prev.deliveries.length;
+                        const newDevCount = newData.deliveries.length;
+                        if (prevDevCount !== newDevCount) return newData;
+
                         return prev;
                     });
                 }
             } catch (e) {
                 console.error("Polling failed", e);
             }
-        }, 5000); // Poll every 5 seconds
+        }, 5000);
 
         return () => clearInterval(interval);
-    }, [workstreamId, requests]); // Dependent on requests to find ID if workstreamId shouldn't change dynamically
+    }, [workstreamId, data]);
 
-    const events = requestsToEvents(requests);
+    // Transform and enrich events
+    const events = transformToActivityItems(data.requests, data.deliveries);
 
     if (events.length === 0) {
         return (
             <div className="h-full flex flex-col gap-4">
                 <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-muted-foreground" />
+                    <Terminal className="h-4 w-4 text-muted-foreground" />
                     <h2 className="text-lg font-semibold">Activity Stream</h2>
                 </div>
                 <Card className="flex-1 border-0 shadow-none bg-transparent flex items-center justify-center">
@@ -139,7 +77,7 @@ export function ActivityFeed({ requests: initialRequests, workstreamId }: Activi
     return (
         <div className="h-full flex flex-col gap-4">
             <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-muted-foreground" />
+                <Terminal className="h-4 w-4 text-muted-foreground" />
                 <h2 className="text-lg font-semibold">Activity Stream</h2>
                 <span className="text-xs text-muted-foreground ml-auto">{events.length} events</span>
             </div>
@@ -157,58 +95,78 @@ export function ActivityFeed({ requests: initialRequests, workstreamId }: Activi
     );
 }
 
-/**
- * Individual activity event item with event-specific styling
- */
-function ActivityEventItem({ event }: { event: ActivityEvent }) {
-    const isCompleted = event.type === 'completed';
+function getEventIcon(type: ActivityItem['type']) {
+    switch (type) {
+        case 'started': return <Rocket className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />;
+        case 'completed': return <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />;
+        case 'thinking': return <Brain className="h-4 w-4 text-purple-500 shrink-0 mt-0.5" />;
+        case 'action': return <Terminal className="h-4 w-4 text-cyan-500 shrink-0 mt-0.5" />;
+        case 'error': return <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />;
+        default: return <Terminal className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />;
+    }
+}
+
+function getEventColor(type: ActivityItem['type']) {
+    switch (type) {
+        case 'started': return 'text-blue-500';
+        case 'completed': return 'text-green-500';
+        case 'thinking': return 'text-purple-500';
+        case 'action': return 'text-cyan-500';
+        case 'error': return 'text-red-500';
+        default: return 'text-foreground';
+    }
+}
+
+function ActivityEventItem({ event }: { event: ActivityItem }) {
+    const isThinking = event.type === 'thinking';
+    const isAction = event.type === 'action';
+    const isSystem = ['started', 'completed', 'error'].includes(event.type);
 
     return (
-        <div className="relative">
+        <div className="relative group pl-2">
+            {/* Timeline Line */}
+            <div className="absolute left-[7px] top-8 bottom-[-12px] w-px bg-border/50 group-last:hidden" />
+
             {/* Timeline Dot */}
             <div
-                className={`absolute -left-[30px] top-1.5 h-3 w-3 rounded-full border-2 ring-4 ring-background ${isCompleted
-                    ? 'bg-green-500 border-green-400'
-                    : 'bg-blue-500 border-blue-400'
+                className={`absolute left-[3px] top-2 h-2.5 w-2.5 rounded-full border ring-4 ring-background z-10 
+                    ${event.type === 'completed' ? 'bg-green-500 border-green-400' :
+                        event.type === 'started' ? 'bg-blue-500 border-blue-400' :
+                            event.type === 'thinking' ? 'bg-purple-500 border-purple-400/50' :
+                                event.type === 'action' ? 'bg-cyan-500 border-cyan-400/50' :
+                                    'bg-muted border-muted-foreground'
                     }`}
             />
 
-            <div className="flex flex-col gap-2 bg-card/50 rounded-lg p-3 border border-border/50">
-                {/* Event Header with Icon */}
-                <div className="flex items-start gap-2">
-                    {isCompleted ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                    ) : (
-                        <Rocket className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+            <div className="ml-6 flex flex-col gap-1">
+                {/* Header (Job Name + Time) */}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-0.5">
+                    <span className="font-medium text-foreground/70">{event.jobName}</span>
+                    <span>•</span>
+                    <span>{formatRelativeTime(event.timestamp)}</span>
+                </div>
+
+                {/* Message Bubble / Quote */}
+                <div className={`relative rounded-lg p-3 border transition-all
+                    ${isSystem ? 'bg-muted/30 border-border/40 text-sm' :
+                        'bg-card border-border/60 shadow-sm text-sm'
+                    }
+                `}>
+                    {/* Quote Icon for non-system messages */}
+                    {!isSystem && (
+                        <Quote className="h-3 w-3 absolute -top-1.5 -left-1.5 text-muted-foreground/40 bg-background rotate-180" />
                     )}
 
-                    <div className="flex-1 min-w-0">
-                        {/* Event Message - Natural Language Style */}
-                        <p className="text-sm leading-relaxed">
-                            <span className="font-semibold">{event.jobName}</span>
-                            {' '}
-                            <span className={isCompleted ? 'text-green-500' : 'text-blue-500'}>
-                                {getEventActionText(event.type)}
-                            </span>
-                        </p>
+                    <div className="flex items-start gap-3">
+                        {isSystem && getEventIcon(event.type)}
 
-                        {/* Timestamp */}
-                        <p className="text-xs text-muted-foreground mt-1">
-                            {formatRelativeTime(event.timestamp)}
+                        <p className={`leading-relaxed ${isSystem ? 'text-muted-foreground font-medium' :
+                                'text-foreground/90 font-serif italic'
+                            }`}>
+                            {event.message}
                         </p>
                     </div>
                 </div>
-
-                {/* Always-visible link to workstream */}
-                <Link
-                    href={`${EXPLORER_BASE_URL}/workstreams/${event.workstreamId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit"
-                >
-                    View in Workstream
-                    <ArrowRight className="h-3 w-3" />
-                </Link>
             </div>
         </div>
     );

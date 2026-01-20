@@ -14,7 +14,7 @@ export function NavHeader() {
         </Link>
 
         <nav className="flex items-center gap-4">
-          <Button variant="ghost" asChild>
+          <Button asChild>
             <a
               href={EXPLORER_URL}
               target="_blank"

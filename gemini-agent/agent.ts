@@ -11,6 +11,15 @@ import { computeToolPolicy, UNIVERSAL_TOOLS, hasBrowserAutomation, BROWSER_AUTOM
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
+/**
+ * Strip ANSI escape codes from a string
+ * Used to ensure status detection regex works regardless of terminal coloring
+ */
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
 // Add this interface for better type safety
 interface MCPServerConfig {
   command: string;
@@ -69,6 +78,7 @@ export class Agent {
   private cachedToolPolicy: ToolPolicyResult | null = null;
   private isCodingJob: boolean;
   private onStatusUpdate?: (status: string) => void;
+  private lastStatusUpdate: string | null = null;
 
   // Stdout protection limits (configurable via environment variables)
   private readonly MAX_STDOUT_SIZE = parseInt(process.env.AGENT_MAX_STDOUT_SIZE || '5242880'); // 5MB default
@@ -306,7 +316,8 @@ export class Agent {
       const structuredSummary = extractStructuredSummary(output) ?? undefined;
 
       // Extract job instance status update (Phase 5)
-      const jobInstanceStatusUpdate = extractJobInstanceStatusUpdate(output) ?? undefined;
+      // Prefer stored lastStatusUpdate (captured from real-time stream), fall back to extraction from output text
+      const jobInstanceStatusUpdate = this.lastStatusUpdate ?? extractJobInstanceStatusUpdate(output) ?? undefined;
 
       return { output, structuredSummary, jobInstanceStatusUpdate, telemetry };
     } catch (error) {
@@ -628,16 +639,27 @@ export class Agent {
 
           }
 
-          // Detect TaskStatus updates in the output stream
-          if (this.onStatusUpdate) {
-            // Regex to capture "TaskStatus": "Value" or TaskStatus: "Value" from tool calls
-            // Matches both JSON style and potentially log style
-            const statusMatch = line.match(/"?TaskStatus"?\s*[:=]\s*"([^"]+)"/);
-            if (statusMatch && statusMatch[1]) {
-              const status = statusMatch[1];
-              // Simple debounce/dedupe is handled by the caller or we can do it here if needed
-              // For now, emit every detection
+          // Detect status updates in the output stream for real-time and delivery payload inclusion
+          // Strip ANSI codes to ensure reliable pattern matching
+          const cleanLine = stripAnsi(line);
+          // Pattern 1: TaskStatus from tool calls ("TaskStatus": "Value" or TaskStatus="Value")
+          const taskStatusMatch = cleanLine.match(/"?TaskStatus"?\s*[:=]\s*"([^"]+)"/);
+          if (taskStatusMatch && taskStatusMatch[1]) {
+            const status = taskStatusMatch[1];
+            this.lastStatusUpdate = status;
+            if (this.onStatusUpdate) {
               this.onStatusUpdate(status);
+            }
+          }
+          // Pattern 2: Explicit text markers (Status Update: ...)
+          const textStatusMatch = cleanLine.match(/(?:\*\*|#+\s*)?Status Update:?(?:\*\*)?\s*(.+?)$/i);
+          if (textStatusMatch && textStatusMatch[1]) {
+            const status = textStatusMatch[1].trim();
+            if (status.length > 0 && status.length <= 144) {
+              this.lastStatusUpdate = status;
+              if (this.onStatusUpdate) {
+                this.onStatusUpdate(status);
+              }
             }
           }
 
@@ -1308,6 +1330,9 @@ export function extractJobInstanceStatusUpdate(output: string): string | null {
     return null;
   }
 
+  // Strip ANSI codes to ensure reliable pattern matching
+  const cleanOutput = stripAnsi(output);
+
   const MAX_LENGTH = 144;
   let status: string | null = null;
   let lastMatchIndex = -1;
@@ -1321,20 +1346,20 @@ export function extractJobInstanceStatusUpdate(output: string): string | null {
   };
 
   // 1. Look for explicit text markers (Status Update: ...)
-  const textMatches = output.matchAll(/(?:\*\*|#+\s*)?Status Update:?(?:\*\*)?\s*(.+?)(?:\n|$)/gi);
+  const textMatches = cleanOutput.matchAll(/(?:\*\*|#+\s*)?Status Update:?(?:\*\*)?\s*(.+?)(?:\n|$)/gi);
   for (const match of textMatches) {
     updateIfLater(match);
   }
 
   // 2. Look for TaskStatus from task_boundary tool calls
   // Supports strictly quoted JSON ("TaskStatus": "...") and looser CLI args (TaskStatus="...")
-  const taskStatusMatches = output.matchAll(/["']?TaskStatus["']?\s*[:=]\s*["']([^"']+)["']/g);
+  const taskStatusMatches = cleanOutput.matchAll(/["']?TaskStatus["']?\s*[:=]\s*["']([^"']+)["']/g);
   for (const match of taskStatusMatches) {
     updateIfLater(match);
   }
 
   // 3. Look for explicit JSON property (jobInstanceStatusUpdate)
-  const jsonMatches = output.matchAll(/"jobInstanceStatusUpdate"\s*:\s*"([^"]+)"/g);
+  const jsonMatches = cleanOutput.matchAll(/"jobInstanceStatusUpdate"\s*:\s*"([^"]+)"/g);
   for (const match of jsonMatches) {
     updateIfLater(match);
   }

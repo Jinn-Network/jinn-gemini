@@ -280,10 +280,25 @@ STAKING_PROGRAM=<program>
 
 ---
 
+## Worker Deployment
+
+**CRITICAL: Worker Runs Locally from Current Branch**
+- The production worker is NOT deployed to Railway or any cloud service
+- Worker runs locally via `yarn dev:mech` from whatever git branch is currently checked out
+- Changes to worker code, agent code, or system blueprints take effect immediately on the current branch
+- No merge/deploy cycle needed - just ensure you're on the correct branch before running
+
+**Implication for Testing:**
+- To test new features, ensure you're on the branch with those changes
+- Run `yarn dev:mech` to start the worker with current branch code
+- Jobs dispatched to the workstream will be processed by this local worker
+
+---
+
 ## Ponder Deployment
 
-**Production:** Railway at `https://jinn-gemini-production.up.railway.app/graphql`  
-**Auto-Deploy:** Pushes to GitHub trigger Railway redeployment  
+**Production:** Railway at `https://jinn-gemini-production.up.railway.app/graphql`
+**Auto-Deploy:** Pushes to GitHub trigger Railway redeployment
 **Local:** `http://localhost:42069/graphql` (ONLY for testing Ponder changes)
 
 **CRITICAL: Railway Ponder is Primary**
