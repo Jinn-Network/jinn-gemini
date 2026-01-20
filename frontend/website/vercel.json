@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
-  "installCommand": "cd ../.. && yarn install",
+  "installCommand": "cd ../.. && yarn install --ignore-engines",
   "buildCommand": "yarn build",
   "env": {
     "NEXT_PUBLIC_SUBGRAPH_URL": "https://jinn-gemini-production.up.railway.app/graphql",
