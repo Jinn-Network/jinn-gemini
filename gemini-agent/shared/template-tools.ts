@@ -16,6 +16,48 @@ function normalizeToolName(tool: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Extract tool name from either string or object format.
+ * Handles both "toolName" and {name: "toolName", required: true}
+ */
+export function extractToolName(tool: unknown): string | null {
+  if (typeof tool === 'string') {
+    const trimmed = tool.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (tool && typeof tool === 'object' && 'name' in tool) {
+    const name = (tool as TemplateToolSpec).name;
+    if (typeof name === 'string') {
+      const trimmed = name.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Normalize array of tools (strings or objects) to string names.
+ * Filters out invalid entries and corrupted data like "[object Object]".
+ */
+export function normalizeToolArray(tools: unknown): string[] {
+  if (!Array.isArray(tools)) {
+    return [];
+  }
+
+  const result: string[] = [];
+  for (const tool of tools) {
+    const name = extractToolName(tool);
+    // Filter out invalid tool names and corrupted "[object Object]" strings
+    // that may exist in older IPFS metadata
+    if (name && name !== '[object Object]') {
+      result.push(name);
+    }
+  }
+  return result;
+}
+
 function uniqueOrdered(values: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];

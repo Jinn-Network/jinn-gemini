@@ -36,6 +36,10 @@ export const REGISTERED_MCP_TOOLS = [
   'blog_get_metrics',
   'blog_get_pageviews',
   'blog_get_performance_summary',
+  // Telegram messaging tools
+  'telegram_send_message',
+  'telegram_send_photo',
+  'telegram_send_document',
 ] as const;
 
 async function main() {
@@ -106,6 +110,10 @@ async function main() {
       { name: 'blog_get_metrics', schema: tools.blogGetMetricsSchema, handler: tools.blogGetMetrics },
       { name: 'blog_get_pageviews', schema: tools.blogGetPageviewsSchema, handler: tools.blogGetPageviews },
       { name: 'blog_get_performance_summary', schema: tools.blogGetPerformanceSummarySchema, handler: tools.blogGetPerformanceSummary },
+      // Telegram messaging tools
+      { name: 'telegram_send_message', schema: tools.telegramSendMessageSchema, handler: tools.telegramSendMessage },
+      { name: 'telegram_send_photo', schema: tools.telegramSendPhotoSchema, handler: tools.telegramSendPhoto },
+      { name: 'telegram_send_document', schema: tools.telegramSendDocumentSchema, handler: tools.telegramSendDocument },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums

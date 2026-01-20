@@ -50,6 +50,16 @@
                     "type": "string",
                     "description": "Blog domain",
                     "default": "$provision"
+                },
+                "telegramChatId": {
+                    "type": "string",
+                    "description": "Telegram chat ID for distribution (e.g., -100123456789)",
+                    "envVar": "TELEGRAM_CHAT_ID"
+                },
+                "telegramTopicId": {
+                    "type": "string",
+                    "description": "Telegram topic/thread ID (optional, for forum groups)",
+                    "envVar": "TELEGRAM_TOPIC_ID"
                 }
             },
             "required": [
@@ -65,23 +75,67 @@
                     "description": "The live blog URL where content is published"
                 }
             },
-            "required": ["liveBlogUrl"]
+            "required": [
+                "liveBlogUrl"
+            ]
         },
         "tools": [
-            { "name": "blog_create_post", "required": true },
-            { "name": "blog_list_posts", "required": true },
-            { "name": "blog_get_post", "required": true },
-            { "name": "blog_delete_post", "required": true },
-            { "name": "blog_get_stats", "required": true },
-            { "name": "blog_get_top_pages", "required": true },
-            { "name": "blog_get_referrers", "required": true },
-            { "name": "blog_get_metrics", "required": true },
-            { "name": "blog_get_pageviews", "required": true },
-            { "name": "blog_get_performance_summary", "required": true },
-            { "name": "process_branch", "required": true },
-            { "name": "write_file" },
-            { "name": "replace" },
-            { "name": "run_shell_command" }
+            {
+                "name": "blog_create_post",
+                "required": true
+            },
+            {
+                "name": "blog_list_posts",
+                "required": true
+            },
+            {
+                "name": "blog_get_post",
+                "required": true
+            },
+            {
+                "name": "blog_delete_post",
+                "required": true
+            },
+            {
+                "name": "blog_get_stats",
+                "required": true
+            },
+            {
+                "name": "blog_get_top_pages",
+                "required": true
+            },
+            {
+                "name": "blog_get_referrers",
+                "required": true
+            },
+            {
+                "name": "blog_get_metrics",
+                "required": true
+            },
+            {
+                "name": "blog_get_pageviews",
+                "required": true
+            },
+            {
+                "name": "blog_get_performance_summary",
+                "required": true
+            },
+            {
+                "name": "process_branch",
+                "required": true
+            },
+            {
+                "name": "write_file"
+            },
+            {
+                "name": "replace"
+            },
+            {
+                "name": "run_shell_command"
+            },
+            {
+                "name": "telegram_messaging"
+            }
         ]
     },
     "invariants": [

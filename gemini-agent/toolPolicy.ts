@@ -122,6 +122,60 @@ export function hasBrowserAutomation(enabledTools: string[]): boolean {
 }
 
 /**
+ * Extension meta-tools that trigger workspace extension installation
+ *
+ * These are Gemini CLI extensions installed via `gemini extension install <url>`.
+ * When an agent includes the meta-tool name in enabledTools:
+ * 1. The extension is installed to GEMINI_HOME/extensions/<extensionName>/
+ * 2. The meta-tool is expanded to its individual tools for MCP configuration
+ * 3. excludedTools are added to settings.json to block unsafe tools
+ */
+export const EXTENSION_META_TOOLS = {
+  // telegram_messaging removed - now handled via custom MCP tools
+} as const;
+
+export type ExtensionMetaTool = keyof typeof EXTENSION_META_TOOLS;
+
+/**
+ * Get all enabled extension meta-tools from the tools list
+ */
+export function getEnabledExtensions(enabledTools: string[]): ExtensionMetaTool[] {
+  return (Object.keys(EXTENSION_META_TOOLS) as ExtensionMetaTool[])
+    .filter(ext => enabledTools.includes(ext));
+}
+
+/**
+ * Telegram messaging tools (custom MCP tools)
+ * Reads chat_id from TELEGRAM_CHAT_ID env var
+ */
+export const TELEGRAM_TOOLS = [
+  'telegram_send_message',
+  'telegram_send_photo',
+  'telegram_send_document',
+] as const;
+
+/**
+ * Check if telegram messaging is enabled in the tools list
+ */
+export function hasTelegramMessaging(enabledTools: string[]): boolean {
+  return enabledTools.includes('telegram_messaging');
+}
+
+/**
+ * Get all excluded tools from enabled extensions
+ */
+export function getExtensionExcludedTools(enabledTools: string[]): string[] {
+  const excludedTools: string[] = [];
+  for (const metaTool of getEnabledExtensions(enabledTools)) {
+    const config = EXTENSION_META_TOOLS[metaTool];
+    if (config && 'excludedTools' in config) {
+      excludedTools.push(...(config as { excludedTools: string[] }).excludedTools);
+    }
+  }
+  return excludedTools;
+}
+
+/**
  * Result of tool policy computation
  */
 export interface ToolPolicyResult {
@@ -182,6 +236,26 @@ export function computeToolPolicy(
       ...BROWSER_AUTOMATION_TOOLS
     ];
   }
+
+  // Expand extension meta-tools to their individual tools
+  // This allows extension tools to be whitelisted in MCP includeTools
+  for (const [metaTool, config] of Object.entries(EXTENSION_META_TOOLS)) {
+    if (expandedTools.includes(metaTool) && config && typeof config === 'object' && 'tools' in config) {
+      expandedTools = [
+        ...expandedTools.filter(t => t !== metaTool),
+        ...(config as { tools: string[] }).tools
+      ];
+    }
+  }
+
+  // Expand telegram_messaging meta-tool to custom MCP tools
+  if (expandedTools.includes('telegram_messaging')) {
+    expandedTools = [
+      ...expandedTools.filter(t => t !== 'telegram_messaging'),
+      ...TELEGRAM_TOOLS
+    ];
+  }
+
   const uniqueTools = [...new Set(expandedTools)];
 
   // MCP include: all tools the agent should have access to

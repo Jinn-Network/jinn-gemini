@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync, statSync } from 'fs';
 import { join, dirname, resolve, isAbsolute, delimiter } from 'path';
 import { tmpdir } from 'os';
@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
 import { getOptionalCodeMetadataRepoRoot, getSandboxMode } from '../config/index.js';
 import { getRepoRoot } from '../shared/repo_utils.js';
-import { computeToolPolicy, UNIVERSAL_TOOLS, hasBrowserAutomation, BROWSER_AUTOMATION_TOOLS, type ToolPolicyResult } from './toolPolicy.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, hasBrowserAutomation, BROWSER_AUTOMATION_TOOLS, getEnabledExtensions, EXTENSION_META_TOOLS, getExtensionExcludedTools, type ToolPolicyResult } from './toolPolicy.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
@@ -63,6 +63,7 @@ export class Agent {
   private settingsPath: string;
   private agentRoot: string;
   private codeWorkspace: string;
+  private geminiHome: string;
   private lastTelemetryFile: string | null = null;
   private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
   private cachedToolPolicy: ToolPolicyResult | null = null;
@@ -147,11 +148,89 @@ export class Agent {
       }
     }
 
+    // Set GEMINI_HOME to /tmp for writable storage (avoids macOS extended attributes)
+    this.geminiHome = join('/tmp', '.gemini-worker');
+
     // Log protection limits
     agentLogger.info({
       maxStdoutSizeMB: (this.MAX_STDOUT_SIZE / 1024 / 1024).toFixed(1),
       repetitionThreshold: this.REPETITION_THRESHOLD
     }, 'Loop protection enabled');
+  }
+
+  /**
+   * Check if a Gemini CLI extension is already installed
+   */
+  private isExtensionInstalled(extensionName: string): boolean {
+    // Check workspace scope
+    if (this.codeWorkspace) {
+      const workspacePath = join(this.codeWorkspace, '.gemini', 'extensions', extensionName);
+      if (existsSync(workspacePath)) return true;
+    }
+
+    // Check GEMINI_HOME scope (persistent across jobs)
+    const homePath = join(this.geminiHome, 'extensions', extensionName);
+    if (existsSync(homePath)) return true;
+
+    return false;
+  }
+
+  /**
+   * Install a Gemini CLI extension (skips if already installed)
+   */
+  private async installExtension(
+    extensionUrl: string,
+    extensionName: string
+  ): Promise<void> {
+    // Skip if already installed
+    if (this.isExtensionInstalled(extensionName)) {
+      agentLogger.debug({ extensionName }, 'Extension already installed, skipping');
+      return;
+    }
+
+    try {
+      // Ensure GEMINI_HOME exists before installation
+      mkdirSync(this.geminiHome, { recursive: true });
+
+      // Install to GEMINI_HOME (persists across jobs)
+      execSync(
+        `npx @google/gemini-cli extension install ${extensionUrl}`,
+        {
+          cwd: this.codeWorkspace || this.agentRoot,
+          stdio: 'pipe',
+          env: { ...process.env, GEMINI_HOME: this.geminiHome },
+        }
+      );
+      agentLogger.info({ extensionUrl, extensionName }, `Installed ${extensionName} extension`);
+    } catch (error) {
+      agentLogger.error({ error, extensionUrl, extensionName }, `Failed to install ${extensionName} extension`);
+      throw error;
+    }
+  }
+
+  /**
+   * Install all enabled extensions and validate required environment variables
+   */
+  private async installEnabledExtensions(): Promise<void> {
+    const enabledExtensions = getEnabledExtensions(this.enabledTools);
+
+    for (const metaTool of enabledExtensions) {
+      const config = EXTENSION_META_TOOLS[metaTool];
+
+      // Skip if no valid config (handles empty EXTENSION_META_TOOLS object)
+      if (!config || typeof config !== 'object') continue;
+
+      const typedConfig = config as { requiredEnv: string[]; installUrl: string; extensionName: string };
+
+      // Validate required env vars
+      for (const envVar of typedConfig.requiredEnv) {
+        if (!process.env[envVar]) {
+          throw new Error(`${envVar} required when ${metaTool} is enabled`);
+        }
+      }
+
+      await this.installExtension(typedConfig.installUrl, typedConfig.extensionName);
+    }
   }
 
   public async run(prompt: string): Promise<AgentResult> {
@@ -161,6 +240,10 @@ export class Agent {
       if (this.jobContext) {
         // No in-process setter; canonical path is env-only
       }
+
+      // Install enabled extensions before generating settings
+      // Extensions are installed to GEMINI_HOME and persist across jobs
+      await this.installEnabledExtensions();
 
       this.generateJobSpecificSettings();
       // Small delay to allow OpenTelemetry resource attributes to settle
@@ -714,9 +797,20 @@ export class Agent {
         templateSettings.mcpServers['chrome-devtools'].includeTools = browserTools;
       }
 
-      // CRITICAL: Do NOT set global excludeTools - it overrides per-server includeTools
+      // CRITICAL: Do NOT set global excludeTools for MCP tools - it overrides per-server includeTools
       // The Gemini CLI respects per-server includeTools without needing global exclusions
       // templateSettings.excludeTools = toolPolicy.mcpExcludeTools;
+
+      // Collect all excluded tools from enabled extensions (e.g., telegram's 'read' tool)
+      // These are added to global excludeTools to prevent prompt injection risks
+      const extensionExcludedTools = getExtensionExcludedTools(this.enabledTools);
+      if (extensionExcludedTools.length > 0) {
+        templateSettings.excludeTools = [
+          ...(templateSettings.excludeTools || []),
+          ...extensionExcludedTools
+        ];
+        agentLogger.debug({ extensionExcludedTools }, 'Added extension excluded tools to settings');
+      }
 
       // Whitelist native tools at the CLI level (write_file, replace, etc.)
       templateSettings.coreTools = toolPolicy.cliAllowedTools;

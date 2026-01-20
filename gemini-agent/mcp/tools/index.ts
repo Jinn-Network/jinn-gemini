@@ -38,5 +38,13 @@ export {
   blogGetPerformanceSummary, blogGetPerformanceSummaryParams, blogGetPerformanceSummarySchema,
 } from './blog-analytics.js';
 
+// Telegram tools
+export {
+  telegramSendMessage, telegramSendMessageParams, telegramSendMessageSchema,
+  telegramSendPhoto, telegramSendPhotoParams, telegramSendPhotoSchema,
+  telegramSendDocument, telegramSendDocumentParams, telegramSendDocumentSchema,
+} from './telegram-messaging.js';
+
 // Export database functions
 export { readRecords, createRecord, type ReadRecordsParams, type CreateRecordParams } from './shared/database.js';
+

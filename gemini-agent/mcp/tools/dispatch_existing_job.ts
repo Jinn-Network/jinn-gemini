@@ -8,7 +8,7 @@ import { getPonderGraphqlUrl } from './shared/env.js';
 import { collectLocalCodeMetadata, ensureJobBranch } from '../../shared/code_metadata.js';
 import { getCodeMetadataDefaultBaseBranch } from '../../../config/index.js';
 import { ensureUniversalTools, BASE_UNIVERSAL_TOOLS } from '../../toolPolicy.js';
-import { buildAnnotatedTools } from '../../shared/template-tools.js';
+import { buildAnnotatedTools, normalizeToolArray } from '../../shared/template-tools.js';
 import { blueprintStructureSchema } from '../../shared/blueprint-schema.js';
 import { validateInvariantsStrict } from '../../../worker/prompt/invariant-validator.js';
 
@@ -180,24 +180,27 @@ export async function dispatchExistingJob(args: unknown) {
   const baseTools: string[] | undefined = Array.isArray(jobDef.enabledTools) ? jobDef.enabledTools : undefined;
   const baseBlueprint: string | undefined = typeof jobDef.blueprint === 'string' ? jobDef.blueprint : undefined;
 
-  const requiredTools = Array.isArray(context.requiredTools) ? context.requiredTools : [];
-  const availableTools = Array.isArray(context.availableTools) ? context.availableTools : undefined;
-  if (Array.isArray(overridesTools) && Array.isArray(availableTools) && availableTools.length > 0) {
+  // Normalize tools to string arrays (handles both string and object formats)
+  const requiredTools = normalizeToolArray(context.requiredTools);
+  const availableTools = normalizeToolArray(context.availableTools);
+  const normalizedOverrides = normalizeToolArray(overridesTools);
+
+  if (normalizedOverrides.length > 0 && availableTools.length > 0) {
     // Universal tools are always allowed - filter them out before validation
     const universalSet = new Set(BASE_UNIVERSAL_TOOLS.map(t => t.toLowerCase()));
-    const toolsToValidate = overridesTools.filter(
-      (tool) => !universalSet.has(String(tool).toLowerCase())
+    const toolsToValidate = normalizedOverrides.filter(
+      (tool) => !universalSet.has(tool.toLowerCase())
     );
 
     const availableSet = new Set(availableTools.map((tool) => tool.toLowerCase()));
-    const disallowedTools = toolsToValidate.filter((tool) => !availableSet.has(String(tool).toLowerCase()));
+    const disallowedTools = toolsToValidate.filter((tool) => !availableSet.has(tool.toLowerCase()));
     if (disallowedTools.length > 0) {
       return { content: [{ type: 'text' as const, text: JSON.stringify({ data: null, meta: { ok: false, code: 'UNAUTHORIZED_TOOLS', message: `enabledTools not allowed by template policy: ${disallowedTools.join(', ')}.`, details: { disallowedTools, availableTools } } }) }] };
     }
   }
 
-  const requestedTools = overridesTools
-    ? [...(baseTools ?? []), ...overridesTools, ...requiredTools]  // Merge: base tools + override tools + required tools
+  const requestedTools = normalizedOverrides.length > 0
+    ? [...(baseTools ?? []), ...normalizedOverrides, ...requiredTools]  // Merge: base tools + override tools + required tools
     : [...(baseTools ?? []), ...requiredTools];
   const finalTools = ensureUniversalTools(requestedTools);
   const finalBlueprint = validatedBlueprint ?? baseBlueprint ?? '';

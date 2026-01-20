@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "setup": "./conductor-setup.sh",
-    "run": "yarn test:all"
+    "setup": "./setup-worktree.sh",
+    "run": "yarn mech"
   }
 }

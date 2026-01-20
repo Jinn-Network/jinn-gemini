@@ -7,7 +7,7 @@ import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { buildIpfsPayload } from '../../shared/ipfs-payload-builder.js';
 import { validateInvariantsStrict } from '../../../worker/prompt/invariant-validator.js';
-import { buildAnnotatedTools } from '../../shared/template-tools.js';
+import { buildAnnotatedTools, normalizeToolArray } from '../../shared/template-tools.js';
 import { blueprintStructureSchema } from '../../shared/blueprint-schema.js';
 import { BASE_UNIVERSAL_TOOLS } from '../../toolPolicy.js';
 
@@ -178,10 +178,13 @@ export async function dispatchNewJob(args: unknown) {
 
     const { jobName, blueprint, model, enabledTools: requestedTools, message, dependencies, skipBranch, responseTimeout, inputSchema } = parsed.data;
     const context = getCurrentJobContext();
-    const requiredTools = Array.isArray(context.requiredTools) ? context.requiredTools : [];
-    const availableTools = Array.isArray(context.availableTools) ? context.availableTools : undefined;
+
+    // Normalize tools to string arrays (handles both string and object formats)
+    const requiredTools = normalizeToolArray(context.requiredTools);
+    const availableTools = normalizeToolArray(context.availableTools);
+    const normalizedRequestedTools = normalizeToolArray(requestedTools);
     const mergedRequestedTools = [
-      ...(requestedTools ?? []),
+      ...normalizedRequestedTools,
       ...requiredTools,
     ];
 
@@ -197,15 +200,15 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
-    if (Array.isArray(availableTools) && availableTools.length > 0) {
+    if (availableTools.length > 0) {
       // Universal tools are always allowed - filter them out before validation
       const universalSet = new Set(BASE_UNIVERSAL_TOOLS.map(t => t.toLowerCase()));
       const toolsToValidate = mergedRequestedTools.filter(
-        (tool) => !universalSet.has(String(tool).toLowerCase())
+        (tool) => !universalSet.has(tool.toLowerCase())
       );
 
       const availableSet = new Set(availableTools.map((tool) => tool.toLowerCase()));
-      const disallowedTools = toolsToValidate.filter((tool) => !availableSet.has(String(tool).toLowerCase()));
+      const disallowedTools = toolsToValidate.filter((tool) => !availableSet.has(tool.toLowerCase()));
       if (disallowedTools.length > 0) {
         return {
           content: [{

@@ -143,6 +143,20 @@ Options:
   --use-x402           Use x402 gateway API instead of direct dispatch
   -h, --help           Show this help message
 
+Config file fields:
+  mission              One-sentence blog purpose
+  strategy             Freeform content strategy
+  sources              Array of URLs to monitor for content ideas
+  referrals            Referral/affiliate links guidance
+  telegramChannelId    Target Telegram channel (e.g., @mychannel or -100123456789)
+
+Telegram Setup (optional):
+  1. Message @BotFather on Telegram and send /newbot
+  2. Choose a name and username (must end in 'bot')
+  3. Set TELEGRAM_BOT_TOKEN env var on the worker
+  4. Add the bot as admin to your target channel (with "Post Messages" permission)
+  5. Add telegramChannelId to config file
+
 Examples:
   yarn provision:blog --customer="acme-corp" --display-name="Acme Corp Blog"
   yarn provision:blog --customer="the-lamp" --display-name="The Lamp" --config=configs/the-lamp.json --use-x402
@@ -261,6 +275,8 @@ Examples:
                     umamiWebsiteId: umamiResult!.websiteId,
                     repoUrl: forkResult.fullName,
                     domain: railwayResult.domain,
+                    // telegramChannelId passed if specified in config (token comes from env var)
+                    ...(blogConfig.telegramChannelId ? { telegramChannelId: blogConfig.telegramChannelId as string } : {}),
                 },
                 { dryRun }
             );

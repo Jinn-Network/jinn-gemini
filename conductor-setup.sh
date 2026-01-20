@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 set -e  # Exit on any error
 
+# =============================================================================
+# Conductor Setup Script - FULL DEVELOPMENT VERSION
+# =============================================================================
+#
+# This is the comprehensive setup script that includes:
+# - Full test fixtures (git template, operate profile)
+# - Integration smoke tests (Ponder + Control API)
+# - Python/Poetry validation
+# - Complete environment validation
+#
+# USE THIS WHEN:
+# - You need to run the full test suite
+# - You're setting up a development environment
+# - You need test fixtures populated
+#
+# FOR FASTER WORKER TESTING:
+# - Use ./setup-worktree.sh instead
+# - Skips test fixtures and integration tests
+# - Faster setup (~30-60s vs 2-5min)
+#
+# See docs/WORKTREE_TESTING.md for details
+# =============================================================================
+
 echo "🚀 Setting up Conductor workspace for Jinn..."
 echo ""
 
