@@ -11,8 +11,8 @@
  *   yarn dev:mech:parallel -w 2 -s 0x... --no-fresh  # Keep existing clones
  */
 
-import { spawn, ChildProcess } from 'child_process';
-import { rmSync, existsSync } from 'fs';
+import { spawn, ChildProcess, execSync } from 'child_process';
+import { rmSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import yargs from 'yargs';
@@ -31,9 +31,53 @@ function getWorkerClonesBaseDir(): string {
 }
 
 /**
+ * Kill any processes using the worker directories
+ * This is necessary because Gemini CLI, MCP servers, and Chrome processes
+ * may linger after worker exits, preventing directory cleanup.
+ */
+function killProcessesUsingWorkerDirs(): void {
+  const baseDir = getWorkerClonesBaseDir();
+  if (!existsSync(baseDir)) {
+    return;
+  }
+
+  try {
+    // Use lsof to find PIDs of processes using the worker directories
+    const lsofOutput = execSync(`lsof +D "${baseDir}" 2>/dev/null || true`, {
+      encoding: 'utf-8',
+      timeout: 30000,
+    });
+
+    // Extract unique PIDs from lsof output (skip header line)
+    const lines = lsofOutput.trim().split('\n').slice(1);
+    const pids = new Set<string>();
+    for (const line of lines) {
+      const parts = line.split(/\s+/);
+      if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+        pids.add(parts[1]);
+      }
+    }
+
+    if (pids.size > 0) {
+      console.log(`[cleanup] Killing ${pids.size} lingering processes using worker directories...`);
+      const pidList = Array.from(pids).join(' ');
+      execSync(`kill -9 ${pidList} 2>/dev/null || true`, { encoding: 'utf-8' });
+      // Brief pause to let OS release file handles
+      execSync('sleep 1', { encoding: 'utf-8' });
+    }
+  } catch (err) {
+    // Ignore errors - lsof or kill may fail if no processes exist
+    console.log('[cleanup] Warning: Could not check/kill lingering processes');
+  }
+}
+
+/**
  * Delete all worker clone directories to ensure fresh state
  */
 function cleanWorkerClones(workerCount: number): void {
+  // First, kill any lingering processes that might hold directories open
+  killProcessesUsingWorkerDirs();
+
   const baseDir = getWorkerClonesBaseDir();
   
   for (let i = 1; i <= workerCount; i++) {
@@ -63,6 +107,10 @@ async function main() {
       type: 'number',
       description: 'Maximum number of jobs per worker',
     })
+    .option('max-cycles', {
+      type: 'number',
+      description: 'Maximum number of cycles before stopping (root cyclic jobs only)',
+    })
     .option('single', {
       type: 'boolean',
       description: 'Exit after processing one job per worker',
@@ -80,12 +128,18 @@ async function main() {
 
   const children: ChildProcess[] = [];
   const workerCount = argv.workers;
+  const maxCycles = argv['max-cycles'];
+  const stopFilePath = maxCycles ? `/tmp/jinn-stop-cycle-${argv.workstream}` : undefined;
 
   // Clean worker clones if --fresh (default)
   if (argv.fresh) {
     console.log('Cleaning worker clone directories for fresh start...');
     cleanWorkerClones(workerCount);
     console.log('');
+  }
+
+  if (stopFilePath && existsSync(stopFilePath)) {
+    unlinkSync(stopFilePath);
   }
 
   console.log(`Starting ${workerCount} parallel workers on workstream ${argv.workstream.slice(0, 10)}...`);
@@ -97,10 +151,16 @@ async function main() {
     const args = ['dev:mech:raw', `--workstream=${argv.workstream}`];
 
     if (argv.runs) args.push(`--runs=${argv.runs}`);
+    if (maxCycles) args.push(`--max-cycles=${maxCycles}`);
     if (argv.single) args.push('--single');
 
     const child = spawn('yarn', args, {
-      env: { ...process.env, WORKER_ID: workerId },
+      env: {
+        ...process.env,
+        WORKER_ID: workerId,
+        ...(maxCycles ? { WORKER_MAX_CYCLES: String(maxCycles) } : {}),
+        ...(stopFilePath ? { WORKER_STOP_FILE: stopFilePath } : {}),
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
     });

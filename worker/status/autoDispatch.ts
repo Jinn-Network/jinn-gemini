@@ -21,6 +21,7 @@ import type { WorkerTelemetryService } from '../worker_telemetry.js';
 import { serializeError } from '../logging/errors.js';
 import { isChildIntegrated, batchFetchBranches } from '../git/integration.js';
 import { fetchAllChildren } from '../prompt/providers/context/fetchChildren.js';
+import { getMaxCycles, requestStop } from '../cycleControl.js';
 
 const DISPATCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes - long enough for jobs to process
 const MAX_VERIFICATION_ATTEMPTS = 3;
@@ -1214,6 +1215,24 @@ export async function dispatchParentIfNeeded(
     const isCompleted = finalStatus?.status === 'COMPLETED';
 
     if (isRootJob && isCyclic && isCompleted) {
+      const maxCycles = getMaxCycles();
+      const completedCycleNumber = (metadata?.additionalContext?.cycle?.cycleNumber ?? 0) + 1;
+
+      if (maxCycles !== undefined && completedCycleNumber >= maxCycles) {
+        const stopRequested = requestStop();
+        workerLogger.info(
+          {
+            requestId,
+            jobDefinitionId: metadata?.jobDefinitionId,
+            maxCycles,
+            completedCycleNumber,
+            stopRequested,
+          },
+          'Max cycles reached - skipping cycle redispatch'
+        );
+        return;
+      }
+
       workerLogger.info(
         { requestId, jobDefinitionId: metadata?.jobDefinitionId },
         'Root cyclic job completed - dispatching for new cycle'

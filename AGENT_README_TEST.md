@@ -1055,6 +1055,24 @@ Without `codeMetadata`, the worker treats the job as artifact-only (`isCodingJob
 ### 54. Worker Auto-Adds `.beads/beads.db` to Job Branches (2026-01-18)
 **Issue:** Worker repo setup can auto-add `.beads/beads.db` to `.gitignore` and commit it on job branches, reintroducing beads references.
 **Prevention:** Disable beads-related repo setup for workstreams that must remain bead-free; scrub job branches if any `.beads` entries appear.
+
+### 55. Limit Cyclic Runs with --max-cycles (2026-01-20)
+**Issue:** Cyclic workstreams keep redispatching the root job, making iterative template updates hard to test.
+**Prevention:** Run the worker with `--max-cycles=1` to stop after a full cycle completes. In parallel mode, use `--max-cycles=1` so workers share a stop signal via `WORKER_STOP_FILE` and exit after finishing their current job.
+
+### 56. Base Branch May Exist Only on Origin (2026-01-20)
+**Issue:** Fresh worker clones can fail `git checkout -b <job-branch> <baseBranch>` if the base branch exists only as `origin/<baseBranch>`.
+**Prevention:** Resolve base branches with a local fallback to `origin/<baseBranch>` before creating job branches.
+---
+
+### 57. Lingering Processes Block Worker Clone Cleanup (2026-01-20)
+**Issue:** Workers spawn Gemini CLI → MCP servers → Chrome browsers. When workers exit (normally or abnormally), these child processes become orphaned and hold file handles open in worker clone directories. Subsequent restarts fail with `ENOTEMPTY` during cleanup because the OS can't delete directories with open file handles.
+**Prevention:** Before attempting to delete worker clone directories, use `lsof +D <dir>` to find all processes using them and `kill -9` them. The `dev-mech-parallel.ts` script now does this automatically via `killProcessesUsingWorkerDirs()`.
+---
+
+### 58. Parallel Auto-Dispatch Can Double-Dispatch Parent Jobs (2026-01-20)
+**Issue:** In parallel runs, multiple workers can reach the "verification → parent dispatch" path for the same parent job around the same time. The `checkRecentDispatch` guard is not sufficient to prevent both workers from dispatching, resulting in multiple parent redispatches (observed multiple dispatch transactions for parent job definition `5c04adf1-...` within seconds).
+**Prevention:** Add a cross-worker idempotency guard (e.g., Control API lock, shared stop file, or on-chain/Control API uniqueness check) around parent dispatch so only one worker can dispatch per parent completion window.
 ---
 
 ## Test Infrastructure Gotchas

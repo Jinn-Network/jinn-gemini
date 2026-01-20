@@ -95,6 +95,31 @@ function remoteBranchExists(repoRoot: string, branchName: string, execFileSync: 
   }
 }
 
+function resolveBaseBranchRef(
+  repoRoot: string,
+  baseBranch: string,
+  execFileSync: typeof import('node:child_process').execFileSync
+): { ref: string; source: 'local' | 'remote' | 'missing' } {
+  if (baseBranch.startsWith('origin/')) {
+    const baseName = baseBranch.replace(/^origin\//, '');
+    if (remoteBranchExists(repoRoot, baseName, execFileSync)) {
+      return { ref: `origin/${baseName}`, source: 'remote' };
+    }
+    if (localBranchExists(repoRoot, baseName, execFileSync)) {
+      return { ref: baseName, source: 'local' };
+    }
+    return { ref: baseBranch, source: 'missing' };
+  }
+
+  if (localBranchExists(repoRoot, baseBranch, execFileSync)) {
+    return { ref: baseBranch, source: 'local' };
+  }
+  if (remoteBranchExists(repoRoot, baseBranch, execFileSync)) {
+    return { ref: `origin/${baseBranch}`, source: 'remote' };
+  }
+  return { ref: baseBranch, source: 'missing' };
+}
+
 /**
  * Checkout job branch, creating it if needed
  */
@@ -194,21 +219,22 @@ export async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<Bra
   }
 
   // Case 3: Neither exists - create new branch from baseBranch
-  workerLogger.info({ branchName, baseBranch }, 'Creating new branch from baseBranch');
+  const baseRef = resolveBaseBranchRef(repoRoot, baseBranch, execFileSync);
+  workerLogger.info({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source }, 'Creating new branch from baseBranch');
   try {
-    execFileSync('git', ['checkout', '-b', branchName, baseBranch], {
+    execFileSync('git', ['checkout', '-b', branchName, baseRef.ref], {
       cwd: repoRoot,
       stdio: 'pipe',
       encoding: 'utf-8',
       timeout: GIT_CHECKOUT_TIMEOUT_MS,
       env: process.env as Record<string, string>,
     });
-    workerLogger.info({ branchName, baseBranch }, 'Successfully created branch from baseBranch');
+    workerLogger.info({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source }, 'Successfully created branch from baseBranch');
     clearBuildCaches(repoRoot);
     return { branchName, wasNewlyCreated: true, checkoutMethod: 'new_from_base' };
   } catch (fallbackError: any) {
-    const errorMessage = `Failed to create branch ${branchName} from ${baseBranch}: ${fallbackError.stderr || fallbackError.message}`;
-    workerLogger.error({ branchName, baseBranch, error: serializeError(fallbackError) }, errorMessage);
+    const errorMessage = `Failed to create branch ${branchName} from ${baseRef.ref}: ${fallbackError.stderr || fallbackError.message}`;
+    workerLogger.error({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source, error: serializeError(fallbackError) }, errorMessage);
     throw new Error(errorMessage);
   }
 }

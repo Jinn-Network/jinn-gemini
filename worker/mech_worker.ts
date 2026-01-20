@@ -22,6 +22,7 @@ import { safeParseToolResponse } from './tool_utils.js';
 import { processOnce as processJobOnce } from './orchestration/jobRunner.js';
 import { fetchIpfsMetadata } from './metadata/fetchIpfsMetadata.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
+import { shouldStop } from './cycleControl.js';
 
 export { formatSummaryForPr, autoCommitIfNeeded } from './git/autoCommit.js';
 
@@ -55,11 +56,27 @@ const MAX_RUNS = (() => {
   return isNaN(value) || value < 1 ? undefined : value;
 })();
 
+// Parse --max-cycles=<N> flag for cyclic workstreams
+const MAX_CYCLES = (() => {
+  const arg = process.argv.find(arg => arg.startsWith('--max-cycles='));
+  if (!arg) return undefined;
+  const value = parseInt(arg.split('=')[1], 10);
+  return isNaN(value) || value < 1 ? undefined : value;
+})();
+
+if (MAX_CYCLES !== undefined) {
+  process.env.WORKER_MAX_CYCLES = String(MAX_CYCLES);
+}
+
 // Workstream filtering: parse --workstream=<id> flag
 const WORKSTREAM_FILTER = (() => {
   const arg = process.argv.find(arg => arg.startsWith('--workstream='));
   return arg ? arg.split('=')[1] : undefined;
 })();
+
+if (MAX_CYCLES !== undefined && !process.env.WORKER_STOP_FILE && WORKSTREAM_FILTER) {
+  process.env.WORKER_STOP_FILE = `/tmp/jinn-stop-cycle-${WORKSTREAM_FILTER}`;
+}
 
 // Auto-reposting configuration
 const ENABLE_AUTO_REPOST = getEnableAutoRepost();
@@ -886,10 +903,20 @@ async function main() {
   let runCount = 0;
   for (; ;) {
     try {
+      if (shouldStop()) {
+        workerLogger.info('Stop signal detected before poll - exiting worker loop');
+        return;
+      }
+
       // Check for completed chains and repost if needed
       await checkAndRepostCompletedChains();
 
       await processOnce();
+
+      if (shouldStop()) {
+        workerLogger.info('Stop signal detected after job processing - exiting worker loop');
+        return;
+      }
 
       // Check if we've reached the max runs limit
       if (MAX_RUNS !== undefined) {
