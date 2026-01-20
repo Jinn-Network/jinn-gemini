@@ -10,6 +10,18 @@ import { GIT_CLONE_TIMEOUT_MS, GIT_FETCH_TIMEOUT_MS } from '../constants.js';
 import { serializeError } from '../logging/errors.js';
 // Repo setup (gitignore, beads) now happens in jobRunner after branch checkout
 
+function buildGithubHttpsUrl(remoteUrl: string): string | null {
+  if (!remoteUrl) return null;
+  if (remoteUrl.startsWith('https://github.com/')) {
+    return remoteUrl;
+  }
+  if (remoteUrl.startsWith('git@github.com:')) {
+    const path = remoteUrl.slice('git@github.com:'.length);
+    return `https://github.com/${path}`;
+  }
+  return null;
+}
+
 /**
  * Result of repository clone/fetch operation
  */
@@ -61,6 +73,45 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
     });
     workerLogger.info({ targetPath }, 'Successfully cloned repository');
   } catch (error: any) {
+    const stderr = String(error.stderr || '');
+    const authFailed = stderr.includes('Permission denied (publickey)') || stderr.includes('publickey');
+
+    if (authFailed) {
+      const httpsUrl = buildGithubHttpsUrl(remoteUrl);
+      const token = process.env.GITHUB_TOKEN;
+      const authUrl = httpsUrl && token ? httpsUrl.replace('https://', `https://${token}@`) : httpsUrl;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/git/repoManager.ts:83',message:'ssh clone failed; https fallback decision',data:{remoteUrl,httpsUrl,hasToken:!!token,targetPath},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
+
+      if (authUrl) {
+        try {
+          execFileSync('git', ['clone', authUrl, targetPath], {
+            stdio: 'pipe',
+            encoding: 'utf-8',
+            timeout: GIT_CLONE_TIMEOUT_MS,
+            env: process.env as Record<string, string>,
+          });
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/git/repoManager.ts:100',message:'https fallback clone succeeded',data:{httpsUrl,hasToken:!!token,targetPath},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H4'})}).catch(()=>{});
+          // #endregion
+          workerLogger.info({ targetPath, httpsUrl }, 'Successfully cloned repository via HTTPS');
+          return { wasAlreadyCloned: false, fetchPerformed: false };
+        } catch (fallbackError: any) {
+          const fallbackStderr = String(fallbackError.stderr || '').slice(0, 300);
+          const fallbackStatus403 = fallbackStderr.includes('error: 403') || fallbackStderr.includes('Write access to repository not granted');
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/git/repoManager.ts:108',message:'https fallback clone failed',data:{httpsUrl,hasToken:!!token,targetPath,stderrSample:fallbackStderr,is403:fallbackStatus403},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H4'})}).catch(()=>{});
+          // #endregion
+          const fallbackMessage = fallbackStatus403
+            ? 'Failed to clone repository via HTTPS: token lacks access to repository (403).'
+            : `Failed to clone repository via HTTPS: ${fallbackError.stderr || fallbackError.message}`;
+          workerLogger.error({ httpsUrl, targetPath, error: serializeError(fallbackError) }, fallbackMessage);
+        }
+      }
+    }
+
     const errorMessage = `Failed to clone repository: ${error.stderr || error.message}`;
     workerLogger.error({ remoteUrl, targetPath, error: serializeError(error) }, errorMessage);
     throw new Error(errorMessage);

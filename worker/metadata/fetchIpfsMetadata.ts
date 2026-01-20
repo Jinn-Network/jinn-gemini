@@ -85,6 +85,10 @@ export async function fetchIpfsMetadata(ipfsHash?: string): Promise<IpfsMetadata
     // Cyclic flag for continuous operation
     const cyclic = json?.cyclic === true;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/metadata/fetchIpfsMetadata.ts:88',message:'ipfs metadata repo inputs',data:{hasCodeMetadata:!!codeMetadata,codeMetadataRemoteUrl:codeMetadata?.repo?.remoteUrl,hasWorkspaceRepo:!!additionalContext?.workspaceRepo,workspaceRepoUrl:additionalContext?.workspaceRepo?.url,jobDefinitionId,workstreamId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+
     return {
       blueprint,
       enabledTools,

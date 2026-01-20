@@ -473,6 +473,31 @@ When no code metadata is present (pure research/analysis jobs), the system autom
 
 This ensures artifact-only agents cannot attempt code modifications and focus solely on research, analysis, and artifact creation.
 
+### 9. Custom SSH Aliases Break Worker Clones (2026-01-20)
+**Issue:** `codeMetadata.repo.remoteUrl` or `additionalContext.workspaceRepo.url` may carry SSH host aliases (e.g., `git@ritsukai:`) that are not resolvable on other machines.  
+**Impact:** Worker attempts to clone and fails with "Could not resolve hostname".  
+**Prevention:** Normalize SSH URLs to `git@github.com:` at dispatch time, or omit code metadata for artifact-only jobs.
+
+### 10. SSH Publickey Failures Need HTTPS Fallback (2026-01-20)
+**Issue:** `git@github.com:` clone fails with "Permission denied (publickey)" on machines without SSH keys.  
+**Impact:** Worker cannot bootstrap repo even when a `GITHUB_TOKEN` is available.  
+**Prevention:** Attempt HTTPS clone using `GITHUB_TOKEN` when SSH auth fails.
+
+### 11. HTTPS Clone 403 Indicates Token Lacks Repo Access (2026-01-20)
+**Issue:** HTTPS clone fails with `403` and "Write access to repository not granted" despite `GITHUB_TOKEN`.  
+**Impact:** Worker cannot bootstrap repo; job must fail early.  
+**Prevention:** Ensure token has access to the private repo (fine-grained token with repo read).
+
+### 12. Workstream Repo Must Be Explicit in Input Config (2026-01-20)
+**Issue:** Workstreams launched without `repoUrl` in input config default to creating or using unintended repos.  
+**Impact:** Jobs clone the wrong repository and fail on permissions or apply changes to the wrong codebase.  
+**Prevention:** Set `repoUrl` in the input config (e.g., `configs/longevity.json`) so launcher resolves the correct repo.
+
+### 13. launch:workstream Needs HTTPS Fallback (2026-01-20)
+**Issue:** `launch:workstream` clones via `git@github.com` and fails without SSH keys.  
+**Impact:** Dispatch never happens even if `GITHUB_TOKEN` is present.  
+**Prevention:** Use HTTPS clone fallback with `GITHUB_TOKEN` when SSH auth fails.
+
 ### 9. Beads Lock File Blocks Branch Checkout
 **Issue:** `git checkout` fails if a worker repo has a dirty `.beads/daemon.lock`, causing job runs to fail before execution.  
 **Solution:** Remove stray lock files in worker clones or disable beads/hooks for the repo; keep worker repos clean before checkout.
