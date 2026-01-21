@@ -867,7 +867,7 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
                             if (items.length > 0) {
                               // Render structured blueprint with invariants using shared components
                               return (
-                                <div className="space-y-4">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                   {items.map((item, idx) => (
                                     <InvariantCard
                                       key={item.id || idx}
@@ -1791,4 +1791,3 @@ export function JobDetailLayout({ record }: JobDetailLayoutProps) {
     </Tabs>
   )
 }
-

@@ -30,7 +30,7 @@ export function JobDefinitionBlueprintTools({ jobDefinition }: BlueprintToolsPro
     const items = parseInvariants(parsed)
     if (items.length > 0) {
       blueprintRendering = (
-        <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {items.map((item, idx) => (
             <InvariantCard
               key={item.id || idx}
