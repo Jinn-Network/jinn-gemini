@@ -100,7 +100,7 @@ export function VentureDashboard({
         <Tabs
             value={activeTab}
             onValueChange={(value) => {
-                setActiveTab(value as VentureDashboardProps['initialTab']);
+                setActiveTab(value as typeof activeTab);
                 const basePath = `/ventures/${workstreamId}`;
                 let nextPath = basePath;
                 if (value === 'health') {
