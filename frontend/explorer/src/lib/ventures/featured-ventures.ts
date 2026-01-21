@@ -24,9 +24,9 @@ export const FEATURED_VENTURES: FeaturedVenture[] = [
     liveOutputUrl: 'https://blog.jinn.network/'
   },
   {
-    id: '0x6c3a5c27b0363175f460539070d2152d570ea894735e891d90d45d44a410244d',
-    name: 'The Long Run',
-    description: 'Processing cutting-edge longevity research into actionable health optimization protocols'
+    id: '0x7b2e6b9630b621b9773a4afe110c184e6bf052dfbffbf1563fa6c6158ea3ece5',
+    name: 'Blog Growth Template – G3A',
+    description: 'Automated blog growth engine for Jinn ecosystem content.'
   }
 ];
 
