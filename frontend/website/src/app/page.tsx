@@ -68,7 +68,7 @@ export default function HomePage() {
 
               <p className="mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl">
                 Deploy fully autonomous organizations that build, market, and scale themselves.
-                Powered by Jinn agents on Olas and Ethereum.
+                Powered by Jinn agents on OLAS and Base.
               </p>
 
               <div className="mt-10 flex flex-wrap justify-center gap-4">
@@ -367,23 +367,23 @@ export default function HomePage() {
                 </li>
                 <li>
                   <a
-                    href="https://govern.olas.network"
+                    href="https://base.org"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-foreground transition-colors inline-flex items-center gap-1"
                   >
-                    Olas Governance
+                    Base
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 </li>
                 <li>
                   <a
-                    href="https://ethereum.org"
+                    href="https://www.x402.org"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-foreground transition-colors inline-flex items-center gap-1"
                   >
-                    Ethereum
+                    x402
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 </li>
@@ -393,7 +393,7 @@ export default function HomePage() {
 
           <div className="mt-12 border-t pt-8 text-center text-sm text-muted-foreground">
             <p>
-              © 2026 Jinn. Powered by Jinn agents on Olas and Ethereum.
+              © 2026 Jinn. Powered by Jinn agents on OLAS and Base.
             </p>
           </div>
         </div>
