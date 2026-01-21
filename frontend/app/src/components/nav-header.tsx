@@ -14,6 +14,28 @@ export function NavHeader() {
         </Link>
 
         <nav className="flex items-center gap-4">
+          <Button asChild variant="ghost">
+            <a
+              href="https://docs.jinn.network"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1"
+            >
+              Docs
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </Button>
+          <Button asChild variant="ghost">
+            <a
+              href="https://blog.jinn.network"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1"
+            >
+              Blog
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </Button>
           <Button asChild>
             <a
               href={EXPLORER_URL}

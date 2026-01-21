@@ -76,8 +76,23 @@ const config: Config = {
       hideOnScroll: false,
       items: [
         {
+          href: 'https://jinn.network',
+          label: 'Website',
+          position: 'right',
+        },
+        {
           href: 'https://explorer.jinn.network',
           label: 'Explorer',
+          position: 'right',
+        },
+        {
+          href: 'https://blog.jinn.network',
+          label: 'Blog',
+          position: 'right',
+        },
+        {
+          href: 'https://github.com/jinn-network',
+          label: 'GitHub',
           position: 'right',
         },
       ],

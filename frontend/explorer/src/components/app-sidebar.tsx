@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ChevronRight, Workflow, Briefcase, FileText, Home, Info, Rocket } from "lucide-react"
+import { ChevronRight, Workflow, Briefcase, FileText, Home, Info, Rocket, BookOpen, Newspaper, Github } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 import {
@@ -122,6 +122,30 @@ export function AppSidebar() {
               <a href="https://www.jinn.network" target="_blank" rel="noopener noreferrer">
                 <Info />
                 <span>About Jinn</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href="https://docs.jinn.network" target="_blank" rel="noopener noreferrer">
+                <BookOpen />
+                <span>Documentation</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href="https://blog.jinn.network" target="_blank" rel="noopener noreferrer">
+                <Newspaper />
+                <span>Blog</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href="https://github.com/jinn-network" target="_blank" rel="noopener noreferrer">
+                <Github />
+                <span>GitHub</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

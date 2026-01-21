@@ -351,6 +351,17 @@ export default function HomePage() {
                 </li>
                 <li>
                   <a
+                    href="https://blog.jinn.network"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground transition-colors inline-flex items-center gap-1"
+                  >
+                    Blog
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </li>
+                <li>
+                  <a
                     href="https://github.com/jinn-network"
                     target="_blank"
                     rel="noopener noreferrer"
