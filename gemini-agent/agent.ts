@@ -79,6 +79,8 @@ export class Agent {
   private isCodingJob: boolean;
   private onStatusUpdate?: (status: string) => void;
   private lastStatusUpdate: string | null = null;
+  private statusBlockBuffer: string | null = null;
+  private inStatusBlock: boolean = false;
 
   // Stdout protection limits (configurable via environment variables)
   private readonly MAX_STDOUT_SIZE = parseInt(process.env.AGENT_MAX_STDOUT_SIZE || '5242880'); // 5MB default
@@ -642,23 +644,55 @@ export class Agent {
           // Detect status updates in the output stream for real-time and delivery payload inclusion
           // Strip ANSI codes to ensure reliable pattern matching
           const cleanLine = stripAnsi(line);
-          // Pattern 1: TaskStatus from tool calls ("TaskStatus": "Value" or TaskStatus="Value")
-          const taskStatusMatch = cleanLine.match(/"?TaskStatus"?\s*[:=]\s*"([^"]+)"/);
-          if (taskStatusMatch && taskStatusMatch[1]) {
-            const status = taskStatusMatch[1];
-            this.lastStatusUpdate = status;
-            if (this.onStatusUpdate) {
-              this.onStatusUpdate(status);
+
+          // Pattern 1: Fenced status block (```status ... ```)
+          // Multi-line status updates are buffered until the closing fence
+          const statusBlockStart = /^```status\s*$/i;
+          const statusBlockEnd = /^```\s*$/;
+          const trimmedCleanLine = cleanLine.trim();
+
+          if (statusBlockStart.test(trimmedCleanLine)) {
+            this.inStatusBlock = true;
+            this.statusBlockBuffer = '';
+          } else if (this.inStatusBlock) {
+            if (statusBlockEnd.test(trimmedCleanLine)) {
+              // Emit the complete status block
+              const status = (this.statusBlockBuffer || '').replace(/\s+/g, ' ').trim();
+              if (status.length > 0 && status.length <= 144) {
+                this.lastStatusUpdate = status;
+                if (this.onStatusUpdate) {
+                  this.onStatusUpdate(status);
+                }
+              }
+              this.inStatusBlock = false;
+              this.statusBlockBuffer = null;
+            } else {
+              // Accumulate lines within the status block
+              this.statusBlockBuffer = (this.statusBlockBuffer || '') +
+                (this.statusBlockBuffer ? ' ' : '') + trimmedCleanLine;
             }
           }
-          // Pattern 2: Explicit text markers (Status Update: ...)
-          const textStatusMatch = cleanLine.match(/(?:\*\*|#+\s*)?Status Update:?(?:\*\*)?\s*(.+?)$/i);
-          if (textStatusMatch && textStatusMatch[1]) {
-            const status = textStatusMatch[1].trim();
-            if (status.length > 0 && status.length <= 144) {
+
+          // Pattern 2: TaskStatus from tool calls ("TaskStatus": "Value" or TaskStatus="Value")
+          // Only check when not in a status block
+          if (!this.inStatusBlock) {
+            const taskStatusMatch = cleanLine.match(/"?TaskStatus"?\s*[:=]\s*"([^"]+)"/);
+            if (taskStatusMatch && taskStatusMatch[1]) {
+              const status = taskStatusMatch[1];
               this.lastStatusUpdate = status;
               if (this.onStatusUpdate) {
                 this.onStatusUpdate(status);
+              }
+            }
+            // Pattern 3: Legacy explicit text markers (Status Update: ...)
+            const textStatusMatch = cleanLine.match(/(?:\*\*|#+\s*)?Status Update:?(?:\*\*)?\s*(.+?)$/i);
+            if (textStatusMatch && textStatusMatch[1]) {
+              const status = textStatusMatch[1].trim();
+              if (status.length > 0 && status.length <= 144) {
+                this.lastStatusUpdate = status;
+                if (this.onStatusUpdate) {
+                  this.onStatusUpdate(status);
+                }
               }
             }
           }
@@ -1336,7 +1370,16 @@ export function extractJobInstanceStatusUpdate(output: string): string | null {
   // Collect all matches with their positions
   const candidates: Array<{ text: string; index: number }> = [];
 
-  // 1. Look for explicit text markers (Status Update: ...)
+  // 1. Look for fenced status blocks (```status ... ```) - primary pattern
+  // This handles multi-line status updates reliably
+  const fencedBlockMatches = cleanOutput.matchAll(/```status\s*\n([\s\S]*?)```/gi);
+  for (const match of fencedBlockMatches) {
+    if (match[1] && match.index !== undefined) {
+      candidates.push({ text: match[1], index: match.index });
+    }
+  }
+
+  // 2. Look for legacy explicit text markers (Status Update: ...)
   // Capture content until: blank line, Execution Summary, another Status Update, or section header
   // The pattern captures across line breaks until a clear boundary
   const textMatches = cleanOutput.matchAll(
@@ -1348,7 +1391,7 @@ export function extractJobInstanceStatusUpdate(output: string): string | null {
     }
   }
 
-  // 2. Look for TaskStatus from task_boundary tool calls
+  // 3. Look for TaskStatus from task_boundary tool calls
   // Supports strictly quoted JSON ("TaskStatus": "...") and looser CLI args (TaskStatus="...")
   const taskStatusMatches = cleanOutput.matchAll(/["']?TaskStatus["']?\s*[:=]\s*["']([^"']+)["']/g);
   for (const match of taskStatusMatches) {
@@ -1357,7 +1400,7 @@ export function extractJobInstanceStatusUpdate(output: string): string | null {
     }
   }
 
-  // 3. Look for explicit JSON property (jobInstanceStatusUpdate)
+  // 4. Look for explicit JSON property (jobInstanceStatusUpdate)
   const jsonMatches = cleanOutput.matchAll(/"jobInstanceStatusUpdate"\s*:\s*"([^"]+)"/g);
   for (const match of jsonMatches) {
     if (match[1] && match.index !== undefined) {
