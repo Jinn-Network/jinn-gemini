@@ -4,9 +4,10 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bot } from "lucide-react";
 import { formatRelativeTime } from "@jinn/shared-ui";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { transformToActivityItems, type ActivityItem } from "@/lib/ventures/activity-utils";
 import type { JobDefinition } from "@/lib/subgraph";
+import { cn } from "@/lib/utils";
 
 interface ActivityFeedProps {
     initialData: { jobDefinitions: JobDefinition[] };
@@ -19,9 +20,16 @@ interface ActivityFeedProps {
  */
 export function ActivityFeed({ initialData, workstreamId, fetchActivity }: ActivityFeedProps) {
     const [data, setData] = useState(initialData);
+    const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
+    const seenIdsRef = useRef<Set<string>>(new Set());
+    const isInitialMount = useRef(true);
 
     useEffect(() => {
         setData(initialData);
+        // Mark all initial items as seen
+        const initialMessages = transformToActivityItems(initialData.jobDefinitions);
+        initialMessages.forEach(msg => seenIdsRef.current.add(msg.id));
+        isInitialMount.current = false;
     }, [initialData]);
 
     useEffect(() => {
@@ -53,6 +61,26 @@ export function ActivityFeed({ initialData, workstreamId, fetchActivity }: Activ
 
     const messages = transformToActivityItems(data.jobDefinitions);
 
+    // Detect new items and trigger animations
+    useEffect(() => {
+        if (isInitialMount.current) return;
+
+        const freshIds = new Set<string>();
+        for (const msg of messages) {
+            if (!seenIdsRef.current.has(msg.id)) {
+                freshIds.add(msg.id);
+                seenIdsRef.current.add(msg.id);
+            }
+        }
+
+        if (freshIds.size > 0) {
+            setNewItemIds(freshIds);
+            // Clear animation state after animation completes
+            const timer = setTimeout(() => setNewItemIds(new Set()), 600);
+            return () => clearTimeout(timer);
+        }
+    }, [messages]);
+
     if (messages.length === 0) {
         return (
             <div className="h-full flex flex-col">
@@ -68,7 +96,7 @@ export function ActivityFeed({ initialData, workstreamId, fetchActivity }: Activ
             <ScrollArea className="flex-1 pr-4">
                 <div className="space-y-4 pb-4">
                     {messages.map((msg) => (
-                        <ChatMessage key={msg.id} message={msg} />
+                        <ChatMessage key={msg.id} message={msg} isNew={newItemIds.has(msg.id)} />
                     ))}
                 </div>
             </ScrollArea>
@@ -76,9 +104,14 @@ export function ActivityFeed({ initialData, workstreamId, fetchActivity }: Activ
     );
 }
 
-function ChatMessage({ message }: { message: ActivityItem }) {
+function ChatMessage({ message, isNew }: { message: ActivityItem; isNew?: boolean }) {
     return (
-        <div className="flex gap-3">
+        <div
+            className={cn(
+                "flex gap-3 transition-all duration-500 ease-out",
+                isNew && "animate-in fade-in-0 slide-in-from-bottom-2"
+            )}
+        >
             {/* Agent Avatar */}
             <div className="shrink-0">
                 <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
