@@ -538,10 +538,12 @@ ponder.on(
         jobName = typeof content.jobName === "string" ? content.jobName : undefined;
         // Extract tool names using shared utility (handles both string and {name, required} formats)
         // Filter out nulls from invalid entries
-        enabledTools = Array.isArray(content.tools)
-          ? content.tools.map(extractToolName).filter((name: string | null): name is string => name !== null)
-          : Array.isArray(content.enabledTools)
-            ? content.enabledTools.map(extractToolName).filter((name: string | null): name is string => name !== null)
+        // IMPORTANT: Prefer enabledTools (actual runtime tools) over tools (template definition)
+        // This matches worker behavior and ensures UI shows what job actually has access to
+        enabledTools = Array.isArray(content.enabledTools)
+          ? content.enabledTools.map(extractToolName).filter((name: string | null): name is string => name !== null)
+          : Array.isArray(content.tools)
+            ? content.tools.map(extractToolName).filter((name: string | null): name is string => name !== null)
             : undefined;
         jobDefinitionId = typeof content.jobDefinitionId === "string" ? content.jobDefinitionId : undefined;
         // Support both blueprint (new) and prompt (legacy)

@@ -134,7 +134,8 @@
                 "name": "run_shell_command"
             },
             {
-                "name": "telegram_messaging"
+                "name": "telegram_messaging",
+                "required": true
             }
         ]
     },
@@ -269,17 +270,19 @@
         {
             "id": "GOAL-DISTRIBUTION-TOOLS",
             "type": "BOOLEAN",
-            "condition": "You plan distribution around available capabilities: Telegram posting (write-only), plus strategies that don't require platform account access.",
-            "assessment": "Fail if strategy assumes: (1) Direct posting to X, Reddit, LinkedIn (no accounts/tools). (2) Reading or monitoring Telegram (write-only). Pass if: using Telegram for broadcasts, OR pursuing platform-agnostic strategies (SEO, backlinks, guest posts, embeds, newsletters, etc.).",
+            "condition": "You EXECUTE distribution by broadcasting to Telegram (write-only) and planning platform-agnostic strategies.",
+            "assessment": "Verify that: (1) At least one Telegram message is sent using `telegram_send_message` (or similar) per cycle if new content exists or for general engagement. (2) Strategy does NOT assume X/Reddit/LinkedIn access. (3) Strategy does NOT assume reading Telegram.",
             "examples": {
                 "do": [
-                    "Use telegram_send_message to broadcast new posts",
+                    "Call telegram_send_message to share latest post",
+                    "Broadcast updates to Telegram subscribers",
                     "Optimize for SEO and organic discovery",
                     "Pursue backlinks from relevant sites",
                     "Create embeddable content others can share",
                     "Build email list for direct distribution"
                 ],
                 "dont": [
+                    "Only create a plan without executing it",
                     "Plan X/Twitter thread campaigns (no account access)",
                     "Schedule Reddit AMAs (no account access)",
                     "Monitor Telegram for replies (write-only)",
@@ -344,7 +347,7 @@
             "type": "FLOOR",
             "metric": "site_branding_alignment_score",
             "min": 70,
-            "assessment": "Rate site 0-100 using: Mission clarity (25%) - does landing page communicate {{mission}} within 5 seconds?; Visual identity (25%) - do colors, typography, imagery reinforce the blog's tone?; Navigation (25%) - can visitors easily find content aligned with their interests?; Differentiation (25%) - is the site distinct from template defaults and competitors?",
+            "assessment": "The blog is hosted at {{domain}}. Rate site 0-100 using: Mission clarity (25%) - does landing page communicate {{mission}} within 5 seconds?; Visual identity (25%) - do colors, typography, imagery reinforce the blog's tone?; Navigation (25%) - can visitors easily find content aligned with their interests?; Differentiation (25%) - is the site distinct from template defaults and competitors?",
             "examples": {
                 "do": [
                     "Design choices that reinforce the mission",
