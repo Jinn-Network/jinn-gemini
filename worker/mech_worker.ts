@@ -12,6 +12,7 @@ import {
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
+import marketplaceAbi from '../ponder/abis/MechMarketplace.json';
 import { workerLogger } from '../logging/index.js';
 import { claimRequest as apiClaimRequest } from './control_api_client.js';
 import { getMechAddress, getServicePrivateKey, getMechChainConfig } from '../env/operate-profile.js';
@@ -232,8 +233,6 @@ async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedR
 
     const web3 = new Web3(rpcHttpUrl);
     const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
-    // Dynamic import with require to avoid TypeScript module resolution issues
-    const marketplaceAbi = require('../ponder/abis/MechMarketplace.json');
     const marketplace = new (web3 as any).eth.Contract(marketplaceAbi, MARKETPLACE_ADDRESS);
 
     const filtered: UnclaimedRequest[] = [];
