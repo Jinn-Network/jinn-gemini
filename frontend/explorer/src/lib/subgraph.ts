@@ -16,6 +16,7 @@ export interface JobDefinition {
   lastInteraction?: string
   lastStatus?: string
   latestStatusUpdate?: string
+  latestStatusUpdateAt?: string // Timestamp when latestStatusUpdate was captured
 }
 
 export interface Request {
@@ -189,6 +190,7 @@ export const JOB_DEFINITIONS_QUERY = `
         lastInteraction
         lastStatus
         latestStatusUpdate
+        latestStatusUpdateAt
       }
       pageInfo {
         hasNextPage
@@ -428,6 +430,7 @@ export const JOB_DEFINITION_QUERY = `
       lastInteraction
       lastStatus
       latestStatusUpdate
+      latestStatusUpdateAt
     }
   }
 `

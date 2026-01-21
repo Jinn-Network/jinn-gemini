@@ -1098,6 +1098,8 @@ ponder.on(
                       lastInteraction: blockTimestamp,
                       lastStatus: deliveryStatus,
                       latestStatusUpdate: jobInstanceStatusUpdate,
+                      // Only set latestStatusUpdateAt if we have a status update
+                      ...(jobInstanceStatusUpdate ? { latestStatusUpdateAt: blockTimestamp } : {}),
                     },
                     update: {
                       name: jobName || 'Unnamed Job',
@@ -1107,7 +1109,12 @@ ponder.on(
                       sourceRequestId: requestId,
                       lastInteraction: blockTimestamp,
                       lastStatus: deliveryStatus,
-                      latestStatusUpdate: jobInstanceStatusUpdate,
+                      // Only update status fields if we have a new status update
+                      // This prevents overwriting a good status with null from a later run
+                      ...(jobInstanceStatusUpdate ? {
+                        latestStatusUpdate: jobInstanceStatusUpdate,
+                        latestStatusUpdateAt: blockTimestamp,
+                      } : {}),
                     },
                   });
                 } catch (jdErr: any) {

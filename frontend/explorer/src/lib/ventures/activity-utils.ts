@@ -28,9 +28,11 @@ export function transformToActivityItems(jobDefinitions: JobDefinition[]): Activ
         const jobName = jobDef.name || `Job ${jobDef.id.slice(0, 8)}`;
         const workstreamId = jobDef.workstreamId || jobDef.id;
 
-        // Parse timestamp - lastInteraction is a Unix timestamp (seconds since epoch)
-        const timestamp = jobDef.lastInteraction
-            ? Number(jobDef.lastInteraction) * 1000
+        // Parse timestamp - use latestStatusUpdateAt (when the status was captured)
+        // Fall back to lastInteraction for backwards compatibility with old data
+        const statusTimestamp = jobDef.latestStatusUpdateAt || jobDef.lastInteraction;
+        const timestamp = statusTimestamp
+            ? Number(statusTimestamp) * 1000
             : Date.now();
 
         // Determine activity type based on status

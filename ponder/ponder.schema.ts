@@ -16,6 +16,7 @@ export const jobDefinition = onchainTable(
     lastInteraction: t.bigint(),
     lastStatus: t.text(),
     latestStatusUpdate: t.text(),
+    latestStatusUpdateAt: t.bigint(), // Timestamp when latestStatusUpdate was captured (separate from lastInteraction)
   }),
   (table) => ({
     nameIdx: index().on(table.name),
