@@ -31,18 +31,21 @@
         {
             "id": "SYS-003",
             "type": "BOOLEAN",
-            "condition": "You delegate work when delegation triggers apply: multiplicity ('for each'), high count (4+ independent MISSION invariants), multi-component scope (research + design + implement + verify), or iterative output",
-            "assessment": "For 'for each' patterns, verify dispatch_new_job called per item. For 4+ MISSION invariants or multi-component scopes, verify work is split across children with distinct component focus.",
+            "condition": "You delegate work when delegation triggers apply: multiplicity ('for each'), 2+ MISSION invariants spanning different concerns, multi-component scope (research + design + implement + verify), 2+ distinct domains in scope, or iterative output. Default to delegation unless work is truly atomic (single concern, single action).",
+            "assessment": "For 'for each' patterns, verify dispatch_new_job called per item. For 2+ MISSION invariants or 2+ domains, verify work is split across children with distinct focus. Single-concern atomic work may execute directly.",
             "examples": {
                 "do": [
-                    "'for each venture idea' -> dispatch_new_job per idea",
-                    "6 JOBs -> dispatch children each handling 1-2",
-                    "Build feature X -> children: spec, API impl, UI impl, tests"
+                    "'for each item in list' -> dispatch_new_job per item",
+                    "2+ MISSION invariants with different concerns -> delegate to separate children",
+                    "GOAL-A + GOAL-B spanning different domains -> dispatch separate children",
+                    "Multi-phase work -> children: research, design, implementation, testing",
+                    "Single atomic task -> execute directly"
                 ],
                 "dont": [
-                    "Execute 6 JOBs inline when they could parallelize",
+                    "Execute 2+ distinct domain concerns in one job",
                     "Interpret 'for each X' as 'do once'",
-                    "Keep research + implementation in one job when they can be split"
+                    "Keep research + implementation in one job when separable",
+                    "Combine unrelated domains (e.g., X + Y) in one execution"
                 ]
             }
         },
@@ -80,35 +83,38 @@
         {
             "id": "SYS-006",
             "type": "BOOLEAN",
-            "condition": "You delegate to decompose work, not to defer it. Children get focused, component-level subsets or specialized transformations of the parent's work.",
-            "assessment": "For each child: does it represent a distinct component (spec/research/impl/test) with fewer or more specific invariants than the parent? If child mirrors parent 1:1 (same scope), condition fails.",
+            "condition": "You delegate to decompose work into single-concern specialists. Each child handles ONE domain or ONE component. Never combine unrelated concerns in a single child.",
+            "assessment": "For each child: (1) does it have a single, clear domain? (2) are its invariants a focused subset of parent's? If child spans multiple domains or mirrors parent 1:1 (same scope), condition fails.",
             "examples": {
                 "do": [
-                    "Parent has 6 MISSION invariants -> 3 children, each handling 2",
-                    "'Build blog with posts, analytics, SEO' -> 3 children: 'Implement posts', 'Add analytics', 'Configure SEO'",
-                    "'Write 5 articles on AI' -> 5 children, each writing one specific article",
-                    "Simple invariant like 'Write README' -> execute directly, no child needed"
+                    "Parent has GOAL-A (domain X) + GOAL-B (domain Y) -> 2 children, one per domain",
+                    "Scope has 3 distinct aspects -> 3 children, each handling ONE aspect",
+                    "'Do N items' -> N children, each handling one item",
+                    "Simple single-concern task -> execute directly, no child needed"
                 ],
                 "dont": [
-                    "Parent has 6 MISSION invariants -> 1 child with same scope",
-                    "'Build blog' -> child called 'Build Blog' with identical scope",
-                    "Delegate work you could complete in this session"
+                    "Create 'X & Y Manager' combining two domains in one child",
+                    "Parent has GOAL-A + GOAL-B -> 1 child with identical scope",
+                    "Delegate work you could complete in this session (single atomic task)"
                 ]
             }
         },
         {
             "id": "SYS-016",
             "type": "BOOLEAN",
-            "condition": "You decompose work aggressively into smaller components before execution. If the work has multiple parts or disciplines, you MUST split into specialized child jobs. Default to decomposition unless the task is truly atomic.",
-            "assessment": "Verify that multi-part scopes were broken into multiple child jobs. Each child has a narrow, single-purpose focus and fewer invariants than the parent.",
+            "condition": "You decompose work aggressively into single-domain specialists. If your invariants span 2+ distinct domains or disciplines, you MUST split into specialized children—one per domain. Only execute directly when work is a single atomic action in a single domain.",
+            "assessment": "Identify the domains/disciplines in your MISSION invariants. If 2+ distinct domains detected, verify separate child dispatched per domain. Each child's invariants should reference only ONE domain.",
             "examples": {
                 "do": [
-                    "Build feature X -> children: spec + UX, API impl, UI impl, tests",
-                    "Research report -> children: data collection, synthesis, risk analysis"
+                    "GOAL-A (domain X) + GOAL-B (domain Y) -> dispatch child for X + child for Y",
+                    "Multi-phase project -> children: planning, implementation, testing, deployment",
+                    "Research + build -> separate: 'Research Phase' + 'Build Phase'",
+                    "Single-domain atomic task -> execute directly"
                 ],
                 "dont": [
-                    "Dispatch one child for entire project when work has multiple components",
-                    "Keep all steps in a single parent run when it could be parallelized"
+                    "Dispatch one child handling 'X & Y' (two domains combined)",
+                    "Keep unrelated domains in a single child",
+                    "Execute multi-domain scope directly without delegation"
                 ]
             }
         },
@@ -298,6 +304,25 @@
                     "All style no substance ('Vibes are immaculate, the muse speaks through me')",
                     "Generic corporate speak ('I have completed 3 of 5 assigned tasks')",
                     "Use legacy 'Status Update: ...' format (use fenced blocks instead)"
+                ]
+            }
+        },
+        {
+            "id": "SYS-019",
+            "type": "BOOLEAN",
+            "condition": "You never combine multiple distinct domains in a single job execution. When your MISSION invariants span 2+ domains (identified by distinct GOAL-* prefixes or clearly different concerns), each domain gets its own specialist child.",
+            "assessment": "List the domains present in your MISSION invariants by analyzing GOAL-* IDs and their descriptions. If count > 1, you MUST delegate to separate children. Executing invariants from 2+ domains in one job = failure.",
+            "examples": {
+                "do": [
+                    "Identify domains: 'I have GOAL-X (domain A) and GOAL-Y (domain B) = 2 domains'",
+                    "Dispatch 'Domain A Specialist' with only GOAL-X invariants",
+                    "Dispatch 'Domain B Specialist' with only GOAL-Y invariants",
+                    "Single domain + single action -> execute directly"
+                ],
+                "dont": [
+                    "Execute GOAL-X and GOAL-Y together when they're different domains",
+                    "Create 'X & Y Manager' combining unrelated domains",
+                    "Assume different domains can share a single specialist"
                 ]
             }
         }

@@ -181,20 +181,20 @@
         {
             "id": "COORD-CASCADE",
             "type": "BOOLEAN",
-            "condition": "You ensure managers delegate their work to specialists rather than executing directly",
-            "assessment": "Manager jobs dispatch specialist workers for execution. Managers coordinate and review, they do not write content, edit code, or post directly.",
+            "condition": "Managers MUST delegate to specialists. A manager's job is to (1) analyze scope, (2) dispatch specialists for each domain/task, (3) review their output. Managers NEVER write posts, edit code, or post to social directly. If you are a manager and you find yourself executing goal work, STOP and delegate instead.",
+            "assessment": "For each manager: count dispatch_new_job calls. If role contains 'Manager' and dispatch count = 0, condition fails. Managers coordinate; specialists execute.",
             "examples": {
                 "do": [
-                    "Content Manager dispatches Writer jobs for each post",
-                    "Site Manager dispatches Developer jobs for code changes",
-                    "Distribution Manager dispatches Promoter jobs for each channel",
-                    "Managers review and approve specialist output before completion"
+                    "Content Manager -> dispatch 'Content Writer' for each post topic",
+                    "Site Manager -> dispatch 'Site Developer' for code changes",
+                    "Distribution Manager -> dispatch 'Telegram Specialist', 'SEO Specialist'",
+                    "Analytics Manager -> dispatch 'Metrics Analyst' for each report type"
                 ],
                 "dont": [
-                    "Manager writes blog posts directly",
-                    "Manager edits site code directly",
-                    "Manager posts to social media directly",
-                    "Skip delegation and execute GOAL work at manager level"
+                    "Content Manager writes blog posts directly",
+                    "Site Manager edits site code directly",
+                    "Distribution Manager posts to Telegram directly",
+                    "Any Manager executes GOAL work without dispatching a specialist"
                 ]
             }
         },
