@@ -16,6 +16,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 
 interface WorkstreamTreeListProps {
   rootId: string
+  initialSelectedJobId?: string | null
+  selectedJobId?: string | null
+  onJobSelectRoute?: (jobId: string) => void
 }
 
 interface TreeNode {
@@ -123,7 +126,8 @@ function TreeNodeItem({
   
   return (
     <div>
-      <div 
+      <div
+        data-job-id={node.id}
         className={`py-2 px-3 rounded transition-colors cursor-pointer ${
           isSelected 
             ? 'bg-muted hover:bg-accent' 
@@ -259,14 +263,19 @@ function TreeNodeItem({
   )
 }
 
-export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
+export function WorkstreamTreeList({
+  rootId,
+  initialSelectedJobId,
+  selectedJobId: selectedJobIdProp,
+  onJobSelectRoute
+}: WorkstreamTreeListProps) {
   const { graph, loading, error } = useJobGraph({
     rootId,
     rootType: 'request',
     groupByDefinition: true,
   })
   
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(initialSelectedJobId ?? null)
   const [selectedJob, setSelectedJob] = useState<JobDefinition | null>(null)
   const [loadingJob, setLoadingJob] = useState(false)
   const [jobError, setJobError] = useState<string | null>(null)
@@ -312,6 +321,20 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
   // State to hold the next job's definition ID
   const [nextJobDefinitionId, setNextJobDefinitionId] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (initialSelectedJobId) {
+      hasAutoSelectedRef.current = true
+      setSelectedJobId(initialSelectedJobId)
+    }
+  }, [initialSelectedJobId])
+
+  useEffect(() => {
+    if (selectedJobIdProp !== undefined) {
+      hasAutoSelectedRef.current = true
+      setSelectedJobId(selectedJobIdProp)
+    }
+  }, [selectedJobIdProp])
+
   // Auto-select the first job when tree loads
   const rootNodeId = graph?.rootNode?.id
   useEffect(() => {
@@ -320,6 +343,14 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
       setSelectedJobId(rootNodeId)
     }
   }, [loading, rootNodeId])
+
+  useEffect(() => {
+    if (!selectedJobId) return
+    const nodeElement = document.querySelector(`[data-job-id="${selectedJobId}"]`)
+    if (nodeElement instanceof HTMLElement) {
+      nodeElement.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+  }, [selectedJobId, graph?.nodes?.length])
 
   // Calculate which job is next in queue by querying requests directly
   // This matches the worker's logic: oldest undelivered request with met dependencies
@@ -389,6 +420,7 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
 
   const handleSelectJob = (jobId: string) => {
     setSelectedJobId(jobId)
+    onJobSelectRoute?.(jobId)
   }
 
   const handleClosePanel = () => {
@@ -509,4 +541,3 @@ export function WorkstreamTreeList({ rootId }: WorkstreamTreeListProps) {
     </div>
   )
 }
-

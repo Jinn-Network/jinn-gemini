@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { HeartPulse, Activity, ArrowRight, Bot } from 'lucide-react';
+import { HeartPulse, Activity, ArrowRight, Bot, GitBranch } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LiveOutputView } from './live-output-view';
@@ -9,10 +9,13 @@ import { ActivityFeed } from './activity-feed';
 import { HealthSummary } from './health-summary';
 import { InvariantList, type InvariantWithMeasurement } from './invariant-list';
 import { ServiceOutputCard } from './service-output-card';
+import { WorkstreamTreeList } from '@/components/workstream-tree-list';
 import { transformToActivityItems } from '@/lib/ventures/activity-utils';
 import type { ServiceOutput } from '@/lib/ventures/service-types';
 import type { JobDefinition } from '@/lib/subgraph';
 import { formatRelativeTime, type HealthStatus } from '@jinn/shared-ui';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface VentureDashboardProps {
     liveOutputUrl: string | null;
@@ -23,6 +26,8 @@ interface VentureDashboardProps {
     statusCounts: Record<HealthStatus, number>;
     primaryOutput: ServiceOutput | null;
     fetchActivity: (workstreamId: string) => Promise<{ jobDefinitions: JobDefinition[] }>;
+    initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree';
+    initialSelectedJobId?: string | null;
 }
 
 export function VentureDashboard({
@@ -34,19 +39,86 @@ export function VentureDashboard({
     statusCounts,
     primaryOutput,
     fetchActivity,
+    initialTab,
+    initialSelectedJobId,
 }: VentureDashboardProps) {
     // Fallback URL if no SERVICE_OUTPUT
     const LIVE_OUTPUT_URL = liveOutputUrl || "https://blog-the-long-run-production.up.railway.app/";
+    const defaultTab = initialTab ?? (initialSelectedJobId ? 'work-tree' : 'dashboard');
+    const router = useRouter();
+    const [activeTab, setActiveTab] = useState(defaultTab);
+    const [selectedJobIdOverride, setSelectedJobIdOverride] = useState<string | null>(initialSelectedJobId ?? null);
+
+    useEffect(() => {
+        setActiveTab(defaultTab);
+    }, [defaultTab]);
+
+    useEffect(() => {
+        setSelectedJobIdOverride(initialSelectedJobId ?? null);
+    }, [initialSelectedJobId]);
+    const [activityPreviewData, setActivityPreviewData] = useState(activityData);
+
+    useEffect(() => {
+        setActivityPreviewData(activityData);
+    }, [activityData]);
+
+    useEffect(() => {
+        if (!workstreamId) return;
+
+        const interval = setInterval(async () => {
+            try {
+                const newData = await fetchActivity(workstreamId);
+                if (newData.jobDefinitions.length > 0) {
+                    setActivityPreviewData(prev => {
+                        const prevCount = prev.jobDefinitions.length;
+                        const newCount = newData.jobDefinitions.length;
+                        if (prevCount !== newCount) return newData;
+
+                        const prevLatest = prev.jobDefinitions[0]?.lastInteraction;
+                        const newLatest = newData.jobDefinitions[0]?.lastInteraction;
+                        if (prevLatest !== newLatest) return newData;
+
+                        return prev;
+                    });
+                }
+            } catch (e) {
+                console.error("Polling failed", e);
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [workstreamId, fetchActivity]);
 
     // Get latest 10 activity items for preview
-    const activityItems = transformToActivityItems(activityData.jobDefinitions).slice(0, 10);
+    const activityItems = transformToActivityItems(activityPreviewData.jobDefinitions).slice(0, 10);
 
     const total = statusCounts.healthy + statusCounts.warning + statusCounts.critical + statusCounts.unknown;
     const measured = total - statusCounts.unknown;
     const passing = statusCounts.healthy;
 
     return (
-        <Tabs defaultValue="dashboard" className="flex-1 flex flex-col min-h-0">
+        <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+                setActiveTab(value as VentureDashboardProps['initialTab']);
+                const basePath = `/ventures/${workstreamId}`;
+                let nextPath = basePath;
+                if (value === 'health') {
+                    nextPath = `${basePath}/health`;
+                } else if (value === 'activity') {
+                    nextPath = `${basePath}/activity`;
+                } else if (value === 'work-tree') {
+                    setSelectedJobIdOverride(null);
+                    nextPath = `${basePath}/tree`;
+                }
+                if (typeof window !== 'undefined') {
+                    window.history.pushState({}, '', nextPath);
+                } else {
+                    router.push(nextPath);
+                }
+            }}
+            className="flex-1 flex flex-col min-h-0"
+        >
             <TabsList className="w-fit">
                 <TabsTrigger value="dashboard" className="gap-2">
                     Dashboard
@@ -58,6 +130,10 @@ export function VentureDashboard({
                 <TabsTrigger value="activity" className="gap-2">
                     <Activity className="h-4 w-4" />
                     Activity
+                </TabsTrigger>
+                <TabsTrigger value="work-tree" className="gap-2">
+                    <GitBranch className="h-4 w-4" />
+                    Work Tree
                 </TabsTrigger>
             </TabsList>
 
@@ -140,7 +216,21 @@ export function VentureDashboard({
                                 ) : (
                                     <div className="space-y-3">
                                         {activityItems.map((item) => (
-                                            <div key={item.id} className="flex gap-2">
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                className="flex gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-accent/50 text-left"
+                                                onClick={() => {
+                                                    setSelectedJobIdOverride(item.id);
+                                                    setActiveTab('work-tree');
+                                                    const nextPath = `/ventures/${workstreamId}/tree/${item.id}`;
+                                                    if (typeof window !== 'undefined') {
+                                                        window.history.pushState({}, '', nextPath);
+                                                    } else {
+                                                        router.push(nextPath);
+                                                    }
+                                                }}
+                                            >
                                                 <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                                                     <Bot className="h-3 w-3 text-primary" />
                                                 </div>
@@ -153,7 +243,7 @@ export function VentureDashboard({
                                                         {item.message}
                                                     </p>
                                                 </div>
-                                            </div>
+                                            </button>
                                         ))}
                                     </div>
                                 )}
@@ -166,7 +256,7 @@ export function VentureDashboard({
 
             {/* Health Tab */}
             <TabsContent value="health" className="flex-1 min-h-0 mt-4 overflow-auto">
-                <div className="space-y-6 max-w-4xl">
+                <div className="space-y-6">
                     {/* Service Output Card */}
                     {primaryOutput && (
                         <ServiceOutputCard output={primaryOutput} />
@@ -192,13 +282,31 @@ export function VentureDashboard({
 
             {/* Activity Tab */}
             <TabsContent value="activity" className="flex-1 min-h-0 mt-4">
-                <div className="h-[600px] max-w-4xl">
+                <div className="h-[600px]">
                     <ActivityFeed
                         initialData={activityData}
                         workstreamId={workstreamId}
                         fetchActivity={fetchActivity}
                     />
                 </div>
+            </TabsContent>
+
+            {/* Work Tree Tab */}
+            <TabsContent value="work-tree" className="flex-1 min-h-0 mt-4">
+                <Card className="py-0 gap-0">
+                    <CardContent className="p-0">
+                        <WorkstreamTreeList
+                            rootId={workstreamId}
+                            initialSelectedJobId={initialSelectedJobId ?? undefined}
+                            selectedJobId={selectedJobIdOverride}
+                            onJobSelectRoute={(jobId) => {
+                                if (typeof window !== 'undefined') {
+                                    window.history.pushState({}, '', `/ventures/${workstreamId}/tree/${jobId}`);
+                                }
+                            }}
+                        />
+                    </CardContent>
+                </Card>
             </TabsContent>
         </Tabs>
     );

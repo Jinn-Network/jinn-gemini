@@ -102,7 +102,13 @@ interface VenturePageProps {
   params: Promise<{ id: string }>;
 }
 
-async function VentureDetail({ id }: { id: string }) {
+interface VentureDetailProps {
+  id: string;
+  initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree';
+  initialSelectedJobId?: string | null;
+}
+
+export async function VentureDetail({ id, initialTab, initialSelectedJobId }: VentureDetailProps) {
   const instance = await getServiceInstance(id);
 
   if (!instance) {
@@ -176,12 +182,14 @@ async function VentureDetail({ id }: { id: string }) {
         statusCounts={statusCounts}
         primaryOutput={primaryOutput}
         fetchActivity={fetchWorkstreamActivityAction}
+        initialTab={initialTab}
+        initialSelectedJobId={initialSelectedJobId}
       />
     </div>
   );
 }
 
-function VentureDetailSkeleton() {
+export function VentureDetailSkeleton() {
   return (
     <div className="space-y-6">
       <div className="h-10 w-64 animate-pulse rounded bg-muted" />
