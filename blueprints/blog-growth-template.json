@@ -268,6 +268,29 @@
             }
         },
         {
+            "id": "GOAL-CONTENT-DIVERSITY",
+            "type": "FLOOR",
+            "metric": "content_diversity_score",
+            "min": 70,
+            "assessment": "Before writing, use blog_list_posts to review existing content. Score 0-100 using: Topic Freshness (25%) - does the post cover a topic/angle not recently explored? Deduct points for substantial overlap with posts from past 30 days; Format Variety (25%) - does the content type (tutorial, analysis, news, deep-dive, interview) differ from the last 3 posts? Deduct if same format repeated; Additive Value (25%) - if covering a similar theme, does it build upon rather than repeat previous posts? Full points for new insights, zero for rehash; Catalog Awareness (25%) - evidence that existing posts were reviewed before planning? Full points if post explicitly references or differentiates from existing content.",
+            "examples": {
+                "do": [
+                    "Use blog_list_posts before planning any new content",
+                    "Rotate content formats: tutorial → analysis → news → deep-dive",
+                    "Explicitly note 'This builds on our previous post about X by exploring Y'",
+                    "Track topics covered in past month to identify gaps",
+                    "Write complementary pieces that link to each other"
+                ],
+                "dont": [
+                    "Write multiple 'intro to AI agents' posts with different titles",
+                    "Repeat the same conclusions across posts",
+                    "Ignore the existing content catalog when planning",
+                    "Use the same format (e.g., listicle) for consecutive posts",
+                    "Cover identical news from the same angle twice"
+                ]
+            }
+        },
+        {
             "id": "GOAL-DISTRIBUTION-TOOLS",
             "type": "BOOLEAN",
             "condition": "You EXECUTE distribution by broadcasting to Telegram (write-only) and planning platform-agnostic strategies.",
