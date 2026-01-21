@@ -52,7 +52,7 @@ export async function runAgentForRequest(
   metadata: IpfsMetadata
 ): Promise<AgentExecutionResult> {
   // Model comes from job metadata (set at dispatch time), fallback to flash
-  const model = metadata?.model || 'gemini-3-flash-preview';
+  const model = metadata?.model || 'auto-gemini-3';
   // Normalize tools to string array (handles both string and object formats from IPFS metadata)
   const enabledTools = normalizeToolArray(metadata?.enabledTools);
   const toolPolicy = Array.isArray(metadata?.tools) ? parseAnnotatedTools(metadata.tools) : null;

@@ -103,7 +103,7 @@ This PR introduces a major architectural refactor of the blueprint system, adds 
 
 ### 4. Model Upgrade: Gemini 2.5 → Gemini 3
 
-- Updated default model from `gemini-2.5-flash` to `gemini-3-flash-preview`
+- Updated default model from `gemini-2.5-flash` to `auto-gemini-3`
 - Applied across:
   - `dispatch_new_job` tool default
   - `runAgent` fallback model
@@ -283,7 +283,7 @@ CREATE TABLE job_template (
    - Ensure Ponder indexes `jobTemplate` table
 
 3. **Model Configuration:**
-   - Default model is now `gemini-3-flash-preview`
+   - Default model is now `auto-gemini-3`
    - Override via `MECH_MODEL` env var if needed
 
 ---

@@ -501,7 +501,7 @@ app.post("/templates/:id/execute", async (c) => {
       ipfsJsonContents: [{
         blueprint: JSON.stringify({ invariants }),
         jobName,
-        model: "gemini-3-flash-preview",
+        model: "auto-gemini-3",
         jobDefinitionId,
         nonce: crypto.randomUUID(),
         networkId: 'jinn',

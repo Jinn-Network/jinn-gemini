@@ -335,7 +335,7 @@ const ipfsJsonContents = [{
     ]
   }),
   jobName: 'continuous-monitoring',
-  model: 'gemini-3-flash-preview',
+  model: 'auto-gemini-3',
   enabledTools: ['create_artifact', 'search_artifacts', 'dispatch_new_job'],
   jobDefinitionId: randomUUID(),
   nonce: randomUUID(),
@@ -420,7 +420,6 @@ These invariants are intentionally non-prescriptive—complex jobs may need to d
 ---
 
 **End of Worker Internals Reference**
-
 
 
 

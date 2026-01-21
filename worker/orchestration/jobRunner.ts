@@ -75,7 +75,7 @@ export async function processOnce(
       }
       // Use model from job metadata if available, otherwise fall back to default
       if (!metadata.model) {
-        metadata.model = 'gemini-3-flash-preview';
+        metadata.model = 'auto-gemini-3';
       }
 
       telemetry.logCheckpoint('initialization', 'metadata_fetched', {
@@ -316,7 +316,7 @@ export async function processOnce(
 
     // Agent execution
     telemetry.startPhase('agent_execution', {
-      model: metadata?.model || 'gemini-3-flash-preview',
+      model: metadata?.model || 'auto-gemini-3',
     });
     try {
       result = await runAgentForRequest(target, metadata);

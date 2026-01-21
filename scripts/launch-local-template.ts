@@ -131,7 +131,7 @@ async function main() {
     const argv = await yargs(hideBin(process.argv))
         .option('input', { type: 'string', description: 'JSON input parameters' })
         .option('dry-run', { type: 'boolean', description: 'Simulate without dispatching' })
-        .option('model', { type: 'string', default: 'gemini-3-flash-preview', description: 'Model to use' })
+        .option('model', { type: 'string', default: 'auto-gemini-3', description: 'Model to use' })
         .option('context', { type: 'string', description: 'Additional context to inject' })
         .option('setup-repo', { type: 'string', description: 'Parent directory to clone/use repo in (e.g. ../jinn-repos)' })
         .demandCommand(1, 'Please provide a blueprint filename')

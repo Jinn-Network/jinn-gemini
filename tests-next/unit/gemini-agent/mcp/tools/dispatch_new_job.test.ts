@@ -370,7 +370,7 @@ describe('dispatchNewJob', () => {
       expect(call.ipfsJsonContents[0].model).toBe('gemini-2.5-pro');
     });
 
-    it('defaults to gemini-3-flash-preview when not provided', async () => {
+    it('defaults to auto-gemini-3 when not provided', async () => {
       const args = {
         jobName: 'test-job',
         blueprint: createBlueprint([{ id: 'TST-001', condition: 'Must complete task' }]),
@@ -379,7 +379,7 @@ describe('dispatchNewJob', () => {
       await dispatchNewJob(args);
 
       const call = (marketplaceInteract as any).mock.calls[0][0];
-      expect(call.ipfsJsonContents[0].model).toBe('gemini-3-flash-preview');
+      expect(call.ipfsJsonContents[0].model).toBe('auto-gemini-3');
     });
   });
 
