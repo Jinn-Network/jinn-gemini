@@ -35,7 +35,7 @@ export function FeaturedVentureCard({ instance, name, description }: FeaturedVen
             <CardFooter className="relative">
                 <Button asChild variant="default" className="w-full">
                     <a
-                        href={getExplorerUrl('workstream', instance.workstreamId)}
+                        href={getExplorerUrl('venture', instance.workstreamId)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2"

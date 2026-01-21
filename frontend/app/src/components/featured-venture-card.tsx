@@ -41,7 +41,7 @@ export function FeaturedVentureCard({ instance, name, description }: FeaturedVen
                 </Button>
                 <Button asChild variant="outline">
                     <a
-                        href={getExplorerUrl('workstream', instance.workstreamId)}
+                        href={getExplorerUrl('venture', instance.workstreamId)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2"

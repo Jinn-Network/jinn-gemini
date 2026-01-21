@@ -1100,6 +1100,12 @@ Without `codeMetadata`, the worker treats the job as artifact-only (`isCodingJob
 **Prevention:** Add a cross-worker idempotency guard (e.g., Control API lock, shared stop file, or on-chain/Control API uniqueness check) around parent dispatch so only one worker can dispatch per parent completion window.
 ---
 
+### 59. Undelivered Set RPC Reverts (2026-01-21)
+**Issue:** Worker logs "Failed to get undelivered set; returning null" with "Error happened while trying to execute a function inside a smart contract" during `getUndeliveredSet`.
+**Impact:** `filterUnclaimed()` falls back to trusting Ponder (keeps requests), which can cause repeated polling without progress and missed on-chain filtering.
+**Where:** `worker/mech_worker.ts` in `getUndeliveredSet` and `filterUnclaimed` fallback path.
+**Prevention:** Treat this as an RPC/contract read failure; verify Base RPC health and marketplace contract calls before assuming worker logic is broken.
+
 ## Test Infrastructure Gotchas
 
 ### Git Fixtures Must Have Main Branch
