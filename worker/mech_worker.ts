@@ -12,7 +12,6 @@ import {
 // Import JSON artifact without import assertions for TS compatibility
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import agentMechArtifact from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
 import { workerLogger } from '../logging/index.js';
 import { claimRequest as apiClaimRequest } from './control_api_client.js';
 import { getMechAddress, getServicePrivateKey, getMechChainConfig } from '../env/operate-profile.js';
@@ -218,102 +217,50 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
   }
 }
 
-async function getUndeliveredSet(params: { mechAddress: string; rpcHttpUrl?: string; size?: number; offset?: number }): Promise<Set<string> | null> {
-  const { mechAddress, rpcHttpUrl, size = 1000, offset = 0 } = params;
+async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedRequest[]> {
+  if (requests.length === 0) return [];
+  // Filter out already delivered requests first (from indexer)
+  const notDelivered = requests.filter(r => !r.delivered);
+  if (notDelivered.length === 0) return [];
+  // Validate against marketplace delivery status to avoid stale indexer data
   try {
-    if (!rpcHttpUrl) return new Set<string>();
-
-    // Step 1: Get requests pending in YOUR mech's queue
-    const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
-    const web3 = new Web3(rpcHttpUrl);
-    const mechContract = new (web3 as any).eth.Contract(abi, mechAddress);
-    const requestIds: string[] = await mechContract.methods.getUndeliveredRequestIds(size, offset).call();
-
-    if (!requestIds || requestIds.length === 0) {
-      return new Set<string>();
+    const rpcHttpUrl = getRequiredRpcUrl();
+    if (!rpcHttpUrl) {
+      workerLogger.debug('RPC URL missing; falling back to Ponder status');
+      return notDelivered;
     }
 
-    // Step 2: Filter out requests that have been delivered by OTHER mechs in the marketplace
-    // This prevents wasted gas on delivery attempts that will be revoked
+    const web3 = new Web3(rpcHttpUrl);
     const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
     // Dynamic import with require to avoid TypeScript module resolution issues
     const marketplaceAbi = require('../ponder/abis/MechMarketplace.json');
     const marketplace = new (web3 as any).eth.Contract(marketplaceAbi, MARKETPLACE_ADDRESS);
 
-    const undeliveredSet = new Set<string>();
+    const filtered: UnclaimedRequest[] = [];
 
-    // Check each request in the marketplace to see if it's actually still undelivered
-    for (const requestId of requestIds) {
+    for (const request of notDelivered) {
+      const requestId = String(request.id);
       try {
         const requestInfo = await marketplace.methods.mapRequestIdInfos(requestId).call();
         const isDelivered = requestInfo.deliveryMech !== '0x0000000000000000000000000000000000000000';
 
         if (!isDelivered) {
-          // Request is still undelivered in marketplace - safe to attempt delivery
-          undeliveredSet.add(String(requestId).toLowerCase());
+          filtered.push(request);
         } else {
-          // Request was delivered by another mech - skip it
           workerLogger.debug({
             requestId,
             deliveredByMech: requestInfo.deliveryMech
           }, 'Request already delivered in marketplace by another mech - filtering out');
         }
       } catch (err) {
-        // If we can't check marketplace status for this specific request, be conservative and include it
-        workerLogger.warn({ requestId, error: err instanceof Error ? err.message : String(err) }, 'Failed to check marketplace status for request; including in set');
-        undeliveredSet.add(String(requestId).toLowerCase());
+        workerLogger.warn({ requestId, error: err instanceof Error ? err.message : String(err) }, 'Failed to check marketplace status for request; keeping request');
+        filtered.push(request);
       }
     }
 
-    return undeliveredSet;
-  } catch (err) {
-    workerLogger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to get undelivered set; returning null');
-    return null;
-  }
-}
-
-async function filterUnclaimed(requests: UnclaimedRequest[]): Promise<UnclaimedRequest[]> {
-  if (requests.length === 0) return [];
-  // Filter out already delivered requests first (from indexer)
-  const notDelivered = requests.filter(r => !r.delivered);
-  if (notDelivered.length === 0) return [];
-  // Intersect with on-chain undelivered for additional safety (Control API will enforce atomic claim)
-  try {
-    const rpcHttpUrl = getRequiredRpcUrl();
-    const mechToSet = new Map<string, Set<string> | null>();
-    for (const r of notDelivered) {
-      const key = r.mech.toLowerCase();
-      if (!mechToSet.has(key)) {
-        // Fetch a large batch to ensure we don't miss recent requests due to pagination
-        mechToSet.set(key, await getUndeliveredSet({ mechAddress: r.mech, rpcHttpUrl, size: 1000 }));
-      }
-    }
-    const filtered = notDelivered.filter(r => {
-      const set = mechToSet.get(r.mech.toLowerCase());
-
-      // If we failed to get the set (null), we default to TRUSTING Ponder (return true)
-      // This prevents blocking if RPC is flaky, but might cause a revert on claim if actually delivered.
-      if (set === null) {
-        workerLogger.debug({ requestId: r.id }, 'RPC check failed (null set), falling back to Ponder status (keeping request)');
-        return true;
-      }
-
-      const idHex = String(r.id).startsWith('0x') ? String(r.id).toLowerCase() : ('0x' + BigInt(String(r.id)).toString(16)).toLowerCase();
-      const inSet = set.has(idHex);
-
-      if (!inSet) {
-        workerLogger.debug({
-          requestId: r.id,
-          mech: r.mech,
-          onChainSetSize: set.size
-        }, 'Request filtered out - not found in on-chain undelivered set (already delivered)');
-      }
-
-      return inSet;
-    });
     return filtered;
   } catch (e) {
-    workerLogger.warn({ error: e instanceof Error ? e.message : String(e) }, 'Error checking on-chain status, falling back to Ponder status');
+    workerLogger.warn({ error: e instanceof Error ? e.message : String(e) }, 'Error checking marketplace status, falling back to Ponder status');
     return notDelivered;
   }
 }
