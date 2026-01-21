@@ -11,6 +11,8 @@ import { buildAnnotatedTools, normalizeToolArray } from '../../shared/template-t
 import { blueprintStructureSchema } from '../../shared/blueprint-schema.js';
 import { BASE_UNIVERSAL_TOOLS } from '../../toolPolicy.js';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const dispatchNewJobParamsBase = z.object({
   jobName: z.string().min(1).describe('Name for this job definition'),
   blueprint: z.string().optional().describe('JSON string containing structured blueprint with invariants array. Each invariant must have: id, type (FLOOR/CEILING/RANGE/BOOLEAN), assessment, and type-specific fields (metric+min for FLOOR, metric+max for CEILING, metric+min+max for RANGE, condition for BOOLEAN). Optional: examples.'),
@@ -117,6 +119,78 @@ function ensureUuid(): string {
   throw new Error('crypto.randomUUID not available; cannot generate strict UUID');
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchDependencyPresence(params: { gqlUrl: string; ids: string[] }): Promise<Set<string>> {
+  const { gqlUrl, ids } = params;
+  if (ids.length === 0) return new Set();
+  const result = await graphQLRequest<{
+    jobDefinitions: { items: Array<{ id: string }> };
+    requests: { items: Array<{ jobDefinitionId?: string | null }> };
+  }>({
+    url: gqlUrl,
+    query: `query DependencyPresence($ids: [String!]!) {
+      jobDefinitions(where: { id_in: $ids }) {
+        items { id }
+      }
+      requests(where: { jobDefinitionId_in: $ids }, limit: 200) {
+        items { jobDefinitionId }
+      }
+    }`,
+    variables: { ids },
+    maxRetries: 1,
+    context: { operation: 'dependencyPresence', idsCount: ids.length },
+  });
+
+  const found = new Set<string>();
+  for (const item of result?.jobDefinitions?.items || []) {
+    found.add(String(item.id).toLowerCase());
+  }
+  for (const item of result?.requests?.items || []) {
+    if (item?.jobDefinitionId) {
+      found.add(String(item.jobDefinitionId).toLowerCase());
+    }
+  }
+  return found;
+}
+
+async function validateDependencies(params: { gqlUrl: string; dependencies: string[] }): Promise<{
+  ok: boolean;
+  invalid: string[];
+  missing: string[];
+}> {
+  const { gqlUrl, dependencies } = params;
+  if (dependencies.length === 0) {
+    return { ok: true, invalid: [], missing: [] };
+  }
+
+  const invalid = dependencies.filter(dep => !UUID_REGEX.test(dep));
+  if (invalid.length > 0) {
+    return { ok: false, invalid, missing: [] };
+  }
+
+  const retries = Math.max(1, Number(process.env.JINN_DEPENDENCY_VALIDATION_RETRIES || 3));
+  const delayMs = Math.max(0, Number(process.env.JINN_DEPENDENCY_VALIDATION_DELAY_MS || 500));
+  const normalized = dependencies.map(dep => dep.toLowerCase());
+
+  let missing: string[] = [];
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    const found = await fetchDependencyPresence({ gqlUrl, ids: dependencies });
+    missing = normalized.filter(dep => !found.has(dep));
+    if (missing.length === 0) {
+      return { ok: true, invalid: [], missing: [] };
+    }
+    if (attempt < retries && delayMs > 0) {
+      await sleep(delayMs * attempt);
+    }
+  }
+
+  const missingOriginal = dependencies.filter(dep => missing.includes(dep.toLowerCase()));
+  return { ok: false, invalid: [], missing: missingOriginal };
+}
+
 function getCompletedChildRequestIdsFromEnv(): string[] {
   const raw = process.env.JINN_COMPLETED_CHILDREN;
   if (!raw) return [];
@@ -198,6 +272,46 @@ export async function dispatchNewJob(args: unknown) {
           }),
         }],
       };
+    }
+
+    if (dependencies && dependencies.length > 0 && process.env.JINN_SKIP_DEPENDENCY_VALIDATION !== '1') {
+      const gqlUrl = getPonderGraphqlUrl();
+      const validation = await validateDependencies({ gqlUrl, dependencies });
+      if (!validation.ok) {
+        if (validation.invalid.length > 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                data: null,
+                meta: {
+                  ok: false,
+                  code: 'INVALID_DEPENDENCY_ID',
+                  message: `Dependencies must be job definition UUIDs. Invalid: ${validation.invalid.join(', ')}`,
+                  details: { invalidDependencies: validation.invalid },
+                },
+              }),
+            }],
+          };
+        }
+
+        if (validation.missing.length > 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                data: null,
+                meta: {
+                  ok: false,
+                  code: 'MISSING_DEPENDENCY',
+                  message: `Dependency job definition(s) not found in Ponder: ${validation.missing.join(', ')}`,
+                  details: { missingDependencies: validation.missing },
+                },
+              }),
+            }],
+          };
+        }
+      }
     }
 
     if (availableTools.length > 0) {

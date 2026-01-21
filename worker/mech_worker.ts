@@ -15,7 +15,8 @@ import {
 import marketplaceAbi from '../ponder/abis/MechMarketplace.json';
 import { workerLogger } from '../logging/index.js';
 import { claimRequest as apiClaimRequest } from './control_api_client.js';
-import { getMechAddress, getServicePrivateKey, getMechChainConfig } from '../env/operate-profile.js';
+import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
+import { getMechAddress, getServicePrivateKey, getMechChainConfig, getServiceSafeAddress } from '../env/operate-profile.js';
 import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
 import { serializeError } from './logging/errors.js';
 import { safeParseToolResponse } from './tool_utils.js';
@@ -35,6 +36,13 @@ type UnclaimedRequest = {
   dependencies?: string[];  // job definition IDs or names that must be delivered first
   ipfsHash?: string;
   delivered?: boolean;
+};
+
+type JobDefinitionStatus = {
+  exists: boolean;
+  lastStatus?: string;
+  lastInteraction?: number;
+  name?: string;
 };
 
 
@@ -87,6 +95,17 @@ const recentReposts = new Map<string, number>();
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEPENDENCY_STALE_MS = Number(process.env.WORKER_DEPENDENCY_STALE_MS || String(2 * 60 * 60 * 1000));
+const DEPENDENCY_REDISPATCH_COOLDOWN_MS = Number(process.env.WORKER_DEPENDENCY_REDISPATCH_COOLDOWN_MS || String(60 * 60 * 1000));
+const DEPENDENCY_MISSING_FAIL_MS = Number(process.env.WORKER_DEPENDENCY_MISSING_FAIL_MS || String(2 * 60 * 60 * 1000));
+const DEPENDENCY_CANCEL_COOLDOWN_MS = Number(process.env.WORKER_DEPENDENCY_CANCEL_COOLDOWN_MS || String(60 * 60 * 1000));
+const ENABLE_DEPENDENCY_REDISPATCH = process.env.WORKER_DEPENDENCY_REDISPATCH !== '0';
+const ENABLE_DEPENDENCY_AUTOFAIL = process.env.WORKER_DEPENDENCY_AUTOFAIL !== '0';
+
+const dependencyRedispatchAttempts = new Map<string, number>();
+const dependencyCancelAttempts = new Map<string, number>();
+
 // Job processing logic has been moved to worker/orchestration/jobRunner.ts
 // This file now serves as a CLI wrapper that handles request discovery, claiming, and orchestration delegation
 
@@ -120,6 +139,166 @@ function getMechFilterConfig(): MechFilterConfig {
   }
 
   return { mode: 'single', addresses: [] };
+}
+
+function isUuid(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
+function isTerminalStatus(status?: string): boolean {
+  return status === 'COMPLETED' || status === 'FAILED';
+}
+
+async function getJobDefinitionStatus(jobDefinitionId: string): Promise<JobDefinitionStatus> {
+  try {
+    const query = `query CheckJobDefStatus($jobDefId: String!) {
+      jobDefinitions(where: { id: $jobDefId }) {
+        items {
+          id
+          name
+          lastStatus
+          lastInteraction
+        }
+      }
+    }`;
+
+    const data = await graphQLRequest<{
+      jobDefinitions: { items: Array<{ id: string; name?: string; lastStatus?: string; lastInteraction?: string }> };
+    }>({
+      url: PONDER_GRAPHQL_URL,
+      query,
+      variables: { jobDefId: jobDefinitionId },
+      context: { operation: 'getJobDefinitionStatus', jobDefinitionId },
+    });
+
+    const jobDef = data?.jobDefinitions?.items?.[0];
+    if (!jobDef) {
+      return { exists: false };
+    }
+
+    return {
+      exists: true,
+      name: jobDef.name,
+      lastStatus: jobDef.lastStatus,
+      lastInteraction: jobDef.lastInteraction ? Number(jobDef.lastInteraction) : undefined,
+    };
+  } catch (e: any) {
+    workerLogger.warn({
+      jobDefinitionId,
+      error: e instanceof Error ? e.message : String(e),
+    }, 'Failed to fetch job definition status');
+    return { exists: false };
+  }
+}
+
+function shouldThrottle(map: Map<string, number>, key: string, cooldownMs: number): boolean {
+  const last = map.get(key);
+  if (!last) return false;
+  return Date.now() - last < cooldownMs;
+}
+
+async function maybeRedispatchDependency(params: {
+  request: UnclaimedRequest;
+  dependencyId: string;
+  status: JobDefinitionStatus;
+}): Promise<void> {
+  if (!ENABLE_DEPENDENCY_REDISPATCH) return;
+  if (!params.request.workstreamId) return;
+  if (!params.status.lastStatus) return;
+
+  const lastInteractionMs = params.status.lastInteraction ? params.status.lastInteraction * 1000 : undefined;
+  if (!lastInteractionMs) return;
+  if (Date.now() - lastInteractionMs < DEPENDENCY_STALE_MS) return;
+
+  const redispatchable = new Set(['DELEGATING', 'WAITING', 'PENDING']);
+  if (!redispatchable.has(params.status.lastStatus)) return;
+
+  const key = `${params.request.workstreamId}:${params.dependencyId}`;
+  if (shouldThrottle(dependencyRedispatchAttempts, key, DEPENDENCY_REDISPATCH_COOLDOWN_MS)) return;
+
+  try {
+    dependencyRedispatchAttempts.set(key, Date.now());
+    workerLogger.warn({
+      requestId: params.request.id,
+      dependencyId: params.dependencyId,
+      lastStatus: params.status.lastStatus,
+      lastInteraction: params.status.lastInteraction,
+    }, 'Dependency appears stale; re-dispatching dependency job definition');
+
+    await dispatchExistingJob({
+      jobId: params.dependencyId,
+      workstreamId: params.request.workstreamId,
+      message: `Auto-redispatch: dependency stale (${params.status.lastStatus}) with no activity for ${Math.round((Date.now() - lastInteractionMs) / 60000)}m`,
+    });
+  } catch (e: any) {
+    workerLogger.warn({
+      requestId: params.request.id,
+      dependencyId: params.dependencyId,
+      error: e?.message || String(e),
+    }, 'Failed to re-dispatch stale dependency');
+  }
+}
+
+async function maybeCancelMissingDependency(params: {
+  request: UnclaimedRequest;
+  dependencyId: string;
+}): Promise<void> {
+  if (!ENABLE_DEPENDENCY_AUTOFAIL) return;
+  if (!params.request.blockTimestamp) return;
+
+  const requestAgeMs = Date.now() - params.request.blockTimestamp * 1000;
+  if (requestAgeMs < DEPENDENCY_MISSING_FAIL_MS) return;
+
+  const key = `${params.request.id}:${params.dependencyId}`;
+  if (shouldThrottle(dependencyCancelAttempts, key, DEPENDENCY_CANCEL_COOLDOWN_MS)) return;
+  dependencyCancelAttempts.set(key, Date.now());
+
+  const mechAddress = getMechAddress();
+  const safeAddress = getServiceSafeAddress();
+  const privateKey = getServicePrivateKey();
+  const rpcHttpUrl = getRequiredRpcUrl();
+  const chainConfig = getMechChainConfig();
+
+  if (!mechAddress || !safeAddress || !privateKey) {
+    workerLogger.warn({
+      requestId: params.request.id,
+      dependencyId: params.dependencyId,
+    }, 'Cannot auto-cancel missing dependency: missing service credentials');
+    return;
+  }
+
+  try {
+    const resultContent = {
+      requestId: params.request.id,
+      output: `Job cancelled: missing dependency job definition ${params.dependencyId}`,
+      telemetry: {},
+      artifacts: [],
+      cancelled: true,
+    };
+
+    const delivery = await (deliverViaSafe as any)({
+      chainConfig,
+      requestId: params.request.id,
+      resultContent,
+      targetMechAddress: mechAddress,
+      safeAddress,
+      privateKey,
+      rpcHttpUrl,
+      wait: true,
+    });
+
+    workerLogger.warn({
+      requestId: params.request.id,
+      dependencyId: params.dependencyId,
+      txHash: delivery?.tx_hash,
+    }, 'Auto-cancelled request due to missing dependency');
+  } catch (e: any) {
+    workerLogger.warn({
+      requestId: params.request.id,
+      dependencyId: params.dependencyId,
+      error: e?.message || String(e),
+    }, 'Failed to auto-cancel request for missing dependency');
+  }
 }
 
 async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest[]> {
@@ -346,39 +525,19 @@ async function resolveJobDefinitionId(
  */
 export async function isJobDefinitionComplete(jobDefinitionId: string): Promise<boolean> {
   try {
-    // Query job definition's lastStatus from Ponder
-    const query = `query CheckJobDefCompletion($jobDefId: String!) {
-      jobDefinitions(where: { id: $jobDefId }) {
-        items {
-          id
-          lastStatus
-        }
-      }
-    }`;
-
-    const data = await graphQLRequest<{
-      jobDefinitions: { items: Array<{ id: string; lastStatus: string }> };
-    }>({
-      url: PONDER_GRAPHQL_URL,
-      query,
-      variables: { jobDefId: jobDefinitionId },
-      context: { operation: 'isJobDefinitionComplete', jobDefinitionId }
-    });
-
-    const jobDef = data?.jobDefinitions?.items?.[0];
-
-    if (!jobDef) {
+    const status = await getJobDefinitionStatus(jobDefinitionId);
+    if (!status.exists) {
       workerLogger.debug({ jobDefinitionId }, 'Job definition not found');
       return false;
     }
 
     // Job definition is complete only if lastStatus is terminal (COMPLETED/FAILED)
     // DELEGATING and WAITING mean work is still in progress
-    const isComplete = jobDef.lastStatus === 'COMPLETED' || jobDef.lastStatus === 'FAILED';
+    const isComplete = isTerminalStatus(status.lastStatus);
 
     workerLogger.debug({
       jobDefinitionId,
-      lastStatus: jobDef.lastStatus,
+      lastStatus: status.lastStatus,
       isComplete
     }, 'Job definition completion check (status-based)');
 
@@ -406,8 +565,28 @@ async function checkDependenciesMet(request: UnclaimedRequest): Promise<boolean>
     const results = await Promise.all(
       request.dependencies.map(async (identifier) => {
         const resolvedId = await resolveJobDefinitionId(request.workstreamId, identifier);
-        const isComplete = await isJobDefinitionComplete(resolvedId);
-        return { identifier, resolvedId, isComplete };
+
+        if (!isUuid(resolvedId)) {
+          workerLogger.warn({
+            requestId: request.id,
+            identifier,
+            resolvedId,
+          }, 'Dependency identifier is not a UUID; cannot validate');
+          return { identifier, resolvedId, isComplete: false, status: { exists: false } as JobDefinitionStatus };
+        }
+
+        const status = await getJobDefinitionStatus(resolvedId);
+        const isComplete = status.exists && isTerminalStatus(status.lastStatus);
+
+        if (!isComplete) {
+          if (!status.exists) {
+            await maybeCancelMissingDependency({ request, dependencyId: resolvedId });
+          } else {
+            await maybeRedispatchDependency({ request, dependencyId: resolvedId, status });
+          }
+        }
+
+        return { identifier, resolvedId, isComplete, status };
       })
     );
 
@@ -421,7 +600,9 @@ async function checkDependenciesMet(request: UnclaimedRequest): Promise<boolean>
         incompleteDeps: incomplete.map(r => ({
           identifier: r.identifier,
           resolvedId: r.resolvedId,
-          wasResolved: r.identifier !== r.resolvedId  // Shows if name→UUID resolution happened
+          wasResolved: r.identifier !== r.resolvedId,  // Shows if name→UUID resolution happened
+          lastStatus: r.status?.lastStatus || (isUuid(r.resolvedId) ? 'UNKNOWN' : 'UNRESOLVED'),
+          lastInteraction: r.status?.lastInteraction
         })),
       }, 'Dependencies not met - waiting for job definitions to complete');
     }
