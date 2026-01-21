@@ -54,6 +54,13 @@ export interface BuildIpfsPayloadOptions {
     cyclic?: boolean;
 
     /**
+     * Existing codeMetadata from job definition (for redispatches).
+     * When provided, skips fresh metadata collection and uses this instead.
+     * This enables redispatch scripts to preserve coding tool capabilities.
+     */
+    codeMetadata?: CodeMetadata | null;
+
+    /**
      * Explicit workstream override for human-initiated dispatches.
      */
     workstreamId?: string;
@@ -196,7 +203,8 @@ export async function buildIpfsPayload(
         getCodeMetadataDefaultBaseBranch();
 
     let branchResult: EnsureBranchResult | undefined;
-    let codeMetadata: CodeMetadata | null = null;
+    // Use provided codeMetadata (from redispatch) or prepare to collect fresh
+    let codeMetadata: CodeMetadata | null = options.codeMetadata || null;
 
     // Helper to build metadata hints
     const getMetadataHints = (targetBranchName?: string) => ({
@@ -212,8 +220,8 @@ export async function buildIpfsPayload(
         branchName: targetBranchName,
     });
 
-    // Create branch and collect metadata
-    if (shouldCreateBranch) {
+    // Create branch and collect metadata (skip if codeMetadata already provided)
+    if (shouldCreateBranch && !codeMetadata) {
         try {
             branchResult = await ensureJobBranch({
                 jobDefinitionId,
@@ -226,7 +234,7 @@ export async function buildIpfsPayload(
             // Re-throw with context
             throw new Error(`Failed to create job branch or collect metadata: ${branchError.message}`);
         }
-    } else if (shouldKeepRepoContext) {
+    } else if (shouldKeepRepoContext && !codeMetadata) {
         // Skip creating a new branch, but preserve repo context
         try {
             codeMetadata = await collectLocalCodeMetadata(getMetadataHints(undefined));

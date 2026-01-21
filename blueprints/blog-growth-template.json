@@ -134,7 +134,8 @@
                 "name": "run_shell_command"
             },
             {
-                "name": "telegram_messaging"
+                "name": "telegram_messaging",
+                "required": true
             }
         ]
     },
@@ -267,20 +268,48 @@
             }
         },
         {
-            "id": "GOAL-DISTRIBUTION",
-            "type": "CEILING",
-            "metric": "single_source_traffic_percent",
-            "max": 80,
-            "assessment": "Use blog_get_referrers to check no single traffic source exceeds 80% of total",
+            "id": "GOAL-CONTENT-DIVERSITY",
+            "type": "FLOOR",
+            "metric": "content_diversity_score",
+            "min": 70,
+            "assessment": "Before writing, use blog_list_posts to review existing content. Score 0-100 using: Topic Freshness (25%) - does the post cover a topic/angle not recently explored? Deduct points for substantial overlap with posts from past 30 days; Format Variety (25%) - does the content type (tutorial, analysis, news, deep-dive, interview) differ from the last 3 posts? Deduct if same format repeated; Additive Value (25%) - if covering a similar theme, does it build upon rather than repeat previous posts? Full points for new insights, zero for rehash; Catalog Awareness (25%) - evidence that existing posts were reviewed before planning? Full points if post explicitly references or differentiates from existing content.",
             "examples": {
                 "do": [
-                    "SEO optimization for long-term discoverability",
-                    "Strategic social sharing where target audience gathers",
-                    "Genuine community participation in relevant spaces"
+                    "Use blog_list_posts before planning any new content",
+                    "Rotate content formats: tutorial → analysis → news → deep-dive",
+                    "Explicitly note 'This builds on our previous post about X by exploring Y'",
+                    "Track topics covered in past month to identify gaps",
+                    "Write complementary pieces that link to each other"
                 ],
                 "dont": [
-                    "Publish and forget",
-                    "Spam links in irrelevant communities"
+                    "Write multiple 'intro to AI agents' posts with different titles",
+                    "Repeat the same conclusions across posts",
+                    "Ignore the existing content catalog when planning",
+                    "Use the same format (e.g., listicle) for consecutive posts",
+                    "Cover identical news from the same angle twice"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-DISTRIBUTION-TOOLS",
+            "type": "BOOLEAN",
+            "condition": "You EXECUTE distribution by broadcasting to Telegram (write-only) and planning platform-agnostic strategies.",
+            "assessment": "Verify that: (1) At least one Telegram message is sent using `telegram_send_message` (or similar) per cycle if new content exists or for general engagement. (2) Strategy does NOT assume X/Reddit/LinkedIn access. (3) Strategy does NOT assume reading Telegram.",
+            "examples": {
+                "do": [
+                    "Call telegram_send_message to share latest post",
+                    "Broadcast updates to Telegram subscribers",
+                    "Optimize for SEO and organic discovery",
+                    "Pursue backlinks from relevant sites",
+                    "Create embeddable content others can share",
+                    "Build email list for direct distribution"
+                ],
+                "dont": [
+                    "Only create a plan without executing it",
+                    "Plan X/Twitter thread campaigns (no account access)",
+                    "Schedule Reddit AMAs (no account access)",
+                    "Monitor Telegram for replies (write-only)",
+                    "Assume any platform login we don't have"
                 ]
             }
         },
@@ -341,7 +370,7 @@
             "type": "FLOOR",
             "metric": "site_branding_alignment_score",
             "min": 70,
-            "assessment": "Rate site 0-100 using: Mission clarity (25%) - does landing page communicate {{mission}} within 5 seconds?; Visual identity (25%) - do colors, typography, imagery reinforce the blog's tone?; Navigation (25%) - can visitors easily find content aligned with their interests?; Differentiation (25%) - is the site distinct from template defaults and competitors?",
+            "assessment": "The blog is hosted at {{domain}}. Rate site 0-100 using: Mission clarity (25%) - does landing page communicate {{mission}} within 5 seconds?; Visual identity (25%) - do colors, typography, imagery reinforce the blog's tone?; Navigation (25%) - can visitors easily find content aligned with their interests?; Differentiation (25%) - is the site distinct from template defaults and competitors?",
             "examples": {
                 "do": [
                     "Design choices that reinforce the mission",

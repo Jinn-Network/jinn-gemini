@@ -23,6 +23,23 @@ function buildGithubHttpsUrl(remoteUrl: string): string | null {
 }
 
 /**
+ * Normalize SSH URL to use local host alias if configured.
+ * This allows workers to use a custom SSH host (e.g., 'ritsukai' instead of 'github.com')
+ * when the user has a non-default SSH key setup.
+ * 
+ * Set SSH_HOST_ALIAS=ritsukai in .env to rewrite git@github.com: to git@ritsukai:
+ */
+function normalizeSshUrl(url: string): string {
+  const sshHostAlias = process.env.SSH_HOST_ALIAS;
+  if (sshHostAlias && url.startsWith('git@github.com:')) {
+    const normalizedUrl = url.replace('git@github.com:', `git@${sshHostAlias}:`);
+    workerLogger.debug({ originalUrl: url, normalizedUrl, sshHostAlias }, 'Normalized SSH URL using host alias');
+    return normalizedUrl;
+  }
+  return url;
+}
+
+/**
  * Result of repository clone/fetch operation
  */
 export interface RepoCloneResult {
@@ -65,7 +82,7 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
   workerLogger.info({ remoteUrl, targetPath }, 'Cloning repository');
 
   try {
-    execFileSync('git', ['clone', remoteUrl, targetPath], {
+    execFileSync('git', ['clone', normalizeSshUrl(remoteUrl), targetPath], {
       stdio: 'pipe',
       encoding: 'utf-8',
       timeout: GIT_CLONE_TIMEOUT_MS,
@@ -82,7 +99,7 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
       const authUrl = httpsUrl && token ? httpsUrl.replace('https://', `https://${token}@`) : httpsUrl;
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/git/repoManager.ts:83',message:'ssh clone failed; https fallback decision',data:{remoteUrl,httpsUrl,hasToken:!!token,targetPath},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H4'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'worker/git/repoManager.ts:83', message: 'ssh clone failed; https fallback decision', data: { remoteUrl, httpsUrl, hasToken: !!token, targetPath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'H4' }) }).catch(() => { });
       // #endregion
 
       if (authUrl) {
@@ -94,7 +111,7 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
             env: process.env as Record<string, string>,
           });
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/git/repoManager.ts:100',message:'https fallback clone succeeded',data:{httpsUrl,hasToken:!!token,targetPath},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H4'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'worker/git/repoManager.ts:100', message: 'https fallback clone succeeded', data: { httpsUrl, hasToken: !!token, targetPath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'H4' }) }).catch(() => { });
           // #endregion
           workerLogger.info({ targetPath, httpsUrl }, 'Successfully cloned repository via HTTPS');
           return { wasAlreadyCloned: false, fetchPerformed: false };
@@ -102,7 +119,7 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
           const fallbackStderr = String(fallbackError.stderr || '').slice(0, 300);
           const fallbackStatus403 = fallbackStderr.includes('error: 403') || fallbackStderr.includes('Write access to repository not granted');
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/git/repoManager.ts:108',message:'https fallback clone failed',data:{httpsUrl,hasToken:!!token,targetPath,stderrSample:fallbackStderr,is403:fallbackStatus403},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H4'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'worker/git/repoManager.ts:108', message: 'https fallback clone failed', data: { httpsUrl, hasToken: !!token, targetPath, stderrSample: fallbackStderr, is403: fallbackStatus403 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'H4' }) }).catch(() => { });
           // #endregion
           const fallbackMessage = fallbackStatus403
             ? 'Failed to clone repository via HTTPS: token lacks access to repository (403).'
