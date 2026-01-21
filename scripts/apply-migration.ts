@@ -4,6 +4,7 @@
  * Usage: yarn tsx scripts/apply-migration.ts <migration-file>
  */
 
+import 'dotenv/config';
 import pg from 'pg';
 import fs from 'fs';
 import path from 'path';

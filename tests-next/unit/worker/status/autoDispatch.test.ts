@@ -83,6 +83,11 @@ import { graphQLRequest } from '../../../../http/client.js';
 import { withJobContext } from '../../../../worker/mcp/tools.js';
 import { isChildIntegrated } from '../../../../worker/git/integration.js';
 import { fetchAllChildren } from '../../../../worker/prompt/providers/context/fetchChildren.js';
+import { claimParentDispatch } from '../../../../worker/control_api_client.js';
+
+vi.mock('../../../../worker/control_api_client.js', () => ({
+  claimParentDispatch: vi.fn(async () => ({ allowed: true })),
+}));
 
 describe('parentDispatch', () => {
   beforeEach(() => {
@@ -92,6 +97,7 @@ describe('parentDispatch', () => {
       request: { workstreamId: undefined }
     });
     (withJobContext as any).mockImplementation(async (_ctx: any, fn: any) => fn());
+    (claimParentDispatch as any).mockResolvedValue({ allowed: true });
   });
 
   const makeMetadata = (parentId: string) => ({
@@ -373,6 +379,42 @@ describe('parentDispatch', () => {
         await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'output');
 
         expect(dispatchExistingJob).not.toHaveBeenCalled();
+      });
+
+      it('skips when parent dispatch is claimed by sibling (deduplication)', async () => {
+        const finalStatus: FinalStatus = { status: 'COMPLETED', message: 'Done' };
+        const metadata = { jobDefinitionId: '0xchild', ...makeMetadata('0xparent123') };
+
+        // Mock children complete for parent, but no children for child (steps verification)
+        (graphQLRequest as any).mockImplementation(async (args: any) => {
+          if (args.variables?.parentJobDefId === '0xparent123') {
+            return {
+              jobDefinitions: {
+                items: [{ id: 'child1', lastStatus: 'COMPLETED' }]
+              },
+              request: { workstreamId: undefined }
+            };
+          }
+          return {
+            jobDefinitions: { items: [] },
+            request: { workstreamId: undefined }
+          };
+        });
+
+        // Mock claim failed
+        (claimParentDispatch as any).mockResolvedValue({
+          allowed: false,
+          claimed_by: 'sibling-worker'
+        });
+
+        await dispatchParentIfNeeded(finalStatus, metadata, '0xchild', 'output');
+
+        expect(claimParentDispatch).toHaveBeenCalledWith('0xparent123', '0xchild');
+        expect(dispatchExistingJob).not.toHaveBeenCalled();
+        expect(workerLogger.info).toHaveBeenCalledWith(
+          expect.objectContaining({ claimingSibling: 'sibling-worker' }),
+          expect.stringContaining('Skipping parent dispatch')
+        );
       });
     });
 
