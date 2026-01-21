@@ -163,11 +163,13 @@ async function VentureDetail({ id }: { id: string }) {
   // Check for hardcoded URL first, then SERVICE_OUTPUT
   const featuredVenture = FEATURED_VENTURES.find(v => v.id === id);
   const liveOutputUrl = featuredVenture?.liveOutputUrl || primaryOutput?.url || null;
+  const telegramUrl = featuredVenture?.telegramUrl || null;
 
   return (
     <div className="flex flex-col h-full gap-6">
       <VentureDashboard
         liveOutputUrl={liveOutputUrl}
+        telegramUrl={telegramUrl}
         activityData={activityData}
         workstreamId={id}
         invariants={invariantsWithMeasurements}

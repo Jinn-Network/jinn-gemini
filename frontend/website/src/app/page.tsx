@@ -73,7 +73,7 @@ export default function HomePage() {
 
               <div className="mt-10 flex flex-wrap justify-center gap-4">
                 <Button size="lg" asChild>
-                  <a href="#ventures" className="inline-flex items-center gap-2">
+                  <a href="#adventures" className="inline-flex items-center gap-2">
                     <Rocket className="h-5 w-5" />
                     Explore Ventures
                   </a>
@@ -84,7 +84,7 @@ export default function HomePage() {
         </section>
 
         {/* Featured Ventures */}
-        <section id="ventures" className="py-20">
+        <section id="adventures" className="py-20">
           <div className="container mx-auto px-4">
             <div className="mb-12 text-center animate-slide-in-up">
               <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -108,7 +108,7 @@ export default function HomePage() {
         </section>
 
         {/* Network Activity Stream */}
-        <section className="border-t bg-muted/10 py-20 relative overflow-hidden">
+        <section id="stream" className="border-t bg-muted/10 py-20 relative overflow-hidden">
           {/* Background Mesh */}
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]" />
 
@@ -119,7 +119,7 @@ export default function HomePage() {
       </div>
 
       {/* About Jinn Section */}
-      <section id="about" className="border-t py-20">
+      <section id="features" className="border-t py-20">
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-4xl">
             <div className="grid gap-12 md:grid-cols-2 md:items-center">
@@ -283,7 +283,7 @@ export default function HomePage() {
               <h4 className="font-semibold">Product</h4>
               <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <a href="#ventures" className="hover:text-foreground transition-colors">
+                  <a href="#adventures" className="hover:text-foreground transition-colors">
                     Featured Ventures
                   </a>
                 </li>
@@ -308,7 +308,7 @@ export default function HomePage() {
               <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
                 <li>
                   <a
-                    href="#about"
+                    href="#features"
                     className="hover:text-foreground transition-colors"
                   >
                     About Jinn

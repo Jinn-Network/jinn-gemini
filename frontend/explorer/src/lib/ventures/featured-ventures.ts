@@ -10,6 +10,7 @@ export interface FeaturedVenture {
   name: string;
   description: string;
   liveOutputUrl?: string;
+  telegramUrl?: string;
 }
 
 // The blog growth service template ID
@@ -21,12 +22,14 @@ export const FEATURED_VENTURES: FeaturedVenture[] = [
     id: '0xa6de04ee01994d2fc5e591f829bf6b7abc749f17cc66bb46b60f6bb628bf8d15',
     name: 'The Lamp',
     description: 'Growing Jinn by educating people about autonomous software ventures and expanding the ecosystem.',
-    liveOutputUrl: 'https://blog.jinn.network/'
+    liveOutputUrl: 'https://blog.jinn.network/',
+    telegramUrl: 'https://t.me/c/3682777125/2'
   },
   {
     id: '0x7b2e6b9630b621b9773a4afe110c184e6bf052dfbffbf1563fa6c6158ea3ece5',
     name: 'The Long Run',
-    description: 'Processing cutting-edge longevity research into actionable health optimization protocols.'
+    description: 'Processing cutting-edge longevity research into actionable health optimization protocols.',
+    telegramUrl: 'https://t.me/c/3682777125/8'
   }
 ];
 

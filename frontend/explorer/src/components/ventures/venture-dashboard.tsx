@@ -16,6 +16,7 @@ import { formatRelativeTime, type HealthStatus } from '@jinn/shared-ui';
 
 interface VentureDashboardProps {
     liveOutputUrl: string | null;
+    telegramUrl: string | null;
     activityData: { jobDefinitions: JobDefinition[] };
     workstreamId: string;
     invariants: InvariantWithMeasurement[];
@@ -26,6 +27,7 @@ interface VentureDashboardProps {
 
 export function VentureDashboard({
     liveOutputUrl,
+    telegramUrl,
     activityData,
     workstreamId,
     invariants,
@@ -62,9 +64,9 @@ export function VentureDashboard({
             {/* Dashboard Tab */}
             <TabsContent value="dashboard" className="flex-1 min-h-0 mt-4">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-full">
-                    {/* Left Column: Blog iframe (2/3) */}
+                    {/* Left Column: Live Output (2/3) */}
                     <div className="lg:col-span-2 flex flex-col min-h-[500px]">
-                        <LiveOutputView url={LIVE_OUTPUT_URL} />
+                        <LiveOutputView url={LIVE_OUTPUT_URL} telegramUrl={telegramUrl || undefined} />
                     </div>
 
                     {/* Right Column: Health + Activity (1/3) */}
@@ -157,6 +159,7 @@ export function VentureDashboard({
                                 )}
                             </CardContent>
                         </Card>
+
                     </div>
                 </div>
             </TabsContent>
