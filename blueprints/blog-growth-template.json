@@ -267,20 +267,23 @@
             }
         },
         {
-            "id": "GOAL-DISTRIBUTION",
-            "type": "CEILING",
-            "metric": "single_source_traffic_percent",
-            "max": 80,
-            "assessment": "Use blog_get_referrers to check no single traffic source exceeds 80% of total",
+            "id": "GOAL-DISTRIBUTION-TOOLS",
+            "type": "BOOLEAN",
+            "condition": "You plan distribution around available capabilities: Telegram posting (write-only), plus strategies that don't require platform account access.",
+            "assessment": "Fail if strategy assumes: (1) Direct posting to X, Reddit, LinkedIn (no accounts/tools). (2) Reading or monitoring Telegram (write-only). Pass if: using Telegram for broadcasts, OR pursuing platform-agnostic strategies (SEO, backlinks, guest posts, embeds, newsletters, etc.).",
             "examples": {
                 "do": [
-                    "SEO optimization for long-term discoverability",
-                    "Strategic social sharing where target audience gathers",
-                    "Genuine community participation in relevant spaces"
+                    "Use telegram_send_message to broadcast new posts",
+                    "Optimize for SEO and organic discovery",
+                    "Pursue backlinks from relevant sites",
+                    "Create embeddable content others can share",
+                    "Build email list for direct distribution"
                 ],
                 "dont": [
-                    "Publish and forget",
-                    "Spam links in irrelevant communities"
+                    "Plan X/Twitter thread campaigns (no account access)",
+                    "Schedule Reddit AMAs (no account access)",
+                    "Monitor Telegram for replies (write-only)",
+                    "Assume any platform login we don't have"
                 ]
             }
         },

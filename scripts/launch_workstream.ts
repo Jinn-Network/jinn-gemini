@@ -176,7 +176,7 @@ async function main() {
         inputConfig = await loadInputConfig(argv.input);
         scriptLogger.info({ keys: Object.keys(inputConfig) }, 'Input config loaded');
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scripts/launch_workstream.ts:176',message:'input config loaded',data:{inputPath:String(argv.input),repoUrl:(inputConfig as any)?.repoUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H6'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:176', message: 'input config loaded', data: { inputPath: String(argv.input), repoUrl: (inputConfig as any)?.repoUrl }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H6' }) }).catch(() => { });
         // #endregion
       } catch (err) {
         scriptLogger.error({ inputPath: argv.input, error: err }, 'Failed to load input config');
@@ -188,15 +188,22 @@ async function main() {
     let effectiveRepoArg = argv.repo as string | undefined;
     if (!effectiveRepoArg && inputConfig?.repoUrl) {
       const configRepoUrl = inputConfig.repoUrl as string;
-      // Extract owner/repo from GitHub URL (e.g., https://github.com/owner/repo)
-      const match = configRepoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
-      if (match) {
-        effectiveRepoArg = match[1];
-        scriptLogger.info({ repoUrl: configRepoUrl, effectiveRepoArg }, 'Using repoUrl from input config');
+      // Extract owner/repo from various URL formats
+      // HTTPS: https://github.com/owner/repo
+      // SSH: git@host:owner/repo.git
+      const httpsMatch = configRepoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+      const sshMatch = configRepoUrl.match(/^git@([^:]+):([^/]+)\/([^/]+?)(?:\.git)?$/);
+      if (httpsMatch) {
+        effectiveRepoArg = httpsMatch[1];
+        scriptLogger.info({ repoUrl: configRepoUrl, effectiveRepoArg }, 'Using repoUrl from input config (HTTPS)');
+      } else if (sshMatch) {
+        const [, sshHost, owner, repoName] = sshMatch;
+        effectiveRepoArg = `${sshHost}:${owner}/${repoName}`;
+        scriptLogger.info({ repoUrl: configRepoUrl, effectiveRepoArg, sshHost }, 'Using repoUrl from input config (SSH)');
       }
     }
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scripts/launch_workstream.ts:195',message:'effective repo selection',data:{argvRepo:argv.repo || null,effectiveRepoArg:effectiveRepoArg || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H6'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:195', message: 'effective repo selection', data: { argvRepo: argv.repo || null, effectiveRepoArg: effectiveRepoArg || null }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H6' }) }).catch(() => { });
     // #endregion
 
     // Option 1: Use existing repo (--repo flag or from input config)
@@ -233,7 +240,7 @@ async function main() {
 
       scriptLogger.info({ repoSpec, repoPath }, 'Using existing repository');
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scripts/launch_workstream.ts:230',message:'repo spec parsed',data:{repoSpec,cloneUrl,repoUrl,repoPath},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H6'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:230', message: 'repo spec parsed', data: { repoSpec, cloneUrl, repoUrl, repoPath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H6' }) }).catch(() => { });
       // #endregion
 
       // Clone if doesn't exist, otherwise fetch
@@ -250,7 +257,7 @@ async function main() {
           const httpsCloneUrl = token ? `https://${token}@github.com/${owner}/${repoName}.git` : `https://github.com/${owner}/${repoName}.git`;
 
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scripts/launch_workstream.ts:238',message:'ssh clone failed; https fallback decision',data:{repoSpec,hasToken:!!token,authFailed,repoPath},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H7'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:238', message: 'ssh clone failed; https fallback decision', data: { repoSpec, hasToken: !!token, authFailed, repoPath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'H7' }) }).catch(() => { });
           // #endregion
 
           if (authFailed) {
@@ -260,7 +267,7 @@ async function main() {
             } catch (fallbackError: any) {
               const fallbackStderr = String(fallbackError?.message || '').slice(0, 300);
               // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scripts/launch_workstream.ts:248',message:'https clone failed',data:{repoSpec,hasToken:!!token,repoPath,stderrSample:fallbackStderr},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H7'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:248', message: 'https clone failed', data: { repoSpec, hasToken: !!token, repoPath, stderrSample: fallbackStderr }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'H7' }) }).catch(() => { });
               // #endregion
               throw fallbackError;
             }
@@ -377,15 +384,15 @@ async function main() {
     const enabledTools = requiredTools.length > 0
       ? requiredTools
       : (availableTools.length > 0 ? availableTools : [
-      'google_web_search',
-      'create_artifact',
-      'write_file',
-      'read_file',
-      'replace',
-      'list_directory',
-      'run_shell_command',
-      'dispatch_new_job',
-    ]);
+        'google_web_search',
+        'create_artifact',
+        'write_file',
+        'read_file',
+        'replace',
+        'list_directory',
+        'run_shell_command',
+        'dispatch_new_job',
+      ]);
 
     // Parse --env flags into additionalContextOverrides
     const additionalContextOverrides: {
@@ -453,7 +460,7 @@ async function main() {
       scriptLogger.debug({ CODE_METADATA_REPO_ROOT: repoPath }, 'Set CODE_METADATA_REPO_ROOT');
     }
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scripts/launch_workstream.ts:423',message:'dispatch env',data:{repoPath:repoPath || null,repoUrl:repoUrl || null,codeMetadataRepoRoot:process.env.CODE_METADATA_REPO_ROOT || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H6'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:423', message: 'dispatch env', data: { repoPath: repoPath || null, repoUrl: repoUrl || null, codeMetadataRepoRoot: process.env.CODE_METADATA_REPO_ROOT || null }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H6' }) }).catch(() => { });
     // #endregion
 
     const jobDefinitionId = randomUUID();
