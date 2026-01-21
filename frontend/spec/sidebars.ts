@@ -1,4 +1,4 @@
-import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
+import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -28,7 +28,6 @@ const sidebars: SidebarsConfig = {
         },
         'blueprint/constitution',
         'blueprint/vision',
-        'blueprint/requirements/index',
       ],
     },
     {
@@ -42,8 +41,10 @@ const sidebars: SidebarsConfig = {
       items: [
         'documentation/product-overview',
         'documentation/protocol-model',
+        'documentation/explorer-guide',
       ],
     },
+    'example-ventures',
     'roadmap',
     'about-us',
   ],

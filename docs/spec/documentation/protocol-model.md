@@ -112,6 +112,14 @@ The worker automatically determines job status based on observable signals:
 
 Only `COMPLETED` and `FAILED` are terminal states that trigger parent job dispatch.
 
+**Cyclic Jobs:**
+Jobs can be marked as cyclic via `cyclic: true` in IPFS metadata. Cyclic jobs behave differently:
+- After reaching a terminal state (COMPLETED or FAILED), the worker automatically re-dispatches the job
+- This creates a continuous operation mode where ventures run indefinitely
+- Each cycle is a new request with its own delivery, but shares the same jobDefinitionId
+- Used by long-running ventures like content operations that need to execute periodically
+- The status `CYCLE_COMPLETE` is emitted via Control API to distinguish from final completion
+
 ### 2.2 processOnce() Function Flow
 
 The main worker loop executes this sequence for each job:
@@ -192,74 +200,94 @@ The worker queries Ponder using `jobDefinitionId_in` (not `sourceJobDefinitionId
 
 ### 2.4 Blueprint-Driven Execution
 
-Jobs receive structured JSON blueprints in their metadata following a mandatory assertion format:
+Jobs receive structured JSON blueprints in their metadata using a **four-type invariant schema**. Each invariant has a specific type that determines how it's measured and validated:
 
 ```json
 {
-  "assertions": [
+  "invariants": [
     {
-      "id": "REQ-001",
-      "assertion": "Brief declarative statement of requirement",
-      "examples": {
-        "do": ["Positive example 1", "Positive example 2"],
-        "dont": ["Negative example 1", "Negative example 2"]
-      },
-      "commentary": "Explanation of why this assertion exists and its implications"
+      "id": "QUAL-001",
+      "type": "FLOOR",
+      "metric": "content_quality_score",
+      "min": 70,
+      "assessment": "Rate 0-100 based on originality and depth"
+    },
+    {
+      "id": "COST-001",
+      "type": "CEILING",
+      "metric": "compute_cost_usd",
+      "max": 20,
+      "assessment": "Sum API costs from telemetry"
+    },
+    {
+      "id": "FREQ-001",
+      "type": "RANGE",
+      "metric": "posts_per_week",
+      "min": 3,
+      "max": 7,
+      "assessment": "Count posts published in last 7 days"
+    },
+    {
+      "id": "BUILD-001",
+      "type": "BOOLEAN",
+      "condition": "Build passes without errors",
+      "assessment": "Run yarn build and verify exit code is 0"
     }
   ]
 }
 ```
 
+**Invariant Types:**
+
+| Type | Fields | Pass Condition | Use Case |
+|------|--------|----------------|----------|
+| `FLOOR` | `metric`, `min` | measured_value ≥ min | Minimum quality thresholds |
+| `CEILING` | `metric`, `max` | measured_value ≤ max | Cost/time limits |
+| `RANGE` | `metric`, `min`, `max` | min ≤ measured_value ≤ max | Frequency constraints |
+| `BOOLEAN` | `condition` | condition is true | Binary success criteria |
+
 **Validation:**
 - Blueprint must be valid JSON
-- Must contain `assertions` array with at least one assertion
-- Each assertion requires: `id`, `assertion`, `examples` (with `do`/`dont` arrays), and `commentary`
+- Must contain `invariants` array with at least one invariant
+- Each invariant requires: `id`, `type`, `assessment`, and type-specific fields
 - Validation occurs at dispatch time via `dispatch_new_job` tool
 - Invalid blueprints return error codes: `INVALID_BLUEPRINT`, `INVALID_BLUEPRINT_STRUCTURE`
 
 **Frontend Display:**
-Blueprints are rendered in the frontend explorer by parsing the JSON and displaying assertions in a structured, human-readable format.
-
-**Blueprint Structure:**
-```typescript
-interface BlueprintAssertion {
-  id: string;              // e.g., "CON-001", "TST-002"
-  assertion: string;       // Clear, verifiable requirement
-  examples: {
-    do: string[];         // Positive examples
-    dont: string[];       // Negative examples (anti-patterns)
-  };
-  commentary: string;     // Context and rationale
-}
-```
+Blueprints are rendered in the explorer by parsing the JSON and displaying invariants with:
+- Visual indicators for pass/fail status
+- Measured values compared against thresholds
+- Assessment criteria for transparency
 
 **Dispatch Flow:**
 1. Parent job calls `dispatch_new_job` with `blueprint` parameter (JSON string)
 2. Blueprint is stored in IPFS metadata under `additionalContext.blueprint`
 3. Worker fetches metadata and injects blueprint into agent context
-4. Agent receives blueprint as structured data, processes assertions directly
+4. Agent receives blueprint as structured data, processes invariants directly
 
-**Agent Workflow:**
-1. Read all assertions in the blueprint
-2. Plan work that satisfies all assertions
-3. Execute work using available tools
-4. Verify no assertions were violated
-5. Report which assertions were addressed
+**Measurement Flow:**
+1. Agent reads all invariants in the blueprint
+2. Plans work that satisfies all invariants
+3. Executes work using available tools
+4. Calls `create_measurement` for each quantifiable invariant
+5. Worker validates measurements against invariant thresholds
+6. Results displayed in explorer with pass/fail indicators
 
 **Benefits:**
-- No external blueprint artifact management
-- Blueprint is version-controlled with the job
-- Agents start work immediately without search/fetch cycles
-- Clear success criteria (all assertions satisfied)
+- Precise success criteria with measurable thresholds
+- Visual dashboard for invariant compliance
+- Historical tracking of measurement trends
+- Clear failure diagnosis when invariants are violated
 
 **Example Dispatch:**
 ```typescript
 await dispatch_new_job({
-  objective: "Implement feature X following architectural blueprint",
+  jobName: "Build feature X with quality gates",
   blueprint: JSON.stringify({
-    assertions: [
-      { id: "ARCH-001", assertion: "Use dependency injection", ... },
-      { id: "ARCH-002", assertion: "Write unit tests", ... },
+    invariants: [
+      { id: "TEST-001", type: "FLOOR", metric: "test_coverage", min: 80, assessment: "Run coverage report" },
+      { id: "PERF-001", type: "CEILING", metric: "load_time_ms", max: 3000, assessment: "Measure page load time" },
+      { id: "IMPL-001", type: "BOOLEAN", condition: "All acceptance criteria met", assessment: "Verify feature works as specified" },
     ]
   }),
   // ... other params
@@ -297,7 +325,7 @@ request: {
 3. If dependencies present:
    - Queries Ponder for dependency request status
    - Skips job if any dependency is not yet delivered
-   - Logs: "Skipping request {id}: dependencies not met"
+   - Logs: `"Skipping request {id}: dependencies not met"`
 4. If no dependencies or all delivered, proceeds with execution
 
 **Use Cases:**
@@ -478,6 +506,21 @@ If runaway output detected:
 - `search_similar_situations`: Vector search over past job situations
 - `inspect_situation`: Inspect memory system for a given request
 - `embed_text`: Generate text embeddings
+
+**Blog Tools (for content ventures):**
+- `blog_create_post`: Create and publish new blog posts
+- `blog_list_posts`: List existing posts in the repository
+- `blog_get_post`: Retrieve full content of a specific post
+- `blog_get_stats`: Get site analytics (pageviews, visitors)
+- `blog_get_performance_summary`: Comprehensive stats with top pages and referrers
+
+**Telegram Tools (for messaging ventures):**
+- `telegram_send_message`: Send messages to configured channels
+- `telegram_send_photo`: Send images with captions
+
+**Template Tools (for marketplace integration):**
+- `register_template`: Publish a reusable job template to the x402 marketplace
+- `create_measurement`: Record invariant measurements for evaluation
 
 **Tool Response Format:**
 All tools return JSON in this structure:
