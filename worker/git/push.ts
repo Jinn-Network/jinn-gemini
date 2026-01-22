@@ -23,6 +23,14 @@ export class GitPushError extends Error {
   }
 }
 
+function isNonFastForwardPush(stderr: string): boolean {
+  const normalized = stderr.toLowerCase();
+  return normalized.includes('fetch first')
+    || normalized.includes('non-fast-forward')
+    || normalized.includes('updates were rejected')
+    || normalized.includes('remote contains work that you do not have locally');
+}
+
 /**
  * Push job branch to remote
  */
@@ -65,11 +73,64 @@ export async function pushJobBranch(branchName: string, codeMetadata: CodeMetada
     });
     workerLogger.info({ branchName, remote: remoteName, repoRoot }, 'Successfully pushed branch');
   } catch (error: any) {
+    const stderr = String(error.stderr || error.message || '');
     const errorMessage = `Failed to push branch ${branchName} to ${remoteName}: ${error.stderr || error.message}`;
     workerLogger.error({ branchName, remote: remoteName, error: serializeError(error) }, errorMessage);
-    
+
+    if (isNonFastForwardPush(stderr)) {
+      workerLogger.warn({ branchName, remote: remoteName, repoRoot }, 'Push rejected (non-fast-forward). Attempting fetch + rebase');
+      try {
+        execFileSync('git', ['fetch', remoteName, branchName], {
+          cwd: repoRoot,
+          stdio: 'pipe',
+          encoding: 'utf-8',
+          timeout: GIT_PUSH_TIMEOUT_MS,
+          env: process.env as Record<string, string>,
+        });
+        execFileSync('git', ['rebase', `${remoteName}/${branchName}`], {
+          cwd: repoRoot,
+          stdio: 'pipe',
+          encoding: 'utf-8',
+          timeout: GIT_PUSH_TIMEOUT_MS,
+          env: process.env as Record<string, string>,
+        });
+        execFileSync('git', ['push', '-u', remoteName, `${branchName}:${branchName}`], {
+          cwd: repoRoot,
+          stdio: 'pipe',
+          encoding: 'utf-8',
+          timeout: GIT_PUSH_TIMEOUT_MS,
+          env: process.env as Record<string, string>,
+        });
+        workerLogger.info({ branchName, remote: remoteName, repoRoot }, 'Successfully pushed branch after rebase');
+        return;
+      } catch (rebaseError: any) {
+        try {
+          execFileSync('git', ['rebase', '--abort'], {
+            cwd: repoRoot,
+            stdio: 'pipe',
+            encoding: 'utf-8',
+            timeout: GIT_PUSH_TIMEOUT_MS,
+            env: process.env as Record<string, string>,
+          });
+        } catch (abortError: any) {
+          workerLogger.warn(
+            { branchName, remote: remoteName, error: serializeError(abortError) },
+            'Failed to abort rebase after push rejection'
+          );
+        }
+
+        const rebaseMessage = `Push rejected (non-fast-forward). Failed to rebase ${branchName} onto ${remoteName}/${branchName}: ${rebaseError.stderr || rebaseError.message}`;
+        workerLogger.error({ branchName, remote: remoteName, error: serializeError(rebaseError) }, rebaseMessage);
+        throw new GitPushError(
+          rebaseMessage,
+          branchName,
+          remoteName,
+          rebaseError
+        );
+      }
+    }
+
     // Determine if this is a "no commits" error vs network/authentication error
-    const stderr = String(error.stderr || '');
     const isNoCommitsError = stderr.includes('no commits') || stderr.includes('nothing to push');
     
     throw new GitPushError(
@@ -80,4 +141,3 @@ export async function pushJobBranch(branchName: string, codeMetadata: CodeMetada
     );
   }
 }
-
