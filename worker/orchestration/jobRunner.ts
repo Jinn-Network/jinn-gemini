@@ -39,6 +39,7 @@ import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult, AdditionalContext } from '../types.js';
 import { getDependencyBranchInfo } from '../mech_worker.js';
 import { getBlueprintEnableContextPhases, getBlueprintEnableBeads } from '../../config/index.js';
+import { requestStop } from '../cycleControl.js';
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
 
@@ -512,10 +513,36 @@ export async function processOnce(
 
           error = null;
         } else if (finalStatus?.status === 'COMPLETED' && !agentActuallyRan) {
+          // Check if this is a quota error by examining stderr/error message
+          const errorMessage = String(e?.message || e?.error || '');
+          const stderrContent = String(e?.error?.stderr || e?.stderr || stderrWarnings || '');
+          const isQuotaError =
+            errorMessage.toLowerCase().includes('quota') ||
+            stderrContent.toLowerCase().includes('quota') ||
+            errorMessage.includes('TerminalQuotaError');
+
+          const failureMessage = isQuotaError
+            ? 'Agent execution failed: API quota exhausted (daily limit reached)'
+            : 'Agent execution failed: transport error with no execution evidence';
+
+          finalStatus = {
+            status: 'FAILED',
+            message: failureMessage,
+          };
+
           workerLogger.warn(
-            { jobName: metadata?.jobName, requestId: target.id },
-            'Gemini CLI transport failed with no agent execution evidence; rejecting COMPLETED status',
+            { jobName: metadata?.jobName, requestId: target.id, isQuotaError },
+            'Gemini CLI transport failed with no agent execution evidence; setting status to FAILED',
           );
+
+          // If quota exhausted, stop the worker - no point processing more jobs
+          if (isQuotaError) {
+            workerLogger.error(
+              { jobName: metadata?.jobName, requestId: target.id },
+              'API quota exhausted - requesting worker stop to prevent further failures',
+            );
+            requestStop();
+          }
         }
       }
     }
