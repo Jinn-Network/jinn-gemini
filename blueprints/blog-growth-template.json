@@ -49,7 +49,8 @@
                 "domain": {
                     "type": "string",
                     "description": "Blog domain",
-                    "default": "$provision"
+                    "default": "$provision",
+                    "envVar": "BLOG_DOMAIN"
                 },
                 "telegramChatId": {
                     "type": "string",
@@ -125,13 +126,16 @@
                 "required": true
             },
             {
-                "name": "write_file"
+                "name": "write_file",
+                "required": true
             },
             {
-                "name": "replace"
+                "name": "replace",
+                "required": true
             },
             {
-                "name": "run_shell_command"
+                "name": "run_shell_command",
+                "required": true
             },
             {
                 "name": "telegram_messaging",

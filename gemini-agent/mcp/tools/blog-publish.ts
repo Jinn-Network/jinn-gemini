@@ -37,7 +37,8 @@ Writes an MDX file with proper frontmatter directly to the filesystem.
 The post will be included in the next commit when the job completes.
 Changes are pushed when the worker's git workflow runs (auto-commit + push).
 
-Uses CODE_METADATA_REPO_ROOT for the repository location.
+Returns a URL in the format https://{BLOG_DOMAIN}/blog/{slug} if BLOG_DOMAIN is set.
+Note: The URL will only be live after changes are deployed to production.
 
 USAGE:
 - title: Will be used to generate the URL slug
@@ -45,7 +46,7 @@ USAGE:
 - content: Pure markdown (no frontmatter needed, it's generated automatically)
 - draft: Set to true to publish without making visible
 
-Returns: { success, slug, filePath } or { error }`,
+Returns: { success, slug, filePath, url } or { error }`,
   inputSchema: blogCreatePostParams.shape,
 };
 
@@ -60,7 +61,9 @@ export const blogListPostsSchema = {
 Returns file names and basic metadata for posts in the blog directory.
 Use this to check what content exists before creating new posts.
 
-Returns: { posts: [{ name, slug, path, size }], count }`,
+Each post includes a URL field (https://{BLOG_DOMAIN}/blog/{slug}) if BLOG_DOMAIN is set.
+
+Returns: { posts: [{ name, slug, path, size, modified, url }], count }`,
   inputSchema: blogListPostsParams.shape,
 };
 
@@ -297,6 +300,10 @@ export async function blogCreatePost(args: unknown) {
     // Write file to local filesystem
     fs.writeFileSync(fullPath, mdxContent, 'utf-8');
 
+    // Get blog domain from environment for full URL
+    const blogDomain = process.env.BLOG_DOMAIN;
+    const postUrl = blogDomain ? `https://${blogDomain}/blog/${slug}` : null;
+
     return {
       content: [{
         type: 'text' as const,
@@ -306,7 +313,10 @@ export async function blogCreatePost(args: unknown) {
             slug,
             filePath: relativePath,
             fullPath,
-            note: 'File written to local repo. Will be committed and pushed by the worker git workflow.',
+            url: postUrl,
+            note: postUrl
+              ? `Post created. URL will be ${postUrl} once changes are deployed.`
+              : 'File written to local repo. Will be committed and pushed by the worker git workflow.',
           },
           meta: { ok: true },
         }),
@@ -358,19 +368,24 @@ export async function blogListPosts(args: unknown) {
     }
 
     const entries = fs.readdirSync(fullPath, { withFileTypes: true });
-    
+
+    // Get blog domain from environment for full URLs
+    const blogDomain = process.env.BLOG_DOMAIN;
+
     const posts = entries
       .filter((entry) => entry.isFile() && (entry.name.endsWith('.mdx') || entry.name.endsWith('.md')))
       .slice(0, limit)
       .map((entry) => {
         const filePath = path.join(fullPath, entry.name);
         const stats = fs.statSync(filePath);
+        const postSlug = entry.name.replace(/\.(mdx|md)$/, '');
         return {
           name: entry.name,
-          slug: entry.name.replace(/\.(mdx|md)$/, ''),
+          slug: postSlug,
           path: `${blogPath}/${entry.name}`,
           size: stats.size,
           modified: stats.mtime.toISOString(),
+          url: blogDomain ? `https://${blogDomain}/blog/${postSlug}` : null,
         };
       });
 
