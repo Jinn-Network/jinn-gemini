@@ -143,16 +143,27 @@ function encodeBase32LowerNoPadding(bytes: number[]): string {
   return output;
 }
 
-function buildRawCidFromDigest(digestHex: string): { cidHex: string; cidBase32: string } {
+type CidCandidate = { codec: 'dag-pb' | 'raw'; cidHex: string; cidBase32: string };
+
+function buildCidFromDigest(digestHex: string, codec: CidCandidate['codec']): CidCandidate {
   const normalized = digestHex.toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(normalized)) {
     throw new Error(`Digest must be 32 bytes (64 hex chars). Received "${digestHex}"`);
   }
   const digestBytes = hexToBytes(normalized);
-  const cidBytes = [0x01, 0x55, 0x12, 0x20, ...digestBytes];
-  const cidHex = `f01551220${normalized}`;
+  const codecByte = codec === 'dag-pb' ? 0x70 : 0x55;
+  const cidBytes = [0x01, codecByte, 0x12, 0x20, ...digestBytes];
+  const codecHex = codecByte.toString(16).padStart(2, '0');
+  const cidHex = `f01${codecHex}1220${normalized}`;
   const cidBase32 = `b${encodeBase32LowerNoPadding(cidBytes)}`;
-  return { cidHex, cidBase32 };
+  return { codec, cidHex, cidBase32 };
+}
+
+function buildCidCandidatesFromDigest(digestHex: string): CidCandidate[] {
+  return [
+    buildCidFromDigest(digestHex, 'dag-pb'),
+    buildCidFromDigest(digestHex, 'raw'),
+  ];
 }
 
 async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promise<any> {
@@ -467,28 +478,73 @@ ponder.on(
           throw new Error(`MarketplaceRequest missing requestDatas entry for request ${id}`);
         }
         const digestHex = String(dataHex).replace(/^0x/, '').toLowerCase();
-        const { cidHex: ipfsHash, cidBase32 } = buildRawCidFromDigest(digestHex);
+        // Some gateways only resolve the raw CID, so we try multiple codecs.
+        const cidCandidates = buildCidCandidatesFromDigest(digestHex);
 
-        logger.info({ requestId: id, ipfsHash, cidBase32, txHash }, "Processing MarketplaceRequest - fetching IPFS metadata");
+        logger.info(
+          {
+            requestId: id,
+            txHash,
+            cidCandidates: cidCandidates.map((candidate) => candidate.cidBase32),
+          },
+          "Processing MarketplaceRequest - fetching IPFS metadata"
+        );
 
         // Fetch IPFS metadata FIRST to check networkId before any DB writes
         // This ensures non-Jinn requests are filtered out without creating DB records
         let content: any = null;
+        let selectedCandidate: CidCandidate | null = null;
+        let lastIpfsError: any = null;
         try {
-          content = await fetchRequestMetadata(cidBase32);
+          for (const candidate of cidCandidates) {
+            try {
+              content = await fetchRequestMetadata(candidate.cidBase32);
+              selectedCandidate = candidate;
+              break;
+            } catch (candidateError: any) {
+              lastIpfsError = candidateError;
+            }
+          }
+          if (!content || !selectedCandidate) {
+            throw lastIpfsError || new Error('Unable to resolve IPFS metadata from any CID candidate');
+          }
           if (!content || typeof content !== "object") {
             throw new Error(`IPFS payload for request ${id} is empty or malformed`);
           }
-          logger.info({ requestId: id, hasJobName: !!content.jobName, hasJobDefinitionId: !!content.jobDefinitionId, networkId: content.networkId }, "IPFS metadata fetched successfully");
+          logger.info(
+            {
+              requestId: id,
+              cidBase32: selectedCandidate.cidBase32,
+              cidCodec: selectedCandidate.codec,
+              hasJobName: !!content.jobName,
+              hasJobDefinitionId: !!content.jobDefinitionId,
+              networkId: content.networkId,
+            },
+            "IPFS metadata fetched successfully"
+          );
         } catch (ipfsError: any) {
           // If IPFS fetch fails, skip this request entirely
           // Without metadata, we can't verify networkId, so safer to skip
           logger.error(
-            { requestId: id, ipfsHash, cidBase32, error: serializeError(ipfsError) },
+            {
+              requestId: id,
+              cidCandidates: cidCandidates.map((candidate) => candidate.cidBase32),
+              error: serializeError(ipfsError || lastIpfsError),
+            },
             "Failed to fetch IPFS metadata for request - skipping (cannot verify networkId)"
           );
           continue;
         }
+
+        if (!selectedCandidate) {
+          logger.error(
+            { requestId: id, cidCandidates: cidCandidates.map((candidate) => candidate.cidBase32) },
+            "No CID candidate selected after IPFS metadata fetch; skipping"
+          );
+          continue;
+        }
+
+        const { cidHex: ipfsHash, cidBase32 } = selectedCandidate;
 
         // GLOBAL JINN EXPLORER: Only index requests with networkId === "jinn" (or missing for legacy)
         // This filters out all non-Jinn Olas marketplace traffic

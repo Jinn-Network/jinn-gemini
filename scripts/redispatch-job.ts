@@ -99,6 +99,7 @@ if (!jobId && !jobName) {
 async function buildSubstitutedBlueprint(templatePath: string, inputConfigPath: string): Promise<{
   blueprint: string;
   enabledTools: string[];
+  workspaceRepoUrl?: string;
 }> {
   // Load template
   let resolvedTemplatePath = templatePath;
@@ -114,6 +115,9 @@ async function buildSubstitutedBlueprint(templatePath: string, inputConfigPath: 
   // Load input config
   const inputConfig = await loadInputConfig(inputConfigPath);
   console.log(`  Loaded input config: ${Object.keys(inputConfig).join(', ')}`);
+  const workspaceRepoUrl = typeof (inputConfig as any).repoUrl === 'string'
+    ? String((inputConfig as any).repoUrl)
+    : undefined;
 
   // Get inputSchema from template (can be at root or in templateMeta)
   const inputSchema = blueprintObj.templateMeta?.inputSchema ?? blueprintObj.inputSchema;
@@ -157,6 +161,7 @@ async function buildSubstitutedBlueprint(templatePath: string, inputConfigPath: 
   return {
     blueprint: JSON.stringify(cleanBlueprint),
     enabledTools,
+    workspaceRepoUrl,
   };
 }
 
@@ -173,11 +178,13 @@ async function main() {
   // If --input provided, build substituted blueprint
   let overrideBlueprint: string | undefined;
   let overrideEnabledTools: string[] | undefined;
+  let workspaceRepoUrl: string | undefined;
   if (inputConfigPath && templatePath) {
     console.log('\nBuilding substituted blueprint...');
     const result = await buildSubstitutedBlueprint(templatePath, inputConfigPath);
     overrideBlueprint = result.blueprint;
     overrideEnabledTools = result.enabledTools;
+    workspaceRepoUrl = result.workspaceRepoUrl;
     console.log('  Blueprint ready for dispatch\n');
   }
 
@@ -226,8 +233,19 @@ async function main() {
     }
 
     if (!jobDef) {
-      console.error(`Job definition '${jobName || jobId}' not found in Ponder.`);
-      process.exit(1);
+      if (overrideBlueprint && jobId) {
+        console.warn(`Job definition '${jobName || jobId}' not found in Ponder; using override blueprint/tools.`);
+        jobDef = {
+          id: jobId,
+          name: jobName || jobId,
+          enabledTools: overrideEnabledTools,
+          blueprint: overrideBlueprint,
+          codeMetadata: undefined,
+        };
+      } else {
+        console.error(`Job definition '${jobName || jobId}' not found in Ponder.`);
+        process.exit(1);
+      }
     }
 
     const jobDefinitionId = jobDef.id;
@@ -241,6 +259,13 @@ async function main() {
       process.exit(1);
     }
 
+    const additionalContextOverrides: Record<string, any> | undefined = workspaceRepoUrl || message
+      ? {
+        ...(workspaceRepoUrl ? { workspaceRepo: { url: workspaceRepoUrl } } : {}),
+        ...(message ? { message: { content: message, to: jobDefinitionId } } : {}),
+      }
+      : undefined;
+
     const { ipfsJsonContents } = await buildIpfsPayload({
       blueprint,
       jobName: jobDef.name,
@@ -249,9 +274,7 @@ async function main() {
       model: undefined,
       tools: undefined,
       cyclic: true,
-      additionalContextOverrides: message
-        ? { message: { content: message, to: jobDefinitionId } }
-        : undefined,
+      additionalContextOverrides,
       workstreamId,
       codeMetadata: jobDef.codeMetadata,
     } as any);
@@ -305,4 +328,3 @@ main().catch((error) => {
   console.error('Error:', error);
   process.exit(1);
 });
-

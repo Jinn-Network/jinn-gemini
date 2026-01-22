@@ -1,7 +1,7 @@
 [build]
 builder = "NIXPACKS"
 nixpacksConfigPath = "nixpacks.toml"
-watchPatterns = ["/ponder/**"]
+watchPatterns = ["/ponder/**", "/package.json", "/scripts/patch-dist-imports.js"]
 
 [deploy]
 startCommand = "cd ponder && ponder start --port $PORT --schema $RAILWAY_DEPLOYMENT_ID --views-schema jinn_gemini_public"
