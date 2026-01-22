@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -28,6 +29,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script
+          src="https://umami-production-ae2b.up.railway.app/script.js"
+          data-website-id="5d17aa53-3e8d-4b03-b03b-a42518ed0e00"
+          strategy="afterInteractive"
+        />
+      </head>
       <body className={`${inter.variable} antialiased`}>
         <ThemeProvider
           attribute="class"

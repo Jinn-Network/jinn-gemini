@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ClientLayout } from "@/components/client-layout";
 import { Toaster } from "@/components/ui/sonner";
@@ -30,6 +31,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script
+          src="https://umami-production-ae2b.up.railway.app/script.js"
+          data-website-id="cfa31df1-0dff-4c14-8a5b-cad39c8f12c5"
+          strategy="afterInteractive"
+        />
+      </head>
       <body
         className={`${inter.variable} antialiased`}
       >

@@ -28,6 +28,14 @@ const config: Config = {
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
 
+  scripts: [
+    {
+      src: 'https://umami-production-ae2b.up.railway.app/script.js',
+      defer: true,
+      'data-website-id': 'deeb793f-bbd0-44e0-b628-bb7978a24626',
+    },
+  ],
+
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
   // may want to replace "en" with "zh-Hans".
