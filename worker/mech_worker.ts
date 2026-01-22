@@ -1,4 +1,5 @@
 import '../env/index.js';
+import { existsSync, unlinkSync } from 'fs';
 import { Web3 } from 'web3';
 import { graphQLRequest } from '../http/client.js';
 import {
@@ -124,6 +125,17 @@ if (!process.env.WORKER_STOP_FILE) {
       : `multi-${WORKSTREAM_FILTERS.length}`)
     : `pid-${process.pid}`;
   process.env.WORKER_STOP_FILE = `/tmp/jinn-stop-cycle-${stopFileSuffix}`;
+}
+
+// Clear any stale stop file from previous runs so fresh starts aren't blocked
+// The stop file is created by requestStop() when quota errors occur
+if (process.env.WORKER_STOP_FILE && existsSync(process.env.WORKER_STOP_FILE)) {
+  try {
+    unlinkSync(process.env.WORKER_STOP_FILE);
+    workerLogger.info({ stopFile: process.env.WORKER_STOP_FILE }, 'Cleared stale stop file from previous run');
+  } catch {
+    // Ignore errors - file might have been deleted between check and unlink
+  }
 }
 
 // Auto-reposting configuration
