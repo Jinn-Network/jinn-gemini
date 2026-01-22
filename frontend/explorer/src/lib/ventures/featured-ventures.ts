@@ -19,7 +19,7 @@ export const FEATURED_SERVICE_ID = 'blog-growth-template-2b053250';
 // Known service instances (workstreams) to feature
 export const FEATURED_VENTURES: FeaturedVenture[] = [
   {
-    id: '0xa6de04ee01994d2fc5e591f829bf6b7abc749f17cc66bb46b60f6bb628bf8d15',
+    id: '0x623ecaf43a7fe60f3dbb335d508f88a845ae40d0c40232cd70e92e0d4a6a2041',
     name: 'The Lamp',
     description: 'Growing Jinn by educating people about autonomous software ventures and expanding the ecosystem.',
     liveOutputUrl: 'https://blog.jinn.network/',
