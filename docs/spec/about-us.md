@@ -1,6 +1,6 @@
 # About Us
 
-Jinn was founded by [Oaksprout the Tan](https://x.com/tannedoaksprout) and [Ritsu Kai](https://x.com/ritsu_kai2000), 2 Olas DAO founding members. We have been building and investing in crypto-native agentic projects since 2019, and helped put the foundations in place for Olas.
+Jinn was founded by two Olas DAO founding members. We have been building and investing in crypto-native agentic projects since 2019, and helped put the foundations in place for Olas.
 
 Jinn recognizes that crypto provides critical infrastructure to enable Internet-scale agentic AI systems. Our edge is in taking cutting edge developments in LLMs and open source agent systems, and augmenting them with crypto native technologies like the blockchain and DeFi.
 
