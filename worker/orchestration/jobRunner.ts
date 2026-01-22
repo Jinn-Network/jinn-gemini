@@ -194,7 +194,22 @@ export async function processOnce(
           wasNewlyCreated: checkoutResult.wasNewlyCreated,
           checkoutMethod: checkoutResult.checkoutMethod,
           baseBranch: metadata.codeMetadata.baseBranch || DEFAULT_BASE_BRANCH,
+          ...(checkoutResult.stashedChanges ? { stashedChanges: checkoutResult.stashedChanges } : {}),
         });
+
+        // If uncommitted changes were stashed, store them in additionalContext so the agent is informed
+        // This helps the agent understand that some files from a previous failed job were set aside
+        if (checkoutResult.stashedChanges && checkoutResult.stashedChanges.length > 0) {
+          if (!metadata.additionalContext) {
+            metadata.additionalContext = {} as AdditionalContext;
+          }
+          metadata.additionalContext.stashedChanges = checkoutResult.stashedChanges;
+
+          workerLogger.warn({
+            requestId: target.id,
+            stashedFiles: checkoutResult.stashedChanges,
+          }, 'Uncommitted changes from previous job were stashed before checkout');
+        }
 
         // Now that we're on the job branch, ensure .gitignore and beads are set up
         // This happens AFTER checkout so .gitignore is committed to the job branch

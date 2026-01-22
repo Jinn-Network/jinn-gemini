@@ -136,6 +136,12 @@ export interface AdditionalContext {
     files: string[];
   }>;
 
+  /**
+   * Files that were stashed before checkout due to uncommitted changes from a previous failed job.
+   * These changes are not part of the current branch and were set aside to allow checkout.
+   */
+  stashedChanges?: string[];
+
   /** Whether this job involves coding work (triggers coding standards assertion) */
   isCodingJob?: boolean;
 

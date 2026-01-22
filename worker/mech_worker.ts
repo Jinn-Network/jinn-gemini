@@ -116,11 +116,13 @@ const WORKSTREAM_FILTERS: string[] = (() => {
 // Legacy single-value alias for backward compatibility in logging
 const WORKSTREAM_FILTER = WORKSTREAM_FILTERS.length === 1 ? WORKSTREAM_FILTERS[0] : undefined;
 
-if (MAX_CYCLES !== undefined && !process.env.WORKER_STOP_FILE && WORKSTREAM_FILTERS.length > 0) {
-  // Use first workstream for stop file naming (or hash if multiple)
-  const stopFileSuffix = WORKSTREAM_FILTERS.length === 1
-    ? WORKSTREAM_FILTERS[0]
-    : `multi-${WORKSTREAM_FILTERS.length}`;
+// Always set WORKER_STOP_FILE so quota errors can trigger worker stop
+if (!process.env.WORKER_STOP_FILE) {
+  const stopFileSuffix = WORKSTREAM_FILTERS.length > 0
+    ? (WORKSTREAM_FILTERS.length === 1
+      ? WORKSTREAM_FILTERS[0]
+      : `multi-${WORKSTREAM_FILTERS.length}`)
+    : `pid-${process.pid}`;
   process.env.WORKER_STOP_FILE = `/tmp/jinn-stop-cycle-${stopFileSuffix}`;
 }
 

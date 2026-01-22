@@ -59,6 +59,8 @@ export interface BranchCheckoutResult {
   branchName: string;
   wasNewlyCreated: boolean;
   checkoutMethod: CheckoutMethod;
+  /** List of files that were stashed before checkout (if any uncommitted changes existed) */
+  stashedChanges?: string[];
 }
 
 /**
@@ -172,6 +174,53 @@ export async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<Bra
     }
   }
 
+  // Stash any remaining uncommitted changes to ensure clean checkout
+  // This handles scenarios where previous jobs failed and left dirty working tree
+  // Without this, subsequent jobs fail with "Your local changes would be overwritten by checkout"
+  let stashedFiles: string[] = [];
+  try {
+    const status = execFileSync('git', ['status', '--porcelain'], {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    }).trim();
+
+    if (status) {
+      const changedFiles = status.split('\n').filter(Boolean);
+      const onlyBeadsChanges = getBlueprintEnableBeads() && changedFiles.every(line => {
+        const filePath = line.slice(3);
+        return filePath.startsWith('.beads/');
+      });
+
+      // If NOT only beads changes (or beads not enabled), we need to stash
+      if (!onlyBeadsChanges) {
+        stashedFiles = changedFiles.map(line => line.slice(3)); // Extract file paths
+        workerLogger.info(
+          { branchName, filesStashed: stashedFiles },
+          'Stashing uncommitted changes before checkout'
+        );
+        try {
+          execFileSync('git', ['stash', 'push', '-m', `Auto-stash before checkout to ${branchName}`], {
+            cwd: repoRoot,
+            encoding: 'utf-8',
+            stdio: 'pipe',
+          });
+        } catch (stashError: any) {
+          workerLogger.warn(
+            { branchName, error: serializeError(stashError) },
+            'Failed to stash uncommitted changes - attempting checkout anyway'
+          );
+          stashedFiles = []; // Clear since stash failed
+        }
+      }
+    }
+  } catch (statusError: any) {
+    workerLogger.warn(
+      { branchName, error: serializeError(statusError) },
+      'Failed to check git status for stashing (non-fatal)'
+    );
+  }
+
   // Check what exists BEFORE attempting checkout to pick the right strategy
   const hasLocalBranch = localBranchExists(repoRoot, branchName, execFileSync);
   const hasRemoteBranch = remoteBranchExists(repoRoot, branchName, execFileSync);
@@ -190,7 +239,7 @@ export async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<Bra
       });
       workerLogger.info({ branchName }, 'Successfully checked out existing local branch');
       clearBuildCaches(repoRoot);
-      return { branchName, wasNewlyCreated: false, checkoutMethod: 'local' };
+      return { branchName, wasNewlyCreated: false, checkoutMethod: 'local', ...(stashedFiles.length > 0 ? { stashedChanges: stashedFiles } : {}) };
     } catch (localCheckoutError: any) {
       const errorMessage = `Failed to checkout existing local branch ${branchName}: ${localCheckoutError.stderr || localCheckoutError.message}`;
       workerLogger.error({ branchName, error: serializeError(localCheckoutError) }, errorMessage);
@@ -210,7 +259,7 @@ export async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<Bra
       });
       workerLogger.info({ branchName }, 'Successfully created local tracking branch from origin');
       clearBuildCaches(repoRoot);
-      return { branchName, wasNewlyCreated: false, checkoutMethod: 'remote_tracking' };
+      return { branchName, wasNewlyCreated: false, checkoutMethod: 'remote_tracking', ...(stashedFiles.length > 0 ? { stashedChanges: stashedFiles } : {}) };
     } catch (remoteCheckoutError: any) {
       const errorMessage = `Failed to create tracking branch ${branchName} from origin: ${remoteCheckoutError.stderr || remoteCheckoutError.message}`;
       workerLogger.error({ branchName, error: serializeError(remoteCheckoutError) }, errorMessage);
@@ -231,7 +280,7 @@ export async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<Bra
     });
     workerLogger.info({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source }, 'Successfully created branch from baseBranch');
     clearBuildCaches(repoRoot);
-    return { branchName, wasNewlyCreated: true, checkoutMethod: 'new_from_base' };
+    return { branchName, wasNewlyCreated: true, checkoutMethod: 'new_from_base', ...(stashedFiles.length > 0 ? { stashedChanges: stashedFiles } : {}) };
   } catch (fallbackError: any) {
     const errorMessage = `Failed to create branch ${branchName} from ${baseRef.ref}: ${fallbackError.stderr || fallbackError.message}`;
     workerLogger.error({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source, error: serializeError(fallbackError) }, errorMessage);
