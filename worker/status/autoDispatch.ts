@@ -24,6 +24,21 @@ import { fetchAllChildren } from '../prompt/providers/context/fetchChildren.js';
 import { getMaxCycles, requestStop } from '../cycleControl.js';
 import { claimParentDispatch } from '../control_api_client.js';
 
+/**
+ * Get inherited environment variables for workstream-level config propagation.
+ * This ensures env vars like TELEGRAM_CHAT_ID flow through the entire job hierarchy.
+ */
+export function getInheritedEnv(): Record<string, string> {
+  const envJson = process.env.JINN_INHERITED_ENV;
+  if (!envJson) return {};
+  try {
+    return JSON.parse(envJson);
+  } catch {
+    workerLogger.warn('Failed to parse JINN_INHERITED_ENV');
+    return {};
+  }
+}
+
 const DISPATCH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes - long enough for jobs to process
 const MAX_VERIFICATION_ATTEMPTS = 3;
 
@@ -334,8 +349,10 @@ async function dispatchForVerification(
     }
 
     // Build verification context - preserve existing context and add verification flag
+    // Include inherited env vars for workstream-level config propagation
     const verificationContext = {
       ...additionalContext,
+      env: { ...getInheritedEnv(), ...(additionalContext?.env || {}) },
       verificationRequired: true,
       verificationAttempt: nextAttempt,
       verificationTriggeredAt: new Date().toISOString(),
@@ -475,7 +492,11 @@ async function dispatchForContinuation(
             type: 'continuation'
           }),
           workstreamId,
-          additionalContext: metadata?.additionalContext // Preserve existing context
+          // Preserve existing context and include inherited env vars for workstream-level config propagation
+          additionalContext: {
+            ...metadata?.additionalContext,
+            env: { ...getInheritedEnv(), ...(metadata?.additionalContext?.env || {}) }
+          }
         })
     );
 
@@ -576,8 +597,10 @@ export async function dispatchForCycle(
     }
 
     // Build cycle context - preserve existing context and add cycle info
+    // Include inherited env vars for workstream-level config propagation
     const cycleContext = {
       ...additionalContext,
+      env: { ...getInheritedEnv(), ...(additionalContext?.env || {}) },
       cycle: {
         isCycleRun: true,
         cycleNumber: nextCycleNumber,
@@ -717,8 +740,10 @@ export async function dispatchForLoopRecovery(
     }
 
     // Build loop recovery context - preserve existing context and add loop info
+    // Include inherited env vars for workstream-level config propagation
     const loopRecoveryContext = {
       ...additionalContext,
+      env: { ...getInheritedEnv(), ...(additionalContext?.env || {}) },
       loopRecovery: {
         attempt: nextAttempt,
         loopMessage,
@@ -860,8 +885,10 @@ export async function dispatchForTimeoutRecovery(
     }
 
     // Build timeout recovery context - preserve existing context and add timeout info
+    // Include inherited env vars for workstream-level config propagation
     const timeoutRecoveryContext = {
       ...additionalContext,
+      env: { ...getInheritedEnv(), ...(additionalContext?.env || {}) },
       timeoutRecovery: {
         attempt: nextAttempt,
         timeoutMessage,
@@ -1381,7 +1408,8 @@ export async function dispatchParentIfNeeded(
               jobId: parentJobDefId,
               message: JSON.stringify(message),
               workstreamId,
-
+              // Include inherited env vars for workstream-level config propagation
+              additionalContext: { env: getInheritedEnv() }
             })
         );
 

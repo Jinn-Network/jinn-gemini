@@ -16,6 +16,7 @@ import { claimRequest as apiClaimRequest } from './control_api_client.js';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { getMechAddress, getServicePrivateKey, getMechChainConfig, getServiceSafeAddress } from '../env/operate-profile.js';
 import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
+import { getInheritedEnv } from './status/autoDispatch.js';
 import { serializeError } from './logging/errors.js';
 import { safeParseToolResponse } from './tool_utils.js';
 import { processOnce as processJobOnce } from './orchestration/jobRunner.js';
@@ -266,6 +267,8 @@ async function maybeRedispatchDependency(params: {
       jobId: params.dependencyId,
       workstreamId: params.request.workstreamId,
       message: `Auto-redispatch: dependency stale (${params.status.lastStatus}) with no activity for ${Math.round((Date.now() - lastInteractionMs) / 60000)}m`,
+      // Include inherited env vars for workstream-level config propagation
+      additionalContext: { env: getInheritedEnv() }
     });
   } catch (e: any) {
     workerLogger.warn({
@@ -885,7 +888,9 @@ async function repostExistingJob(jobDefinitionId: string): Promise<void> {
 
     const result = await dispatchExistingJob({
       jobId: jobDefinitionId,
-      message
+      message,
+      // Include inherited env vars for workstream-level config propagation
+      additionalContext: { env: getInheritedEnv() }
     });
 
     // Parse the result to check if it was successful
