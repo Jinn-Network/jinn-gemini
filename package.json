@@ -130,7 +130,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@google/gemini-cli": "^0.21.1",
+    "@google/gemini-cli": "^0.25.0",
     "@types/node": "^20.0.0",
     "@types/yargs": "^17.0.33",
     "better-sqlite3": "^12.4.1",

@@ -2,6 +2,13 @@
 # yarn lockfile v1
 
 
+"@a2a-js/sdk@^0.3.7":
+  version "0.3.9"
+  resolved "https://registry.yarnpkg.com/@a2a-js/sdk/-/sdk-0.3.9.tgz#7a4da467f79ebf77155834374c662a9412004303"
+  integrity sha512-GWOSjL/dbkNRETfmLIKqtVV/fm+chPPp0uL5DUDKJlFmVjPCxRS75I6oiIkJeGo3/AM7QjaZTMb003Ia09ibtQ==
+  dependencies:
+    uuid "^11.1.0"
+
 "@adobe/css-tools@^4.4.0":
   version "4.4.4"
   resolved "https://registry.npmjs.org/@adobe/css-tools/-/css-tools-4.4.4.tgz"
@@ -16,6 +23,11 @@
   version "1.11.1"
   resolved "https://registry.npmjs.org/@adraffy/ens-normalize/-/ens-normalize-1.11.1.tgz"
   integrity sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ==
+
+"@agentclientprotocol/sdk@^0.11.0":
+  version "0.11.0"
+  resolved "https://registry.yarnpkg.com/@agentclientprotocol/sdk/-/sdk-0.11.0.tgz#53e6d8ffbaeecd19f79c4fc9c0069eae93016f20"
+  integrity sha512-hngnMwQ13DCC7oEr0BUnrx+vTDFf/ToCLhF0YcCMWRs+v4X60rKQyAENsx0PdbQF21jC1VjMFkh2+vwNBLh6fQ==
 
 "@ai-sdk/gateway@2.0.27":
   version "2.0.27"
@@ -2922,11 +2934,12 @@
   resolved "https://registry.npmjs.org/@google-cloud/promisify/-/promisify-4.1.0.tgz"
   integrity sha512-G/FQx5cE/+DqBbOpA5jKsegGwdPniU6PuIEMt+qxWgFxvxuFOzVmp6zYchtYuwAWV5/8Dgs0yAmjvNZv3uXLQg==
 
-"@google/gemini-cli-core@0.21.2":
-  version "0.21.2"
-  resolved "https://registry.npmjs.org/@google/gemini-cli-core/-/gemini-cli-core-0.21.2.tgz"
-  integrity sha512-nzhzy0QbcJjeOLVMiQhcOB8vX+gQ1zF6mAypGCwGdRB75Cn3NtIfAwAILbEZGN61IuwScfTaGIpqZG/GQCNUcQ==
+"@google/gemini-cli-core@0.25.0":
+  version "0.25.0"
+  resolved "https://registry.yarnpkg.com/@google/gemini-cli-core/-/gemini-cli-core-0.25.0.tgz#9c90d072eef7c3f693f84cfbb241b8d479e22083"
+  integrity sha512-wgy6RuGh6jdDpKyAFKbltS5/IySLm0F2FMMUxMh6gaCs9Ak8LrJtxnDblILoW543ZU61ya8+5hhXrEOoqXgMEQ==
   dependencies:
+    "@a2a-js/sdk" "^0.3.7"
     "@google-cloud/logging" "^11.2.1"
     "@google-cloud/opentelemetry-cloud-monitoring-exporter" "^0.21.0"
     "@google-cloud/opentelemetry-cloud-trace-exporter" "^3.0.0"
@@ -2951,9 +2964,7 @@
     ajv-formats "^3.0.0"
     chardet "^2.1.0"
     diff "^7.0.0"
-    dotenv "^17.1.0"
     fast-levenshtein "^2.0.6"
-    fast-uri "^3.0.6"
     fdir "^6.4.6"
     fzf "^0.5.2"
     glob "^12.0.0"
@@ -2961,6 +2972,7 @@
     html-to-text "^9.0.5"
     https-proxy-agent "^7.0.6"
     ignore "^7.0.0"
+    js-yaml "^4.1.1"
     marked "^15.0.12"
     mime "4.0.7"
     mnemonist "^0.40.3"
@@ -2970,10 +2982,11 @@
     shell-quote "^1.8.3"
     simple-git "^3.28.0"
     strip-ansi "^7.1.0"
+    systeminformation "^5.25.11"
     tree-sitter-bash "^0.25.0"
     undici "^7.10.0"
+    uuid "^13.0.0"
     web-tree-sitter "^0.25.10"
-    ws "^8.18.0"
     zod "^3.25.76"
   optionalDependencies:
     "@lydell/node-pty" "1.1.0"
@@ -2982,14 +2995,16 @@
     "@lydell/node-pty-linux-x64" "1.1.0"
     "@lydell/node-pty-win32-arm64" "1.1.0"
     "@lydell/node-pty-win32-x64" "1.1.0"
+    keytar "^7.9.0"
     node-pty "^1.0.0"
 
-"@google/gemini-cli@^0.21.1":
-  version "0.21.2"
-  resolved "https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-0.21.2.tgz"
-  integrity sha512-NbSPuZbFwb9EFAEOFbTa8OpK/r/N29EgkQqw593t0YvVfkfu4zQJtkfjEn+e3nw8nG8TWjoBTNl0pFqppe64Pg==
+"@google/gemini-cli@^0.25.0":
+  version "0.25.0"
+  resolved "https://registry.yarnpkg.com/@google/gemini-cli/-/gemini-cli-0.25.0.tgz#b46ac2bf8cd9c17d6023deec1f51bdd0dc2e8d0e"
+  integrity sha512-MJUYjp1P1WgRVNfnlIKxpXBOj24Xqj/Nsbf47OxeGlZoaAqmeXZE660uRS30OAf4wvym81OC599skRGzYfNzzg==
   dependencies:
-    "@google/gemini-cli-core" "0.21.2"
+    "@agentclientprotocol/sdk" "^0.11.0"
+    "@google/gemini-cli-core" "0.25.0"
     "@google/genai" "1.30.0"
     "@iarna/toml" "^2.2.5"
     "@modelcontextprotocol/sdk" "^1.23.0"
@@ -3004,7 +3019,7 @@
     fzf "^0.5.2"
     glob "^12.0.0"
     highlight.js "^11.11.1"
-    ink "npm:@jrichman/ink@6.4.6"
+    ink "npm:@jrichman/ink@6.4.7"
     ink-gradient "^3.0.0"
     ink-spinner "^5.0.0"
     latest-version "^9.0.0"
@@ -13079,7 +13094,7 @@ fast-stable-stringify@^1.0.0:
   resolved "https://registry.npmjs.org/fast-stable-stringify/-/fast-stable-stringify-1.0.0.tgz"
   integrity sha512-wpYMUmFu5f00Sm0cj2pfivpmawLZ0NKdviQ4w9zJeR8JVtOpOxHmLaJuj0vxvGqMJQWyP/COUkF75/57OKyRag==
 
-fast-uri@^3.0.1, fast-uri@^3.0.6:
+fast-uri@^3.0.1:
   version "3.1.0"
   resolved "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.0.tgz"
   integrity sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==
@@ -14661,10 +14676,10 @@ ink-spinner@^5.0.0:
   dependencies:
     cli-spinners "^2.7.0"
 
-"ink@npm:@jrichman/ink@6.4.6":
-  version "6.4.6"
-  resolved "https://registry.npmjs.org/@jrichman/ink/-/ink-6.4.6.tgz"
-  integrity sha512-QHl6l1cl3zPCaRMzt9TUbTX6Q5SzvkGEZDDad0DmSf5SPmT1/90k6pGPejEvDCJprkitwObXpPaTWGHItqsy4g==
+"ink@npm:@jrichman/ink@6.4.7":
+  version "6.4.7"
+  resolved "https://registry.yarnpkg.com/@jrichman/ink/-/ink-6.4.7.tgz#aed94c31ee204050b5c956e75a93ac56bfcd7a1c"
+  integrity sha512-QHyxhNF5VonF5cRmdAJD/UPucB9nRx3FozWMjQrDGfBxfAL9lpyu72/MlFPgloS1TMTGsOt7YN6dTPPA6mh0Aw==
   dependencies:
     "@alcalzone/ansi-tokenize" "^0.2.1"
     ansi-escapes "^7.0.0"
@@ -15703,6 +15718,14 @@ keccak@^3.0.3:
     node-addon-api "^2.0.0"
     node-gyp-build "^4.2.0"
     readable-stream "^3.6.0"
+
+keytar@^7.9.0:
+  version "7.9.0"
+  resolved "https://registry.yarnpkg.com/keytar/-/keytar-7.9.0.tgz#4c6225708f51b50cbf77c5aae81721964c2918cb"
+  integrity sha512-VPD8mtVtm5JNtA2AErl6Chp06JBfy7diFQ7TQQhdpWOl6MrCRB+eRbvAZUsbGQS9kiMq0coJsy0W0vHpDCkWsQ==
+  dependencies:
+    node-addon-api "^4.3.0"
+    prebuild-install "^7.0.1"
 
 keyv@^4.5.3, keyv@^4.5.4:
   version "4.5.4"
@@ -17258,6 +17281,11 @@ node-addon-api@^2.0.0:
   version "2.0.2"
   resolved "https://registry.npmjs.org/node-addon-api/-/node-addon-api-2.0.2.tgz"
   integrity sha512-Ntyt4AIXyaLIuMHF6IOoTakB3K+RWxwtsHNRxllEoA6vPwP9o4866g6YWDLUdnucilZhmkxiHwHr11gAENw+QA==
+
+node-addon-api@^4.3.0:
+  version "4.3.0"
+  resolved "https://registry.yarnpkg.com/node-addon-api/-/node-addon-api-4.3.0.tgz#52a1a0b475193e0928e98e0426a0d1254782b77f"
+  integrity sha512-73sE9+3UaLYYFmDsFZnqCInzPyh3MqIwZO9cw58yIqAZhONrrabrYyYe3TuIqtIiOuTXVhsGau8hcrhhwSsDIQ==
 
 node-addon-api@^8.2.1:
   version "8.5.0"
@@ -19063,7 +19091,7 @@ preact@^10.16.0:
   resolved "https://registry.npmjs.org/preact/-/preact-10.28.0.tgz"
   integrity sha512-rytDAoiXr3+t6OIP3WGlDd0ouCUG1iCWzkcY3++Nreuoi17y6T5i/zRhe6uYfoVcxq6YU+sBtJouuRDsq8vvqA==
 
-prebuild-install@^7.1.1:
+prebuild-install@^7.0.1, prebuild-install@^7.1.1:
   version "7.1.3"
   resolved "https://registry.npmjs.org/prebuild-install/-/prebuild-install-7.1.3.tgz"
   integrity sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==
@@ -21429,6 +21457,11 @@ system-architecture@^0.1.0:
   version "0.1.0"
   resolved "https://registry.npmjs.org/system-architecture/-/system-architecture-0.1.0.tgz"
   integrity sha512-ulAk51I9UVUyJgxlv9M6lFot2WP3e7t8Kz9+IS6D4rVba1tR9kON+Ey69f+1R4Q8cd45Lod6a4IcJIxnzGc/zA==
+
+systeminformation@^5.25.11:
+  version "5.30.5"
+  resolved "https://registry.yarnpkg.com/systeminformation/-/systeminformation-5.30.5.tgz#0b8840ff697b8f036901bf4f8586c9278c7c9e88"
+  integrity sha512-DpWmpCckhwR3hG+6udb6/aQB7PpiqVnvSljrjbKxNSvTRsGsg7NVE3/vouoYf96xgwMxXFKcS4Ux+cnkFwYM7A==
 
 tailwind-merge@^3.3.1:
   version "3.4.0"
