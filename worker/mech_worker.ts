@@ -52,6 +52,8 @@ const USE_CONTROL_API = getUseControlApi();
 // Track jobs executed in this session to prevent re-execution on delivery failure
 // This prevents infinite loops when delivery fails but Control API allows re-claiming
 const executedJobsThisSession = new Set<string>();
+let consecutiveStuckCycles = 0;
+let lastStuckRequestIds: string[] = [];
 
 // Parse --runs=<N> flag for controlled execution cycles
 const MAX_RUNS = (() => {
@@ -74,10 +76,20 @@ if (MAX_CYCLES !== undefined) {
   process.env.WORKER_MAX_CYCLES = String(MAX_CYCLES);
 }
 
-// Workstream filtering: parse --workstream=<id> flag
+// Parse --stuck-exit-cycles=<N> flag or WORKER_STUCK_EXIT_CYCLES for watchdog exit
+const MAX_STUCK_CYCLES = (() => {
+  const arg = process.argv.find(arg => arg.startsWith('--stuck-exit-cycles='));
+  const envValue = process.env.WORKER_STUCK_EXIT_CYCLES;
+  const raw = arg ? arg.split('=')[1] : envValue;
+  if (!raw) return undefined;
+  const value = parseInt(raw, 10);
+  return isNaN(value) || value < 1 ? undefined : value;
+})();
+
+// Workstream filtering: parse --workstream=<id> flag or WORKSTREAM_FILTER env var
 const WORKSTREAM_FILTER = (() => {
   const arg = process.argv.find(arg => arg.startsWith('--workstream='));
-  return arg ? arg.split('=')[1] : undefined;
+  return arg ? arg.split('=')[1] : process.env.WORKSTREAM_FILTER;
 })();
 
 if (MAX_CYCLES !== undefined && !process.env.WORKER_STOP_FILE && WORKSTREAM_FILTER) {
@@ -932,10 +944,14 @@ async function processOnce(): Promise<void> {
     const targetHex = targetIdEnv.startsWith('0x') ? targetIdEnv.toLowerCase() : ('0x' + BigInt(targetIdEnv).toString(16)).toLowerCase();
     const specificRequest = await fetchSpecificRequest(targetHex);
     if (!specificRequest) {
+      consecutiveStuckCycles = 0;
+      lastStuckRequestIds = [];
       workerLogger.info({ target: targetHex }, 'Target request not found in Ponder');
       return;
     }
     if (specificRequest.delivered) {
+      consecutiveStuckCycles = 0;
+      lastStuckRequestIds = [];
       workerLogger.info({ target: targetHex }, 'Target request already delivered');
       return;
     }
@@ -943,6 +959,8 @@ async function processOnce(): Promise<void> {
     // Check dependencies even for targeted requests
     const depsMet = await checkDependenciesMet(specificRequest);
     if (!depsMet) {
+      consecutiveStuckCycles = 0;
+      lastStuckRequestIds = [];
       workerLogger.info({ target: targetHex }, 'Target request dependencies not met - skipping');
       return;
     }
@@ -953,6 +971,8 @@ async function processOnce(): Promise<void> {
     const recent = await fetchRecentRequests(50);
     candidates = await filterUnclaimed(recent);
     if (candidates.length === 0) {
+      consecutiveStuckCycles = 0;
+      lastStuckRequestIds = [];
       workerLogger.info('No unclaimed on-chain requests found');
       return;
     }
@@ -960,10 +980,35 @@ async function processOnce(): Promise<void> {
     // Filter by dependencies - only process jobs whose dependencies are met
     candidates = await filterByDependencies(candidates);
     if (candidates.length === 0) {
+      consecutiveStuckCycles = 0;
+      lastStuckRequestIds = [];
       workerLogger.info('No requests with met dependencies found');
       return;
     }
   }
+
+  const eligibleCandidates = candidates.filter(c => !executedJobsThisSession.has(c.id));
+  if (eligibleCandidates.length === 0) {
+    consecutiveStuckCycles += 1;
+    lastStuckRequestIds = candidates.map(c => c.id);
+    workerLogger.warn({
+      consecutiveStuckCycles,
+      maxStuckCycles: MAX_STUCK_CYCLES,
+      requestIds: lastStuckRequestIds
+    }, 'All candidates already executed this session - stuck cycle');
+
+    if (MAX_STUCK_CYCLES !== undefined && consecutiveStuckCycles >= MAX_STUCK_CYCLES) {
+      workerLogger.error({
+        consecutiveStuckCycles,
+        requestIds: lastStuckRequestIds
+      }, 'Stuck cycle limit reached; exiting to allow restart');
+      process.exit(2);
+    }
+    return;
+  }
+
+  consecutiveStuckCycles = 0;
+  lastStuckRequestIds = [];
 
   // Try to claim a request
   let target: UnclaimedRequest | null = null;
