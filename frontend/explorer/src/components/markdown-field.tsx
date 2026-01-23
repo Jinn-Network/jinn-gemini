@@ -9,6 +9,7 @@ interface MarkdownFieldProps {
   content: string
   title?: string
   className?: string
+  showRawToggle?: boolean
 }
 
 // Function to clean up and preprocess content for better markdown rendering
@@ -43,11 +44,11 @@ function preprocessContent(content: string): string {
   return cleaned.trim();
 }
 
-export function MarkdownField({ content, title, className = "" }: MarkdownFieldProps) {
+export function MarkdownField({ content, title, className = "", showRawToggle = true }: MarkdownFieldProps) {
   const [showRaw, setShowRaw] = useState(false)
 
   if (!content || content.trim() === '') {
-    return <span className="text-gray-400 italic text-sm">Empty content</span>
+    return <span className="text-muted-foreground italic text-sm">Empty content</span>
   }
 
   const cleanedContent = preprocessContent(content);
@@ -57,18 +58,20 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
       {title && (
         <div className="flex items-center justify-between">
           <h4 className="font-medium text-foreground text-sm">{title}</h4>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowRaw(!showRaw)}
-            className="text-xs px-2 py-1 h-auto"
-          >
-            {showRaw ? 'Show Formatted' : 'Show Raw'}
-          </Button>
+          {showRawToggle && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRaw(!showRaw)}
+              className="text-xs px-2 py-1 h-auto"
+            >
+              {showRaw ? 'Show Formatted' : 'Show Raw'}
+            </Button>
+          )}
         </div>
       )}
-      
-      {!title && (
+
+      {!title && showRawToggle && (
         <div className="flex justify-end">
           <Button
             variant="outline"

@@ -254,7 +254,7 @@ export function ArtifactsGallery({ workstreamId, onNavigateToJob }: ArtifactsGal
             </div>
           ) : artifactContent ? (
             <div className="p-4">
-              <MarkdownField content={artifactContent} />
+              <MarkdownField content={artifactContent} showRawToggle={false} />
             </div>
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground">
