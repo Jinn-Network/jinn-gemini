@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { queryArtifacts, fetchIpfsContent, getJobName, type Artifact } from '@/lib/subgraph';
+import { queryArtifacts, queryRequests, fetchIpfsContent, getJobName, type Artifact } from '@/lib/subgraph';
 import { MarkdownField } from '@/components/markdown-field';
 import { Badge } from '@/components/ui/badge';
 import { formatRelativeTime } from '@jinn/shared-ui';
@@ -33,15 +33,39 @@ export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
 
   const fetchArtifacts = useCallback(async () => {
     try {
-      const response = await queryArtifacts({
-        where: { sourceRequestId: workstreamId },
-        orderBy: 'blockTimestamp',
-        orderDirection: 'desc',
-        limit: 100,
+      // First, get all requests in this workstream
+      const requestsResponse = await queryRequests({
+        where: { workstreamId },
+        limit: 200,
+      });
+
+      // Get unique request IDs (including the root workstream ID)
+      const requestIds = [workstreamId, ...requestsResponse.items.map(r => r.id)];
+
+      // Query artifacts for all requests in the workstream
+      // We need to fetch artifacts where requestId is in our list
+      const allArtifacts: Artifact[] = [];
+
+      // Query in batches to avoid too-long queries
+      for (const requestId of requestIds) {
+        const response = await queryArtifacts({
+          where: { requestId },
+          orderBy: 'blockTimestamp',
+          orderDirection: 'desc',
+          limit: 50,
+        });
+        allArtifacts.push(...response.items);
+      }
+
+      // Sort by blockTimestamp descending
+      allArtifacts.sort((a, b) => {
+        const tsA = Number(a.blockTimestamp || 0);
+        const tsB = Number(b.blockTimestamp || 0);
+        return tsB - tsA;
       });
 
       // Filter out operational topics
-      const contentArtifacts = response.items.filter(
+      const contentArtifacts = allArtifacts.filter(
         (a) => !OPERATIONAL_TOPICS.includes(a.topic)
       );
 
@@ -144,10 +168,11 @@ export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
         </div>
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
           <FileText className="h-12 w-12 text-muted-foreground/50 mb-4" />
-          <h3 className="text-lg font-medium text-foreground mb-2">No Artifacts Yet</h3>
+          <h3 className="text-lg font-medium text-foreground mb-2">No Content Artifacts Yet</h3>
           <p className="text-sm text-muted-foreground max-w-md">
-            This venture hasn&apos;t produced any content artifacts yet.
-            Check back later or view the Activity tab to see what&apos;s happening.
+            This venture is actively working but hasn&apos;t published content artifacts yet.
+            Some ventures commit outputs to git repositories instead.
+            View the <span className="font-medium">Activity</span> or <span className="font-medium">Work Tree</span> tabs to see progress.
           </p>
         </div>
       </div>
