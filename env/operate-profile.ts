@@ -20,6 +20,23 @@ import { configLogger } from '../logging/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/**
+ * Check if all critical service config env vars are set
+ * When true, we don't need .operate directory and should suppress warnings
+ */
+function hasAllServiceEnvVars(): boolean {
+  const mechAddr = process.env.JINN_SERVICE_MECH_ADDRESS;
+  const safeAddr = process.env.JINN_SERVICE_SAFE_ADDRESS;
+  const privateKey = process.env.JINN_SERVICE_PRIVATE_KEY;
+
+  // All three must be valid for us to skip .operate
+  return Boolean(
+    mechAddr && /^0x[a-fA-F0-9]{40}$/i.test(mechAddr) &&
+    safeAddr && /^0x[a-fA-F0-9]{40}$/i.test(safeAddr) &&
+    privateKey && /^0x[a-fA-F0-9]{64}$/i.test(privateKey)
+  );
+}
+
 function findRepoRoot(startDir: string): string | null {
   let current = startDir;
   const { root } = parse(current);
@@ -58,13 +75,19 @@ function resolveOperateHome(): string | null {
   }
 
   if (!repoRoot) {
-    configLogger.warn('Unable to locate repository root for operate profile discovery');
+    // Only warn if env vars don't provide the needed config
+    if (!hasAllServiceEnvVars()) {
+      configLogger.warn('Unable to locate repository root for operate profile discovery');
+    }
     return null;
   }
 
   const candidate = join(repoRoot, 'olas-operate-middleware', '.operate');
   if (!existsSync(candidate)) {
-    configLogger.warn({ candidate }, 'Default .operate directory not found under olas-operate-middleware');
+    // Only warn if env vars don't provide the needed config
+    if (!hasAllServiceEnvVars()) {
+      configLogger.warn({ candidate }, 'Default .operate directory not found under olas-operate-middleware');
+    }
     return null;
   }
 
@@ -98,7 +121,10 @@ function getOperateDir(): string | null {
     return operateHome;
   }
 
-  configLogger.warn({ operateHome }, '.operate directory not found at expected location');
+  // Only warn if env vars don't provide the needed config
+  if (!hasAllServiceEnvVars()) {
+    configLogger.warn({ operateHome }, '.operate directory not found at expected location');
+  }
   return null;
 }
 
@@ -109,13 +135,16 @@ function readServiceConfig(): ServiceConfig | null {
   try {
     const operateDir = getOperateDir();
     if (!operateDir) {
-      configLogger.warn('No .operate directory found');
+      // Warning already handled in getOperateDir() if needed
       return null;
     }
 
     const servicesDir = join(operateDir, 'services');
     if (!existsSync(servicesDir)) {
-      configLogger.warn({ operateDir }, 'No services directory found');
+      // Only warn if env vars don't provide the needed config
+      if (!hasAllServiceEnvVars()) {
+        configLogger.warn({ operateDir }, 'No services directory found');
+      }
       return null;
     }
 
@@ -134,7 +163,10 @@ function readServiceConfig(): ServiceConfig | null {
     }
 
     if (!configPath) {
-      configLogger.warn({ servicesDir }, 'No service directories with config.json found');
+      // Only warn if env vars don't provide the needed config
+      if (!hasAllServiceEnvVars()) {
+        configLogger.warn({ servicesDir }, 'No service directories with config.json found');
+      }
       return null;
     }
 

@@ -478,10 +478,21 @@ const resolvers = {
       await assertRequestExists(ctx, args.requestId);
       const worker = getWorkerAddress(ctx);
 
+      // Map intermediate statuses to valid database values
+      // DB constraint only allows 'COMPLETED' and 'FAILED'
+      const reportStatusMap: Record<string, string> = {
+        'COMPLETED': 'COMPLETED',
+        'FAILED': 'FAILED',
+        'DELEGATING': 'COMPLETED', // Job completed by delegating to children
+        'WAITING': 'COMPLETED',    // Job completed its phase, waiting for dependencies
+        'IN_PROGRESS': 'COMPLETED', // Treat as completed for reporting purposes
+      };
+      const dbStatus = reportStatusMap[args.reportData.status] || 'COMPLETED';
+
       const payload = {
         request_id: args.requestId,
         worker_address: worker,
-        status: args.reportData.status,
+        status: dbStatus,
         duration_ms: args.reportData.duration_ms,
         total_tokens: args.reportData.total_tokens ?? 0,
         tools_called: args.reportData.tools_called ?? '[]',
@@ -496,7 +507,17 @@ const resolvers = {
         .upsert(payload, { onConflict: 'request_id' })
         .select()
         .limit(1);
-      if (error) throw new Error(error.message);
+      if (error) {
+        logger.error({
+          requestId: args.requestId,
+          status: payload.status,
+          error: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        }, 'Failed to upsert job report');
+        throw new Error(`createJobReport failed: ${error.message} (requestId=${args.requestId}, status=${payload.status})`);
+      }
       const report = data![0];
 
       // Update claim status based on report outcome
@@ -862,5 +883,4 @@ server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`Jinn Control API running on http://localhost:${PORT}/graphql`);
 });
-
 

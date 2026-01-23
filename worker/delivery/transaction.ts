@@ -76,7 +76,7 @@ export async function isUndeliveredOnChain(params: {
     try {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
-      const agentMechArtifact = await import('@jinn-network/mech-client-ts/dist/abis/AgentMech.json');
+      const agentMechArtifact = await import('@jinn-network/mech-client-ts/dist/abis/AgentMech.json', { with: { type: 'json' } });
       const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
       const web3 = new Web3(rpcHttpUrl);
       const contract = new (web3 as any).eth.Contract(abi, mechAddress);
@@ -124,8 +124,9 @@ export async function isUndeliveredOnChain(params: {
           error: error?.message, 
           attempt, 
           maxRetries,
-          backoffMs 
-        }, 'RPC delivery check failed; retrying with backoff');
+          backoffMs,
+          requestIdHex
+        }, `RPC delivery check failed (attempt ${attempt}/${maxRetries}, backoff ${Math.round(backoffMs)}ms): ${error?.message || 'unknown error'}`);
         
         await new Promise(r => setTimeout(r, backoffMs));
       }
@@ -135,8 +136,9 @@ export async function isUndeliveredOnChain(params: {
   // After RPC retries exhausted, don't throw yet - let caller decide fallback strategy
   workerLogger.error({ 
     error: lastError?.message,
-    attempts: maxRetries 
-  }, 'RPC verification failed after all retries');
+    attempts: maxRetries,
+    requestIdHex
+  }, `RPC verification failed after ${maxRetries} attempts: ${lastError?.message || 'unknown error'}`);
   
   throw new RpcVerificationError(
     `RPC verification failed: ${lastError?.message}`,
@@ -158,7 +160,7 @@ export async function wasRequestRevoked(params: {
     if (!rpcHttpUrl) return false;
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    const agentMechArtifact = await import('@jinn-network/mech-client-ts/dist/abis/AgentMech.json');
+    const agentMechArtifact = await import('@jinn-network/mech-client-ts/dist/abis/AgentMech.json', { with: { type: 'json' } });
     const abi: any = (agentMechArtifact as any)?.abi || (agentMechArtifact as any);
     const web3 = new Web3(rpcHttpUrl);
     
@@ -555,4 +557,3 @@ export async function deliverViaSafeTransaction(
     workerLogger.info({ requestId: context.requestId }, '[DELIVERY_DEBUG] Exiting finally block');
   }
 }
-
