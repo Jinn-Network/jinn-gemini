@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
 
 interface MarkdownFieldProps {
@@ -88,8 +89,9 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
             </pre>
           </div>
         ) : (
-          <div className="bg-card p-4 prose prose-sm max-w-none">
+          <div className="bg-card p-4 prose prose-sm max-w-none dark:prose-invert">
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 // Customize markdown rendering
                 h1: ({ children }) => <h1 className="text-lg font-bold text-gray-900 mt-0 mb-3">{children}</h1>,
@@ -126,6 +128,29 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
                   >
                     {children}
                   </a>
+                ),
+                // Table support (GFM)
+                table: ({ children }) => (
+                  <div className="overflow-x-auto my-4">
+                    <table className="min-w-full border-collapse border border-border text-sm">
+                      {children}
+                    </table>
+                  </div>
+                ),
+                thead: ({ children }) => (
+                  <thead className="bg-muted">{children}</thead>
+                ),
+                tbody: ({ children }) => (
+                  <tbody className="divide-y divide-border">{children}</tbody>
+                ),
+                tr: ({ children }) => (
+                  <tr className="hover:bg-muted/50">{children}</tr>
+                ),
+                th: ({ children }) => (
+                  <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">{children}</th>
+                ),
+                td: ({ children }) => (
+                  <td className="px-3 py-2 text-muted-foreground border border-border">{children}</td>
                 ),
               }}
             >

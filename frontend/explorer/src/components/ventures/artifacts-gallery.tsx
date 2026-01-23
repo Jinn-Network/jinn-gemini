@@ -12,12 +12,13 @@ interface ArtifactsGalleryProps {
   workstreamId: string;
 }
 
-// Operational topics to exclude - these are internal system artifacts
+// Operational topics to exclude - these are internal system artifacts (case-insensitive)
 const OPERATIONAL_TOPICS = [
-  'SITUATION',
-  'MEASUREMENT',
-  'GIT_BRANCH',
-  'SERVICE_OUTPUT',
+  'situation',
+  'measurement',
+  'git_branch',
+  'git/branch',
+  'service_output',
 ];
 
 interface ArtifactWithJobName extends Artifact {
@@ -64,9 +65,9 @@ export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
         return tsB - tsA;
       });
 
-      // Filter out operational topics
+      // Filter out operational topics (case-insensitive)
       const contentArtifacts = allArtifacts.filter(
-        (a) => !OPERATIONAL_TOPICS.includes(a.topic)
+        (a) => !OPERATIONAL_TOPICS.includes(a.topic.toLowerCase())
       );
 
       // Fetch job names for artifacts that have sourceJobDefinitionId
