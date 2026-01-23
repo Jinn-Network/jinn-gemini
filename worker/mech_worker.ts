@@ -9,10 +9,8 @@ import {
   getOptionalMechTargetRequestId,
   getOptionalControlApiUrl,
 } from '../gemini-agent/mcp/tools/shared/env.js';
-// Import JSON artifact without import assertions for TS compatibility
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import marketplaceAbi from '../ponder/abis/MechMarketplace.json';
+// Import JSON artifact with type assertion for Node 22
+import marketplaceAbi from '../ponder/abis/MechMarketplace.json' with { type: 'json' };
 import { workerLogger } from '../logging/index.js';
 import { claimRequest as apiClaimRequest } from './control_api_client.js';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';

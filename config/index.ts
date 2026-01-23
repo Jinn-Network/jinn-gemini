@@ -105,7 +105,8 @@ const controlApiSchema = z.object({
   CONTROL_API_SERVICE_KEY: z.string().optional(),
 
   // USE_CONTROL_API: Feature flag to enable Control API usage
-  USE_CONTROL_API: z.coerce.boolean().optional(),
+  // Note: z.coerce.boolean() treats any non-empty string as true, so we need custom logic
+  USE_CONTROL_API: z.string().optional().transform(v => v !== 'false' && v !== '0'),
 });
 
 /**

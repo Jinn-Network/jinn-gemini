@@ -13,7 +13,7 @@
     "paths": {
       "@jinn/types": ["packages/jinn-types/src"]
     },
-    
+    "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,

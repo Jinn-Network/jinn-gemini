@@ -150,14 +150,22 @@ function readServiceConfig(): ServiceConfig | null {
 
 /**
  * Get the service's target mech contract address
- * 
- * Reads from .operate service config MECH_TO_CONFIG only.
- * No environment variable fallbacks - this is service configuration.
- * 
+ *
+ * Priority:
+ * 1. JINN_SERVICE_MECH_ADDRESS environment variable (for Railway deployment)
+ * 2. .operate service config MECH_TO_CONFIG
+ *
  * @returns Mech contract address or null if not found
  */
 export function getMechAddress(): string | null {
-  // Read from service config only
+  // Check environment variable first (for Railway deployment)
+  const envMech = process.env.JINN_SERVICE_MECH_ADDRESS;
+  if (envMech && /^0x[a-fA-F0-9]{40}$/i.test(envMech)) {
+    configLogger.info(` Using mech address from JINN_SERVICE_MECH_ADDRESS: ${envMech}`);
+    return envMech;
+  }
+
+  // Fall back to service config
   const config = readServiceConfig();
   if (!config) {
     return null;
@@ -191,17 +199,23 @@ export function getMechAddress(): string | null {
 
 /**
  * Get the Gnosis Safe multisig address for this service
- * 
- * Reads from .operate service config only:
- * 1. chain_configs.<chain>.chain_data.multisig (primary location)
- * 2. safe_address at root (backwards compatibility)
- * 
- * No environment variable fallbacks - this is service configuration.
- * 
+ *
+ * Priority:
+ * 1. JINN_SERVICE_SAFE_ADDRESS environment variable (for Railway deployment)
+ * 2. chain_configs.<chain>.chain_data.multisig (primary location)
+ * 3. safe_address at root (backwards compatibility)
+ *
  * @returns Safe address or null if not found
  */
 export function getServiceSafeAddress(): string | null {
-  // Read from service config
+  // Check environment variable first (for Railway deployment)
+  const envSafe = process.env.JINN_SERVICE_SAFE_ADDRESS;
+  if (envSafe && /^0x[a-fA-F0-9]{40}$/i.test(envSafe)) {
+    configLogger.info(` Using safe address from JINN_SERVICE_SAFE_ADDRESS: ${envSafe}`);
+    return envSafe;
+  }
+
+  // Fall back to service config
   const config = readServiceConfig();
   if (!config) {
     return null;
@@ -232,16 +246,22 @@ export function getServiceSafeAddress(): string | null {
 
 /**
  * Get the service's agent EOA private key
- * 
+ *
  * Priority:
- * 1. Read from .operate/keys/[agent_address] (JSON file with private_key field)
- * 
- * Note: Ignores environment variables - must come from .operate
- * 
+ * 1. JINN_SERVICE_PRIVATE_KEY environment variable (for Railway deployment)
+ * 2. Read from .operate/keys/[agent_address] (JSON file with private_key field)
+ *
  * @returns Private key or null if not found
  */
 export function getServicePrivateKey(): string | null {
-  // Read from service config to get agent address
+  // Check environment variable first (for Railway deployment)
+  const envKey = process.env.JINN_SERVICE_PRIVATE_KEY;
+  if (envKey && /^0x[a-fA-F0-9]{64}$/i.test(envKey)) {
+    configLogger.info(' Using private key from JINN_SERVICE_PRIVATE_KEY');
+    return envKey;
+  }
+
+  // Fall back to service config to get agent address
   const config = readServiceConfig();
   if (!config) {
     return null;

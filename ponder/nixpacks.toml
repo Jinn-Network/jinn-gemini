@@ -6,7 +6,7 @@ nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
 cmds = ["yarn install --frozen-lockfile"]
 
 [phases.build]
-cmds = ["yarn run build && mkdir -p dist/ponder/abis && cp ponder/abis/*.json dist/ponder/abis/"]
+cmds = ["yarn run build && cd ponder && yarn install"]
 
 [start]
-cmd = "node dist/worker/mech_worker.js"
+cmd = "cd ponder && ponder start --port $PORT --schema $RAILWAY_DEPLOYMENT_ID --views-schema jinn_gemini_public"
