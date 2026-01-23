@@ -84,9 +84,18 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
   // For HTTPS GitHub URLs, embed token if available for private repo access
   let cloneUrl = normalizeSshUrl(remoteUrl);
   const token = process.env.GITHUB_TOKEN;
-  if (token && remoteUrl.startsWith('https://github.com/')) {
+  const isHttpsGithub = remoteUrl.startsWith('https://github.com/');
+  workerLogger.info({
+    targetPath,
+    hasToken: !!token,
+    tokenLength: token?.length,
+    isHttpsGithub,
+    willEmbedToken: !!(token && isHttpsGithub)
+  }, 'Clone URL preparation');
+
+  if (token && isHttpsGithub) {
     cloneUrl = remoteUrl.replace('https://', `https://${token}@`);
-    workerLogger.debug({ targetPath }, 'Using GITHUB_TOKEN for HTTPS clone');
+    workerLogger.info({ targetPath }, 'Embedded GITHUB_TOKEN in clone URL');
   }
 
   try {
