@@ -2,6 +2,10 @@
  * Push branch to remote with error handling
  */
 
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { workerLogger } from '../../logging/index.js';
 import { getRepoRoot } from '../../shared/repo_utils.js';
 import type { CodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
@@ -19,8 +23,6 @@ function configureGitCredentials(repoRoot: string): void {
     return;
   }
 
-  const { execFileSync } = require('node:child_process');
-
   try {
     // Configure credential helper to use the token for github.com
     // This sets up a store-based credential that git will use for HTTPS URLs
@@ -31,16 +33,10 @@ function configureGitCredentials(repoRoot: string): void {
       timeout: 5000,
     });
 
-    // Write the credential to the store file
-    const { writeFileSync, mkdirSync } = require('node:fs');
-    const { homedir } = require('node:os');
-    const { join } = require('node:path');
-
     const gitCredentialsPath = join(homedir(), '.git-credentials');
     const credentialLine = `https://${token}:x-oauth-basic@github.com\n`;
 
     // Append if file exists, otherwise create
-    const { appendFileSync } = require('node:fs');
     try {
       appendFileSync(gitCredentialsPath, credentialLine, { mode: 0o600 });
     } catch {
