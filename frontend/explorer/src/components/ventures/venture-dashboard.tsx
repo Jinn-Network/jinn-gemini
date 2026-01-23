@@ -144,7 +144,19 @@ export function VentureDashboard({
                     {/* Left Column: Live Output or Artifacts Gallery (2/3) */}
                     <div className="lg:col-span-2 flex flex-col min-h-[500px]">
                         {showArtifactsGallery ? (
-                            <ArtifactsGallery workstreamId={workstreamId} />
+                            <ArtifactsGallery
+                                workstreamId={workstreamId}
+                                onNavigateToJob={(jobDefId) => {
+                                    setSelectedJobIdOverride(jobDefId);
+                                    setActiveTab('work-tree');
+                                    const nextPath = `/ventures/${workstreamId}/tree/${jobDefId}`;
+                                    if (typeof window !== 'undefined') {
+                                        window.history.pushState({}, '', nextPath);
+                                    } else {
+                                        router.push(nextPath);
+                                    }
+                                }}
+                            />
                         ) : (
                             <LiveOutputView url={liveOutputUrl!} telegramUrl={telegramUrl || undefined} />
                         )}

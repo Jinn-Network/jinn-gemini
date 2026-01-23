@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import Link from 'next/link';
 import { FileText, Loader2, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { queryArtifacts, queryRequests, fetchIpfsContent, getJobName, type Artifact } from '@/lib/subgraph';
@@ -11,6 +10,7 @@ import { formatRelativeTime } from '@jinn/shared-ui';
 
 interface ArtifactsGalleryProps {
   workstreamId: string;
+  onNavigateToJob?: (jobDefinitionId: string) => void;
 }
 
 // Operational topics to exclude - these are internal system artifacts (case-insensitive)
@@ -26,7 +26,7 @@ interface ArtifactWithJobName extends Artifact {
   jobName?: string;
 }
 
-export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
+export function ArtifactsGallery({ workstreamId, onNavigateToJob }: ArtifactsGalleryProps) {
   const [artifacts, setArtifacts] = useState<ArtifactWithJobName[]>([]);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
@@ -63,11 +63,11 @@ export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
         allArtifacts.push(...response.items);
       }
 
-      // Sort by blockTimestamp descending
+      // Sort by blockTimestamp ascending (oldest first at top)
       allArtifacts.sort((a, b) => {
         const tsA = Number(a.blockTimestamp || 0);
         const tsB = Number(b.blockTimestamp || 0);
-        return tsB - tsA;
+        return tsA - tsB;
       });
 
       // Filter out operational topics (case-insensitive)
@@ -218,17 +218,20 @@ export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
                 <div className="font-medium text-sm mt-1 line-clamp-2">
                   {artifact.name || 'Untitled'}
                 </div>
-                {artifact.jobName && artifact.sourceJobDefinitionId && (
-                  <Link
-                    href={`/ventures/${workstreamId}/tree/${artifact.sourceJobDefinitionId}`}
-                    onClick={(e) => e.stopPropagation()}
+                {artifact.jobName && artifact.sourceJobDefinitionId && onNavigateToJob && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigateToJob(artifact.sourceJobDefinitionId!);
+                    }}
                     className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"
                   >
                     {artifact.jobName}
                     <ExternalLink className="h-3 w-3" />
-                  </Link>
+                  </button>
                 )}
-                {artifact.jobName && !artifact.sourceJobDefinitionId && (
+                {artifact.jobName && (!artifact.sourceJobDefinitionId || !onNavigateToJob) && (
                   <div className="text-xs text-muted-foreground mt-1">
                     Job: {artifact.jobName}
                   </div>

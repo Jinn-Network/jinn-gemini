@@ -150,7 +150,7 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
                   <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">{children}</th>
                 ),
                 td: ({ children }) => (
-                  <td className="px-3 py-2 text-muted-foreground border border-border">{children}</td>
+                  <td className="px-3 py-2 text-foreground border border-border">{children}</td>
                 ),
               }}
             >
