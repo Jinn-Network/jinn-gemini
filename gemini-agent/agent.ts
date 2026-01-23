@@ -1,7 +1,7 @@
 import { spawn, execSync } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync, statSync } from 'fs';
 import { join, dirname, resolve, isAbsolute, delimiter } from 'path';
-import { tmpdir } from 'os';
+import { tmpdir, homedir } from 'os';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
@@ -92,6 +92,8 @@ export class Agent {
   private lastStatusUpdate: string | null = null;
   private statusBlockBuffer: string | null = null;
   private inStatusBlock: boolean = false;
+  private chromeProcess: import('child_process').ChildProcess | null = null;
+  private chromeDebugPort: number = 0;
 
   // Stdout protection limits (configurable via environment variables)
   private readonly MAX_STDOUT_SIZE = parseInt(process.env.AGENT_MAX_STDOUT_SIZE || '5242880'); // 5MB default
@@ -192,9 +194,13 @@ export class Agent {
       if (existsSync(workspacePath)) return true;
     }
 
-    // Check GEMINI_HOME scope (persistent across jobs)
+    // Check GEMINI_HOME scope (runtime location)
     const homePath = join(this.geminiHome, 'extensions', extensionName);
     if (existsSync(homePath)) return true;
+
+    // Check ~/.gemini/ scope (where CLI actually installs, ignoring GEMINI_HOME)
+    const defaultHomePath = join(homedir(), '.gemini', 'extensions', extensionName);
+    if (existsSync(defaultHomePath)) return true;
 
     return false;
   }
@@ -244,7 +250,7 @@ export class Agent {
       // Skip if no valid config (handles empty EXTENSION_META_TOOLS object)
       if (!config || typeof config !== 'object') continue;
 
-      const typedConfig = config as { requiredEnv: string[]; installUrl: string; extensionName: string };
+      const typedConfig = config as { requiredEnv: readonly string[]; installUrl: string; extensionName: string };
 
       // Validate required env vars
       for (const envVar of typedConfig.requiredEnv) {
@@ -254,6 +260,149 @@ export class Agent {
       }
 
       await this.installExtension(typedConfig.installUrl, typedConfig.extensionName);
+
+      // Ensure extension is in GEMINI_HOME for runtime discovery
+      // (CLI may have installed to ~/.gemini/ instead)
+      this.ensureExtensionInGeminiHome(typedConfig.extensionName);
+    }
+
+    // Patch browser extension config to ensure isolated mode
+    this.patchBrowserExtensionConfig();
+  }
+
+  /**
+   * Patch chrome-devtools extension config to use --isolated=true
+   * This ensures each worker gets a temporary user-data-dir, preventing lock conflicts
+   * when multiple workers run browser automation concurrently.
+   *
+   * Checks multiple locations since Gemini CLI may install to ~/.gemini regardless of GEMINI_HOME
+   */
+  private patchBrowserExtensionConfig(): void {
+    // Check multiple possible locations where the extension could be installed
+    const possiblePaths = [
+      join(this.geminiHome, 'extensions', 'chrome-devtools-mcp', 'gemini-extension.json'),
+      join(homedir(), '.gemini', 'extensions', 'chrome-devtools-mcp', 'gemini-extension.json'),
+    ];
+
+    // Add workspace scope if available
+    if (this.codeWorkspace) {
+      possiblePaths.unshift(
+        join(this.codeWorkspace, '.gemini', 'extensions', 'chrome-devtools-mcp', 'gemini-extension.json')
+      );
+    }
+
+    for (const configPath of possiblePaths) {
+      if (!existsSync(configPath)) continue;
+
+      try {
+        const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+
+        if (this.chromeDebugPort > 0) {
+          // Connect to pre-launched Chrome via browserUrl
+          config.mcpServers['chrome-devtools'].args = [
+            '-y', 'chrome-devtools-mcp@latest',
+            `--browserUrl=http://127.0.0.1:${this.chromeDebugPort}`
+          ];
+        } else {
+          // Fallback: launch own Chrome (only works without sandbox)
+          config.mcpServers['chrome-devtools'].args = [
+            '-y', 'chrome-devtools-mcp@latest', '--headless=true', '--isolated=true'
+          ];
+        }
+
+        writeFileSync(configPath, JSON.stringify(config, null, 2));
+        agentLogger.info({ configPath, port: this.chromeDebugPort }, 'Patched chrome-devtools extension config');
+      } catch (error) {
+        agentLogger.warn({ error: error instanceof Error ? error.message : String(error), configPath }, 'Failed to patch browser extension config');
+      }
+    }
+  }
+
+  /**
+   * Ensure extension is available in GEMINI_HOME for CLI runtime discovery.
+   * Gemini CLI install may place extensions in ~/.gemini/ regardless of GEMINI_HOME,
+   * so we copy them to the runtime GEMINI_HOME if needed.
+   */
+  private ensureExtensionInGeminiHome(extensionName: string): void {
+    const targetPath = join(this.geminiHome, 'extensions', extensionName);
+
+    // Already exists in target location
+    if (existsSync(targetPath)) return;
+
+    // Check if it exists in ~/.gemini/
+    const homeGeminiPath = join(homedir(), '.gemini', 'extensions', extensionName);
+    if (!existsSync(homeGeminiPath)) {
+      agentLogger.warn({ extensionName, homeGeminiPath }, 'Extension not found in ~/.gemini/ either');
+      return;
+    }
+
+    // Copy extension to GEMINI_HOME
+    try {
+      mkdirSync(dirname(targetPath), { recursive: true });
+      // Use cp -r for recursive copy
+      execSync(`cp -r "${homeGeminiPath}" "${targetPath}"`, { stdio: 'pipe' });
+      agentLogger.info({ extensionName, from: homeGeminiPath, to: targetPath }, 'Copied extension to GEMINI_HOME');
+    } catch (error) {
+      agentLogger.error({ error, extensionName }, 'Failed to copy extension to GEMINI_HOME');
+    }
+  }
+
+  /**
+   * Launch Chrome with remote debugging before entering the sandbox.
+   * Returns the debugging port Chrome is listening on.
+   */
+  private async launchChrome(): Promise<number> {
+    const port = 9222 + Math.floor(Math.random() * 1000);
+    const userDataDir = join(tmpdir(), `chrome-worker-${process.pid}-${Date.now()}`);
+    mkdirSync(userDataDir, { recursive: true });
+
+    const candidates = [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium-browser'
+    ];
+    let execPath = '';
+    for (const p of candidates) {
+      if (existsSync(p)) { execPath = p; break; }
+    }
+    if (!execPath) throw new Error('Chrome not found');
+
+    this.chromeProcess = spawn(execPath, [
+      '--headless',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-background-networking',
+      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${userDataDir}`,
+      'about:blank'
+    ], { stdio: 'pipe' });
+
+    // Wait for Chrome to be ready (DevTools listening message on stderr)
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Chrome launch timeout')), 15000);
+      this.chromeProcess!.stderr!.on('data', (data: Buffer) => {
+        if (data.toString().includes('DevTools listening on')) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+      this.chromeProcess!.on('error', (err) => { clearTimeout(timeout); reject(err); });
+      this.chromeProcess!.on('exit', (code) => { clearTimeout(timeout); reject(new Error(`Chrome exited with ${code}`)); });
+    });
+
+    this.chromeDebugPort = port;
+    agentLogger.info({ port, userDataDir }, 'Pre-launched Chrome for browser automation');
+    return port;
+  }
+
+  /**
+   * Kill the pre-launched Chrome process and clean up.
+   */
+  private killChrome(): void {
+    if (this.chromeProcess) {
+      this.chromeProcess.kill('SIGTERM');
+      this.chromeProcess = null;
+      agentLogger.info('Killed pre-launched Chrome process');
     }
   }
 
@@ -263,6 +412,11 @@ export class Agent {
       // Set job context for tools to access
       if (this.jobContext) {
         // No in-process setter; canonical path is env-only
+      }
+
+      // Pre-launch Chrome if browser_automation is enabled (before sandbox kicks in)
+      if (hasBrowserAutomation(this.enabledTools)) {
+        await this.launchChrome();
       }
 
       // Install enabled extensions before generating settings
@@ -361,6 +515,8 @@ export class Agent {
       // Preserve the original shape { error, telemetry } but ensure `error` is the actual Error, not the wrapper
       throw { error: nestedError, telemetry };
     } finally {
+      // Always clean up Chrome
+      this.killChrome();
       // Clear job context
       if (this.jobContext) {
         // No in-process clear; canonical path is env-only
@@ -562,6 +718,7 @@ export class Agent {
           // Expose workspace directory for native tools even when cwd is stable
           ...(this.codeWorkspace && this.codeWorkspace.trim() !== '' ? { JINN_WORKSPACE_DIR: this.codeWorkspace } : {}),
           // Enable sandbox mode (default: 'sandbox-exec' for macOS Seatbelt isolation)
+          // Chrome is pre-launched outside the sandbox, so sandbox can stay enabled
           GEMINI_SANDBOX: sandboxMode,
         }
       });
@@ -835,13 +992,6 @@ export class Agent {
         throw new Error('No MCP servers configured in settings.template.json');
       }
 
-      // Conditionally include chrome-devtools server based on browser_automation meta-tool
-      // If browser_automation is not in enabledTools, remove the chrome-devtools server
-      if (templateSettings.mcpServers['chrome-devtools'] && !hasBrowserAutomation(this.enabledTools)) {
-        delete templateSettings.mcpServers['chrome-devtools'];
-        agentLogger.debug('Removed chrome-devtools server (browser_automation not enabled)');
-      }
-
       const serverName = templateSettings.mcpServers.metacog ? 'metacog' : Object.keys(templateSettings.mcpServers)[0];
       if (!serverName) throw new Error('No MCP servers found in template configuration');
 
@@ -884,12 +1034,6 @@ export class Agent {
       const metacogTools = toolPolicy.mcpIncludeTools.filter(t => !browserToolSet.has(t));
       mcpServer.includeTools = metacogTools;
 
-      // If chrome-devtools server is present, set its includeTools to browser automation tools
-      if (templateSettings.mcpServers['chrome-devtools']) {
-        const browserTools = toolPolicy.mcpIncludeTools.filter(t => browserToolSet.has(t));
-        templateSettings.mcpServers['chrome-devtools'].includeTools = browserTools;
-      }
-
       // CRITICAL: Do NOT set global excludeTools for MCP tools - it overrides per-server includeTools
       // The Gemini CLI respects per-server includeTools without needing global exclusions
       // templateSettings.excludeTools = toolPolicy.mcpExcludeTools;
@@ -903,6 +1047,16 @@ export class Agent {
           ...extensionExcludedTools
         ];
         agentLogger.debug({ extensionExcludedTools }, 'Added extension excluded tools to settings');
+      }
+
+      // Block browser automation tools when browser_automation meta-tool is not enabled
+      // This prevents agents from accidentally using browser tools without explicit permission
+      if (!hasBrowserAutomation(this.enabledTools)) {
+        templateSettings.excludeTools = [
+          ...(templateSettings.excludeTools || []),
+          ...BROWSER_AUTOMATION_TOOLS
+        ];
+        agentLogger.debug('Blocked browser automation tools (browser_automation not enabled)');
       }
 
       // Whitelist native tools at the CLI level (write_file, replace, etc.)

@@ -131,7 +131,12 @@ export function hasBrowserAutomation(enabledTools: string[]): boolean {
  * 3. excludedTools are added to settings.json to block unsafe tools
  */
 export const EXTENSION_META_TOOLS = {
-  // telegram_messaging removed - now handled via custom MCP tools
+  browser_automation: {
+    installUrl: 'https://github.com/nickmyatt/chrome-devtools-mcp',
+    extensionName: 'chrome-devtools-mcp',
+    requiredEnv: [],
+    tools: [...BROWSER_AUTOMATION_TOOLS] as string[],
+  },
 } as const;
 
 export type ExtensionMetaTool = keyof typeof EXTENSION_META_TOOLS;
