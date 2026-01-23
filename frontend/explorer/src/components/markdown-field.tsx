@@ -56,7 +56,7 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
     <div className={`space-y-3 ${className}`}>
       {title && (
         <div className="flex items-center justify-between">
-          <h4 className="font-medium text-gray-900 text-sm">{title}</h4>
+          <h4 className="font-medium text-foreground text-sm">{title}</h4>
           <Button
             variant="outline"
             size="sm"
@@ -84,7 +84,7 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
       <div className="border rounded-lg overflow-hidden">
         {showRaw ? (
           <div className="bg-muted p-4">
-            <pre className="text-sm text-gray-400 whitespace-pre-wrap font-mono break-words">
+            <pre className="text-sm text-foreground/80 whitespace-pre-wrap font-mono break-words">
               {content}
             </pre>
           </div>
@@ -93,14 +93,14 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                // Customize markdown rendering
-                h1: ({ children }) => <h1 className="text-lg font-bold text-gray-900 mt-0 mb-3">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-base font-semibold text-gray-900 mt-4 mb-2">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-sm font-medium text-gray-900 mt-3 mb-2">{children}</h3>,
-                p: ({ children }) => <p className="text-sm text-gray-400 mb-2 leading-relaxed">{children}</p>,
-                ul: ({ children }) => <ul className="text-sm text-gray-400 list-disc pl-5 mb-2 space-y-1">{children}</ul>,
-                ol: ({ children }) => <ol className="text-sm text-gray-400 list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
-                li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                // Customize markdown rendering - use theme-aware colors
+                h1: ({ children }) => <h1 className="text-lg font-bold text-foreground mt-0 mb-3">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-base font-semibold text-foreground mt-4 mb-2">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-sm font-medium text-foreground mt-3 mb-2">{children}</h3>,
+                p: ({ children }) => <p className="text-sm text-foreground/90 mb-2 leading-relaxed">{children}</p>,
+                ul: ({ children }) => <ul className="text-sm text-foreground/90 list-disc pl-5 mb-2 space-y-1">{children}</ul>,
+                ol: ({ children }) => <ol className="text-sm text-foreground/90 list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
+                li: ({ children }) => <li className="leading-relaxed text-foreground/90">{children}</li>,
                 code: ({ children, className }) => {
                   const isInline = !className
                   if (isInline) {
@@ -117,8 +117,8 @@ export function MarkdownField({ content, title, className = "" }: MarkdownFieldP
                     {children}
                   </blockquote>
                 ),
-                strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
-                em: ({ children }) => <em className="italic text-gray-400">{children}</em>,
+                strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                em: ({ children }) => <em className="italic text-foreground/80">{children}</em>,
                 a: ({ href, children }) => (
                   <a
                     href={href}
