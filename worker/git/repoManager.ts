@@ -81,8 +81,16 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
 
   workerLogger.info({ remoteUrl, targetPath }, 'Cloning repository');
 
+  // For HTTPS GitHub URLs, embed token if available for private repo access
+  let cloneUrl = normalizeSshUrl(remoteUrl);
+  const token = process.env.GITHUB_TOKEN;
+  if (token && remoteUrl.startsWith('https://github.com/')) {
+    cloneUrl = remoteUrl.replace('https://', `https://${token}@`);
+    workerLogger.debug({ targetPath }, 'Using GITHUB_TOKEN for HTTPS clone');
+  }
+
   try {
-    execFileSync('git', ['clone', normalizeSshUrl(remoteUrl), targetPath], {
+    execFileSync('git', ['clone', cloneUrl, targetPath], {
       stdio: 'pipe',
       encoding: 'utf-8',
       timeout: GIT_CLONE_TIMEOUT_MS,
