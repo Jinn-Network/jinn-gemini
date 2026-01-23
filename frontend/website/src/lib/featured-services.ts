@@ -25,6 +25,11 @@ export const FEATURED_INSTANCES: FeaturedInstance[] = [
     id: '0x7b2e6b9630b621b9773a4afe110c184e6bf052dfbffbf1563fa6c6158ea3ece5',
     name: 'The Long Run',
     description: 'Processing cutting-edge longevity research into actionable health optimization protocols.'
+  },
+  {
+    id: '0x87e548281b4411ef2f6f3f9e84e665833c1f7ce511ce8457979019b19c629336',
+    name: 'Service Replicator',
+    description: 'Autonomous venture that identifies subscription services ripe for cost disruption and builds cheaper alternatives through AI operations.'
   }
 ];
 
