@@ -34,6 +34,7 @@ import { hideBin } from 'yargs/helpers';
 import { scriptLogger } from '../logging/index.js';
 import { buildIpfsPayload } from '../gemini-agent/shared/ipfs-payload-builder.js';
 import { deepSubstitute, loadInputConfig } from './shared/template-substitution.js';
+import { resolveGitUrl } from './shared/git-url.js';
 import { validateInvariantsStrict } from '../worker/prompt/invariant-validator.js';
 import { extractToolPolicyFromBlueprint } from '../gemini-agent/shared/template-tools.js';
 
@@ -102,7 +103,7 @@ class RepoExistsError extends Error {
   }
 }
 
-async function initializeRepo(localPath: string, repoUrl: string, repoName: string): Promise<void> {
+async function initializeRepo(localPath: string, sshUrl: string, repoName: string): Promise<void> {
   // Create directory
   await mkdir(localPath, { recursive: true });
 
@@ -124,8 +125,8 @@ async function initializeRepo(localPath: string, repoUrl: string, repoName: stri
     // Ignore if already on main
   }
 
-  // Add remote and push
-  execSync(`git remote add origin ${repoUrl}`, { cwd: localPath, stdio: 'pipe' });
+  // Add remote and push using SSH (consistent with --repo flag pattern)
+  execSync(`git remote add origin ${sshUrl}`, { cwd: localPath, stdio: 'pipe' });
   execSync('git push -u origin main', { cwd: localPath, stdio: 'pipe' });
 }
 
@@ -325,7 +326,14 @@ async function main() {
         repoPath = join(workstreamsDir, repoName);
 
         scriptLogger.info({ repoPath }, 'Initializing local repository');
-        await initializeRepo(repoPath, repo.clone_url, repoName);
+        // Replace github.com with SSH host alias if configured (for multi-account SSH configs)
+        const sshUrl = resolveGitUrl(repo.ssh_url, {
+          sshHost: inputConfig?.sshHost as string | undefined,
+        });
+        if (sshUrl !== repo.ssh_url) {
+          scriptLogger.debug({ originalSshUrl: repo.ssh_url, sshUrl, sshHost: inputConfig?.sshHost }, 'Using SSH host alias from input config');
+        }
+        await initializeRepo(repoPath, sshUrl, repoName);
         scriptLogger.info('Initialized and pushed to main branch');
 
         // Add repo context

@@ -167,6 +167,51 @@ export function hasTelegramMessaging(enabledTools: string[]): boolean {
 }
 
 /**
+ * Railway deployment tools (from @anthropic/railway-mcp)
+ * Agent-safe subset: service management only, no project-level operations
+ */
+export const RAILWAY_TOOLS = [
+  // Environment discovery (needed to get environmentId)
+  'environment-list',
+  'environment-info',
+  'project_environments',
+  // Service Management (within pre-created project)
+  'service_list',
+  'service_info',
+  'service_create_from_repo',
+  'service_create_from_image',
+  'service_restart',
+  'service_update',
+  'service_delete',
+  'template-deploy',
+  // Domains (to get/create service URLs)
+  'domain_list',
+  'domain_create',
+  'domain_check',
+  // Variables
+  'list_service_variables',
+  'variable_set',
+  'variable_delete',
+  'variable_bulk_set',
+  // Monitoring & Logs
+  'deployment_list',
+  'deployment_trigger',
+  'deployment_logs',
+  'deployment_status',
+  'logs-deployment',
+  // Database
+  'database_list_types',
+  'database_deploy_from_template',
+] as const;
+
+/**
+ * Check if railway deployment is enabled in the tools list
+ */
+export function hasRailwayDeployment(enabledTools: string[]): boolean {
+  return enabledTools.includes('railway_deployment');
+}
+
+/**
  * Get all excluded tools from enabled extensions
  */
 export function getExtensionExcludedTools(enabledTools: string[]): string[] {
@@ -258,6 +303,14 @@ export function computeToolPolicy(
     expandedTools = [
       ...expandedTools.filter(t => t !== 'telegram_messaging'),
       ...TELEGRAM_TOOLS
+    ];
+  }
+
+  // Expand railway_deployment meta-tool to Railway MCP tools
+  if (expandedTools.includes('railway_deployment')) {
+    expandedTools = [
+      ...expandedTools.filter(t => t !== 'railway_deployment'),
+      ...RAILWAY_TOOLS
     ];
   }
 

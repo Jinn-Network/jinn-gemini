@@ -19,6 +19,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { scriptLogger } from '../logging/index.js';
 import { extractToolPolicyFromBlueprint } from '../gemini-agent/shared/template-tools.js';
+import { resolveGitUrl } from './shared/git-url.js';
 
 // --- Helper Functions (Reused from x402-execute-template.ts) ---
 
@@ -79,11 +80,19 @@ async function prepareRepo(repoUrl: string, targetDir: string): Promise<string> 
 
     scriptLogger.info({ repoUrl, repoPath }, 'Preparing repository...');
 
+    // Convert HTTPS GitHub URL to SSH format for consistent auth pattern
+    const gitUrl = resolveGitUrl(repoUrl);
+    if (gitUrl !== repoUrl) {
+        scriptLogger.debug({ originalUrl: repoUrl, sshUrl: gitUrl }, 'Converted to SSH URL');
+    }
+
     try {
         // Check if exists
         try {
             await readFile(join(repoPath, '.git/config'));
-            scriptLogger.info('Repo exists, fetching updates...');
+            scriptLogger.info('Repo exists, updating remote and fetching...');
+            // Enable push access by updating remote to SSH
+            execSync(`git remote set-url origin ${gitUrl}`, { cwd: repoPath, stdio: 'pipe' });
             try {
                 execSync('git fetch origin', { cwd: repoPath, stdio: 'pipe' });
             } catch (fetchError) {
@@ -94,7 +103,7 @@ async function prepareRepo(repoUrl: string, targetDir: string): Promise<string> 
             if (!existsSync(targetDir)) {
                 await mkdir(targetDir, { recursive: true });
             }
-            execSync(`git clone ${repoUrl} ${repoPath}`, { stdio: 'inherit' });
+            execSync(`git clone ${gitUrl} ${repoPath}`, { stdio: 'pipe' });
         }
         return repoPath;
     } catch (error) {
@@ -242,7 +251,7 @@ async function main() {
                 const tools = requiredTools.length > 0
                     ? requiredTools
                     : (availableTools.length > 0 ? availableTools : [
-                    'google_web_search', 'create_artifact', 'web_fetch', 'get_details'
+                        'google_web_search', 'create_artifact', 'web_fetch', 'get_details'
                     ]);
                 return tools;
             })(),

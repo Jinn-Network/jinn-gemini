@@ -103,7 +103,7 @@
     "codespec:autofix": "tsx codespec/scripts/autofix-violation.ts",
     "codespec:worktree:list": "git worktree list",
     "codespec:worktree:cleanup": "tsx -e \"import {WorktreeManager} from './codespec/lib/worktree-manager.js'; const wm = new WorktreeManager(); wm.cleanup().then(n => console.log('Cleaned up', n, 'worktrees'))\"",
-    "provision:blog": "tsx scripts/product/provision-blog.ts"
+    "provision": "tsx scripts/product/provision.ts"
   },
   "dependencies": {
     "@jinn-network/mech-client-ts": "^0.0.6",

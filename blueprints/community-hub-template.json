@@ -1,8 +1,8 @@
 {
     "templateMeta": {
-        "id": "blog-growth",
-        "name": "Blog Growth Template",
-        "description": "Autonomous blog growth with content creation, distribution, analytics, and site branding",
+        "id": "community-hub",
+        "name": "Community Hub Template",
+        "description": "Autonomous community hub with content creation, community engagement, project showcase, distribution, analytics, and site branding",
         "priceWei": "0",
         "inputSchema": {
             "type": "object",
@@ -18,6 +18,11 @@
                 "strategy": {
                     "type": "string",
                     "description": "Freeform content strategy. Include: topics/pillars, target audience, voice/tone, competitors to cover, special content angles."
+                },
+                "communityDescription": {
+                    "type": "string",
+                    "description": "Description of the community: who are the members, what brings them together, what value does the hub provide to them?",
+                    "default": ""
                 },
                 "sources": {
                     "type": "array",
@@ -178,7 +183,8 @@
                     "Include relevant parent invariants (e.g., Content Manager gets GOAL-CONTENT, GOAL-SOURCES-*)",
                     "Dispatch Content Manager with content-relevant strategy invariants",
                     "Dispatch Distribution Manager with channel strategy invariants",
-                    "Dispatch Site Manager with branding guidance invariants"
+                    "Dispatch Site Manager with branding guidance invariants",
+                    "Dispatch Community Manager with GOAL-COMMUNITY, GOAL-SHOWCASE invariants"
                 ],
                 "dont": [
                     "Pass entire {{strategy}} blob as text to managers",
@@ -198,7 +204,8 @@
                     "Content Manager -> dispatch 'Content Writer' for each post topic",
                     "Site Manager -> dispatch 'Site Developer' for code changes",
                     "Distribution Manager -> dispatch 'Telegram Specialist', 'SEO Specialist'",
-                    "Analytics Manager -> dispatch 'Metrics Analyst' for each report type"
+                    "Analytics Manager -> dispatch 'Metrics Analyst' for each report type",
+                    "Community Manager -> dispatch 'Showcase Curator', 'Community Writer'"
                 ],
                 "dont": [
                     "Content Manager writes blog posts directly",
@@ -286,7 +293,7 @@
             "examples": {
                 "do": [
                     "Use blog_list_posts before planning any new content",
-                    "Rotate content formats: tutorial → analysis → news → deep-dive",
+                    "Rotate content formats: tutorial -> analysis -> news -> deep-dive",
                     "Explicitly note 'This builds on our previous post about X by exploring Y'",
                     "Track topics covered in past month to identify gaps",
                     "Write complementary pieces that link to each other"
@@ -297,6 +304,95 @@
                     "Ignore the existing content catalog when planning",
                     "Use the same format (e.g., listicle) for consecutive posts",
                     "Cover identical news from the same angle twice"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-SITE",
+            "type": "FLOOR",
+            "metric": "site_branding_alignment_score",
+            "min": 70,
+            "assessment": "The blog is hosted at {{domain}}. Rate site 0-100 using: Mission clarity (20%) - does landing page communicate {{mission}} within 5 seconds?; Visual identity (20%) - custom colors/fonts/imagery, NOT default template theme; Navigation (20%) - community-relevant sections easily accessible, logical information architecture; Differentiation (20%) - count concrete deviations from base template: custom hero, unique page layouts, branded components, custom illustrations. Score 0 if site looks like unmodified tailwind-nextjs-starter-blog; Community presence (20%) - is there visible evidence this is a community hub (member section, project showcase, community links)?",
+            "examples": {
+                "do": [
+                    "Customize hero section with mission-aligned messaging",
+                    "Choose color palette that reinforces brand identity",
+                    "Add community-specific navigation items",
+                    "Create custom page layouts for community sections",
+                    "Replace default template imagery with branded assets"
+                ],
+                "dont": [
+                    "Keep default template colors/fonts unchanged",
+                    "Use generic stock imagery",
+                    "Leave 'Tailwind Starter Blog' anywhere visible",
+                    "Have navigation that doesn't reflect community structure",
+                    "Score yourself high on differentiation with only color changes"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-SITE-FEATURES",
+            "type": "FLOOR",
+            "metric": "site_features_shipped",
+            "min": 1,
+            "assessment": "Count distinct site features shipped per cycle. A 'feature' is a user-facing addition: new page/route, interactive component, data-driven section, or navigation change. Verified by: (1) file changes exist in app/ or components/, (2) build passes, (3) feature is accessible via navigation or URL.",
+            "examples": {
+                "do": [
+                    "Create a /community page with member highlights",
+                    "Add an events section with upcoming/past community events",
+                    "Build a contributor wall-of-fame component",
+                    "Add a resources/links page curated for the community",
+                    "Create interactive elements (polls via static data, FAQ accordions)"
+                ],
+                "dont": [
+                    "Only change blog post content (that's GOAL-CONTENT)",
+                    "Ship features that break the build",
+                    "Add features with no navigation path (undiscoverable)",
+                    "Duplicate existing functionality"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-COMMUNITY",
+            "type": "FLOOR",
+            "metric": "community_engagement_score",
+            "min": 60,
+            "assessment": "Rate community engagement 0-100. Community description: {{communityDescription}}. Scoring rubric: Community Content (25%) - count community-focused posts (spotlights, roundups, event recaps) as fraction of total posts. 0 if none, 25 if >=30% of posts are community-oriented; Distribution Engagement (25%) - Telegram broadcasts include community CTAs (not just links). 0 if broadcast-only, 25 if messages invite participation/contribution; Site Touchpoints (25%) - count community-specific pages/sections (members page, resources, community links, events). 0 if none, 12 for 1, 25 for 2+; Freshness (25%) - community content updated this cycle. 0 if stale, 25 if new community content added.",
+            "examples": {
+                "do": [
+                    "Write member spotlight posts highlighting community contributors",
+                    "Create 'community roundup' posts summarizing ecosystem activity",
+                    "Include CTAs in Telegram: 'Share your project', 'Join the discussion'",
+                    "Maintain a community links/resources page",
+                    "Track community engagement metrics (referrers from community sources)"
+                ],
+                "dont": [
+                    "Treat community as passive audience (broadcast-only)",
+                    "Ignore community-sourced content ideas",
+                    "Post generic content with no community relevance",
+                    "Let community pages go stale (no updates for multiple cycles)"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-SHOWCASE",
+            "type": "FLOOR",
+            "metric": "showcase_quality_score",
+            "min": 50,
+            "assessment": "Rate community showcase 0-100. Scoring rubric: Existence (20%) - a dedicated showcase page/section is accessible via navigation. 0 if missing, 20 if present; Entry Count (20%) - number of showcase entries. 0 for none, 10 for 1-2, 20 for 3+; Entry Quality (20%) - each entry has title, description, working link, and category/tags. Score average completeness across entries; Diversity (20%) - entries span different contributors/projects, not just first-party. 0 if all internal, 20 if >=50% community-sourced; Currency (20%) - entries added or verified this cycle. 0 if all stale, 20 if at least one new entry or link verification.",
+            "examples": {
+                "do": [
+                    "Create/update data/projectsData.ts with community projects",
+                    "Add a showcase page route with cards/grid layout",
+                    "Include project categories or tags for filtering",
+                    "Feature new community projects in blog posts",
+                    "Link showcase entries to their GitHub/live URLs"
+                ],
+                "dont": [
+                    "Leave showcase empty or with placeholder data",
+                    "Add entries without verifying links work",
+                    "Showcase only internal/first-party projects",
+                    "Let showcase become outdated (remove dead links)"
                 ]
             }
         },
@@ -372,27 +468,6 @@
                 "dont": [
                     "Accept sustained decline without action",
                     "Chase vanity metrics over real growth"
-                ]
-            }
-        },
-        {
-            "id": "GOAL-SITE",
-            "type": "FLOOR",
-            "metric": "site_branding_alignment_score",
-            "min": 70,
-            "assessment": "The blog is hosted at {{domain}}. Rate site 0-100 using: Mission clarity (25%) - does landing page communicate {{mission}} within 5 seconds?; Visual identity (25%) - do colors, typography, imagery reinforce the blog's tone?; Navigation (25%) - can visitors easily find content aligned with their interests?; Differentiation (25%) - is the site distinct from template defaults and competitors?",
-            "examples": {
-                "do": [
-                    "Design choices that reinforce the mission",
-                    "Clear value proposition above the fold",
-                    "Visual identity consistent with content tone",
-                    "Distinctive branding that stands out"
-                ],
-                "dont": [
-                    "Generic template appearance",
-                    "Branding that contradicts the mission",
-                    "Confusing navigation",
-                    "Stock imagery without customization"
                 ]
             }
         },

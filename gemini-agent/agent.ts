@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
 import { getOptionalCodeMetadataRepoRoot, getSandboxMode } from '../config/index.js';
 import { getRepoRoot } from '../shared/repo_utils.js';
-import { computeToolPolicy, UNIVERSAL_TOOLS, hasBrowserAutomation, BROWSER_AUTOMATION_TOOLS, getEnabledExtensions, EXTENSION_META_TOOLS, getExtensionExcludedTools, type ToolPolicyResult } from './toolPolicy.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, hasBrowserAutomation, BROWSER_AUTOMATION_TOOLS, hasRailwayDeployment, RAILWAY_TOOLS, getEnabledExtensions, EXTENSION_META_TOOLS, getExtensionExcludedTools, type ToolPolicyResult } from './toolPolicy.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
@@ -27,6 +27,7 @@ interface MCPServerConfig {
   includeTools?: string[];
   excludeTools?: string[];
   trust?: boolean;
+  env?: Record<string, string>;
 }
 
 interface GeminiSettings {
@@ -76,6 +77,40 @@ type JobContext = {
   sourceEventId: string | null;
   projectDefinitionId: string | null;
 };
+
+/**
+ * Substitutes ${ENV_VAR} placeholders in MCP server env blocks with actual values from process.env.
+ * Gemini CLI does not automatically pass environment variables to MCP subprocesses,
+ * so we need to resolve them at settings generation time.
+ */
+function substituteEnvVariables(settings: GeminiSettings): GeminiSettings {
+  if (!settings.mcpServers) return settings;
+
+  for (const [serverName, serverConfig] of Object.entries(settings.mcpServers)) {
+    if (serverConfig.env) {
+      const substitutedEnv: Record<string, string> = {};
+      for (const [key, value] of Object.entries(serverConfig.env)) {
+        // Match ${VAR_NAME} pattern
+        const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)\}$/);
+        if (match) {
+          const envVar = match[1];
+          const envValue = process.env[envVar];
+          if (!envValue) {
+            throw new Error(`Required environment variable ${envVar} not set (needed by MCP server "${serverName}")`);
+          }
+          substitutedEnv[key] = envValue;
+          agentLogger.debug({ serverName, key, envVar }, 'Substituted env variable in MCP config');
+        } else {
+          // Not a placeholder, use as-is
+          substitutedEnv[key] = value;
+        }
+      }
+      serverConfig.env = substitutedEnv;
+    }
+  }
+
+  return settings;
+}
 
 export class Agent {
   private model: string;
@@ -988,8 +1023,18 @@ export class Agent {
 
       const templateSettings: GeminiSettings = JSON.parse(readFileSync(templatePath, 'utf8'));
 
+      // Substitute ${ENV_VAR} placeholders in MCP server env blocks
+      substituteEnvVariables(templateSettings);
+
       if (!templateSettings.mcpServers) {
         throw new Error('No MCP servers configured in settings.template.json');
+      }
+
+      // Conditionally include railway server based on railway_deployment meta-tool
+      // If railway_deployment is not in enabledTools, remove the railway server
+      if (templateSettings.mcpServers['railway'] && !hasRailwayDeployment(this.enabledTools)) {
+        delete templateSettings.mcpServers['railway'];
+        agentLogger.debug('Removed railway server (railway_deployment not enabled)');
       }
 
       const serverName = templateSettings.mcpServers.metacog ? 'metacog' : Object.keys(templateSettings.mcpServers)[0];
@@ -1033,6 +1078,13 @@ export class Agent {
       const browserToolSet = new Set(BROWSER_AUTOMATION_TOOLS as readonly string[]);
       const metacogTools = toolPolicy.mcpIncludeTools.filter(t => !browserToolSet.has(t));
       mcpServer.includeTools = metacogTools;
+
+      // If railway server is present, set its includeTools to railway deployment tools
+      if (templateSettings.mcpServers['railway']) {
+        const railwayToolSet = new Set(RAILWAY_TOOLS as readonly string[]);
+        const railwayTools = toolPolicy.mcpIncludeTools.filter(t => railwayToolSet.has(t));
+        templateSettings.mcpServers['railway'].includeTools = railwayTools;
+      }
 
       // CRITICAL: Do NOT set global excludeTools for MCP tools - it overrides per-server includeTools
       // The Gemini CLI respects per-server includeTools without needing global exclusions

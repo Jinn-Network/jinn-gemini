@@ -47,7 +47,7 @@ export function checkProvisioningEnv(): { configured: boolean; missing: string[]
   const required = [
     'GITHUB_TOKEN',
     'RAILWAY_API_TOKEN',
-    'BLOG_RAILWAY_PROJECT_ID', // Not RAILWAY_PROJECT_ID (Railway auto-injects that)
+    // Note: No BLOG_RAILWAY_PROJECT_ID - we create per-workstream projects now
     'UMAMI_HOST',
     'UMAMI_USERNAME',
     'UMAMI_PASSWORD',

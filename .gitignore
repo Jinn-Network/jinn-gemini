@@ -262,3 +262,7 @@ code-resources/
 .worktrees/
 .security-key
 logs/security/
+.beads/sync-state.json
+.beads/last-touched
+.beads/*.startlock
+.beads/daemon.pid
