@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { FileText, Loader2 } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
+import { FileText, Loader2, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { queryArtifacts, queryRequests, fetchIpfsContent, getJobName, type Artifact } from '@/lib/subgraph';
 import { MarkdownField } from '@/components/markdown-field';
@@ -27,10 +28,14 @@ interface ArtifactWithJobName extends Artifact {
 
 export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
   const [artifacts, setArtifacts] = useState<ArtifactWithJobName[]>([]);
-  const [selectedArtifact, setSelectedArtifact] = useState<ArtifactWithJobName | null>(null);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
+  const hasAutoSelected = useRef(false);
+
+  // Derive selected artifact from ID
+  const selectedArtifact = artifacts.find(a => a.id === selectedArtifactId) || null;
 
   const fetchArtifacts = useCallback(async () => {
     try {
@@ -83,14 +88,10 @@ export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
 
       setArtifacts(artifactsWithJobNames);
 
-      // Auto-select most recent artifact if none selected or selection no longer exists
-      if (artifactsWithJobNames.length > 0) {
-        const currentSelectionExists = selectedArtifact &&
-          artifactsWithJobNames.some(a => a.id === selectedArtifact.id);
-
-        if (!currentSelectionExists) {
-          setSelectedArtifact(artifactsWithJobNames[0]);
-        }
+      // Auto-select most recent artifact only on initial load
+      if (!hasAutoSelected.current && artifactsWithJobNames.length > 0) {
+        setSelectedArtifactId(artifactsWithJobNames[0].id);
+        hasAutoSelected.current = true;
       }
 
       setLoading(false);
@@ -98,7 +99,7 @@ export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
       console.error('Error fetching artifacts:', error);
       setLoading(false);
     }
-  }, [workstreamId, selectedArtifact]);
+  }, [workstreamId]);
 
   // Initial fetch and polling
   useEffect(() => {
@@ -201,23 +202,33 @@ export function ArtifactsGallery({ workstreamId }: ArtifactsGalleryProps) {
             {artifacts.map((artifact) => (
               <button
                 key={artifact.id}
-                onClick={() => setSelectedArtifact(artifact)}
+                onClick={() => setSelectedArtifactId(artifact.id)}
                 className={cn(
                   "w-full text-left p-3 rounded-lg transition-colors",
-                  selectedArtifact?.id === artifact.id
+                  selectedArtifactId === artifact.id
                     ? "bg-primary/10 border border-primary/30"
                     : "hover:bg-muted/50"
                 )}
               >
                 <div className="flex items-start gap-2">
-                  <Badge variant="secondary" className="text-[10px] shrink-0">
+                  <Badge variant="secondary" className="text-[10px] shrink-0 uppercase">
                     {artifact.topic}
                   </Badge>
                 </div>
                 <div className="font-medium text-sm mt-1 line-clamp-2">
                   {artifact.name || 'Untitled'}
                 </div>
-                {artifact.jobName && (
+                {artifact.jobName && artifact.sourceJobDefinitionId && (
+                  <Link
+                    href={`/ventures/${workstreamId}/tree/${artifact.sourceJobDefinitionId}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"
+                  >
+                    {artifact.jobName}
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                )}
+                {artifact.jobName && !artifact.sourceJobDefinitionId && (
                   <div className="text-xs text-muted-foreground mt-1">
                     Job: {artifact.jobName}
                   </div>
