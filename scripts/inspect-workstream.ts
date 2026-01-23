@@ -79,8 +79,14 @@ interface WorkstreamNode {
 // --- Queries ---
 
 const WORKSTREAM_QUERY = gql`
-  query GetWorkstream($workstreamId: String!) {
-    requests(where: { workstreamId: $workstreamId }, orderBy: "blockTimestamp", orderDirection: "asc") {
+  query GetWorkstream($workstreamId: String!, $limit: Int!, $offset: Int!) {
+    requests(
+      where: { workstreamId: $workstreamId }
+      orderBy: "blockTimestamp"
+      orderDirection: "asc"
+      limit: $limit
+      offset: $offset
+    ) {
       items {
         id
         mech
@@ -100,8 +106,8 @@ const WORKSTREAM_QUERY = gql`
 `;
 
 const JOB_DEFINITIONS_QUERY = gql`
-  query GetJobDefinitions($jobDefIds: [String!]!) {
-    jobDefinitions(where: { id_in: $jobDefIds }) {
+  query GetJobDefinitions($jobDefIds: [String!]!, $limit: Int!) {
+    jobDefinitions(where: { id_in: $jobDefIds }, limit: $limit) {
       items {
         id
         name
@@ -114,8 +120,8 @@ const JOB_DEFINITIONS_QUERY = gql`
 `;
 
 const DELIVERIES_QUERY = gql`
-  query GetDeliveries($requestIds: [String!]!) {
-    deliverys(where: { requestId_in: $requestIds }) {
+  query GetDeliveries($requestIds: [String!]!, $limit: Int!, $offset: Int!) {
+    deliverys(where: { requestId_in: $requestIds }, limit: $limit, offset: $offset) {
       items {
         id
         requestId
@@ -127,8 +133,8 @@ const DELIVERIES_QUERY = gql`
 `;
 
 const ARTIFACTS_QUERY = gql`
-  query GetArtifacts($requestIds: [String!]!) {
-    artifacts(where: { requestId_in: $requestIds }) {
+  query GetArtifacts($requestIds: [String!]!, $limit: Int!, $offset: Int!) {
+    artifacts(where: { requestId_in: $requestIds }, limit: $limit, offset: $offset) {
       items {
         id
         requestId
@@ -202,6 +208,37 @@ function truncate(str: string, maxLength: number = 100): string {
   return str.substring(0, maxLength) + '...';
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  if (size <= 0) return chunks;
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function fetchPaged<T>(
+  fetchPage: (limit: number, offset: number) => Promise<T[]>,
+  pageSize: number,
+  maxItems?: number
+): Promise<T[]> {
+  const results: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const remaining = maxItems ? maxItems - results.length : pageSize;
+    if (maxItems && remaining <= 0) break;
+    const limit = Math.min(pageSize, remaining);
+    const page = await fetchPage(limit, offset);
+    if (page.length === 0) break;
+    results.push(...page);
+    offset += page.length;
+    if (page.length < limit) break;
+  }
+
+  return results;
+}
+
 
 // --- Main ---
 
@@ -209,6 +246,14 @@ async function main() {
   const argv = await yargs(hideBin(process.argv))
     .usage('Usage: $0 <workstream-id>')
     .demandCommand(1, 'You must provide a workstream ID')
+    .option('limit', {
+      type: 'string',
+      describe: 'Max requests to fetch (default: all)'
+    })
+    .option('page-size', {
+      type: 'string',
+      describe: 'Page size for GraphQL pagination (default: 200)'
+    })
     .help()
     .parserConfiguration({
       'parse-numbers': false,
@@ -217,17 +262,32 @@ async function main() {
     .parse();
   
   const workstreamId = String(argv._[0]);
+  const rawLimit = argv.limit ? Number(argv.limit) : undefined;
+  const requestLimit = rawLimit && Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : undefined;
+  const rawPageSize = argv['page-size'] ? Number(argv['page-size']) : 200;
+  const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? rawPageSize : 200;
   
   console.error(`\n🔍 Inspecting workstream: ${workstreamId}`);
   console.error(`Ponder API: ${PONDER_GRAPHQL_URL}\n`);
+  console.error(`Pagination: pageSize=${pageSize}${requestLimit ? ` limit=${requestLimit}` : ''}\n`);
   
   const client = new GraphQLClient(PONDER_GRAPHQL_URL);
 
   try {
     // 1. First fetch all requests in the workstream
     console.error('Fetching requests...');
-    const requestsRes = await client.request<{ requests: { items: Request[] } }>(WORKSTREAM_QUERY, { workstreamId });
-    const requests = requestsRes.requests.items;
+    const requests = await fetchPaged<Request>(
+      async (limit, offset) => {
+        const requestsRes = await client.request<{ requests: { items: Request[] } }>(WORKSTREAM_QUERY, {
+          workstreamId,
+          limit,
+          offset
+        });
+        return requestsRes.requests.items;
+      },
+      pageSize,
+      requestLimit
+    );
     
     if (requests.length === 0) {
       console.error('❌ No requests found for this workstream ID.');
@@ -238,25 +298,52 @@ async function main() {
     const uniqueJobDefIds = [...new Set(requests.map(r => r.jobDefinitionId).filter(Boolean))];
     
     console.error(`Fetching ${uniqueJobDefIds.length} job definitions for ${requests.length} requests...`);
-    const jobDefsRes = await client.request<{ jobDefinitions: { items: Array<{ id: string; name: string; lastStatus: string; lastInteraction: string; sourceJobDefinitionId: string }> } }>(
-      JOB_DEFINITIONS_QUERY, 
-      { jobDefIds: uniqueJobDefIds }
-    );
-    
-    const jobDefinitions = jobDefsRes.jobDefinitions.items;
+    const jobDefinitions: Array<{ id: string; name: string; lastStatus: string; lastInteraction: string; sourceJobDefinitionId: string }> = [];
+    const jobDefChunks = chunkArray(uniqueJobDefIds, pageSize);
+    for (const chunk of jobDefChunks) {
+      const jobDefsRes = await client.request<{ jobDefinitions: { items: Array<{ id: string; name: string; lastStatus: string; lastInteraction: string; sourceJobDefinitionId: string }> } }>(
+        JOB_DEFINITIONS_QUERY,
+        { jobDefIds: chunk, limit: chunk.length }
+      );
+      jobDefinitions.push(...jobDefsRes.jobDefinitions.items);
+    }
     console.error(`✅ Found ${jobDefinitions.length} unique jobs with ${requests.length} total job runs`);
 
     const requestIds = requests.map(r => r.id);
 
     // 3. Fetch Deliveries & Artifacts
     console.error('Fetching deliveries and artifacts...');
-    const [deliveriesRes, artifactsRes] = await Promise.all([
-      client.request<{ deliverys: { items: Delivery[] } }>(DELIVERIES_QUERY, { requestIds }),
-      client.request<{ artifacts: { items: Artifact[] } }>(ARTIFACTS_QUERY, { requestIds })
-    ]);
-
-    const deliveries = deliveriesRes.deliverys.items;
-    const artifacts = artifactsRes.artifacts.items;
+    const requestIdChunks = chunkArray(requestIds, pageSize);
+    const deliveries: Delivery[] = [];
+    const artifacts: Artifact[] = [];
+    for (const chunk of requestIdChunks) {
+      const [chunkDeliveries, chunkArtifacts] = await Promise.all([
+        fetchPaged<Delivery>(
+          async (limit, offset) => {
+            const deliveriesRes = await client.request<{ deliverys: { items: Delivery[] } }>(DELIVERIES_QUERY, {
+              requestIds: chunk,
+              limit,
+              offset
+            });
+            return deliveriesRes.deliverys.items;
+          },
+          pageSize
+        ),
+        fetchPaged<Artifact>(
+          async (limit, offset) => {
+            const artifactsRes = await client.request<{ artifacts: { items: Artifact[] } }>(ARTIFACTS_QUERY, {
+              requestIds: chunk,
+              limit,
+              offset
+            });
+            return artifactsRes.artifacts.items;
+          },
+          pageSize
+        )
+      ]);
+      deliveries.push(...chunkDeliveries);
+      artifacts.push(...chunkArtifacts);
+    }
 
     console.error(`✅ Found ${deliveries.length} deliveries and ${artifacts.length} artifacts`);
 
