@@ -865,6 +865,105 @@ const summarizeOutputSpec = summarizeSpec;
 // Use shared template substitution functions (imported from scripts/shared/template-substitution.ts)
 const buildBlueprintFromTemplate = sharedBuildBlueprint;
 
+// ============================================================
+// Credential Bridge: Crypto Identity → Web2 OAuth
+// ============================================================
+
+import { getGrant } from './credentials/acl.js';
+import { getNangoAccessToken } from './credentials/nango-client.js';
+import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
+
+/**
+ * Recover signer address from EIP-191 personal_sign signature.
+ */
+async function recoverAddress(message: string, signature: string): Promise<string> {
+  const { recoverMessageAddress } = await import('viem');
+  const address = await recoverMessageAddress({
+    message,
+    signature: signature as `0x${string}`,
+  });
+  return address.toLowerCase();
+}
+
+/**
+ * POST /credentials/:provider
+ *
+ * Agent signs a request body with its private key.
+ * Gateway verifies signature, checks ACL, optionally verifies x402 payment,
+ * then returns a fresh OAuth token from Nango.
+ */
+app.post("/credentials/:provider", async (c) => {
+  const provider = c.req.param("provider");
+
+  // Parse request body
+  let body: CredentialRequest;
+  try {
+    body = await c.req.json() as CredentialRequest;
+  } catch {
+    return c.json({ error: "Invalid JSON body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
+  }
+
+  // Validate request freshness (within 5 minutes)
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - body.timestamp) > 300) {
+    return c.json({ error: "Request timestamp too old or in future", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
+  }
+
+  // Extract signature and address from headers
+  const signature = c.req.header("X-Agent-Signature");
+  const claimedAddress = c.req.header("X-Agent-Address");
+
+  if (!signature || !claimedAddress) {
+    return c.json({ error: "Missing X-Agent-Signature or X-Agent-Address header", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
+  }
+
+  // Verify signature: agent signed the JSON body
+  let recoveredAddress: string;
+  try {
+    const message = JSON.stringify(body);
+    recoveredAddress = await recoverAddress(message, signature);
+  } catch (err) {
+    return c.json({ error: "Signature verification failed", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
+  }
+
+  // Check recovered address matches claimed address
+  if (recoveredAddress !== claimedAddress.toLowerCase()) {
+    return c.json({ error: "Signature does not match claimed address", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
+  }
+
+  // Check ACL
+  const grant = getGrant(recoveredAddress, provider);
+  if (!grant) {
+    return c.json({ error: `No active grant for ${provider}`, code: "NOT_AUTHORIZED" } satisfies CredentialError, 403);
+  }
+
+  // Check payment if required
+  const price = BigInt(grant.pricePerAccess || '0');
+  if (price > 0n) {
+    const paymentHeader = c.req.header("X-402-Payment");
+    if (!paymentHeader) {
+      return c.json({ error: `Payment required: ${grant.pricePerAccess} wei`, code: "PAYMENT_REQUIRED" } satisfies CredentialError, 402);
+    }
+    // TODO: Verify x402 payment proof here
+    // For now, presence of payment header is sufficient
+    // In production: use @coinbase/x402 facilitator to verify
+  }
+
+  // Fetch fresh token from Nango
+  try {
+    const token = await getNangoAccessToken(grant.nangoConnectionId);
+    const response: CredentialResponse = {
+      access_token: token.access_token,
+      expires_in: token.expires_in,
+      provider,
+    };
+    return c.json(response);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `Nango error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError, 502);
+  }
+});
+
 // Start server
 const port = parseInt(env.PORT || "3001", 10);
 console.log(`x402 Gateway running on :${port}`);
