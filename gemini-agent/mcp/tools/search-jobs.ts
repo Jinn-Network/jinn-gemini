@@ -58,31 +58,45 @@ export async function searchJobs(params: SearchJobsParams) {
     const context = getCurrentJobContext();
     const workstreamId = context.workstreamId;
 
-    // Step 1: Search job definitions by name and blueprint
-    // Scope to current workstream if context is available
     const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
 
-    // Build query conditionally based on workstream context
-    const jobsGql = workstreamId
-      ? `query SearchJobs($q: String!, $workstreamId: String!, $limit: Int!) {
-          jobDefinitions(where: {
-            workstreamId: $workstreamId,
-            OR: [
-              { name_contains: $q },
-              { blueprint_contains: $q }
-            ]
-          }, limit: $limit) {
-            items {
-              id name blueprint enabledTools
-              sourceJobDefinitionId sourceRequestId workstreamId
-            }
+    let jobs: any[] = [];
+
+    if (workstreamId) {
+      // Blood-Written Rule #11: Query requests by workstreamId first, then batch-fetch job definitions
+      // This is necessary because jobDefinition.workstreamId only stores the FIRST workstream,
+      // but a job can run in multiple workstreams. The requests table has the correct workstreamId.
+
+      // Step 1: Get all unique jobDefinitionIds from requests in this workstream
+      const requestsGql = `query GetWorkstreamJobs($workstreamId: String!, $limit: Int!) {
+        requests(where: { workstreamId: $workstreamId }, limit: $limit) {
+          items {
+            jobDefinitionId
+            jobName
           }
-        }`
-      : `query SearchJobs($q: String!, $limit: Int!) {
-          jobDefinitions(where: { OR: [
-            { name_contains: $q },
-            { blueprint_contains: $q }
-          ] }, limit: $limit) {
+        }
+      }`;
+
+      const requestsRes = await fetch(PONDER_GRAPHQL_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: requestsGql, variables: { workstreamId, limit: 500 } })
+      });
+
+      const requestsJson = await requestsRes.json();
+      const requests = requestsJson?.data?.requests?.items || [];
+
+      // Extract unique jobDefinitionIds
+      const jobDefIds = Array.from(new Set(requests
+        .filter((r: any) => r.jobDefinitionId)
+        .map((r: any) => r.jobDefinitionId)
+      )) as string[];
+
+      if (jobDefIds.length > 0) {
+        // Step 2: Fetch job definitions by IDs, filtered by search query
+        // Note: Ponder GraphQL may not support id_in, so we fetch all and filter client-side
+        const jobsGql = `query GetJobDefinitions($ids: [String!]!, $limit: Int!) {
+          jobDefinitions(where: { id_in: $ids }, limit: $limit) {
             items {
               id name blueprint enabledTools
               sourceJobDefinitionId sourceRequestId workstreamId
@@ -90,17 +104,46 @@ export async function searchJobs(params: SearchJobsParams) {
           }
         }`;
 
-    const variables = workstreamId
-      ? { q: query, workstreamId, limit: 100 }
-      : { q: query, limit: 100 };
-    const res = await fetch(PONDER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: jobsGql, variables })
-    });
+        const jobsRes = await fetch(PONDER_GRAPHQL_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: jobsGql, variables: { ids: jobDefIds, limit: 100 } })
+        });
 
-    const json = await res.json();
-    const jobs = json?.data?.jobDefinitions?.items || [];
+        const jobsJson = await jobsRes.json();
+        const allJobs = jobsJson?.data?.jobDefinitions?.items || [];
+
+        // Filter by search query (case-insensitive)
+        const lowerQuery = query.toLowerCase();
+        jobs = allJobs.filter((job: any) => {
+          const nameMatch = job.name?.toLowerCase().includes(lowerQuery);
+          const blueprintMatch = job.blueprint?.toLowerCase().includes(lowerQuery);
+          return nameMatch || blueprintMatch;
+        });
+      }
+    } else {
+      // No workstream context - search globally by name/blueprint
+      const jobsGql = `query SearchJobs($q: String!, $limit: Int!) {
+        jobDefinitions(where: { OR: [
+          { name_contains: $q },
+          { blueprint_contains: $q }
+        ] }, limit: $limit) {
+          items {
+            id name blueprint enabledTools
+            sourceJobDefinitionId sourceRequestId workstreamId
+          }
+        }
+      }`;
+
+      const res = await fetch(PONDER_GRAPHQL_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: jobsGql, variables: { q: query, limit: 100 } })
+      });
+
+      const json = await res.json();
+      jobs = json?.data?.jobDefinitions?.items || [];
+    }
 
     // Step 2: For each job, fetch its requests (if requested)
     let enrichedJobs = jobs;
