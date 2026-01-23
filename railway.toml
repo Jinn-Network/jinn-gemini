@@ -1,8 +1,9 @@
 [build]
 builder = "NIXPACKS"
 nixpacksConfigPath = "nixpacks.toml"
+watchPatterns = ["/ponder/**", "/package.json", "/scripts/patch-dist-imports.js"]
 
 [deploy]
-startCommand = "npx tsx control-api/server.ts & sleep 3 && node dist/worker/mech_worker.js"
+startCommand = "cd ponder && ponder start --port $PORT --schema $RAILWAY_DEPLOYMENT_ID --views-schema jinn_gemini_public"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
