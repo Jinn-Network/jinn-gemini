@@ -1,7 +1,9 @@
-# Pin to nixpkgs archive that includes Node.js 22
+# Disable auto-detection and explicitly specify Node.js 22
+providers = []
+
 [phases.setup]
 nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
-nixPkgs = ["nodejs_22", "yarn-1_x"]
+nixPkgs = ["nodejs_22", "yarn-1_x", "openssl"]
 
 [phases.install]
 cmds = ["yarn install --frozen-lockfile"]
