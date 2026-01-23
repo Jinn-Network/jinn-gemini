@@ -294,6 +294,11 @@ STAKING_PROGRAM=<program>
 - Run `yarn dev:mech` to start the worker with current branch code
 - Jobs dispatched to the workstream will be processed by this local worker
 
+**Railway Worker Service (if used):**
+- Service name: `jinn-worker`
+- Set `WORKER_STUCK_EXIT_CYCLES` to auto-exit after N stuck cycles (lets Railway restart the service)
+- Recommended: `WORKER_STUCK_EXIT_CYCLES=5`
+
 ---
 
 ## Ponder Deployment
@@ -1417,5 +1422,4 @@ yarn tsx scripts/check-balances.ts
 **End of Operational Guide**
 
 *For deep architecture, see `docs/documentation/`. Keep this file under 400 lines.*
-
 
