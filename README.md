@@ -89,6 +89,7 @@ cp .env.template .env
 WORKER_PRIVATE_KEY=0x...           # Your EOA private key
 CHAIN_ID=8453                       # 8453 = Base mainnet, 84532 = Base Sepolia
 RPC_URL=https://mainnet.base.org    # Base RPC endpoint
+WORKER_STUCK_EXIT_CYCLES=5          # Optional: exit after N stuck cycles for supervisor restart
 
 # === Ponder (On-chain Event Indexer) ===
 # Use RPC_URL for Ponder chain access; optionally set PONDER_START_BLOCK
@@ -361,6 +362,7 @@ To run the Jinn worker and its associated services, you'll need to configure sev
 -   `WORKER_PRIVATE_KEY`: The private key of an Externally Owned Account (EOA). This is used to deterministically provision and control the agent's on-chain identity (a Gnosis Safe).
 -   `CHAIN_ID`: The chain ID of the target blockchain (e.g., `8453` for Base mainnet).
 -   `RPC_URL`: The URL of an RPC endpoint for the specified `CHAIN_ID`.
+-   `WORKER_STUCK_EXIT_CYCLES`: Optional watchdog threshold (exit after N stuck cycles so supervisors can restart).
 -   `SUPABASE_URL`: Your Supabase project URL.
 -   `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key.
 -   `GEMINI_API_KEY`: Your API key for the Gemini API.

@@ -63,6 +63,7 @@ SUPABASE_SERVICE_ROLE_KEY=<key>
 PONDER_PORT=42069
 CONTROL_API_PORT=4001
 USE_TSX_MCP=1
+WORKER_STUCK_EXIT_CYCLES=5  # Optional watchdog exit for stuck cycles
 
 # 3. Start full stack
 yarn dev:stack
@@ -1416,6 +1417,5 @@ yarn tsx scripts/check-balances.ts
 **End of Operational Guide**
 
 *For deep architecture, see `docs/documentation/`. Keep this file under 400 lines.*
-
 
 
