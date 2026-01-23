@@ -1,0 +1,8 @@
+[build]
+builder = "NIXPACKS"
+nixpacksConfigPath = "worker/nixpacks.toml"
+
+[deploy]
+startCommand = "npx tsx control-api/server.ts & sleep 3 && node dist/worker/mech_worker.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
