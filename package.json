@@ -10,7 +10,7 @@
   ],
   "main": "dist/worker.js",
   "scripts": {
-    "build": "tsc -p . && node scripts/patch-dist-imports.js",
+    "build": "tsc -p . && node scripts/patch-dist-imports.js && cp gemini-agent/settings.template*.json dist/gemini-agent/",
     "dev:mech": "sh -c 'USE_TSX_MCP=1 tsx worker/mech_worker.ts \"$@\" | tsx logging/dev-pretty-cli.ts' --",
     "dev:mech:raw": "USE_TSX_MCP=1 tsx worker/mech_worker.ts",
     "dev:mech:continuous": "USE_TSX_MCP=1 tsx worker/mech_worker.ts",

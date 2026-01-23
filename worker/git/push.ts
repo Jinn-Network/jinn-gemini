@@ -9,6 +9,51 @@ import { DEFAULT_REMOTE_NAME, GIT_PUSH_TIMEOUT_MS } from '../constants.js';
 import { serializeError } from '../logging/errors.js';
 
 /**
+ * Configure git credential helper if GITHUB_TOKEN is available
+ * This enables git push to authenticate with the token
+ */
+function configureGitCredentials(repoRoot: string): void {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    workerLogger.debug('No GITHUB_TOKEN available for git credential configuration');
+    return;
+  }
+
+  const { execFileSync } = require('node:child_process');
+
+  try {
+    // Configure credential helper to use the token for github.com
+    // This sets up a store-based credential that git will use for HTTPS URLs
+    execFileSync('git', ['config', '--local', 'credential.helper', 'store'], {
+      cwd: repoRoot,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
+
+    // Write the credential to the store file
+    const { writeFileSync, mkdirSync } = require('node:fs');
+    const { homedir } = require('node:os');
+    const { join } = require('node:path');
+
+    const gitCredentialsPath = join(homedir(), '.git-credentials');
+    const credentialLine = `https://${token}:x-oauth-basic@github.com\n`;
+
+    // Append if file exists, otherwise create
+    const { appendFileSync } = require('node:fs');
+    try {
+      appendFileSync(gitCredentialsPath, credentialLine, { mode: 0o600 });
+    } catch {
+      writeFileSync(gitCredentialsPath, credentialLine, { mode: 0o600 });
+    }
+
+    workerLogger.debug({ repoRoot }, 'Configured git credentials for GITHUB_TOKEN');
+  } catch (error: any) {
+    workerLogger.warn({ error: serializeError(error) }, 'Failed to configure git credentials (non-fatal)');
+  }
+}
+
+/**
  * Custom error for git push failures
  */
 export class GitPushError extends Error {
@@ -48,6 +93,9 @@ export async function pushJobBranch(branchName: string, codeMetadata: CodeMetada
     remoteUrl: codeMetadata?.repo?.remoteUrl,
   };
   workerLogger.info(pushInfo, 'Pushing job branch to remote');
+
+  // Configure git credentials if GITHUB_TOKEN is available
+  configureGitCredentials(repoRoot);
 
   // Verify remote configuration
   try {
