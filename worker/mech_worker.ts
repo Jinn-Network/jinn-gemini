@@ -87,13 +87,40 @@ const MAX_STUCK_CYCLES = (() => {
 })();
 
 // Workstream filtering: parse --workstream=<id> flag or WORKSTREAM_FILTER env var
-const WORKSTREAM_FILTER = (() => {
+// Supports multiple workstreams via:
+//   - Comma-separated: "0x123,0x456,0x789"
+//   - JSON array: '["0x123","0x456"]'
+//   - Single value: "0x123"
+const WORKSTREAM_FILTERS: string[] = (() => {
   const arg = process.argv.find(arg => arg.startsWith('--workstream='));
-  return arg ? arg.split('=')[1] : process.env.WORKSTREAM_FILTER;
+  const raw = arg ? arg.split('=')[1] : process.env.WORKSTREAM_FILTER;
+  if (!raw) return [];
+
+  // Try parsing as JSON array first
+  if (raw.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(s => String(s).trim()).filter(Boolean);
+      }
+    } catch {
+      // Not valid JSON, fall through to comma-separated parsing
+    }
+  }
+
+  // Parse as comma-separated or single value
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
 })();
 
-if (MAX_CYCLES !== undefined && !process.env.WORKER_STOP_FILE && WORKSTREAM_FILTER) {
-  process.env.WORKER_STOP_FILE = `/tmp/jinn-stop-cycle-${WORKSTREAM_FILTER}`;
+// Legacy single-value alias for backward compatibility in logging
+const WORKSTREAM_FILTER = WORKSTREAM_FILTERS.length === 1 ? WORKSTREAM_FILTERS[0] : undefined;
+
+if (MAX_CYCLES !== undefined && !process.env.WORKER_STOP_FILE && WORKSTREAM_FILTERS.length > 0) {
+  // Use first workstream for stop file naming (or hash if multiple)
+  const stopFileSuffix = WORKSTREAM_FILTERS.length === 1
+    ? WORKSTREAM_FILTERS[0]
+    : `multi-${WORKSTREAM_FILTERS.length}`;
+  process.env.WORKER_STOP_FILE = `/tmp/jinn-stop-cycle-${stopFileSuffix}`;
 }
 
 // Auto-reposting configuration
@@ -324,7 +351,7 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
       ponderUrl: PONDER_GRAPHQL_URL,
       mechFilterMode: mechFilter.mode,
       mechFilterAddresses: mechFilter.mode === 'any' ? 'any' : mechFilter.addresses,
-      workstreamFilter: WORKSTREAM_FILTER || 'none'
+      workstreamFilter: WORKSTREAM_FILTERS.length > 0 ? WORKSTREAM_FILTERS : 'none'
     }, 'Fetching requests from Ponder');
 
     // Build where conditions based on filter mode
@@ -336,8 +363,11 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     }
     // 'any' mode: no mech filter
 
-    if (WORKSTREAM_FILTER) {
+    // Workstream filtering: single vs multiple
+    if (WORKSTREAM_FILTERS.length === 1) {
       whereConditions.push('workstreamId: $workstreamId');
+    } else if (WORKSTREAM_FILTERS.length > 1) {
+      whereConditions.push('workstreamId_in: $workstreamIds');
     }
     const whereClause = `{ ${whereConditions.join(', ')} }`;
 
@@ -348,8 +378,10 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     } else if (mechFilter.mode === 'single') {
       varDefs.push('$mech: String!');
     }
-    if (WORKSTREAM_FILTER) {
+    if (WORKSTREAM_FILTERS.length === 1) {
       varDefs.push('$workstreamId: String!');
+    } else if (WORKSTREAM_FILTERS.length > 1) {
+      varDefs.push('$workstreamIds: [String!]!');
     }
 
     // Query our local Ponder GraphQL (custom schema) - FILTER BY MECH AND UNDELIVERED (and optionally WORKSTREAM)
@@ -379,8 +411,10 @@ async function fetchRecentRequests(limit: number = 10): Promise<UnclaimedRequest
     } else if (mechFilter.mode === 'single') {
       variables.mech = mechFilter.addresses[0];
     }
-    if (WORKSTREAM_FILTER) {
-      variables.workstreamId = WORKSTREAM_FILTER;
+    if (WORKSTREAM_FILTERS.length === 1) {
+      variables.workstreamId = WORKSTREAM_FILTERS[0];
+    } else if (WORKSTREAM_FILTERS.length > 1) {
+      variables.workstreamIds = WORKSTREAM_FILTERS;
     }
 
     const data = await graphQLRequest<{ requests: { items: any[] } }>({
