@@ -1112,6 +1112,28 @@ Without `codeMetadata`, the worker treats the job as artifact-only (`isCodingJob
 **Where:** `worker/mech_worker.ts` in `getUndeliveredSet` and `filterUnclaimed` fallback path.
 **Prevention:** Treat this as an RPC/contract read failure; verify Base RPC health and marketplace contract calls before assuming worker logic is broken.
 
+### 60. dispatch_existing_job Missing Env Var Inheritance (2026-01-22) [FIXED]
+**Issue:** Jobs dispatched via `dispatch_existing_job` failed with "Missing required environment variables" (e.g., `TELEGRAM_CHAT_ID`) even though jobs dispatched via `dispatch_new_job` in the same workstream worked correctly.
+**Root Cause:** `dispatch_existing_job.ts` manually built the IPFS payload without inheriting `JINN_INHERITED_ENV` - the env var propagation mechanism used by `dispatch_new_job` via `buildIpfsPayload()`.
+**Impact:** Template configs with `inputSchema.envVar` mappings (e.g., `telegramChatId → TELEGRAM_CHAT_ID`) were not passed to children dispatched via `dispatch_existing_job`.
+**Fix:** Added `JINN_INHERITED_ENV` inheritance logic to `dispatch_existing_job.ts` (lines 236-246), matching the behavior in `ipfs-payload-builder.ts:172-181`.
+**Files Changed:** `gemini-agent/mcp/tools/dispatch_existing_job.ts`
+
+### 61. Browser Automation Uses Extension-Based Architecture (2026-01-22)
+**Issue:** Browser automation tools failed with "browser is already running" when multiple workers ran concurrently.
+**Root Cause:** The global chrome-devtools-mcp extension at `~/.gemini/extensions/chrome-devtools-mcp` launched Chrome without `--isolated=true`, causing all instances to share `~/.cache/chrome-devtools-mcp/chrome-profile` → lock conflict.
+**Solution:** Migrated from mcpServers-based config to extension-based architecture:
+1. Added `browser_automation` to `EXTENSION_META_TOOLS` in `toolPolicy.ts`
+2. Extension config is patched after install to include `--isolated=true` (creates temp user-data-dir per instance)
+3. Removed `chrome-devtools` from `settings.template.dev.json` and `settings.template.json`
+4. Browser tools are blocked via `excludeTools` when `browser_automation` not in `enabledTools`
+**Files Changed:**
+- `gemini-agent/toolPolicy.ts`: Added browser_automation to EXTENSION_META_TOOLS
+- `gemini-agent/agent.ts`: Added `patchBrowserExtensionConfig()`, removed chrome-devtools mcpServers logic, added excludeTools blocking
+- `gemini-agent/settings.template.dev.json`: Removed chrome-devtools server
+- `gemini-agent/settings.template.json`: Removed chrome-devtools server
+**Prevention:** Never add browser automation directly to settings templates. Use the extension system with `--isolated=true` to ensure concurrent workers don't conflict.
+
 ## Test Infrastructure Gotchas
 
 ### Git Fixtures Must Have Main Branch
