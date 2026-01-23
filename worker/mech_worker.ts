@@ -676,9 +676,14 @@ async function filterByDependencies(requests: UnclaimedRequest[]): Promise<Uncla
 }
 
 async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promise<boolean> {
+  const resolvedWorkstreamId = request.workstreamId || request.id;
+
   // Skip jobs already executed this session (prevents re-execution loop on delivery failure)
   if (executedJobsThisSession.has(request.id)) {
-    workerLogger.info({ requestId: request.id }, 'Already executed this session - skipping to prevent re-execution loop');
+    workerLogger.info({
+      requestId: request.id,
+      workstreamId: resolvedWorkstreamId
+    }, 'Already executed this session - skipping to prevent re-execution loop');
     return false;
   }
 
@@ -688,22 +693,42 @@ async function tryClaim(request: UnclaimedRequest, workerAddress: string): Promi
       const res = await apiClaimRequest(request.id);
       // Skip if already claimed by another worker or stuck IN_PROGRESS
       if (res?.alreadyClaimed) {
-        workerLogger.info({ requestId: request.id, status: res.status }, 'Already claimed - skipping');
+        workerLogger.info({
+          requestId: request.id,
+          status: res.status,
+          workstreamId: resolvedWorkstreamId
+        }, 'Already claimed - skipping');
         return false;
       }
       if (res && (res.status === 'IN_PROGRESS' || res.status === 'COMPLETED')) {
         const ok = res.status === 'IN_PROGRESS';
-        workerLogger.info({ requestId: request.id, status: res.status }, ok ? 'Claimed via Control API' : 'Already handled via Control API');
+        workerLogger.info({
+          requestId: request.id,
+          status: res.status,
+          workstreamId: resolvedWorkstreamId
+        }, ok ? 'Claimed via Control API' : 'Already handled via Control API');
         return ok;
       }
-      workerLogger.info({ requestId: request.id, status: res?.status }, 'Unexpected claim response');
+      workerLogger.info({
+        requestId: request.id,
+        status: res?.status,
+        workstreamId: resolvedWorkstreamId
+      }, 'Unexpected claim response');
       return false;
     } catch (e: any) {
-      workerLogger.info({ requestId: request.id, reason: e?.message || String(e) }, 'Control API claim failed');
+      workerLogger.info({
+        requestId: request.id,
+        reason: e?.message || String(e),
+        workstreamId: resolvedWorkstreamId
+      }, 'Control API claim failed');
       return false;
     }
   } catch (e: any) {
-    workerLogger.warn({ requestId: request.id, error: serializeError(e) }, 'Claim error');
+    workerLogger.warn({
+      requestId: request.id,
+      error: serializeError(e),
+      workstreamId: resolvedWorkstreamId
+    }, 'Claim error');
     return false;
   }
 }

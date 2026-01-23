@@ -66,6 +66,17 @@ interface AgentResult {
   telemetry: JobTelemetry;
 }
 
+type JobContext = {
+  jobId: string;
+  jobDefinitionId: string | null;
+  jobName: string;
+  workstreamId?: string;
+  phase?: string;
+  projectRunId: string | null;
+  sourceEventId: string | null;
+  projectDefinitionId: string | null;
+};
+
 export class Agent {
   private model: string;
   private enabledTools: string[];
@@ -74,7 +85,7 @@ export class Agent {
   private codeWorkspace: string;
   private geminiHome: string;
   private lastTelemetryFile: string | null = null;
-  private jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null };
+  private jobContext?: JobContext;
   private cachedToolPolicy: ToolPolicyResult | null = null;
   private isCodingJob: boolean;
   private onStatusUpdate?: (status: string) => void;
@@ -96,7 +107,7 @@ export class Agent {
   constructor(
     model: string,
     enabledTools: string[],
-    jobContext?: { jobId: string; jobDefinitionId: string | null; jobName: string; phase?: string; projectRunId: string | null; sourceEventId: string | null; projectDefinitionId: string | null },
+    jobContext?: JobContext,
     codeWorkspace?: string | null,
     options?: { isCodingJob?: boolean; onStatusUpdate?: (status: string) => void }
   ) {
@@ -433,6 +444,7 @@ export class Agent {
       agentLogger.info({
         model: this.model,
         jobName: this.jobContext?.jobName || 'job',
+        workstreamId: this.jobContext?.workstreamId || process.env.JINN_WORKSTREAM_ID || undefined,
         phase: this.jobContext?.phase || 'execution'
       }, 'Spawning Gemini CLI');
 
@@ -465,6 +477,7 @@ export class Agent {
           envWithJob.JINN_JOB_ID = this.jobContext.jobId || '';
           envWithJob.JINN_JOB_DEFINITION_ID = this.jobContext.jobDefinitionId || '';
           envWithJob.JINN_JOB_NAME = this.jobContext.jobName || '';
+          envWithJob.JINN_WORKSTREAM_ID = this.jobContext.workstreamId || envWithJob.JINN_WORKSTREAM_ID || '';
           envWithJob.JINN_PROJECT_RUN_ID = this.jobContext.projectRunId || '';
           envWithJob.JINN_SOURCE_EVENT_ID = this.jobContext.sourceEventId || '';
           envWithJob.JINN_PROJECT_DEFINITION_ID = this.jobContext.projectDefinitionId || '';

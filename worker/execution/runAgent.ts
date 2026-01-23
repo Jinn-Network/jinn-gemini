@@ -76,6 +76,7 @@ export async function runAgentForRequest(
       jobId: request.id,
       jobDefinitionId: metadata?.jobDefinitionId || null,
       jobName: metadata?.jobName || 'job',
+      workstreamId: metadata?.workstreamId || request.workstreamId || request.id,
       phase: 'execution',
       projectRunId: null,
       sourceEventId: null,
@@ -107,7 +108,7 @@ export async function runAgentForRequest(
         metadata?.codeMetadata?.branch?.name ||
         metadata?.codeMetadata?.baseBranch ||
         undefined,
-      workstreamId: metadata?.workstreamId || request.id, // Fallback to requestId for root jobs
+      workstreamId: metadata?.workstreamId || request.workstreamId || request.id, // Fallback to requestId for root jobs
       parentRequestId: metadata?.sourceRequestId || undefined,
       branchName: metadata?.codeMetadata?.branch?.name || undefined,
       completedChildRequestIds,

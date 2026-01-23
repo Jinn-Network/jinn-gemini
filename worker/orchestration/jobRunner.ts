@@ -89,7 +89,16 @@ export async function processOnce(
       fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/orchestration/jobRunner.ts:86',message:'metadata sources for workspace',data:{requestId:target.id,codeMetadataRemoteUrl:metadata?.codeMetadata?.repo?.remoteUrl,workspaceRepoUrl:metadata?.additionalContext?.workspaceRepo?.url,hasCodeMetadata:!!metadata?.codeMetadata,hasWorkspaceRepo:!!metadata?.additionalContext?.workspaceRepo},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
       // #endregion
 
-      workerLogger.info({ jobName: metadata?.jobName, requestId: target.id }, 'Processing request');
+      const resolvedWorkstreamId = metadata?.workstreamId || target.workstreamId || target.id;
+      if (metadata) {
+        metadata.workstreamId = resolvedWorkstreamId;
+      }
+
+      workerLogger.info({
+        jobName: metadata?.jobName,
+        requestId: target.id,
+        workstreamId: resolvedWorkstreamId
+      }, 'Processing request');
 
       // Inject environment variables from additionalContext.env
       // This enables multi-tenant products to pass per-job configuration

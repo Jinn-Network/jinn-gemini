@@ -190,6 +190,7 @@ export interface UnclaimedRequest {
   id: string;           // on-chain requestId (decimal string or 0x)
   mech: string;         // mech address (0x...)
   requester: string;    // requester address (0x...)
+  workstreamId?: string; // workstream context for dependency resolution
   blockTimestamp?: number;
   ipfsHash?: string;
   delivered?: boolean;
