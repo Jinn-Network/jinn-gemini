@@ -2,6 +2,35 @@ import { logger } from '../logging/index.js';
 
 const httpLogger = logger.child({ component: 'HTTP' });
 
+const GRAPHQL_OPERATION_REGEX = /\b(query|mutation|subscription)\s+([A-Za-z0-9_]+)/;
+
+function extractGraphQLOperationName(query: string): string | undefined {
+  const match = GRAPHQL_OPERATION_REGEX.exec(query);
+  if (!match) return undefined;
+  return match[2];
+}
+
+function formatUrlForLog(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return rawUrl.split('?')[0];
+  }
+}
+
+function formatHttpTarget(url: string, method: string, context?: Record<string, any>): string {
+  const operation = typeof context?.operation === 'string' && context.operation.trim()
+    ? ` (${context.operation})`
+    : '';
+  return `${method.toUpperCase()} ${formatUrlForLog(url)}${operation}`;
+}
+
+function formatAttemptSuffix(attempt: number, maxAttempts: number): string {
+  if (maxAttempts <= 1) return '';
+  return ` (attempt ${attempt}/${maxAttempts})`;
+}
+
 export class HttpError extends Error {
   constructor(
     message: string,
@@ -47,6 +76,10 @@ export async function fetchWithRetry(
     ...headers
   };
 
+  const method = (init.method || 'GET').toUpperCase();
+  const maxAttempts = maxRetries + 1;
+  const target = formatHttpTarget(url, method, context);
+
   let lastError: any;
   const startTime = Date.now();
 
@@ -57,13 +90,14 @@ export async function fetchWithRetry(
     const attemptStart = Date.now();
 
     try {
+      const attemptSuffix = formatAttemptSuffix(attempt + 1, maxAttempts);
       httpLogger.debug({
         url,
-        method: init.method || 'GET',
+        method,
         attempt: attempt + 1,
-        maxAttempts: maxRetries + 1,
+        maxAttempts,
         ...context
-      }, 'HTTP request attempt');
+      }, `${target}${attemptSuffix}`);
 
       const response = await fetch(url, {
         ...init,
@@ -80,13 +114,13 @@ export async function fetchWithRetry(
 
         httpLogger.debug({
           url,
-          method: init.method || 'GET',
+          method,
           status: response.status,
           statusText: response.statusText,
           attempt: attempt + 1,
           duration,
           ...context
-        }, 'HTTP request failed (non-2xx status)');
+        }, `${target} -> ${response.status} ${response.statusText} in ${duration}ms${attemptSuffix}`);
 
         // Don't retry on client errors (4xx), only server errors (5xx) and network issues
         if (response.status >= 400 && response.status < 500) {
@@ -94,7 +128,7 @@ export async function fetchWithRetry(
             `HTTP ${response.status}: ${response.statusText}`,
             response.status,
             body,
-            { url, method: init.method, ...context }
+            { url, method, ...context }
           );
         }
 
@@ -102,18 +136,19 @@ export async function fetchWithRetry(
           `HTTP ${response.status}: ${response.statusText}`,
           response.status,
           body,
-          { url, method: init.method, ...context }
+          { url, method, ...context }
         );
       } else {
+        const attemptSuffix = formatAttemptSuffix(attempt + 1, maxAttempts);
         httpLogger.info({
           url,
-          method: init.method || 'GET',
+          method,
           status: response.status,
           attempt: attempt + 1,
           duration,
           totalDuration: Date.now() - startTime,
           ...context
-        }, 'HTTP request succeeded');
+        }, `${target} -> ${response.status} in ${duration}ms${attemptSuffix}`);
 
         return response;
       }
@@ -121,6 +156,7 @@ export async function fetchWithRetry(
       clearTimeout(timeout);
 
       const duration = Date.now() - attemptStart;
+      const attemptSuffix = formatAttemptSuffix(attempt + 1, maxAttempts);
 
       // If it's already an HttpError from non-2xx response, re-throw immediately
       if (err instanceof HttpError && err.status >= 400 && err.status < 500) {
@@ -129,12 +165,12 @@ export async function fetchWithRetry(
 
       httpLogger.debug({
         url,
-        method: init.method || 'GET',
+        method,
         error: err?.message || String(err),
         attempt: attempt + 1,
         duration,
         ...context
-      }, 'HTTP request failed (exception)');
+      }, `${target} exception after ${duration}ms${attemptSuffix}: ${err?.message || String(err)}`);
 
       lastError = err;
     }
@@ -147,7 +183,7 @@ export async function fetchWithRetry(
         backoffMs,
         nextAttempt: attempt + 2,
         ...context
-      }, 'Retrying HTTP request after backoff');
+      }, `${target} retrying in ${backoffMs}ms (next attempt ${attempt + 2}/${maxAttempts})`);
 
       await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
@@ -158,22 +194,22 @@ export async function fetchWithRetry(
 
   httpLogger.error({
     url,
-    method: init.method || 'GET',
-    attempts: maxRetries + 1,
+    method,
+    attempts: maxAttempts,
     totalDuration,
     error: lastError?.message || String(lastError),
     ...context
-  }, 'HTTP request failed after all retries');
+  }, `${target} failed after ${maxAttempts} attempts in ${totalDuration}ms: ${lastError?.message || String(lastError)}`);
 
   if (lastError instanceof HttpError) {
     throw lastError;
   }
 
   throw new HttpError(
-    `Request failed after ${maxRetries + 1} attempts: ${lastError?.message || String(lastError)}`,
+    `Request failed after ${maxAttempts} attempts: ${lastError?.message || String(lastError)}`,
     0,
     '',
-    { url, method: init.method, attempts: maxRetries + 1, ...context }
+    { url, method, attempts: maxAttempts, ...context }
   );
 }
 
@@ -260,6 +296,12 @@ export async function graphQLRequest<T>(opts: {
   timeoutMs?: number;
   maxRetries?: number;
 }): Promise<T> {
+  const operationName = extractGraphQLOperationName(opts.query);
+  const context = {
+    ...(opts.context || {}),
+    ...(operationName && !opts.context?.operation ? { operation: operationName } : {})
+  };
+
   const response = await postJson<{ data?: T; errors?: Array<{ message: string }> }>(
     opts.url,
     {
@@ -268,7 +310,7 @@ export async function graphQLRequest<T>(opts: {
     },
     {
       headers: opts.headers,
-      context: opts.context,
+      context,
       timeoutMs: opts.timeoutMs,
       maxRetries: opts.maxRetries
     }
@@ -281,7 +323,7 @@ export async function graphQLRequest<T>(opts: {
       `GraphQL errors: ${errorMessages}`,
       200,
       JSON.stringify(response),
-      { url: opts.url, graphqlErrors: response.errors, ...opts.context }
+      { url: opts.url, graphqlErrors: response.errors, ...context }
     );
   }
 
@@ -290,7 +332,7 @@ export async function graphQLRequest<T>(opts: {
       'GraphQL response missing data field',
       200,
       JSON.stringify(response),
-      { url: opts.url, ...opts.context }
+      { url: opts.url, ...context }
     );
   }
 

@@ -38,8 +38,8 @@ export async function storeOnchainReport(
   } catch (reportError: any) {
     workerLogger.warn({
       requestId: request.id,
+      status: finalStatus.status,
       error: serializeError(reportError)
-    }, 'Failed to store on-chain report');
+    }, `Failed to store on-chain report (status ${finalStatus.status})`);
   }
 }
-
