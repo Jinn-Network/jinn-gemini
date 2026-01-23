@@ -233,6 +233,18 @@ export async function dispatchExistingJob(args: unknown) {
     }
   }
 
+  // Inherit parent's additionalContext.env for workstream-level config propagation
+  // This ensures env vars like TELEGRAM_CHAT_ID flow from root job to all children
+  // See: ipfs-payload-builder.ts lines 172-181 for the equivalent in dispatch_new_job
+  const inheritedEnvJson = process.env.JINN_INHERITED_ENV;
+  if (inheritedEnvJson && !additionalContext.env) {
+    try {
+      additionalContext.env = JSON.parse(inheritedEnvJson);
+    } catch {
+      console.warn('[dispatch_existing_job] Failed to parse JINN_INHERITED_ENV');
+    }
+  }
+
   if (jobContext) {
     if (!additionalContext.hierarchy) {
       additionalContext.hierarchy = jobContext.hierarchy;
