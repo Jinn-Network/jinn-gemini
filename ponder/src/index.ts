@@ -185,14 +185,24 @@ async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promi
         continue;
       }
 
-      const contentType = response.headers.get("content-type") || "";
-      // Accept both application/json and application/octet-stream for raw IPFS CIDs
       const text = await response.text();
       try {
         return JSON.parse(text);
       } catch (parseError: any) {
+        const contentType = response.headers.get("content-type") || "";
+        const bodyPreview = text.replace(/\s+/g, " ").slice(0, 200);
         const msg = `JSON parse error from ${gateway}: ${parseError.message}`;
-        logger.warn({ cidBase32, gateway, error: parseError.message }, "IPFS JSON parse failed, trying next");
+        logger.warn(
+          {
+            cidBase32,
+            gateway,
+            contentType,
+            bodyLength: text.length,
+            bodyPreview,
+            error: parseError.message,
+          },
+          "IPFS JSON parse failed, trying next"
+        );
         lastError = new Error(msg);
         continue;
       }
