@@ -1,10 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { HeartPulse, Activity, ArrowRight, Bot, GitBranch } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LiveOutputView } from './live-output-view';
+import { ArtifactsGallery } from './artifacts-gallery';
 import { ActivityFeed } from './activity-feed';
 import { HealthSummary } from './health-summary';
 import { InvariantList, type InvariantWithMeasurement } from './invariant-list';
@@ -42,8 +42,9 @@ export function VentureDashboard({
     initialTab,
     initialSelectedJobId,
 }: VentureDashboardProps) {
-    // Fallback URL if no SERVICE_OUTPUT
-    const LIVE_OUTPUT_URL = liveOutputUrl || "https://blog-the-long-run-production.up.railway.app/";
+    // Determine if we should show the Artifacts Gallery instead of Live Output
+    // Show gallery when neither liveOutputUrl nor telegramUrl is configured
+    const showArtifactsGallery = !liveOutputUrl && !telegramUrl;
     const defaultTab = initialTab ?? (initialSelectedJobId ? 'work-tree' : 'dashboard');
     const router = useRouter();
     const [activeTab, setActiveTab] = useState(defaultTab);
@@ -140,9 +141,13 @@ export function VentureDashboard({
             {/* Dashboard Tab */}
             <TabsContent value="dashboard" className="flex-1 min-h-0 mt-4">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-full">
-                    {/* Left Column: Live Output (2/3) */}
+                    {/* Left Column: Live Output or Artifacts Gallery (2/3) */}
                     <div className="lg:col-span-2 flex flex-col min-h-[500px]">
-                        <LiveOutputView url={LIVE_OUTPUT_URL} telegramUrl={telegramUrl || undefined} />
+                        {showArtifactsGallery ? (
+                            <ArtifactsGallery workstreamId={workstreamId} />
+                        ) : (
+                            <LiveOutputView url={liveOutputUrl!} telegramUrl={telegramUrl || undefined} />
+                        )}
                     </div>
 
                     {/* Right Column: Health + Activity (1/3) */}
