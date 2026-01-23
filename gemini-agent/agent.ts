@@ -88,6 +88,7 @@ export class Agent {
   private readonly REPETITION_WINDOW = parseInt(process.env.AGENT_REPETITION_WINDOW || '20'); // Track last 20 lines
   private readonly REPETITION_THRESHOLD = parseInt(process.env.AGENT_REPETITION_THRESHOLD || '10'); // Same line 10+ times = loop
   private readonly MAX_IDENTICAL_CHUNKS = parseInt(process.env.AGENT_MAX_IDENTICAL_CHUNKS || '10'); // Same chunk repeated
+  private readonly MAX_PROMPT_ARG_BYTES = parseInt(process.env.AGENT_MAX_PROMPT_ARG_BYTES || '100000'); // Avoid E2BIG on spawn
 
   // Universal tools are now defined in toolPolicy.ts
   private readonly universalTools = UNIVERSAL_TOOLS;
@@ -435,10 +436,15 @@ export class Agent {
         phase: this.jobContext?.phase || 'execution'
       }, 'Spawning Gemini CLI');
 
-      // Use -p flag for prompt (NOT positional argument)
+      const promptBytes = Buffer.byteLength(prompt, 'utf8');
+      const useStdinPrompt = promptBytes > this.MAX_PROMPT_ARG_BYTES;
+
+      // Use -p flag for small prompts (NOT positional argument)
       // CLI v0.11.2 ignores positional prompts when cwd is a git repository
-      // Using -p ensures non-interactive mode works regardless of cwd
-      args.push('-p', prompt);
+      // For large prompts, pipe via stdin to avoid E2BIG on spawn
+      if (!useStdinPrompt) {
+        args.push('-p', prompt);
+      }
 
       // Propagate job context to the MCP server via environment variables so the separate
       // MCP process can read them on startup
@@ -470,6 +476,13 @@ export class Agent {
       }
       if (!envWithJob.GEMINI_CLI_SYSTEM_DEFAULTS_PATH) {
         envWithJob.GEMINI_CLI_SYSTEM_DEFAULTS_PATH = this.settingsPath;
+      }
+      if (useStdinPrompt) {
+        envWithJob.GEMINI_SANDBOX = 'false';
+        agentLogger.warn({
+          promptBytes,
+          maxPromptArgBytes: this.MAX_PROMPT_ARG_BYTES
+        }, 'Prompt too large for argv; piping via stdin and disabling sandbox');
       }
 
       // Use /tmp for Gemini CLI to avoid macOS com.apple.provenance protection
@@ -508,6 +521,8 @@ export class Agent {
         agentLogger.debug({ error: err.message }, 'Failed to create gemini home directory');
       }
 
+      const sandboxMode = useStdinPrompt ? 'false' : getSandboxMode();
+
       const geminiProcess = spawn('npx', ['@google/gemini-cli', ...args], {
         // Use stable cwd for Gemini CLI to prevent initialization hang in test environments.
         // Gemini CLI v0.11.2 hangs when spawned with cwd pointing to ephemeral/temporary directories.
@@ -534,7 +549,7 @@ export class Agent {
           // Expose workspace directory for native tools even when cwd is stable
           ...(this.codeWorkspace && this.codeWorkspace.trim() !== '' ? { JINN_WORKSPACE_DIR: this.codeWorkspace } : {}),
           // Enable sandbox mode (default: 'sandbox-exec' for macOS Seatbelt isolation)
-          GEMINI_SANDBOX: getSandboxMode(),
+          GEMINI_SANDBOX: sandboxMode,
         }
       });
 
@@ -542,6 +557,15 @@ export class Agent {
       let stderr = '';
       let terminated = false;
       let terminationReason = '';
+
+      if (useStdinPrompt) {
+        try {
+          geminiProcess.stdin.write(prompt);
+          geminiProcess.stdin.end();
+        } catch (stdinError: any) {
+          agentLogger.warn({ error: stdinError?.message }, 'Failed to write prompt to stdin');
+        }
+      }
 
       // Tracking variables for protection
       // Consecutive-only line repetition tracking
