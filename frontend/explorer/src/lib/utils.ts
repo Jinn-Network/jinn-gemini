@@ -40,6 +40,7 @@ export const navigationItems: NavigationItem[] = [
     ]
   },
   { label: 'Artifacts', collection: 'artifacts' },
+  { label: 'Nodes', collection: 'nodes' },
 ];
 
 // Format timestamps for display

@@ -878,7 +878,48 @@ const yoga = createYoga<Context>({
 });
 
 const http = await import('http');
-const server = http.createServer(yoga);
+
+// Track server start time for uptime reporting
+const serverStartTime = new Date();
+
+const server = http.createServer((req, res) => {
+  // REST /health endpoint for easy monitoring
+  if (req.url === '/health' && req.method === 'GET') {
+    const now = new Date();
+    const uptimeMs = now.getTime() - serverStartTime.getTime();
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: 'control-api',
+      uptime: {
+        ms: uptimeMs,
+        human: formatDuration(uptimeMs),
+      },
+      timestamp: now.toISOString(),
+    }));
+    return;
+  }
+
+  // Handle all other requests with Yoga
+  yoga(req, res);
+});
+
+function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+  return `${seconds}s`;
+}
+
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`Jinn Control API running on http://localhost:${PORT}/graphql`);
