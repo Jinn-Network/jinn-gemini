@@ -120,21 +120,24 @@ export function VentureDashboard({
             }}
             className="flex-1 flex flex-col min-h-0"
         >
-            <TabsList className="w-fit">
-                <TabsTrigger value="dashboard" className="gap-2">
-                    Dashboard
+            <TabsList className="w-full md:w-fit">
+                <TabsTrigger value="dashboard" className="gap-1 md:gap-2">
+                    <span className="hidden sm:inline">Dashboard</span>
+                    <span className="sm:hidden">Home</span>
                 </TabsTrigger>
-                <TabsTrigger value="health" className="gap-2">
+                <TabsTrigger value="health" className="gap-1 md:gap-2">
                     <HeartPulse className="h-4 w-4" />
-                    Health ({invariants.length})
+                    <span className="hidden sm:inline">Health ({invariants.length})</span>
+                    <span className="sm:hidden">{invariants.length}</span>
                 </TabsTrigger>
-                <TabsTrigger value="activity" className="gap-2">
+                <TabsTrigger value="activity" className="gap-1 md:gap-2">
                     <Activity className="h-4 w-4" />
-                    Activity
+                    <span className="hidden sm:inline">Activity</span>
                 </TabsTrigger>
-                <TabsTrigger value="work-tree" className="gap-2">
+                <TabsTrigger value="work-tree" className="gap-1 md:gap-2">
                     <GitBranch className="h-4 w-4" />
-                    Work Tree
+                    <span className="hidden sm:inline">Work Tree</span>
+                    <span className="sm:hidden">Tree</span>
                 </TabsTrigger>
             </TabsList>
 

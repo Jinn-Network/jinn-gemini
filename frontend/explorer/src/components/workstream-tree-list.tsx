@@ -1,7 +1,5 @@
 'use client'
 
-'use client'
-
 import { useJobGraph } from '@/hooks/use-job-graph'
 import { useRealtimeData } from '@/hooks/use-realtime-data'
 import Link from 'next/link'
@@ -13,6 +11,8 @@ import { getJobDefinition, type JobDefinition, queryRequests, getDependencyInfo,
 import { JobDefinitionDetailLayout } from '@/components/job-definition-detail-layout'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 interface WorkstreamTreeListProps {
   rootId: string
@@ -269,16 +269,18 @@ export function WorkstreamTreeList({
   selectedJobId: selectedJobIdProp,
   onJobSelectRoute
 }: WorkstreamTreeListProps) {
+  const isMobile = useIsMobile()
   const { graph, loading, error } = useJobGraph({
     rootId,
     rootType: 'request',
     groupByDefinition: true,
   })
-  
+
   const [selectedJobId, setSelectedJobId] = useState<string | null>(initialSelectedJobId ?? null)
   const [selectedJob, setSelectedJob] = useState<JobDefinition | null>(null)
   const [loadingJob, setLoadingJob] = useState(false)
   const [jobError, setJobError] = useState<string | null>(null)
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const hasAutoSelectedRef = useRef(false)
 
   // Fetch job definition when a job is selected
@@ -421,11 +423,15 @@ export function WorkstreamTreeList({
   const handleSelectJob = (jobId: string) => {
     setSelectedJobId(jobId)
     onJobSelectRoute?.(jobId)
+    if (isMobile) {
+      setMobileSheetOpen(true)
+    }
   }
 
   const handleClosePanel = () => {
     setSelectedJobId(null)
     setSelectedJob(null)
+    setMobileSheetOpen(false)
   }
 
   if (loading) {
@@ -457,12 +463,84 @@ export function WorkstreamTreeList({
 
   const tree = buildTree(graph.nodes, graph.edges, graph.rootNode)
 
+  // Detail panel content - reused for both mobile sheet and desktop panel
+  const DetailPanelContent = () => (
+    <>
+      {loadingJob ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+            <div className="text-sm text-muted-foreground">Loading job details...</div>
+          </div>
+        </div>
+      ) : jobError ? (
+        <div className="text-center py-12">
+          <div className="text-red-600 text-sm">{jobError}</div>
+        </div>
+      ) : selectedJob ? (
+        <JobDefinitionDetailLayout record={selectedJob} />
+      ) : null}
+    </>
+  )
+
+  // Mobile layout: Full-width tree with Sheet for details
+  if (isMobile) {
+    return (
+      <>
+        <div
+          className="force-scrollbar divide-y divide-gray-100 max-h-[600px]"
+          style={{
+            overflowY: 'scroll',
+            paddingLeft: '0.75rem',
+            paddingRight: '0.75rem',
+            paddingTop: '0.5rem',
+            paddingBottom: '0.5rem'
+          }}
+        >
+          <TreeNodeItem
+            treeNode={tree}
+            depth={0}
+            onSelectJob={handleSelectJob}
+            allNodes={graph.nodes}
+            nextJobId={nextJobDefinitionId}
+            selectedJobId={selectedJobId}
+          />
+        </div>
+
+        {/* Mobile Sheet for Job Details */}
+        <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
+          <SheetContent side="bottom" className="h-[85vh] overflow-hidden flex flex-col">
+            <SheetHeader className="flex-shrink-0 pb-2 border-b">
+              <div className="flex items-center justify-between">
+                <SheetTitle className="text-base truncate pr-2">
+                  {selectedJob?.name || 'Job Details'}
+                </SheetTitle>
+                {selectedJobId && (
+                  <Link
+                    href={`/jobDefinitions/${selectedJobId}`}
+                    className="text-xs text-primary hover:text-primary flex items-center gap-1 flex-shrink-0"
+                  >
+                    View Full <ExternalLink className="w-3 h-3" />
+                  </Link>
+                )}
+              </div>
+            </SheetHeader>
+            <div className="flex-1 overflow-y-auto py-4">
+              <DetailPanelContent />
+            </div>
+          </SheetContent>
+        </Sheet>
+      </>
+    )
+  }
+
+  // Desktop layout: Side-by-side panels
   return (
-    <div className="grid gap-0 transition-all duration-300 grid-cols-5">
+    <div className="grid gap-0 transition-all duration-300 grid-cols-1 md:grid-cols-5">
       {/* Tree List */}
-      <div 
-        className="force-scrollbar divide-y divide-gray-100 max-h-[800px] col-span-2"
-        style={{ 
+      <div
+        className="force-scrollbar divide-y divide-gray-100 max-h-[800px] md:col-span-2"
+        style={{
           overflowY: 'scroll',
           paddingLeft: '1.5rem',
           paddingRight: '1.5rem',
@@ -470,10 +548,10 @@ export function WorkstreamTreeList({
           paddingBottom: '1rem'
         }}
       >
-        <TreeNodeItem 
-          treeNode={tree} 
-          depth={0} 
-          onSelectJob={handleSelectJob} 
+        <TreeNodeItem
+          treeNode={tree}
+          depth={0}
+          onSelectJob={handleSelectJob}
           allNodes={graph.nodes}
           nextJobId={nextJobDefinitionId}
           selectedJobId={selectedJobId}
@@ -481,8 +559,8 @@ export function WorkstreamTreeList({
       </div>
 
       {/* Detail Panel */}
-      <div 
-        className="force-scrollbar col-span-3 border-l max-h-[800px]"
+      <div
+        className="force-scrollbar md:col-span-3 border-l max-h-[800px] hidden md:block"
         style={{ overflowY: 'scroll' }}
       >
         {selectedJobId ? (
@@ -510,20 +588,7 @@ export function WorkstreamTreeList({
 
             {/* Panel Content */}
             <div className="px-6 py-4">
-              {loadingJob ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                    <div className="text-sm text-muted-foreground">Loading job details...</div>
-                  </div>
-                </div>
-              ) : jobError ? (
-                <div className="text-center py-12">
-                  <div className="text-red-600 text-sm">{jobError}</div>
-                </div>
-              ) : selectedJob ? (
-                <JobDefinitionDetailLayout record={selectedJob} />
-              ) : null}
+              <DetailPanelContent />
             </div>
           </>
         ) : (

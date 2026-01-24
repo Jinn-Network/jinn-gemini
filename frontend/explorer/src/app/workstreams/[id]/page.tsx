@@ -122,31 +122,31 @@ export default function WorkstreamPage({ params }: WorkstreamPageProps) {
       <SiteHeader breadcrumbs={breadcrumbs} />
       <div className="p-4 md:p-6">
         <Tabs defaultValue="tree" className="w-full">
-          <TabsList className="mb-4 border">
-            <TabsTrigger value="tree" className="gap-2">
-              <GitBranch className="h-4 w-4" />
+          <TabsList className="mb-4 border w-full md:w-auto">
+            <TabsTrigger value="tree" className="gap-1 md:gap-2">
+              <GitBranch className="h-4 w-4 hidden sm:block" />
               Tree
             </TabsTrigger>
-            <TabsTrigger value="graph" className="gap-2">
-              <Network className="h-4 w-4" />
+            <TabsTrigger value="graph" className="gap-1 md:gap-2">
+              <Network className="h-4 w-4 hidden sm:block" />
               Graph
             </TabsTrigger>
             {briefingWithContent && (
-              <TabsTrigger value="briefing" className="gap-2">
-                <FileText className="h-4 w-4" />
+              <TabsTrigger value="briefing" className="gap-1 md:gap-2">
+                <FileText className="h-4 w-4 hidden sm:block" />
                 Briefing
               </TabsTrigger>
             )}
-            <TabsTrigger value="definitions" className="gap-2">
-              <FileCode className="h-4 w-4" />
-              Job Definitions {definitionsCount > 0 && `(${definitionsCount})`}
+            <TabsTrigger value="definitions" className="gap-1 md:gap-2">
+              <FileCode className="h-4 w-4 hidden sm:block" />
+              <span className="hidden sm:inline">Job </span>Defs{definitionsCount > 0 && <span className="hidden sm:inline"> ({definitionsCount})</span>}
             </TabsTrigger>
-            <TabsTrigger value="runs" className="gap-2">
-              <Play className="h-4 w-4" />
-              Job Runs {runsCount > 0 && `(${runsCount})`}
+            <TabsTrigger value="runs" className="gap-1 md:gap-2">
+              <Play className="h-4 w-4 hidden sm:block" />
+              Runs{runsCount > 0 && <span className="hidden sm:inline"> ({runsCount})</span>}
             </TabsTrigger>
-            <TabsTrigger value="health" className="gap-2">
-              <Heart className="h-4 w-4" />
+            <TabsTrigger value="health" className="gap-1 md:gap-2">
+              <Heart className="h-4 w-4 hidden sm:block" />
               Health
             </TabsTrigger>
           </TabsList>
