@@ -18,7 +18,9 @@ export function NodeCard({ node, health, isLoading }: NodeCardProps) {
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <CardTitle className="text-lg">{node.name}</CardTitle>
+            <CardTitle className="text-lg font-mono">
+              {health?.nodeId || node.name}
+            </CardTitle>
             <CardDescription>{node.description}</CardDescription>
           </div>
           <StatusBadge isOnline={isOnline} isLoading={isLoading} />
@@ -26,12 +28,6 @@ export function NodeCard({ node, health, isLoading }: NodeCardProps) {
       </CardHeader>
       <CardContent>
         <dl className="grid gap-3 text-sm">
-          {health?.nodeId && (
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Node ID</dt>
-              <dd className="font-mono font-medium">{health.nodeId}</dd>
-            </div>
-          )}
           {node.location && (
             <div className="flex justify-between">
               <dt className="text-muted-foreground">Location</dt>
