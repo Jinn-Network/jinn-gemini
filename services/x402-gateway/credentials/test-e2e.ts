@@ -266,7 +266,7 @@ async function testPaymentRequired() {
   console.log('\n--- Payment Required ---');
 
   // Set up a paid grant
-  setGrant(TEST_ADDRESS, 'paid-provider', {
+  await setGrant(TEST_ADDRESS, 'paid-provider', {
     nangoConnectionId: 'conn-paid',
     pricePerAccess: '1000',
     expiresAt: null,
@@ -297,7 +297,7 @@ async function testPaymentRequired() {
 async function testExpiredGrant() {
   console.log('\n--- Expired Grant ---');
 
-  setGrant(TEST_ADDRESS, 'expired-provider', {
+  await setGrant(TEST_ADDRESS, 'expired-provider', {
     nangoConnectionId: 'conn-expired',
     pricePerAccess: '0',
     expiresAt: '2020-01-01T00:00:00Z', // Already expired
@@ -316,7 +316,7 @@ async function testExpiredGrant() {
 async function testRevokedGrant() {
   console.log('\n--- Revoked Grant ---');
 
-  setGrant(TEST_ADDRESS, 'revoke-test', {
+  await setGrant(TEST_ADDRESS, 'revoke-test', {
     nangoConnectionId: 'conn-revoke',
     pricePerAccess: '0',
     expiresAt: null,
@@ -324,7 +324,7 @@ async function testRevokedGrant() {
   });
 
   // Revoke it
-  revokeGrant(TEST_ADDRESS, 'revoke-test');
+  await revokeGrant(TEST_ADDRESS, 'revoke-test');
 
   const { status } = await credentialRequest('revoke-test', TEST_ACCOUNT);
 
@@ -359,13 +359,13 @@ async function testSuccessfulTokenFetch(nangoAvailable: boolean) {
   }
 
   // Set up grant pointing to real Nango connection
-  setGrant(TEST_ADDRESS, 'twitter', {
+  await setGrant(TEST_ADDRESS, 'twitter', {
     nangoConnectionId: TWITTER_CONNECTION_ID,
     pricePerAccess: '0',
     expiresAt: null,
     active: true,
   });
-  setConnection(TWITTER_CONNECTION_ID, {
+  await setConnection(TWITTER_CONNECTION_ID, {
     provider: 'twitter',
     metadata: { handle: '@test' },
   });

@@ -44,14 +44,14 @@ async function handleGrant(opts: Record<string, string>) {
   }
 
   // Register connection metadata if not already known
-  const existing = getConnection(connection);
+  const existing = await getConnection(connection);
   if (!existing) {
     const metadata: Record<string, string> = {};
     if (handle) metadata.handle = handle;
     if (email) metadata.email = email;
 
     const entry: ConnectionEntry = { provider, metadata };
-    setConnection(connection, entry);
+    await setConnection(connection, entry);
     console.log(`Registered connection: ${connection} (${provider})`);
   }
 
@@ -72,7 +72,7 @@ async function handleGrant(opts: Record<string, string>) {
     active: true,
   };
 
-  setGrant(agent, provider, grant);
+  await setGrant(agent, provider, grant);
   console.log(`Granted ${provider} access to ${agent} (price: ${grant.pricePerAccess} wei, expires: ${grant.expiresAt || 'never'})`);
 }
 
@@ -84,7 +84,7 @@ async function handleRevoke(opts: Record<string, string>) {
     process.exit(1);
   }
 
-  const success = revokeGrant(agent, provider);
+  const success = await revokeGrant(agent, provider);
   if (success) {
     console.log(`Revoked ${provider} access for ${agent}`);
   } else {
@@ -101,7 +101,7 @@ async function handleList(opts: Record<string, string>) {
     process.exit(1);
   }
 
-  const grants = listGrants(agent);
+  const grants = await listGrants(agent);
   const entries = Object.entries(grants);
 
   if (entries.length === 0) {
@@ -111,7 +111,7 @@ async function handleList(opts: Record<string, string>) {
 
   console.log(`Grants for ${agent}:`);
   for (const [provider, grant] of entries) {
-    const conn = getConnection(grant.nangoConnectionId);
+    const conn = await getConnection(grant.nangoConnectionId);
     const meta = conn?.metadata ? ` (${Object.values(conn.metadata).join(', ')})` : '';
     console.log(`  ${provider}${meta}: connection=${grant.nangoConnectionId}, price=${grant.pricePerAccess} wei, expires=${grant.expiresAt || 'never'}`);
   }

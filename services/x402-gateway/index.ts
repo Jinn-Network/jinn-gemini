@@ -942,7 +942,7 @@ app.post("/credentials/:provider", async (c) => {
   }
 
   // Check ACL
-  const grant = getGrant(recoveredAddress, provider);
+  const grant = await getGrant(recoveredAddress, provider);
   if (!grant) {
     return c.json({ error: `No active grant for ${provider}`, code: "NOT_AUTHORIZED" } satisfies CredentialError, 403);
   }
