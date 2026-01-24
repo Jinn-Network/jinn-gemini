@@ -186,6 +186,57 @@ async function testStaleTimestamp() {
   }
 }
 
+async function testNonceReplay() {
+  console.log('\n--- Nonce Replay ---');
+
+  if (!process.env.REDIS_URL) {
+    log('⊘', 'Skipped — REDIS_URL not set (nonce replay protection disabled)');
+    return;
+  }
+
+  // Build a request with a fixed nonce
+  const requestBody = {
+    timestamp: Math.floor(Date.now() / 1000),
+    nonce: crypto.randomUUID(),
+  };
+
+  const { signature, address } = await signRequest(TEST_ACCOUNT, requestBody);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Agent-Signature': signature,
+    'X-Agent-Address': address,
+  };
+
+  // First request — should pass nonce check (may fail on ACL etc., that's fine)
+  const res1 = await fetch(`${GATEWAY_URL}/credentials/twitter`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(requestBody),
+  });
+  const body1 = await res1.json().catch(() => null);
+
+  if (body1?.code === 'NONCE_REUSED') {
+    log('✗', 'First request rejected as duplicate nonce — unexpected');
+    return;
+  }
+  log('✓', `First request passed nonce check (status: ${res1.status})`);
+
+  // Second request with SAME body + signature — should be rejected
+  const res2 = await fetch(`${GATEWAY_URL}/credentials/twitter`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(requestBody),
+  });
+  const body2 = await res2.json().catch(() => null);
+
+  if (res2.status === 401 && body2?.code === 'NONCE_REUSED') {
+    log('✓', 'Duplicate nonce rejected (401 NONCE_REUSED)');
+  } else {
+    log('✗', `Expected 401 NONCE_REUSED, got ${res2.status}: ${JSON.stringify(body2)}`);
+  }
+}
+
 async function testUnauthorizedAgent() {
   console.log('\n--- Unauthorized Agent ---');
 
@@ -385,6 +436,7 @@ async function main() {
   // ACL + Signature tests (no Nango needed)
   await testInvalidSignature();
   await testStaleTimestamp();
+  await testNonceReplay();
   await testUnauthorizedAgent();
   await testUnknownProvider();
   await testPaymentRequired();

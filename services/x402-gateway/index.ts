@@ -871,6 +871,7 @@ const buildBlueprintFromTemplate = sharedBuildBlueprint;
 
 import { getGrant } from './credentials/acl.js';
 import { getNangoAccessToken } from './credentials/nango-client.js';
+import { checkAndStoreNonce } from './credentials/redis.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
 
 /**
@@ -907,6 +908,15 @@ app.post("/credentials/:provider", async (c) => {
   const now = Math.floor(Date.now() / 1000);
   if (Math.abs(now - body.timestamp) > 300) {
     return c.json({ error: "Request timestamp too old or in future", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
+  }
+
+  // Check nonce uniqueness (replay protection)
+  if (!body.nonce) {
+    return c.json({ error: "Missing nonce in request body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
+  }
+  const nonceIsNew = await checkAndStoreNonce(body.nonce);
+  if (!nonceIsNew) {
+    return c.json({ error: "Nonce already used", code: "NONCE_REUSED" } satisfies CredentialError, 401);
   }
 
   // Extract signature and address from headers

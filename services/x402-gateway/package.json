@@ -18,6 +18,7 @@
     "@supabase/supabase-js": "^2.45.4",
     "dotenv": "^17.2.3",
     "hono": "^4.10.7",
+    "ioredis": "^5.9.2",
     "viem": "^2.0.0",
     "x402-hono": "^1.0.0"
   },
