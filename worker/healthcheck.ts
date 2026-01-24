@@ -3,6 +3,8 @@ import { workerLogger } from '../logging/index.js';
 import { getMasterSafe, getServiceSafeAddress } from '../env/operate-profile.js';
 
 const DEFAULT_HEALTHCHECK_PORT = 8080;
+// Railway sets PORT env var for the exposed service port
+const getRailwayPort = () => process.env.PORT ? parseInt(process.env.PORT, 10) : null;
 
 /**
  * Get abbreviated node ID from master safe address
@@ -61,7 +63,11 @@ export function updateLastActivity(): void {
 }
 
 export function startHealthcheckServer(): void {
-  const port = parseInt(process.env.HEALTHCHECK_PORT || String(DEFAULT_HEALTHCHECK_PORT), 10);
+  // Priority: HEALTHCHECK_PORT > Railway's PORT > default 8080
+  const railwayPort = getRailwayPort();
+  const port = process.env.HEALTHCHECK_PORT
+    ? parseInt(process.env.HEALTHCHECK_PORT, 10)
+    : (railwayPort || DEFAULT_HEALTHCHECK_PORT);
 
   const server = createServer((req, res) => {
     // Handle CORS
@@ -109,7 +115,7 @@ export function startHealthcheckServer(): void {
   });
 
   server.listen(port, () => {
-    workerLogger.info({ port }, 'Healthcheck server started');
+    workerLogger.info({ port, railwayPort: railwayPort ?? 'not set' }, 'Healthcheck server started');
   });
 
   server.on('error', (err: NodeJS.ErrnoException) => {
