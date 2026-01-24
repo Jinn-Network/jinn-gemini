@@ -42,6 +42,7 @@ This project consists of several key components:
 - **Job Processing**: Automated job execution with status tracking
 - **Database Integration**: Full CRUD operations through MCP tools
 - **Frontend Interface**: Web-based data explorer and job monitoring
+- **Nodes Monitoring**: Real-time health status for all worker nodes
 - **Telemetry**: Comprehensive monitoring and observability
 - **Security**: Sensitive file protection and pre-commit hooks
 - **Development Tools**: Hot reloading and development scripts
@@ -355,6 +356,62 @@ yarn workspace @jinn/metacog-mcp start
 - **Frontend Explorer**: http://localhost:3000
 - **Worker**: Running in background, processing jobs from database
 - **MCP Server**: Available to worker for tool access
+
+### Nodes Monitoring
+
+The **Nodes** page (`/nodes`) displays the health status of all registered worker nodes. This allows you to monitor your workers remotely and verify they're running properly.
+
+#### How It Works
+
+Each worker exposes a `/health` endpoint that returns:
+- **nodeId**: Unique identifier (first 8 chars of the safe address)
+- **status**: `ok`, `error`, or `unknown`
+- **uptime**: How long the worker has been running
+- **processedJobs**: Number of jobs completed (when available)
+- **lastActivity**: Time since last job was processed
+
+#### Health Endpoint
+
+The health endpoint is automatically exposed when running on Railway or any environment with a `PORT` variable:
+
+```bash
+# Check worker health
+curl https://your-worker.up.railway.app/health
+```
+
+Example response:
+```json
+{
+  "status": "ok",
+  "nodeId": "b8b7a897",
+  "service": "control-api",
+  "uptime": {"ms": 3600000, "human": "1h 0m"},
+  "timestamp": "2026-01-24T18:00:00.000Z"
+}
+```
+
+#### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JINN_NODE_ID` | Custom node identifier | Auto-generated from safe address |
+| `HEALTHCHECK_PORT` | Port for health endpoint | Uses Railway's `PORT` or 8080 |
+
+#### Adding Nodes to the Explorer
+
+Nodes are configured in `frontend/explorer/src/lib/nodes/nodes-config.ts`. To add a new node:
+
+```typescript
+export const WORKER_NODES: WorkerNode[] = [
+  {
+    id: 'my-worker',
+    name: 'My Worker',
+    description: 'Production worker on Railway',
+    healthcheckUrl: 'https://my-worker.up.railway.app/health',
+    location: 'Railway Cloud',
+  },
+];
+```
 
 ## Configuration
 
