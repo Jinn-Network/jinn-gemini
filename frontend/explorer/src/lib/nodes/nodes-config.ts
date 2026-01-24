@@ -16,6 +16,7 @@ export interface WorkerNode {
 
 export interface NodeHealthStatus {
   status: 'ok' | 'error' | 'unknown';
+  nodeId?: string;
   service?: string;
   workerId?: string;
   uptime?: {
@@ -33,11 +34,10 @@ export interface NodeHealthStatus {
 // Known worker nodes
 export const WORKER_NODES: WorkerNode[] = [
   {
-    id: 'gcd-railway',
-    name: 'GCD Railway Worker',
-    description: 'Primary production worker running on Railway',
-    healthcheckUrl: process.env.NEXT_PUBLIC_GCD_WORKER_HEALTH_URL || 'https://jinn-worker-production.up.railway.app/health',
-    owner: 'gcd',
+    id: 'jinn-worker-prod',
+    name: 'Jinn Worker',
+    description: 'Production worker on Railway',
+    healthcheckUrl: process.env.NEXT_PUBLIC_WORKER_HEALTH_URL || 'https://jinn-worker-production.up.railway.app/health',
     location: 'Railway Cloud',
   },
 ];

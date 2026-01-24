@@ -1,7 +1,32 @@
 import { createServer } from 'node:http';
 import { workerLogger } from '../logging/index.js';
+import { getMasterSafe, getServiceSafeAddress } from '../env/operate-profile.js';
 
 const DEFAULT_HEALTHCHECK_PORT = 8080;
+
+/**
+ * Get abbreviated node ID from master safe address
+ * Uses first 8 chars of the safe address (after 0x)
+ */
+function getNodeId(): string {
+  // Priority: JINN_NODE_ID env var > master safe > service safe
+  const envNodeId = process.env.JINN_NODE_ID;
+  if (envNodeId) {
+    return envNodeId;
+  }
+
+  const masterSafe = getMasterSafe('base');
+  if (masterSafe && masterSafe.startsWith('0x')) {
+    return masterSafe.slice(2, 10).toLowerCase();
+  }
+
+  const serviceSafe = getServiceSafeAddress();
+  if (serviceSafe && serviceSafe.startsWith('0x')) {
+    return serviceSafe.slice(2, 10).toLowerCase();
+  }
+
+  return 'unknown';
+}
 
 interface WorkerHealthInfo {
   workerId: string;
@@ -57,8 +82,10 @@ export function startHealthcheckServer(): void {
       const uptimeMs = healthInfo ? now.getTime() - healthInfo.startedAt.getTime() : 0;
       const lastActivityAgo = healthInfo ? now.getTime() - healthInfo.lastActivityAt.getTime() : 0;
 
+      const nodeId = getNodeId();
       const response = {
         status: 'ok',
+        nodeId,
         workerId: healthInfo?.workerId || process.env.WORKER_ID || 'unknown',
         uptime: {
           ms: uptimeMs,

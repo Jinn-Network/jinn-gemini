@@ -26,10 +26,10 @@ export function NodeCard({ node, health, isLoading }: NodeCardProps) {
       </CardHeader>
       <CardContent>
         <dl className="grid gap-3 text-sm">
-          {node.owner && (
+          {health?.nodeId && (
             <div className="flex justify-between">
-              <dt className="text-muted-foreground">Owner</dt>
-              <dd className="font-medium">{node.owner}</dd>
+              <dt className="text-muted-foreground">Node ID</dt>
+              <dd className="font-mono font-medium">{health.nodeId}</dd>
             </div>
           )}
           {node.location && (

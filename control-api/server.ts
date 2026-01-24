@@ -9,6 +9,7 @@ import {
   getPonderGraphqlUrl,
   getOptionalControlApiPort
 } from '../config/index.js';
+import { getMasterSafe, getServiceSafeAddress } from '../env/operate-profile.js';
 
 // Load environment variables
 dotenv.config();
@@ -882,11 +883,29 @@ const http = await import('http');
 // Track server start time for uptime reporting
 const serverStartTime = new Date();
 
+/**
+ * Get abbreviated node ID from master safe address
+ * Uses first 8 chars of the safe address (after 0x)
+ */
+function getNodeId(): string {
+  const envNodeId = process.env.JINN_NODE_ID;
+  if (envNodeId) return envNodeId;
+
+  const masterSafe = getMasterSafe('base');
+  if (masterSafe?.startsWith('0x')) return masterSafe.slice(2, 10).toLowerCase();
+
+  const serviceSafe = getServiceSafeAddress();
+  if (serviceSafe?.startsWith('0x')) return serviceSafe.slice(2, 10).toLowerCase();
+
+  return 'unknown';
+}
+
 const server = http.createServer((req, res) => {
   // REST /health endpoint for easy monitoring
   if (req.url === '/health' && req.method === 'GET') {
     const now = new Date();
     const uptimeMs = now.getTime() - serverStartTime.getTime();
+    const nodeId = getNodeId();
 
     res.writeHead(200, {
       'Content-Type': 'application/json',
@@ -894,6 +913,7 @@ const server = http.createServer((req, res) => {
     });
     res.end(JSON.stringify({
       status: 'ok',
+      nodeId,
       service: 'control-api',
       uptime: {
         ms: uptimeMs,
