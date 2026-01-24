@@ -154,6 +154,15 @@ const CORE_CLI_TOOLS: ToolInfo[] = [
       'Enable browser automation for a verification job: enabledTools: ["browser_automation"]',
       'Combine with other tools: enabledTools: ["write_file", "read_file", "browser_automation"]'
     ]
+  },
+  {
+    name: 'fireflies_meetings',
+    description: 'Meta-tool that enables Fireflies meeting intelligence tools. When included in enabledTools, activates 3 tools: fireflies_get_transcripts (list recent meetings), fireflies_search (keyword search across transcripts), and fireflies_get_summary (get structured summary for a specific meeting ID). Useful for content jobs that need meeting insights as source material. Privacy: extract ideas only, never attribute to speakers.',
+    parameters: {},
+    examples: [
+      'Enable meeting tools for a research job: enabledTools: ["fireflies_meetings"]',
+      'The 3 expanded tools accept: fireflies_get_transcripts(limit?: number), fireflies_search(query: string), fireflies_get_summary(transcript_id: string)'
+    ]
   }
 ];
 

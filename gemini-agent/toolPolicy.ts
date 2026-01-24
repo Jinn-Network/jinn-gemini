@@ -167,6 +167,23 @@ export function hasTelegramMessaging(enabledTools: string[]): boolean {
 }
 
 /**
+ * Fireflies meeting intelligence tools (via remote MCP server)
+ * Content-focused subset only — raw transcripts with speaker attribution are excluded for privacy
+ */
+export const FIREFLIES_TOOLS = [
+  'fireflies_search',
+  'fireflies_get_transcripts',
+  'fireflies_get_summary',
+] as const;
+
+/**
+ * Check if fireflies meetings is enabled in the tools list
+ */
+export function hasFirefliesMeetings(enabledTools: string[]): boolean {
+  return enabledTools.includes('fireflies_meetings');
+}
+
+/**
  * Railway deployment tools (from @anthropic/railway-mcp)
  * Agent-safe subset: service management only, no project-level operations
  */
@@ -311,6 +328,14 @@ export function computeToolPolicy(
     expandedTools = [
       ...expandedTools.filter(t => t !== 'railway_deployment'),
       ...RAILWAY_TOOLS
+    ];
+  }
+
+  // Expand fireflies_meetings meta-tool to Fireflies MCP tools
+  if (expandedTools.includes('fireflies_meetings')) {
+    expandedTools = [
+      ...expandedTools.filter(t => t !== 'fireflies_meetings'),
+      ...FIREFLIES_TOOLS
     ];
   }
 

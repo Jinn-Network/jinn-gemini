@@ -320,6 +320,8 @@ export interface SyncBranchResult {
   conflictingFiles: string[];
   /** The branch that was merged from */
   sourceBranch: string;
+  /** List of files that were stashed before merge (if any uncommitted changes existed) */
+  stashedChanges?: string[];
 }
 
 /**
@@ -358,6 +360,52 @@ export async function syncWithBranch(
     };
   }
 
+  // Stash any uncommitted changes to ensure clean merge
+  // This handles scenarios where previous jobs left dirty working tree
+  // Without this, merge fails with "Your local changes would be overwritten by merge"
+  let stashedFiles: string[] = [];
+  try {
+    const status = execFileSync('git', ['status', '--porcelain'], {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    }).trim();
+
+    if (status) {
+      const changedFiles = status.split('\n').filter(Boolean);
+      const onlyBeadsChanges = getBlueprintEnableBeads() && changedFiles.every(line => {
+        const filePath = line.slice(3);
+        return filePath.startsWith('.beads/');
+      });
+
+      if (!onlyBeadsChanges) {
+        stashedFiles = changedFiles.map(line => line.slice(3));
+        workerLogger.info(
+          { targetBranch, filesStashed: stashedFiles },
+          'Stashing uncommitted changes before merge'
+        );
+        try {
+          execFileSync('git', ['stash', 'push', '-m', `Auto-stash before merge with ${targetBranch}`], {
+            cwd: repoRoot,
+            encoding: 'utf-8',
+            stdio: 'pipe',
+          });
+        } catch (stashError: any) {
+          workerLogger.warn(
+            { targetBranch, error: serializeError(stashError) },
+            'Failed to stash uncommitted changes - attempting merge anyway'
+          );
+          stashedFiles = [];
+        }
+      }
+    }
+  } catch (statusError: any) {
+    workerLogger.warn(
+      { targetBranch, error: serializeError(statusError) },
+      'Failed to check git status for stashing before merge (non-fatal)'
+    );
+  }
+
   try {
     // Attempt merge - this may fail with conflicts
     execFileSync('git', ['merge', mergeRef, '--no-edit'], {
@@ -374,6 +422,7 @@ export async function syncWithBranch(
       hasConflicts: false,
       conflictingFiles: [],
       sourceBranch: targetBranch,
+      ...(stashedFiles.length > 0 ? { stashedChanges: stashedFiles } : {}),
     };
   } catch (mergeError: any) {
     // Check if this is a merge conflict (exit code 1 with conflict markers)
@@ -394,6 +443,7 @@ export async function syncWithBranch(
         hasConflicts: true,
         conflictingFiles,
         sourceBranch: targetBranch,
+        ...(stashedFiles.length > 0 ? { stashedChanges: stashedFiles } : {}),
       };
     }
 

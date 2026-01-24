@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeToolPolicy, UNIVERSAL_TOOLS, NATIVE_TOOLS } from '../../../gemini-agent/toolPolicy.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, NATIVE_TOOLS, FIREFLIES_TOOLS, hasFirefliesMeetings } from '../../../gemini-agent/toolPolicy.js';
 import { REGISTERED_MCP_TOOLS } from '../../../gemini-agent/mcp/server.js';
 
 describe('computeToolPolicy', () => {
@@ -16,12 +16,63 @@ describe('computeToolPolicy', () => {
     // Filter UNIVERSAL_TOOLS to get only MCP tools (exclude native tools)
     const nativeToolSet = new Set(NATIVE_TOOLS);
     const universalMcpTools = UNIVERSAL_TOOLS.filter(tool => !nativeToolSet.has(tool));
-    
+
     // Check that every MCP tool in UNIVERSAL_TOOLS is registered
     const registeredToolSet = new Set(REGISTERED_MCP_TOOLS);
     const missingTools = universalMcpTools.filter(tool => !registeredToolSet.has(tool));
-    
+
     expect(missingTools).toEqual([]);
+  });
+
+  describe('fireflies_meetings meta-tool', () => {
+    it('expands fireflies_meetings to the 3 content-focused tools', () => {
+      const policy = computeToolPolicy(['fireflies_meetings']);
+
+      expect(policy.mcpIncludeTools).toContain('fireflies_search');
+      expect(policy.mcpIncludeTools).toContain('fireflies_get_transcripts');
+      expect(policy.mcpIncludeTools).toContain('fireflies_get_summary');
+    });
+
+    it('removes the meta-tool name from the expanded list', () => {
+      const policy = computeToolPolicy(['fireflies_meetings']);
+
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_meetings');
+    });
+
+    it('does not include privacy-sensitive tools', () => {
+      const policy = computeToolPolicy(['fireflies_meetings']);
+
+      // These are explicitly excluded from FIREFLIES_TOOLS for privacy
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_get_transcript');
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_fetch');
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_get_user');
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_get_usergroups');
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_get_user_contacts');
+    });
+
+    it('does not include fireflies tools when meta-tool not enabled', () => {
+      const policy = computeToolPolicy([]);
+
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_search');
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_get_transcripts');
+      expect(policy.mcpIncludeTools).not.toContain('fireflies_get_summary');
+    });
+
+    it('FIREFLIES_TOOLS constant has exactly 3 tools', () => {
+      expect(FIREFLIES_TOOLS).toHaveLength(3);
+    });
+  });
+});
+
+describe('hasFirefliesMeetings', () => {
+  it('returns true when fireflies_meetings is in the list', () => {
+    expect(hasFirefliesMeetings(['fireflies_meetings'])).toBe(true);
+    expect(hasFirefliesMeetings(['other_tool', 'fireflies_meetings'])).toBe(true);
+  });
+
+  it('returns false when fireflies_meetings is not in the list', () => {
+    expect(hasFirefliesMeetings([])).toBe(false);
+    expect(hasFirefliesMeetings(['railway_deployment'])).toBe(false);
   });
 });
 

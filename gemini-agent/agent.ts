@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { agentLogger } from '../logging/index.js';
 import { getOptionalCodeMetadataRepoRoot, getSandboxMode } from '../config/index.js';
 import { getRepoRoot } from '../shared/repo_utils.js';
-import { computeToolPolicy, UNIVERSAL_TOOLS, hasBrowserAutomation, BROWSER_AUTOMATION_TOOLS, hasRailwayDeployment, RAILWAY_TOOLS, getEnabledExtensions, EXTENSION_META_TOOLS, getExtensionExcludedTools, type ToolPolicyResult } from './toolPolicy.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, hasBrowserAutomation, BROWSER_AUTOMATION_TOOLS, hasRailwayDeployment, RAILWAY_TOOLS, hasFirefliesMeetings, FIREFLIES_TOOLS, getEnabledExtensions, EXTENSION_META_TOOLS, getExtensionExcludedTools, type ToolPolicyResult } from './toolPolicy.js';
 
 dotenv.config({ path: join(process.cwd(), '.env') });
 
@@ -30,7 +30,7 @@ interface MCPServerConfig {
   env?: Record<string, string>;
 }
 
-interface GeminiSettings {
+export interface GeminiSettings {
   mcpServers?: {
     [serverName: string]: MCPServerConfig;
   };
@@ -83,7 +83,7 @@ type JobContext = {
  * Gemini CLI does not automatically pass environment variables to MCP subprocesses,
  * so we need to resolve them at settings generation time.
  */
-function substituteEnvVariables(settings: GeminiSettings): GeminiSettings {
+export function substituteEnvVariables(settings: GeminiSettings): GeminiSettings {
   if (!settings.mcpServers) return settings;
 
   for (const [serverName, serverConfig] of Object.entries(settings.mcpServers)) {
@@ -106,6 +106,20 @@ function substituteEnvVariables(settings: GeminiSettings): GeminiSettings {
         }
       }
       serverConfig.env = substitutedEnv;
+    }
+
+    // Also substitute ${VAR_NAME} placeholders in args arrays
+    // (e.g., Fireflies uses "Authorization: Bearer ${FIREFLIES_API_KEY}" in args)
+    if (serverConfig.args) {
+      serverConfig.args = serverConfig.args.map(arg => {
+        return arg.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_, envVar) => {
+          const envValue = process.env[envVar];
+          if (!envValue) {
+            throw new Error(`Required env var ${envVar} not set (needed by MCP server "${serverName}")`);
+          }
+          return envValue;
+        });
+      });
     }
   }
 
@@ -1037,6 +1051,12 @@ export class Agent {
         agentLogger.debug('Removed railway server (railway_deployment not enabled)');
       }
 
+      // Conditionally include fireflies server based on fireflies_meetings meta-tool
+      if (templateSettings.mcpServers['fireflies'] && !hasFirefliesMeetings(this.enabledTools)) {
+        delete templateSettings.mcpServers['fireflies'];
+        agentLogger.debug('Removed fireflies server (fireflies_meetings not enabled)');
+      }
+
       const serverName = templateSettings.mcpServers.metacog ? 'metacog' : Object.keys(templateSettings.mcpServers)[0];
       if (!serverName) throw new Error('No MCP servers found in template configuration');
 
@@ -1084,6 +1104,13 @@ export class Agent {
         const railwayToolSet = new Set(RAILWAY_TOOLS as readonly string[]);
         const railwayTools = toolPolicy.mcpIncludeTools.filter(t => railwayToolSet.has(t));
         templateSettings.mcpServers['railway'].includeTools = railwayTools;
+      }
+
+      // If fireflies server is present, set its includeTools to fireflies meeting tools
+      if (templateSettings.mcpServers['fireflies']) {
+        const firefliesToolSet = new Set(FIREFLIES_TOOLS as readonly string[]);
+        const firefliesTools = toolPolicy.mcpIncludeTools.filter(t => firefliesToolSet.has(t));
+        templateSettings.mcpServers['fireflies'].includeTools = firefliesTools;
       }
 
       // CRITICAL: Do NOT set global excludeTools for MCP tools - it overrides per-server includeTools

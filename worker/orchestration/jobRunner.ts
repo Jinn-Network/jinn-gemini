@@ -246,7 +246,24 @@ export async function processOnce(
                 synced: syncResult.synced,
                 hasConflicts: syncResult.hasConflicts,
                 conflictingFiles: syncResult.conflictingFiles,
+                ...(syncResult.stashedChanges ? { stashedChanges: syncResult.stashedChanges } : {}),
               });
+
+              // If uncommitted changes were stashed during merge, inform the agent
+              if (syncResult.stashedChanges && syncResult.stashedChanges.length > 0) {
+                if (!metadata.additionalContext) {
+                  metadata.additionalContext = {} as AdditionalContext;
+                }
+                // Append to existing stashedChanges (may already have entries from checkout stash)
+                const existing = metadata.additionalContext.stashedChanges || [];
+                metadata.additionalContext.stashedChanges = [...existing, ...syncResult.stashedChanges];
+
+                workerLogger.warn({
+                  requestId: target.id,
+                  dependencyBranch: branchInfo.branchName,
+                  stashedFiles: syncResult.stashedChanges,
+                }, 'Uncommitted changes were stashed before dependency merge');
+              }
 
               if (syncResult.hasConflicts) {
                 mergeConflicts.push({
