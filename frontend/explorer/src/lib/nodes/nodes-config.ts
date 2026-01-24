@@ -31,13 +31,12 @@ export interface NodeHealthStatus {
 }
 
 // Known worker nodes
-// Configure NEXT_PUBLIC_GCD_WORKER_HEALTH_URL in your environment to point to the actual worker health endpoint
 export const WORKER_NODES: WorkerNode[] = [
   {
     id: 'gcd-railway',
     name: 'GCD Railway Worker',
     description: 'Primary production worker running on Railway',
-    healthcheckUrl: process.env.NEXT_PUBLIC_GCD_WORKER_HEALTH_URL || 'https://jinn-control-api-production.up.railway.app/health',
+    healthcheckUrl: process.env.NEXT_PUBLIC_GCD_WORKER_HEALTH_URL || 'https://jinn-worker-production.up.railway.app/health',
     owner: 'gcd',
     location: 'Railway Cloud',
   },
@@ -66,8 +65,26 @@ export async function fetchNodeHealth(node: WorkerNode): Promise<NodeHealthStatu
       return null;
     }
 
-    const data = await response.json();
-    return data as NodeHealthStatus;
+    // Try to parse JSON response, but handle empty body gracefully
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      // Empty 200 response - service is up but no detailed health info
+      return {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    try {
+      const data = JSON.parse(text);
+      return data as NodeHealthStatus;
+    } catch {
+      // Non-JSON response but 200 status - service is up
+      return {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+      };
+    }
   } catch {
     return null;
   }
