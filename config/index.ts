@@ -344,6 +344,10 @@ const devTestingSchema = z.object({
   // WORKER_TX_CONFIRMATIONS: Number of confirmations to wait for
   WORKER_TX_CONFIRMATIONS: z.coerce.number().int().positive().default(3),
 
+  // WORKER_JOB_DELAY_MS: Delay (ms) after each job execution before next poll cycle
+  // Helps spread API usage when hitting quota limits. Default: 0 (no delay)
+  WORKER_JOB_DELAY_MS: z.coerce.number().int().nonnegative().optional(),
+
   // Playwright configuration
   PLAYWRIGHT_CHANNEL: z.string().optional(),
   PLAYWRIGHT_FAST: z.coerce.boolean().optional(),
@@ -927,6 +931,11 @@ export function getOptionalWorkerId(): string | undefined {
 
 export function getWorkerTxConfirmations(): number {
   return getConfig().WORKER_TX_CONFIRMATIONS;
+}
+
+export function getOptionalWorkerJobDelayMs(): number | undefined {
+  const val = getConfig().WORKER_JOB_DELAY_MS;
+  return val !== undefined && val >= 0 ? val : undefined;
 }
 
 export function getOptionalPlaywrightChannel(): string | undefined {

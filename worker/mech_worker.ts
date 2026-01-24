@@ -25,6 +25,7 @@ import { fetchIpfsMetadata } from './metadata/fetchIpfsMetadata.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { shouldStop } from './cycleControl.js';
 import { waitForGeminiQuota } from './llm/geminiQuota.js';
+import { getOptionalWorkerJobDelayMs } from '../config/index.js';
 
 export { formatSummaryForPr, autoCommitIfNeeded } from './git/autoCommit.js';
 
@@ -1110,6 +1111,13 @@ async function processOnce(): Promise<void> {
     // Mark as executed even if delivery fails to prevent re-execution loop
     executedJobsThisSession.add(target.id);
     workerLogger.debug({ requestId: target.id }, 'Marked job as executed this session');
+  }
+
+  // Post-job delay to spread API usage over time (helps with quota limits)
+  const jobDelayMs = getOptionalWorkerJobDelayMs();
+  if (jobDelayMs && jobDelayMs > 0) {
+    workerLogger.info({ delayMs: jobDelayMs }, 'Post-job delay before next cycle');
+    await new Promise(r => setTimeout(r, jobDelayMs));
   }
 }
 
