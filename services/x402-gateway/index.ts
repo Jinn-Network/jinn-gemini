@@ -951,7 +951,7 @@ app.post("/credentials/:provider", async (c) => {
 
   // Fetch fresh token from Nango
   try {
-    const token = await getNangoAccessToken(grant.nangoConnectionId);
+    const token = await getNangoAccessToken(grant.nangoConnectionId, provider);
     const response: CredentialResponse = {
       access_token: token.access_token,
       expires_in: token.expires_in,

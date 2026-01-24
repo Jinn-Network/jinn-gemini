@@ -37,13 +37,14 @@ function getNangoConfig() {
  * Get a fresh access token for a Nango connection.
  * Nango automatically refreshes expired tokens before returning.
  */
-export async function getNangoAccessToken(connectionId: string): Promise<{
+export async function getNangoAccessToken(connectionId: string, providerConfigKey?: string): Promise<{
   access_token: string;
   expires_in: number;
 }> {
   const { host, secretKey } = getNangoConfig();
 
-  const response = await fetch(`${host}/connection/${connectionId}`, {
+  const params = providerConfigKey ? `?provider_config_key=${providerConfigKey}` : '';
+  const response = await fetch(`${host}/connection/${connectionId}${params}`, {
     headers: {
       'Authorization': `Bearer ${secretKey}`,
     },
