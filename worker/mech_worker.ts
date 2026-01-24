@@ -24,6 +24,7 @@ import { processOnce as processJobOnce } from './orchestration/jobRunner.js';
 import { fetchIpfsMetadata } from './metadata/fetchIpfsMetadata.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { shouldStop } from './cycleControl.js';
+import { waitForGeminiQuota } from './llm/geminiQuota.js';
 
 export { formatSummaryForPr, autoCommitIfNeeded } from './git/autoCommit.js';
 
@@ -117,7 +118,7 @@ const WORKSTREAM_FILTERS: string[] = (() => {
 // Legacy single-value alias for backward compatibility in logging
 const WORKSTREAM_FILTER = WORKSTREAM_FILTERS.length === 1 ? WORKSTREAM_FILTERS[0] : undefined;
 
-// Always set WORKER_STOP_FILE so quota errors can trigger worker stop
+// Always set WORKER_STOP_FILE so external stop signals can terminate the worker
 if (!process.env.WORKER_STOP_FILE) {
   const stopFileSuffix = WORKSTREAM_FILTERS.length > 0
     ? (WORKSTREAM_FILTERS.length === 1
@@ -128,7 +129,7 @@ if (!process.env.WORKER_STOP_FILE) {
 }
 
 // Clear any stale stop file from previous runs so fresh starts aren't blocked
-// The stop file is created by requestStop() when quota errors occur
+// The stop file can be created by requestStop() or external operators
 if (process.env.WORKER_STOP_FILE && existsSync(process.env.WORKER_STOP_FILE)) {
   try {
     unlinkSync(process.env.WORKER_STOP_FILE);
@@ -1087,6 +1088,8 @@ async function processOnce(): Promise<void> {
 
   consecutiveStuckCycles = 0;
   lastStuckRequestIds = [];
+
+  await waitForGeminiQuota({ reason: 'pre_claim' });
 
   // Try to claim a request
   let target: UnclaimedRequest | null = null;

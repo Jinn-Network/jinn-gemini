@@ -112,6 +112,11 @@ IPFS_FETCH_TIMEOUT_MS=30000
 
 # === AI Model API Keys (Optional) ===
 GEMINI_API_KEY=...
+# Optional: pre-claim quota checks / backoff tuning
+GEMINI_QUOTA_CHECK_MODEL=auto-gemini-3
+GEMINI_QUOTA_CHECK_TIMEOUT_MS=10000
+GEMINI_QUOTA_BACKOFF_MS=60000
+GEMINI_QUOTA_MAX_BACKOFF_MS=600000
 OPENAI_API_KEY=...
 ```
 
@@ -366,6 +371,10 @@ To run the Jinn worker and its associated services, you'll need to configure sev
 -   `SUPABASE_URL`: Your Supabase project URL.
 -   `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key.
 -   `GEMINI_API_KEY`: Your API key for the Gemini API.
+-   `GEMINI_QUOTA_CHECK_MODEL`: (Optional) Model for quota check pings (default: `auto-gemini-3`).
+-   `GEMINI_QUOTA_CHECK_TIMEOUT_MS`: (Optional) Timeout for quota checks (ms, default: `10000`).
+-   `GEMINI_QUOTA_BACKOFF_MS`: (Optional) Base backoff for quota polling (ms, default: `60000`).
+-   `GEMINI_QUOTA_MAX_BACKOFF_MS`: (Optional) Max backoff for quota polling (ms, default: `600000`).
 -   `OPENAI_API_KEY`: Your API key for the OpenAI API.
 -   `SNYK_TOKEN`: Your Snyk token for security scanning (get from [https://app.snyk.io/account](https://app.snyk.io/account)).
 
@@ -393,6 +402,10 @@ The system uses Gemini CLI for job execution. Configuration is stored in `.gemin
 - MCP server configuration
 - Tool permissions
 - Authentication settings
+
+Quota handling:
+- Worker checks Gemini quota before claiming new jobs and waits if the quota is exhausted.
+- Execution retries automatically resume after quota is restored.
 
 ## Testing
 

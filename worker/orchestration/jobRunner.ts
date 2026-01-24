@@ -39,7 +39,7 @@ import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult, AdditionalContext } from '../types.js';
 import { getDependencyBranchInfo } from '../mech_worker.js';
 import { getBlueprintEnableContextPhases, getBlueprintEnableBeads } from '../../config/index.js';
-import { requestStop } from '../cycleControl.js';
+import { waitForGeminiQuota, isGeminiQuotaError } from '../llm/geminiQuota.js';
 
 const DEFAULT_BASE_BRANCH = process.env.CODE_METADATA_DEFAULT_BASE_BRANCH || 'main';
 
@@ -344,7 +344,26 @@ export async function processOnce(
       model: metadata?.model || 'auto-gemini-3',
     });
     try {
-      result = await runAgentForRequest(target, metadata);
+      let executionAttempt = 0;
+      for (;;) {
+        await waitForGeminiQuota({
+          reason: executionAttempt === 0 ? 'pre_execution' : 'execution_retry',
+          requestId: target.id,
+          jobName: metadata?.jobName,
+          model: metadata?.model,
+        });
+
+        try {
+          result = await runAgentForRequest(target, metadata);
+          break;
+        } catch (agentError: any) {
+          if (isGeminiQuotaError(agentError)) {
+            executionAttempt += 1;
+            continue;
+          }
+          throw agentError;
+        }
+      }
       result = await consolidateArtifacts(result, target.id);
 
       finalStatus = await inferJobStatus({
@@ -537,13 +556,7 @@ export async function processOnce(
 
           error = null;
         } else if (finalStatus?.status === 'COMPLETED' && !agentActuallyRan) {
-          // Check if this is a quota error by examining stderr/error message
-          const errorMessage = String(e?.message || e?.error || '');
-          const stderrContent = String(e?.error?.stderr || e?.stderr || stderrWarnings || '');
-          const isQuotaError =
-            errorMessage.toLowerCase().includes('quota') ||
-            stderrContent.toLowerCase().includes('quota') ||
-            errorMessage.includes('TerminalQuotaError');
+          const isQuotaError = isGeminiQuotaError(e) || isGeminiQuotaError(stderrWarnings);
 
           const failureMessage = isQuotaError
             ? 'Agent execution failed: API quota exhausted (daily limit reached)'
@@ -559,14 +572,6 @@ export async function processOnce(
             'Gemini CLI transport failed with no agent execution evidence; setting status to FAILED',
           );
 
-          // If quota exhausted, stop the worker - no point processing more jobs
-          if (isQuotaError) {
-            workerLogger.error(
-              { jobName: metadata?.jobName, requestId: target.id },
-              'API quota exhausted - requesting worker stop to prevent further failures',
-            );
-            requestStop();
-          }
         }
       }
     }

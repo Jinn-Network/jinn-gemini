@@ -270,6 +270,10 @@ PONDER_START_BLOCK=38187727      # OlasMech Deliver start block (factory scan fi
 ```bash
 MECH_TARGET_REQUEST_ID=0x...     # Process specific request
 RPC_URL=<base-rpc-url>           # Base network RPC
+GEMINI_QUOTA_CHECK_MODEL=auto-gemini-3   # Optional: model for quota check pings
+GEMINI_QUOTA_CHECK_TIMEOUT_MS=10000      # Optional: quota check timeout (ms)
+GEMINI_QUOTA_BACKOFF_MS=60000            # Optional: base backoff (ms)
+GEMINI_QUOTA_MAX_BACKOFF_MS=600000       # Optional: max backoff (ms)
 ```
 
 **OLAS (see OLAS_ARCHITECTURE_GUIDE.md):**
@@ -298,6 +302,10 @@ STAKING_PROGRAM=<program>
 - Service name: `jinn-worker`
 - Set `WORKER_STUCK_EXIT_CYCLES` to auto-exit after N stuck cycles (lets Railway restart the service)
 - Recommended: `WORKER_STUCK_EXIT_CYCLES=5`
+
+**Gemini Quota Handling:**
+- Worker checks Gemini quota before claiming new jobs.
+- If quota is exhausted mid-run, the worker stays live, polls until restored, then resumes execution.
 
 ---
 
@@ -1444,4 +1452,3 @@ yarn tsx scripts/check-balances.ts
 **End of Operational Guide**
 
 *For deep architecture, see `docs/documentation/`. Keep this file under 400 lines.*
-

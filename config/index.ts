@@ -171,6 +171,18 @@ const llmApiSchema = z.object({
   // GEMINI_API_KEY: Google Gemini API key
   GEMINI_API_KEY: z.string().optional(),
 
+  // GEMINI_QUOTA_CHECK_MODEL: Model used for quota check pings
+  GEMINI_QUOTA_CHECK_MODEL: z.string().optional(),
+
+  // GEMINI_QUOTA_CHECK_TIMEOUT_MS: Timeout for quota check HTTP calls
+  GEMINI_QUOTA_CHECK_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+
+  // GEMINI_QUOTA_BACKOFF_MS: Base backoff for quota polling
+  GEMINI_QUOTA_BACKOFF_MS: z.coerce.number().int().positive().optional(),
+
+  // GEMINI_QUOTA_MAX_BACKOFF_MS: Max backoff for quota polling
+  GEMINI_QUOTA_MAX_BACKOFF_MS: z.coerce.number().int().positive().optional(),
+
   // OPENAI_API_KEY: OpenAI API key
   OPENAI_API_KEY: z.string().optional(),
 });
@@ -743,6 +755,22 @@ export function getIpfsFetchTimeoutMs(): number {
 
 export function getOptionalGeminiApiKey(): string | undefined {
   return getConfig().GEMINI_API_KEY;
+}
+
+export function getOptionalGeminiQuotaCheckModel(): string | undefined {
+  return getConfig().GEMINI_QUOTA_CHECK_MODEL;
+}
+
+export function getOptionalGeminiQuotaCheckTimeoutMs(): number | undefined {
+  return getConfig().GEMINI_QUOTA_CHECK_TIMEOUT_MS;
+}
+
+export function getOptionalGeminiQuotaBackoffMs(): number | undefined {
+  return getConfig().GEMINI_QUOTA_BACKOFF_MS;
+}
+
+export function getOptionalGeminiQuotaMaxBackoffMs(): number | undefined {
+  return getConfig().GEMINI_QUOTA_MAX_BACKOFF_MS;
 }
 
 export function getRequiredGeminiApiKey(): string {

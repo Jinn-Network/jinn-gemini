@@ -5,14 +5,31 @@
 
 import { Octokit } from '@octokit/rest';
 
-// Default organization for provisioned repos
-const DEFAULT_ORG = process.env.GITHUB_ORG || 'Jinn-Network';
+// Default owner for provisioned repos (org if provided, otherwise authenticated user)
+const DEFAULT_ORG = process.env.GITHUB_ORG || '';
 
 export interface RepoResult {
     repoUrl: string;
     sshUrl: string;
     htmlUrl: string;
     fullName: string;
+}
+
+async function getAuthenticatedLogin(octokit: Octokit): Promise<string> {
+    const response = await octokit.users.getAuthenticated();
+    const login = response.data?.login;
+    if (!login) {
+        throw new Error('Unable to resolve authenticated GitHub user');
+    }
+    return login;
+}
+
+async function resolveOwner(octokit: Octokit, orgOverride?: string): Promise<{ owner: string; useOrg: boolean }> {
+    const org = orgOverride || DEFAULT_ORG || '';
+    const login = await getAuthenticatedLogin(octokit);
+    const owner = org || login;
+    const useOrg = Boolean(org && org !== login);
+    return { owner, useOrg };
 }
 
 /**
@@ -32,8 +49,9 @@ export async function createRepository(
         throw new Error('GITHUB_TOKEN environment variable is required');
     }
 
-    const org = options.org || DEFAULT_ORG;
-    const fullName = `${org}/${name}`;
+    const octokit = new Octokit({ auth: token });
+    const { owner, useOrg } = await resolveOwner(octokit, options.org);
+    const fullName = `${owner}/${name}`;
 
     if (options.dryRun) {
         console.log(`[DRY RUN] Would create repository: ${fullName}`);
@@ -45,11 +63,9 @@ export async function createRepository(
         };
     }
 
-    const octokit = new Octokit({ auth: token });
-
     // Check if repo already exists
     try {
-        const existing = await octokit.repos.get({ owner: org, repo: name });
+        const existing = await octokit.repos.get({ owner, repo: name });
         if (existing.data) {
             console.log(`[github] Repository ${fullName} already exists, using existing`);
             return {
@@ -66,13 +82,20 @@ export async function createRepository(
 
     console.log(`[github] Creating repository: ${fullName}`);
 
-    const response = await octokit.repos.createInOrg({
-        org,
-        name,
-        description: options.description || `Jinn workstream: ${name}`,
-        private: options.private ?? false,
-        auto_init: true, // Creates with README
-    });
+    const response = useOrg
+        ? await octokit.repos.createInOrg({
+            org: owner,
+            name,
+            description: options.description || `Jinn workstream: ${name}`,
+            private: options.private ?? false,
+            auto_init: true, // Creates with README
+        })
+        : await octokit.repos.createForAuthenticatedUser({
+            name,
+            description: options.description || `Jinn workstream: ${name}`,
+            private: options.private ?? false,
+            auto_init: true, // Creates with README
+        });
 
     console.log(`[github] Repository created: ${response.data.html_url}`);
 
@@ -103,8 +126,9 @@ export async function createFromTemplate(
         throw new Error('GITHUB_TOKEN environment variable is required');
     }
 
-    const org = options.org || DEFAULT_ORG;
-    const fullName = `${org}/${name}`;
+    const octokit = new Octokit({ auth: token });
+    const { owner } = await resolveOwner(octokit, options.org);
+    const fullName = `${owner}/${name}`;
 
     if (options.dryRun) {
         console.log(`[DRY RUN] Would create ${fullName} from template ${templateOwner}/${templateRepo}`);
@@ -116,11 +140,9 @@ export async function createFromTemplate(
         };
     }
 
-    const octokit = new Octokit({ auth: token });
-
     // Check if repo already exists
     try {
-        const existing = await octokit.repos.get({ owner: org, repo: name });
+        const existing = await octokit.repos.get({ owner, repo: name });
         if (existing.data) {
             console.log(`[github] Repository ${fullName} already exists, using existing`);
             return {
@@ -140,7 +162,7 @@ export async function createFromTemplate(
         template_owner: templateOwner,
         template_repo: templateRepo,
         name,
-        owner: org,
+        owner,
         description: options.description || `Jinn workstream: ${name}`,
         private: options.private ?? false,
         include_all_branches: false,
