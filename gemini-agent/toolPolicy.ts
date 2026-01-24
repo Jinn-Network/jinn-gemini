@@ -122,6 +122,27 @@ export function hasBrowserAutomation(enabledTools: string[]): boolean {
 }
 
 /**
+ * Nano Banana image generation tools (Gemini CLI extension)
+ * Provides image generation, editing, and manipulation using Gemini image models
+ */
+export const NANO_BANANA_TOOLS = [
+  'generate_image',
+  'edit_image',
+  'restore_image',
+  'generate_icon',
+  'generate_pattern',
+  'generate_story',
+  'generate_diagram',
+] as const;
+
+/**
+ * Check if nano banana image generation is enabled in the tools list
+ */
+export function hasNanoBanana(enabledTools: string[]): boolean {
+  return enabledTools.includes('nano_banana');
+}
+
+/**
  * Extension meta-tools that trigger workspace extension installation
  *
  * These are Gemini CLI extensions installed via `gemini extension install <url>`.
@@ -136,6 +157,12 @@ export const EXTENSION_META_TOOLS = {
     extensionName: 'chrome-devtools-mcp',
     requiredEnv: [],
     tools: [...BROWSER_AUTOMATION_TOOLS] as string[],
+  },
+  nano_banana: {
+    installUrl: 'https://github.com/gemini-cli-extensions/nanobanana',
+    extensionName: 'nanobanana',
+    requiredEnv: ['GEMINI_API_KEY'],
+    tools: [...NANO_BANANA_TOOLS] as string[],
   },
 } as const;
 
@@ -336,6 +363,14 @@ export function computeToolPolicy(
     expandedTools = [
       ...expandedTools.filter(t => t !== 'fireflies_meetings'),
       ...FIREFLIES_TOOLS
+    ];
+  }
+
+  // Expand nano_banana meta-tool to Nano Banana image tools
+  if (expandedTools.includes('nano_banana')) {
+    expandedTools = [
+      ...expandedTools.filter(t => t !== 'nano_banana'),
+      ...NANO_BANANA_TOOLS
     ];
   }
 

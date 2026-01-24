@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeToolPolicy, UNIVERSAL_TOOLS, NATIVE_TOOLS, FIREFLIES_TOOLS, hasFirefliesMeetings } from '../../../gemini-agent/toolPolicy.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, NATIVE_TOOLS, FIREFLIES_TOOLS, hasFirefliesMeetings, NANO_BANANA_TOOLS, hasNanoBanana } from '../../../gemini-agent/toolPolicy.js';
 import { REGISTERED_MCP_TOOLS } from '../../../gemini-agent/mcp/server.js';
 
 describe('computeToolPolicy', () => {
@@ -73,6 +73,50 @@ describe('hasFirefliesMeetings', () => {
   it('returns false when fireflies_meetings is not in the list', () => {
     expect(hasFirefliesMeetings([])).toBe(false);
     expect(hasFirefliesMeetings(['railway_deployment'])).toBe(false);
+  });
+});
+
+describe('nano_banana meta-tool', () => {
+  it('expands nano_banana to the 7 image tools', () => {
+    const policy = computeToolPolicy(['nano_banana']);
+
+    expect(policy.mcpIncludeTools).toContain('generate_image');
+    expect(policy.mcpIncludeTools).toContain('edit_image');
+    expect(policy.mcpIncludeTools).toContain('restore_image');
+    expect(policy.mcpIncludeTools).toContain('generate_icon');
+    expect(policy.mcpIncludeTools).toContain('generate_pattern');
+    expect(policy.mcpIncludeTools).toContain('generate_story');
+    expect(policy.mcpIncludeTools).toContain('generate_diagram');
+  });
+
+  it('removes the meta-tool name from the expanded list', () => {
+    const policy = computeToolPolicy(['nano_banana']);
+
+    expect(policy.mcpIncludeTools).not.toContain('nano_banana');
+  });
+
+  it('does not include nano banana tools when meta-tool not enabled', () => {
+    const policy = computeToolPolicy([]);
+
+    expect(policy.mcpIncludeTools).not.toContain('generate_image');
+    expect(policy.mcpIncludeTools).not.toContain('edit_image');
+    expect(policy.mcpIncludeTools).not.toContain('generate_diagram');
+  });
+
+  it('NANO_BANANA_TOOLS constant has exactly 7 tools', () => {
+    expect(NANO_BANANA_TOOLS).toHaveLength(7);
+  });
+});
+
+describe('hasNanoBanana', () => {
+  it('returns true when nano_banana is in the list', () => {
+    expect(hasNanoBanana(['nano_banana'])).toBe(true);
+    expect(hasNanoBanana(['other_tool', 'nano_banana'])).toBe(true);
+  });
+
+  it('returns false when nano_banana is not in the list', () => {
+    expect(hasNanoBanana([])).toBe(false);
+    expect(hasNanoBanana(['browser_automation'])).toBe(false);
   });
 });
 

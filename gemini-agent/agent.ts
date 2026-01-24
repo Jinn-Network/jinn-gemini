@@ -272,11 +272,13 @@ export class Agent {
       mkdirSync(this.geminiHome, { recursive: true });
 
       // Install to GEMINI_HOME (persists across jobs)
+      // input: 'y\n' auto-confirms the interactive safety prompt
       execSync(
         `npx @google/gemini-cli extension install ${extensionUrl}`,
         {
           cwd: this.codeWorkspace || this.agentRoot,
           stdio: 'pipe',
+          input: 'y\n',
           env: { ...process.env, GEMINI_HOME: this.geminiHome },
         }
       );
