@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Info, X } from 'lucide-react';
+import { Info, X, Check, AlertTriangle, XCircle, HelpCircle } from 'lucide-react';
 import type { Invariant, LegacyInvariant, InvariantMeasurement, HealthStatus } from '../../lib/invariant-types';
 import {
   isFloorInvariant,
@@ -22,13 +22,25 @@ export interface InvariantCardProps {
   onLearnMore?: (invariant: Invariant | LegacyInvariant) => void;
 }
 
-const statusConfig: Record<HealthStatus, { label: string; bg: string; border: string; text: string; icon: string }> = {
+const statusConfig: Record<HealthStatus, {
+  label: string;
+  bg: string;
+  border: string;
+  text: string;
+  icon: string;
+  badgeBg: string;
+  badgeText: string;
+  IconComponent: typeof Check;
+}> = {
   healthy: {
     label: 'Healthy',
     bg: 'bg-green-500/10',
     border: 'border-green-500/50',
     text: 'text-green-600 dark:text-green-400',
     icon: '✓',
+    badgeBg: 'bg-green-500/20',
+    badgeText: 'text-green-600 dark:text-green-400',
+    IconComponent: Check,
   },
   warning: {
     label: 'Warning',
@@ -36,6 +48,9 @@ const statusConfig: Record<HealthStatus, { label: string; bg: string; border: st
     border: 'border-yellow-500/50',
     text: 'text-yellow-600 dark:text-yellow-400',
     icon: '⚠',
+    badgeBg: 'bg-yellow-500/20',
+    badgeText: 'text-yellow-600 dark:text-yellow-400',
+    IconComponent: AlertTriangle,
   },
   critical: {
     label: 'Critical',
@@ -43,13 +58,19 @@ const statusConfig: Record<HealthStatus, { label: string; bg: string; border: st
     border: 'border-red-500/50',
     text: 'text-red-600 dark:text-red-400',
     icon: '✗',
+    badgeBg: 'bg-red-500/20',
+    badgeText: 'text-red-600 dark:text-red-400',
+    IconComponent: XCircle,
   },
   unknown: {
-    label: 'No measurement',
+    label: 'Unknown',
     bg: 'bg-muted',
     border: 'border-border',
     text: 'text-muted-foreground',
     icon: '—',
+    badgeBg: 'bg-muted',
+    badgeText: 'text-muted-foreground',
+    IconComponent: HelpCircle,
   },
 };
 
@@ -180,36 +201,55 @@ export function InvariantCard({
     }
   };
 
+  const StatusIcon = config.IconComponent;
+
   return (
     <>
       <div
         className={cn(
-          'aspect-square p-3 rounded-xl border-2 transition-all relative',
-          'flex flex-col items-center justify-between text-center',
+          'p-4 rounded-xl border-2 transition-all relative',
+          'flex flex-col gap-3',
           config.bg,
           config.border,
           className
         )}
       >
-        {/* Status Label */}
-        <div className={cn('text-xs font-semibold', config.text)}>
-          {config.label}
+        {/* Top row: ID (prominent) + Status badge */}
+        <div className="flex items-start justify-between gap-2">
+          <code className="text-sm font-mono font-bold text-foreground leading-tight">
+            {invariant.id}
+          </code>
+          <span className={cn(
+            'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
+            config.badgeBg,
+            config.badgeText
+          )}>
+            <StatusIcon className="h-3 w-3" />
+            {config.label}
+          </span>
         </div>
 
-        {/* Gauge or Icon */}
-        <div className="flex-1 flex flex-col items-center justify-center w-full gap-1">
+        {/* Description - truncated to 2 lines */}
+        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+          {displayText}
+        </p>
+
+        {/* Value/Status indicator - compact */}
+        <div className="flex items-center gap-3">
           {isGaugeType && gauge ? (
-            <>
-              {renderGauge()}
+            <div className="flex-1 flex items-center gap-2">
+              <div className="flex-1">
+                {renderGauge()}
+              </div>
               {numericValue !== null && (
-                <div className={cn('text-xl font-mono font-bold', config.text)}>
+                <div className={cn('text-lg font-mono font-bold shrink-0', config.text)}>
                   {numericValue}
                 </div>
               )}
-            </>
+            </div>
           ) : isBooleanType ? (
-            <>
-              <div className={cn('text-4xl font-bold', config.text)}>
+            <div className="flex items-center gap-2">
+              <div className={cn('text-2xl font-bold', config.text)}>
                 {booleanValue === null ? '—' : booleanValue ? '✓' : '✗'}
               </div>
               {booleanValue !== null && (
@@ -217,37 +257,26 @@ export function InvariantCard({
                   {booleanValue ? 'TRUE' : 'FALSE'}
                 </div>
               )}
-            </>
+            </div>
           ) : isLegacyType ? (
-            // Legacy invariant - show status icon and a preview of the text
-            <>
-              <div className={cn('text-3xl font-bold', config.text)}>
-                {config.icon}
-              </div>
-              <div className="text-[10px] text-muted-foreground line-clamp-2 px-1">
-                {displayText}
-              </div>
-            </>
+            <div className={cn('text-2xl font-bold', config.text)}>
+              {config.icon}
+            </div>
           ) : (
-            <div className={cn('text-4xl font-bold', config.text)}>
+            <div className={cn('text-2xl font-bold', config.text)}>
               {config.icon}
             </div>
           )}
         </div>
 
-        {/* Bottom row: ID + Details button */}
-        <div className="flex items-center justify-between w-full gap-1">
-          <code className="text-[9px] text-muted-foreground font-mono truncate flex-1 text-left">
-            {invariant.id}
-          </code>
-          <button
-            onClick={handleDetailsClick}
-            className="text-[10px] text-primary hover:underline flex items-center gap-0.5 shrink-0"
-          >
-            <Info className="h-3 w-3" />
-            Details
-          </button>
-        </div>
+        {/* Details button */}
+        <button
+          onClick={handleDetailsClick}
+          className="w-full mt-auto py-1.5 px-3 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+        >
+          <Info className="h-3.5 w-3.5" />
+          View Details
+        </button>
       </div>
 
       {/* Modal */}
