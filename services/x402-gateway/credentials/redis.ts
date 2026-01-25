@@ -14,6 +14,14 @@ const KEY_PREFIX = 'cred:nonce:';
 
 let redis: Redis | null = null;
 
+/**
+ * Get the Redis client instance.
+ * Returns null if Redis is not configured (dev mode).
+ */
+export function getRedis(): Redis | null {
+  return redis;
+}
+
 function initRedis(): void {
   const url = process.env.REDIS_URL;
   if (!url) {

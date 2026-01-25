@@ -873,6 +873,7 @@ import { getGrant } from './credentials/acl.js';
 import { getNangoAccessToken } from './credentials/nango-client.js';
 import { checkAndStoreNonce } from './credentials/redis.js';
 import { verifyPayment, type PaymentErrorCode } from './credentials/x402-verify.js';
+import { checkRateLimit, getRateLimitHeaders } from './credentials/rate-limit.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
 
 /**
@@ -942,6 +943,15 @@ app.post("/credentials/:provider", async (c) => {
     return c.json({ error: "Signature does not match claimed address", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
   }
 
+  // Rate limit check (before ACL/payment to fail fast)
+  const rateLimit = await checkRateLimit(recoveredAddress, provider);
+  if (!rateLimit.allowed) {
+    return c.json(
+      { error: 'Rate limit exceeded. Try again later.', code: 'RATE_LIMITED' } satisfies CredentialError,
+      { status: 429, headers: getRateLimitHeaders(rateLimit) }
+    );
+  }
+
   // Check ACL
   const grant = await getGrant(recoveredAddress, provider);
   if (!grant) {
@@ -994,10 +1004,13 @@ app.post("/credentials/:provider", async (c) => {
       expires_in: token.expires_in,
       provider,
     };
-    return c.json(response);
+    return c.json(response, { headers: getRateLimitHeaders(rateLimit) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return c.json({ error: `Nango error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError, 502);
+    return c.json(
+      { error: `Nango error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError,
+      { status: 502, headers: getRateLimitHeaders(rateLimit) }
+    );
   }
 });
 

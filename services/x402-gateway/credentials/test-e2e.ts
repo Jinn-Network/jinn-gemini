@@ -599,6 +599,144 @@ async function testPaymentValidInDevMode() {
 }
 
 // ============================================
+// Rate Limiting Tests
+// ============================================
+
+async function testRateLimitExceeded() {
+  console.log('\n--- Rate Limit Exceeded ---');
+
+  if (!process.env.REDIS_URL) {
+    log('⊘', 'Skipped — REDIS_URL not set (rate limiting disabled)');
+    return;
+  }
+
+  // Use a unique provider for this test to avoid interference
+  const provider = 'ratelimit-test-' + Date.now();
+  await setGrant(TEST_ADDRESS, provider, {
+    nangoConnectionId: 'conn-ratelimit',
+    pricePerAccess: '0',
+    expiresAt: null,
+    active: true,
+  });
+
+  // Make 10 requests (should all succeed or fail on Nango, but not rate limit)
+  let hitRateLimit = false;
+  for (let i = 0; i < 10; i++) {
+    const { status, body } = await credentialRequest(provider, TEST_ACCOUNT);
+    if (status === 429) {
+      hitRateLimit = true;
+      log('✗', `Request ${i + 1} hit rate limit unexpectedly`);
+      break;
+    }
+    // Expect 502 (Nango error since connection is fake) - that's fine
+  }
+
+  if (!hitRateLimit) {
+    log('✓', 'First 10 requests passed rate limit check');
+  }
+
+  // 11th request should hit rate limit
+  const { status: status11, body: body11 } = await credentialRequest(provider, TEST_ACCOUNT);
+  if (status11 === 429 && body11?.code === 'RATE_LIMITED') {
+    log('✓', 'Request 11 rate limited (429 RATE_LIMITED)');
+  } else {
+    log('✗', `Expected 429 RATE_LIMITED on request 11, got ${status11}: ${JSON.stringify(body11)}`);
+  }
+}
+
+async function testRateLimitSeparateProviders() {
+  console.log('\n--- Rate Limit Separate Providers ---');
+
+  if (!process.env.REDIS_URL) {
+    log('⊘', 'Skipped — REDIS_URL not set (rate limiting disabled)');
+    return;
+  }
+
+  // Set up two unique providers
+  const providerA = 'ratelimit-provA-' + Date.now();
+  const providerB = 'ratelimit-provB-' + Date.now();
+
+  await setGrant(TEST_ADDRESS, providerA, {
+    nangoConnectionId: 'conn-ratelimitA',
+    pricePerAccess: '0',
+    expiresAt: null,
+    active: true,
+  });
+  await setGrant(TEST_ADDRESS, providerB, {
+    nangoConnectionId: 'conn-ratelimitB',
+    pricePerAccess: '0',
+    expiresAt: null,
+    active: true,
+  });
+
+  // Use up rate limit on provider A (10 requests)
+  for (let i = 0; i < 10; i++) {
+    await credentialRequest(providerA, TEST_ACCOUNT);
+  }
+
+  // Provider A should be rate limited
+  const { status: statusA } = await credentialRequest(providerA, TEST_ACCOUNT);
+  if (statusA !== 429) {
+    log('✗', `Expected 429 on provider A after 11 requests, got ${statusA}`);
+    return;
+  }
+  log('✓', 'Provider A is rate limited');
+
+  // Provider B should NOT be rate limited (separate counter)
+  const { status: statusB, body: bodyB } = await credentialRequest(providerB, TEST_ACCOUNT);
+  if (statusB !== 429) {
+    log('✓', `Provider B is NOT rate limited (got ${statusB})`);
+  } else {
+    log('✗', `Provider B should not be rate limited, got 429: ${JSON.stringify(bodyB)}`);
+  }
+}
+
+async function testRateLimitHeaders() {
+  console.log('\n--- Rate Limit Headers ---');
+
+  if (!process.env.REDIS_URL) {
+    log('⊘', 'Skipped — REDIS_URL not set (rate limiting disabled)');
+    return;
+  }
+
+  // Use a unique provider
+  const provider = 'ratelimit-headers-' + Date.now();
+  await setGrant(TEST_ADDRESS, provider, {
+    nangoConnectionId: 'conn-headers',
+    pricePerAccess: '0',
+    expiresAt: null,
+    active: true,
+  });
+
+  // Make a request and check headers
+  const requestBody = {
+    timestamp: Math.floor(Date.now() / 1000),
+    nonce: crypto.randomUUID(),
+  };
+  const { signature, address } = await signRequest(TEST_ACCOUNT, requestBody);
+
+  const res = await fetch(`${GATEWAY_URL}/credentials/${provider}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Agent-Signature': signature,
+      'X-Agent-Address': address,
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  const limit = res.headers.get('X-RateLimit-Limit');
+  const remaining = res.headers.get('X-RateLimit-Remaining');
+  const reset = res.headers.get('X-RateLimit-Reset');
+
+  if (limit && remaining && reset) {
+    log('✓', `Rate limit headers present: limit=${limit}, remaining=${remaining}, reset=${reset}`);
+  } else {
+    log('✗', `Missing rate limit headers: limit=${limit}, remaining=${remaining}, reset=${reset}`);
+  }
+}
+
+// ============================================
 // Main
 // ============================================
 
@@ -639,6 +777,11 @@ async function main() {
   await testPaymentExpired();
   await testPaymentNetworkMismatch();
   await testPaymentValidInDevMode();
+
+  // Rate limiting tests
+  await testRateLimitExceeded();
+  await testRateLimitSeparateProviders();
+  await testRateLimitHeaders();
 
   // Nango integration tests
   const tokenOk = await testSuccessfulTokenFetch(nangoOk);
