@@ -874,6 +874,7 @@ import { getNangoAccessToken } from './credentials/nango-client.js';
 import { checkAndStoreNonce } from './credentials/redis.js';
 import { verifyPayment, type PaymentErrorCode } from './credentials/x402-verify.js';
 import { checkRateLimit, getRateLimitHeaders } from './credentials/rate-limit.js';
+import { logAudit, getClientIp, getUserAgent } from './credentials/audit.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
 
 /**
@@ -898,26 +899,35 @@ async function recoverAddress(message: string, signature: string): Promise<strin
 app.post("/credentials/:provider", async (c) => {
   const provider = c.req.param("provider");
 
+  // Extract audit context early
+  const clientIp = getClientIp(c);
+  const userAgent = getUserAgent(c);
+  const claimedAddr = c.req.header("X-Agent-Address")?.toLowerCase() || 'unknown';
+
   // Parse request body
   let body: CredentialRequest;
   try {
     body = await c.req.json() as CredentialRequest;
   } catch {
+    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'invalid_json' } });
     return c.json({ error: "Invalid JSON body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
   }
 
   // Validate request freshness (within 5 minutes)
   const now = Math.floor(Date.now() / 1000);
   if (Math.abs(now - body.timestamp) > 300) {
+    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'stale_timestamp' } });
     return c.json({ error: "Request timestamp too old or in future", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
   }
 
   // Check nonce uniqueness (replay protection)
   if (!body.nonce) {
+    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'missing_nonce' } });
     return c.json({ error: "Missing nonce in request body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
   }
   const nonceIsNew = await checkAndStoreNonce(body.nonce);
   if (!nonceIsNew) {
+    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'nonce_reused' } });
     return c.json({ error: "Nonce already used", code: "NONCE_REUSED" } satisfies CredentialError, 401);
   }
 
@@ -926,6 +936,7 @@ app.post("/credentials/:provider", async (c) => {
   const claimedAddress = c.req.header("X-Agent-Address");
 
   if (!signature || !claimedAddress) {
+    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'missing_headers' } });
     return c.json({ error: "Missing X-Agent-Signature or X-Agent-Address header", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
   }
 
@@ -935,17 +946,20 @@ app.post("/credentials/:provider", async (c) => {
     const message = JSON.stringify(body);
     recoveredAddress = await recoverAddress(message, signature);
   } catch (err) {
+    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'signature_recovery_failed' } });
     return c.json({ error: "Signature verification failed", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
   }
 
   // Check recovered address matches claimed address
   if (recoveredAddress !== claimedAddress.toLowerCase()) {
+    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'address_mismatch', recovered: recoveredAddress } });
     return c.json({ error: "Signature does not match claimed address", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
   }
 
   // Rate limit check (before ACL/payment to fail fast)
   const rateLimit = await checkRateLimit(recoveredAddress, provider);
   if (!rateLimit.allowed) {
+    logAudit({ address: recoveredAddress, provider, action: 'rate_limited', ip: clientIp, userAgent, nonce: body.nonce });
     return c.json(
       { error: 'Rate limit exceeded. Try again later.', code: 'RATE_LIMITED' } satisfies CredentialError,
       { status: 429, headers: getRateLimitHeaders(rateLimit) }
@@ -955,6 +969,7 @@ app.post("/credentials/:provider", async (c) => {
   // Check ACL
   const grant = await getGrant(recoveredAddress, provider);
   if (!grant) {
+    logAudit({ address: recoveredAddress, provider, action: 'not_authorized', ip: clientIp, userAgent, nonce: body.nonce });
     return c.json({ error: `No active grant for ${provider}`, code: "NOT_AUTHORIZED" } satisfies CredentialError, 403);
   }
 
@@ -966,10 +981,12 @@ app.post("/credentials/:provider", async (c) => {
     const x402Network = process.env.X402_NETWORK || 'base';
 
     if (!gatewayAddress) {
+      logAudit({ address: recoveredAddress, provider, action: 'payment_required', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'server_misconfigured' } });
       return c.json({ error: "Server misconfigured: GATEWAY_PAYMENT_ADDRESS not set", code: "PAYMENT_REQUIRED" } satisfies CredentialError, 500);
     }
 
     if (!paymentHeader) {
+      logAudit({ address: recoveredAddress, provider, action: 'payment_required', ip: clientIp, userAgent, nonce: body.nonce, metadata: { amount: grant.pricePerAccess } });
       return c.json({
         error: `Payment required: ${grant.pricePerAccess} (USDC atomic units)`,
         code: "PAYMENT_REQUIRED"
@@ -986,6 +1003,7 @@ app.post("/credentials/:provider", async (c) => {
 
     if (!result.valid) {
       const status = result.error?.code === 'FACILITATOR_UNAVAILABLE' ? 503 : 402;
+      logAudit({ address: recoveredAddress, provider, action: 'payment_invalid', ip: clientIp, userAgent, nonce: body.nonce, metadata: { errorCode: result.error?.code, errorMessage: result.error?.message } });
       return c.json({
         error: result.error?.message || 'Payment verification failed',
         code: "PAYMENT_INVALID",
@@ -1004,9 +1022,11 @@ app.post("/credentials/:provider", async (c) => {
       expires_in: token.expires_in,
       provider,
     };
+    logAudit({ address: recoveredAddress, provider, action: 'token_issued', ip: clientIp, userAgent, nonce: body.nonce });
     return c.json(response, { headers: getRateLimitHeaders(rateLimit) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    logAudit({ address: recoveredAddress, provider, action: 'nango_error', ip: clientIp, userAgent, nonce: body.nonce, metadata: { error: message } });
     return c.json(
       { error: `Nango error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError,
       { status: 502, headers: getRateLimitHeaders(rateLimit) }
