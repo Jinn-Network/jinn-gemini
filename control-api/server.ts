@@ -168,6 +168,7 @@ const typeDefs = /* GraphQL */ `
     _health: String!
     jobTemplates(status: String, safety_tier: String, limit: Int): [JobTemplate!]!
     jobTemplate(id: String!): JobTemplate
+    getRequestClaim(requestId: String!): RequestClaim
   }
 `;
 
@@ -279,6 +280,19 @@ const resolvers = {
         output_spec: JSON.stringify(data.output_spec || {}),
         x402_price: String(data.x402_price || 0),
       };
+    },
+
+    getRequestClaim: async (_: any, args: { requestId: string }, ctx: Context) => {
+      const { data, error } = await ctx.supabase
+        .from('onchain_request_claims')
+        .select('*')
+        .eq('request_id', args.requestId)
+        .order('claimed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      return data; // Returns null if not found
     },
   },
   Mutation: {

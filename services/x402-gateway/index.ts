@@ -875,7 +875,13 @@ import { checkAndStoreNonce } from './credentials/redis.js';
 import { verifyPayment, type PaymentErrorCode } from './credentials/x402-verify.js';
 import { checkRateLimit, getRateLimitHeaders } from './credentials/rate-limit.js';
 import { logAudit, getClientIp, getUserAgent } from './credentials/audit.js';
+import { verifyJobClaim } from './credentials/job-verify.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
+
+/** Extended request body with optional requestId for job-bound credentials */
+interface CredentialRequestWithJob extends CredentialRequest {
+  requestId?: string;
+}
 
 /**
  * Recover signer address from EIP-191 personal_sign signature.
@@ -905,9 +911,9 @@ app.post("/credentials/:provider", async (c) => {
   const claimedAddr = c.req.header("X-Agent-Address")?.toLowerCase() || 'unknown';
 
   // Parse request body
-  let body: CredentialRequest;
+  let body: CredentialRequestWithJob;
   try {
-    body = await c.req.json() as CredentialRequest;
+    body = await c.req.json() as CredentialRequestWithJob;
   } catch {
     logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'invalid_json' } });
     return c.json({ error: "Invalid JSON body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
@@ -964,6 +970,27 @@ app.post("/credentials/:provider", async (c) => {
       { error: 'Rate limit exceeded. Try again later.', code: 'RATE_LIMITED' } satisfies CredentialError,
       { status: 429, headers: getRateLimitHeaders(rateLimit) }
     );
+  }
+
+  // Job context verification (optional based on REQUIRE_JOB_CONTEXT env)
+  const requireJobContext = process.env.REQUIRE_JOB_CONTEXT !== 'false';
+  if (requireJobContext) {
+    if (!body.requestId) {
+      logAudit({ address: recoveredAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'missing_job_context' } });
+      return c.json(
+        { error: 'Job context (requestId) required', code: 'JOB_NOT_ACTIVE' } satisfies CredentialError,
+        { status: 403, headers: getRateLimitHeaders(rateLimit) }
+      );
+    }
+
+    const jobValid = await verifyJobClaim(body.requestId, recoveredAddress);
+    if (!jobValid.valid) {
+      logAudit({ address: recoveredAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'job_not_active', requestId: body.requestId, detail: jobValid.error } });
+      return c.json(
+        { error: jobValid.error || 'Job verification failed', code: 'JOB_NOT_ACTIVE' } satisfies CredentialError,
+        { status: 403, headers: getRateLimitHeaders(rateLimit) }
+      );
+    }
   }
 
   // Check ACL
