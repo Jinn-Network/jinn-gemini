@@ -2,23 +2,63 @@
 
 /**
  * inspect-workstream: Workstream Execution Graph Inspector
- * 
- * Visualizes the complete execution graph of a workstream, showing parent/child relationships,
- * status, and key artifacts without overwhelming detail.
- * 
+ *
+ * Primary entry point for workstream debugging. Provides filtering, error aggregation,
+ * dispatch tracing, git operations, and metrics views.
+ *
  * Usage:
- *   yarn inspect-workstream <workstream-id>
- * 
- * Output:
- *   JSON structure to stdout
+ *   yarn inspect-workstream <workstream-id> [options]
+ *
+ * Flags:
+ *   --status=failed|pending|completed|all  Filter by job status
+ *   --job-name=<pattern>                   Filter by job name (regex)
+ *   --depth=<n>                            Max hierarchy depth
+ *   --since=<timestamp>                    Only requests after timestamp
+ *   --show-errors                          Include error aggregation
+ *   --show-dispatch                        Include dispatch chain/reasons
+ *   --show-git                             Include git operations
+ *   --show-metrics                         Include token/invariant stats
+ *   --show-telemetry                       Fetch full worker telemetry
+ *   --show-timing                          Include phase duration analysis
+ *   --show-tools                           Include tool usage analytics
+ *   --format=json|summary                  Output format
+ *
+ * Drill-down helpers:
+ *   yarn inspect-job-run <request-id>      Full details for one execution
+ *   yarn inspect-job <job-def-id>          History of a job definition
  */
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { GraphQLClient, gql } from 'graphql-request';
+import {
+  fetchIpfsContent,
+  fetchWorkerTelemetryArtifact,
+  extractErrorsFromTelemetry,
+  extractGitOpsFromTelemetry,
+  detectDispatchType,
+  parseDispatchMessage,
+  extractTokenMetrics,
+  extractInvariantMetrics,
+  extractTimingMetrics,
+  extractToolMetricsFromTelemetry,
+  extractFailedToolCalls,
+  aggregateErrorsByPattern,
+  aggregateTimingMetrics,
+  aggregateToolMetrics,
+  computeDepth,
+  type ErrorSummary,
+  type GitOperationSummary,
+  type DispatchInfo,
+  type DispatchType,
+  type TokenMetrics,
+  type InvariantMetrics,
+  type TimingMetrics,
+  type ToolMetrics,
+  type FailedToolCall,
+} from './shared/workstream-utils.js';
 
 const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'https://jinn-gemini-production.up.railway.app/graphql';
-const IPFS_GATEWAY_URL = process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/';
 
 // --- Types ---
 
@@ -38,6 +78,7 @@ interface Request {
   delivered: boolean;
   jobName?: string;
   enabledTools?: string[];
+  additionalContext?: string;
 }
 
 interface Delivery {
@@ -58,22 +99,28 @@ interface Artifact {
 }
 
 interface WorkstreamNode {
-  id: string; // requestId
+  id: string;
   jobName?: string;
   jobDefinitionId?: string;
   status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'UNKNOWN';
   timestamp: string;
   duration?: number;
-  summary?: string; // Short summary from delivery or inference
+  summary?: string;
   error?: string;
   children: WorkstreamNode[];
   artifacts: { name: string; topic: string; type?: string }[];
-  // Minimal details to keep context small
   _debug?: {
     delivered: boolean;
     hasDelivery: boolean;
-    finalStatus?: string; // The actual finalStatus.status from delivery for debugging
+    finalStatus?: string;
   };
+}
+
+interface FilterOptions {
+  status?: 'failed' | 'pending' | 'completed' | 'all';
+  jobNamePattern?: RegExp;
+  maxDepth?: number;
+  since?: Date;
 }
 
 // --- Queries ---
@@ -100,6 +147,7 @@ const WORKSTREAM_QUERY = gql`
         delivered
         jobName
         enabledTools
+        additionalContext
       }
     }
   }
@@ -150,58 +198,6 @@ const ARTIFACTS_QUERY = gql`
 
 // --- Helpers ---
 
-async function fetchIpfsContent(cid: string, requestIdForDelivery?: string): Promise<any> {
-  let url = `${IPFS_GATEWAY_URL}${cid}`;
-  
-  // Delivery directory reconstruction
-  if (requestIdForDelivery && cid.startsWith('f01551220')) {
-    const digestHex = cid.replace(/^f01551220/i, '');
-    try {
-      const digestBytes: number[] = [];
-      for (let i = 0; i < digestHex.length; i += 2) {
-        digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
-      }
-      const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
-      const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
-      let bitBuffer = 0;
-      let bitCount = 0;
-      let out = '';
-      for (const b of cidBytes) {
-        bitBuffer = (bitBuffer << 8) | (b & 0xff);
-        bitCount += 8;
-        while (bitCount >= 5) {
-          const idx = (bitBuffer >> (bitCount - 5)) & 0x1f;
-          bitCount -= 5;
-          out += base32Alphabet[idx];
-        }
-      }
-      if (bitCount > 0) {
-        const idx = (bitBuffer << (5 - bitCount)) & 0x1f;
-        out += base32Alphabet[idx];
-      }
-      const dirCid = 'b' + out;
-      url = `${IPFS_GATEWAY_URL}${dirCid}/${requestIdForDelivery}`;
-    } catch (e) {
-      console.error(`  Failed to reconstruct directory CID: ${e}`);
-    }
-  }
-  
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(parseInt(process.env.IPFS_FETCH_TIMEOUT_MS || '7000', 10))
-    });
-    if (!response.ok) return null;
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  } catch (error) {
-    return null;
-  }
-}
-
 function truncate(str: string, maxLength: number = 100): string {
   if (!str) return '';
   if (str.length <= maxLength) return str;
@@ -239,12 +235,274 @@ async function fetchPaged<T>(
   return results;
 }
 
+function shouldIncludeRequest(
+  req: Request,
+  nodeStatus: 'COMPLETED' | 'PENDING' | 'FAILED' | 'UNKNOWN',
+  depth: number,
+  filters: FilterOptions
+): boolean {
+  // Status filter
+  if (filters.status && filters.status !== 'all') {
+    const statusMap: Record<string, string[]> = {
+      failed: ['FAILED'],
+      pending: ['PENDING', 'UNKNOWN'],
+      completed: ['COMPLETED'],
+    };
+    if (!statusMap[filters.status].includes(nodeStatus)) {
+      return false;
+    }
+  }
+
+  // Job name filter
+  if (filters.jobNamePattern && req.jobName) {
+    if (!filters.jobNamePattern.test(req.jobName)) {
+      return false;
+    }
+  }
+
+  // Depth filter
+  if (filters.maxDepth !== undefined && depth > filters.maxDepth) {
+    return false;
+  }
+
+  // Since filter
+  if (filters.since) {
+    const reqTime = new Date(Number(req.blockTimestamp) * 1000);
+    if (reqTime < filters.since) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 3600000) return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+  return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
+}
+
+function formatSummaryOutput(result: any): string {
+  const lines: string[] = [];
+
+  lines.push('═'.repeat(60));
+  lines.push(`Workstream: ${result.workstreamId}`);
+  lines.push('═'.repeat(60));
+  lines.push('');
+
+  // Stats
+  const s = result.stats;
+  const successRate = s.totalJobRuns > 0
+    ? ((s.completedRuns / s.totalJobRuns) * 100).toFixed(1)
+    : '0';
+  lines.push(`Status: ${s.completedRuns} completed, ${s.failedRuns || 0} failed, ${s.pendingRuns} pending (${successRate}% success)`);
+  lines.push(`Jobs: ${s.uniqueJobs} unique definitions, ${s.totalJobRuns} total runs`);
+  lines.push(`Artifacts: ${s.totalArtifacts}`);
+  lines.push('');
+
+  // Errors section
+  if (result.errors && result.errors.total > 0) {
+    lines.push('─'.repeat(40));
+    lines.push(`Errors (${result.errors.total} total)`);
+    lines.push('─'.repeat(40));
+
+    // By phase
+    if (result.errors.byPhase) {
+      const phases = Object.entries(result.errors.byPhase as Record<string, number>)
+        .sort((a, b) => b[1] - a[1]);
+      for (const [phase, count] of phases) {
+        lines.push(`  ${phase}: ${count}`);
+      }
+    }
+
+    // Top errors
+    if (result.errors.topErrors && result.errors.topErrors.length > 0) {
+      lines.push('');
+      lines.push('Top Errors:');
+      for (const err of result.errors.topErrors.slice(0, 5)) {
+        lines.push(`  [${err.count}x] ${truncate(err.pattern, 60)}`);
+      }
+    }
+    lines.push('');
+  }
+
+  // Dispatch chain
+  if (result.dispatchChain && result.dispatchChain.length > 0) {
+    lines.push('─'.repeat(40));
+    lines.push('Dispatch Chain');
+    lines.push('─'.repeat(40));
+
+    const sorted = [...result.dispatchChain].sort((a: any, b: any) => a.depth - b.depth);
+    for (const d of sorted) {
+      const indent = '  '.repeat(d.depth);
+      const name = d.jobName || d.requestId.slice(0, 10) + '...';
+      const typeTag = d.dispatchType !== 'manual' ? ` [${d.dispatchType}]` : '';
+      const statusIcon = d.status === 'COMPLETED' ? '✓' : d.status === 'FAILED' ? '✗' : '○';
+      lines.push(`${indent}${statusIcon} ${name}${typeTag}`);
+    }
+    lines.push('');
+  }
+
+  // Metrics
+  if (result.metrics) {
+    lines.push('─'.repeat(40));
+    lines.push('Metrics');
+    lines.push('─'.repeat(40));
+
+    if (result.metrics.tokenUsage) {
+      lines.push(`Tokens: ${result.metrics.tokenUsage.total.toLocaleString()} total`);
+    }
+
+    if (result.metrics.invariants) {
+      const inv = result.metrics.invariants;
+      lines.push(`Invariants: ${inv.totalMeasured} measured (${inv.totalPassed} passed, ${inv.totalFailed} failed)`);
+    }
+
+    if (result.metrics.toolCalls) {
+      const tc = result.metrics.toolCalls;
+      lines.push(`Tool Calls: ${tc.total} total (${tc.failures} failures)`);
+    }
+    lines.push('');
+  }
+
+  // Git summary
+  if (result.gitSummary) {
+    lines.push('─'.repeat(40));
+    lines.push('Git Activity');
+    lines.push('─'.repeat(40));
+    lines.push(`Branches: ${result.gitSummary.totalBranches} total, ${result.gitSummary.pushedBranches} pushed`);
+
+    if (result.gitSummary.conflicts && result.gitSummary.conflicts.length > 0) {
+      lines.push(`Conflicts: ${result.gitSummary.conflicts.length}`);
+      for (const c of result.gitSummary.conflicts) {
+        lines.push(`  - ${c.branch}: ${c.files.join(', ')}`);
+      }
+    }
+    lines.push('');
+  }
+
+  // Timing analysis
+  if (result.timing) {
+    lines.push('─'.repeat(40));
+    lines.push('Timing Analysis');
+    lines.push('─'.repeat(40));
+    lines.push(`Total: ${formatDuration(result.timing.totalDuration_ms)} across ${result.timing.slowestJobs?.length || 0}+ jobs`);
+    lines.push(`Average job: ${formatDuration(result.timing.avgJobDuration_ms)}`);
+
+    if (result.timing.byPhase && result.timing.byPhase.length > 0) {
+      lines.push('');
+      lines.push('By Phase (avg):');
+      for (const phase of result.timing.byPhase.slice(0, 6)) {
+        lines.push(`  ${phase.phase}: ${formatDuration(phase.avgDuration_ms)} (${phase.percentage}%)`);
+      }
+    }
+
+    if (result.timing.slowestJobs && result.timing.slowestJobs.length > 0) {
+      lines.push('');
+      lines.push('Slowest Jobs:');
+      for (const job of result.timing.slowestJobs.slice(0, 5)) {
+        const name = job.jobName || job.requestId.slice(0, 10) + '...';
+        lines.push(`  ${name}: ${formatDuration(job.totalDuration_ms)} (${job.slowestPhase})`);
+      }
+    }
+    lines.push('');
+  }
+
+  // Tool analytics
+  if (result.tools) {
+    lines.push('─'.repeat(40));
+    lines.push('Tool Analytics');
+    lines.push('─'.repeat(40));
+    const failureStr = result.tools.totalFailures > 0
+      ? ` (${result.tools.totalFailures} failures, ${result.tools.failureRate}% failure rate)`
+      : '';
+    lines.push(`Total: ${result.tools.totalCalls} calls${failureStr}`);
+
+    if (result.tools.byTool && result.tools.byTool.length > 0) {
+      lines.push('');
+      lines.push('Most Used:');
+      for (const tool of result.tools.byTool.slice(0, 5)) {
+        const failStr = tool.failures > 0 ? ` (${tool.failures} failures)` : '';
+        lines.push(`  ${tool.tool}: ${tool.calls} calls${failStr}`);
+      }
+    }
+
+    if (result.tools.slowestTools && result.tools.slowestTools.length > 0) {
+      lines.push('');
+      lines.push('Slowest (avg):');
+      for (const tool of result.tools.slowestTools.slice(0, 5)) {
+        lines.push(`  ${tool.tool}: ${formatDuration(tool.avgDuration_ms)} avg`);
+      }
+    }
+
+    if (result.tools.failingTools && result.tools.failingTools.length > 0) {
+      lines.push('');
+      lines.push('Failing Tools:');
+      for (const tool of result.tools.failingTools.slice(0, 5)) {
+        lines.push(`  ${tool.tool}: ${tool.failureRate}% failure rate (${tool.failures} failures)`);
+      }
+    }
+
+    if (result.tools.failedCalls && result.tools.failedCalls.length > 0) {
+      lines.push('');
+      lines.push('Failed Tool Calls:');
+      for (const fc of result.tools.failedCalls.slice(0, 10)) {
+        const jobStr = fc.jobName ? ` (${fc.jobName})` : '';
+        const codeStr = fc.errorCode ? `[${fc.errorCode}] ` : '';
+        const errorMsg = fc.errorMessage || 'Unknown error';
+        lines.push(`  ${fc.tool}${jobStr}: ${codeStr}"${truncate(errorMsg, 60)}"`);
+      }
+    }
+    lines.push('');
+  }
+
+  // Tree summary
+  lines.push('─'.repeat(40));
+  lines.push('Job Tree');
+  lines.push('─'.repeat(40));
+
+  function printTree(node: any, indent: string = '') {
+    const name = node.jobName || node.id.slice(0, 10) + '...';
+    const statusIcon = node.status === 'COMPLETED' ? '✓' : node.status === 'FAILED' ? '✗' : '○';
+    lines.push(`${indent}${statusIcon} ${name}`);
+    for (const child of node.children || []) {
+      printTree(child, indent + '  ');
+    }
+  }
+
+  const tree = Array.isArray(result.tree) ? result.tree : [result.tree];
+  for (const node of tree) {
+    printTree(node);
+  }
+
+  return lines.join('\n');
+}
+
+// --- Help Text ---
+
+const HELP_EPILOGUE = `
+Drill-down helpers:
+  yarn inspect-job-run <request-id>    Full details for one execution
+  yarn inspect-job <job-def-id>        History of a job definition
+  scripts/memory/inspect-situation.ts  Memory/recognition details
+
+Common workflows:
+  # Debug a failed workstream
+  yarn inspect-workstream <id> --status=failed --show-errors --format=summary
+
+  # Trace dispatch chain
+  yarn inspect-workstream <id> --show-dispatch
+
+  # Check token costs
+  yarn inspect-workstream <id> --show-metrics
+`;
 
 // --- Main ---
 
 async function main() {
   const argv = await yargs(hideBin(process.argv))
-    .usage('Usage: $0 <workstream-id>')
+    .usage('Usage: $0 <workstream-id> [options]')
     .demandCommand(1, 'You must provide a workstream ID')
     .option('limit', {
       type: 'string',
@@ -254,100 +512,191 @@ async function main() {
       type: 'string',
       describe: 'Page size for GraphQL pagination (default: 200)'
     })
+    .option('status', {
+      type: 'string',
+      choices: ['failed', 'pending', 'completed', 'all'] as const,
+      default: 'all',
+      describe: 'Filter by job status'
+    })
+    .option('job-name', {
+      type: 'string',
+      describe: 'Filter by job name pattern (regex)'
+    })
+    .option('depth', {
+      type: 'number',
+      describe: 'Max hierarchy depth (0 = root only)'
+    })
+    .option('since', {
+      type: 'string',
+      describe: 'Only requests after timestamp (ISO or Unix)'
+    })
+    .option('show-errors', {
+      type: 'boolean',
+      default: false,
+      describe: 'Include error aggregation section'
+    })
+    .option('show-dispatch', {
+      type: 'boolean',
+      default: false,
+      describe: 'Include dispatch chain/reasons'
+    })
+    .option('show-git', {
+      type: 'boolean',
+      default: false,
+      describe: 'Include git operations summary'
+    })
+    .option('show-metrics', {
+      type: 'boolean',
+      default: false,
+      describe: 'Include token usage and invariant stats'
+    })
+    .option('show-telemetry', {
+      type: 'boolean',
+      default: false,
+      describe: 'Fetch full worker telemetry for each job'
+    })
+    .option('show-timing', {
+      type: 'boolean',
+      default: false,
+      describe: 'Include phase duration analysis'
+    })
+    .option('show-tools', {
+      type: 'boolean',
+      default: false,
+      describe: 'Include tool usage analytics'
+    })
+    .option('format', {
+      type: 'string',
+      choices: ['json', 'summary'] as const,
+      default: 'json',
+      describe: 'Output format'
+    })
+    .epilogue(HELP_EPILOGUE)
     .help()
     .parserConfiguration({
       'parse-numbers': false,
       'parse-positional-numbers': false
     })
     .parse();
-  
+
   const workstreamId = String(argv._[0]);
   const rawLimit = argv.limit ? Number(argv.limit) : undefined;
   const requestLimit = rawLimit && Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : undefined;
   const rawPageSize = argv['page-size'] ? Number(argv['page-size']) : 200;
   const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? rawPageSize : 200;
-  
+
+  // Build filters
+  const filters: FilterOptions = {
+    status: argv.status as FilterOptions['status'],
+    maxDepth: argv.depth,
+  };
+
+  if (argv['job-name']) {
+    try {
+      filters.jobNamePattern = new RegExp(argv['job-name'], 'i');
+    } catch {
+      console.error(`Invalid regex pattern: ${argv['job-name']}`);
+      process.exit(1);
+    }
+  }
+
+  if (argv.since) {
+    const sinceVal = argv.since;
+    const parsed = /^\d+$/.test(sinceVal)
+      ? new Date(Number(sinceVal) * 1000)
+      : new Date(sinceVal);
+    if (isNaN(parsed.getTime())) {
+      console.error(`Invalid timestamp: ${sinceVal}`);
+      process.exit(1);
+    }
+    filters.since = parsed;
+  }
+
+  const showErrors = argv['show-errors'];
+  const showDispatch = argv['show-dispatch'];
+  const showGit = argv['show-git'];
+  const showMetrics = argv['show-metrics'];
+  const showTelemetry = argv['show-telemetry'];
+  const showTiming = argv['show-timing'];
+  const showTools = argv['show-tools'];
+  const outputFormat = argv.format as 'json' | 'summary';
+
   console.error(`\n🔍 Inspecting workstream: ${workstreamId}`);
-  console.error(`Ponder API: ${PONDER_GRAPHQL_URL}\n`);
-  console.error(`Pagination: pageSize=${pageSize}${requestLimit ? ` limit=${requestLimit}` : ''}\n`);
-  
+  console.error(`Ponder API: ${PONDER_GRAPHQL_URL}`);
+  console.error(`Pagination: pageSize=${pageSize}${requestLimit ? ` limit=${requestLimit}` : ''}`);
+  if (filters.status !== 'all') console.error(`Filter: status=${filters.status}`);
+  if (filters.jobNamePattern) console.error(`Filter: job-name=${filters.jobNamePattern}`);
+  if (filters.maxDepth !== undefined) console.error(`Filter: depth=${filters.maxDepth}`);
+  if (filters.since) console.error(`Filter: since=${filters.since.toISOString()}`);
+  console.error('');
+
   const client = new GraphQLClient(PONDER_GRAPHQL_URL);
 
   try {
-    // 1. First fetch all requests in the workstream
+    // 1. Fetch all requests in the workstream
     console.error('Fetching requests...');
     const requests = await fetchPaged<Request>(
       async (limit, offset) => {
-        const requestsRes = await client.request<{ requests: { items: Request[] } }>(WORKSTREAM_QUERY, {
+        const res = await client.request<{ requests: { items: Request[] } }>(WORKSTREAM_QUERY, {
           workstreamId,
           limit,
           offset
         });
-        return requestsRes.requests.items;
+        return res.requests.items;
       },
       pageSize,
       requestLimit
     );
-    
+
     if (requests.length === 0) {
       console.error('❌ No requests found for this workstream ID.');
       process.exit(1);
     }
-    
-    // 2. Extract unique job definition IDs from requests
+
+    // 2. Fetch job definitions
     const uniqueJobDefIds = [...new Set(requests.map(r => r.jobDefinitionId).filter(Boolean))];
-    
     console.error(`Fetching ${uniqueJobDefIds.length} job definitions for ${requests.length} requests...`);
+
     const jobDefinitions: Array<{ id: string; name: string; lastStatus: string; lastInteraction: string; sourceJobDefinitionId: string }> = [];
     const jobDefChunks = chunkArray(uniqueJobDefIds, pageSize);
     for (const chunk of jobDefChunks) {
-      const jobDefsRes = await client.request<{ jobDefinitions: { items: Array<{ id: string; name: string; lastStatus: string; lastInteraction: string; sourceJobDefinitionId: string }> } }>(
+      const res = await client.request<{ jobDefinitions: { items: typeof jobDefinitions } }>(
         JOB_DEFINITIONS_QUERY,
         { jobDefIds: chunk, limit: chunk.length }
       );
-      jobDefinitions.push(...jobDefsRes.jobDefinitions.items);
+      jobDefinitions.push(...res.jobDefinitions.items);
     }
     console.error(`✅ Found ${jobDefinitions.length} unique jobs with ${requests.length} total job runs`);
 
     const requestIds = requests.map(r => r.id);
 
-    // 3. Fetch Deliveries & Artifacts
+    // 3. Fetch deliveries and artifacts
     console.error('Fetching deliveries and artifacts...');
     const requestIdChunks = chunkArray(requestIds, pageSize);
     const deliveries: Delivery[] = [];
     const artifacts: Artifact[] = [];
+
     for (const chunk of requestIdChunks) {
       const [chunkDeliveries, chunkArtifacts] = await Promise.all([
-        fetchPaged<Delivery>(
-          async (limit, offset) => {
-            const deliveriesRes = await client.request<{ deliverys: { items: Delivery[] } }>(DELIVERIES_QUERY, {
-              requestIds: chunk,
-              limit,
-              offset
-            });
-            return deliveriesRes.deliverys.items;
-          },
-          pageSize
-        ),
-        fetchPaged<Artifact>(
-          async (limit, offset) => {
-            const artifactsRes = await client.request<{ artifacts: { items: Artifact[] } }>(ARTIFACTS_QUERY, {
-              requestIds: chunk,
-              limit,
-              offset
-            });
-            return artifactsRes.artifacts.items;
-          },
-          pageSize
-        )
+        fetchPaged<Delivery>(async (limit, offset) => {
+          const res = await client.request<{ deliverys: { items: Delivery[] } }>(DELIVERIES_QUERY, {
+            requestIds: chunk, limit, offset
+          });
+          return res.deliverys.items;
+        }, pageSize),
+        fetchPaged<Artifact>(async (limit, offset) => {
+          const res = await client.request<{ artifacts: { items: Artifact[] } }>(ARTIFACTS_QUERY, {
+            requestIds: chunk, limit, offset
+          });
+          return res.artifacts.items;
+        }, pageSize)
       ]);
       deliveries.push(...chunkDeliveries);
       artifacts.push(...chunkArtifacts);
     }
-
     console.error(`✅ Found ${deliveries.length} deliveries and ${artifacts.length} artifacts`);
 
-    // 4. Map Data
+    // 4. Build maps
     const deliveryMap = new Map<string, Delivery>();
     deliveries.forEach(d => deliveryMap.set(d.requestId, d));
 
@@ -357,51 +706,201 @@ async function main() {
       artifactMap.get(a.requestId)!.push(a);
     });
 
-    // 5. Build Tree Nodes (Flat Map first)
-    console.error('\nResolving node details (this may take a moment)...');
-    
+    const requestMap = new Map<string, Request>();
+    requests.forEach(r => requestMap.set(r.id, r));
+
+    // 5. Fetch delivery content and build nodes
+    console.error('\nResolving node details...');
+
     const nodeMap = new Map<string, WorkstreamNode>();
-    
+    const deliveryContents = new Map<string, any>();
+    const allErrors: ErrorSummary[] = [];
+    const allGitOps: GitOperationSummary[] = [];
+    const allTokenMetrics: TokenMetrics[] = [];
+    const allInvariantMetrics: InvariantMetrics[] = [];
+    const allTimingMetrics: TimingMetrics[] = [];
+    const allToolMetrics: ToolMetrics[] = [];
+    const allFailedToolCalls: FailedToolCall[] = [];
+    const dispatchInfos: DispatchInfo[] = [];
+
     for (const req of requests) {
       const delivery = deliveryMap.get(req.id);
       const reqArtifacts = artifactMap.get(req.id) || [];
-      
+      const depth = computeDepth(requestMap as Map<string, { sourceRequestId?: string }>, req.id, workstreamId);
+
       let status: WorkstreamNode['status'] = req.delivered ? 'COMPLETED' : 'PENDING';
       let summary: string | undefined;
       let error: string | undefined;
       let actualFinalStatus: string | undefined;
+      let deliveryContent: any = null;
 
-      // Try to fetch delivery content for summary/status if delivered
+      // Fetch delivery content
       if (req.delivered && delivery?.ipfsHash) {
-        // We only fetch key delivery data to keep it light
-        const content = await fetchIpfsContent(delivery.ipfsHash, req.id);
-        if (content) {
-            // Use status field from delivery payload (job-centric status)
-            if (content.status) {
-                actualFinalStatus = content.status;
-                const finalStatusValue = content.status.toUpperCase();
-                if (finalStatusValue === 'COMPLETED') {
-                    status = 'COMPLETED';
-                } else if (finalStatusValue === 'FAILED') {
-                    status = 'FAILED';
-                    error = content.statusMessage || content.errorMessage || content.error || "Job failed";
-                } else if (finalStatusValue === 'WAITING' || finalStatusValue === 'DELEGATING') {
-                    status = 'PENDING'; // Map WAITING/DELEGATING to PENDING for workstream view
-                }
+        deliveryContent = await fetchIpfsContent(delivery.ipfsHash, req.id);
+        deliveryContents.set(req.id, deliveryContent);
+
+        if (deliveryContent) {
+          if (deliveryContent.status) {
+            actualFinalStatus = deliveryContent.status;
+            const finalStatusValue = deliveryContent.status.toUpperCase();
+            if (finalStatusValue === 'COMPLETED') {
+              status = 'COMPLETED';
+            } else if (finalStatusValue === 'FAILED') {
+              status = 'FAILED';
+              error = deliveryContent.statusMessage || deliveryContent.errorMessage || deliveryContent.error || 'Job failed';
+            } else if (finalStatusValue === 'WAITING' || finalStatusValue === 'DELEGATING') {
+              status = 'PENDING';
             }
-            // Fallback: Check for explicit error
-            else if (content.error || content.errorMessage) {
-                status = 'FAILED';
-                error = content.errorMessage || content.error || "Unknown error";
-            }
-            
-            // Extract summary
-            if (content.structuredSummary) {
-                summary = truncate(content.structuredSummary, 300);
-            } else if (content.output) {
-                summary = truncate(content.output, 200);
-            }
+          } else if (deliveryContent.error || deliveryContent.errorMessage) {
+            status = 'FAILED';
+            error = deliveryContent.errorMessage || deliveryContent.error || 'Unknown error';
+          }
+
+          if (deliveryContent.structuredSummary) {
+            summary = truncate(deliveryContent.structuredSummary, 300);
+          } else if (deliveryContent.output) {
+            summary = truncate(deliveryContent.output, 200);
+          }
+
+          // Extract metrics if requested
+          if (showMetrics) {
+            const tokenMetrics = extractTokenMetrics(req.id, req.jobName, deliveryContent);
+            if (tokenMetrics) allTokenMetrics.push(tokenMetrics);
+
+            const invMetrics = extractInvariantMetrics(req.id, req.jobName, deliveryContent);
+            if (invMetrics) allInvariantMetrics.push(invMetrics);
+          }
+
+          // Extract errors from delivery content (fallback when no telemetry)
+          if (showErrors && error) {
+            allErrors.push({
+              requestId: req.id,
+              jobName: req.jobName,
+              phase: 'delivery',
+              error,
+              timestamp: delivery?.blockTimestamp
+                ? new Date(Number(delivery.blockTimestamp) * 1000).toISOString()
+                : new Date().toISOString(),
+            });
+          }
         }
+      }
+
+      // Build dispatch info if requested
+      if (showDispatch) {
+        let additionalContext: any = null;
+
+        // Fetch request IPFS content to get full additionalContext with auto-dispatch flags
+        // (Ponder's additionalContext field doesn't contain verificationRequired, cycle, loopRecovery, etc.)
+        if (req.ipfsHash) {
+          const requestContent = await fetchIpfsContent(req.ipfsHash);
+          if (requestContent?.additionalContext) {
+            additionalContext = requestContent.additionalContext;
+          }
+        }
+
+        // Fallback to Ponder's additionalContext if IPFS fetch fails
+        if (!additionalContext && req.additionalContext) {
+          try {
+            additionalContext = JSON.parse(req.additionalContext);
+          } catch {
+            // Invalid JSON
+          }
+        }
+
+        dispatchInfos.push({
+          requestId: req.id,
+          jobDefinitionId: req.jobDefinitionId,
+          jobName: req.jobName,
+          sourceRequestId: req.sourceRequestId,
+          sourceJobDefinitionId: req.sourceJobDefinitionId,
+          dispatchType: detectDispatchType(additionalContext),
+          dispatchMessage: parseDispatchMessage(additionalContext),
+          depth,
+        });
+      }
+
+      // Extract telemetry from delivery content (primary source - like frontend does)
+      // Worker embeds workerTelemetry in delivery payload, which is more reliable than
+      // WORKER_TELEMETRY artifacts (which go to Supabase, not Ponder)
+      let telemetryExtracted = false;
+      if ((showErrors || showGit || showTelemetry || showTiming || showTools) && deliveryContent?.workerTelemetry) {
+        const telemetry = deliveryContent.workerTelemetry;
+        if (telemetry.events && Array.isArray(telemetry.events)) {
+          telemetryExtracted = true;
+          if (showErrors) {
+            allErrors.push(...extractErrorsFromTelemetry(telemetry));
+          }
+          if (showGit) {
+            const gitOps = extractGitOpsFromTelemetry(telemetry);
+            if (gitOps) allGitOps.push(gitOps);
+          }
+          if (showTiming) {
+            const timing = extractTimingMetrics(req.id, req.jobName, telemetry);
+            if (timing) allTimingMetrics.push(timing);
+          }
+          if (showTools) {
+            const toolMetrics = extractToolMetricsFromTelemetry(telemetry);
+            if (toolMetrics) allToolMetrics.push(toolMetrics);
+          }
+        }
+      }
+
+      // Extract failed tool calls from agent telemetry (deliveryContent.telemetry)
+      // This has full tool call details including result.meta.ok for logical failures
+      if (showTools && deliveryContent?.telemetry?.toolCalls) {
+        const failed = extractFailedToolCalls(req.id, req.jobName, deliveryContent.telemetry);
+        allFailedToolCalls.push(...failed);
+      }
+
+      // Fallback: Fetch telemetry from WORKER_TELEMETRY artifact (when available in Ponder)
+      if ((showErrors || showGit || showTelemetry) && req.delivered && !telemetryExtracted) {
+        const telemetry = await fetchWorkerTelemetryArtifact(client, req.id);
+        if (telemetry) {
+          if (showErrors) {
+            allErrors.push(...extractErrorsFromTelemetry(telemetry));
+          }
+          if (showGit) {
+            const gitOps = extractGitOpsFromTelemetry(telemetry);
+            if (gitOps) allGitOps.push(gitOps);
+          }
+        }
+      }
+
+      // Extract git info from git/branch artifacts (fallback when no telemetry)
+      if (showGit) {
+        const gitBranchArtifacts = reqArtifacts.filter(a => a.topic === 'git/branch');
+        for (const artifact of gitBranchArtifacts) {
+          const artifactContent = await fetchIpfsContent(artifact.cid);
+          if (artifactContent) {
+            // Parse nested content field (artifact stores branch info as JSON string in content)
+            let branchContent = artifactContent;
+            if (typeof artifactContent.content === 'string') {
+              try {
+                branchContent = JSON.parse(artifactContent.content);
+              } catch {
+                // Use outer content if parsing fails
+              }
+            }
+
+            allGitOps.push({
+              requestId: req.id,
+              branchName: branchContent.headBranch || branchContent.branchName || branchContent.branch,
+              baseBranch: branchContent.baseBranch,
+              branchUrl: branchContent.branchUrl || branchContent.url,
+              commitHash: branchContent.commitHash || branchContent.commit,
+              filesChanged: branchContent.filesChanged,
+              pushed: branchContent.pushed ?? true,
+              hasConflicts: branchContent.hasConflicts ?? false,
+              conflictingFiles: branchContent.conflictingFiles,
+            });
+          }
+        }
+      }
+
+      // Apply filters
+      if (!shouldIncludeRequest(req, status, depth, filters)) {
+        continue;
       }
 
       nodeMap.set(req.id, {
@@ -414,25 +913,21 @@ async function main() {
         error,
         children: [],
         artifacts: reqArtifacts.map(a => ({ name: a.name, topic: a.topic, type: a.type })),
-        _debug: { 
-          delivered: req.delivered, 
+        _debug: {
+          delivered: req.delivered,
           hasDelivery: !!delivery,
           finalStatus: actualFinalStatus
         }
       });
     }
 
-    // 6. Assemble Tree
+    // 6. Assemble tree
     const rootNodes: WorkstreamNode[] = [];
-    
+
     for (const req of requests) {
-      const node = nodeMap.get(req.id)!;
-      
-      // Logic for root detection:
-      // 1. It is the workstream root if id == workstreamId
-      // 2. OR if sourceRequestId is null (top level)
-      // 3. OR if sourceRequestId is NOT in our dataset (external parent?)
-      
+      const node = nodeMap.get(req.id);
+      if (!node) continue; // Filtered out
+
       if (req.id === workstreamId || !req.sourceRequestId) {
         rootNodes.push(node);
       } else {
@@ -440,13 +935,12 @@ async function main() {
         if (parent) {
           parent.children.push(node);
         } else {
-          // Orphaned in this context (shouldn't happen if query is correct)
           rootNodes.push(node);
         }
       }
     }
 
-    // 6. Build job execution summary
+    // 7. Build job execution summary
     const jobRunsByDefinition = new Map<string, Request[]>();
     requests.forEach(req => {
       if (!req.jobDefinitionId) return;
@@ -468,14 +962,21 @@ async function main() {
       })) || []
     }));
 
-    // 7. Output
-    const result = {
+    // 8. Count failed runs
+    let failedRuns = 0;
+    for (const node of Array.from(nodeMap.values())) {
+      if (node.status === 'FAILED') failedRuns++;
+    }
+
+    // 9. Build result
+    const result: any = {
       workstreamId,
       stats: {
         uniqueJobs: jobDefinitions.length,
         totalJobRuns: requests.length,
         completedRuns: requests.filter(r => r.delivered).length,
         pendingRuns: requests.filter(r => !r.delivered).length,
+        failedRuns,
         totalArtifacts: artifacts.length,
         jobsInWaiting: jobDefinitions.filter(j => j.lastStatus === 'WAITING').length,
         jobsCompleted: jobDefinitions.filter(j => j.lastStatus === 'COMPLETED').length
@@ -484,8 +985,138 @@ async function main() {
       tree: rootNodes.length === 1 ? rootNodes[0] : rootNodes
     };
 
+    // Add optional sections
+    if (showErrors && allErrors.length > 0) {
+      const byPhase: Record<string, number> = {};
+      for (const err of allErrors) {
+        byPhase[err.phase] = (byPhase[err.phase] || 0) + 1;
+      }
+
+      result.errors = {
+        total: allErrors.length,
+        byPhase,
+        topErrors: aggregateErrorsByPattern(allErrors, 10),
+      };
+    }
+
+    if (showDispatch && dispatchInfos.length > 0) {
+      // Add child count to each dispatch info
+      const childCounts = new Map<string, number>();
+      for (const d of dispatchInfos) {
+        if (d.sourceRequestId) {
+          childCounts.set(d.sourceRequestId, (childCounts.get(d.sourceRequestId) || 0) + 1);
+        }
+      }
+
+      result.dispatchChain = dispatchInfos.map(d => ({
+        requestId: d.requestId,
+        jobName: d.jobName,
+        depth: d.depth,
+        dispatchedBy: d.sourceRequestId,
+        dispatchType: d.dispatchType,
+        dispatchReason: d.dispatchMessage,
+        childCount: childCounts.get(d.requestId) || 0,
+        status: nodeMap.get(d.requestId)?.status || 'UNKNOWN',
+      }));
+    }
+
+    if (showGit && allGitOps.length > 0) {
+      const conflicts = allGitOps
+        .filter(g => g.hasConflicts)
+        .map(g => ({
+          requestId: g.requestId,
+          branch: g.branchName || 'unknown',
+          files: g.conflictingFiles || [],
+        }));
+
+      result.gitSummary = {
+        totalBranches: allGitOps.length,
+        pushedBranches: allGitOps.filter(g => g.pushed).length,
+        conflicts,
+        branches: allGitOps.map(g => ({
+          requestId: g.requestId,
+          jobName: nodeMap.get(g.requestId)?.jobName,
+          branchName: g.branchName || 'unknown',
+          branchUrl: g.branchUrl,
+          pushed: g.pushed,
+        })),
+      };
+    }
+
+    if (showMetrics) {
+      const totalTokens = allTokenMetrics.reduce((sum, m) => sum + (m.totalTokens || 0), 0);
+
+      const totalMeasured = allInvariantMetrics.reduce((sum, m) => sum + m.measuredInvariants, 0);
+      const totalPassed = allInvariantMetrics.reduce((sum, m) => sum + m.passedInvariants, 0);
+      const totalFailed = allInvariantMetrics.reduce((sum, m) => sum + m.failedInvariants, 0);
+      const unmeasuredJobs = allInvariantMetrics
+        .filter(m => m.unmeasuredIds.length > 0)
+        .map(m => ({
+          requestId: m.requestId,
+          jobName: m.jobName,
+          unmeasuredIds: m.unmeasuredIds,
+        }));
+
+      // Aggregate tool calls from telemetry
+      const toolCallTotals: Record<string, { calls: number; failures: number }> = {};
+      let totalToolCalls = 0;
+      let totalToolFailures = 0;
+
+      for (const content of Array.from(deliveryContents.values())) {
+        if (content?.telemetry?.toolCalls) {
+          for (const tc of content.telemetry.toolCalls) {
+            totalToolCalls++;
+            if (!tc.success) totalToolFailures++;
+
+            if (!toolCallTotals[tc.tool]) {
+              toolCallTotals[tc.tool] = { calls: 0, failures: 0 };
+            }
+            toolCallTotals[tc.tool].calls++;
+            if (!tc.success) toolCallTotals[tc.tool].failures++;
+          }
+        }
+      }
+
+      result.metrics = {
+        tokenUsage: {
+          total: totalTokens,
+          byJob: allTokenMetrics,
+        },
+        invariants: {
+          totalMeasured,
+          totalPassed,
+          totalFailed,
+          unmeasuredJobs,
+        },
+        toolCalls: {
+          total: totalToolCalls,
+          failures: totalToolFailures,
+          byTool: toolCallTotals,
+        },
+      };
+    }
+
+    if (showTiming && allTimingMetrics.length > 0) {
+      result.timing = aggregateTimingMetrics(allTimingMetrics);
+    }
+
+    if (showTools && allToolMetrics.length > 0) {
+      result.tools = aggregateToolMetrics(allToolMetrics);
+
+      // Add failed tool call details
+      if (allFailedToolCalls.length > 0) {
+        result.tools.failedCalls = allFailedToolCalls;
+      }
+    }
+
+    // 10. Output
     console.error('\n✅ Workstream graph built successfully\n');
-    console.log(JSON.stringify(result, null, 2));
+
+    if (outputFormat === 'summary') {
+      console.log(formatSummaryOutput(result));
+    } else {
+      console.log(JSON.stringify(result, null, 2));
+    }
 
   } catch (error) {
     console.error('\n❌ Error inspecting workstream:', error);

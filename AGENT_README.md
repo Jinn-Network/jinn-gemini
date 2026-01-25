@@ -500,31 +500,59 @@ yarn inspect-job <jobDefinitionId> 2>/dev/null | jq '.workstreams'
 yarn inspect-job <jobDefinitionId> 2>/dev/null | jq '.runs[0].children'
 ```
 
-**Workstream Graph Inspection:**
+**Workstream Graph Inspection (Primary Debugging Entry Point):**
 ```bash
 yarn inspect-workstream <workstreamId>
 ```
 Visualizes the complete execution graph of a workstream, showing parent/child relationships, status, and key artifacts. This provides a high-level view of job execution trees within a venture.
 
+**Flags for different views:**
+- `--status=failed|pending|completed|all` - Filter by job status
+- `--job-name=<regex>` - Filter by job name pattern
+- `--depth=<n>` - Max hierarchy depth (0 = root only)
+- `--since=<timestamp>` - Only requests after timestamp
+- `--show-errors` - Aggregate errors by phase and top patterns
+- `--show-dispatch` - Show dispatch type (manual/verification/cycle/loop_recovery/timeout_recovery/parent) and reasons
+- `--show-git` - Show branch/commit/push operations and conflicts
+- `--show-metrics` - Show token usage, invariant coverage, tool call stats
+- `--format=summary` - Human-readable output instead of JSON
+
 Returns:
-- `stats`: Total jobs, completed/pending counts, artifact counts
+- `stats`: Total jobs, completed/pending/failed counts, artifact counts
 - `tree`: Hierarchical graph showing parent/child job relationships with status and summaries
+- `errors` (with --show-errors): Aggregated errors by phase and normalized pattern
+- `dispatchChain` (with --show-dispatch): Dispatch lineage with auto-dispatch type detection
+- `gitSummary` (with --show-git): Branch operations, push status, merge conflicts
+- `metrics` (with --show-metrics): Token usage, invariant measurements, tool call stats
 
-The script resolves delivery content selectively to extract job status (COMPLETED/PENDING/FAILED), summaries, and errors while keeping output manageable through truncation.
-
-**Example Usage:**
+**Common Debugging Workflows:**
 ```bash
-# Inspect workstream and save to file
-yarn inspect-workstream <workstreamId> 2>/dev/null > workstream-graph.json
+# Debug failed workstream
+yarn inspect-workstream <id> --status=failed --show-errors --format=summary
 
-# View workstream stats
-yarn inspect-workstream <workstreamId> 2>/dev/null | jq '.stats'
+# Trace dispatch chain (shows verification runs, cycle runs, etc.)
+yarn inspect-workstream <id> --show-dispatch | jq '.dispatchChain[] | select(.dispatchType != "manual")'
 
-# See all job names in tree
-yarn inspect-workstream <workstreamId> 2>/dev/null | jq '.. | .jobName? | select(. != null)'
+# Check token costs across all jobs
+yarn inspect-workstream <id> --show-metrics | jq '.metrics.tokenUsage'
 
-# Find failed jobs
-yarn inspect-workstream <workstreamId> 2>/dev/null | jq '.. | select(.status? == "FAILED") | {jobName, error}'
+# See which invariants weren't measured
+yarn inspect-workstream <id> --show-metrics | jq '.metrics.invariants.unmeasuredJobs'
+
+# Find jobs with git conflicts
+yarn inspect-workstream <id> --show-git | jq '.gitSummary.conflicts'
+```
+
+**Drill-down to specific jobs:**
+```bash
+# Get full details for a specific job run
+yarn inspect-job-run <requestId>
+
+# See history of a job definition across all runs
+yarn inspect-job <jobDefinitionId>
+
+# Inspect memory/recognition for a request
+tsx scripts/memory/inspect-situation.ts <requestId>
 ```
 
 **Default Endpoint:** Production Railway instance (`https://jinn-gemini-production.up.railway.app/graphql`)  
