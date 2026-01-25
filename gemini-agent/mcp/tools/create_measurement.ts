@@ -181,6 +181,21 @@ export async function createMeasurement(args: unknown) {
     const payload = buildPayload(parsed.data);
     const artifactName = `Measurement: ${payload.invariant_id}`;
 
+    // Validate invariant_id against known blueprint IDs
+    const warnings: string[] = [];
+    const knownIdsRaw = process.env.JINN_BLUEPRINT_INVARIANT_IDS;
+    if (knownIdsRaw) {
+      try {
+        const knownIds: string[] = JSON.parse(knownIdsRaw);
+        if (knownIds.length > 0 && !knownIds.includes(payload.invariant_id)) {
+          warnings.push(
+            `invariant_id "${payload.invariant_id}" does not match any mission invariant in the blueprint. ` +
+            `Known IDs: ${knownIds.join(', ')}. The measurement was still created but may not be tracked.`
+          );
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
     // Upload to IPFS with standardized structure
     const ipfsPayload = {
       name: artifactName,
@@ -192,7 +207,7 @@ export async function createMeasurement(args: unknown) {
     const [, cidHex] = await pushJsonToIpfs(ipfsPayload);
     const contentPreview = JSON.stringify(payload).slice(0, 100);
 
-    const result = {
+    const result: Record<string, any> = {
       cid: cidHex,
       name: artifactName,
       topic: 'MEASUREMENT',
@@ -200,6 +215,9 @@ export async function createMeasurement(args: unknown) {
       invariant_id: payload.invariant_id,
       passed: payload.passed,
     };
+    if (warnings.length > 0) {
+      result.warnings = warnings;
+    }
 
     return {
       content: [{

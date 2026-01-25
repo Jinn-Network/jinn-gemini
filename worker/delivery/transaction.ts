@@ -33,6 +33,7 @@ export interface DeliveryTransactionContext {
   recognition?: RecognitionPhaseResult | null;
   reflection?: ReflectionResult | null;
   workerTelemetry?: any;
+  measurementCoverage?: any;
   artifactsForDelivery?: Array<{ cid: string; topic: string; name?: string; type?: string; contentPreview?: string }>;
 }
 
@@ -373,6 +374,7 @@ export async function deliverViaSafeTransaction(
     reflection: context.reflection,
     workerTelemetry: context.workerTelemetry,
     finalStatus: context.finalStatus,
+    measurementCoverage: context.measurementCoverage,
   });
 
   // Add artifacts if provided

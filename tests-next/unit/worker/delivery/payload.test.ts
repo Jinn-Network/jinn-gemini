@@ -586,4 +586,66 @@ describe('buildDeliveryPayload', () => {
       expect(payload.artifacts[0].name).toBe('file-with-dashes_and_underscores (v1.2.3).json');
     });
   });
+
+  describe('measurementCoverage', () => {
+    it('includes measurementCoverage when provided', () => {
+      const result: AgentExecutionResult = {
+        output: 'Done',
+        telemetry: {},
+      };
+      const metadata: IpfsMetadata = {};
+      const measurementCoverage = {
+        totalMissionInvariants: 3,
+        measuredCount: 2,
+        unmeasuredIds: ['GOAL-B'],
+        measuredIds: ['GOAL-A', 'OUT-C'],
+        coveragePercent: 67,
+        passingCount: 2,
+        failingCount: 0,
+        delegated: false,
+      };
+
+      const payload = buildDeliveryPayload({
+        requestId: '0xcoverage',
+        result,
+        metadata,
+        measurementCoverage,
+      });
+
+      expect(payload.measurementCoverage).toEqual(measurementCoverage);
+    });
+
+    it('omits measurementCoverage when null', () => {
+      const result: AgentExecutionResult = {
+        output: 'Done',
+        telemetry: {},
+      };
+      const metadata: IpfsMetadata = {};
+
+      const payload = buildDeliveryPayload({
+        requestId: '0xnocoverage',
+        result,
+        metadata,
+        measurementCoverage: null,
+      });
+
+      expect(payload.measurementCoverage).toBeUndefined();
+    });
+
+    it('omits measurementCoverage when not provided', () => {
+      const result: AgentExecutionResult = {
+        output: 'Done',
+        telemetry: {},
+      };
+      const metadata: IpfsMetadata = {};
+
+      const payload = buildDeliveryPayload({
+        requestId: '0xdefault',
+        result,
+        metadata,
+      });
+
+      expect(payload.measurementCoverage).toBeUndefined();
+    });
+  });
 });

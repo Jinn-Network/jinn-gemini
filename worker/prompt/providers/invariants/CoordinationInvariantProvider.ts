@@ -18,6 +18,7 @@ import type {
     ChildJobInfo,
 } from '../../types.js';
 import { workerLogger } from '../../../../logging/index.js';
+import { extractMissionInvariantIds } from '../../utils/invariantIds.js';
 
 interface MergeConflict {
     branch: string;
@@ -45,6 +46,12 @@ export class CoordinationInvariantProvider implements InvariantProvider {
 
         // Add merge conflict invariants
         invariants.push(...this.getMergeConflictInvariants(ctx));
+
+        // Add unmeasured invariant guidance (on re-runs only)
+        const unmeasuredInvariant = this.getUnmeasuredInvariant(ctx, builtContext);
+        if (unmeasuredInvariant) {
+            invariants.push(unmeasuredInvariant);
+        }
 
         return invariants;
     }
@@ -195,6 +202,56 @@ export class CoordinationInvariantProvider implements InvariantProvider {
             examples: {
                 do: [`Call process_branch({ action: 'compare' }) to review each child's diff, then merge or reject`],
                 dont: ['Ignore child branches and start fresh implementation'],
+            },
+        };
+    }
+
+    /**
+     * Generate COORD-UNMEASURED invariant on re-runs when some mission invariants lack measurements.
+     *
+     * Only activates when:
+     * - The blueprint has mission invariants (JOB/GOAL/OUT/STRAT prefixed)
+     * - Prior measurements exist (indicating a re-run, not first execution)
+     * - Some mission invariants remain unmeasured
+     *
+     * Suppressed when all invariants are unmeasured AND active child jobs exist
+     * (indicating delegation - children will measure their own scope).
+     */
+    private getUnmeasuredInvariant(
+        ctx: BuildContext,
+        builtContext: BlueprintContext
+    ): Invariant | null {
+        const missionIds = extractMissionInvariantIds(ctx.metadata?.blueprint);
+        if (missionIds.length === 0) return null;
+
+        const measurements = builtContext.measurements;
+        // Only activate on re-runs (when at least one measurement exists from prior execution)
+        if (!measurements || measurements.length === 0) return null;
+
+        const measuredIds = new Set(measurements.map(m => m.invariantId));
+        const unmeasuredIds = missionIds.filter(id => !measuredIds.has(id));
+
+        if (unmeasuredIds.length === 0) return null;
+
+        // Delegation suppression: if ALL mission invariants are unmeasured and there are
+        // active child jobs, the agent likely delegated everything - don't nag.
+        const activeJobs = builtContext.hierarchy?.activeJobs || 0;
+        if (unmeasuredIds.length === missionIds.length && activeJobs > 0) {
+            workerLogger.info({
+                unmeasuredCount: unmeasuredIds.length,
+                activeJobs,
+            }, 'Suppressing COORD-UNMEASURED: all invariants unmeasured with active children (likely delegated)');
+            return null;
+        }
+
+        return {
+            id: 'COORD-UNMEASURED',
+            type: 'BOOLEAN',
+            condition: `You must create measurements for ${unmeasuredIds.length} unmeasured mission invariant(s): ${unmeasuredIds.join(', ')}. Use create_measurement with the exact invariant IDs listed.`,
+            assessment: `Verify all listed invariants have measurements. Currently unmeasured: ${unmeasuredIds.join(', ')}`,
+            examples: {
+                do: [`Call create_measurement({ invariant_type: 'BOOLEAN', invariant_id: '${unmeasuredIds[0]}', passed: true, context: '...' }) for each unmeasured invariant`],
+                dont: ['Skip measurement for invariants you evaluated during execution'],
             },
         };
     }

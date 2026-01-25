@@ -16,6 +16,7 @@ export function setJobContext(params: {
   completedChildRequestIds?: string[];
   requiredTools?: string[];
   availableTools?: string[];
+  blueprintInvariantIds?: string[];
 }): void {
   const {
     requestId,
@@ -28,6 +29,7 @@ export function setJobContext(params: {
     completedChildRequestIds,
     requiredTools,
     availableTools,
+    blueprintInvariantIds,
   } = params;
   
   if (requestId) {
@@ -82,6 +84,12 @@ export function setJobContext(params: {
   } else {
     delete process.env.JINN_AVAILABLE_TOOLS;
   }
+
+  if (Array.isArray(blueprintInvariantIds)) {
+    process.env.JINN_BLUEPRINT_INVARIANT_IDS = JSON.stringify(blueprintInvariantIds);
+  } else {
+    delete process.env.JINN_BLUEPRINT_INVARIANT_IDS;
+  }
 }
 
 /**
@@ -99,6 +107,7 @@ export function clearJobContext(): void {
   delete process.env.JINN_CHILD_WORK_REVIEWED;
   delete process.env.JINN_REQUIRED_TOOLS;
   delete process.env.JINN_AVAILABLE_TOOLS;
+  delete process.env.JINN_BLUEPRINT_INVARIANT_IDS;
 }
 
 /**
@@ -116,6 +125,7 @@ export function snapshotJobContext(): {
   childWorkReviewed?: string;
   requiredTools?: string[];
   availableTools?: string[];
+  blueprintInvariantIds?: string[];
   inheritedEnv?: string;
 } {
   return {
@@ -154,6 +164,15 @@ export function snapshotJobContext(): {
           }
         })()
       : undefined,
+    blueprintInvariantIds: process.env.JINN_BLUEPRINT_INVARIANT_IDS
+      ? (() => {
+          try {
+            return JSON.parse(process.env.JINN_BLUEPRINT_INVARIANT_IDS as string);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined,
     inheritedEnv: process.env.JINN_INHERITED_ENV,
   };
 }
@@ -171,6 +190,7 @@ export function restoreJobContext(snapshot: {
   branchName?: string;
   completedChildRequestIds?: string[];
   childWorkReviewed?: string;
+  blueprintInvariantIds?: string[];
   inheritedEnv?: string;
 }): void {
   clearJobContext();
@@ -183,6 +203,7 @@ export function restoreJobContext(snapshot: {
     parentRequestId: snapshot.parentRequestId,
     branchName: snapshot.branchName,
     completedChildRequestIds: snapshot.completedChildRequestIds,
+    blueprintInvariantIds: snapshot.blueprintInvariantIds,
   });
   if (snapshot.childWorkReviewed) {
     process.env.JINN_CHILD_WORK_REVIEWED = snapshot.childWorkReviewed;

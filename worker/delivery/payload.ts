@@ -3,6 +3,7 @@
  */
 
 import type { AgentExecutionResult, IpfsMetadata, RecognitionPhaseResult, ReflectionResult } from '../types.js';
+import type { MeasurementCoverage } from '../execution/measurementCoverage.js';
 
 /**
  * Build delivery payload for IPFS registry
@@ -15,8 +16,9 @@ export function buildDeliveryPayload(params: {
   reflection?: ReflectionResult | null;
   workerTelemetry?: any;
   finalStatus?: { status: string; message?: string };
+  measurementCoverage?: MeasurementCoverage | null;
 }): any {
-  const { requestId, result, metadata, recognition, reflection, workerTelemetry, finalStatus } = params;
+  const { requestId, result, metadata, recognition, reflection, workerTelemetry, finalStatus, measurementCoverage } = params;
 
   return {
     requestId: String(requestId),
@@ -33,6 +35,7 @@ export function buildDeliveryPayload(params: {
     ...(metadata?.outputSpec ? { outputSpec: metadata.outputSpec } : {}),
     ...(finalStatus ? { status: finalStatus.status, statusMessage: finalStatus.message } : {}),
     ...(workerTelemetry ? { workerTelemetry } : {}),
+    ...(measurementCoverage ? { measurementCoverage } : {}),
     ...(recognition
       ? {
         recognition: {

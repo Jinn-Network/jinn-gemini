@@ -27,6 +27,7 @@ import { autoCommitIfNeeded, deriveCommitMessage, extractExecutionSummary } from
 import { runRecognitionPhase } from '../recognition/runRecognition.js';
 // Recognition augmentation now handled by BlueprintBuilder's RecognitionProvider
 import { runAgentForRequest, consolidateArtifacts, parseTelemetry, extractOutput, mergeTelemetry, extractArtifactsFromError } from '../execution/index.js';
+import { computeMeasurementCoverage, type MeasurementCoverage } from '../execution/measurementCoverage.js';
 import { runReflection } from '../reflection/runReflection.js';
 import { inferJobStatus, dispatchParentIfNeeded, dispatchForLoopRecovery, dispatchForTimeoutRecovery, extractSemanticFailure } from '../status/index.js';
 import { storeOnchainReport } from '../delivery/report.js';
@@ -59,6 +60,7 @@ export async function processOnce(
   let recognition: RecognitionPhaseResult | null = null;
   let reflection: ReflectionResult | null = null;
   let finalStatus: FinalStatus | null = null;
+  let measurementCoverage: MeasurementCoverage | null = null;
   let executionSummary: ExecutionSummaryDetails | null = null;
   let initializationFailed = false;
 
@@ -415,6 +417,21 @@ export async function processOnce(
         }
       }
 
+      // Compute measurement coverage for delivery payload
+      measurementCoverage = computeMeasurementCoverage({
+        blueprint: metadata?.blueprint,
+        telemetry: result.telemetry || {},
+        status: finalStatus.status,
+      });
+      if (measurementCoverage) {
+        workerLogger.info({
+          requestId: target.id,
+          coverage: measurementCoverage.coveragePercent,
+          measured: measurementCoverage.measuredIds,
+          unmeasured: measurementCoverage.unmeasuredIds,
+          delegated: measurementCoverage.delegated,
+        }, 'Measurement coverage computed');
+      }
 
       // Aggregate tool metrics
       if (result?.telemetry?.toolCalls && result.telemetry.toolCalls.length > 0) {
@@ -849,6 +866,7 @@ export async function processOnce(
       recognition,
       reflection,
       workerTelemetry: workerTelemetrySnapshot,
+      measurementCoverage,
       artifactsForDelivery,
     });
 

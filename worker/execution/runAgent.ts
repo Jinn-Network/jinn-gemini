@@ -5,6 +5,7 @@
 import { Agent } from '../../gemini-agent/agent.js';
 import { createBlueprintBuilder } from '../prompt/index.js';
 import { setJobContext, clearJobContext, snapshotJobContext, restoreJobContext } from '../metadata/jobContext.js';
+import { extractMissionInvariantIds } from '../prompt/utils/invariantIds.js';
 import { parseAnnotatedTools, normalizeToolArray } from '../../gemini-agent/shared/template-tools.js';
 import { didDispatchChild } from '../status/dispatchUtils.js';
 import { updateJobStatus } from '../control_api_client.js';
@@ -97,6 +98,9 @@ export async function runAgentForRequest(
   const blueprintBuilder = createBlueprintBuilder();
   const prompt = await blueprintBuilder.buildPrompt(request.id, metadata, metadata.recognition);
 
+  // Extract mission invariant IDs from blueprint for downstream validation
+  const blueprintInvariantIds = extractMissionInvariantIds(metadata?.blueprint);
+
   // Snapshot and set job context for downstream tools
   const prevContext = snapshotJobContext();
   try {
@@ -114,6 +118,7 @@ export async function runAgentForRequest(
       completedChildRequestIds,
       requiredTools,
       availableTools,
+      blueprintInvariantIds: blueprintInvariantIds.length > 0 ? blueprintInvariantIds : undefined,
     });
 
     const result = await agent.run(prompt);
