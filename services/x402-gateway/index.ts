@@ -872,6 +872,7 @@ const buildBlueprintFromTemplate = sharedBuildBlueprint;
 import { getGrant } from './credentials/acl.js';
 import { getNangoAccessToken } from './credentials/nango-client.js';
 import { checkAndStoreNonce } from './credentials/redis.js';
+import { verifyPayment, type PaymentErrorCode } from './credentials/x402-verify.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
 
 /**
@@ -950,13 +951,39 @@ app.post("/credentials/:provider", async (c) => {
   // Check payment if required
   const price = BigInt(grant.pricePerAccess || '0');
   if (price > 0n) {
-    const paymentHeader = c.req.header("X-402-Payment");
-    if (!paymentHeader) {
-      return c.json({ error: `Payment required: ${grant.pricePerAccess} wei`, code: "PAYMENT_REQUIRED" } satisfies CredentialError, 402);
+    const paymentHeader = c.req.header("X-Payment") || c.req.header("X-402-Payment");
+    const gatewayAddress = process.env.GATEWAY_PAYMENT_ADDRESS as `0x${string}`;
+    const x402Network = process.env.X402_NETWORK || 'base';
+
+    if (!gatewayAddress) {
+      return c.json({ error: "Server misconfigured: GATEWAY_PAYMENT_ADDRESS not set", code: "PAYMENT_REQUIRED" } satisfies CredentialError, 500);
     }
-    // TODO: Verify x402 payment proof here
-    // For now, presence of payment header is sufficient
-    // In production: use @coinbase/x402 facilitator to verify
+
+    if (!paymentHeader) {
+      return c.json({
+        error: `Payment required: ${grant.pricePerAccess} (USDC atomic units)`,
+        code: "PAYMENT_REQUIRED"
+      } satisfies CredentialError, 402);
+    }
+
+    const result = await verifyPayment({
+      paymentHeader,
+      requiredAmount: grant.pricePerAccess,
+      resource: `/credentials/${provider}`,
+      payTo: gatewayAddress,
+      network: x402Network,
+    });
+
+    if (!result.valid) {
+      const status = result.error?.code === 'FACILITATOR_UNAVAILABLE' ? 503 : 402;
+      return c.json({
+        error: result.error?.message || 'Payment verification failed',
+        code: "PAYMENT_INVALID",
+        paymentError: result.error?.code,
+      } satisfies CredentialError & { paymentError?: PaymentErrorCode }, status);
+    }
+
+    console.log(`[x402] Payment verified: ${result.payer} → ${provider}`);
   }
 
   // Fetch fresh token from Nango

@@ -42,5 +42,5 @@ export interface CredentialResponse {
 /** Error response */
 export interface CredentialError {
   error: string;
-  code: 'INVALID_SIGNATURE' | 'NOT_AUTHORIZED' | 'PAYMENT_REQUIRED' | 'PROVIDER_NOT_FOUND' | 'GRANT_EXPIRED' | 'NANGO_ERROR' | 'NONCE_REUSED';
+  code: 'INVALID_SIGNATURE' | 'NOT_AUTHORIZED' | 'PAYMENT_REQUIRED' | 'PAYMENT_INVALID' | 'PROVIDER_NOT_FOUND' | 'GRANT_EXPIRED' | 'NANGO_ERROR' | 'NONCE_REUSED';
 }

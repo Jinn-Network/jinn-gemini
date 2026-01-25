@@ -21,6 +21,7 @@
 import 'dotenv/config';
 import { privateKeyToAccount } from 'viem/accounts';
 import { setGrant, setConnection, revokeGrant } from './acl.js';
+import { createTestPaymentHeader } from './x402-verify.js';
 
 // ============================================
 // Config
@@ -282,15 +283,22 @@ async function testPaymentRequired() {
     log('✗', `Expected 402, got ${status}`);
   }
 
-  // Request with payment header (should pass payment check, may fail on Nango)
+  // Request with valid payment header (should pass payment check in dev mode, may fail on Nango)
+  const validHeader = createTestPaymentHeader({
+    from: TEST_ADDRESS,
+    to: process.env.GATEWAY_PAYMENT_ADDRESS || '0x1234567890123456789012345678901234567890',
+    value: '1000', // Matches pricePerAccess
+    network: process.env.X402_NETWORK || 'base',
+  });
+
   const { status: paidStatus } = await credentialRequest('paid-provider', TEST_ACCOUNT, {
-    paymentHeader: 'fake-payment-proof',
+    paymentHeader: validHeader,
   });
 
   if (paidStatus !== 402) {
     log('✓', `Payment accepted (got ${paidStatus} — expected Nango error since connection is fake)`);
   } else {
-    log('✗', `Still got 402 even with payment header`);
+    log('✗', `Still got 402 even with valid payment header`);
   }
 }
 
@@ -410,6 +418,187 @@ async function testRealTweet(tweetText: string) {
 }
 
 // ============================================
+// x402 Payment Verification Tests
+// ============================================
+
+const GATEWAY_PAYMENT_ADDRESS = process.env.GATEWAY_PAYMENT_ADDRESS || '0x1234567890123456789012345678901234567890';
+const X402_NETWORK = process.env.X402_NETWORK || 'base';
+
+async function testPaymentInvalidFormat() {
+  console.log('\n--- Payment Invalid Format ---');
+
+  await setGrant(TEST_ADDRESS, 'payment-format-test', {
+    nangoConnectionId: 'conn-format',
+    pricePerAccess: '1000000',
+    expiresAt: null,
+    active: true,
+  });
+
+  // Send malformed base64
+  const { status, body } = await credentialRequest('payment-format-test', TEST_ACCOUNT, {
+    paymentHeader: 'not-valid-base64!!!',
+  });
+
+  if (status === 402 && body?.paymentError === 'INVALID_PAYMENT_FORMAT') {
+    log('✓', 'Rejected invalid payment format');
+  } else {
+    log('✗', `Expected 402 INVALID_PAYMENT_FORMAT, got ${status}: ${JSON.stringify(body)}`);
+  }
+}
+
+async function testPaymentAmountInsufficient() {
+  console.log('\n--- Payment Amount Insufficient ---');
+
+  await setGrant(TEST_ADDRESS, 'payment-amount-test', {
+    nangoConnectionId: 'conn-amount',
+    pricePerAccess: '1000000', // 1 USDC
+    expiresAt: null,
+    active: true,
+  });
+
+  // Payment with insufficient amount (0.5 USDC)
+  const header = createTestPaymentHeader({
+    from: TEST_ADDRESS,
+    to: GATEWAY_PAYMENT_ADDRESS,
+    value: '500000', // 0.5 USDC - insufficient
+    network: X402_NETWORK,
+  });
+
+  const { status, body } = await credentialRequest('payment-amount-test', TEST_ACCOUNT, {
+    paymentHeader: header,
+  });
+
+  if (status === 402 && body?.paymentError === 'PAYMENT_AMOUNT_INSUFFICIENT') {
+    log('✓', 'Rejected insufficient payment amount');
+  } else {
+    log('✗', `Expected 402 PAYMENT_AMOUNT_INSUFFICIENT, got ${status}: ${JSON.stringify(body)}`);
+  }
+}
+
+async function testPaymentWrongRecipient() {
+  console.log('\n--- Payment Wrong Recipient ---');
+
+  await setGrant(TEST_ADDRESS, 'payment-recipient-test', {
+    nangoConnectionId: 'conn-recipient',
+    pricePerAccess: '1000000',
+    expiresAt: null,
+    active: true,
+  });
+
+  // Payment to wrong address
+  const header = createTestPaymentHeader({
+    from: TEST_ADDRESS,
+    to: '0x' + '99'.repeat(20), // Wrong recipient
+    value: '1000000',
+    network: X402_NETWORK,
+  });
+
+  const { status, body } = await credentialRequest('payment-recipient-test', TEST_ACCOUNT, {
+    paymentHeader: header,
+  });
+
+  if (status === 402 && body?.paymentError === 'PAYMENT_RECIPIENT_MISMATCH') {
+    log('✓', 'Rejected payment to wrong recipient');
+  } else {
+    log('✗', `Expected 402 PAYMENT_RECIPIENT_MISMATCH, got ${status}: ${JSON.stringify(body)}`);
+  }
+}
+
+async function testPaymentExpired() {
+  console.log('\n--- Payment Expired ---');
+
+  await setGrant(TEST_ADDRESS, 'payment-expiry-test', {
+    nangoConnectionId: 'conn-expiry',
+    pricePerAccess: '1000000',
+    expiresAt: null,
+    active: true,
+  });
+
+  // Expired payment (validBefore in the past)
+  const header = createTestPaymentHeader({
+    from: TEST_ADDRESS,
+    to: GATEWAY_PAYMENT_ADDRESS,
+    value: '1000000',
+    network: X402_NETWORK,
+    validBefore: Math.floor(Date.now() / 1000) - 60, // 1 minute ago
+  });
+
+  const { status, body } = await credentialRequest('payment-expiry-test', TEST_ACCOUNT, {
+    paymentHeader: header,
+  });
+
+  if (status === 402 && body?.paymentError === 'PAYMENT_EXPIRED') {
+    log('✓', 'Rejected expired payment');
+  } else {
+    log('✗', `Expected 402 PAYMENT_EXPIRED, got ${status}: ${JSON.stringify(body)}`);
+  }
+}
+
+async function testPaymentNetworkMismatch() {
+  console.log('\n--- Payment Network Mismatch ---');
+
+  await setGrant(TEST_ADDRESS, 'payment-network-test', {
+    nangoConnectionId: 'conn-network',
+    pricePerAccess: '1000000',
+    expiresAt: null,
+    active: true,
+  });
+
+  // Payment on wrong network
+  const header = createTestPaymentHeader({
+    from: TEST_ADDRESS,
+    to: GATEWAY_PAYMENT_ADDRESS,
+    value: '1000000',
+    network: X402_NETWORK === 'base' ? 'base-sepolia' : 'base', // Wrong network
+  });
+
+  const { status, body } = await credentialRequest('payment-network-test', TEST_ACCOUNT, {
+    paymentHeader: header,
+  });
+
+  if (status === 402 && body?.paymentError === 'PAYMENT_NETWORK_MISMATCH') {
+    log('✓', 'Rejected payment on wrong network');
+  } else {
+    log('✗', `Expected 402 PAYMENT_NETWORK_MISMATCH, got ${status}: ${JSON.stringify(body)}`);
+  }
+}
+
+async function testPaymentValidInDevMode() {
+  console.log('\n--- Payment Valid (Dev Mode) ---');
+
+  if (process.env.X402_DEV_MODE !== 'true') {
+    log('⊘', 'Skipped — X402_DEV_MODE not enabled');
+    return;
+  }
+
+  await setGrant(TEST_ADDRESS, 'payment-valid-test', {
+    nangoConnectionId: 'conn-valid',
+    pricePerAccess: '1000000',
+    expiresAt: null,
+    active: true,
+  });
+
+  // Valid payment (in dev mode, signature verification is skipped)
+  const header = createTestPaymentHeader({
+    from: TEST_ADDRESS,
+    to: GATEWAY_PAYMENT_ADDRESS,
+    value: '1000000',
+    network: X402_NETWORK,
+  });
+
+  const { status, body } = await credentialRequest('payment-valid-test', TEST_ACCOUNT, {
+    paymentHeader: header,
+  });
+
+  // Should pass payment verification (may fail on Nango since connection is fake)
+  if (status !== 402) {
+    log('✓', `Payment accepted in dev mode (got ${status} — expected Nango error since connection is fake)`);
+  } else {
+    log('✗', `Expected non-402, got ${status}: ${JSON.stringify(body)}`);
+  }
+}
+
+// ============================================
 // Main
 // ============================================
 
@@ -442,6 +631,14 @@ async function main() {
   await testPaymentRequired();
   await testExpiredGrant();
   await testRevokedGrant();
+
+  // x402 Payment verification tests
+  await testPaymentInvalidFormat();
+  await testPaymentAmountInsufficient();
+  await testPaymentWrongRecipient();
+  await testPaymentExpired();
+  await testPaymentNetworkMismatch();
+  await testPaymentValidInDevMode();
 
   // Nango integration tests
   const tokenOk = await testSuccessfulTokenFetch(nangoOk);
