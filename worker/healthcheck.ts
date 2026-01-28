@@ -35,6 +35,10 @@ interface WorkerHealthInfo {
   startedAt: Date;
   lastActivityAt: Date;
   processedJobs: number;
+  // Efficiency metrics for CPU optimization measurement
+  idleCycles: number;
+  totalExecutionTimeMs: number;
+  totalIdleTimeMs: number;
 }
 
 // Global state for health tracking
@@ -46,6 +50,9 @@ export function initHealthInfo(workerId: string): void {
     startedAt: new Date(),
     lastActivityAt: new Date(),
     processedJobs: 0,
+    idleCycles: 0,
+    totalExecutionTimeMs: 0,
+    totalIdleTimeMs: 0,
   };
 }
 
@@ -58,6 +65,27 @@ export function recordJobProcessed(): void {
 
 export function updateLastActivity(): void {
   if (healthInfo) {
+    healthInfo.lastActivityAt = new Date();
+  }
+}
+
+/**
+ * Record an idle cycle (no jobs found/processed)
+ */
+export function recordIdleCycle(idleTimeMs: number): void {
+  if (healthInfo) {
+    healthInfo.idleCycles += 1;
+    healthInfo.totalIdleTimeMs += idleTimeMs;
+    healthInfo.lastActivityAt = new Date();
+  }
+}
+
+/**
+ * Record execution time for a job
+ */
+export function recordExecutionTime(executionTimeMs: number): void {
+  if (healthInfo) {
+    healthInfo.totalExecutionTimeMs += executionTimeMs;
     healthInfo.lastActivityAt = new Date();
   }
 }
@@ -89,6 +117,11 @@ export function startHealthcheckServer(): void {
       const lastActivityAgo = healthInfo ? now.getTime() - healthInfo.lastActivityAt.getTime() : 0;
 
       const nodeId = getNodeId();
+      const totalExecutionMs = healthInfo?.totalExecutionTimeMs || 0;
+      const totalIdleMs = healthInfo?.totalIdleTimeMs || 0;
+      const processedJobs = healthInfo?.processedJobs || 0;
+      const idleCycles = healthInfo?.idleCycles || 0;
+
       const response = {
         status: 'ok',
         nodeId,
@@ -101,8 +134,20 @@ export function startHealthcheckServer(): void {
           ms: lastActivityAgo,
           human: `${formatDuration(lastActivityAgo)} ago`,
         },
-        processedJobs: healthInfo?.processedJobs || 0,
+        processedJobs,
         timestamp: now.toISOString(),
+        // Efficiency metrics for CPU optimization measurement
+        efficiency: {
+          idleCycles,
+          avgJobDurationMs: processedJobs > 0
+            ? Math.round(totalExecutionMs / processedJobs)
+            : 0,
+          totalExecutionMs,
+          totalIdleMs,
+          idlePercent: uptimeMs > 0
+            ? Math.round((totalIdleMs / uptimeMs) * 100)
+            : 0,
+        },
       };
 
       res.writeHead(200, { 'Content-Type': 'application/json' });

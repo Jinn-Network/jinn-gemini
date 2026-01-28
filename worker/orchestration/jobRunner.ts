@@ -90,10 +90,6 @@ export async function processOnce(
         hasCodeMetadata: !!metadata?.codeMetadata,
       });
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/orchestration/jobRunner.ts:86',message:'metadata sources for workspace',data:{requestId:target.id,codeMetadataRemoteUrl:metadata?.codeMetadata?.repo?.remoteUrl,workspaceRepoUrl:metadata?.additionalContext?.workspaceRepo?.url,hasCodeMetadata:!!metadata?.codeMetadata,hasWorkspaceRepo:!!metadata?.additionalContext?.workspaceRepo},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-
       const resolvedWorkstreamId = metadata?.workstreamId || target.workstreamId || target.id;
       if (metadata) {
         metadata.workstreamId = resolvedWorkstreamId;
@@ -130,10 +126,6 @@ export async function processOnce(
         if (repoName) {
           const workspaceDir = getJinnWorkspaceDir();
           const repoRoot = `${workspaceDir}/${repoName}`;
-
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/orchestration/jobRunner.ts:114',message:'workspaceRepo bootstrap decision',data:{requestId:target.id,repoUrl,repoRoot,branch},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-          // #endregion
 
           workerLogger.info({ repoUrl, repoRoot, branch }, 'Bootstrapping workspace from additionalContext.workspaceRepo');
 
@@ -180,9 +172,6 @@ export async function processOnce(
           }
 
           if (repoRoot) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/orchestration/jobRunner.ts:158',message:'codeMetadata clone decision',data:{requestId:target.id,remoteUrl,rawRemoteUrl,repoRoot},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H3'})}).catch(()=>{});
-            // #endregion
             const cloneResult = await ensureRepoCloned(remoteUrl, repoRoot);
             telemetry.logCheckpoint('initialization', 'repo_clone', {
               remoteUrl,
@@ -697,9 +686,6 @@ export async function processOnce(
   telemetry.startPhase('git_operations');
   try {
     if (initializationFailed) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worker/orchestration/jobRunner.ts:585',message:'skipping git operations due to initialization failure',data:{requestId:target.id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
       telemetry.logCheckpoint('git_operations', 'skipped', { reason: 'initialization_failed' });
       return;
     }

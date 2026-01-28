@@ -26,6 +26,7 @@ import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketpla
 import { shouldStop } from './cycleControl.js';
 import { waitForGeminiQuota } from './llm/geminiQuota.js';
 import { getOptionalWorkerJobDelayMs } from '../config/index.js';
+import { recordIdleCycle, recordExecutionTime } from './healthcheck.js';
 
 export { formatSummaryForPr, autoCommitIfNeeded } from './git/autoCommit.js';
 
@@ -89,6 +90,12 @@ const MAX_STUCK_CYCLES = (() => {
   const value = parseInt(raw, 10);
   return isNaN(value) || value < 1 ? undefined : value;
 })();
+
+// Adaptive polling configuration for CPU optimization
+// When idle, polling interval increases exponentially up to max to reduce CPU usage
+const WORKER_POLL_BASE_MS = parseInt(process.env.WORKER_POLL_BASE_MS || '30000');
+const WORKER_POLL_MAX_MS = parseInt(process.env.WORKER_POLL_MAX_MS || '300000');
+const WORKER_POLL_BACKOFF_FACTOR = parseFloat(process.env.WORKER_POLL_BACKOFF_FACTOR || '1.5');
 
 // Workstream filtering: parse --workstream=<id> flag or WORKSTREAM_FILTER env var
 // Supports multiple workstreams via:
@@ -1009,11 +1016,15 @@ async function fetchSpecificRequest(requestId: string): Promise<UnclaimedRequest
 }
 
 
-async function processOnce(): Promise<void> {
+/**
+ * Process one iteration of the worker loop.
+ * @returns true if a job was processed, false if idle (no work found or claimed)
+ */
+async function processOnce(): Promise<boolean> {
   const workerAddress = getMechAddress();
   if (!workerAddress) {
     workerLogger.error('Missing service mech address in .operate config or environment');
-    return;
+    return false;
   }
 
   // Optional: target a specific request id if provided (for deterministic tests)
@@ -1027,13 +1038,13 @@ async function processOnce(): Promise<void> {
       consecutiveStuckCycles = 0;
       lastStuckRequestIds = [];
       workerLogger.info({ target: targetHex }, 'Target request not found in Ponder');
-      return;
+      return false;
     }
     if (specificRequest.delivered) {
       consecutiveStuckCycles = 0;
       lastStuckRequestIds = [];
       workerLogger.info({ target: targetHex }, 'Target request already delivered');
-      return;
+      return false;
     }
 
     // Check dependencies even for targeted requests
@@ -1042,7 +1053,7 @@ async function processOnce(): Promise<void> {
       consecutiveStuckCycles = 0;
       lastStuckRequestIds = [];
       workerLogger.info({ target: targetHex }, 'Target request dependencies not met - skipping');
-      return;
+      return false;
     }
 
     candidates = [specificRequest];
@@ -1054,7 +1065,7 @@ async function processOnce(): Promise<void> {
       consecutiveStuckCycles = 0;
       lastStuckRequestIds = [];
       workerLogger.info('No unclaimed on-chain requests found');
-      return;
+      return false;
     }
 
     // Filter by dependencies - only process jobs whose dependencies are met
@@ -1063,7 +1074,7 @@ async function processOnce(): Promise<void> {
       consecutiveStuckCycles = 0;
       lastStuckRequestIds = [];
       workerLogger.info('No requests with met dependencies found');
-      return;
+      return false;
     }
   }
 
@@ -1084,13 +1095,11 @@ async function processOnce(): Promise<void> {
       }, 'Stuck cycle limit reached; exiting to allow restart');
       process.exit(2);
     }
-    return;
+    return false;
   }
 
   consecutiveStuckCycles = 0;
   lastStuckRequestIds = [];
-
-  await waitForGeminiQuota({ reason: 'pre_claim' });
 
   // Try to claim a request
   let target: UnclaimedRequest | null = null;
@@ -1102,7 +1111,11 @@ async function processOnce(): Promise<void> {
     }
   }
 
-  if (!target) return;
+  if (!target) return false;
+
+  // Wait for quota only after successful claim (lazy quota check)
+  // This eliminates quota API calls during idle periods
+  await waitForGeminiQuota({ reason: 'pre_execution' });
 
   // Delegate job execution to orchestrator
   try {
@@ -1119,6 +1132,8 @@ async function processOnce(): Promise<void> {
     workerLogger.info({ delayMs: jobDelayMs }, 'Post-job delay before next cycle');
     await new Promise(r => setTimeout(r, jobDelayMs));
   }
+
+  return true; // Job was processed
 }
 
 /**
@@ -1148,6 +1163,9 @@ async function checkControlApiHealth(): Promise<void> {
   }
 }
 
+// Repost check frequency limiting configuration
+const WORKER_REPOST_CHECK_CYCLES = parseInt(process.env.WORKER_REPOST_CHECK_CYCLES || '10');
+
 async function main() {
   workerLogger.info('Mech worker starting');
 
@@ -1160,17 +1178,47 @@ async function main() {
   }
 
   let runCount = 0;
+
+  // Adaptive polling state
+  let consecutiveIdleCycles = 0;
+  let currentPollIntervalMs = WORKER_POLL_BASE_MS;
+
+  // Repost check frequency limiting
+  let cyclesSinceLastRepostCheck = 0;
+
   for (; ;) {
+    const cycleStart = Date.now();
     try {
       if (shouldStop()) {
         workerLogger.info('Stop signal detected before poll - exiting worker loop');
         return;
       }
 
-      // Check for completed chains and repost if needed
-      await checkAndRepostCompletedChains();
+      // Check for completed chains only every Nth cycle (reduces DB queries when idle)
+      cyclesSinceLastRepostCheck++;
+      if (cyclesSinceLastRepostCheck >= WORKER_REPOST_CHECK_CYCLES) {
+        await checkAndRepostCompletedChains();
+        cyclesSinceLastRepostCheck = 0;
+      }
 
-      await processOnce();
+      const jobProcessed = await processOnce();
+      const cycleEnd = Date.now();
+      const cycleDurationMs = cycleEnd - cycleStart;
+
+      // Record efficiency metrics for healthcheck
+      if (jobProcessed) {
+        recordExecutionTime(cycleDurationMs);
+        consecutiveIdleCycles = 0;
+        currentPollIntervalMs = WORKER_POLL_BASE_MS;
+      } else {
+        recordIdleCycle(cycleDurationMs);
+        consecutiveIdleCycles++;
+        currentPollIntervalMs = Math.min(
+          WORKER_POLL_MAX_MS,
+          Math.floor(WORKER_POLL_BASE_MS * Math.pow(WORKER_POLL_BACKOFF_FACTOR, consecutiveIdleCycles))
+        );
+      }
+      workerLogger.debug({ consecutiveIdleCycles, nextPollMs: currentPollIntervalMs, jobProcessed, cycleDurationMs }, 'Adaptive polling');
 
       if (shouldStop()) {
         workerLogger.info('Stop signal detected after job processing - exiting worker loop');
@@ -1188,7 +1236,7 @@ async function main() {
     } catch (e: any) {
       workerLogger.error({ error: serializeError(e) }, 'Error in mech loop');
     }
-    await new Promise(r => setTimeout(r, 30000)); // 30 seconds between polls
+    await new Promise(r => setTimeout(r, currentPollIntervalMs));
   }
 }
 

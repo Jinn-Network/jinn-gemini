@@ -176,9 +176,6 @@ async function main() {
       try {
         inputConfig = await loadInputConfig(argv.input);
         scriptLogger.info({ keys: Object.keys(inputConfig) }, 'Input config loaded');
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:176', message: 'input config loaded', data: { inputPath: String(argv.input), repoUrl: (inputConfig as any)?.repoUrl }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H6' }) }).catch(() => { });
-        // #endregion
       } catch (err) {
         scriptLogger.error({ inputPath: argv.input, error: err }, 'Failed to load input config');
         throw err;
@@ -203,9 +200,6 @@ async function main() {
         scriptLogger.info({ repoUrl: configRepoUrl, effectiveRepoArg, sshHost }, 'Using repoUrl from input config (SSH)');
       }
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:195', message: 'effective repo selection', data: { argvRepo: argv.repo || null, effectiveRepoArg: effectiveRepoArg || null }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H6' }) }).catch(() => { });
-    // #endregion
 
     // Option 1: Use existing repo (--repo flag or from input config)
     if (effectiveRepoArg) {
@@ -240,9 +234,6 @@ async function main() {
       repoPath = join(workstreamsDir, repoName);
 
       scriptLogger.info({ repoSpec, repoPath }, 'Using existing repository');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:230', message: 'repo spec parsed', data: { repoSpec, cloneUrl, repoUrl, repoPath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H6' }) }).catch(() => { });
-      // #endregion
 
       // Clone if doesn't exist, otherwise fetch
       const { existsSync } = await import('fs');
@@ -257,19 +248,11 @@ async function main() {
           const token = process.env.GITHUB_TOKEN;
           const httpsCloneUrl = token ? `https://${token}@github.com/${owner}/${repoName}.git` : `https://github.com/${owner}/${repoName}.git`;
 
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:238', message: 'ssh clone failed; https fallback decision', data: { repoSpec, hasToken: !!token, authFailed, repoPath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'H7' }) }).catch(() => { });
-          // #endregion
-
           if (authFailed) {
             try {
               execSync(`git clone ${httpsCloneUrl} ${repoPath}`, { stdio: 'pipe' });
               scriptLogger.info('Repository cloned via HTTPS');
             } catch (fallbackError: any) {
-              const fallbackStderr = String(fallbackError?.message || '').slice(0, 300);
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:248', message: 'https clone failed', data: { repoSpec, hasToken: !!token, repoPath, stderrSample: fallbackStderr }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'H7' }) }).catch(() => { });
-              // #endregion
               throw fallbackError;
             }
           } else {
@@ -467,9 +450,6 @@ async function main() {
       process.env.CODE_METADATA_REPO_ROOT = repoPath;
       scriptLogger.debug({ CODE_METADATA_REPO_ROOT: repoPath }, 'Set CODE_METADATA_REPO_ROOT');
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9fd4337f-5218-4559-b6d9-8556e77bd112', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'scripts/launch_workstream.ts:423', message: 'dispatch env', data: { repoPath: repoPath || null, repoUrl: repoUrl || null, codeMetadataRepoRoot: process.env.CODE_METADATA_REPO_ROOT || null }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H6' }) }).catch(() => { });
-    // #endregion
 
     const jobDefinitionId = randomUUID();
     const profile = getServiceProfile();
