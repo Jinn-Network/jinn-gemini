@@ -6,21 +6,13 @@ import { SiteHeader } from '@/components/site-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   getServiceWithDetails,
   getVenture,
   type Service,
   type Deployment,
   type Interface,
 } from '@/lib/ventures-services';
-import { ExternalLink, GitBranch, Globe, Server, Code, FileText } from 'lucide-react';
+import { ExternalLink, GitBranch, Globe, Clock, AlertCircle } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,13 +23,13 @@ interface ServicePageProps {
 export async function generateMetadata({ params }: ServicePageProps): Promise<Metadata> {
   const { id } = await params;
   const { service } = await getServiceWithDetails(id);
-
   return {
     title: service?.name || 'Service',
     description: service?.description || 'Service details',
   };
 }
 
+// Shared badge components
 function ServiceTypeBadge({ type }: { type: Service['service_type'] }) {
   const colors: Record<Service['service_type'], string> = {
     mcp: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
@@ -47,46 +39,102 @@ function ServiceTypeBadge({ type }: { type: Service['service_type'] }) {
     library: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
     other: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
   };
-
-  return (
-    <Badge variant="outline" className={colors[type]}>
-      {type}
-    </Badge>
-  );
+  return <Badge variant="outline" className={colors[type]}>{type}</Badge>;
 }
 
-function HealthBadge({ status }: { status: Deployment['health_status'] }) {
-  const colors: Record<Deployment['health_status'], string> = {
+function StatusBadge({ status, size = 'default' }: { status: string; size?: 'sm' | 'default' }) {
+  const colors: Record<string, string> = {
+    active: 'bg-green-500/10 text-green-500 border-green-500/20',
     healthy: 'bg-green-500/10 text-green-500 border-green-500/20',
-    unhealthy: 'bg-red-500/10 text-red-500 border-red-500/20',
+    deprecated: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
     degraded: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+    unhealthy: 'bg-red-500/10 text-red-500 border-red-500/20',
+    failed: 'bg-red-500/10 text-red-500 border-red-500/20',
+    archived: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
     unknown: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
+    stopped: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
+    deploying: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+    removed: 'bg-red-500/10 text-red-500 border-red-500/20',
   };
+  const className = size === 'sm' ? 'text-xs px-1.5 py-0' : '';
+  return <Badge variant="outline" className={`${colors[status] || colors.unknown} ${className}`}>{status}</Badge>;
+}
 
+function formatDate(dateString: string) {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+}
+
+function formatDateTime(dateString: string) {
+  return new Date(dateString).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// Deployment Card - reflects Deployment interface structure
+function DeploymentCard({ deployment }: { deployment: Deployment }) {
   return (
-    <Badge variant="outline" className={colors[status]}>
-      {status}
-    </Badge>
+    <Card>
+      <CardContent className="pt-4 space-y-3">
+        {/* Environment & Provider */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge variant="default">{deployment.environment}</Badge>
+            <span className="text-sm text-muted-foreground">{deployment.provider}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={deployment.status} size="sm" />
+            <StatusBadge status={deployment.health_status} size="sm" />
+          </div>
+        </div>
+
+        {/* URLs */}
+        {deployment.url && (
+          <a
+            href={deployment.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-sm text-primary hover:underline"
+          >
+            <Globe className="h-3 w-3" />
+            {deployment.url}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+
+        {/* Provider IDs */}
+        {(deployment.provider_project_id || deployment.provider_service_id) && (
+          <div className="text-xs text-muted-foreground font-mono space-y-0.5">
+            {deployment.provider_project_id && <div>project: {deployment.provider_project_id}</div>}
+            {deployment.provider_service_id && <div>service: {deployment.provider_service_id}</div>}
+          </div>
+        )}
+
+        {/* Health & Version */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
+          <div className="flex items-center gap-3">
+            {deployment.version && <span>v{deployment.version}</span>}
+            {deployment.health_check_url && (
+              <a href={deployment.health_check_url} target="_blank" rel="noopener noreferrer" className="hover:text-primary">
+                health endpoint
+              </a>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {formatDateTime(deployment.deployed_at)}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-function EnvironmentBadge({ env }: { env: Deployment['environment'] }) {
-  const colors: Record<Deployment['environment'], string> = {
-    production: 'bg-green-500/10 text-green-500 border-green-500/20',
-    staging: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-    development: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-    preview: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-  };
-
-  return (
-    <Badge variant="outline" className={colors[env]}>
-      {env}
-    </Badge>
-  );
-}
-
-function InterfaceTypeBadge({ type }: { type: Interface['interface_type'] }) {
-  const colors: Record<Interface['interface_type'], string> = {
+// Interface Card - reflects Interface structure
+function InterfaceCard({ iface }: { iface: Interface }) {
+  const typeColors: Record<Interface['interface_type'], string> = {
     mcp_tool: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
     rest_endpoint: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
     graphql: 'bg-pink-500/10 text-pink-500 border-pink-500/20',
@@ -97,127 +145,58 @@ function InterfaceTypeBadge({ type }: { type: Interface['interface_type'] }) {
   };
 
   return (
-    <Badge variant="outline" className={colors[type]}>
-      {type.replace('_', ' ')}
-    </Badge>
-  );
-}
-
-function formatDate(dateString: string) {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function DeploymentsSection({ deployments }: { deployments: Deployment[] }) {
-  if (deployments.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        No deployments registered
-      </div>
-    );
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Environment</TableHead>
-          <TableHead>Provider</TableHead>
-          <TableHead>Health</TableHead>
-          <TableHead>URL</TableHead>
-          <TableHead className="text-right">Deployed</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {deployments.map((deployment) => (
-          <TableRow key={deployment.id}>
-            <TableCell>
-              <EnvironmentBadge env={deployment.environment} />
-            </TableCell>
-            <TableCell className="text-muted-foreground">
-              {deployment.provider}
-            </TableCell>
-            <TableCell>
-              <HealthBadge status={deployment.health_status} />
-            </TableCell>
-            <TableCell>
-              {deployment.url ? (
-                <a
-                  href={deployment.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  <Globe className="h-3 w-3" />
-                  {new URL(deployment.url).hostname}
-                </a>
-              ) : (
-                <span className="text-muted-foreground">-</span>
-              )}
-            </TableCell>
-            <TableCell className="text-right text-muted-foreground">
-              {formatDate(deployment.deployed_at)}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-function InterfacesSection({ interfaces }: { interfaces: Interface[] }) {
-  if (interfaces.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        No interfaces registered
-      </div>
-    );
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Type</TableHead>
-          <TableHead>Auth</TableHead>
-          <TableHead>Description</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {interfaces.map((iface) => (
-          <TableRow key={iface.id}>
-            <TableCell className="font-mono text-sm">
-              {iface.http_method && (
-                <span className="text-muted-foreground mr-2">{iface.http_method}</span>
-              )}
+    <Card>
+      <CardContent className="pt-4 space-y-3">
+        {/* Name & Type */}
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="font-mono text-sm font-medium">
+              {iface.http_method && <span className="text-muted-foreground mr-1">{iface.http_method}</span>}
               {iface.name}
-            </TableCell>
-            <TableCell>
-              <InterfaceTypeBadge type={iface.interface_type} />
-            </TableCell>
-            <TableCell>
-              {iface.auth_required ? (
-                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-                  {iface.auth_type || 'required'}
-                </Badge>
-              ) : (
-                <span className="text-muted-foreground">none</span>
-              )}
-            </TableCell>
-            <TableCell className="text-muted-foreground max-w-md truncate">
-              {iface.description || '-'}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+            </div>
+            {iface.http_path && (
+              <code className="text-xs text-muted-foreground">{iface.http_path}</code>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Badge variant="outline" className={typeColors[iface.interface_type]}>
+              {iface.interface_type.replace('_', ' ')}
+            </Badge>
+            <StatusBadge status={iface.status} size="sm" />
+          </div>
+        </div>
+
+        {/* Description */}
+        {iface.description && (
+          <p className="text-sm text-muted-foreground">{iface.description}</p>
+        )}
+
+        {/* Auth */}
+        <div className="flex items-center gap-2 text-xs">
+          {iface.auth_required ? (
+            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+              auth: {iface.auth_type || 'required'}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground">no auth</span>
+          )}
+          {iface.x402_price > 0 && (
+            <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
+              {iface.x402_price} wei
+            </Badge>
+          )}
+        </div>
+
+        {/* Tags & Timestamps */}
+        {iface.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {iface.tags.map((tag) => (
+              <span key={tag} className="text-xs bg-muted px-1.5 py-0.5 rounded">{tag}</span>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -232,106 +211,139 @@ async function ServiceDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{service.name}</h1>
-            <ServiceTypeBadge type={service.service_type} />
+      {/* === SERVICE: Identity Group === */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            {/* id, name, slug */}
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-2xl font-bold">{service.name}</h1>
+                <StatusBadge status={service.status} />
+              </div>
+              <code className="text-sm text-muted-foreground">{service.slug}</code>
+              <div className="text-xs text-muted-foreground font-mono mt-1">id: {service.id}</div>
+            </div>
+
+            {/* description */}
+            {service.description && (
+              <p className="text-muted-foreground">{service.description}</p>
+            )}
           </div>
-          {service.description && (
-            <p className="text-muted-foreground max-w-2xl">{service.description}</p>
-          )}
-          {venture && (
-            <p className="text-sm text-muted-foreground">
-              Part of{' '}
-              <Link href={`/ventures/${venture.id}`} className="text-primary hover:underline">
-                {venture.name}
-              </Link>
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
+        </CardContent>
+      </Card>
+
+      {/* === SERVICE: Technical Group === */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Technical Details</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* service_type, primary_language, version */}
+          <div className="flex flex-wrap items-center gap-2">
+            <ServiceTypeBadge type={service.service_type} />
+            {service.primary_language && (
+              <Badge variant="secondary">{service.primary_language}</Badge>
+            )}
+            {service.version && (
+              <Badge variant="outline">v{service.version}</Badge>
+            )}
+          </div>
+
+          {/* repository_url */}
           {service.repository_url && (
             <a
               href={service.repository_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-md hover:bg-muted"
+              className="flex items-center gap-2 text-sm text-primary hover:underline"
             >
               <GitBranch className="h-4 w-4" />
-              Repository
+              {service.repository_url}
               <ExternalLink className="h-3 w-3" />
             </a>
           )}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{service.version || '-'}</div>
-            <div className="text-sm text-muted-foreground">Version</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{service.primary_language || '-'}</div>
-            <div className="text-sm text-muted-foreground">Language</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{deployments.length}</div>
-            <div className="text-sm text-muted-foreground">Deployments</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{interfaces.length}</div>
-            <div className="text-sm text-muted-foreground">Interfaces</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Deployments */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Server className="h-5 w-5" />
-            Deployments
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DeploymentsSection deployments={deployments} />
         </CardContent>
       </Card>
 
-      {/* Interfaces */}
+      {/* === SERVICE: Metadata Group === */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Code className="h-5 w-5" />
-            Interfaces
-          </CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Metadata</CardTitle>
         </CardHeader>
-        <CardContent>
-          <InterfacesSection interfaces={interfaces} />
+        <CardContent className="space-y-3">
+          {/* venture_id */}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Venture:</span>
+            {venture ? (
+              <Link href={`/ventures/${venture.root_workstream_id || venture.id}`} className="text-primary hover:underline">
+                {venture.name}
+              </Link>
+            ) : (
+              <code className="text-xs text-muted-foreground">{service.venture_id}</code>
+            )}
+          </div>
+
+          {/* tags */}
+          {service.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {service.tags.map((tag) => (
+                <Badge key={tag} variant="secondary">{tag}</Badge>
+              ))}
+            </div>
+          )}
+
+          {/* created_at, updated_at */}
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span>Created: {formatDate(service.created_at)}</span>
+            <span>Updated: {formatDate(service.updated_at)}</span>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Tags */}
-      {service.tags.length > 0 && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Tags:</span>
-          {service.tags.map((tag) => (
-            <Badge key={tag} variant="secondary">
-              {tag}
-            </Badge>
-          ))}
-        </div>
-      )}
+      {/* === DEPLOYMENTS (nested) === */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          Deployments
+          <Badge variant="secondary">{deployments.length}</Badge>
+        </h2>
+        {deployments.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              <AlertCircle className="h-5 w-5 mx-auto mb-2 opacity-50" />
+              No deployments registered
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {deployments.map((deployment) => (
+              <DeploymentCard key={deployment.id} deployment={deployment} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* === INTERFACES (nested) === */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          Interfaces
+          <Badge variant="secondary">{interfaces.length}</Badge>
+        </h2>
+        {interfaces.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              <AlertCircle className="h-5 w-5 mx-auto mb-2 opacity-50" />
+              No interfaces registered
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {interfaces.map((iface) => (
+              <InterfaceCard key={iface.id} iface={iface} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -339,23 +351,20 @@ async function ServiceDetail({ id }: { id: string }) {
 function ServiceDetailSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <div className="h-8 w-64 bg-muted animate-pulse rounded" />
-        <div className="h-5 w-96 bg-muted animate-pulse rounded" />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i}>
-            <CardContent className="pt-6">
-              <div className="h-8 w-16 bg-muted animate-pulse rounded mb-2" />
-              <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
       <Card>
-        <CardContent className="pt-6">
-          <div className="h-48 bg-muted/20 animate-pulse rounded" />
+        <CardContent className="pt-6 space-y-3">
+          <div className="h-8 w-64 bg-muted animate-pulse rounded" />
+          <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+          <div className="h-16 w-full bg-muted animate-pulse rounded" />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="pt-6 space-y-3">
+          <div className="h-5 w-40 bg-muted animate-pulse rounded" />
+          <div className="flex gap-2">
+            <div className="h-6 w-16 bg-muted animate-pulse rounded" />
+            <div className="h-6 w-20 bg-muted animate-pulse rounded" />
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -381,7 +390,7 @@ export default async function ServicePage({ params }: ServicePageProps) {
       />
 
       <main className="flex-1 py-6">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-4 max-w-4xl">
           <Suspense fallback={<ServiceDetailSkeleton />}>
             <ServiceDetail id={id} />
           </Suspense>
