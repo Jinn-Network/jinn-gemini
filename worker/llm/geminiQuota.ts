@@ -7,6 +7,7 @@ import {
   getOptionalGeminiQuotaMaxBackoffMs,
 } from '../../config/index.js';
 import { serializeError } from '../logging/errors.js';
+import { DEFAULT_WORKER_MODEL, normalizeGeminiModel } from '../../shared/gemini-models.js';
 
 type QuotaCheckOptions = {
   model?: string;
@@ -29,7 +30,7 @@ type QuotaWaitOptions = {
   model?: string;
 };
 
-const DEFAULT_MODEL = 'auto-gemini-3';
+const DEFAULT_MODEL = DEFAULT_WORKER_MODEL;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_BACKOFF_MS = 60_000;
 const DEFAULT_MAX_BACKOFF_MS = 10 * 60_000;
@@ -140,7 +141,7 @@ export async function checkGeminiQuota(
     };
   }
 
-  const model = resolveModel(options.model);
+  const model = normalizeGeminiModel(resolveModel(options.model), DEFAULT_WORKER_MODEL).normalized;
   const timeoutMs = options.timeoutMs ?? getOptionalGeminiQuotaCheckTimeoutMs() ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);

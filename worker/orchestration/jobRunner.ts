@@ -37,6 +37,7 @@ import { createArtifact as apiCreateArtifact } from '../control_api_client.js';
 import { safeParseToolResponse } from '../tool_utils.js';
 import { getJinnWorkspaceDir, extractRepoName, getRepoRoot, normalizeSshUrl } from '../../shared/repo_utils.js';
 import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
+import { DEFAULT_WORKER_MODEL, normalizeGeminiModel } from '../../shared/gemini-models.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult, AdditionalContext } from '../types.js';
 import { getDependencyBranchInfo } from '../mech_worker.js';
 import { getBlueprintEnableContextPhases, getBlueprintEnableBeads } from '../../config/index.js';
@@ -77,9 +78,11 @@ export async function processOnce(
         metadata = {};
       }
       // Use model from job metadata if available, otherwise fall back to default
-      if (!metadata.model) {
-        metadata.model = 'auto-gemini-3';
+      const normalized = normalizeGeminiModel(metadata.model, DEFAULT_WORKER_MODEL);
+      if (normalized.changed) {
+        workerLogger.info({ requested: normalized.requested, normalized: normalized.normalized }, 'Normalized Gemini model');
       }
+      metadata.model = normalized.normalized;
 
       telemetry.logCheckpoint('initialization', 'metadata_fetched', {
         hasJobName: !!metadata?.jobName,
@@ -360,7 +363,7 @@ export async function processOnce(
 
     // Agent execution
     telemetry.startPhase('agent_execution', {
-      model: metadata?.model || 'auto-gemini-3',
+      model: metadata?.model || DEFAULT_WORKER_MODEL,
     });
     try {
       let executionAttempt = 0;

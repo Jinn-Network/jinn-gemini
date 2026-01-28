@@ -10,6 +10,7 @@ import { parseAnnotatedTools, normalizeToolArray } from '../../gemini-agent/shar
 import { didDispatchChild } from '../status/dispatchUtils.js';
 import { updateJobStatus } from '../control_api_client.js';
 import type { UnclaimedRequest, IpfsMetadata, AdditionalContext, AgentExecutionResult } from '../types.js';
+import { DEFAULT_WORKER_MODEL, normalizeGeminiModel } from '../../shared/gemini-models.js';
 
 /**
  * Execution context for agent run
@@ -53,7 +54,8 @@ export async function runAgentForRequest(
   metadata: IpfsMetadata
 ): Promise<AgentExecutionResult> {
   // Model comes from job metadata (set at dispatch time), fallback to flash
-  const model = metadata?.model || 'auto-gemini-3';
+  const modelNormalization = normalizeGeminiModel(metadata?.model, DEFAULT_WORKER_MODEL);
+  const model = modelNormalization.normalized;
   // Normalize tools to string array (handles both string and object formats from IPFS metadata)
   const enabledTools = normalizeToolArray(metadata?.enabledTools);
   const toolPolicy = Array.isArray(metadata?.tools) ? parseAnnotatedTools(metadata.tools) : null;

@@ -16,6 +16,7 @@ import { getCurrentJobContext } from '../mcp/tools/shared/context.js';
 import { getJobContextForDispatch } from '../mcp/tools/shared/job-context-utils.js';
 import { ensureUniversalTools } from '../toolPolicy.js';
 import { parseAnnotatedTools, type TemplateToolSpec } from './template-tools.js';
+import { DEFAULT_WORKER_MODEL, normalizeGeminiModel } from '../../shared/gemini-models.js';
 import { getCodeMetadataDefaultBaseBranch } from '../../config/index.js';
 import {
     ensureJobBranch,
@@ -105,7 +106,7 @@ export async function buildIpfsPayload(
         blueprint,
         jobName,
         jobDefinitionId,
-        model = 'gemini-3-flash-preview',
+        model = DEFAULT_WORKER_MODEL,
         enabledTools: requestedTools,
         tools,
         skipBranch = false,
@@ -120,6 +121,7 @@ export async function buildIpfsPayload(
     // Ensure universal tools are included
     const enabledTools = ensureUniversalTools(requestedTools);
     const toolPolicy = parseAnnotatedTools(tools);
+    const normalizedModel = normalizeGeminiModel(model, DEFAULT_WORKER_MODEL);
 
     // Get current job context (if running inside an agent)
     const context = getCurrentJobContext();
@@ -264,7 +266,7 @@ export async function buildIpfsPayload(
     const ipfsJsonContents: any[] = [{
         blueprint,
         jobName,
-        model,
+        model: normalizedModel.normalized,
         enabledTools,
         ...(toolPolicy.availableTools.length > 0 ? { tools } : {}),
         jobDefinitionId,
