@@ -55,3 +55,6 @@ export { ventureUpdate, ventureUpdateParams, ventureUpdateSchema, type VentureUp
 // Service registry tools
 export { serviceRegistry, serviceRegistryParams, serviceRegistrySchema, type ServiceRegistryParams } from './service_registry.js';
 
+// Service discovery tools
+export { searchServices, searchServicesParams, searchServicesSchema, type SearchServicesParams } from './search_services.js';
+

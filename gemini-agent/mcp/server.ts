@@ -44,6 +44,7 @@ export const REGISTERED_MCP_TOOLS = [
   'venture_mint',
   'venture_update',
   'service_registry',
+  'search_services',
 ] as const;
 
 async function main() {
@@ -122,6 +123,7 @@ async function main() {
       { name: 'venture_mint', schema: tools.ventureMintSchema, handler: tools.ventureMint },
       { name: 'venture_update', schema: tools.ventureUpdateSchema, handler: tools.ventureUpdate },
       { name: 'service_registry', schema: tools.serviceRegistrySchema, handler: tools.serviceRegistry },
+      { name: 'search_services', schema: tools.searchServicesSchema, handler: tools.searchServices },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums
