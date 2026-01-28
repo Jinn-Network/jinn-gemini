@@ -8,6 +8,23 @@ allowed-tools: Bash, Read, Grep
 
 You are debugging a workstream to identify why jobs failed and what can be done to fix them.
 
+## Quick Facts (Critical Context)
+
+- **PENDING status**: NOT a failure - just means worker hasn't picked up the job yet. **Skip these entirely.**
+- **DELEGATING status**: Job dispatched children and is waiting for them. Check child job status instead.
+- **0% measurement coverage**: Normal for orchestrator/root jobs that delegate work. Only investigate if job was supposed to measure invariants directly.
+- **Recovery dispatches** (loop_recovery, timeout_recovery): Normal auto-recovery behavior. Check if later runs succeeded - if so, recovery worked.
+
+## Documentation References
+
+When diagnosing specific issues, read these files for detailed context:
+
+| Issue Type | Read These Files |
+|------------|------------------|
+| **UNAUTHORIZED_TOOLS errors** | `docs/guides/blueprints_and_templates.md` (template tool policy), `gemini-agent/toolPolicy.ts` (universal tools, meta-tool expansion) |
+| **Git/branch issues** | `docs/documentation/GIT_WORKFLOW.md` (branch naming, repo lifecycle) |
+| **General operational issues** | `AGENT_README_TEST.md` (search "Blood-Written Rules" section for gotchas) |
+
 ## Your Approach
 
 This is **exploratory debugging**, not pattern matching. Your goal is to:
@@ -28,12 +45,12 @@ yarn inspect-workstream $ARGUMENTS --show-all --format=summary
 ```
 
 From the summary, note:
-- **Failure rate**: How many jobs failed vs completed?
+- **Failure rate**: How many jobs FAILED vs COMPLETED? **(Ignore PENDING - those just need worker pickup)**
 - **Error distribution**: Which phases have errors? (delivery, execution, git, etc.)
 - **Dispatch pattern**: Are there verification loops, recovery attempts, cycles?
 - **Timing**: Are any jobs unusually slow?
 
-If no failures exist, report "No failures detected" and stop.
+If no FAILED jobs exist (only PENDING or COMPLETED), report "No failures detected" and stop.
 
 ### Step 2: Focus on Failures
 
