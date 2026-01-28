@@ -48,3 +48,10 @@ export {
 // Export database functions
 export { readRecords, createRecord, type ReadRecordsParams, type CreateRecordParams } from './shared/database.js';
 
+// Venture tools
+export { ventureMint, ventureMintParams, ventureMintSchema, type VentureMintParams } from './venture_mint.js';
+export { ventureUpdate, ventureUpdateParams, ventureUpdateSchema, type VentureUpdateParams } from './venture_update.js';
+
+// Service registry tools
+export { serviceRegistry, serviceRegistryParams, serviceRegistrySchema, type ServiceRegistryParams } from './service_registry.js';
+
