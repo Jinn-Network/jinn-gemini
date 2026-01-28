@@ -18,13 +18,14 @@ You are debugging a workstream to identify why jobs failed and what can be done 
 
 ## Documentation References
 
-When diagnosing specific issues, read these files for detailed context:
+When diagnosing specific issues, read these reference docs:
 
-| Issue Type | Read These Files |
-|------------|------------------|
-| **UNAUTHORIZED_TOOLS errors** | `docs/guides/blueprints_and_templates.md` (template tool policy), `gemini-agent/toolPolicy.ts` (universal tools, meta-tool expansion) |
-| **Git/branch issues** | `docs/documentation/GIT_WORKFLOW.md` (branch naming, repo lifecycle) |
-| **General operational issues** | `AGENT_README_TEST.md` (search "Blood-Written Rules" section for gotchas) |
+| Issue Type | Read |
+|------------|------|
+| **UNAUTHORIZED_TOOLS errors** | `docs/reference/TOOL_POLICY.md` |
+| **Dispatch types / recovery** | `docs/reference/DISPATCH_TYPES.md` |
+| **Git/branch issues** | `docs/documentation/GIT_WORKFLOW.md` |
+| **General operational issues** | `AGENT_README_TEST.md` |
 
 ## Your Approach
 
