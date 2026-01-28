@@ -53,8 +53,12 @@ From the summary, note:
 - **Error distribution**: Which phases have errors? (delivery, execution, git, etc.)
 - **Dispatch pattern**: Are there verification loops, recovery attempts, cycles?
 - **Timing**: Are any jobs unusually slow?
+- **Anomalous run counts**: Any job with significantly more runs than others (e.g., 9 runs vs 1-3 for others)?
+  - Check for `[loop_recovery]` or `[timeout_recovery]` tags → job is failing repeatedly
+  - Check if job is dispatching itself as a child → recursive delegation problem
+  - Check Job Tree for same job appearing multiple times → pile-up issue
 
-If no FAILED jobs exist, check the **Failed Tool Calls** section. If there are tool errors, proceed to Step 1b. Otherwise, report "No failures detected" and stop.
+If no FAILED jobs exist, check the **Failed Tool Calls** section and the **Anomalous run counts**. If there are issues, proceed to investigate. Otherwise, report "No failures detected" and stop.
 
 ### Step 1b: Investigate Tool Errors (Even in Completed Jobs)
 
@@ -63,12 +67,21 @@ Tool errors in completed jobs still indicate issues worth understanding. For eac
 #### For UNAUTHORIZED_TOOLS errors:
 1. **Identify the job**: Which job made the failing `dispatch_new_job` call?
 2. **Get telemetry**: `yarn inspect-job-run <request-id> --format=json`
-3. **Find the dispatch call**: Look in tool calls for `dispatch_new_job` - what `enabledTools` was requested?
-4. **Check template policy**: Read `docs/guides/blueprints_and_templates.md` and `gemini-agent/toolPolicy.ts`
+3. **Examine the error and dispatch call**:
+   - Look at the **error message** - what specific tool names are listed as disallowed?
+   - Find the `dispatch_new_job` call - what `enabledTools` array was requested?
+   - **Key check**: Are they using individual tool names instead of meta-tools?
+     - `telegram_send_message`, `telegram_send_photo` → Should be `telegram_messaging`
+     - `fireflies_search`, `fireflies_get_transcripts` → Should be `fireflies_meetings`
+   - See `docs/reference/TOOL_POLICY.md` for full meta-tool mappings
+4. **Trace back to the source** - Why did the agent request these tools?
+   - Check the **blueprint/prompt passed to this agent** (in the dispatch call that created it)
+   - Did the blueprint text or invariants instruct the agent to enable specific tool names?
+   - If so, the fix is to update **the source blueprint**, not the agent behavior
 5. **Determine root cause**:
-   - Is the **template MISSING tools** it should have? → Fix: Update template's `tools` list
-   - Is the **parent INCORRECTLY requesting** tools not in template? → Fix: Update parent's dispatch logic/blueprint
-   - Is a **meta-tool not expanded**? (e.g., `telegram_messaging` → `telegram_send_message`) → Check if meta-tool is in template
+   - **Blueprint has wrong tool names**: Instructions told agent to use individual tools → Fix: Update blueprint text to use meta-tool names
+   - **Template missing tools**: Tool legitimately needed but not in template → Fix: Add to template's `tools` list
+   - **Agent hallucinated tools**: Blueprint didn't mention these tools, agent made them up → Different issue, may need prompt improvement
 
 #### For other tool failures (list_tools, read_file, etc.):
 1. **Get telemetry**: `yarn inspect-job-run <request-id> --format=json`
@@ -126,6 +139,11 @@ yarn inspect-job-run <request-id> --format=json
 ```
 
 This gives full telemetry in `delivery.ipfsContent.telemetry` for deep investigation.
+
+**Key principle: Check the agent's input to understand its behavior.**
+- Look at the **blueprint/prompt** the agent received (in `request.ipfsContent`)
+- Agent behavior follows from instructions - if an agent did something wrong, check if its instructions told it to
+- The fix is often upstream in the blueprint that dispatched this job, not the agent itself
 
 ### Step 5: Check Context/Invariants (if relevant)
 
