@@ -62,18 +62,27 @@ The root cause is usually:
 
 ### Step 4: Deep Dive into Root Cause Job
 
-For the root cause job, get full details:
+For the root cause job, get extracted debugging info:
 
 ```bash
-yarn inspect-job-run <request-id>
+yarn inspect-job-run <request-id> --format=summary
 ```
 
-Extract from the job run:
-- **Full error message** and stack trace (if any)
-- **Tool calls**: Which tool failed? What error?
-- **Phase**: Which phase failed? (git_operations, execution, delivery)
-- **Telemetry**: Token usage, timing, tool metrics
-- **measurementCoverage**: Were invariants measured?
+The summary shows:
+- **Status**: COMPLETED, FAILED, PENDING, or DELEGATING
+- **Errors**: Phase and error message for each error
+- **Failed Tool Calls**: Tool name, error code, error message
+- **Timing**: Duration by phase (execution, git_operations, delivery)
+- **Measurement Coverage**: X/Y invariants measured, unmeasured IDs
+- **Git Operations**: Branch, push status, conflicts
+- **Token Usage**: Input, output, total tokens
+
+If you need more detail, escalate to raw JSON:
+```bash
+yarn inspect-job-run <request-id> --format=json
+```
+
+This gives full telemetry in `delivery.ipfsContent.telemetry` for deep investigation.
 
 ### Step 5: Check Context/Invariants (if relevant)
 
@@ -182,12 +191,26 @@ yarn inspect-workstream <id> --show-all --format=summary
 # Failed jobs only, full JSON
 yarn inspect-workstream <id> --status=failed --show-all --raw --format=json
 
-# Specific job execution details
-yarn inspect-job-run <request-id>
+# Specific job execution - extracted debugging info
+yarn inspect-job-run <request-id> --format=summary
 
-# Job definition history (all runs)
-yarn inspect-job <job-def-id>
+# Specific job execution - full JSON for deep investigation
+yarn inspect-job-run <request-id> --format=json
+
+# Job definition history - runs table with failed details
+yarn inspect-job <job-def-id> --format=summary
+
+# Job definition history - full JSON
+yarn inspect-job <job-def-id> --format=json
 ```
+
+## Escalation Path
+
+When debugging, start simple and escalate if needed:
+
+1. **Quick overview**: `--format=summary` shows extracted errors, failed tools, timing, coverage
+2. **More detail**: `--format=json` provides full telemetry data
+3. **Raw telemetry**: The summary shows artifact CIDs - fetch directly from IPFS for complete data
 
 ---
 
