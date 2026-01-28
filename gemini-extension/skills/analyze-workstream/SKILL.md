@@ -11,7 +11,8 @@ You are debugging a workstream to identify why jobs failed and what can be done 
 
 - **PENDING status**: NOT a failure - just means worker hasn't picked up the job yet. **Skip these entirely.**
 - **DELEGATING status**: Job dispatched children and is waiting for them. Check child job status instead.
-- **0% measurement coverage**: Normal for orchestrator/root jobs that delegate work. Only investigate if job was supposed to measure invariants directly.
+- **0% measurement coverage on a single job**: Normal for orchestrator/root jobs that delegate work to children.
+- **0% measurement coverage on entire workstream**: This IS a problem - no job measured any goal invariants. Check if `create_measurement` was called anywhere.
 - **Recovery dispatches** (loop_recovery, timeout_recovery): Normal auto-recovery behavior. Check if later runs succeeded - if so, recovery worked.
 
 ## Documentation References
