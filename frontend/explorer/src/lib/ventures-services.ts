@@ -158,6 +158,15 @@ export async function getVentureBySlug(slug: string): Promise<Venture | null> {
   return ventures[0] || null;
 }
 
+export async function getVentureByWorkstreamId(workstreamId: string): Promise<Venture | null> {
+  const ventures = await supabaseQuery<Venture>('ventures', {
+    select: '*',
+    root_workstream_id: `eq.${workstreamId}`,
+    limit: '1',
+  });
+  return ventures[0] || null;
+}
+
 // Service Queries
 export async function getServices(options: {
   ventureId?: string;
