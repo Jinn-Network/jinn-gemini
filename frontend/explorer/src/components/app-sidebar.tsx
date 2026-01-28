@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ChevronRight, Workflow, Briefcase, FileText, Home, Info, Rocket, BookOpen, Newspaper, Github, Server } from "lucide-react"
+import { ChevronRight, Workflow, Briefcase, FileText, Home, Info, Rocket, BookOpen, Newspaper, Github, Server, Layers } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 import {
@@ -98,6 +98,7 @@ export function AppSidebar() {
 
                 // Regular menu item without sub-items
                 const Icon = item.collection === 'ventures' ? Rocket
+                  : item.collection === 'services' ? Layers
                   : item.collection === 'workstreams' ? Workflow
                   : item.collection === 'nodes' ? Server
                   : FileText
