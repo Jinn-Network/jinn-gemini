@@ -1,0 +1,6 @@
+{
+  "name": "jinn-workstream-tools",
+  "version": "1.0.0",
+  "description": "Workstream debugging and analysis tools for Jinn agents",
+  "contextFileName": "GEMINI.md"
+}

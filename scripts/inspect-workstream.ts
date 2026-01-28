@@ -22,6 +22,8 @@
  *   --show-timing                          Include phase duration analysis
  *   --show-tools                           Include tool usage analytics
  *   --format=json|summary                  Output format
+ *   --raw                                  Output full data without truncation
+ *   --top-n=<n>                            Max items in summary lists (default: 5)
  *
  * Drill-down helpers:
  *   yarn inspect-job-run <request-id>      Full details for one execution
@@ -283,7 +285,14 @@ function formatDuration(ms: number): string {
   return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
 }
 
-function formatSummaryOutput(result: any): string {
+interface FormatOptions {
+  topN: number;
+  raw: boolean;
+}
+
+function formatSummaryOutput(result: any, options: FormatOptions = { topN: 5, raw: false }): string {
+  const { topN, raw } = options;
+  const limit = raw ? Infinity : topN;
   const lines: string[] = [];
 
   lines.push('═'.repeat(60));
@@ -320,8 +329,8 @@ function formatSummaryOutput(result: any): string {
     if (result.errors.topErrors && result.errors.topErrors.length > 0) {
       lines.push('');
       lines.push('Top Errors:');
-      for (const err of result.errors.topErrors.slice(0, 5)) {
-        lines.push(`  [${err.count}x] ${truncate(err.pattern, 60)}`);
+      for (const err of result.errors.topErrors.slice(0, limit)) {
+        lines.push(`  [${err.count}x] ${raw ? err.pattern : truncate(err.pattern, 60)}`);
       }
     }
     lines.push('');
@@ -393,7 +402,7 @@ function formatSummaryOutput(result: any): string {
     if (result.timing.byPhase && result.timing.byPhase.length > 0) {
       lines.push('');
       lines.push('By Phase (avg):');
-      for (const phase of result.timing.byPhase.slice(0, 6)) {
+      for (const phase of result.timing.byPhase.slice(0, limit + 1)) {
         lines.push(`  ${phase.phase}: ${formatDuration(phase.avgDuration_ms)} (${phase.percentage}%)`);
       }
     }
@@ -401,7 +410,7 @@ function formatSummaryOutput(result: any): string {
     if (result.timing.slowestJobs && result.timing.slowestJobs.length > 0) {
       lines.push('');
       lines.push('Slowest Jobs:');
-      for (const job of result.timing.slowestJobs.slice(0, 5)) {
+      for (const job of result.timing.slowestJobs.slice(0, limit)) {
         const name = job.jobName || job.requestId.slice(0, 10) + '...';
         lines.push(`  ${name}: ${formatDuration(job.totalDuration_ms)} (${job.slowestPhase})`);
       }
@@ -422,7 +431,7 @@ function formatSummaryOutput(result: any): string {
     if (result.tools.byTool && result.tools.byTool.length > 0) {
       lines.push('');
       lines.push('Most Used:');
-      for (const tool of result.tools.byTool.slice(0, 5)) {
+      for (const tool of result.tools.byTool.slice(0, limit)) {
         const failStr = tool.failures > 0 ? ` (${tool.failures} failures)` : '';
         lines.push(`  ${tool.tool}: ${tool.calls} calls${failStr}`);
       }
@@ -431,7 +440,7 @@ function formatSummaryOutput(result: any): string {
     if (result.tools.slowestTools && result.tools.slowestTools.length > 0) {
       lines.push('');
       lines.push('Slowest (avg):');
-      for (const tool of result.tools.slowestTools.slice(0, 5)) {
+      for (const tool of result.tools.slowestTools.slice(0, limit)) {
         lines.push(`  ${tool.tool}: ${formatDuration(tool.avgDuration_ms)} avg`);
       }
     }
@@ -439,7 +448,7 @@ function formatSummaryOutput(result: any): string {
     if (result.tools.failingTools && result.tools.failingTools.length > 0) {
       lines.push('');
       lines.push('Failing Tools:');
-      for (const tool of result.tools.failingTools.slice(0, 5)) {
+      for (const tool of result.tools.failingTools.slice(0, limit)) {
         lines.push(`  ${tool.tool}: ${tool.failureRate}% failure rate (${tool.failures} failures)`);
       }
     }
@@ -447,11 +456,11 @@ function formatSummaryOutput(result: any): string {
     if (result.tools.failedCalls && result.tools.failedCalls.length > 0) {
       lines.push('');
       lines.push('Failed Tool Calls:');
-      for (const fc of result.tools.failedCalls.slice(0, 10)) {
+      for (const fc of result.tools.failedCalls.slice(0, limit * 2)) {
         const jobStr = fc.jobName ? ` (${fc.jobName})` : '';
         const codeStr = fc.errorCode ? `[${fc.errorCode}] ` : '';
         const errorMsg = fc.errorMessage || 'Unknown error';
-        lines.push(`  ${fc.tool}${jobStr}: ${codeStr}"${truncate(errorMsg, 60)}"`);
+        lines.push(`  ${fc.tool}${jobStr}: ${codeStr}"${raw ? errorMsg : truncate(errorMsg, 60)}"`);
       }
     }
     lines.push('');
@@ -565,11 +574,26 @@ async function main() {
       default: false,
       describe: 'Include tool usage analytics'
     })
+    .option('show-all', {
+      type: 'boolean',
+      default: false,
+      describe: 'Enable all --show-* options'
+    })
     .option('format', {
       type: 'string',
       choices: ['json', 'summary'] as const,
       default: 'json',
       describe: 'Output format'
+    })
+    .option('raw', {
+      type: 'boolean',
+      default: false,
+      describe: 'Output full data without truncation (all errors, all tools, etc.)'
+    })
+    .option('top-n', {
+      type: 'number',
+      default: 5,
+      describe: 'Max items to show in summary lists (errors, tools, jobs)'
     })
     .epilogue(HELP_EPILOGUE)
     .help()
@@ -612,14 +636,17 @@ async function main() {
     filters.since = parsed;
   }
 
-  const showErrors = argv['show-errors'];
-  const showDispatch = argv['show-dispatch'];
-  const showGit = argv['show-git'];
-  const showMetrics = argv['show-metrics'];
-  const showTelemetry = argv['show-telemetry'];
-  const showTiming = argv['show-timing'];
-  const showTools = argv['show-tools'];
+  const showAll = argv['show-all'];
+  const showErrors = showAll || argv['show-errors'];
+  const showDispatch = showAll || argv['show-dispatch'];
+  const showGit = showAll || argv['show-git'];
+  const showMetrics = showAll || argv['show-metrics'];
+  const showTelemetry = showAll || argv['show-telemetry'];
+  const showTiming = showAll || argv['show-timing'];
+  const showTools = showAll || argv['show-tools'];
   const outputFormat = argv.format as 'json' | 'summary';
+  const rawOutput = argv.raw;
+  const topN = rawOutput ? Infinity : (argv['top-n'] || 5);
 
   console.error(`\n🔍 Inspecting workstream: ${workstreamId}`);
   console.error(`Ponder API: ${PONDER_GRAPHQL_URL}`);
@@ -1113,7 +1140,7 @@ async function main() {
     console.error('\n✅ Workstream graph built successfully\n');
 
     if (outputFormat === 'summary') {
-      console.log(formatSummaryOutput(result));
+      console.log(formatSummaryOutput(result, { topN, raw: rawOutput }));
     } else {
       console.log(JSON.stringify(result, null, 2));
     }
