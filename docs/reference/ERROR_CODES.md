@@ -21,18 +21,59 @@ These errors appear in telemetry when tool calls fail.
 
 ---
 
-## Execution Errors
+## Understanding Tool Call Success vs Result Success
 
-These indicate the tool call itself failed (vs logical failure in result).
+**IMPORTANT:** MCP tools have TWO levels of success/failure:
 
-**Execution failed** (`executionFailed: true`)
+### 1. Tool Call Success (`success` field)
+
+```json
+{
+  "tool": "dispatch_new_job",
+  "success": true,        ← Tool executed without throwing
+  "result": { ... }
+}
+```
+
+`success: true` only means the tool **executed** - it does NOT mean the operation succeeded!
+
+### 2. Result Success (`result.meta.ok` field)
+
+```json
+{
+  "result": {
+    "meta": {
+      "ok": false,        ← Operation failed
+      "code": "UNAUTHORIZED_TOOLS",
+      "message": "enabledTools not allowed..."
+    }
+  }
+}
+```
+
+**Always check `result.meta.ok`** to determine if the operation actually succeeded.
+
+### Summary
+
+| `success` | `result.meta.ok` | Meaning |
+|-----------|------------------|---------|
+| `true` | `true` | Operation succeeded |
+| `true` | `false` | Tool ran but operation failed (check `meta.code`) |
+| `false` | N/A | Tool threw exception (execution error) |
+
+---
+
+## Error Types
+
+### Execution Errors (`success: false`)
 - Tool threw an exception
 - Network/timeout error
 - Usually transient - may succeed on retry
 
-**Logical failure** (`executionFailed: false`, `result.meta.ok: false`)
-- Tool executed but returned error result
-- Business logic rejection (e.g., invalid input)
+### Logical Errors (`success: true`, `meta.ok: false`)
+- Tool executed but operation was rejected
+- Business logic failure (invalid input, unauthorized, etc.)
+- Check `meta.code` and `meta.message` for details
 - Usually needs fix before retry
 
 ---
