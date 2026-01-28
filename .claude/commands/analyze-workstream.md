@@ -24,8 +24,10 @@ When diagnosing specific issues, read these reference docs:
 |------------|------|
 | **UNAUTHORIZED_TOOLS errors** | `docs/reference/TOOL_POLICY.md` |
 | **Dispatch types / recovery** | `docs/reference/DISPATCH_TYPES.md` |
+| **Job status questions** | `docs/reference/JOB_LIFECYCLE.md` |
+| **Error codes** | `docs/reference/ERROR_CODES.md` |
+| **Artifacts / measurements** | `docs/reference/ARTIFACTS.md` |
 | **Git/branch issues** | `docs/documentation/GIT_WORKFLOW.md` |
-| **General operational issues** | `AGENT_README_TEST.md` |
 
 ## Your Approach
 
