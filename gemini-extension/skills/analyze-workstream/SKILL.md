@@ -49,7 +49,29 @@ From the summary, note:
 - **Dispatch pattern**: Are there verification loops, recovery attempts, cycles?
 - **Timing**: Are any jobs unusually slow?
 
-If no FAILED jobs exist (only PENDING or COMPLETED), report "No failures detected" and stop.
+If no FAILED jobs exist, check the **Failed Tool Calls** section. If there are tool errors, proceed to Step 1b. Otherwise, report "No failures detected" and stop.
+
+### Step 1b: Investigate Tool Errors (Even in Completed Jobs)
+
+Tool errors in completed jobs still indicate issues worth understanding. For each failed tool call:
+
+#### For UNAUTHORIZED_TOOLS errors:
+1. **Identify the job**: Which job made the failing `dispatch_new_job` call?
+2. **Get telemetry**: `yarn inspect-job-run <request-id> --format=json`
+3. **Find the dispatch call**: Look in tool calls for `dispatch_new_job` - what `enabledTools` was requested?
+4. **Check template policy**: Read `docs/guides/blueprints_and_templates.md` and `gemini-agent/toolPolicy.ts`
+5. **Determine root cause**:
+   - Is the **template MISSING tools** it should have? → Fix: Update template's `tools` list
+   - Is the **parent INCORRECTLY requesting** tools not in template? → Fix: Update parent's dispatch logic/blueprint
+   - Is a **meta-tool not expanded**? (e.g., `telegram_messaging` → `telegram_send_message`) → Check if meta-tool is in template
+
+#### For other tool failures (list_tools, read_file, etc.):
+1. **Get telemetry**: `yarn inspect-job-run <request-id> --format=json`
+2. **Find the failing call**: Look for the tool call with error
+3. **Check if retried**: Was the SAME tool called again later in the session?
+   - Yes, and succeeded → **True transient** (network/timing issue, low priority)
+   - No, or failed again → **Agent worked around it** (investigate why tool failed)
+4. **Investigate root cause**: For repeated failures, check error messages and tool configuration
 
 ### Step 2: Focus on Failures
 
@@ -145,6 +167,14 @@ Based on ALL the evidence gathered:
 ### Evidence
 - <Specific data points: error messages, request IDs, tool failures>
 - <Telemetry findings: timing, coverage, tool metrics>
+
+### Tool Errors (if any in completed jobs)
+For each tool error investigated:
+- **Tool**: <tool name> in job <job name>
+- **Error**: <error message>
+- **Investigation**: <what you found - was it retried? worked around?>
+- **Root cause**: <why it failed>
+- **Fix needed?**: <Yes/No - if yes, what action>
 
 ### Recommended Fix
 <Specific steps to address the root cause>
