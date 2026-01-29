@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getVentures } from '@/lib/ventures-services';
-import { Plus, Pencil, Star } from 'lucide-react';
+import { Plus, Pencil } from 'lucide-react';
 
 export const metadata = {
   title: 'Manage Ventures',
@@ -63,9 +63,6 @@ export default async function VenturesAdminPage() {
                   <div className="space-y-1">
                     <CardTitle className="flex items-center gap-2">
                       {venture.name}
-                      {venture.featured && (
-                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      )}
                     </CardTitle>
                     <p className="text-sm text-muted-foreground font-mono">
                       {venture.slug}
@@ -95,9 +92,6 @@ export default async function VenturesAdminPage() {
                       {venture.blueprint.invariants.length} invariant
                       {venture.blueprint.invariants.length !== 1 ? 's' : ''}
                     </span>
-                  )}
-                  {venture.tags.length > 0 && (
-                    <span>Tags: {venture.tags.join(', ')}</span>
                   )}
                 </div>
               </CardContent>

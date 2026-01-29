@@ -479,6 +479,122 @@ The VSR verification follows a layered testing approach:
 | 4. Claude MCP | Supabase SQL | Manual verification | ✓ PASSED |
 | 5. MCP Architecture | Layered design | `test-mcp-server.ts` | ✓ PASSED |
 | 6. Agent Skills | Skill pickup + MCP | `test-skills-e2e.ts` | ✓ PASSED |
+| 7. Shared Code | Architecture documented | N/A | TODO |
+| 8. Frontend CRUD | Browser verification | Manual testing | ✓ PASSED |
+
+---
+
+## 7. Shared Code Architecture
+
+**Date:** 2026-01-29
+**Status:** TODO (documented, not yet implemented)
+
+### Overview
+
+Refactored the frontend to use shared script functions instead of duplicating CRUD logic. This ensures a single source of truth for ventures operations.
+
+### Architecture
+
+```
+Frontend (Next.js Server Actions)  |  Agents (Claude/Gemini MCP)  |  CLI
+                    ↘                         ↓                  ↙
+                      scripts/ventures/index.ts (single source of truth)
+                                    ↓
+                      gemini-agent/mcp/tools/shared/supabase.ts
+                                    ↓
+                            Supabase Database
+```
+
+### Files
+
+**New:**
+- `scripts/ventures/index.ts` - Barrel file exporting all CRUD functions
+
+**Updated:**
+- `frontend/explorer/src/app/admin/actions.ts` - Now imports from `scripts/ventures/index.js`
+
+### Shared Functions
+
+| Function | Source File | Description |
+|----------|-------------|-------------|
+| `createVenture` | `scripts/ventures/mint.ts` | Create a new venture |
+| `getVenture` | `scripts/ventures/mint.ts` | Get venture by ID |
+| `getVentureBySlug` | `scripts/ventures/mint.ts` | Get venture by slug |
+| `listVentures` | `scripts/ventures/mint.ts` | List ventures with filters |
+| `updateVenture` | `scripts/ventures/update.ts` | Update venture fields |
+| `archiveVenture` | `scripts/ventures/update.ts` | Soft delete (set status=archived) |
+| `deleteVenture` | `scripts/ventures/update.ts` | Hard delete |
+
+### Environment Requirements
+
+The shared scripts require these environment variables:
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key (server-side only)
+
+Frontend server actions can use these since they run on the server, not in the browser.
+
+### Migration Path for Services
+
+To migrate services to the same architecture:
+
+1. Create `scripts/services/mint.ts` with `createService`, `getService`, `listServices`
+2. Create `scripts/services/update.ts` with `updateService`, `deleteService`
+3. Create `scripts/services/index.ts` barrel file
+4. Update `frontend/explorer/src/app/admin/actions.ts` to import from scripts
+5. Update Gemini MCP tools to use the shared functions
+
+---
+
+## 8. Frontend CRUD Verification
+
+**Date:** 2026-01-29
+**Status:** PASSED
+**Environment:** Local (localhost:3000)
+
+### Overview
+
+Verified that all CRUD operations work correctly via the explorer frontend admin interface.
+
+### Test Results
+
+| Operation | Status | Evidence |
+|-----------|--------|----------|
+| **READ** | ✓ PASSED | All venture fields displayed in list view and edit form |
+| **CREATE** | ✓ PASSED | Created "Frontend CRUD Test Venture" (4 ventures total) |
+| **UPDATE** | ✓ PASSED | Modified Jinn venture description |
+| **DELETE** | ✓ PASSED | Deleted test venture (back to 3 ventures) |
+
+### Fields Verified
+
+The edit form correctly displays and allows editing of all current schema fields:
+- Name (required)
+- Slug (auto-generated)
+- Description (optional)
+- Owner Address (required)
+- Blueprint JSON (required, with invariants array)
+- Root Workstream ID (optional)
+- Root Job Instance ID (optional)
+- Status dropdown (active/paused/archived)
+
+### Frontend Files
+
+| File | Purpose |
+|------|---------|
+| `frontend/explorer/src/app/admin/ventures/page.tsx` | List view with status badges |
+| `frontend/explorer/src/app/admin/ventures/[id]/page.tsx` | Edit page |
+| `frontend/explorer/src/app/admin/ventures/new/page.tsx` | Create page |
+| `frontend/explorer/src/app/admin/components/venture-form.tsx` | Shared form component |
+| `frontend/explorer/src/app/admin/actions.ts` | Server actions (CRUD) |
+| `frontend/explorer/src/lib/ventures-services.ts` | Data fetching (READ) |
+
+### Bug Fixes Applied
+
+During verification, the following schema mismatches were fixed:
+
+1. **`/ventures/page.tsx`**: Changed `getFeaturedVentures()` → `getActiveVentures()`
+2. **`/ventures/page.tsx`**: Removed reference to `venture.config` (field removed from schema)
+3. **`/ventures/[id]/page.tsx`**: Removed `venture.config` usage
+4. **`/admin/ventures/page.tsx`**: Removed `venture.featured` and `venture.tags` references
 
 ---
 
@@ -487,6 +603,7 @@ The VSR verification follows a layered testing approach:
 The following tests are planned for future verification:
 
 - [ ] Services Registry CRUD Test
+- [ ] Services Shared Code Migration
 - [ ] Deployments Registry CRUD Test
 - [ ] Interfaces Registry CRUD Test
 - [ ] Service Docs CRUD Test

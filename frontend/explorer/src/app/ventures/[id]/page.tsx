@@ -28,7 +28,6 @@ import {
 import type { ServiceOutput } from '@/lib/ventures/service-types';
 import type { InvariantWithMeasurement } from '@/components/ventures/invariant-list';
 import { fetchWorkstreamActivityAction } from '../actions';
-import { getVentureByWorkstreamId } from '@/lib/ventures-services';
 
 /**
  * Parse SERVICE_OUTPUT artifact contentPreview to get output metadata
@@ -166,11 +165,9 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
   const invariantsWithMeasurements = matchInvariantsWithMeasurements(invariants, measurementArtifacts);
   const statusCounts = countByStatus(invariantsWithMeasurements.map(i => ({ status: i.status })));
 
-  // Fetch venture from Supabase to get config URLs
-  const venture = await getVentureByWorkstreamId(id);
-  const ventureConfig = venture?.config as { liveOutputUrl?: string; telegramUrl?: string } | null;
-  const liveOutputUrl = ventureConfig?.liveOutputUrl || primaryOutput?.url || null;
-  const telegramUrl = ventureConfig?.telegramUrl || null;
+  // Use service output URLs from artifacts (config was removed from ventures)
+  const liveOutputUrl = primaryOutput?.url || null;
+  const telegramUrl = null; // Telegram URL can be added via service outputs if needed
 
   return (
     <div className="flex flex-col h-full gap-6">

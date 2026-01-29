@@ -4,10 +4,9 @@ import { SiteHeader } from '@/components/site-header';
 import { FeaturedVentureCardSkeleton } from '@/components/ventures/featured-venture-card';
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { getFeaturedVentures, type Venture } from '@/lib/ventures-services';
+import { getActiveVentures, type Venture } from '@/lib/ventures-services';
 
 function VentureCard({ venture }: { venture: Venture }) {
-  const config = venture.config as { liveOutputUrl?: string; telegramUrl?: string } | null;
   // Link to the root workstream if available, otherwise to the venture ID
   const href = venture.root_workstream_id
     ? `/ventures/${venture.root_workstream_id}`
@@ -32,7 +31,7 @@ function VentureCard({ venture }: { venture: Venture }) {
 }
 
 async function VenturesList() {
-  const ventures = await getFeaturedVentures();
+  const ventures = await getActiveVentures();
 
   if (ventures.length === 0) {
     return (

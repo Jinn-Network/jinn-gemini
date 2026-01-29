@@ -2,6 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 
+// ============================================================================
+// Supabase REST helper
+// ============================================================================
+// TODO: Migrate to shared @jinn/ventures-client package to use same code as
+// MCP tools and CLI scripts. See docs/planning/VSR-VERIFICATION.md Section 7.
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -56,7 +62,9 @@ async function supabaseMutate<T>(
   }
 }
 
-// ============ VENTURES ============
+// ============================================================================
+// VENTURES
+// ============================================================================
 
 export interface VentureInput {
   name: string;
@@ -107,7 +115,9 @@ export async function deleteVenture(id: string): Promise<MutationResult<void>> {
   return result;
 }
 
-// ============ SERVICES ============
+// ============================================================================
+// SERVICES
+// ============================================================================
 
 export interface ServiceInput {
   venture_id: string;
@@ -163,7 +173,9 @@ export async function deleteService(id: string): Promise<MutationResult<void>> {
   return result;
 }
 
-// ============ DEPLOYMENTS ============
+// ============================================================================
+// DEPLOYMENTS
+// ============================================================================
 
 export interface DeploymentInput {
   service_id: string;
@@ -218,7 +230,9 @@ export async function deleteDeployment(id: string, serviceId: string): Promise<M
   return result;
 }
 
-// ============ INTERFACES ============
+// ============================================================================
+// INTERFACES
+// ============================================================================
 
 export interface InterfaceInput {
   service_id: string;
@@ -279,7 +293,9 @@ export async function deleteInterface(id: string, serviceId: string): Promise<Mu
   return result;
 }
 
-// ============ SERVICE DOCS ============
+// ============================================================================
+// SERVICE DOCS
+// ============================================================================
 
 export interface ServiceDocInput {
   service_id: string;
