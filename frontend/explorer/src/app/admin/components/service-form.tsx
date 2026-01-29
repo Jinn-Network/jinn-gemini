@@ -24,15 +24,6 @@ interface ServiceFormProps {
   ventures: Venture[];
 }
 
-const SERVICE_TYPES = [
-  { value: 'mcp', label: 'MCP Server' },
-  { value: 'api', label: 'API' },
-  { value: 'worker', label: 'Worker' },
-  { value: 'frontend', label: 'Frontend' },
-  { value: 'library', label: 'Library' },
-  { value: 'other', label: 'Other' },
-] as const;
-
 export function ServiceForm({ service, ventures }: ServiceFormProps) {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
@@ -43,9 +34,6 @@ export function ServiceForm({ service, ventures }: ServiceFormProps) {
   const [name, setName] = React.useState(service?.name || '');
   const [slug, setSlug] = React.useState(service?.slug || '');
   const [description, setDescription] = React.useState(service?.description || '');
-  const [serviceType, setServiceType] = React.useState<ServiceInput['service_type']>(
-    service?.service_type || 'api'
-  );
   const [repositoryUrl, setRepositoryUrl] = React.useState(service?.repository_url || '');
 
   const isEditing = !!service;
@@ -61,7 +49,6 @@ export function ServiceForm({ service, ventures }: ServiceFormProps) {
         name,
         slug,
         description: description || undefined,
-        service_type: serviceType,
         repository_url: repositoryUrl || undefined,
       };
 
@@ -156,24 +143,6 @@ export function ServiceForm({ service, ventures }: ServiceFormProps) {
               placeholder="A brief description of the service..."
               rows={3}
             />
-          </FormField>
-
-          <FormField label="Service Type" htmlFor="serviceType" required>
-            <Select
-              value={serviceType}
-              onValueChange={(v) => setServiceType(v as ServiceInput['service_type'])}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SERVICE_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </FormField>
 
           <FormField label="Repository URL" htmlFor="repositoryUrl">

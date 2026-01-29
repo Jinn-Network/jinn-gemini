@@ -2,7 +2,6 @@ import { Metadata } from 'next';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { SiteHeader } from '@/components/site-header';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { getServices, type Service } from '@/lib/ventures-services';
 import { GitBranch, ExternalLink } from 'lucide-react';
@@ -13,18 +12,6 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = 'force-dynamic';
-
-function ServiceTypeBadge({ type }: { type: Service['service_type'] }) {
-  const colors: Record<Service['service_type'], string> = {
-    mcp: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-    api: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-    worker: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-    frontend: 'bg-green-500/10 text-green-500 border-green-500/20',
-    library: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-    other: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  };
-  return <Badge variant="outline" className={colors[type]}>{type}</Badge>;
-}
 
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('en-US', {
@@ -40,16 +27,13 @@ function ServiceCard({ service }: { service: Service }) {
       <CardContent className="pt-6">
         {/* Identity: name, slug, description */}
         <div className="space-y-1 mb-4">
-          <div className="flex items-start justify-between gap-2">
-            <Link
-              href={`/services/${service.id}`}
-              className="text-lg font-semibold text-primary hover:underline"
-            >
-              {service.name}
-            </Link>
-            <ServiceTypeBadge type={service.service_type} />
-          </div>
-          <code className="text-xs text-muted-foreground">{service.slug}</code>
+          <Link
+            href={`/services/${service.id}`}
+            className="text-lg font-semibold text-primary hover:underline"
+          >
+            {service.name}
+          </Link>
+          <code className="block text-xs text-muted-foreground">{service.slug}</code>
           {service.description && (
             <p className="text-sm text-muted-foreground line-clamp-2 pt-1">
               {service.description}
@@ -108,10 +92,6 @@ function ServicesListSkeleton() {
             <div className="h-5 w-3/4 bg-muted animate-pulse rounded" />
             <div className="h-3 w-1/2 bg-muted animate-pulse rounded" />
             <div className="h-4 w-full bg-muted animate-pulse rounded" />
-            <div className="flex gap-2">
-              <div className="h-5 w-12 bg-muted animate-pulse rounded" />
-              <div className="h-5 w-16 bg-muted animate-pulse rounded" />
-            </div>
           </CardContent>
         </Card>
       ))}

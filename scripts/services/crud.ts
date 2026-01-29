@@ -11,14 +11,11 @@ import { supabase } from '../../gemini-agent/mcp/tools/shared/supabase.js';
 // Types
 // ============================================================================
 
-export type ServiceType = 'mcp' | 'api' | 'worker' | 'frontend' | 'library' | 'other';
-
 export interface CreateServiceArgs {
   ventureId: string;
   name: string;
   slug?: string;
   description?: string;
-  serviceType: ServiceType;
   repositoryUrl?: string;
 }
 
@@ -27,7 +24,6 @@ export interface UpdateServiceArgs {
   name?: string;
   slug?: string;
   description?: string;
-  serviceType?: ServiceType;
   repositoryUrl?: string;
 }
 
@@ -37,7 +33,6 @@ export interface Service {
   name: string;
   slug: string;
   description: string | null;
-  service_type: ServiceType;
   repository_url: string | null;
   created_at: string;
   updated_at: string;
@@ -68,7 +63,6 @@ export async function createService(args: CreateServiceArgs): Promise<Service> {
     name: args.name,
     slug,
     description: args.description || null,
-    service_type: args.serviceType,
     repository_url: args.repositoryUrl || null,
   };
 
@@ -127,7 +121,6 @@ export async function getServiceBySlug(ventureId: string, slug: string): Promise
  */
 export async function listServices(options: {
   ventureId?: string;
-  serviceType?: ServiceType;
   search?: string;
   limit?: number;
   offset?: number;
@@ -139,9 +132,6 @@ export async function listServices(options: {
 
   if (options.ventureId) {
     query = query.eq('venture_id', options.ventureId);
-  }
-  if (options.serviceType) {
-    query = query.eq('service_type', options.serviceType);
   }
   if (options.search) {
     query = query.or(`name.ilike.%${options.search}%,description.ilike.%${options.search}%`);
@@ -172,7 +162,6 @@ export async function updateService(args: UpdateServiceArgs): Promise<Service> {
   if (updates.name !== undefined) record.name = updates.name;
   if (updates.slug !== undefined) record.slug = updates.slug;
   if (updates.description !== undefined) record.description = updates.description;
-  if (updates.serviceType !== undefined) record.service_type = updates.serviceType;
   if (updates.repositoryUrl !== undefined) record.repository_url = updates.repositoryUrl;
 
   if (Object.keys(record).length === 0) {
@@ -229,7 +218,6 @@ Actions:
 Create options:
   --ventureId <uuid>         Venture ID (required)
   --name <name>              Service name (required)
-  --serviceType <type>       Type: mcp, api, worker, frontend, library, other (required)
   --slug <slug>              URL-friendly slug
   --description <text>       Service description
   --repositoryUrl <url>      Git repository URL
@@ -239,7 +227,6 @@ Get options:
 
 List options:
   --ventureId <uuid>         Filter by venture
-  --serviceType <type>       Filter by type
   --search <query>           Search in name/description
   --limit <n>                Limit results
   --offset <n>               Offset for pagination
@@ -253,7 +240,7 @@ Delete options:
 
 Examples:
   yarn tsx scripts/services/crud.ts create \\
-    --ventureId "123..." --name "My API" --serviceType "api"
+    --ventureId "123..." --name "My Service"
 
   yarn tsx scripts/services/crud.ts list --ventureId "123..."
 
@@ -285,10 +272,6 @@ function parseCreateArgs(args: string[]): CreateServiceArgs {
         result.description = next;
         i++;
         break;
-      case '--serviceType':
-        result.serviceType = next as ServiceType;
-        i++;
-        break;
       case '--repositoryUrl':
         result.repositoryUrl = next;
         i++;
@@ -296,8 +279,8 @@ function parseCreateArgs(args: string[]): CreateServiceArgs {
     }
   }
 
-  if (!result.ventureId || !result.name || !result.serviceType) {
-    console.error('Error: --ventureId, --name, and --serviceType are required');
+  if (!result.ventureId || !result.name) {
+    console.error('Error: --ventureId and --name are required');
     process.exit(1);
   }
 
@@ -338,7 +321,6 @@ async function main() {
           const next = args[i + 1];
           switch (arg) {
             case '--ventureId': options.ventureId = next; i++; break;
-            case '--serviceType': options.serviceType = next as ServiceType; i++; break;
             case '--search': options.search = next; i++; break;
             case '--limit': options.limit = parseInt(next, 10); i++; break;
             case '--offset': options.offset = parseInt(next, 10); i++; break;
@@ -358,7 +340,6 @@ async function main() {
             case '--name': updateArgs.name = next; i++; break;
             case '--slug': updateArgs.slug = next; i++; break;
             case '--description': updateArgs.description = next; i++; break;
-            case '--serviceType': updateArgs.serviceType = next as ServiceType; i++; break;
             case '--repositoryUrl': updateArgs.repositoryUrl = next; i++; break;
           }
         }

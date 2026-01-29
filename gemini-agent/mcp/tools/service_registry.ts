@@ -6,7 +6,6 @@ import { mcpLogger } from '../../../logging/index.js';
 // Shared Types
 // ============================================================================
 
-const serviceTypeEnum = z.enum(['mcp', 'api', 'worker', 'frontend', 'library', 'other']);
 const environmentEnum = z.enum(['production', 'staging', 'development', 'preview']);
 const providerEnum = z.enum(['railway', 'vercel', 'cloudflare', 'aws', 'gcp', 'azure', 'self-hosted', 'other']);
 const deploymentStatusEnum = z.enum(['active', 'stopped', 'failed', 'deploying']);
@@ -41,7 +40,6 @@ export const serviceRegistryParams = z.object({
   name: z.string().optional().describe('Service/Interface name'),
   slug: z.string().optional().describe('URL-friendly slug'),
   description: z.string().optional().describe('Description'),
-  serviceType: serviceTypeEnum.optional().describe('Service type'),
   repositoryUrl: z.string().optional().describe('Git repository URL'),
 
   // Deployment/Interface shared fields
@@ -84,9 +82,9 @@ export const serviceRegistrySchema = {
   description: `Unified service registry for managing services, deployments, and interfaces.
 
 ACTIONS:
-- create_service: Register a new service (requires: ventureId, name, serviceType)
+- create_service: Register a new service (requires: ventureId, name)
 - get_service: Get service by ID (requires: id)
-- list_services: List services with filters (optional: ventureId, serviceType, search, limit, offset)
+- list_services: List services with filters (optional: ventureId, search, limit, offset)
 - update_service: Update service (requires: id, plus fields to update)
 - delete_service: Delete service (requires: id)
 - create_deployment: Add deployment (requires: serviceId, environment, provider)
@@ -135,8 +133,8 @@ export async function serviceRegistry(args: unknown) {
       // Service Operations
       // ======================================================================
       case 'create_service': {
-        if (!params.ventureId || !params.name || !params.serviceType) {
-          return errorResponse('VALIDATION_ERROR', 'create_service requires ventureId, name, and serviceType');
+        if (!params.ventureId || !params.name) {
+          return errorResponse('VALIDATION_ERROR', 'create_service requires ventureId and name');
         }
 
         const slug = params.slug || generateSlug(params.name);
@@ -145,7 +143,6 @@ export async function serviceRegistry(args: unknown) {
           name: params.name,
           slug,
           description: params.description || null,
-          service_type: params.serviceType,
           repository_url: params.repositoryUrl || null,
         };
 
@@ -187,7 +184,6 @@ export async function serviceRegistry(args: unknown) {
           .order('created_at', { ascending: false });
 
         if (params.ventureId) query = query.eq('venture_id', params.ventureId);
-        if (params.serviceType) query = query.eq('service_type', params.serviceType);
         if (params.search) {
           query = query.or(`name.ilike.%${params.search}%,description.ilike.%${params.search}%`);
         }
@@ -208,7 +204,6 @@ export async function serviceRegistry(args: unknown) {
         if (params.name !== undefined) record.name = params.name;
         if (params.slug !== undefined) record.slug = params.slug;
         if (params.description !== undefined) record.description = params.description;
-        if (params.serviceType !== undefined) record.service_type = params.serviceType;
         if (params.repositoryUrl !== undefined) record.repository_url = params.repositoryUrl;
 
         if (Object.keys(record).length === 0) {

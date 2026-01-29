@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { getServices, getVentures } from '@/lib/ventures-services';
 import { Plus, Pencil } from 'lucide-react';
 
@@ -11,22 +10,6 @@ export const metadata = {
 };
 
 export const dynamic = 'force-dynamic';
-
-function ServiceTypeBadge({ type }: { type: string }) {
-  const colors: Record<string, string> = {
-    mcp: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-    api: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-    worker: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-    frontend: 'bg-green-500/10 text-green-500 border-green-500/20',
-    library: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-    other: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  };
-  return (
-    <Badge variant="outline" className={colors[type] || colors.other}>
-      {type}
-    </Badge>
-  );
-}
 
 export default async function ServicesAdminPage() {
   const [services, ventures] = await Promise.all([
@@ -71,10 +54,7 @@ export default async function ServicesAdminPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
-                      <CardTitle className="flex items-center gap-2">
-                        {service.name}
-                        <ServiceTypeBadge type={service.service_type} />
-                      </CardTitle>
+                      <CardTitle>{service.name}</CardTitle>
                       <p className="text-sm text-muted-foreground font-mono">
                         {service.slug}
                       </p>

@@ -124,7 +124,6 @@ export interface ServiceInput {
   name: string;
   slug: string;
   description?: string;
-  service_type: 'mcp' | 'api' | 'worker' | 'frontend' | 'library' | 'other';
   repository_url?: string;
 }
 
