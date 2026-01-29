@@ -149,6 +149,7 @@ gemini-agent/.gemini/last-prompt.txt
 # Claude specific
 .claude/*
 !.claude/commands/
+!.claude/skills/
 
 # Test files that might contain sensitive data
 **/*.test.local.js
