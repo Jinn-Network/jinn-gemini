@@ -96,6 +96,37 @@ packages/               # Shared libs
 
 ---
 
+## Agent Skills
+
+Skills are context-aware prompts that agents load automatically based on task content.
+
+**Architecture:**
+```
+skills/                     # Canonical source (single location)
+└── ventures/SKILL.md
+
+.claude/skills/ventures → symlink
+.gemini/skills/ventures → symlink
+```
+
+**Commands:**
+```bash
+yarn skills:sync            # Distribute skills via symlinks
+yarn skills:copy            # Copy instead (Windows)
+```
+
+**Adding Skills:**
+1. Create `skills/<name>/SKILL.md` with YAML frontmatter (`name`, `description`)
+2. Run `yarn skills:sync`
+3. Skill auto-loads when agent detects matching task context
+
+**Testing:**
+```bash
+npx tsx scripts/ventures/test-skills-e2e.ts  # 8 tests: Claude + Gemini × CRUD
+```
+
+---
+
 ## Key Commands
 
 **Development:**
