@@ -1,6 +1,6 @@
 ---
 name: ventures
-description: Managing ventures in the Jinn platform registry. Use when creating, querying, updating, or deleting ventures. Use when working with venture blueprints, invariants, or owner addresses. Use when asked about "ventures", "projects in the registry", or "venture CRUD operations".
+description: Use when minting a new venture, viewing information about existing ventures, updating venture details or status, or shutting down (archiving/deleting) a venture. Use when working with venture blueprints, invariants, or owner addresses in the Jinn platform registry.
 ---
 
 # Ventures Registry
