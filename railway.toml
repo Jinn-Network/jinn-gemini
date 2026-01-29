@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-nixpacksConfigPath = "nixpacks.toml"
+nixpacksConfigPath = "ponder/nixpacks.toml"
 watchPatterns = ["/ponder/**", "/package.json", "/scripts/patch-dist-imports.js"]
 
 [deploy]
