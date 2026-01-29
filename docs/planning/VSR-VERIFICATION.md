@@ -16,6 +16,9 @@ This document tracks the verification process for the Ventures & Services Regist
 8. [Frontend CRUD Verification (Ventures)](#8-frontend-crud-verification)
 9. [Services Frontend CRUD Verification](#9-services-frontend-crud-verification)
 10. [Services Schema Simplification](#10-services-schema-simplification)
+11. [Deployments CRUD Verification](#11-deployments-crud-verification)
+12. [Interfaces CRUD Verification](#12-interfaces-crud-verification)
+13. [Service Docs CRUD Verification](#13-service-docs-crud-verification)
 
 ---
 
@@ -689,11 +692,13 @@ The service edit page includes tabs for managing nested entities:
 
 **Date:** 2026-01-29
 **Status:** COMPLETED
-**Migration:** `migrations/alter_services_remove_fields.sql`
+**Migrations:**
+- `migrations/alter_services_remove_fields.sql`
+- `migrations/alter_services_remove_service_type.sql`
 
 ### Overview
 
-Simplified the services schema by removing unused fields that added complexity without providing value.
+Simplified the services schema by removing unused fields that added complexity without providing value. A second round of simplification removed `service_type` after recognizing that the distinction between types (mcp/api/worker/etc.) is fuzzy - all services are essentially APIs, and what a service exposes is better described by the interfaces table.
 
 ### Fields Removed
 
@@ -703,7 +708,8 @@ Simplified the services schema by removing unused fields that added complexity w
 | `primary_language` | text | Better tracked in repository metadata |
 | `version` | text | Better tracked via deployments |
 | `config` | JSONB | Not used; service-specific config handled elsewhere |
-| `tags` | text[] | Not used; discovery via service_type and name |
+| `tags` | text[] | Not used; discovery via name and interfaces |
+| `service_type` | enum (mcp/api/worker/...) | Distinction is fuzzy; interfaces table describes what service exposes |
 
 ### Fields Kept
 
@@ -714,12 +720,11 @@ Simplified the services schema by removing unused fields that added complexity w
 | `name` | text | Service display name (required) |
 | `slug` | text | URL-friendly identifier |
 | `description` | text | Optional description |
-| `service_type` | enum | mcp/api/worker/frontend/library/other (required) |
 | `repository_url` | text | Git repository URL (optional) |
 | `created_at` | timestamp | Creation timestamp |
 | `updated_at` | timestamp | Last update timestamp |
 
-### Migration Applied
+### Migration 1: Remove Fields
 
 ```sql
 -- Drop indexes first
@@ -735,23 +740,31 @@ ALTER TABLE services DROP COLUMN IF EXISTS config;
 ALTER TABLE services DROP COLUMN IF EXISTS tags;
 ```
 
+### Migration 2: Remove service_type
+
+```sql
+DROP INDEX IF EXISTS idx_services_service_type;
+ALTER TABLE services DROP COLUMN IF EXISTS service_type;
+```
+
 ### Files Updated
 
 **Database:**
-- `migrations/alter_services_remove_fields.sql` - New migration
+- `migrations/alter_services_remove_fields.sql` - Remove status, language, version, config, tags
+- `migrations/alter_services_remove_service_type.sql` - Remove service_type
 
 **Frontend:**
 - `frontend/explorer/src/lib/ventures-services.ts` - Removed fields from Service interface
 - `frontend/explorer/src/app/admin/actions.ts` - Simplified ServiceInput
-- `frontend/explorer/src/app/admin/components/service-form.tsx` - Removed form fields
-- `frontend/explorer/src/app/services/page.tsx` - Removed status/tags/language/version display
-- `frontend/explorer/src/app/admin/services/page.tsx` - Removed status badge and metadata
+- `frontend/explorer/src/app/admin/components/service-form.tsx` - Removed form fields (including service type selector)
+- `frontend/explorer/src/app/services/page.tsx` - Removed ServiceTypeBadge and related display
+- `frontend/explorer/src/app/admin/services/page.tsx` - Removed type badge and metadata
 
 **Scripts:**
 - `scripts/services/crud.ts` - Simplified interfaces and CRUD operations
 
 **MCP Tools:**
-- `gemini-agent/mcp/tools/service_registry.ts` - Removed service-level fields from schema
+- `gemini-agent/mcp/tools/service_registry.ts` - Removed serviceType from schema
 
 ### Note on Nested Entities
 
@@ -760,6 +773,210 @@ The following fields were NOT removed from nested entities where they remain rel
 - **Deployments**: `version`, `config`, `status` (deployment-level fields)
 - **Interfaces**: `config`, `tags`, `status` (interface-level fields)
 - **Service Docs**: `version`, `config`, `tags`, `status` (doc-level fields)
+
+---
+
+## 11. Deployments CRUD Verification
+
+**Date:** 2026-01-29
+**Status:** PASSED
+**Method:** Direct SQL via Supabase MCP
+
+### Overview
+
+Verified CRUD operations for the `deployments` table, which tracks where services are deployed.
+
+### Schema
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `service_id` | UUID | Foreign key to services (required) |
+| `environment` | text | Deployment environment (e.g., production, staging) |
+| `provider` | text | Infrastructure provider (e.g., railway, vercel) |
+| `url` | text | Deployment URL |
+| `region` | text | Geographic region |
+| `version` | text | Deployed version |
+| `config` | JSONB | Deployment configuration |
+| `health_status` | text | Current health status |
+| `health_check_url` | text | URL for health checks |
+| `last_health_check` | timestamp | Last health check time |
+| `deployed_at` | timestamp | When deployment occurred |
+| `created_at` | timestamp | Record creation time |
+| `updated_at` | timestamp | Record update time |
+
+### Test Results
+
+| Operation | SQL | Status | Notes |
+|-----------|-----|--------|-------|
+| **CREATE** | `INSERT INTO deployments ...` | ✓ PASSED | Created deployment with environment=production, provider=railway |
+| **READ** | `SELECT * FROM deployments WHERE id = ...` | ✓ PASSED | Retrieved full deployment record |
+| **UPDATE** | `UPDATE deployments SET url = ..., health_status = ...` | ✓ PASSED | Updated url and health_status fields |
+| **DELETE** | `DELETE FROM deployments WHERE id = ...` | ✓ PASSED | Deleted and verified count=0 |
+
+### Evidence
+
+```sql
+-- CREATE
+INSERT INTO deployments (service_id, environment, provider, url, region, health_status)
+VALUES ('service-uuid', 'production', 'railway', 'https://test.railway.app', 'us-west-1', 'unknown')
+RETURNING id, environment, provider;
+-- Result: Created with new UUID
+
+-- READ
+SELECT * FROM deployments WHERE id = 'deployment-uuid';
+-- Result: Full record returned
+
+-- UPDATE
+UPDATE deployments
+SET url = 'https://updated.railway.app', health_status = 'healthy'
+WHERE id = 'deployment-uuid'
+RETURNING id, url, health_status;
+-- Result: Fields updated successfully
+
+-- DELETE
+DELETE FROM deployments WHERE id = 'deployment-uuid';
+SELECT COUNT(*) FROM deployments WHERE id = 'deployment-uuid';
+-- Result: count = 0
+```
+
+---
+
+## 12. Interfaces CRUD Verification
+
+**Date:** 2026-01-29
+**Status:** PASSED
+**Method:** Direct SQL via Supabase MCP
+
+### Overview
+
+Verified CRUD operations for the `interfaces` table, which describes what a service exposes (MCP tools, REST endpoints, etc.).
+
+### Schema
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `service_id` | UUID | Foreign key to services (required) |
+| `name` | text | Interface name (unique per service) |
+| `interface_type` | text | Type (mcp_tool, rest_endpoint, graphql, grpc, webhook, websocket) |
+| `description` | text | Interface description |
+| `http_method` | text | HTTP method for REST endpoints |
+| `path` | text | URL path pattern |
+| `request_schema` | JSONB | Request JSON schema |
+| `response_schema` | JSONB | Response JSON schema |
+| `config` | JSONB | Additional configuration |
+| `status` | text | Interface status |
+| `created_at` | timestamp | Record creation time |
+| `updated_at` | timestamp | Record update time |
+
+### Constraints
+
+- Unique constraint on `(service_id, name)` - each interface name must be unique within a service
+
+### Test Results
+
+| Operation | SQL | Status | Notes |
+|-----------|-----|--------|-------|
+| **CREATE** | `INSERT INTO interfaces ...` | ✓ PASSED | Created interface with interface_type=mcp_tool |
+| **READ** | `SELECT * FROM interfaces WHERE id = ...` | ✓ PASSED | Retrieved full interface record |
+| **UPDATE** | `UPDATE interfaces SET description = ..., http_method = ...` | ✓ PASSED | Updated description and http_method |
+| **DELETE** | `DELETE FROM interfaces WHERE id = ...` | ✓ PASSED | Deleted and verified count=0 |
+
+### Evidence
+
+```sql
+-- CREATE
+INSERT INTO interfaces (service_id, name, interface_type, description, path)
+VALUES ('service-uuid', 'test_crud_interface', 'mcp_tool', 'Test interface', '/test')
+RETURNING id, name, interface_type;
+-- Result: Created with new UUID
+
+-- READ
+SELECT * FROM interfaces WHERE id = 'interface-uuid';
+-- Result: Full record returned
+
+-- UPDATE
+UPDATE interfaces
+SET description = 'Updated description', http_method = 'POST'
+WHERE id = 'interface-uuid'
+RETURNING id, description, http_method;
+-- Result: Fields updated successfully
+
+-- DELETE
+DELETE FROM interfaces WHERE id = 'interface-uuid';
+SELECT COUNT(*) FROM interfaces WHERE id = 'interface-uuid';
+-- Result: count = 0
+```
+
+### Note
+
+Initial CREATE test failed with duplicate key error because a name that already existed was used. Used unique name `test_crud_interface` to pass.
+
+---
+
+## 13. Service Docs CRUD Verification
+
+**Date:** 2026-01-29
+**Status:** PASSED
+**Method:** Direct SQL via Supabase MCP
+
+### Overview
+
+Verified CRUD operations for the `service_docs` table, which stores documentation for services.
+
+### Schema
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `service_id` | UUID | Foreign key to services (required) |
+| `title` | text | Document title |
+| `slug` | text | URL-friendly identifier |
+| `content` | text | Document content (markdown) |
+| `doc_type` | text | Type (guide, reference, tutorial, changelog, api) |
+| `order_index` | integer | Display order |
+| `status` | text | Document status (draft, published, archived) |
+| `version` | text | Document version |
+| `metadata` | JSONB | Additional metadata |
+| `published_at` | timestamp | When document was published |
+| `created_at` | timestamp | Record creation time |
+| `updated_at` | timestamp | Record update time |
+
+### Test Results
+
+| Operation | SQL | Status | Notes |
+|-----------|-----|--------|-------|
+| **CREATE** | `INSERT INTO service_docs ...` | ✓ PASSED | Created doc with doc_type=guide, status=draft |
+| **READ** | `SELECT * FROM service_docs WHERE id = ...` | ✓ PASSED | Retrieved full doc record |
+| **UPDATE** | `UPDATE service_docs SET title = ..., status = published, published_at = ...` | ✓ PASSED | Updated title, status, and set published_at |
+| **DELETE** | `DELETE FROM service_docs WHERE id = ...` | ✓ PASSED | Deleted and verified count=0 |
+
+### Evidence
+
+```sql
+-- CREATE
+INSERT INTO service_docs (service_id, title, slug, content, doc_type, status)
+VALUES ('service-uuid', 'Test CRUD Doc', 'test-crud-doc', '# Test Content', 'guide', 'draft')
+RETURNING id, title, doc_type, status;
+-- Result: Created with new UUID
+
+-- READ
+SELECT * FROM service_docs WHERE id = 'doc-uuid';
+-- Result: Full record returned
+
+-- UPDATE
+UPDATE service_docs
+SET title = 'Test CRUD Doc (Updated)', status = 'published', published_at = NOW()
+WHERE id = 'doc-uuid'
+RETURNING id, title, status, published_at;
+-- Result: Fields updated successfully
+
+-- DELETE
+DELETE FROM service_docs WHERE id = 'doc-uuid';
+SELECT COUNT(*) FROM service_docs WHERE id = 'doc-uuid';
+-- Result: count = 0
+```
 
 ---
 
@@ -777,6 +994,9 @@ The following fields were NOT removed from nested entities where they remain rel
 | 8. Ventures Frontend | Browser CRUD | ✓ PASSED |
 | 9. Services Frontend | Browser CRUD | ✓ PASSED |
 | 10. Services Schema | Simplification | ✓ COMPLETED |
+| 11. Deployments CRUD | Direct SQL test | ✓ PASSED |
+| 12. Interfaces CRUD | Direct SQL test | ✓ PASSED |
+| 13. Service Docs CRUD | Direct SQL test | ✓ PASSED |
 
 ---
 
@@ -786,14 +1006,15 @@ The following tests are planned for future verification:
 
 - [x] Services Registry CRUD Test (Section 9)
 - [x] Services Schema Simplification (Section 10)
+- [x] Deployments Registry CRUD Test (Section 11)
+- [x] Interfaces Registry CRUD Test (Section 12)
+- [x] Service Docs CRUD Test (Section 13)
 - [ ] Services Shared Code Migration
-- [ ] Deployments Registry CRUD Test
-- [ ] Interfaces Registry CRUD Test
-- [ ] Service Docs CRUD Test
 - [ ] Venture-Service Relationship Test
 - [ ] On-chain Workstream Integration Test
 - [ ] Frontend Data Layer Test
 - [ ] API Permissions/RLS Test
+- [ ] Nested Entity Frontend CRUD (deployments, interfaces, docs admin UI)
 
 ---
 
