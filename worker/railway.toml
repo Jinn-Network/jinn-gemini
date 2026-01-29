@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-nixpacksConfigPath = "nixpacks.toml"
+nixpacksConfigPath = "worker/nixpacks.toml"
 
 [deploy]
 # Export NODE_OPTIONS to suppress punycode deprecation in all child processes
