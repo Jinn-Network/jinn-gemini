@@ -8,6 +8,8 @@ This document tracks the verification process for the Ventures & Services Regist
 
 1. [Database Schema Verification](#1-database-schema-verification)
 2. [Ventures Registry CRUD Test](#2-ventures-registry-crud-test)
+3. [Gemini MCP Tools Verification](#3-gemini-mcp-tools-verification)
+4. [Claude MCP Capability Verification](#4-claude-mcp-capability-verification)
 
 ---
 
@@ -74,22 +76,7 @@ The migration was applied via `mcp__supabase__apply_migration` and verified by:
 
 ### Overview
 
-Verifies that all four core CRUD operations work correctly on the `ventures` table in Supabase:
-
-1. **CREATE (Mint)** – Insert a new venture record
-2. **READ (Query)** – Retrieve a venture by ID
-3. **UPDATE** – Modify venture fields
-4. **DELETE (Retire)** – Archive (soft delete) and permanently delete
-
-### Prerequisites
-
-- Node.js and Yarn installed
-- Valid Supabase credentials in `.env`:
-  ```
-  SUPABASE_URL=https://clnwgxgvmnrkwqdblqgf.supabase.co
-  SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
-  ```
-- The `ventures` table must exist (created via `migrations/create_ventures_table.sql`)
+Verifies that all four core CRUD operations work correctly on the `ventures` table in Supabase via direct database queries.
 
 ### How to Run
 
@@ -97,74 +84,9 @@ Verifies that all four core CRUD operations work correctly on the `ventures` tab
 yarn tsx scripts/ventures/test-crud.ts
 ```
 
-### Test Methodology
-
-The script performs the following sequence:
-
-#### Test 1: CREATE (Mint)
-
-Creates a new venture with:
-- Unique name and slug (timestamped)
-- Test owner address (`0x0000000000000000000000000000000000001234`)
-- Blueprint with 2 invariants (TEST-001, TEST-002)
-- Status: `active`
-
-**Validations:**
-- Venture ID is returned
-- `created_at` and `updated_at` are set
-- All input fields match the returned record
-- Blueprint invariants array is preserved
-
-#### Test 2: READ (Query)
-
-Retrieves the created venture by ID.
-
-**Validations:**
-- Venture is found
-- All fields match what was created
-- JSONB fields (blueprint) are correctly stored and retrieved
-
-#### Test 3: UPDATE
-
-Updates multiple fields:
-- Name: Appends " (Updated)"
-- Description: New text
-
-**Validations:**
-- Updated fields reflect new values
-- Unchanged fields (slug, owner_address, status) remain intact
-
-#### Test 4a: ARCHIVE (Soft Delete)
-
-Sets the venture status to `archived`.
-
-**Validations:**
-- Status is now `archived`
-- Record still exists and is queryable
-
-#### Test 4b: DELETE (Hard Delete)
-
-Permanently removes the venture from the database.
-
-**Validations:**
-- Subsequent query returns `null`
-- Record no longer exists
-
-#### Bonus: LIST
-
-Lists all ventures (limit 10) to verify the table is queryable.
-
-**Validations:**
-- Returns an array
-- Existing ventures are visible
-
 ### Results
 
 ```
-============================================================
-TEST RESULTS SUMMARY
-============================================================
-
 Total: 6 | Passed: 6 | Failed: 0
 
   ✓ 1. CREATE (Mint) (171ms)
@@ -177,72 +99,153 @@ Total: 6 | Passed: 6 | Failed: 0
 ✅ All tests passed
 ```
 
-### Sample Output
+---
 
-**Created Venture (Simplified Schema):**
-```json
-{
-  "id": "a7245e32-eba4-4133-9f34-eb20509e9da9",
-  "name": "Test Venture 1769689657740",
-  "slug": "test-venture-1769689657740",
-  "description": "A test venture for validating CRUD operations",
-  "owner_address": "0x0000000000000000000000000000000000001234",
-  "blueprint": {
-    "invariants": [
-      {
-        "id": "TEST-001",
-        "form": "constraint",
-        "description": "Test invariant for CRUD validation",
-        "examples": {
-          "do": ["Verify the venture is created correctly"],
-          "dont": ["Skip validation steps"]
-        }
-      },
-      {
-        "id": "TEST-002",
-        "form": "boolean",
-        "description": "All fields must be persisted"
-      }
-    ]
-  },
-  "root_workstream_id": null,
-  "root_job_instance_id": null,
-  "status": "active",
-  "created_at": "2026-01-29T12:27:37.878747+00:00",
-  "updated_at": "2026-01-29T12:27:37.878747+00:00"
-}
+## 3. Gemini MCP Tools Verification
+
+**Date:** 2026-01-29
+**Status:** PASSED
+**Script:** `scripts/ventures/test-mcp-tools.ts`
+
+### Overview
+
+Verifies that the Gemini agent has complete CRUD capability for ventures via MCP tools:
+
+| Tool | Operation | Status |
+|------|-----------|--------|
+| `venture_mint` | CREATE | ✓ PASSED |
+| `venture_query` | READ | ✓ PASSED |
+| `venture_update` | UPDATE | ✓ PASSED |
+| `venture_delete` | DELETE | ✓ PASSED |
+
+### How to Run
+
+```bash
+yarn tsx scripts/ventures/test-mcp-tools.ts
 ```
 
-### Notes
+### Results
 
-- The test is self-cleaning: the created venture is deleted at the end
-- If a test fails mid-run, cleanup is attempted automatically
-- The script exits with code 0 on success, 1 on failure
-- All tests run sequentially (CREATE must succeed for others to run)
+```
+============================================================
+VENTURES MCP TOOLS CRUD TEST
+============================================================
+
+Total: 7 | Passed: 7 | Failed: 0
+
+  ✓ 1. CREATE (venture_mint) (160ms)
+  ✓ 2. READ by ID (venture_query) (61ms)
+  ✓ 3. READ by slug (venture_query) (55ms)
+  ✓ 4. READ list (venture_query) (68ms)
+  ✓ 5. UPDATE (venture_update) (59ms)
+  ✓ 6. SOFT DELETE (venture_delete archive) (95ms)
+  ✓ 7. HARD DELETE (venture_delete permanent) (474ms)
+
+✅ All tests passed
+
+Gemini MCP tools have full CRUD capability for ventures.
+```
+
+### MCP Tools Created
+
+Two new MCP tools were created to complete the CRUD capability:
+
+1. **venture_query.ts** (READ)
+   - Modes: `get`, `list`, `by_slug`, `by_workstream`
+   - Returns venture(s) with full details
+
+2. **venture_delete.ts** (DELETE)
+   - Modes: `soft` (archive), `hard` (permanent)
+   - Hard delete requires `confirm: true`
+   - Hard delete blocked if venture has services
+
+### Documentation
+
+Updated `docs/ventures/creating-ventures.md` with:
+- Complete MCP tools reference
+- Usage examples for all four tools
+- Parameters tables
+- Best practices
 
 ---
 
-## Files Updated for Schema Migration
+## 4. Claude MCP Capability Verification
 
-The following files were updated to reflect the simplified ventures schema:
+**Date:** 2026-01-29
+**Status:** PASSED
+**Tools Used:** `mcp__supabase__execute_sql`
 
-### Database
-- `migrations/create_ventures_table.sql` – Updated reference schema
-- `migrations/alter_ventures_remove_fields.sql` – Migration applied
+### Overview
 
-### CLI Scripts
-- `scripts/ventures/mint.ts` – Removed config, tags, featured; renamed jobTemplateId → rootJobInstanceId
-- `scripts/ventures/update.ts` – Same changes
-- `scripts/ventures/test-crud.ts` – Same changes
+Verifies that Claude has CRUD capability for ventures via the Supabase MCP tools.
 
-### MCP Tools
-- `gemini-agent/mcp/tools/venture_mint.ts` – Updated params schema
-- `gemini-agent/mcp/tools/venture_update.ts` – Updated params schema
+### Test Results
 
-### Frontend
-- `frontend/explorer/src/lib/ventures-services.ts` – Updated Venture type, replaced getFeaturedVentures with getActiveVentures
-- `frontend/explorer/src/app/admin/actions.ts` – Updated VentureInput type
-- `frontend/explorer/src/app/admin/components/venture-form.tsx` – Removed form fields for config, tags, featured
+| Operation | SQL Command | Status |
+|-----------|-------------|--------|
+| CREATE | `INSERT INTO ventures ...` | ✓ PASSED |
+| READ | `SELECT ... FROM ventures WHERE id = ...` | ✓ PASSED |
+| UPDATE | `UPDATE ventures SET ... WHERE id = ...` | ✓ PASSED |
+| DELETE | `DELETE FROM ventures WHERE id = ...` | ✓ PASSED |
+
+### Evidence
+
+**CREATE:**
+```sql
+INSERT INTO ventures (name, slug, description, owner_address, blueprint, status)
+VALUES ('Claude Test Venture', 'claude-test-venture-...', ...)
+RETURNING id, name, slug, created_at;
+-- Result: Created venture with id 'b534a0f3-2507-4f27-a6e5-68bb2c15c135'
+```
+
+**READ:**
+```sql
+SELECT * FROM ventures WHERE id = 'b534a0f3-2507-4f27-a6e5-68bb2c15c135';
+-- Result: Returned full venture record with blueprint and all fields
+```
+
+**UPDATE:**
+```sql
+UPDATE ventures SET name = 'Claude Test Venture (Updated)', status = 'archived'
+WHERE id = 'b534a0f3-2507-4f27-a6e5-68bb2c15c135'
+RETURNING id, name, status;
+-- Result: Updated name and status fields
+```
+
+**DELETE:**
+```sql
+DELETE FROM ventures WHERE id = 'b534a0f3-2507-4f27-a6e5-68bb2c15c135'
+RETURNING id, name;
+-- Result: Venture deleted, subsequent SELECT returns empty array
+```
+
+### Claude's MCP Approach
+
+Claude uses the `mcp__supabase__execute_sql` tool which provides:
+- Full SQL capability for any CRUD operation
+- No need for venture-specific MCP tools
+- Direct database access with service role permissions
+
+---
+
+## Files Updated for This Verification
+
+### New MCP Tools
+- `gemini-agent/mcp/tools/venture_query.ts` - READ operations
+- `gemini-agent/mcp/tools/venture_delete.ts` - DELETE operations
+
+### Updated MCP Server
+- `gemini-agent/mcp/tools/index.ts` - Export new tools
+- `gemini-agent/mcp/server.ts` - Register new tools
+
+### Test Scripts
+- `scripts/ventures/test-mcp-tools.ts` - Gemini MCP tools test
+
+### Documentation
+- `docs/ventures/creating-ventures.md` - Full MCP tools reference
+
+### Bug Fixes
+- `gemini-agent/mcp/tools/shared/supabase.ts` - Fixed incorrect URL validation that blocked real Supabase project
 
 ---
 

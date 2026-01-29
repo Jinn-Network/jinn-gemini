@@ -42,7 +42,9 @@ export const REGISTERED_MCP_TOOLS = [
   'telegram_send_document',
   // Venture & service registry tools
   'venture_mint',
+  'venture_query',
   'venture_update',
+  'venture_delete',
   'service_registry',
   'search_services',
 ] as const;
@@ -121,7 +123,9 @@ async function main() {
       { name: 'telegram_send_document', schema: tools.telegramSendDocumentSchema, handler: tools.telegramSendDocument },
       // Venture & service registry tools
       { name: 'venture_mint', schema: tools.ventureMintSchema, handler: tools.ventureMint },
+      { name: 'venture_query', schema: tools.ventureQuerySchema, handler: tools.ventureQuery },
       { name: 'venture_update', schema: tools.ventureUpdateSchema, handler: tools.ventureUpdate },
+      { name: 'venture_delete', schema: tools.ventureDeleteSchema, handler: tools.ventureDelete },
       { name: 'service_registry', schema: tools.serviceRegistrySchema, handler: tools.serviceRegistry },
       { name: 'search_services', schema: tools.searchServicesSchema, handler: tools.searchServices },
     ];

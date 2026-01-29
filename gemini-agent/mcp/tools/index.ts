@@ -50,7 +50,9 @@ export { readRecords, createRecord, type ReadRecordsParams, type CreateRecordPar
 
 // Venture tools
 export { ventureMint, ventureMintParams, ventureMintSchema, type VentureMintParams } from './venture_mint.js';
+export { ventureQuery, ventureQueryParams, ventureQuerySchema, type VentureQueryParams } from './venture_query.js';
 export { ventureUpdate, ventureUpdateParams, ventureUpdateSchema, type VentureUpdateParams } from './venture_update.js';
+export { ventureDelete, ventureDeleteParams, ventureDeleteSchema, type VentureDeleteParams } from './venture_delete.js';
 
 // Service registry tools
 export { serviceRegistry, serviceRegistryParams, serviceRegistrySchema, type ServiceRegistryParams } from './service_registry.js';

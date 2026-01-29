@@ -1,6 +1,6 @@
 # Creating Ventures
 
-This guide covers how to create and configure ventures in the Jinn platform.
+This guide covers how to create, query, update, and delete ventures in the Jinn platform.
 
 ## Prerequisites
 
@@ -49,9 +49,22 @@ A blueprint defines the success criteria (invariants) for your venture:
 | `quality` | Code coverage, documentation, standards |
 | `cost` | Budget constraints, resource limits |
 
-## Creating via CLI
+## MCP Tools Overview
 
-### Basic Creation
+The ventures registry provides four MCP tools for complete CRUD operations:
+
+| Tool | Operation | Description |
+|------|-----------|-------------|
+| `venture_mint` | CREATE | Create a new venture |
+| `venture_query` | READ | Query ventures by ID, slug, workstream, or list all |
+| `venture_update` | UPDATE | Modify venture fields |
+| `venture_delete` | DELETE | Archive (soft) or permanently delete a venture |
+
+---
+
+## Creating Ventures
+
+### Via CLI
 
 ```bash
 yarn tsx scripts/ventures/mint.ts \
@@ -60,21 +73,7 @@ yarn tsx scripts/ventures/mint.ts \
   --blueprint '{"invariants": []}'
 ```
 
-### Full Options
-
-```bash
-yarn tsx scripts/ventures/mint.ts \
-  --name "Production Platform" \
-  --slug "prod-platform" \
-  --description "Enterprise production platform" \
-  --ownerAddress "0x1234567890abcdef1234567890abcdef12345678" \
-  --blueprint '{"invariants": [...]}' \
-  --tags "enterprise,production" \
-  --featured true \
-  --status "active"
-```
-
-## Creating via MCP Tool
+### Via MCP Tool (venture_mint)
 
 ```json
 {
@@ -85,32 +84,186 @@ yarn tsx scripts/ventures/mint.ts \
     "description": "Description of the venture",
     "ownerAddress": "0x1234567890abcdef1234567890abcdef12345678",
     "blueprint": "{\"invariants\": [...]}",
-    "tags": ["tag1", "tag2"],
-    "featured": false,
+    "rootWorkstreamId": "optional-workstream-uuid",
+    "rootJobInstanceId": "optional-job-instance-uuid",
     "status": "active"
   }
 }
 ```
 
-## Parameters
+### Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `name` | Yes | Venture display name |
 | `ownerAddress` | Yes | Ethereum address (0x...) |
 | `blueprint` | Yes | JSON string with invariants array |
-| `slug` | No | URL-friendly identifier (auto-generated) |
+| `slug` | No | URL-friendly identifier (auto-generated from name) |
 | `description` | No | Long description |
 | `rootWorkstreamId` | No | Associated workstream UUID |
-| `jobTemplateId` | No | x402 job template UUID |
-| `config` | No | Additional configuration object |
-| `tags` | No | Array of discovery tags |
-| `featured` | No | Whether to feature (default: false) |
+| `rootJobInstanceId` | No | Associated root job instance UUID |
 | `status` | No | active, paused, archived (default: active) |
+
+---
+
+## Querying Ventures
+
+### Via MCP Tool (venture_query)
+
+The `venture_query` tool supports four modes:
+
+#### Get by ID
+```json
+{
+  "tool": "venture_query",
+  "params": {
+    "mode": "get",
+    "id": "<venture-uuid>"
+  }
+}
+```
+
+#### Get by Slug
+```json
+{
+  "tool": "venture_query",
+  "params": {
+    "mode": "by_slug",
+    "slug": "my-venture"
+  }
+}
+```
+
+#### Get by Workstream ID
+```json
+{
+  "tool": "venture_query",
+  "params": {
+    "mode": "by_workstream",
+    "workstreamId": "<workstream-uuid>"
+  }
+}
+```
+
+#### List Ventures
+```json
+{
+  "tool": "venture_query",
+  "params": {
+    "mode": "list",
+    "status": "active",
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+### Query Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `mode` | No | get, list, by_slug, by_workstream (default: list) |
+| `id` | For get | Venture UUID |
+| `slug` | For by_slug | Venture slug |
+| `workstreamId` | For by_workstream | Root workstream UUID |
+| `status` | No | Filter by status (active, paused, archived) |
+| `limit` | No | Max results for list mode (default: 20) |
+| `offset` | No | Pagination offset |
+
+---
+
+## Updating Ventures
+
+### Via CLI
+
+```bash
+yarn tsx scripts/ventures/update.ts \
+  --id "<venture-uuid>" \
+  --status "paused" \
+  --description "Updated description"
+```
+
+### Via MCP Tool (venture_update)
+
+```json
+{
+  "tool": "venture_update",
+  "params": {
+    "id": "<venture-uuid>",
+    "name": "New Name",
+    "description": "Updated description",
+    "status": "paused"
+  }
+}
+```
+
+### Update Parameters
+
+All fields except `id` are optional - only provided fields are updated:
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `id` | Yes | Venture UUID to update |
+| `name` | No | New venture name |
+| `slug` | No | New URL-friendly identifier |
+| `description` | No | New description |
+| `blueprint` | No | New JSON blueprint string |
+| `rootWorkstreamId` | No | New workstream UUID |
+| `rootJobInstanceId` | No | New root job instance UUID |
+| `status` | No | active, paused, archived |
+
+---
+
+## Deleting Ventures
+
+### Via MCP Tool (venture_delete)
+
+The `venture_delete` tool supports two modes:
+
+#### Soft Delete (Archive)
+Sets status to 'archived' - venture can be restored:
+```json
+{
+  "tool": "venture_delete",
+  "params": {
+    "id": "<venture-uuid>",
+    "mode": "soft"
+  }
+}
+```
+
+#### Hard Delete (Permanent)
+Permanently removes the venture - **cannot be undone**:
+```json
+{
+  "tool": "venture_delete",
+  "params": {
+    "id": "<venture-uuid>",
+    "mode": "hard",
+    "confirm": true
+  }
+}
+```
+
+### Delete Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `id` | Yes | Venture UUID to delete |
+| `mode` | No | soft (default) or hard |
+| `confirm` | For hard | Must be `true` for permanent deletion |
+
+### Important Notes
+
+- **Prefer soft delete**: Use `mode: "soft"` to archive ventures that may need to be restored
+- **Hard delete constraint**: Cannot hard delete ventures that have associated services
+- **Hard delete requires confirmation**: Must set `confirm: true` as a safety measure
+
+---
 
 ## Post-Creation Steps
 
-After creating a venture:
+After creating a venture, register your services:
 
 1. **Register Services**
    ```json
@@ -151,31 +304,13 @@ After creating a venture:
    }
    ```
 
-## Updating Ventures
-
-```bash
-yarn tsx scripts/ventures/update.ts \
-  --id "<venture-uuid>" \
-  --status "paused" \
-  --description "Updated description"
-```
-
-Or via MCP:
-
-```json
-{
-  "tool": "venture_update",
-  "params": {
-    "id": "<venture-uuid>",
-    "status": "paused"
-  }
-}
-```
+---
 
 ## Best Practices
 
 1. **Define Clear Invariants**: Be specific about success criteria
-2. **Use Meaningful Tags**: Enable discovery across the platform
-3. **Document Services**: Add descriptions and documentation
+2. **Use Meaningful Slugs**: Enable clean URLs and easy lookups
+3. **Document Services**: Add descriptions to ventures and services
 4. **Monitor Health**: Track deployment health status
-5. **Version Services**: Use semantic versioning
+5. **Prefer Soft Delete**: Archive ventures rather than permanently deleting
+6. **Use Workstream Links**: Associate ventures with workstreams for automation
