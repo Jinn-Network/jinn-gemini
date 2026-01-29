@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { supabase } from './shared/supabase.js';
 import { mcpLogger } from '../../../logging/index.js';
+import { createVenture, type CreateVentureArgs } from '../../../scripts/ventures/mint.js';
 
 /**
  * Input schema for minting a venture.
@@ -45,17 +45,8 @@ Returns: { venture: { id, name, slug, ... } }`,
 };
 
 /**
- * Generate a URL-friendly slug from a name
- */
-function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-/**
  * Mint (create) a new venture.
+ * Delegates to the script function which handles all Supabase operations.
  */
 export async function ventureMint(args: unknown) {
   try {
@@ -74,82 +65,36 @@ export async function ventureMint(args: unknown) {
 
     const {
       name,
-      slug: providedSlug,
+      slug,
       description,
       ownerAddress,
-      blueprint: blueprintStr,
+      blueprint,
       rootWorkstreamId,
       rootJobInstanceId,
       status,
     } = parsed.data;
 
-    // Parse and validate blueprint
-    let blueprint: { invariants: unknown[] };
-    try {
-      blueprint = JSON.parse(blueprintStr);
-    } catch (e) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: null,
-            meta: { ok: false, code: 'VALIDATION_ERROR', message: 'Invalid blueprint JSON' }
-          })
-        }]
-      };
-    }
-
-    if (!blueprint.invariants || !Array.isArray(blueprint.invariants)) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: null,
-            meta: { ok: false, code: 'VALIDATION_ERROR', message: 'Blueprint must contain an "invariants" array' }
-          })
-        }]
-      };
-    }
-
-    const slug = providedSlug || generateSlug(name);
-
-    const record = {
+    // Use the script function which handles all Supabase logic
+    const scriptArgs: CreateVentureArgs = {
       name,
       slug,
-      description: description || null,
-      owner_address: ownerAddress,
-      blueprint,
-      root_workstream_id: rootWorkstreamId || null,
-      root_job_instance_id: rootJobInstanceId || null,
-      status: status || 'active',
+      description,
+      ownerAddress,
+      blueprint,  // Script handles JSON parsing
+      rootWorkstreamId,
+      rootJobInstanceId,
+      status,
     };
 
-    const { data, error } = await supabase
-      .from('ventures')
-      .insert(record)
-      .select()
-      .single();
+    const venture = await createVenture(scriptArgs);
 
-    if (error) {
-      mcpLogger.error({ error: error.message }, 'venture_mint failed');
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: null,
-            meta: { ok: false, code: 'DATABASE_ERROR', message: error.message }
-          })
-        }]
-      };
-    }
-
-    mcpLogger.info({ ventureId: data.id, name }, 'Created new venture');
+    mcpLogger.info({ ventureId: venture.id, name }, 'Created new venture');
 
     return {
       content: [{
         type: 'text' as const,
         text: JSON.stringify({
-          data: { venture: data },
+          data: { venture },
           meta: { ok: true }
         })
       }]

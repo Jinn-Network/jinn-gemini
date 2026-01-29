@@ -272,4 +272,8 @@ async function main() {
   }
 }
 
-main();
+// Only run CLI when executed directly (not when imported as module)
+const isDirectRun = process.argv[1]?.endsWith('mint.ts') || process.argv[1]?.endsWith('mint.js');
+if (isDirectRun) {
+  main();
+}

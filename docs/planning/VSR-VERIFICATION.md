@@ -249,6 +249,104 @@ Claude uses the `mcp__supabase__execute_sql` tool which provides:
 
 ---
 
+## 5. MCP Architecture Verification
+
+**Date:** 2026-01-29
+**Status:** PASSED
+**Test Script:** `scripts/ventures/test-mcp-server.ts`
+
+### Overview
+
+Verified the correct layered architecture for the Ventures MCP:
+
+```
+Agent (Claude/Gemini)
+    ↓ (calls MCP tool)
+MCP Server (mcp/ventures/server.ts)
+    ↓ (calls script functions)
+Scripts (scripts/ventures/*.ts)
+    ↓ (uses Supabase client)
+Supabase Database
+```
+
+This architecture ensures:
+- Both Claude and Gemini use the same MCP layer
+- No direct Supabase dependency at the agent level
+- Scripts contain all database logic (single source of truth)
+- MCP tools are thin wrappers around script functions
+
+### Results
+
+```
+============================================================
+VENTURES MCP SERVER TEST
+Architecture: Script Functions -> Supabase
+============================================================
+
+Total: 7 | Passed: 7 | Failed: 0
+
+  ✓ 1. CREATE (createVenture) (178ms)
+  ✓ 2. READ by ID (getVenture) (64ms)
+  ✓ 3. READ by slug (getVentureBySlug) (58ms)
+  ✓ 4. READ list (listVentures) (56ms)
+  ✓ 5. UPDATE (updateVenture) (71ms)
+  ✓ 6. SOFT DELETE (archiveVenture) (64ms)
+  ✓ 7. HARD DELETE (deleteVenture) (227ms)
+
+✅ All tests passed
+```
+
+### Files Created/Updated
+
+**MCP Server (Claude)**
+- `mcp/ventures/server.ts` - MCP server wrapping script functions
+- `.claude/commands/ventures.md` - Claude skill documentation
+
+**Gemini Agent Tools (Refactored)**
+- `gemini-agent/mcp/tools/venture_mint.ts` - Now uses script functions
+- `gemini-agent/mcp/tools/venture_query.ts` - Now uses script functions
+- `gemini-agent/mcp/tools/venture_update.ts` - Now uses script functions
+- `gemini-agent/mcp/tools/venture_delete.ts` - Now uses script functions
+
+**Scripts (Updated)**
+- `scripts/ventures/mint.ts` - Added CLI guard for module imports
+- `scripts/ventures/update.ts` - Added CLI guard for module imports
+
+### How to Run
+
+**Test the script functions directly:**
+```bash
+npx tsx scripts/ventures/test-mcp-server.ts
+```
+
+**Start the MCP server (for Claude):**
+```bash
+npx tsx mcp/ventures/server.ts
+```
+
+### Claude Usage
+
+Claude uses the `/ventures` skill which documents MCP tool usage:
+
+```
+/ventures list
+/ventures create
+/ventures get --id <uuid>
+/ventures update --id <uuid> --status paused
+/ventures delete --id <uuid> --mode soft
+```
+
+### Gemini Usage
+
+Gemini uses the gemini-agent MCP tools which now wrap the same script functions:
+
+- `venture_mint` - CREATE
+- `venture_query` - READ (get, list, by_slug, by_workstream)
+- `venture_update` - UPDATE
+- `venture_delete` - DELETE (soft/hard)
+
+---
+
 ## Future Verification Tests
 
 The following tests are planned for future verification:

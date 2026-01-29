@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { supabase } from './shared/supabase.js';
 import { mcpLogger } from '../../../logging/index.js';
+import { getVenture, getVentureBySlug, listVentures } from '../../../scripts/ventures/mint.js';
 
 /**
  * Input schema for querying ventures.
@@ -38,6 +38,7 @@ Returns: { venture } for single queries, { ventures, total } for list`,
 
 /**
  * Query ventures from the database.
+ * Delegates to the script functions which handle all Supabase operations.
  */
 export async function ventureQuery(args: unknown) {
   try {
@@ -62,22 +63,14 @@ export async function ventureQuery(args: unknown) {
           return errorResponse('VALIDATION_ERROR', 'get mode requires id');
         }
 
-        const { data, error } = await supabase
-          .from('ventures')
-          .select('*')
-          .eq('id', id)
-          .single();
+        const venture = await getVenture(id);
 
-        if (error) {
-          if (error.code === 'PGRST116') {
-            return errorResponse('NOT_FOUND', `Venture not found: ${id}`);
-          }
-          mcpLogger.error({ error: error.message }, 'venture_query get failed');
-          return errorResponse('DATABASE_ERROR', error.message);
+        if (!venture) {
+          return errorResponse('NOT_FOUND', `Venture not found: ${id}`);
         }
 
         mcpLogger.info({ ventureId: id }, 'Retrieved venture by ID');
-        return successResponse({ venture: data });
+        return successResponse({ venture });
       }
 
       case 'by_slug': {
@@ -85,22 +78,14 @@ export async function ventureQuery(args: unknown) {
           return errorResponse('VALIDATION_ERROR', 'by_slug mode requires slug');
         }
 
-        const { data, error } = await supabase
-          .from('ventures')
-          .select('*')
-          .eq('slug', slug)
-          .single();
+        const venture = await getVentureBySlug(slug);
 
-        if (error) {
-          if (error.code === 'PGRST116') {
-            return errorResponse('NOT_FOUND', `Venture not found with slug: ${slug}`);
-          }
-          mcpLogger.error({ error: error.message }, 'venture_query by_slug failed');
-          return errorResponse('DATABASE_ERROR', error.message);
+        if (!venture) {
+          return errorResponse('NOT_FOUND', `Venture not found with slug: ${slug}`);
         }
 
         mcpLogger.info({ slug }, 'Retrieved venture by slug');
-        return successResponse({ venture: data });
+        return successResponse({ venture });
       }
 
       case 'by_workstream': {
@@ -108,54 +93,32 @@ export async function ventureQuery(args: unknown) {
           return errorResponse('VALIDATION_ERROR', 'by_workstream mode requires workstreamId');
         }
 
-        const { data, error } = await supabase
-          .from('ventures')
-          .select('*')
-          .eq('root_workstream_id', workstreamId)
-          .single();
+        // For by_workstream, we use listVentures with a filter
+        // Note: The script doesn't have a direct by_workstream function yet
+        // We'll use list and filter, but this could be optimized
+        const ventures = await listVentures({ limit: 1 });
+        const venture = ventures.find(v => v.root_workstream_id === workstreamId);
 
-        if (error) {
-          if (error.code === 'PGRST116') {
-            return errorResponse('NOT_FOUND', `Venture not found for workstream: ${workstreamId}`);
-          }
-          mcpLogger.error({ error: error.message }, 'venture_query by_workstream failed');
-          return errorResponse('DATABASE_ERROR', error.message);
+        if (!venture) {
+          return errorResponse('NOT_FOUND', `Venture not found for workstream: ${workstreamId}`);
         }
 
         mcpLogger.info({ workstreamId }, 'Retrieved venture by workstream');
-        return successResponse({ venture: data });
+        return successResponse({ venture });
       }
 
       case 'list':
       default: {
-        let query = supabase
-          .from('ventures')
-          .select('*', { count: 'exact' })
-          .order('created_at', { ascending: false });
+        const ventures = await listVentures({
+          status,
+          limit: limit || 20,
+          offset: offset || 0,
+        });
 
-        if (status) {
-          query = query.eq('status', status);
-        }
-
-        if (limit) {
-          query = query.limit(limit);
-        }
-
-        if (offset) {
-          query = query.range(offset, offset + (limit || 20) - 1);
-        }
-
-        const { data, error, count } = await query;
-
-        if (error) {
-          mcpLogger.error({ error: error.message }, 'venture_query list failed');
-          return errorResponse('DATABASE_ERROR', error.message);
-        }
-
-        mcpLogger.info({ count: data?.length, total: count }, 'Listed ventures');
+        mcpLogger.info({ count: ventures.length }, 'Listed ventures');
         return successResponse({
-          ventures: data || [],
-          total: count ?? (data?.length || 0),
+          ventures,
+          total: ventures.length,
         });
       }
     }

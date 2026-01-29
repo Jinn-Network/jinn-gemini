@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { supabase } from './shared/supabase.js';
 import { mcpLogger } from '../../../logging/index.js';
+import { updateVenture, type UpdateVentureArgs } from '../../../scripts/ventures/update.js';
 
 /**
  * Input schema for updating a venture.
@@ -43,6 +43,7 @@ Returns: { venture: { id, name, slug, ... } }`,
 
 /**
  * Update an existing venture.
+ * Delegates to the script function which handles all Supabase operations.
  */
 export async function ventureUpdate(args: unknown) {
   try {
@@ -64,105 +65,32 @@ export async function ventureUpdate(args: unknown) {
       name,
       slug,
       description,
-      blueprint: blueprintStr,
+      blueprint,
       rootWorkstreamId,
       rootJobInstanceId,
       status,
     } = parsed.data;
 
-    // Build update record
-    const record: Record<string, unknown> = {};
+    // Build update args - only include defined fields
+    const scriptArgs: UpdateVentureArgs = { id };
+    if (name !== undefined) scriptArgs.name = name;
+    if (slug !== undefined) scriptArgs.slug = slug;
+    if (description !== undefined) scriptArgs.description = description;
+    if (blueprint !== undefined) scriptArgs.blueprint = blueprint;
+    if (rootWorkstreamId !== undefined) scriptArgs.rootWorkstreamId = rootWorkstreamId;
+    if (rootJobInstanceId !== undefined) scriptArgs.rootJobInstanceId = rootJobInstanceId;
+    if (status !== undefined) scriptArgs.status = status;
 
-    if (name !== undefined) record.name = name;
-    if (slug !== undefined) record.slug = slug;
-    if (description !== undefined) record.description = description;
-    if (rootWorkstreamId !== undefined) record.root_workstream_id = rootWorkstreamId;
-    if (rootJobInstanceId !== undefined) record.root_job_instance_id = rootJobInstanceId;
-    if (status !== undefined) record.status = status;
+    // Use the script function which handles all Supabase logic
+    const venture = await updateVenture(scriptArgs);
 
-    // Parse and validate blueprint if provided
-    if (blueprintStr !== undefined) {
-      let blueprint: { invariants: unknown[] };
-      try {
-        blueprint = JSON.parse(blueprintStr);
-      } catch (e) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              data: null,
-              meta: { ok: false, code: 'VALIDATION_ERROR', message: 'Invalid blueprint JSON' }
-            })
-          }]
-        };
-      }
-
-      if (!blueprint.invariants || !Array.isArray(blueprint.invariants)) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              data: null,
-              meta: { ok: false, code: 'VALIDATION_ERROR', message: 'Blueprint must contain an "invariants" array' }
-            })
-          }]
-        };
-      }
-
-      record.blueprint = blueprint;
-    }
-
-    if (Object.keys(record).length === 0) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: null,
-            meta: { ok: false, code: 'VALIDATION_ERROR', message: 'No fields to update' }
-          })
-        }]
-      };
-    }
-
-    const { data, error } = await supabase
-      .from('ventures')
-      .update(record)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      mcpLogger.error({ error: error.message }, 'venture_update failed');
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: null,
-            meta: { ok: false, code: 'DATABASE_ERROR', message: error.message }
-          })
-        }]
-      };
-    }
-
-    if (!data) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            data: null,
-            meta: { ok: false, code: 'NOT_FOUND', message: `Venture not found: ${id}` }
-          })
-        }]
-      };
-    }
-
-    mcpLogger.info({ ventureId: data.id, name: data.name }, 'Updated venture');
+    mcpLogger.info({ ventureId: venture.id, name: venture.name }, 'Updated venture');
 
     return {
       content: [{
         type: 'text' as const,
         text: JSON.stringify({
-          data: { venture: data },
+          data: { venture },
           meta: { ok: true }
         })
       }]

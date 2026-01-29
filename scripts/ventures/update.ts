@@ -204,4 +204,8 @@ async function main() {
   }
 }
 
-main();
+// Only run CLI when executed directly (not when imported as module)
+const isDirectRun = process.argv[1]?.endsWith('update.ts') || process.argv[1]?.endsWith('update.js');
+if (isDirectRun) {
+  main();
+}
