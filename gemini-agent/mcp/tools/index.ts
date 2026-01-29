@@ -12,6 +12,11 @@ export { searchSimilarSituations, searchSimilarSituationsParams, searchSimilarSi
 export { inspectSituation, inspectSituationParams, inspectSituationSchema } from './inspect_situation.js';
 export { loadMcpServer, stopMcpServer } from './shared/mcp-bootstrap.js';
 
+// Inspection tools (workstream/job analysis)
+export { inspectJobRun, inspectJobRunParams, inspectJobRunSchema, type InspectJobRunParams } from './inspect-job-run.js';
+export { inspectJob, inspectJobParams, inspectJobSchema, type InspectJobParams } from './inspect-job.js';
+export { inspectWorkstream, inspectWorkstreamParams, inspectWorkstreamSchema, type InspectWorkstreamParams } from './inspect-workstream.js';
+
 // Template registration
 export { registerTemplate, registerTemplateParams, registerTemplateSchema, type RegisterTemplateParams } from './register_template.js';
 
