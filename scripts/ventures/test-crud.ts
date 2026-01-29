@@ -68,10 +68,7 @@ interface Venture {
     }>;
   };
   root_workstream_id: string | null;
-  job_template_id: string | null;
-  config: Record<string, any>;
-  tags: string[];
-  featured: boolean;
+  root_job_instance_id: string | null;
   status: 'active' | 'paused' | 'archived';
   created_at: string;
   updated_at: string;
@@ -84,10 +81,7 @@ interface CreateVentureArgs {
   ownerAddress: string;
   blueprint: object;
   rootWorkstreamId?: string;
-  jobTemplateId?: string;
-  config?: object;
-  tags?: string[];
-  featured?: boolean;
+  rootJobInstanceId?: string;
   status?: 'active' | 'paused' | 'archived';
 }
 
@@ -99,10 +93,7 @@ interface UpdateVentureArgs {
   ownerAddress?: string;
   blueprint?: object;
   rootWorkstreamId?: string | null;
-  jobTemplateId?: string | null;
-  config?: object;
-  tags?: string[];
-  featured?: boolean;
+  rootJobInstanceId?: string | null;
   status?: 'active' | 'paused' | 'archived';
 }
 
@@ -127,10 +118,7 @@ async function createVenture(args: CreateVentureArgs): Promise<Venture> {
     owner_address: args.ownerAddress,
     blueprint: args.blueprint,
     root_workstream_id: args.rootWorkstreamId || null,
-    job_template_id: args.jobTemplateId || null,
-    config: args.config || {},
-    tags: args.tags || [],
-    featured: args.featured || false,
+    root_job_instance_id: args.rootJobInstanceId || null,
     status: args.status || 'active',
   };
 
@@ -164,7 +152,6 @@ async function getVenture(id: string): Promise<Venture | null> {
 
 async function listVentures(options: {
   status?: string;
-  featured?: boolean;
   ownerAddress?: string;
   limit?: number;
 } = {}): Promise<Venture[]> {
@@ -175,9 +162,6 @@ async function listVentures(options: {
 
   if (options.status) {
     query = query.eq('status', options.status);
-  }
-  if (options.featured !== undefined) {
-    query = query.eq('featured', options.featured);
   }
   if (options.ownerAddress) {
     query = query.eq('owner_address', options.ownerAddress);
@@ -205,10 +189,7 @@ async function updateVenture(args: UpdateVentureArgs): Promise<Venture> {
   if (updates.description !== undefined) record.description = updates.description;
   if (updates.ownerAddress !== undefined) record.owner_address = updates.ownerAddress;
   if (updates.rootWorkstreamId !== undefined) record.root_workstream_id = updates.rootWorkstreamId;
-  if (updates.jobTemplateId !== undefined) record.job_template_id = updates.jobTemplateId;
-  if (updates.config !== undefined) record.config = updates.config;
-  if (updates.tags !== undefined) record.tags = updates.tags;
-  if (updates.featured !== undefined) record.featured = updates.featured;
+  if (updates.rootJobInstanceId !== undefined) record.root_job_instance_id = updates.rootJobInstanceId;
   if (updates.status !== undefined) record.status = updates.status;
   if (updates.blueprint !== undefined) record.blueprint = updates.blueprint;
 
@@ -351,10 +332,7 @@ async function testCreate(): Promise<Venture> {
     description: 'A test venture for validating CRUD operations',
     ownerAddress: TEST_OWNER_ADDRESS,
     blueprint: TEST_BLUEPRINT,
-    tags: ['test', 'crud', 'validation'],
-    featured: false,
     status: 'active',
-    config: { testMode: true, createdBy: 'test-crud.ts' },
   });
 
   // Validate required fields exist
@@ -376,7 +354,6 @@ async function testCreate(): Promise<Venture> {
     status: venture.status,
     owner_address: venture.owner_address,
     invariant_count: venture.blueprint?.invariants?.length,
-    tags: venture.tags,
   });
 
   return venture;
@@ -399,8 +376,6 @@ async function testRead(ventureId: string): Promise<Venture> {
   if (venture.owner_address !== TEST_OWNER_ADDRESS) throw new Error('Owner address not persisted');
   if (venture.status !== 'active') throw new Error('Status not persisted');
   if (!venture.description) throw new Error('Description not persisted');
-  if (!venture.tags?.includes('test')) throw new Error('Tags not persisted');
-  if (!venture.config?.testMode) throw new Error('Config not persisted');
 
   logSuccess(`Read venture successfully`);
   logData('Full Venture Object', venture);
@@ -417,23 +392,16 @@ async function testUpdate(ventureId: string): Promise<Venture> {
 
   const updatedName = `${TEST_VENTURE_NAME} (Updated)`;
   const updatedDescription = 'This description was updated by the test script';
-  const updatedTags = ['test', 'crud', 'validation', 'updated'];
 
   const venture = await updateVenture({
     id: ventureId,
     name: updatedName,
     description: updatedDescription,
-    tags: updatedTags,
-    featured: true,
-    config: { testMode: true, createdBy: 'test-crud.ts', updatedAt: new Date().toISOString() },
   });
 
   // Validate updates
   if (venture.name !== updatedName) throw new Error('Name not updated');
   if (venture.description !== updatedDescription) throw new Error('Description not updated');
-  if (!venture.tags?.includes('updated')) throw new Error('Tags not updated');
-  if (venture.featured !== true) throw new Error('Featured not updated');
-  if (!venture.config?.updatedAt) throw new Error('Config not updated');
 
   // Validate unchanged fields remain
   if (venture.slug !== TEST_SLUG) throw new Error('Slug unexpectedly changed');
@@ -444,9 +412,6 @@ async function testUpdate(ventureId: string): Promise<Venture> {
   logData('Updated Fields', {
     name: venture.name,
     description: venture.description,
-    tags: venture.tags,
-    featured: venture.featured,
-    config: venture.config,
   });
 
   return venture;

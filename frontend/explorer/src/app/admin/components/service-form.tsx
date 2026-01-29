@@ -1,0 +1,307 @@
+'use client';
+
+import * as React from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { FormField } from './form-field';
+import { JsonTextarea } from './json-textarea';
+import { TagInput } from './tag-input';
+import { SlugInput } from './slug-input';
+import { createService, updateService, deleteService, type ServiceInput } from '../actions';
+import type { Service, Venture } from '@/lib/ventures-services';
+import { Loader2, Trash2 } from 'lucide-react';
+
+interface ServiceFormProps {
+  service?: Service;
+  ventures: Venture[];
+}
+
+const SERVICE_TYPES = [
+  { value: 'mcp', label: 'MCP Server' },
+  { value: 'api', label: 'API' },
+  { value: 'worker', label: 'Worker' },
+  { value: 'frontend', label: 'Frontend' },
+  { value: 'library', label: 'Library' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export function ServiceForm({ service, ventures }: ServiceFormProps) {
+  const router = useRouter();
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
+
+  const [ventureId, setVentureId] = React.useState(service?.venture_id || '');
+  const [name, setName] = React.useState(service?.name || '');
+  const [slug, setSlug] = React.useState(service?.slug || '');
+  const [description, setDescription] = React.useState(service?.description || '');
+  const [serviceType, setServiceType] = React.useState<ServiceInput['service_type']>(
+    service?.service_type || 'api'
+  );
+  const [repositoryUrl, setRepositoryUrl] = React.useState(service?.repository_url || '');
+  const [primaryLanguage, setPrimaryLanguage] = React.useState(service?.primary_language || '');
+  const [version, setVersion] = React.useState(service?.version || '');
+  const [config, setConfig] = React.useState(
+    JSON.stringify(service?.config || {}, null, 2)
+  );
+  const [tags, setTags] = React.useState<string[]>(service?.tags || []);
+  const [status, setStatus] = React.useState<'active' | 'deprecated' | 'archived'>(
+    service?.status || 'active'
+  );
+
+  const isEditing = !!service;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const input: ServiceInput = {
+        venture_id: ventureId,
+        name,
+        slug,
+        description: description || undefined,
+        service_type: serviceType,
+        repository_url: repositoryUrl || undefined,
+        primary_language: primaryLanguage || undefined,
+        version: version || undefined,
+        config: JSON.parse(config),
+        tags,
+        status,
+      };
+
+      const result = isEditing
+        ? await updateService(service.id, input)
+        : await createService(input);
+
+      if (result.error) {
+        setError(result.error);
+      } else {
+        router.push('/admin/services');
+        router.refresh();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!service) return;
+
+    setLoading(true);
+    setError(null);
+
+    const result = await deleteService(service.id);
+
+    if (result.error) {
+      setError(result.error);
+      setLoading(false);
+    } else {
+      router.push('/admin/services');
+      router.refresh();
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <Card>
+        <CardHeader>
+          <CardTitle>{isEditing ? 'Edit Service' : 'Create Service'}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {error && (
+            <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+              {error}
+            </div>
+          )}
+
+          <FormField label="Venture" htmlFor="ventureId" required>
+            <Select value={ventureId} onValueChange={setVentureId} required>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a venture" />
+              </SelectTrigger>
+              <SelectContent>
+                {ventures.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField label="Name" htmlFor="name" required>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="My Service"
+                required
+              />
+            </FormField>
+
+            <FormField label="Slug" htmlFor="slug" description="URL-friendly identifier">
+              <SlugInput
+                value={slug}
+                onChange={setSlug}
+                sourceValue={name}
+                placeholder="my-service"
+              />
+            </FormField>
+          </div>
+
+          <FormField label="Description" htmlFor="description">
+            <Textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="A brief description of the service..."
+              rows={3}
+            />
+          </FormField>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField label="Service Type" htmlFor="serviceType" required>
+              <Select
+                value={serviceType}
+                onValueChange={(v) => setServiceType(v as ServiceInput['service_type'])}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVICE_TYPES.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+
+            <FormField label="Status" htmlFor="status">
+              <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="deprecated">Deprecated</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+
+          <FormField label="Repository URL" htmlFor="repositoryUrl">
+            <Input
+              id="repositoryUrl"
+              value={repositoryUrl}
+              onChange={(e) => setRepositoryUrl(e.target.value)}
+              placeholder="https://github.com/..."
+            />
+          </FormField>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField label="Primary Language" htmlFor="primaryLanguage">
+              <Input
+                id="primaryLanguage"
+                value={primaryLanguage}
+                onChange={(e) => setPrimaryLanguage(e.target.value)}
+                placeholder="TypeScript"
+              />
+            </FormField>
+
+            <FormField label="Version" htmlFor="version">
+              <Input
+                id="version"
+                value={version}
+                onChange={(e) => setVersion(e.target.value)}
+                placeholder="1.0.0"
+              />
+            </FormField>
+          </div>
+
+          <FormField label="Config" htmlFor="config" description="Additional configuration JSON">
+            <JsonTextarea
+              value={config}
+              onChange={setConfig}
+              rows={4}
+            />
+          </FormField>
+
+          <FormField label="Tags" htmlFor="tags" description="Comma-separated list">
+            <TagInput value={tags} onChange={setTags} />
+          </FormField>
+        </CardContent>
+        <CardFooter className="flex justify-between">
+          <div>
+            {isEditing && (
+              deleteConfirm ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Are you sure?</span>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDelete}
+                    disabled={loading}
+                  >
+                    Yes, Delete
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDeleteConfirm(false)}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setDeleteConfirm(true)}
+                  disabled={loading}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+              )
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.back()}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              {isEditing ? 'Save Changes' : 'Create Service'}
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
+    </form>
+  );
+}

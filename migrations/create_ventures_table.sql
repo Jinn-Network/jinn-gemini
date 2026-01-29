@@ -9,10 +9,7 @@ CREATE TABLE IF NOT EXISTS ventures (
   owner_address TEXT NOT NULL,              -- Ethereum address
   blueprint JSONB NOT NULL,                 -- Invariants schema
   root_workstream_id TEXT,                  -- Single workstream reference
-  job_template_id TEXT,                     -- Optional x402 template
-  config JSONB DEFAULT '{}',
-  tags TEXT[] DEFAULT '{}',
-  featured BOOLEAN DEFAULT false,
+  root_job_instance_id TEXT,                -- Optional root job instance reference
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'archived')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -22,8 +19,6 @@ CREATE TABLE IF NOT EXISTS ventures (
 CREATE INDEX IF NOT EXISTS idx_ventures_slug ON ventures(slug);
 CREATE INDEX IF NOT EXISTS idx_ventures_owner_address ON ventures(owner_address);
 CREATE INDEX IF NOT EXISTS idx_ventures_status ON ventures(status);
-CREATE INDEX IF NOT EXISTS idx_ventures_featured ON ventures(featured) WHERE featured = true;
-CREATE INDEX IF NOT EXISTS idx_ventures_tags ON ventures USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_ventures_created_at ON ventures(created_at DESC);
 
 -- Trigger to auto-update updated_at
@@ -46,6 +41,5 @@ COMMENT ON TABLE ventures IS 'Venture definitions with blueprints and workstream
 COMMENT ON COLUMN ventures.owner_address IS 'Ethereum address of the venture owner';
 COMMENT ON COLUMN ventures.blueprint IS 'JSONB containing invariants schema for the venture';
 COMMENT ON COLUMN ventures.root_workstream_id IS 'Single workstream reference - cyclic re-dispatches stay in same workstream';
-COMMENT ON COLUMN ventures.job_template_id IS 'Optional reference to x402 job template';
-COMMENT ON COLUMN ventures.config IS 'Additional configuration as JSONB';
+COMMENT ON COLUMN ventures.root_job_instance_id IS 'Optional reference to the root job instance for this venture';
 COMMENT ON COLUMN ventures.status IS 'Lifecycle status: active, paused, or archived';

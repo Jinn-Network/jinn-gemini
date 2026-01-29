@@ -17,10 +17,7 @@ export interface CreateVentureArgs {
   ownerAddress: string;
   blueprint: string | object;
   rootWorkstreamId?: string;
-  jobTemplateId?: string;
-  config?: object;
-  tags?: string[];
-  featured?: boolean;
+  rootJobInstanceId?: string;
   status?: 'active' | 'paused' | 'archived';
 }
 
@@ -32,10 +29,7 @@ export interface Venture {
   owner_address: string;
   blueprint: object;
   root_workstream_id: string | null;
-  job_template_id: string | null;
-  config: object;
-  tags: string[];
-  featured: boolean;
+  root_job_instance_id: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -79,10 +73,7 @@ export async function createVenture(args: CreateVentureArgs): Promise<Venture> {
     owner_address: args.ownerAddress,
     blueprint,
     root_workstream_id: args.rootWorkstreamId || null,
-    job_template_id: args.jobTemplateId || null,
-    config: args.config || {},
-    tags: args.tags || [],
-    featured: args.featured || false,
+    root_job_instance_id: args.rootJobInstanceId || null,
     status: args.status || 'active',
   };
 
@@ -140,7 +131,6 @@ export async function getVentureBySlug(slug: string): Promise<Venture | null> {
  */
 export async function listVentures(options: {
   status?: string;
-  featured?: boolean;
   ownerAddress?: string;
   limit?: number;
   offset?: number;
@@ -152,9 +142,6 @@ export async function listVentures(options: {
 
   if (options.status) {
     query = query.eq('status', options.status);
-  }
-  if (options.featured !== undefined) {
-    query = query.eq('featured', options.featured);
   }
   if (options.ownerAddress) {
     query = query.eq('owner_address', options.ownerAddress);
@@ -214,21 +201,9 @@ function parseArgs(): CreateVentureArgs {
         result.rootWorkstreamId = next;
         i++;
         break;
-      case '--jobTemplateId':
-      case '--template':
-        result.jobTemplateId = next;
-        i++;
-        break;
-      case '--config':
-        result.config = JSON.parse(next);
-        i++;
-        break;
-      case '--tags':
-        result.tags = next.split(',').map(t => t.trim());
-        i++;
-        break;
-      case '--featured':
-        result.featured = next === 'true';
+      case '--rootJobInstanceId':
+      case '--jobInstance':
+        result.rootJobInstanceId = next;
         i++;
         break;
       case '--status':
@@ -270,10 +245,7 @@ Optional:
   --slug <slug>              URL-friendly slug (auto-generated if not provided)
   --description <text>       Venture description
   --rootWorkstreamId <id>    Workstream ID
-  --jobTemplateId <id>       Job template ID
-  --config <json>            Additional config as JSON
-  --tags <tag1,tag2>         Comma-separated tags
-  --featured <true|false>    Featured status
+  --rootJobInstanceId <id>   Root job instance ID
   --status <status>          Status: active, paused, archived
 
 Example:

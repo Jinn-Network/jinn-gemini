@@ -19,10 +19,7 @@ export interface UpdateVentureArgs {
   ownerAddress?: string;
   blueprint?: string | object;
   rootWorkstreamId?: string | null;
-  jobTemplateId?: string | null;
-  config?: object;
-  tags?: string[];
-  featured?: boolean;
+  rootJobInstanceId?: string | null;
   status?: 'active' | 'paused' | 'archived';
 }
 
@@ -44,10 +41,7 @@ export async function updateVenture(args: UpdateVentureArgs): Promise<Venture> {
   if (updates.description !== undefined) record.description = updates.description;
   if (updates.ownerAddress !== undefined) record.owner_address = updates.ownerAddress;
   if (updates.rootWorkstreamId !== undefined) record.root_workstream_id = updates.rootWorkstreamId;
-  if (updates.jobTemplateId !== undefined) record.job_template_id = updates.jobTemplateId;
-  if (updates.config !== undefined) record.config = updates.config;
-  if (updates.tags !== undefined) record.tags = updates.tags;
-  if (updates.featured !== undefined) record.featured = updates.featured;
+  if (updates.rootJobInstanceId !== undefined) record.root_job_instance_id = updates.rootJobInstanceId;
   if (updates.status !== undefined) record.status = updates.status;
 
   if (updates.blueprint !== undefined) {
@@ -148,21 +142,9 @@ function parseArgs(): UpdateVentureArgs {
         result.rootWorkstreamId = next === 'null' ? null : next;
         i++;
         break;
-      case '--jobTemplateId':
-      case '--template':
-        result.jobTemplateId = next === 'null' ? null : next;
-        i++;
-        break;
-      case '--config':
-        result.config = JSON.parse(next);
-        i++;
-        break;
-      case '--tags':
-        result.tags = next.split(',').map(t => t.trim());
-        i++;
-        break;
-      case '--featured':
-        result.featured = next === 'true';
+      case '--rootJobInstanceId':
+      case '--jobInstance':
+        result.rootJobInstanceId = next === 'null' ? null : next;
         i++;
         break;
       case '--status':
@@ -195,10 +177,7 @@ Optional (at least one required):
   --ownerAddress <address>   New owner address
   --blueprint <json>         New blueprint JSON
   --rootWorkstreamId <id>    New workstream ID (or "null" to clear)
-  --jobTemplateId <id>       New job template ID (or "null" to clear)
-  --config <json>            New config as JSON
-  --tags <tag1,tag2>         New comma-separated tags
-  --featured <true|false>    New featured status
+  --rootJobInstanceId <id>   New root job instance ID (or "null" to clear)
   --status <status>          New status: active, paused, archived
 
 Example:

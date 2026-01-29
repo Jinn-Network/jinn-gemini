@@ -12,10 +12,7 @@ export const ventureMintParams = z.object({
   ownerAddress: z.string().min(1).describe('Ethereum address of the venture owner'),
   blueprint: z.string().describe('Blueprint JSON string with invariants array'),
   rootWorkstreamId: z.string().optional().describe('Workstream ID for the venture'),
-  jobTemplateId: z.string().optional().describe('Optional x402 job template ID'),
-  config: z.record(z.any()).optional().describe('Additional configuration as JSON'),
-  tags: z.array(z.string()).optional().describe('Tags for discovery'),
-  featured: z.boolean().optional().default(false).describe('Whether venture is featured'),
+  rootJobInstanceId: z.string().optional().describe('Optional root job instance ID'),
   status: z.enum(['active', 'paused', 'archived']).optional().default('active').describe('Venture status'),
 });
 
@@ -27,7 +24,7 @@ export const ventureMintSchema = {
 A venture is a persistent project entity that owns workstreams and services. Each venture has:
 - A blueprint containing invariants (success criteria)
 - An owner address (Ethereum address)
-- Optional workstream and job template associations
+- Optional workstream and job instance associations
 
 PREREQUISITES:
 - Have a valid blueprint with invariants array
@@ -40,10 +37,7 @@ Parameters:
 - slug: URL-friendly identifier (auto-generated from name if not provided)
 - description: Venture description
 - rootWorkstreamId: Associated workstream ID
-- jobTemplateId: Associated x402 job template
-- config: Additional configuration
-- tags: Discovery tags
-- featured: Whether to feature this venture
+- rootJobInstanceId: Associated root job instance
 - status: 'active', 'paused', or 'archived'
 
 Returns: { venture: { id, name, slug, ... } }`,
@@ -85,10 +79,7 @@ export async function ventureMint(args: unknown) {
       ownerAddress,
       blueprint: blueprintStr,
       rootWorkstreamId,
-      jobTemplateId,
-      config,
-      tags,
-      featured,
+      rootJobInstanceId,
       status,
     } = parsed.data;
 
@@ -129,10 +120,7 @@ export async function ventureMint(args: unknown) {
       owner_address: ownerAddress,
       blueprint,
       root_workstream_id: rootWorkstreamId || null,
-      job_template_id: jobTemplateId || null,
-      config: config || {},
-      tags: tags || [],
-      featured: featured || false,
+      root_job_instance_id: rootJobInstanceId || null,
       status: status || 'active',
     };
 

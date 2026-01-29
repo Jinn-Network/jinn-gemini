@@ -12,10 +12,7 @@ export const ventureUpdateParams = z.object({
   description: z.string().optional().describe('New venture description'),
   blueprint: z.string().optional().describe('New blueprint JSON string with invariants array'),
   rootWorkstreamId: z.string().optional().describe('New workstream ID for the venture'),
-  jobTemplateId: z.string().optional().describe('New x402 job template ID'),
-  config: z.record(z.any()).optional().describe('Additional configuration as JSON'),
-  tags: z.array(z.string()).optional().describe('Tags for discovery'),
-  featured: z.boolean().optional().describe('Whether venture is featured'),
+  rootJobInstanceId: z.string().optional().describe('New root job instance ID'),
   status: z.enum(['active', 'paused', 'archived']).optional().describe('Venture status'),
 });
 
@@ -37,10 +34,7 @@ Parameters:
 - description: New venture description
 - blueprint: New JSON string with invariants array
 - rootWorkstreamId: Associated workstream ID
-- jobTemplateId: Associated x402 job template
-- config: Additional configuration
-- tags: Discovery tags
-- featured: Whether to feature this venture
+- rootJobInstanceId: Associated root job instance ID
 - status: 'active', 'paused', or 'archived'
 
 Returns: { venture: { id, name, slug, ... } }`,
@@ -72,10 +66,7 @@ export async function ventureUpdate(args: unknown) {
       description,
       blueprint: blueprintStr,
       rootWorkstreamId,
-      jobTemplateId,
-      config,
-      tags,
-      featured,
+      rootJobInstanceId,
       status,
     } = parsed.data;
 
@@ -86,10 +77,7 @@ export async function ventureUpdate(args: unknown) {
     if (slug !== undefined) record.slug = slug;
     if (description !== undefined) record.description = description;
     if (rootWorkstreamId !== undefined) record.root_workstream_id = rootWorkstreamId;
-    if (jobTemplateId !== undefined) record.job_template_id = jobTemplateId;
-    if (config !== undefined) record.config = config;
-    if (tags !== undefined) record.tags = tags;
-    if (featured !== undefined) record.featured = featured;
+    if (rootJobInstanceId !== undefined) record.root_job_instance_id = rootJobInstanceId;
     if (status !== undefined) record.status = status;
 
     // Parse and validate blueprint if provided

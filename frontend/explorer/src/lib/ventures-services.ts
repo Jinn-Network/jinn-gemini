@@ -21,10 +21,7 @@ export interface Venture {
     }>;
   };
   root_workstream_id: string | null;
-  job_template_id: string | null;
-  config: Record<string, unknown>;
-  tags: string[];
-  featured: boolean;
+  root_job_instance_id: string | null;
   status: 'active' | 'paused' | 'archived';
   created_at: string;
   updated_at: string;
@@ -90,6 +87,27 @@ export interface Interface {
   updated_at: string;
 }
 
+export interface ServiceDoc {
+  id: string;
+  service_id: string;
+  title: string;
+  slug: string;
+  doc_type: 'readme' | 'guide' | 'reference' | 'tutorial' | 'changelog' | 'api' | 'architecture' | 'runbook' | 'other';
+  content: string;
+  content_format: 'markdown' | 'html' | 'plaintext';
+  parent_id: string | null;
+  sort_order: number;
+  author: string | null;
+  version: string | null;
+  external_url: string | null;
+  config: Record<string, unknown>;
+  tags: string[];
+  status: 'draft' | 'published' | 'archived';
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Supabase REST API helper
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -131,10 +149,9 @@ export async function getVentures(): Promise<Venture[]> {
   });
 }
 
-export async function getFeaturedVentures(): Promise<Venture[]> {
+export async function getActiveVentures(): Promise<Venture[]> {
   return supabaseQuery<Venture>('ventures', {
     select: '*',
-    featured: 'eq.true',
     status: 'eq.active',
     order: 'created_at.desc',
   });
@@ -273,4 +290,39 @@ export async function getVentureWithServices(ventureId: string): Promise<{
   ]);
 
   return { venture, services };
+}
+
+// Service Doc Queries
+export async function getDocs(serviceId: string): Promise<ServiceDoc[]> {
+  return supabaseQuery<ServiceDoc>('service_docs', {
+    select: '*',
+    service_id: `eq.${serviceId}`,
+    order: 'sort_order.asc,created_at.desc',
+  });
+}
+
+export async function getDoc(id: string): Promise<ServiceDoc | null> {
+  const docs = await supabaseQuery<ServiceDoc>('service_docs', {
+    select: '*',
+    id: `eq.${id}`,
+    limit: '1',
+  });
+  return docs[0] || null;
+}
+
+// Extended combined query with docs
+export async function getServiceWithAllDetails(serviceId: string): Promise<{
+  service: Service | null;
+  deployments: Deployment[];
+  interfaces: Interface[];
+  docs: ServiceDoc[];
+}> {
+  const [service, deployments, interfaces, docs] = await Promise.all([
+    getService(serviceId),
+    getDeployments(serviceId),
+    getInterfaces(serviceId),
+    getDocs(serviceId),
+  ]);
+
+  return { service, deployments, interfaces, docs };
 }
