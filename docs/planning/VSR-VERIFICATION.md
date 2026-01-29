@@ -10,6 +10,11 @@ This document tracks the verification process for the Ventures & Services Regist
 2. [Ventures Registry CRUD Test](#2-ventures-registry-crud-test)
 3. [Gemini MCP Tools Verification](#3-gemini-mcp-tools-verification)
 4. [Claude MCP Capability Verification](#4-claude-mcp-capability-verification)
+5. [MCP Architecture Verification](#5-mcp-architecture-verification)
+6. [Agent Skills E2E Verification](#6-agent-skills-e2e-verification)
+7. [Shared Code Architecture](#7-shared-code-architecture)
+8. [Frontend CRUD Verification (Ventures)](#8-frontend-crud-verification)
+9. [Services Frontend CRUD Verification](#9-services-frontend-crud-verification)
 
 ---
 
@@ -598,11 +603,97 @@ During verification, the following schema mismatches were fixed:
 
 ---
 
+## 9. Services Frontend CRUD Verification
+
+**Date:** 2026-01-29
+**Status:** PASSED
+**Environment:** Local (localhost:3000)
+
+### Overview
+
+Verified that all CRUD operations work correctly for services via the explorer frontend admin interface.
+
+### Test Results
+
+| Operation | Status | Evidence |
+|-----------|--------|----------|
+| **READ** | ✓ PASSED | All service fields displayed in list view and edit form |
+| **CREATE** | ✓ PASSED | Created "Frontend CRUD Test Service" (2→3 services) |
+| **UPDATE** | ✓ PASSED | Modified description with "[Updated via frontend test]" |
+| **DELETE** | ✓ PASSED | Deleted test service (3→2 services) |
+
+### Fields Verified
+
+The service edit form correctly displays and allows editing of all schema fields:
+
+**Identity:**
+- Name (required)
+- Slug (auto-generated from name)
+- Description (optional)
+
+**Technical:**
+- Service Type (mcp/api/worker/frontend/library/other) (required)
+- Repository URL (optional)
+- Primary Language (optional)
+- Version (optional)
+
+**Metadata:**
+- Venture (required, dropdown)
+- Config JSON (optional)
+- Tags (comma-separated list)
+- Status dropdown (active/deprecated/archived)
+
+### Nested Entities
+
+The service edit page includes tabs for managing nested entities:
+- **Deployments (0)** - environment, provider, URL, health status
+- **Interfaces (0)** - MCP tools, REST endpoints, etc.
+- **Docs (0)** - service documentation
+
+### Frontend Files
+
+| File | Purpose |
+|------|---------|
+| `frontend/explorer/src/app/services/page.tsx` | Public service list |
+| `frontend/explorer/src/app/services/[id]/page.tsx` | Public service detail |
+| `frontend/explorer/src/app/admin/services/page.tsx` | Admin list with Edit buttons |
+| `frontend/explorer/src/app/admin/services/new/page.tsx` | Create page |
+| `frontend/explorer/src/app/admin/services/[id]/page.tsx` | Edit page |
+| `frontend/explorer/src/app/admin/services/[id]/service-edit-tabs.tsx` | Tabbed editor |
+| `frontend/explorer/src/app/admin/components/service-form.tsx` | Service form component |
+| `frontend/explorer/src/app/admin/actions.ts` | Server actions (CRUD) |
+| `frontend/explorer/src/lib/ventures-services.ts` | Data fetching (READ) |
+
+### Notes
+
+- Service type is displayed as a colored badge (purple=mcp, blue=api, etc.)
+- Venture relationship is shown as a clickable link to the venture
+- Delete operation includes confirmation dialog ("Are you sure?")
+- Transient fetch errors may occur but resolve on page refresh
+
+---
+
+## Verification Summary
+
+| Section | Test | Status |
+|---------|------|--------|
+| 1. Database Schema | Schema migration | ✓ PASSED |
+| 2. Ventures CRUD | Direct DB test | ✓ PASSED |
+| 3. Gemini MCP | MCP tools test | ✓ PASSED |
+| 4. Claude MCP | SQL verification | ✓ PASSED |
+| 5. MCP Architecture | Layered design | ✓ PASSED |
+| 6. Agent Skills E2E | Skill pickup + MCP | ✓ PASSED |
+| 7. Shared Code | Architecture TODO | TODO |
+| 8. Ventures Frontend | Browser CRUD | ✓ PASSED |
+| 9. Services Frontend | Browser CRUD | ✓ PASSED |
+
+---
+
 ## Future Verification Tests
 
 The following tests are planned for future verification:
 
-- [ ] Services Registry CRUD Test
+- [x] Services Registry CRUD Test (Section 9)
 - [ ] Services Shared Code Migration
 - [ ] Deployments Registry CRUD Test
 - [ ] Interfaces Registry CRUD Test
