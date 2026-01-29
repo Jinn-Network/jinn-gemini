@@ -21,7 +21,7 @@ interface MutationResult<T> {
 async function supabaseMutate<T>(
   table: string,
   method: HttpMethod,
-  data?: Record<string, unknown>,
+  data?: object,
   id?: string
 ): Promise<MutationResult<T>> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {

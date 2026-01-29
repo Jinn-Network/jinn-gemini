@@ -39,7 +39,7 @@ async function AdminStats() {
         <CardContent>
           <div className="text-2xl font-bold">{services.length}</div>
           <p className="text-xs text-muted-foreground">
-            {services.filter(s => s.status === 'active').length} active
+            registered in the platform
           </p>
         </CardContent>
       </Card>

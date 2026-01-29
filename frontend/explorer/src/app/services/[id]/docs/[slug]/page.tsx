@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { getService, getDocBySlug, getDocs, type ServiceDoc } from '@/lib/ventures-services';
 import { Book, ChevronLeft, ExternalLink, Clock, User } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +55,7 @@ function MarkdownContent({ content, format }: { content: string; format: Service
 
   // Basic markdown rendering - for production, use a proper markdown library
   const lines = content.split('\n');
-  const elements: JSX.Element[] = [];
+  const elements: ReactNode[] = [];
   let inCodeBlock = false;
   let codeBlockContent: string[] = [];
   let codeBlockLang = '';
