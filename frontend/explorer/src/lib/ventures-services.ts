@@ -300,6 +300,16 @@ export async function getDoc(id: string): Promise<ServiceDoc | null> {
   return docs[0] || null;
 }
 
+export async function getDocBySlug(serviceId: string, slug: string): Promise<ServiceDoc | null> {
+  const docs = await supabaseQuery<ServiceDoc>('service_docs', {
+    select: '*',
+    service_id: `eq.${serviceId}`,
+    slug: `eq.${slug}`,
+    limit: '1',
+  });
+  return docs[0] || null;
+}
+
 // Extended combined query with docs
 export async function getServiceWithAllDetails(serviceId: string): Promise<{
   service: Service | null;

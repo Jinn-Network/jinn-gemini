@@ -13,6 +13,9 @@ const healthStatusEnum = z.enum(['healthy', 'unhealthy', 'degraded', 'unknown'])
 const interfaceTypeEnum = z.enum(['mcp_tool', 'rest_endpoint', 'graphql', 'grpc', 'websocket', 'webhook', 'other']);
 const authTypeEnum = z.enum(['bearer', 'api_key', 'oauth', 'x402', 'none']);
 const interfaceStatusEnum = z.enum(['active', 'deprecated', 'removed']);
+const docTypeEnum = z.enum(['readme', 'guide', 'reference', 'tutorial', 'changelog', 'api', 'architecture', 'runbook', 'other']);
+const contentFormatEnum = z.enum(['markdown', 'html', 'plaintext']);
+const docStatusEnum = z.enum(['draft', 'published', 'archived']);
 
 // ============================================================================
 // Service Registry Tool
@@ -28,9 +31,16 @@ export const serviceRegistryParams = z.object({
     'create_deployment',
     'list_deployments',
     'update_deployment',
+    'delete_deployment',
     'create_interface',
     'list_interfaces',
     'update_interface',
+    'delete_interface',
+    'create_doc',
+    'get_doc',
+    'list_docs',
+    'update_doc',
+    'delete_doc',
   ]).describe('The action to perform'),
 
   // Service fields
@@ -70,6 +80,17 @@ export const serviceRegistryParams = z.object({
   rateLimit: z.record(z.any()).optional().describe('Rate limit config'),
   x402Price: z.number().optional().describe('Price in wei for x402'),
 
+  // Doc fields
+  title: z.string().optional().describe('Doc title'),
+  docType: docTypeEnum.optional().describe('Doc type'),
+  content: z.string().optional().describe('Doc content (markdown)'),
+  contentFormat: contentFormatEnum.optional().describe('Content format'),
+  parentId: z.string().uuid().nullable().optional().describe('Parent doc ID for hierarchy'),
+  sortOrder: z.number().optional().describe('Sort order'),
+  author: z.string().optional().describe('Author name'),
+  externalUrl: z.string().optional().describe('External documentation URL'),
+  docStatus: docStatusEnum.optional().describe('Doc status'),
+
   // List filters
   search: z.string().optional().describe('Search query'),
   limit: z.number().optional().describe('Limit results'),
@@ -79,7 +100,7 @@ export const serviceRegistryParams = z.object({
 export type ServiceRegistryParams = z.infer<typeof serviceRegistryParams>;
 
 export const serviceRegistrySchema = {
-  description: `Unified service registry for managing services, deployments, and interfaces.
+  description: `Unified service registry for managing services, deployments, interfaces, and docs.
 
 ACTIONS:
 - create_service: Register a new service (requires: ventureId, name)
@@ -90,9 +111,16 @@ ACTIONS:
 - create_deployment: Add deployment (requires: serviceId, environment, provider)
 - list_deployments: List deployments (optional: serviceId, environment, provider, status)
 - update_deployment: Update deployment (requires: id, plus fields to update)
+- delete_deployment: Delete deployment (requires: id)
 - create_interface: Add interface (requires: serviceId, name, interfaceType)
 - list_interfaces: List interfaces (optional: serviceId, interfaceType, authType, status)
 - update_interface: Update interface (requires: id, plus fields to update)
+- delete_interface: Delete interface (requires: id)
+- create_doc: Add documentation (requires: serviceId, title, docType, content)
+- get_doc: Get doc by ID (requires: id)
+- list_docs: List docs (optional: serviceId, docType, docStatus, search, limit, offset)
+- update_doc: Update doc (requires: id, plus fields to update)
+- delete_doc: Delete doc (requires: id)
 
 Returns: { result: <data>, meta: { ok, code?, message? } }`,
   inputSchema: serviceRegistryParams.shape,
@@ -327,6 +355,21 @@ export async function serviceRegistry(args: unknown) {
         return successResponse({ deployment: data });
       }
 
+      case 'delete_deployment': {
+        if (!params.id) {
+          return errorResponse('VALIDATION_ERROR', 'delete_deployment requires id');
+        }
+
+        const { error } = await supabase
+          .from('deployments')
+          .delete()
+          .eq('id', params.id);
+
+        if (error) return dbErrorResponse(error.message, 'delete_deployment');
+        mcpLogger.info({ deploymentId: params.id }, 'Deleted deployment');
+        return successResponse({ deleted: true, id: params.id });
+      }
+
       // ======================================================================
       // Interface Operations
       // ======================================================================
@@ -422,6 +465,157 @@ export async function serviceRegistry(args: unknown) {
         if (error) return dbErrorResponse(error.message, 'update_interface');
         mcpLogger.info({ interfaceId: data.id }, 'Updated interface');
         return successResponse({ interface: data });
+      }
+
+      case 'delete_interface': {
+        if (!params.id) {
+          return errorResponse('VALIDATION_ERROR', 'delete_interface requires id');
+        }
+
+        const { error } = await supabase
+          .from('interfaces')
+          .delete()
+          .eq('id', params.id);
+
+        if (error) return dbErrorResponse(error.message, 'delete_interface');
+        mcpLogger.info({ interfaceId: params.id }, 'Deleted interface');
+        return successResponse({ deleted: true, id: params.id });
+      }
+
+      // ======================================================================
+      // Doc Operations
+      // ======================================================================
+      case 'create_doc': {
+        if (!params.serviceId || !params.title || !params.docType || !params.content) {
+          return errorResponse('VALIDATION_ERROR', 'create_doc requires serviceId, title, docType, and content');
+        }
+
+        const slug = params.slug || generateSlug(params.title);
+        const record = {
+          service_id: params.serviceId,
+          title: params.title,
+          slug,
+          doc_type: params.docType,
+          content: params.content,
+          content_format: params.contentFormat || 'markdown',
+          parent_id: params.parentId || null,
+          sort_order: params.sortOrder || 0,
+          author: params.author || null,
+          version: params.version || null,
+          external_url: params.externalUrl || null,
+          config: params.config || {},
+          tags: params.tags || [],
+          status: params.docStatus || 'draft',
+        };
+
+        const { data, error } = await supabase
+          .from('service_docs')
+          .insert(record)
+          .select()
+          .single();
+
+        if (error) return dbErrorResponse(error.message, 'create_doc');
+        mcpLogger.info({ docId: data.id, title: params.title }, 'Created doc');
+        return successResponse({ doc: data });
+      }
+
+      case 'get_doc': {
+        if (!params.id) {
+          return errorResponse('VALIDATION_ERROR', 'get_doc requires id');
+        }
+
+        const { data, error } = await supabase
+          .from('service_docs')
+          .select('*')
+          .eq('id', params.id)
+          .single();
+
+        if (error) {
+          if (error.code === 'PGRST116') {
+            return errorResponse('NOT_FOUND', `Doc not found: ${params.id}`);
+          }
+          return dbErrorResponse(error.message, 'get_doc');
+        }
+        return successResponse({ doc: data });
+      }
+
+      case 'list_docs': {
+        let query = supabase
+          .from('service_docs')
+          .select('*')
+          .order('sort_order', { ascending: true })
+          .order('created_at', { ascending: false });
+
+        if (params.serviceId) query = query.eq('service_id', params.serviceId);
+        if (params.docType) query = query.eq('doc_type', params.docType);
+        if (params.docStatus) query = query.eq('status', params.docStatus);
+        if (params.parentId !== undefined) {
+          if (params.parentId === null) {
+            query = query.is('parent_id', null);
+          } else {
+            query = query.eq('parent_id', params.parentId);
+          }
+        }
+        if (params.search) {
+          query = query.or(`title.ilike.%${params.search}%,content.ilike.%${params.search}%`);
+        }
+        if (params.limit) query = query.limit(params.limit);
+        if (params.offset) query = query.range(params.offset, params.offset + (params.limit || 50) - 1);
+
+        const { data, error } = await query;
+        if (error) return dbErrorResponse(error.message, 'list_docs');
+        return successResponse({ docs: data, count: data.length });
+      }
+
+      case 'update_doc': {
+        if (!params.id) {
+          return errorResponse('VALIDATION_ERROR', 'update_doc requires id');
+        }
+
+        const record: Record<string, unknown> = {};
+        if (params.title !== undefined) record.title = params.title;
+        if (params.slug !== undefined) record.slug = params.slug;
+        if (params.docType !== undefined) record.doc_type = params.docType;
+        if (params.content !== undefined) record.content = params.content;
+        if (params.contentFormat !== undefined) record.content_format = params.contentFormat;
+        if (params.parentId !== undefined) record.parent_id = params.parentId;
+        if (params.sortOrder !== undefined) record.sort_order = params.sortOrder;
+        if (params.author !== undefined) record.author = params.author;
+        if (params.version !== undefined) record.version = params.version;
+        if (params.externalUrl !== undefined) record.external_url = params.externalUrl;
+        if (params.config !== undefined) record.config = params.config;
+        if (params.tags !== undefined) record.tags = params.tags;
+        if (params.docStatus !== undefined) record.status = params.docStatus;
+
+        if (Object.keys(record).length === 0) {
+          return errorResponse('VALIDATION_ERROR', 'No fields to update');
+        }
+
+        const { data, error } = await supabase
+          .from('service_docs')
+          .update(record)
+          .eq('id', params.id)
+          .select()
+          .single();
+
+        if (error) return dbErrorResponse(error.message, 'update_doc');
+        mcpLogger.info({ docId: data.id }, 'Updated doc');
+        return successResponse({ doc: data });
+      }
+
+      case 'delete_doc': {
+        if (!params.id) {
+          return errorResponse('VALIDATION_ERROR', 'delete_doc requires id');
+        }
+
+        const { error } = await supabase
+          .from('service_docs')
+          .delete()
+          .eq('id', params.id);
+
+        if (error) return dbErrorResponse(error.message, 'delete_doc');
+        mcpLogger.info({ docId: params.id }, 'Deleted doc');
+        return successResponse({ deleted: true, id: params.id });
       }
 
       default:
