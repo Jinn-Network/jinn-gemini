@@ -1,7 +1,6 @@
 ---
 name: ventures
 description: Use when minting a new venture, viewing information about existing ventures, updating venture details or status, or shutting down (archiving/deleting) a venture. Use when working with venture blueprints, invariants, or owner addresses in the Jinn platform registry.
-allowed-tools: Bash
 ---
 
 # Ventures Registry
@@ -11,12 +10,12 @@ You have access to ventures management tools for the Jinn platform. Ventures are
 ## Architecture
 
 ```
-Agent -> MCP Server (mcp/ventures/server.ts) -> Scripts (scripts/ventures/*.ts) -> Supabase
+Agent -> MCP Tools / Scripts -> Supabase Database
 ```
 
 ## Available Operations
 
-### CREATE - venture_create
+### CREATE - Mint a New Venture
 
 Create a new venture with a blueprint defining success criteria.
 
@@ -42,7 +41,7 @@ Create a new venture with a blueprint defining success criteria.
 }
 ```
 
-### READ - venture_get / venture_list
+### READ - View Venture Information
 
 **Get by ID:**
 ```json
@@ -59,7 +58,7 @@ Create a new venture with a blueprint defining success criteria.
 { "status": "active", "limit": 20, "offset": 0 }
 ```
 
-### UPDATE - venture_update
+### UPDATE - Modify Venture Details
 
 Update any combination of venture fields. Only provided fields are modified.
 
@@ -71,7 +70,7 @@ Update any combination of venture fields. Only provided fields are modified.
 }
 ```
 
-### DELETE - venture_delete
+### DELETE - Shut Down a Venture
 
 **Soft delete (archive)** - can be restored:
 ```json
@@ -101,30 +100,16 @@ Blueprints define success criteria (invariants) for a venture:
 }
 ```
 
-## Response Format
-
-**Success:**
-```json
-{ "ok": true, "data": { "venture": { ... } } }
-```
-
-**Error:**
-```json
-{ "ok": false, "error": "Error message" }
-```
-
 ## CLI Scripts
 
-You can also use CLI scripts directly:
-
 ```bash
-# Create
+# Mint a venture
 yarn tsx scripts/ventures/mint.ts \
   --name "My Venture" \
   --ownerAddress "0x..." \
   --blueprint '{"invariants":[]}'
 
-# Update
+# Update a venture
 yarn tsx scripts/ventures/update.ts \
   --id "<uuid>" \
   --status "paused"
