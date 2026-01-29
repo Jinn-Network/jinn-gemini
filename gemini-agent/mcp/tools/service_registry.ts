@@ -7,7 +7,6 @@ import { mcpLogger } from '../../../logging/index.js';
 // ============================================================================
 
 const serviceTypeEnum = z.enum(['mcp', 'api', 'worker', 'frontend', 'library', 'other']);
-const serviceStatusEnum = z.enum(['active', 'deprecated', 'archived']);
 const environmentEnum = z.enum(['production', 'staging', 'development', 'preview']);
 const providerEnum = z.enum(['railway', 'vercel', 'cloudflare', 'aws', 'gcp', 'azure', 'self-hosted', 'other']);
 const deploymentStatusEnum = z.enum(['active', 'stopped', 'failed', 'deploying']);
@@ -44,11 +43,12 @@ export const serviceRegistryParams = z.object({
   description: z.string().optional().describe('Description'),
   serviceType: serviceTypeEnum.optional().describe('Service type'),
   repositoryUrl: z.string().optional().describe('Git repository URL'),
-  primaryLanguage: z.string().optional().describe('Primary language'),
-  version: z.string().optional().describe('Version'),
-  config: z.record(z.any()).optional().describe('Additional configuration'),
-  tags: z.array(z.string()).optional().describe('Tags for discovery'),
-  status: z.union([serviceStatusEnum, deploymentStatusEnum, interfaceStatusEnum]).optional().describe('Status'),
+
+  // Deployment/Interface shared fields
+  version: z.string().optional().describe('Version (for deployments)'),
+  config: z.record(z.any()).optional().describe('Additional configuration (for deployments/interfaces)'),
+  tags: z.array(z.string()).optional().describe('Tags (for interfaces)'),
+  status: z.union([deploymentStatusEnum, interfaceStatusEnum]).optional().describe('Status (for deployments/interfaces)'),
 
   // Deployment fields
   environment: environmentEnum.optional().describe('Deployment environment'),
@@ -86,7 +86,7 @@ export const serviceRegistrySchema = {
 ACTIONS:
 - create_service: Register a new service (requires: ventureId, name, serviceType)
 - get_service: Get service by ID (requires: id)
-- list_services: List services with filters (optional: ventureId, serviceType, status, search, limit, offset)
+- list_services: List services with filters (optional: ventureId, serviceType, search, limit, offset)
 - update_service: Update service (requires: id, plus fields to update)
 - delete_service: Delete service (requires: id)
 - create_deployment: Add deployment (requires: serviceId, environment, provider)
@@ -147,11 +147,6 @@ export async function serviceRegistry(args: unknown) {
           description: params.description || null,
           service_type: params.serviceType,
           repository_url: params.repositoryUrl || null,
-          primary_language: params.primaryLanguage || null,
-          version: params.version || null,
-          config: params.config || {},
-          tags: params.tags || [],
-          status: params.status || 'active',
         };
 
         const { data, error } = await supabase
@@ -193,8 +188,6 @@ export async function serviceRegistry(args: unknown) {
 
         if (params.ventureId) query = query.eq('venture_id', params.ventureId);
         if (params.serviceType) query = query.eq('service_type', params.serviceType);
-        if (params.status) query = query.eq('status', params.status);
-        if (params.primaryLanguage) query = query.eq('primary_language', params.primaryLanguage);
         if (params.search) {
           query = query.or(`name.ilike.%${params.search}%,description.ilike.%${params.search}%`);
         }
@@ -217,11 +210,6 @@ export async function serviceRegistry(args: unknown) {
         if (params.description !== undefined) record.description = params.description;
         if (params.serviceType !== undefined) record.service_type = params.serviceType;
         if (params.repositoryUrl !== undefined) record.repository_url = params.repositoryUrl;
-        if (params.primaryLanguage !== undefined) record.primary_language = params.primaryLanguage;
-        if (params.version !== undefined) record.version = params.version;
-        if (params.config !== undefined) record.config = params.config;
-        if (params.tags !== undefined) record.tags = params.tags;
-        if (params.status !== undefined) record.status = params.status;
 
         if (Object.keys(record).length === 0) {
           return errorResponse('VALIDATION_ERROR', 'No fields to update');

@@ -35,11 +35,6 @@ export interface Service {
   description: string | null;
   service_type: 'mcp' | 'api' | 'worker' | 'frontend' | 'library' | 'other';
   repository_url: string | null;
-  primary_language: string | null;
-  version: string | null;
-  config: Record<string, unknown>;
-  tags: string[];
-  status: 'active' | 'deprecated' | 'archived';
   created_at: string;
   updated_at: string;
   venture?: Venture;
@@ -188,7 +183,6 @@ export async function getVentureByWorkstreamId(workstreamId: string): Promise<Ve
 export async function getServices(options: {
   ventureId?: string;
   serviceType?: string;
-  status?: string;
   limit?: number;
 } = {}): Promise<Service[]> {
   const params: Record<string, string> = {
@@ -198,7 +192,6 @@ export async function getServices(options: {
 
   if (options.ventureId) params.venture_id = `eq.${options.ventureId}`;
   if (options.serviceType) params.service_type = `eq.${options.serviceType}`;
-  if (options.status) params.status = `eq.${options.status}`;
   if (options.limit) params.limit = String(options.limit);
 
   return supabaseQuery<Service>('services', params);
@@ -214,7 +207,7 @@ export async function getService(id: string): Promise<Service | null> {
 }
 
 export async function getVentureServices(ventureId: string): Promise<Service[]> {
-  return getServices({ ventureId, status: 'active' });
+  return getServices({ ventureId });
 }
 
 // Deployment Queries

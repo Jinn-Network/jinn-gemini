@@ -14,8 +14,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FormField } from './form-field';
-import { JsonTextarea } from './json-textarea';
-import { TagInput } from './tag-input';
 import { SlugInput } from './slug-input';
 import { createService, updateService, deleteService, type ServiceInput } from '../actions';
 import type { Service, Venture } from '@/lib/ventures-services';
@@ -49,15 +47,6 @@ export function ServiceForm({ service, ventures }: ServiceFormProps) {
     service?.service_type || 'api'
   );
   const [repositoryUrl, setRepositoryUrl] = React.useState(service?.repository_url || '');
-  const [primaryLanguage, setPrimaryLanguage] = React.useState(service?.primary_language || '');
-  const [version, setVersion] = React.useState(service?.version || '');
-  const [config, setConfig] = React.useState(
-    JSON.stringify(service?.config || {}, null, 2)
-  );
-  const [tags, setTags] = React.useState<string[]>(service?.tags || []);
-  const [status, setStatus] = React.useState<'active' | 'deprecated' | 'archived'>(
-    service?.status || 'active'
-  );
 
   const isEditing = !!service;
 
@@ -74,11 +63,6 @@ export function ServiceForm({ service, ventures }: ServiceFormProps) {
         description: description || undefined,
         service_type: serviceType,
         repository_url: repositoryUrl || undefined,
-        primary_language: primaryLanguage || undefined,
-        version: version || undefined,
-        config: JSON.parse(config),
-        tags,
-        status,
       };
 
       const result = isEditing
@@ -174,38 +158,23 @@ export function ServiceForm({ service, ventures }: ServiceFormProps) {
             />
           </FormField>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField label="Service Type" htmlFor="serviceType" required>
-              <Select
-                value={serviceType}
-                onValueChange={(v) => setServiceType(v as ServiceInput['service_type'])}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SERVICE_TYPES.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
-
-            <FormField label="Status" htmlFor="status">
-              <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="deprecated">Deprecated</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </FormField>
-          </div>
+          <FormField label="Service Type" htmlFor="serviceType" required>
+            <Select
+              value={serviceType}
+              onValueChange={(v) => setServiceType(v as ServiceInput['service_type'])}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SERVICE_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
 
           <FormField label="Repository URL" htmlFor="repositoryUrl">
             <Input
@@ -214,38 +183,6 @@ export function ServiceForm({ service, ventures }: ServiceFormProps) {
               onChange={(e) => setRepositoryUrl(e.target.value)}
               placeholder="https://github.com/..."
             />
-          </FormField>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField label="Primary Language" htmlFor="primaryLanguage">
-              <Input
-                id="primaryLanguage"
-                value={primaryLanguage}
-                onChange={(e) => setPrimaryLanguage(e.target.value)}
-                placeholder="TypeScript"
-              />
-            </FormField>
-
-            <FormField label="Version" htmlFor="version">
-              <Input
-                id="version"
-                value={version}
-                onChange={(e) => setVersion(e.target.value)}
-                placeholder="1.0.0"
-              />
-            </FormField>
-          </div>
-
-          <FormField label="Config" htmlFor="config" description="Additional configuration JSON">
-            <JsonTextarea
-              value={config}
-              onChange={setConfig}
-              rows={4}
-            />
-          </FormField>
-
-          <FormField label="Tags" htmlFor="tags" description="Comma-separated list">
-            <TagInput value={tags} onChange={setTags} />
           </FormField>
         </CardContent>
         <CardFooter className="flex justify-between">

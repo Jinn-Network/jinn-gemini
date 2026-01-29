@@ -26,15 +26,6 @@ function ServiceTypeBadge({ type }: { type: Service['service_type'] }) {
   return <Badge variant="outline" className={colors[type]}>{type}</Badge>;
 }
 
-function StatusBadge({ status }: { status: Service['status'] }) {
-  const colors: Record<Service['status'], string> = {
-    active: 'bg-green-500/10 text-green-500 border-green-500/20',
-    deprecated: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-    archived: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  };
-  return <Badge variant="outline" className={colors[status]}>{status}</Badge>;
-}
-
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('en-US', {
     month: 'short',
@@ -56,24 +47,13 @@ function ServiceCard({ service }: { service: Service }) {
             >
               {service.name}
             </Link>
-            <StatusBadge status={service.status} />
+            <ServiceTypeBadge type={service.service_type} />
           </div>
           <code className="text-xs text-muted-foreground">{service.slug}</code>
           {service.description && (
             <p className="text-sm text-muted-foreground line-clamp-2 pt-1">
               {service.description}
             </p>
-          )}
-        </div>
-
-        {/* Technical: service_type, primary_language, version, repository_url */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <ServiceTypeBadge type={service.service_type} />
-          {service.primary_language && (
-            <Badge variant="secondary">{service.primary_language}</Badge>
-          )}
-          {service.version && (
-            <Badge variant="outline">v{service.version}</Badge>
           )}
         </div>
 
@@ -90,16 +70,8 @@ function ServiceCard({ service }: { service: Service }) {
           </a>
         )}
 
-        {/* Metadata: tags, timestamps */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-3 mt-3">
-          <div className="flex flex-wrap gap-1">
-            {service.tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="bg-muted px-1.5 py-0.5 rounded">{tag}</span>
-            ))}
-            {service.tags.length > 3 && (
-              <span className="text-muted-foreground">+{service.tags.length - 3}</span>
-            )}
-          </div>
+        {/* Metadata: timestamps */}
+        <div className="flex items-center justify-end text-xs text-muted-foreground border-t pt-3 mt-3">
           <span>Updated {formatDate(service.updated_at)}</span>
         </div>
       </CardContent>
@@ -108,7 +80,7 @@ function ServiceCard({ service }: { service: Service }) {
 }
 
 async function ServicesList() {
-  const services = await getServices({ status: 'active' });
+  const services = await getServices();
 
   if (services.length === 0) {
     return (

@@ -12,19 +12,6 @@ export const metadata = {
 
 export const dynamic = 'force-dynamic';
 
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    active: 'bg-green-500/10 text-green-500 border-green-500/20',
-    deprecated: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-    archived: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  };
-  return (
-    <Badge variant="outline" className={colors[status] || colors.archived}>
-      {status}
-    </Badge>
-  );
-}
-
 function ServiceTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
     mcp: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
@@ -92,15 +79,12 @@ export default async function ServicesAdminPage() {
                         {service.slug}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={service.status} />
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href={`/admin/services/${service.id}`}>
-                          <Pencil className="h-4 w-4 mr-1" />
-                          Edit
-                        </Link>
-                      </Button>
-                    </div>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/admin/services/${service.id}`}>
+                        <Pencil className="h-4 w-4 mr-1" />
+                        Edit
+                      </Link>
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -109,25 +93,14 @@ export default async function ServicesAdminPage() {
                       {service.description}
                     </p>
                   )}
-                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {venture && (
-                      <span>
-                        Venture:{' '}
-                        <Link href={`/admin/ventures/${venture.id}`} className="text-primary hover:underline">
-                          {venture.name}
-                        </Link>
-                      </span>
-                    )}
-                    {service.primary_language && (
-                      <span>Language: {service.primary_language}</span>
-                    )}
-                    {service.version && (
-                      <span>v{service.version}</span>
-                    )}
-                    {service.tags.length > 0 && (
-                      <span>Tags: {service.tags.join(', ')}</span>
-                    )}
-                  </div>
+                  {venture && (
+                    <div className="text-xs text-muted-foreground">
+                      Venture:{' '}
+                      <Link href={`/admin/ventures/${venture.id}`} className="text-primary hover:underline">
+                        {venture.name}
+                      </Link>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );

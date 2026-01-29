@@ -12,7 +12,6 @@ import { supabase } from '../../gemini-agent/mcp/tools/shared/supabase.js';
 // ============================================================================
 
 export type ServiceType = 'mcp' | 'api' | 'worker' | 'frontend' | 'library' | 'other';
-export type ServiceStatus = 'active' | 'deprecated' | 'archived';
 
 export interface CreateServiceArgs {
   ventureId: string;
@@ -21,11 +20,6 @@ export interface CreateServiceArgs {
   description?: string;
   serviceType: ServiceType;
   repositoryUrl?: string;
-  primaryLanguage?: string;
-  version?: string;
-  config?: object;
-  tags?: string[];
-  status?: ServiceStatus;
 }
 
 export interface UpdateServiceArgs {
@@ -35,11 +29,6 @@ export interface UpdateServiceArgs {
   description?: string;
   serviceType?: ServiceType;
   repositoryUrl?: string;
-  primaryLanguage?: string;
-  version?: string;
-  config?: object;
-  tags?: string[];
-  status?: ServiceStatus;
 }
 
 export interface Service {
@@ -50,11 +39,6 @@ export interface Service {
   description: string | null;
   service_type: ServiceType;
   repository_url: string | null;
-  primary_language: string | null;
-  version: string | null;
-  config: object;
-  tags: string[];
-  status: ServiceStatus;
   created_at: string;
   updated_at: string;
 }
@@ -86,11 +70,6 @@ export async function createService(args: CreateServiceArgs): Promise<Service> {
     description: args.description || null,
     service_type: args.serviceType,
     repository_url: args.repositoryUrl || null,
-    primary_language: args.primaryLanguage || null,
-    version: args.version || null,
-    config: args.config || {},
-    tags: args.tags || [],
-    status: args.status || 'active',
   };
 
   const { data, error } = await supabase
@@ -149,8 +128,6 @@ export async function getServiceBySlug(ventureId: string, slug: string): Promise
 export async function listServices(options: {
   ventureId?: string;
   serviceType?: ServiceType;
-  status?: ServiceStatus;
-  primaryLanguage?: string;
   search?: string;
   limit?: number;
   offset?: number;
@@ -165,12 +142,6 @@ export async function listServices(options: {
   }
   if (options.serviceType) {
     query = query.eq('service_type', options.serviceType);
-  }
-  if (options.status) {
-    query = query.eq('status', options.status);
-  }
-  if (options.primaryLanguage) {
-    query = query.eq('primary_language', options.primaryLanguage);
   }
   if (options.search) {
     query = query.or(`name.ilike.%${options.search}%,description.ilike.%${options.search}%`);
@@ -203,11 +174,6 @@ export async function updateService(args: UpdateServiceArgs): Promise<Service> {
   if (updates.description !== undefined) record.description = updates.description;
   if (updates.serviceType !== undefined) record.service_type = updates.serviceType;
   if (updates.repositoryUrl !== undefined) record.repository_url = updates.repositoryUrl;
-  if (updates.primaryLanguage !== undefined) record.primary_language = updates.primaryLanguage;
-  if (updates.version !== undefined) record.version = updates.version;
-  if (updates.config !== undefined) record.config = updates.config;
-  if (updates.tags !== undefined) record.tags = updates.tags;
-  if (updates.status !== undefined) record.status = updates.status;
 
   if (Object.keys(record).length === 0) {
     throw new Error('No fields to update');
@@ -267,11 +233,6 @@ Create options:
   --slug <slug>              URL-friendly slug
   --description <text>       Service description
   --repositoryUrl <url>      Git repository URL
-  --primaryLanguage <lang>   Primary language (typescript, python, go, etc.)
-  --version <version>        Semantic version
-  --config <json>            Config as JSON
-  --tags <tag1,tag2>         Comma-separated tags
-  --status <status>          Status: active, deprecated, archived
 
 Get options:
   --id <uuid>                Service ID
@@ -279,8 +240,6 @@ Get options:
 List options:
   --ventureId <uuid>         Filter by venture
   --serviceType <type>       Filter by type
-  --status <status>          Filter by status
-  --primaryLanguage <lang>   Filter by language
   --search <query>           Search in name/description
   --limit <n>                Limit results
   --offset <n>               Offset for pagination
@@ -296,9 +255,9 @@ Examples:
   yarn tsx scripts/services/crud.ts create \\
     --ventureId "123..." --name "My API" --serviceType "api"
 
-  yarn tsx scripts/services/crud.ts list --ventureId "123..." --status "active"
+  yarn tsx scripts/services/crud.ts list --ventureId "123..."
 
-  yarn tsx scripts/services/crud.ts update --id "456..." --version "2.0.0"
+  yarn tsx scripts/services/crud.ts update --id "456..." --description "Updated description"
 `);
 }
 
@@ -332,26 +291,6 @@ function parseCreateArgs(args: string[]): CreateServiceArgs {
         break;
       case '--repositoryUrl':
         result.repositoryUrl = next;
-        i++;
-        break;
-      case '--primaryLanguage':
-        result.primaryLanguage = next;
-        i++;
-        break;
-      case '--version':
-        result.version = next;
-        i++;
-        break;
-      case '--config':
-        result.config = JSON.parse(next);
-        i++;
-        break;
-      case '--tags':
-        result.tags = next.split(',').map(t => t.trim());
-        i++;
-        break;
-      case '--status':
-        result.status = next as ServiceStatus;
         i++;
         break;
     }
@@ -400,8 +339,6 @@ async function main() {
           switch (arg) {
             case '--ventureId': options.ventureId = next; i++; break;
             case '--serviceType': options.serviceType = next as ServiceType; i++; break;
-            case '--status': options.status = next as ServiceStatus; i++; break;
-            case '--primaryLanguage': options.primaryLanguage = next; i++; break;
             case '--search': options.search = next; i++; break;
             case '--limit': options.limit = parseInt(next, 10); i++; break;
             case '--offset': options.offset = parseInt(next, 10); i++; break;
@@ -423,11 +360,6 @@ async function main() {
             case '--description': updateArgs.description = next; i++; break;
             case '--serviceType': updateArgs.serviceType = next as ServiceType; i++; break;
             case '--repositoryUrl': updateArgs.repositoryUrl = next; i++; break;
-            case '--primaryLanguage': updateArgs.primaryLanguage = next; i++; break;
-            case '--version': updateArgs.version = next; i++; break;
-            case '--config': updateArgs.config = JSON.parse(next); i++; break;
-            case '--tags': updateArgs.tags = next.split(',').map(t => t.trim()); i++; break;
-            case '--status': updateArgs.status = next as ServiceStatus; i++; break;
           }
         }
         if (!updateArgs.id) {

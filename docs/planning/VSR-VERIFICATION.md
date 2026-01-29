@@ -15,6 +15,7 @@ This document tracks the verification process for the Ventures & Services Regist
 7. [Shared Code Architecture](#7-shared-code-architecture)
 8. [Frontend CRUD Verification (Ventures)](#8-frontend-crud-verification)
 9. [Services Frontend CRUD Verification](#9-services-frontend-crud-verification)
+10. [Services Schema Simplification](#10-services-schema-simplification)
 
 ---
 
@@ -632,16 +633,11 @@ The service edit form correctly displays and allows editing of all schema fields
 - Description (optional)
 
 **Technical:**
+- Venture (required, dropdown)
 - Service Type (mcp/api/worker/frontend/library/other) (required)
 - Repository URL (optional)
-- Primary Language (optional)
-- Version (optional)
 
-**Metadata:**
-- Venture (required, dropdown)
-- Config JSON (optional)
-- Tags (comma-separated list)
-- Status dropdown (active/deprecated/archived)
+**Note:** See Section 10 for schema simplification that removed: status, primary_language, version, config, tags.
 
 ### Nested Entities
 
@@ -689,11 +685,107 @@ The service edit page includes tabs for managing nested entities:
 
 ---
 
+## 10. Services Schema Simplification
+
+**Date:** 2026-01-29
+**Status:** COMPLETED
+**Migration:** `migrations/alter_services_remove_fields.sql`
+
+### Overview
+
+Simplified the services schema by removing unused fields that added complexity without providing value.
+
+### Fields Removed
+
+| Field | Type | Reason Removed |
+|-------|------|----------------|
+| `status` | enum (active/deprecated/archived) | Not needed at service level |
+| `primary_language` | text | Better tracked in repository metadata |
+| `version` | text | Better tracked via deployments |
+| `config` | JSONB | Not used; service-specific config handled elsewhere |
+| `tags` | text[] | Not used; discovery via service_type and name |
+
+### Fields Kept
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `venture_id` | UUID | Foreign key to ventures |
+| `name` | text | Service display name (required) |
+| `slug` | text | URL-friendly identifier |
+| `description` | text | Optional description |
+| `service_type` | enum | mcp/api/worker/frontend/library/other (required) |
+| `repository_url` | text | Git repository URL (optional) |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+### Migration Applied
+
+```sql
+-- Drop indexes first
+DROP INDEX IF EXISTS idx_services_status;
+DROP INDEX IF EXISTS idx_services_tags;
+DROP INDEX IF EXISTS idx_services_primary_language;
+
+-- Drop columns
+ALTER TABLE services DROP COLUMN IF EXISTS status;
+ALTER TABLE services DROP COLUMN IF EXISTS primary_language;
+ALTER TABLE services DROP COLUMN IF EXISTS version;
+ALTER TABLE services DROP COLUMN IF EXISTS config;
+ALTER TABLE services DROP COLUMN IF EXISTS tags;
+```
+
+### Files Updated
+
+**Database:**
+- `migrations/alter_services_remove_fields.sql` - New migration
+
+**Frontend:**
+- `frontend/explorer/src/lib/ventures-services.ts` - Removed fields from Service interface
+- `frontend/explorer/src/app/admin/actions.ts` - Simplified ServiceInput
+- `frontend/explorer/src/app/admin/components/service-form.tsx` - Removed form fields
+- `frontend/explorer/src/app/services/page.tsx` - Removed status/tags/language/version display
+- `frontend/explorer/src/app/admin/services/page.tsx` - Removed status badge and metadata
+
+**Scripts:**
+- `scripts/services/crud.ts` - Simplified interfaces and CRUD operations
+
+**MCP Tools:**
+- `gemini-agent/mcp/tools/service_registry.ts` - Removed service-level fields from schema
+
+### Note on Nested Entities
+
+The following fields were NOT removed from nested entities where they remain relevant:
+
+- **Deployments**: `version`, `config`, `status` (deployment-level fields)
+- **Interfaces**: `config`, `tags`, `status` (interface-level fields)
+- **Service Docs**: `version`, `config`, `tags`, `status` (doc-level fields)
+
+---
+
+## Verification Summary
+
+| Section | Test | Status |
+|---------|------|--------|
+| 1. Database Schema | Schema migration | ✓ PASSED |
+| 2. Ventures CRUD | Direct DB test | ✓ PASSED |
+| 3. Gemini MCP | MCP tools test | ✓ PASSED |
+| 4. Claude MCP | SQL verification | ✓ PASSED |
+| 5. MCP Architecture | Layered design | ✓ PASSED |
+| 6. Agent Skills E2E | Skill pickup + MCP | ✓ PASSED |
+| 7. Shared Code | Architecture TODO | TODO |
+| 8. Ventures Frontend | Browser CRUD | ✓ PASSED |
+| 9. Services Frontend | Browser CRUD | ✓ PASSED |
+| 10. Services Schema | Simplification | ✓ COMPLETED |
+
+---
+
 ## Future Verification Tests
 
 The following tests are planned for future verification:
 
 - [x] Services Registry CRUD Test (Section 9)
+- [x] Services Schema Simplification (Section 10)
 - [ ] Services Shared Code Migration
 - [ ] Deployments Registry CRUD Test
 - [ ] Interfaces Registry CRUD Test

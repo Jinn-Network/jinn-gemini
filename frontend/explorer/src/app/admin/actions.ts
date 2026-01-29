@@ -126,20 +126,10 @@ export interface ServiceInput {
   description?: string;
   service_type: 'mcp' | 'api' | 'worker' | 'frontend' | 'library' | 'other';
   repository_url?: string;
-  primary_language?: string;
-  version?: string;
-  config?: Record<string, unknown>;
-  tags?: string[];
-  status?: 'active' | 'deprecated' | 'archived';
 }
 
 export async function createService(input: ServiceInput): Promise<MutationResult<{ id: string }>> {
-  const result = await supabaseMutate<{ id: string }>('services', 'POST', {
-    ...input,
-    config: input.config || {},
-    tags: input.tags || [],
-    status: input.status || 'active',
-  });
+  const result = await supabaseMutate<{ id: string }>('services', 'POST', input);
 
   if (result.data) {
     revalidatePath('/admin/services');
