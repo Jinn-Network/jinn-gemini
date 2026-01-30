@@ -1,6 +1,7 @@
 ---
 name: services
 description: Use when creating, managing, or querying services in the Jinn platform. Services are APIs owned by ventures. Use when working with service deployments, interfaces (MCP tools, REST endpoints), or documentation.
+allowed-tools: service_registry
 ---
 
 # Services Registry

@@ -1,5 +1,5 @@
 import { spawn, execSync } from 'child_process';
-import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync, statSync } from 'fs';
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync, statSync, symlinkSync } from 'fs';
 import { join, dirname, resolve, isAbsolute, delimiter } from 'path';
 import { tmpdir, homedir } from 'os';
 import { fileURLToPath } from 'url';
@@ -268,10 +268,29 @@ export class Agent {
     }
 
     try {
-      // Ensure GEMINI_HOME exists before installation
-      mkdirSync(this.geminiHome, { recursive: true });
+      // Ensure GEMINI_HOME/extensions exists before installation
+      const extensionsDir = join(this.geminiHome, 'extensions');
+      mkdirSync(extensionsDir, { recursive: true });
 
-      // Install to GEMINI_HOME (persists across jobs)
+      // Handle local extensions (local:dirname format)
+      if (extensionUrl.startsWith('local:')) {
+        const localDirName = extensionUrl.slice('local:'.length);
+        const sourceDir = join(this.agentRoot, '..', localDirName);
+        const targetDir = join(extensionsDir, extensionName);
+
+        if (!existsSync(sourceDir)) {
+          throw new Error(`Local extension directory not found: ${sourceDir}`);
+        }
+
+        // Create symlink to local extension directory
+        if (!existsSync(targetDir)) {
+          symlinkSync(sourceDir, targetDir, 'dir');
+        }
+        agentLogger.info({ sourceDir, targetDir, extensionName }, `Linked local extension ${extensionName}`);
+        return;
+      }
+
+      // Install remote extensions via Gemini CLI
       // input: 'y\n' auto-confirms the interactive safety prompt
       execSync(
         `npx @google/gemini-cli extension install ${extensionUrl}`,

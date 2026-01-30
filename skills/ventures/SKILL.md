@@ -1,6 +1,7 @@
 ---
 name: ventures
 description: Use when minting a new venture, viewing information about existing ventures, updating venture details or status, or shutting down (archiving/deleting) a venture. Use when working with venture blueprints, invariants, or owner addresses in the Jinn platform registry.
+allowed-tools: venture_mint venture_query venture_update venture_delete
 ---
 
 # Ventures Registry

@@ -20,6 +20,7 @@ This document tracks the verification process for the Ventures & Services Regist
 12. [Interfaces CRUD Verification](#12-interfaces-crud-verification)
 13. [Service Docs CRUD Verification](#13-service-docs-crud-verification)
 14. [Complete Stack Verification](#14-complete-stack-verification)
+15. [Autonomous Agent Skill Integration](#15-autonomous-agent-skill-integration)
 
 ---
 
@@ -1165,6 +1166,158 @@ cd frontend/explorer && yarn typecheck
 | 12. Interfaces CRUD | Direct SQL test | ✓ PASSED |
 | 13. Service Docs CRUD | Direct SQL test | ✓ PASSED |
 | 14. Complete Stack | MCP + Skills + Frontend | ✓ PASSED |
+| 15. Agent Skill Integration | Extension meta-tools | ✓ COMPLETED |
+
+---
+
+## 15. Autonomous Agent Skill Integration
+
+**Date:** 2026-01-30
+**Status:** COMPLETED
+**Files Modified:**
+- `gemini-extension/gemini-extension.json` (new)
+- `gemini-extension/skills/` (symlinks)
+- `gemini-agent/toolPolicy.ts`
+- `gemini-agent/agent.ts`
+- `skills/ventures/SKILL.md`
+- `skills/services/SKILL.md`
+
+### Overview
+
+Integrated ventures and services skills into the autonomous Gemini agent job execution system. Skills previously worked when consumed directly by Gemini CLI but were not available during autonomous job runs.
+
+### Architecture
+
+```
+Blueprint (enabledTools)
+└── "ventures_registry" / "services_registry"
+          │
+          ▼
+toolPolicy.ts (EXTENSION_META_TOOLS)
+└── ventures_registry:
+    ├── installUrl: 'local:gemini-extension'
+    ├── extensionName: 'jinn-registry-tools'
+    └── tools: ['venture_mint', ...] ◄── MCP tools enabled
+          │
+    ┌─────┴─────┐
+    ▼           ▼
+Extension Install    MCP Tool Enablement
+~/.gemini/extensions   Added to mcpIncludeTools
+└── jinn-registry-tools/  Agent can call these tools
+    └── skills/
+        ├── ventures → ../../skills/ventures
+        └── services → ../../skills/services
+          │
+          ▼
+Gemini CLI Skill Activation (automatic)
+1. CLI scans extensions for SKILL.md files
+2. Model calls built-in activate_skill tool
+3. Skill content injected into agent context
+```
+
+### Meta-Tools Added
+
+| Meta-Tool | Extension | MCP Tools |
+|-----------|-----------|-----------|
+| `ventures_registry` | jinn-registry-tools | `venture_mint`, `venture_query`, `venture_update`, `venture_delete` |
+| `services_registry` | jinn-registry-tools | `service_registry` |
+
+### Files Created
+
+**Extension:**
+```
+gemini-extension/
+├── gemini-extension.json      # Extension manifest
+└── skills/
+    ├── ventures -> ../../skills/ventures  # Symlink
+    └── services -> ../../skills/services  # Symlink
+```
+
+**gemini-extension.json:**
+```json
+{
+  "name": "jinn-registry-tools",
+  "version": "1.0.0",
+  "description": "Ventures and services registry management tools for Jinn platform"
+}
+```
+
+### Tool Policy Updates
+
+Added to `gemini-agent/toolPolicy.ts`:
+
+```typescript
+export const VENTURES_REGISTRY_TOOLS = [
+  'venture_mint', 'venture_query', 'venture_update', 'venture_delete',
+] as const;
+
+export const SERVICES_REGISTRY_TOOLS = [
+  'service_registry',
+] as const;
+
+// Added to EXTENSION_META_TOOLS:
+ventures_registry: {
+  installUrl: 'local:gemini-extension',
+  extensionName: 'jinn-registry-tools',
+  requiredEnv: [] as readonly string[],
+  tools: [...VENTURES_REGISTRY_TOOLS] as string[],
+},
+services_registry: {
+  installUrl: 'local:gemini-extension',
+  extensionName: 'jinn-registry-tools',
+  requiredEnv: [] as readonly string[],
+  tools: [...SERVICES_REGISTRY_TOOLS] as string[],
+},
+```
+
+### Agent Updates
+
+Modified `gemini-agent/agent.ts` to handle `local:` extension URLs:
+
+```typescript
+if (extensionUrl.startsWith('local:')) {
+  const localDirName = extensionUrl.slice('local:'.length);
+  const sourceDir = join(this.agentRoot, '..', localDirName);
+  const targetDir = join(extensionsDir, extensionName);
+  symlinkSync(sourceDir, targetDir, 'dir');
+  return;
+}
+```
+
+### Skill Updates
+
+Added `allowed-tools` frontmatter to both skills:
+
+**skills/ventures/SKILL.md:**
+```yaml
+allowed-tools: venture_mint venture_query venture_update venture_delete
+```
+
+**skills/services/SKILL.md:**
+```yaml
+allowed-tools: service_registry
+```
+
+### Blueprint Usage
+
+To enable in a job blueprint:
+
+```json
+{
+  "name": "Registry Management Job",
+  "tools": [
+    { "name": "ventures_registry", "required": true },
+    { "name": "services_registry", "required": true }
+  ]
+}
+```
+
+### Verification Needed
+
+- [ ] Test job run with `ventures_registry` enabled
+- [ ] Test job run with `services_registry` enabled
+- [ ] Verify skill activation in telemetry (`activate_skill` tool call)
+- [ ] Verify MCP tools are callable after skill activation
 
 ---
 
@@ -1178,6 +1331,7 @@ The following tests are planned for future verification:
 - [x] Interfaces Registry CRUD Test (Section 12)
 - [x] Service Docs CRUD Test (Section 13)
 - [x] Complete Stack Verification (Section 14)
+- [x] Autonomous Agent Skill Integration (Section 15)
 - [ ] Services Shared Code Migration
 - [ ] Venture-Service Relationship Test
 - [ ] On-chain Workstream Integration Test
@@ -1186,4 +1340,4 @@ The following tests are planned for future verification:
 
 ---
 
-*Last updated: 2026-01-29*
+*Last updated: 2026-01-30*

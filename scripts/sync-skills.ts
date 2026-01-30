@@ -19,6 +19,7 @@ const AGENT_DIRS = [
   '.gemini/skills',
   '.codex/skills',   // Codex CLI (if used)
   '.cursor/skills',  // Cursor (if used)
+  'gemini-extension/skills',  // Autonomous agent extension (installed to GEMINI_HOME)
 ];
 
 // Source directory for canonical skills
