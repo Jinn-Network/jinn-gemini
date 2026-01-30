@@ -833,11 +833,13 @@ export async function fetchIpfsContent(
 
 // Workstream queries
 const queryWorkstreams = `
-  query Workstreams($limit: Int, $orderBy: String, $orderDirection: String) {
+  query Workstreams($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String) {
     workstreams(
       orderBy: $orderBy
       orderDirection: $orderDirection
       limit: $limit
+      after: $after
+      before: $before
     ) {
       items {
         id
@@ -862,7 +864,7 @@ const queryWorkstreams = `
 `
 
 export async function getWorkstreams(options: QueryOptions = {}): Promise<WorkstreamsResponse> {
-  const { limit = 50, orderBy = 'blockTimestamp', orderDirection = 'desc' } = options
+  const { limit = 50, after, before, orderBy = 'blockTimestamp', orderDirection = 'desc' } = options
   
   // Define the raw response shape from the workstreams table
   type WorkstreamRaw = {
@@ -880,6 +882,8 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
 
   const data = await request<{ workstreams: { items: WorkstreamRaw[], pageInfo: PageInfo } }>(SUBGRAPH_URL, queryWorkstreams, {
     limit,
+    after,
+    before,
     orderBy,
     orderDirection
   })
