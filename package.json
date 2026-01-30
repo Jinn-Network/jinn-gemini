@@ -60,6 +60,8 @@
     "dev:all": "run-p dev:mech mcp:start",
     "start:all": "concurrently \"yarn mech\" \"yarn frontend:start\" --names \"worker,frontend\" --prefix-colors \"blue,green\"",
     "clean": "rm -rf dist && cd frontend/explorer && yarn run clean",
+    "skills:sync": "tsx scripts/sync-skills.ts",
+    "skills:copy": "tsx scripts/sync-skills.ts --copy",
     "mcp:start": "tsx --env-file=.env gemini-agent/mcp/server.ts",
     "test:zora-e2e": "tsx scripts/zora-e2e-test.ts",
     "test:unit:next": "vitest run --config vitest.config.next.ts tests-next/unit",

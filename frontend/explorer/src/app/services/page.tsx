@@ -1,0 +1,122 @@
+import { Metadata } from 'next';
+import { Suspense } from 'react';
+import Link from 'next/link';
+import { SiteHeader } from '@/components/site-header';
+import { Card, CardContent } from '@/components/ui/card';
+import { getServices, type Service } from '@/lib/ventures-services';
+import { GitBranch, ExternalLink } from 'lucide-react';
+
+export const metadata: Metadata = {
+  title: 'Services Registry',
+  description: 'Browse all registered services in the Jinn platform',
+};
+
+export const dynamic = 'force-dynamic';
+
+function formatDate(dateString: string) {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function ServiceCard({ service }: { service: Service }) {
+  return (
+    <Card className="hover:border-primary/50 transition-colors">
+      <CardContent className="pt-6">
+        {/* Identity: name, slug, description */}
+        <div className="space-y-1 mb-4">
+          <Link
+            href={`/services/${service.id}`}
+            className="text-lg font-semibold text-primary hover:underline"
+          >
+            {service.name}
+          </Link>
+          <code className="block text-xs text-muted-foreground">{service.slug}</code>
+          {service.description && (
+            <p className="text-sm text-muted-foreground line-clamp-2 pt-1">
+              {service.description}
+            </p>
+          )}
+        </div>
+
+        {service.repository_url && (
+          <a
+            href={service.repository_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary mb-3"
+          >
+            <GitBranch className="h-3 w-3" />
+            {new URL(service.repository_url).pathname.slice(1)}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+
+        {/* Metadata: timestamps */}
+        <div className="flex items-center justify-end text-xs text-muted-foreground border-t pt-3 mt-3">
+          <span>Updated {formatDate(service.updated_at)}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+async function ServicesList() {
+  const services = await getServices();
+
+  if (services.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        No services found
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {services.map((service) => (
+        <ServiceCard key={service.id} service={service} />
+      ))}
+    </div>
+  );
+}
+
+function ServicesListSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {[1, 2, 3].map((i) => (
+        <Card key={i}>
+          <CardContent className="pt-6 space-y-3">
+            <div className="h-5 w-3/4 bg-muted animate-pulse rounded" />
+            <div className="h-3 w-1/2 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-full bg-muted animate-pulse rounded" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+export default function ServicesPage() {
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <SiteHeader
+        subtitle="Registered services in the Jinn platform"
+        breadcrumbs={[
+          { label: 'Explorer', href: '/' },
+          { label: 'Services' },
+        ]}
+      />
+
+      <main className="flex-1 py-6">
+        <div className="container mx-auto px-4">
+          <Suspense fallback={<ServicesListSkeleton />}>
+            <ServicesList />
+          </Suspense>
+        </div>
+      </main>
+    </div>
+  );
+}

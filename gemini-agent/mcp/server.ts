@@ -44,6 +44,13 @@ export const REGISTERED_MCP_TOOLS = [
   'inspect_job_run',
   'inspect_job',
   'inspect_workstream',
+  // Venture & service registry tools
+  'venture_mint',
+  'venture_query',
+  'venture_update',
+  'venture_delete',
+  'service_registry',
+  'search_services',
 ] as const;
 
 async function main() {
@@ -122,6 +129,13 @@ async function main() {
       { name: 'inspect_job_run', schema: tools.inspectJobRunSchema, handler: tools.inspectJobRun },
       { name: 'inspect_job', schema: tools.inspectJobSchema, handler: tools.inspectJob },
       { name: 'inspect_workstream', schema: tools.inspectWorkstreamSchema, handler: tools.inspectWorkstream },
+      // Venture & service registry tools
+      { name: 'venture_mint', schema: tools.ventureMintSchema, handler: tools.ventureMint },
+      { name: 'venture_query', schema: tools.ventureQuerySchema, handler: tools.ventureQuery },
+      { name: 'venture_update', schema: tools.ventureUpdateSchema, handler: tools.ventureUpdate },
+      { name: 'venture_delete', schema: tools.ventureDeleteSchema, handler: tools.ventureDelete },
+      { name: 'service_registry', schema: tools.serviceRegistrySchema, handler: tools.serviceRegistry },
+      { name: 'search_services', schema: tools.searchServicesSchema, handler: tools.searchServices },
     ];
 
     // Initialize the dynamic tool registry (internal) for dynamic enums

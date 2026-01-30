@@ -226,9 +226,47 @@ gemini_cli_jinn/
 ├── packages/
 │   └── metacog-mcp/       # MCP server package
 ├── scripts/               # Setup and utility scripts
+├── skills/                # Centralized agent skills (canonical source)
 ├── worker/                # Main worker implementation
 └── package.json          # Project dependencies
 ```
+
+## Agent Skills
+
+The project uses centralized **Agent Skills** that work across multiple AI coding assistants (Claude Code, Gemini CLI, Codex, Cursor).
+
+### Architecture
+
+Skills are maintained in a single location (`skills/`) and distributed via symlinks:
+
+```
+skills/                          # Canonical source
+└── ventures/
+    └── SKILL.md
+
+.claude/skills/ventures  →  ../../skills/ventures  (symlink)
+.gemini/skills/ventures  →  ../../skills/ventures  (symlink)
+.codex/skills/ventures   →  ../../skills/ventures  (symlink)
+.cursor/skills/ventures  →  ../../skills/ventures  (symlink)
+```
+
+### Usage
+
+```bash
+# Sync skills to all agent directories (creates symlinks)
+yarn skills:sync
+
+# Copy skills instead of symlinks (for Windows)
+yarn skills:copy
+```
+
+### Adding New Skills
+
+1. Create `skills/<skill-name>/SKILL.md` following the Agent Skills format
+2. Run `yarn skills:sync` to distribute
+3. Skills are automatically loaded by agents based on task context
+
+Skills follow the [Agent Skills open standard](https://agentskills.io) with YAML frontmatter defining `name` and `description`. The description determines when agents automatically load the skill.
 
 ## Development
 

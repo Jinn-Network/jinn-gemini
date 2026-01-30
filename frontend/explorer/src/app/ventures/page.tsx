@@ -1,15 +1,37 @@
 import { Suspense } from 'react';
+import Link from 'next/link';
 import { SiteHeader } from '@/components/site-header';
-import { FeaturedVentureCard, FeaturedVentureCardSkeleton } from '@/components/ventures/featured-venture-card';
-import { getServiceInstances } from '@/lib/ventures/service-queries';
-import { FEATURED_VENTURES } from '@/lib/ventures/featured-ventures';
+import { FeaturedVentureCardSkeleton } from '@/components/ventures/featured-venture-card';
+import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { getActiveVentures, type Venture } from '@/lib/ventures-services';
+
+function VentureCard({ venture }: { venture: Venture }) {
+  // Link to the root workstream if available, otherwise to the venture ID
+  const href = venture.root_workstream_id
+    ? `/ventures/${venture.root_workstream_id}`
+    : `/ventures/${venture.id}`;
+
+  return (
+    <Card className="relative overflow-hidden border-primary/50 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-transparent opacity-50" />
+      <CardHeader className="relative">
+        <CardTitle className="text-2xl">{venture.name}</CardTitle>
+        <CardDescription className="mt-2 text-base">
+          {venture.description}
+        </CardDescription>
+      </CardHeader>
+      <CardFooter className="relative">
+        <Button asChild variant="default" className="flex-1">
+          <Link href={href}>View Dashboard</Link>
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
 
 async function VenturesList() {
-  const instances = await getServiceInstances();
-
-  // Get only the featured ventures
-  const featuredIds = new Set(FEATURED_VENTURES.map(f => f.id));
-  const ventures = instances.filter(i => featuredIds.has(i.id));
+  const ventures = await getActiveVentures();
 
   if (ventures.length === 0) {
     return (
@@ -21,17 +43,9 @@ async function VenturesList() {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {ventures.map((instance) => {
-        const ventureInfo = FEATURED_VENTURES.find(f => f.id === instance.id);
-        return (
-          <FeaturedVentureCard
-            key={instance.id}
-            instance={instance}
-            name={ventureInfo?.name || instance.jobName}
-            description={ventureInfo?.description || ''}
-          />
-        );
-      })}
+      {ventures.map((venture) => (
+        <VentureCard key={venture.id} venture={venture} />
+      ))}
     </div>
   );
 }

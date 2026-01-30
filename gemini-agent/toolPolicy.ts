@@ -143,6 +143,20 @@ export function hasNanoBanana(enabledTools: string[]): boolean {
 }
 
 /**
+ * Check if ventures registry is enabled in the tools list
+ */
+export function hasVenturesRegistry(enabledTools: string[]): boolean {
+  return enabledTools.includes('ventures_registry');
+}
+
+/**
+ * Check if services registry is enabled in the tools list
+ */
+export function hasServicesRegistry(enabledTools: string[]): boolean {
+  return enabledTools.includes('services_registry');
+}
+
+/**
  * Extension meta-tools that trigger workspace extension installation
  *
  * These are Gemini CLI extensions installed via `gemini extension install <url>`.
@@ -151,6 +165,25 @@ export function hasNanoBanana(enabledTools: string[]): boolean {
  * 2. The meta-tool is expanded to its individual tools for MCP configuration
  * 3. excludedTools are added to settings.json to block unsafe tools
  */
+/**
+ * Ventures registry MCP tools
+ * Full CRUD for ventures in the Jinn platform
+ */
+export const VENTURES_REGISTRY_TOOLS = [
+  'venture_mint',
+  'venture_query',
+  'venture_update',
+  'venture_delete',
+] as const;
+
+/**
+ * Services registry MCP tools
+ * Full CRUD for services, deployments, interfaces, and docs
+ */
+export const SERVICES_REGISTRY_TOOLS = [
+  'service_registry',
+] as const;
+
 export const EXTENSION_META_TOOLS = {
   browser_automation: {
     installUrl: 'https://github.com/nickmyatt/chrome-devtools-mcp',
@@ -163,6 +196,18 @@ export const EXTENSION_META_TOOLS = {
     extensionName: 'nanobanana',
     requiredEnv: ['GEMINI_API_KEY'],
     tools: [...NANO_BANANA_TOOLS] as string[],
+  },
+  ventures_registry: {
+    installUrl: 'local:gemini-extension',
+    extensionName: 'jinn-extensions',
+    requiredEnv: [] as readonly string[],
+    tools: [...VENTURES_REGISTRY_TOOLS] as string[],
+  },
+  services_registry: {
+    installUrl: 'local:gemini-extension',
+    extensionName: 'jinn-extensions',
+    requiredEnv: [] as readonly string[],
+    tools: [...SERVICES_REGISTRY_TOOLS] as string[],
   },
 } as const;
 
@@ -371,6 +416,22 @@ export function computeToolPolicy(
     expandedTools = [
       ...expandedTools.filter(t => t !== 'nano_banana'),
       ...NANO_BANANA_TOOLS
+    ];
+  }
+
+  // Expand ventures_registry meta-tool to Ventures MCP tools
+  if (expandedTools.includes('ventures_registry')) {
+    expandedTools = [
+      ...expandedTools.filter(t => t !== 'ventures_registry'),
+      ...VENTURES_REGISTRY_TOOLS
+    ];
+  }
+
+  // Expand services_registry meta-tool to Services MCP tools
+  if (expandedTools.includes('services_registry')) {
+    expandedTools = [
+      ...expandedTools.filter(t => t !== 'services_registry'),
+      ...SERVICES_REGISTRY_TOOLS
     ];
   }
 

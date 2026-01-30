@@ -29,6 +29,7 @@ export interface NavigationItem {
 
 export const navigationItems: NavigationItem[] = [
   { label: 'Ventures', collection: 'ventures' },
+  { label: 'Services', collection: 'services' },
   { label: 'Workstreams', collection: 'workstreams' },
   { label: 'Templates', collection: 'templates' },
   {

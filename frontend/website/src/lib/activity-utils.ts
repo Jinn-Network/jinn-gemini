@@ -28,30 +28,54 @@ function getVentureName(workstreamId: string): string {
 }
 
 /**
- * Transforms Requests and Deliveries into a unified list of ActivityItems
- * Only includes items with actual status update messages (not generic started/completed)
+ * Transforms Requests and Deliveries into a unified list of ActivityItems.
+ * Includes started/completed events so the feed isn't empty when status updates are missing.
  */
 export function transformToActivityItems(requests: Request[], deliveries: Delivery[]): ActivityItem[] {
     const items: ActivityItem[] = [];
 
-    // Process Deliveries - only include those with actual status update messages
-    deliveries.forEach(del => {
-        // Only include deliveries that have a jobInstanceStatusUpdate with meaningful content
-        if (!del.jobInstanceStatusUpdate) {
-            return;
-        }
+    // Started events from requests
+    requests.forEach(req => {
+        const jobName = req.jobName || `Job ${req.id.slice(0, 8)}`;
+        const workstreamId = req.workstreamId || req.id;
 
-        // Find corresponding request to get jobName and workstreamId
+        items.push({
+            id: `${req.id}-started`,
+            type: 'started',
+            jobName,
+            message: `Started ${jobName}`,
+            timestamp: Number(req.blockTimestamp) * 1000,
+            workstreamId,
+            ventureName: getVentureName(workstreamId),
+            explorerUrl: getExplorerUrl('venture', workstreamId)
+        });
+    });
+
+    // Delivery events (status update + completion)
+    deliveries.forEach(del => {
         const req = requests.find(r => r.id === del.requestId);
         const jobName = req?.jobName || `Job ${del.requestId.slice(0, 8)}`;
         const workstreamId = req?.workstreamId || del.requestId;
 
+        if (del.jobInstanceStatusUpdate) {
+            items.push({
+                id: `${del.id}-update`,
+                type: 'action',
+                jobName,
+                message: del.jobInstanceStatusUpdate,
+                timestamp: Number(del.blockTimestamp) * 1000,
+                workstreamId,
+                ventureName: getVentureName(workstreamId),
+                explorerUrl: getExplorerUrl('venture', workstreamId)
+            });
+        }
+
         items.push({
-            id: `${del.id}-update`,
-            type: 'action',
+            id: `${del.id}-completed`,
+            type: 'completed',
             jobName,
-            message: del.jobInstanceStatusUpdate,
-            timestamp: Number(del.blockTimestamp) * 1000,
+            message: `Completed ${jobName}`,
+            timestamp: Number(del.blockTimestamp) * 1000 + 100,
             workstreamId,
             ventureName: getVentureName(workstreamId),
             explorerUrl: getExplorerUrl('venture', workstreamId)

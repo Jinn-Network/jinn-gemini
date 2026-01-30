@@ -34,10 +34,8 @@ class MockQueryBuilder {
 
 let client: any;
 
-// Check for the known invalid placeholder URL or missing credentials
-const isInvalidUrl = !supabaseUrl || supabaseUrl.includes('clnwgxgvmnrkwqdblqgf');
-
-if (isInvalidUrl || !supabaseKey) {
+// Check for missing credentials
+if (!supabaseUrl || !supabaseKey) {
   console.warn('Supabase URL or key missing or invalid. Supabase features will be disabled (using Mock client).');
   client = new MockSupabaseClient();
 } else {
