@@ -72,17 +72,19 @@
         {
             "id": "GOAL-001",
             "type": "BOOLEAN",
-            "condition": "You fetch commits from {{repoUrl}} for the time period {{timePeriod}} using the list_commits tool",
-            "assessment": "Verify list_commits was called with correct owner/repo parsed from {{repoUrl}}, and since/until parameters calculated from {{timePeriod}}",
+            "condition": "You fetch commits from {{repoUrl}} for the time period {{timePeriod}} (relative to {{currentTimestamp}}) using the list_commits tool",
+            "assessment": "Verify list_commits was called with correct owner/repo parsed from {{repoUrl}}, and since/until parameters calculated as explicit timestamps. For example, if timePeriod is '10 minutes' and currentTimestamp is '2026-01-30T16:42:00Z', then since should be '2026-01-30T16:32:00Z' and until should be '2026-01-30T16:42:00Z'.",
             "examples": {
                 "do": [
-                    "Parse '7 days' into since: ISO date 7 days ago",
+                    "Calculate explicit timestamps: timePeriod '10 minutes' at 16:42 → since: 16:32, until: 16:42",
+                    "Parse '7 days' at 2026-01-30 into since: 2026-01-23T00:00:00Z",
                     "Parse 'Jinn-Network/jinn-cli-agents' into owner: 'Jinn-Network', repo: 'jinn-cli-agents'",
                     "Use per_page: 100 to get full history"
                 ],
                 "dont": [
                     "Guess commit history without calling list_commits",
-                    "Forget to set the since parameter for date filtering"
+                    "Forget to set the since parameter for date filtering",
+                    "Use vague time references instead of explicit ISO timestamps"
                 ]
             }
         },
@@ -107,19 +109,21 @@
         {
             "id": "GOAL-003",
             "type": "BOOLEAN",
-            "condition": "You post the highlights to Telegram using telegram_send_message",
-            "assessment": "telegram_send_message was called. Message includes: project name, time period summary, key highlights formatted for readability.",
+            "condition": "You post the highlights to Telegram using telegram_send_message, including a link back to the workstream on explorer",
+            "assessment": "telegram_send_message was called. Message includes: project name, time period summary, key highlights formatted for readability, and a footer link to the workstream on explorer (use JINN_REQUEST_ID env var for the workstream ID)",
             "examples": {
                 "do": [
                     "Use HTML parse_mode for formatting: <b>bold</b>, <i>italic</i>",
                     "Include repo link for context",
                     "Keep message under 4096 chars",
-                    "Structure with clear sections: header, highlights, footer"
+                    "Structure with clear sections: header, highlights, footer",
+                    "Read JINN_REQUEST_ID from environment and include footer: '🔗 <a href=\"https://explorer.jinn.network/workstreams/{JINN_REQUEST_ID}\">View workstream</a>'"
                 ],
                 "dont": [
                     "Post unformatted text walls",
                     "Exceed 4096 character limit",
-                    "Skip the project name/context"
+                    "Skip the project name/context",
+                    "Forget the workstream link in the footer"
                 ]
             }
         },

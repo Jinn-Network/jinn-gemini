@@ -165,6 +165,10 @@ async function main() {
             }
         }
 
+        // Inject system-provided context variables
+        // currentTimestamp: ISO timestamp at dispatch time (for explicit time calculations)
+        input.currentTimestamp = new Date().toISOString();
+
         // 2b. Repo Setup (Side Effect)
         let envVarPrefix = '';
         if (argv.setupRepo && input.repoUrl) {

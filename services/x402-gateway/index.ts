@@ -469,6 +469,13 @@ app.post("/templates/:id/execute", async (c) => {
     }, 500);
   }
 
+  // Inject system-provided context variables
+  // currentTimestamp: ISO timestamp at dispatch time (for explicit time calculations in templates)
+  enrichedInput = {
+    ...enrichedInput,
+    currentTimestamp: new Date().toISOString(),
+  };
+
   // Build blueprint from template
   // If template has stored blueprint from Ponder, use it; otherwise generate
   const { invariants } = await buildBlueprintFromTemplate(template, enrichedInput);

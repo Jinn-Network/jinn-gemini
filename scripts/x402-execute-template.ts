@@ -306,6 +306,10 @@ async function main() {
     }
   }
 
+  // Inject system-provided context variables
+  // currentTimestamp: ISO timestamp at dispatch time (for explicit time calculations)
+  input.currentTimestamp = new Date().toISOString();
+
   // Build blueprint
   const blueprint = buildBlueprint(template, input, argv.context as string | undefined);
 
