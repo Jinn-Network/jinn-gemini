@@ -112,17 +112,31 @@ function parseTemplateToolPolicy(template: PonderJobTemplate): {
   requiredTools: string[];
   availableTools: string[];
 } {
-  if (!template.blueprint) {
-    return { requiredTools: [], availableTools: [] };
-  }
+  // Try blueprint first (for templates with embedded tools in templateMeta.tools)
+  if (template.blueprint) {
     try {
       const parsed = JSON.parse(template.blueprint);
-    const tools = parsed?.templateMeta?.tools ?? parsed?.tools;
-    return parseAnnotatedTools(tools);
+      const tools = parsed?.templateMeta?.tools ?? parsed?.tools;
+      const result = parseAnnotatedTools(tools);
+      if (result.requiredTools.length > 0 || result.availableTools.length > 0) {
+        return result;
+      }
     } catch {
-      // Ignore malformed blueprint tool metadata
-    return { requiredTools: [], availableTools: [] };
+      // Ignore malformed blueprint, try enabledTools fallback
+    }
   }
+
+  // Fallback to template.enabledTools (for templates where tools were stripped from blueprint)
+  // This happens when launch-local-template.ts creates cleanBlueprint without templateMeta
+  if (template.enabledTools && template.enabledTools.length > 0) {
+    // enabledTools is a flat array - treat all as available (no required annotation)
+    return {
+      requiredTools: [],
+      availableTools: template.enabledTools.filter((t): t is string => typeof t === 'string' && t.length > 0),
+    };
+  }
+
+  return { requiredTools: [], availableTools: [] };
 }
 /**
  * Query Ponder GraphQL for job templates
@@ -396,7 +410,7 @@ app.post("/templates/:id/execute", async (c) => {
   if (requiredTools.length === 0 && availableTools.length === 0) {
     return c.json({
       error: "Template tool policy missing",
-      details: "Template blueprint must include a tools list with required annotations.",
+      details: "Template must include a tools list (either in blueprint.templateMeta.tools or enabledTools field).",
     }, 400);
   }
   const enabledTools = requiredTools.length > 0 ? requiredTools : availableTools;
