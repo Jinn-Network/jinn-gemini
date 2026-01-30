@@ -7,6 +7,7 @@
 
 import {
   getWorkstreams,
+  getWorkstream,
   getRequest,
   getJobDefinition,
   queryRequests,
@@ -50,8 +51,7 @@ export async function getServiceInstances(): Promise<ServiceInstance[]> {
  * Fetch a single service instance by ID
  */
 export async function getServiceInstance(workstreamId: string): Promise<ServiceInstance | null> {
-  const response = await getWorkstreams();
-  const workstream = response.requests.items.find(w => w.id === workstreamId);
+  const workstream = await getWorkstream(workstreamId);
   return workstream ? toServiceInstance(workstream) : null;
 }
 

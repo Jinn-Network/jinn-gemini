@@ -865,7 +865,7 @@ const queryWorkstreams = `
 
 export async function getWorkstreams(options: QueryOptions = {}): Promise<WorkstreamsResponse> {
   const { limit = 50, after, before, orderBy = 'blockTimestamp', orderDirection = 'desc' } = options
-  
+
   // Define the raw response shape from the workstreams table
   type WorkstreamRaw = {
     id: string
@@ -887,7 +887,7 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
     orderBy,
     orderDirection
   })
-  
+
   // Map workstream items to Workstream format
   return {
     requests: {
@@ -897,7 +897,6 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
         blockTimestamp: ws.blockTimestamp,
         mech: ws.mech,
         sender: ws.sender,
-        workstreamId: ws.id,
         childRequestCount: ws.childRequestCount,
         hasLauncherBriefing: ws.hasLauncherBriefing,
         delivered: ws.delivered,
@@ -905,6 +904,62 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
       })),
       pageInfo: data.workstreams.pageInfo
     }
+  }
+}
+
+const queryWorkstreamById = `
+  query Workstream($id: String!) {
+    workstream(id: $id) {
+      id
+      rootRequestId
+      jobName
+      blockTimestamp
+      lastActivity
+      childRequestCount
+      hasLauncherBriefing
+      delivered
+      mech
+      sender
+    }
+  }
+`
+
+export async function getWorkstream(id: string): Promise<Workstream | null> {
+  type WorkstreamRaw = {
+    id: string
+    rootRequestId: string
+    jobName: string
+    blockTimestamp: string
+    lastActivity: string
+    childRequestCount: number
+    hasLauncherBriefing: boolean
+    delivered: boolean
+    mech: string
+    sender: string
+  }
+
+  try {
+    const data = await request<{ workstream: WorkstreamRaw | null }>(SUBGRAPH_URL, queryWorkstreamById, { id })
+
+    if (!data.workstream) {
+      return null
+    }
+
+    const ws = data.workstream
+    return {
+      id: ws.id,
+      jobName: ws.jobName,
+      blockTimestamp: ws.blockTimestamp,
+      mech: ws.mech,
+      sender: ws.sender,
+      childRequestCount: ws.childRequestCount,
+      hasLauncherBriefing: ws.hasLauncherBriefing,
+      delivered: ws.delivered,
+      lastActivity: ws.lastActivity
+    }
+  } catch (error) {
+    console.error('Error fetching workstream:', error)
+    return null
   }
 }
 
