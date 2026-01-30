@@ -2,9 +2,10 @@ import { Metadata } from 'next';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { SiteHeader } from '@/components/site-header';
-import { Card, CardContent } from '@/components/ui/card';
-import { getServices, type Service } from '@/lib/ventures-services';
-import { GitBranch, ExternalLink } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getServices, getVentures, type Service } from '@/lib/ventures-services';
+import { GitBranch, ExternalLink, ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Services Registry',
@@ -21,25 +22,35 @@ function formatDate(dateString: string) {
   });
 }
 
-function ServiceCard({ service }: { service: Service }) {
+function ServiceCard({ service, ventureName }: { service: Service; ventureName?: string }) {
   return (
     <Card className="hover:border-primary/50 transition-colors">
-      <CardContent className="pt-6">
-        {/* Identity: name, slug, description */}
-        <div className="space-y-1 mb-4">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <CardTitle>
+              <Link href={`/services/${service.id}`} className="hover:text-primary hover:underline">
+                {service.name}
+              </Link>
+            </CardTitle>
+            <p className="text-sm text-muted-foreground font-mono">
+              {service.slug}
+            </p>
+          </div>
           <Link
             href={`/services/${service.id}`}
-            className="text-lg font-semibold text-primary hover:underline"
+            className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1"
           >
-            {service.name}
+            View <ArrowRight className="h-3 w-3" />
           </Link>
-          <code className="block text-xs text-muted-foreground">{service.slug}</code>
-          {service.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2 pt-1">
-              {service.description}
-            </p>
-          )}
         </div>
+      </CardHeader>
+      <CardContent>
+        {service.description && (
+          <p className="text-sm text-muted-foreground mb-3">
+            {service.description}
+          </p>
+        )}
 
         {service.repository_url && (
           <a
@@ -54,8 +65,12 @@ function ServiceCard({ service }: { service: Service }) {
           </a>
         )}
 
-        {/* Metadata: timestamps */}
-        <div className="flex items-center justify-end text-xs text-muted-foreground border-t pt-3 mt-3">
+        <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-3 mt-3">
+          {ventureName ? (
+            <span>Venture: {ventureName}</span>
+          ) : (
+            <span className="font-mono text-[10px]">{service.venture_id.slice(0, 8)}...</span>
+          )}
           <span>Updated {formatDate(service.updated_at)}</span>
         </div>
       </CardContent>
@@ -64,7 +79,12 @@ function ServiceCard({ service }: { service: Service }) {
 }
 
 async function ServicesList() {
-  const services = await getServices();
+  const [services, ventures] = await Promise.all([
+    getServices(),
+    getVentures(),
+  ]);
+
+  const ventureMap = new Map(ventures.map(v => [v.id, v.name]));
 
   if (services.length === 0) {
     return (
@@ -75,26 +95,41 @@ async function ServicesList() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {services.map((service) => (
-        <ServiceCard key={service.id} service={service} />
-      ))}
+    <div className="space-y-4">
+      <p className="text-muted-foreground">
+        {services.length} service{services.length !== 1 ? 's' : ''} registered
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {services.map((service) => (
+          <ServiceCard
+            key={service.id}
+            service={service}
+            ventureName={ventureMap.get(service.venture_id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
 function ServicesListSkeleton() {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {[1, 2, 3].map((i) => (
-        <Card key={i}>
-          <CardContent className="pt-6 space-y-3">
-            <div className="h-5 w-3/4 bg-muted animate-pulse rounded" />
-            <div className="h-3 w-1/2 bg-muted animate-pulse rounded" />
-            <div className="h-4 w-full bg-muted animate-pulse rounded" />
-          </CardContent>
-        </Card>
-      ))}
+    <div className="space-y-4">
+      <div className="h-5 w-32 bg-muted animate-pulse rounded" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <Card key={i}>
+            <CardHeader className="pb-2">
+              <div className="h-5 w-3/4 bg-muted animate-pulse rounded" />
+              <div className="h-3 w-1/2 bg-muted animate-pulse rounded mt-2" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="h-4 w-full bg-muted animate-pulse rounded" />
+              <div className="h-4 w-2/3 bg-muted animate-pulse rounded" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

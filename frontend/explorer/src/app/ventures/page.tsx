@@ -1,10 +1,32 @@
+import { Metadata } from 'next';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { SiteHeader } from '@/components/site-header';
-import { FeaturedVentureCardSkeleton } from '@/components/ventures/featured-venture-card';
-import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardFooter, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getVentures, type Venture } from '@/lib/ventures-services';
+import { ArrowRight } from 'lucide-react';
+
+export const metadata: Metadata = {
+  title: 'Ventures Registry',
+  description: 'Browse all ventures in the Jinn platform',
+};
+
+export const dynamic = 'force-dynamic';
+
+function StatusBadge({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    active: 'bg-green-500/10 text-green-500 border-green-500/20',
+    paused: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+    archived: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
+  };
+  return (
+    <Badge variant="outline" className={colors[status] || colors.archived}>
+      {status}
+    </Badge>
+  );
+}
 
 function VentureCard({ venture }: { venture: Venture }) {
   // Link to the root workstream if available, otherwise to the venture ID
@@ -13,17 +35,43 @@ function VentureCard({ venture }: { venture: Venture }) {
     : `/ventures/${venture.id}`;
 
   return (
-    <Card className="relative overflow-hidden border-primary/50 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-transparent opacity-50" />
-      <CardHeader className="relative">
-        <CardTitle className="text-2xl">{venture.name}</CardTitle>
-        <CardDescription className="mt-2 text-base">
-          {venture.description}
-        </CardDescription>
+    <Card className="hover:border-primary/50 transition-colors">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <Link href={href} className="hover:text-primary hover:underline">
+                {venture.name}
+              </Link>
+            </CardTitle>
+            <p className="text-sm text-muted-foreground font-mono">
+              {venture.slug}
+            </p>
+          </div>
+          <StatusBadge status={venture.status} />
+        </div>
       </CardHeader>
-      <CardFooter className="relative">
-        <Button asChild variant="default" className="flex-1">
-          <Link href={href}>View Dashboard</Link>
+      <CardContent>
+        {venture.description && (
+          <p className="text-sm text-muted-foreground mb-3">
+            {venture.description}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <span>Owner: {venture.owner_address.slice(0, 8)}...</span>
+          {venture.blueprint?.invariants?.length > 0 && (
+            <span>
+              {venture.blueprint.invariants.length} invariant
+              {venture.blueprint.invariants.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      </CardContent>
+      <CardFooter className="pt-0">
+        <Button asChild variant="outline" size="sm" className="w-full">
+          <Link href={href} className="flex items-center gap-1">
+            View Dashboard <ArrowRight className="h-3 w-3" />
+          </Link>
         </Button>
       </CardFooter>
     </Card>
@@ -42,19 +90,37 @@ async function VenturesList() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {ventures.map((venture) => (
-        <VentureCard key={venture.id} venture={venture} />
-      ))}
+    <div className="space-y-4">
+      <p className="text-muted-foreground">
+        {ventures.length} venture{ventures.length !== 1 ? 's' : ''} registered
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {ventures.map((venture) => (
+          <VentureCard key={venture.id} venture={venture} />
+        ))}
+      </div>
     </div>
   );
 }
 
 function VenturesListSkeleton() {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <FeaturedVentureCardSkeleton />
-      <FeaturedVentureCardSkeleton />
+    <div className="space-y-4">
+      <div className="h-5 w-32 bg-muted animate-pulse rounded" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <Card key={i}>
+            <CardHeader className="pb-2">
+              <div className="h-5 w-3/4 bg-muted animate-pulse rounded" />
+              <div className="h-3 w-1/2 bg-muted animate-pulse rounded mt-2" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="h-4 w-full bg-muted animate-pulse rounded" />
+              <div className="h-4 w-2/3 bg-muted animate-pulse rounded" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -63,6 +129,7 @@ export default function VenturesPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader
+        subtitle="Ventures in the Jinn platform"
         breadcrumbs={[
           { label: 'Explorer', href: '/' },
           { label: 'Ventures' }
