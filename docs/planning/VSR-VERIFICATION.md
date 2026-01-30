@@ -19,6 +19,7 @@ This document tracks the verification process for the Ventures & Services Regist
 11. [Deployments CRUD Verification](#11-deployments-crud-verification)
 12. [Interfaces CRUD Verification](#12-interfaces-crud-verification)
 13. [Service Docs CRUD Verification](#13-service-docs-crud-verification)
+14. [Complete Stack Verification](#14-complete-stack-verification)
 
 ---
 
@@ -1000,6 +1001,173 @@ SELECT COUNT(*) FROM service_docs WHERE id = 'doc-uuid';
 
 ---
 
+## 14. Complete Stack Verification
+
+**Date:** 2026-01-29
+**Status:** PASSED
+**Script:** `scripts/services/test-mcp-crud.ts`
+
+### Overview
+
+Comprehensive verification that all four entity types (services, deployments, interfaces, service_docs) have complete CRUD operations working across all layers: direct scripts, MCP tools, agent skills, and frontend.
+
+### MCP Tool Test Results
+
+All 18 MCP tool CRUD operations passed:
+
+```
+============================================================
+MCP TOOL CRUD TESTS
+============================================================
+
+Using service: Linear MCP Server (service-uuid)
+
+--- SERVICES ---
+CREATE service: ✓ PASS
+GET service: ✓ PASS
+LIST services: ✓ PASS count: 4
+UPDATE service: ✓ PASS
+DELETE service: ✓ PASS
+
+--- DEPLOYMENTS ---
+CREATE deployment: ✓ PASS
+LIST deployments: ✓ PASS count: 2
+UPDATE deployment: ✓ PASS
+DELETE deployment: ✓ PASS
+
+--- INTERFACES ---
+CREATE interface: ✓ PASS
+LIST interfaces: ✓ PASS count: 11
+UPDATE interface: ✓ PASS
+DELETE interface: ✓ PASS
+
+--- DOCS ---
+CREATE doc: ✓ PASS
+GET doc: ✓ PASS
+LIST docs: ✓ PASS count: 1
+UPDATE doc: ✓ PASS
+DELETE doc: ✓ PASS
+
+============================================================
+SUMMARY
+============================================================
+
+Total: 18 | Passed: 18 | Failed: 0
+
+✅ All MCP tool tests passed!
+```
+
+### MCP Tool Actions Added
+
+The `service_registry` tool was extended with complete CRUD operations:
+
+| Entity | Actions | Status |
+|--------|---------|--------|
+| **Services** | create_service, get_service, list_services, update_service, delete_service | ✓ Complete |
+| **Deployments** | create_deployment, list_deployments, update_deployment, delete_deployment | ✓ Complete |
+| **Interfaces** | create_interface, list_interfaces, update_interface, delete_interface | ✓ Complete |
+| **Docs** | create_doc, get_doc, list_docs, update_doc, delete_doc | ✓ Complete |
+
+### Agent Skills Created
+
+Created unified services skill for both Claude and Gemini agents:
+
+**Canonical Source:** `skills/services/SKILL.md`
+
+**Symlinks:**
+- `.claude/skills/services` → `../../skills/services`
+- `.gemini/skills/services` → `../../skills/services`
+
+**Skill Description:**
+```yaml
+---
+name: services
+description: Managing services in the Jinn platform registry. Use when creating,
+  querying, updating, or deleting services. Use when working with service
+  deployments, interfaces (MCP tools, REST endpoints), or documentation.
+  Use when asked about "services", "deployments", "interfaces", or "service docs".
+---
+```
+
+### Frontend Verification
+
+| Entity | Admin CRUD | Public View | Status |
+|--------|------------|-------------|--------|
+| **Services** | ✓ Create, Read, Update, Delete | ✓ List, Detail | ✓ Complete |
+| **Deployments** | ✓ Tabbed editor on service page | ✓ Visible on detail | ✓ Complete |
+| **Interfaces** | ✓ Tabbed editor on service page | ✓ Visible on detail | ✓ Complete |
+| **Docs** | ✓ Tabbed editor on service page | ✓ Viewer at `/services/[id]/docs/[slug]` | ✓ Complete |
+
+### Public Docs Viewer
+
+Created public documentation viewer page:
+
+**File:** `frontend/explorer/src/app/services/[id]/docs/[slug]/page.tsx`
+
+**Features:**
+- Renders markdown content with basic formatting (headers, lists, code blocks, bold, inline code)
+- Displays doc metadata (author, published date, version, tags)
+- Sidebar navigation for other docs in the same service
+- External link support
+- Responsive design with mobile-friendly layout
+
+**Supporting Changes:**
+- Added `getDocBySlug(serviceId, slug)` to `ventures-services.ts`
+- Added documentation section to service detail page showing published docs
+
+### Files Created/Updated
+
+**New Files:**
+- `skills/services/SKILL.md` - Services skill documentation
+- `scripts/services/test-mcp-crud.ts` - MCP tool test script
+- `frontend/explorer/src/app/services/[id]/docs/[slug]/page.tsx` - Public docs viewer
+
+**Updated Files:**
+- `gemini-agent/mcp/tools/service_registry.ts` - Added docs CRUD, delete actions
+- `frontend/explorer/src/lib/ventures-services.ts` - Added `getDocBySlug`
+- `frontend/explorer/src/app/services/[id]/page.tsx` - Added docs section
+- `frontend/explorer/src/app/admin/page.tsx` - Removed service.status reference
+- `frontend/explorer/src/app/admin/actions.ts` - Fixed TypeScript types
+
+**Symlinks Created:**
+- `.claude/skills/services` → `../../skills/services`
+- `.gemini/skills/services` → `../../skills/services`
+
+### How to Run
+
+**MCP Tool Tests:**
+```bash
+yarn tsx scripts/services/test-mcp-crud.ts
+```
+
+**Frontend Type Check:**
+```bash
+cd frontend/explorer && yarn typecheck
+```
+
+---
+
+## Verification Summary
+
+| Section | Test | Status |
+|---------|------|--------|
+| 1. Database Schema | Schema migration | ✓ PASSED |
+| 2. Ventures CRUD | Direct DB test | ✓ PASSED |
+| 3. Gemini MCP | MCP tools test | ✓ PASSED |
+| 4. Claude MCP | SQL verification | ✓ PASSED |
+| 5. MCP Architecture | Layered design | ✓ PASSED |
+| 6. Agent Skills E2E | Skill pickup + MCP | ✓ PASSED |
+| 7. Shared Code | Architecture TODO | TODO |
+| 8. Ventures Frontend | Browser CRUD | ✓ PASSED |
+| 9. Services Frontend | Browser CRUD | ✓ PASSED |
+| 10. Services Schema | Simplification | ✓ COMPLETED |
+| 11. Deployments CRUD | Direct SQL test | ✓ PASSED |
+| 12. Interfaces CRUD | Direct SQL test | ✓ PASSED |
+| 13. Service Docs CRUD | Direct SQL test | ✓ PASSED |
+| 14. Complete Stack | MCP + Skills + Frontend | ✓ PASSED |
+
+---
+
 ## Future Verification Tests
 
 The following tests are planned for future verification:
@@ -1009,12 +1177,12 @@ The following tests are planned for future verification:
 - [x] Deployments Registry CRUD Test (Section 11)
 - [x] Interfaces Registry CRUD Test (Section 12)
 - [x] Service Docs CRUD Test (Section 13)
+- [x] Complete Stack Verification (Section 14)
 - [ ] Services Shared Code Migration
 - [ ] Venture-Service Relationship Test
 - [ ] On-chain Workstream Integration Test
 - [ ] Frontend Data Layer Test
 - [ ] API Permissions/RLS Test
-- [ ] Nested Entity Frontend CRUD (deployments, interfaces, docs admin UI)
 
 ---
 
