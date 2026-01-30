@@ -33,11 +33,13 @@ export const listCommitsParams = z.object({
   owner: z.string().describe('Repository owner'),
   repo: z.string().describe('Repository name'),
   sha: z.string().optional().describe('SHA or branch to start listing from'),
+  since: z.string().optional().describe('ISO 8601 date - only commits after this date (e.g., 2024-01-15T00:00:00Z)'),
+  until: z.string().optional().describe('ISO 8601 date - only commits before this date (e.g., 2024-01-22T00:00:00Z)'),
   per_page: z.number().optional().describe('Results per page (max 100)'),
 });
 
 export const listCommitsSchema = {
-  description: 'List commits in a GitHub repository',
+  description: 'List commits in a GitHub repository. Use since/until to filter by date range.',
   inputSchema: listCommitsParams.shape,
 };
 
@@ -194,11 +196,13 @@ export async function listCommits(args: unknown) {
   }
 
   try {
-    const { owner, repo, sha, per_page = 30 } = parsed.data;
+    const { owner, repo, sha, since, until, per_page = 30 } = parsed.data;
     const params = new URLSearchParams();
     if (sha) params.set('sha', sha);
+    if (since) params.set('since', since);
+    if (until) params.set('until', until);
     params.set('per_page', per_page.toString());
-    
+
     const endpoint = `/repos/${owner}/${repo}/commits?${params.toString()}`;
     const data = await githubApiCall(endpoint);
 

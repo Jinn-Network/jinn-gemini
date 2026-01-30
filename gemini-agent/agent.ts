@@ -730,6 +730,30 @@ export class Agent {
       try {
         mkdirSync(geminiHome, { recursive: true });
 
+        // Support passing OAuth credentials via environment variable (for Railway/cloud deployments)
+        // GEMINI_OAUTH_CREDS should contain the full JSON from oauth_creds.json
+        if (process.env.GEMINI_OAUTH_CREDS) {
+          try {
+            const oauthCredsPath = join(geminiHome, 'oauth_creds.json');
+            writeFileSync(oauthCredsPath, process.env.GEMINI_OAUTH_CREDS);
+            agentLogger.info({ geminiHome }, 'Wrote OAuth credentials from GEMINI_OAUTH_CREDS env var');
+          } catch (envCredsErr: any) {
+            agentLogger.warn({ error: envCredsErr.message }, 'Failed to write OAuth credentials from env var');
+          }
+        }
+
+        // Support passing Gemini settings via environment variable (required to enable OAuth auth type)
+        // GEMINI_SETTINGS should contain the full JSON from settings.json with auth.selectedType = "oauth-personal"
+        if (process.env.GEMINI_SETTINGS) {
+          try {
+            const settingsPath = join(geminiHome, 'settings.json');
+            writeFileSync(settingsPath, process.env.GEMINI_SETTINGS);
+            agentLogger.info({ geminiHome }, 'Wrote settings from GEMINI_SETTINGS env var');
+          } catch (settingsErr: any) {
+            agentLogger.warn({ error: settingsErr.message }, 'Failed to write settings from env var');
+          }
+        }
+
         // Copy OAuth credentials from user's ~/.gemini if they exist and are newer
         // This enables OAuth authentication for the worker process
         const userGeminiHome = join(process.env.HOME || '', '.gemini');
@@ -1058,15 +1082,14 @@ export class Agent {
 
       const templateSettings: GeminiSettings = JSON.parse(readFileSync(templatePath, 'utf8'));
 
-      // Substitute ${ENV_VAR} placeholders in MCP server env blocks
-      substituteEnvVariables(templateSettings);
-
       if (!templateSettings.mcpServers) {
         throw new Error('No MCP servers configured in settings.template.json');
       }
 
       // Conditionally include railway server based on railway_deployment meta-tool
       // If railway_deployment is not in enabledTools, remove the railway server
+      // IMPORTANT: Remove unused servers BEFORE env var substitution to avoid errors
+      // for missing env vars that aren't needed (e.g., FIREFLIES_API_KEY, RAILWAY_API_TOKEN)
       if (templateSettings.mcpServers['railway'] && !hasRailwayDeployment(this.enabledTools)) {
         delete templateSettings.mcpServers['railway'];
         agentLogger.debug('Removed railway server (railway_deployment not enabled)');
@@ -1077,6 +1100,11 @@ export class Agent {
         delete templateSettings.mcpServers['fireflies'];
         agentLogger.debug('Removed fireflies server (fireflies_meetings not enabled)');
       }
+
+      // Substitute ${ENV_VAR} placeholders in MCP server env blocks
+      // NOTE: This must happen AFTER conditional server deletion to avoid errors
+      // for env vars that are only required by servers we're removing
+      substituteEnvVariables(templateSettings);
 
       const serverName = templateSettings.mcpServers.metacog ? 'metacog' : Object.keys(templateSettings.mcpServers)[0];
       if (!serverName) throw new Error('No MCP servers found in template configuration');

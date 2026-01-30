@@ -20,6 +20,10 @@ const LEGACY_MODEL_ALIASES: Record<string, string> = {
   'gemini-3-pro-latest': 'gemini-3-pro-preview',
   'gemini-3-flash': 'gemini-3-flash-preview',
   'gemini-3-flash-latest': 'gemini-3-flash-preview',
+  // Deprecated experimental models - agent LLMs sometimes suggest these from training data
+  'gemini-2.0-flash-thinking-exp-1219': 'auto-gemini-3',
+  'gemini-2.0-flash-thinking-exp': 'auto-gemini-3',
+  'gemini-2.0-flash-exp': 'auto-gemini-3',
 };
 
 export type GeminiModelNormalization = {
