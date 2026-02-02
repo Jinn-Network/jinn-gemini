@@ -172,6 +172,15 @@ const CORE_CLI_TOOLS: ToolInfo[] = [
       'Enable image generation for a content job: enabledTools: ["nano_banana"]',
       'The 7 expanded tools: generate_image(prompt), edit_image(image_path, instructions), restore_image(image_path), generate_icon(prompt, sizes), generate_pattern(prompt), generate_story(prompt, count), generate_diagram(prompt)'
     ]
+  },
+  {
+    name: 'telegram_messaging',
+    description: 'Meta-tool that enables Telegram messaging capabilities. When included in enabledTools, activates the telegram_send_message tool for broadcasting messages to Telegram channels/groups. Write-only: can send messages but cannot read replies. Requires TELEGRAM_BOT_TOKEN env var and optionally TELEGRAM_CHAT_ID/TELEGRAM_TOPIC_ID for default targets.',
+    parameters: {},
+    examples: [
+      'Enable Telegram for a distribution job: enabledTools: ["telegram_messaging"]',
+      'Send a message: telegram_send_message({ chat_id: "-100123456789", text: "New post published!", topic_id: "2" })'
+    ]
   }
 ];
 

@@ -56,8 +56,7 @@ const GET_JOB_RUN_QUERY = `
       workstreamId
       sourceRequestId
       delivered
-      deliveryCid
-      deliveryTxHash
+      deliveryIpfsHash
       blockTimestamp
       ipfsHash
     }
@@ -88,8 +87,7 @@ interface RequestData {
   workstreamId?: string;
   sourceRequestId?: string;
   delivered: boolean;
-  deliveryCid?: string;
-  deliveryTxHash?: string;
+  deliveryIpfsHash?: string;
   blockTimestamp?: string;
   ipfsHash?: string;
 }
@@ -114,7 +112,6 @@ interface InspectJobRunResult {
     delivered: boolean;
     timestamp?: string;
     ipfsHash?: string;
-    deliveryTxHash?: string;
   };
   delivery?: {
     status?: string;
@@ -175,7 +172,6 @@ export async function inspectJobRun(params: unknown) {
         delivered: request.delivered,
         timestamp: request.blockTimestamp,
         ipfsHash: request.ipfsHash,
-        deliveryTxHash: request.deliveryTxHash,
       },
     };
 
@@ -185,8 +181,8 @@ export async function inspectJobRun(params: unknown) {
     let deliveryContent: any = null;
     let workerTelemetry: WorkerTelemetryLog | null = null;
 
-    if (resolve_ipfs && request.deliveryCid) {
-      deliveryContent = await fetchIpfsContentMcp(request.deliveryCid, request.id);
+    if (resolve_ipfs && request.deliveryIpfsHash) {
+      deliveryContent = await fetchIpfsContentMcp(request.deliveryIpfsHash, request.id);
       if (!deliveryContent) {
         warnings.push('Failed to fetch delivery content from IPFS');
       } else {

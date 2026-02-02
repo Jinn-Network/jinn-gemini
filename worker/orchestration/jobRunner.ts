@@ -37,7 +37,7 @@ import { createArtifact as apiCreateArtifact } from '../control_api_client.js';
 import { safeParseToolResponse } from '../tool_utils.js';
 import { getJinnWorkspaceDir, extractRepoName, getRepoRoot, normalizeSshUrl } from '../../shared/repo_utils.js';
 import { extractMemoryArtifacts } from '../reflection/memoryArtifacts.js';
-import { DEFAULT_WORKER_MODEL, normalizeGeminiModel } from '../../shared/gemini-models.js';
+import { DEFAULT_WORKER_MODEL, normalizeGeminiModel, validateModelAllowed } from '../../shared/gemini-models.js';
 import type { UnclaimedRequest, IpfsMetadata, AgentExecutionResult, FinalStatus, ExecutionSummaryDetails, RecognitionPhaseResult, ReflectionResult, AdditionalContext } from '../types.js';
 import { getDependencyBranchInfo } from '../mech_worker.js';
 import { getBlueprintEnableContextPhases, getBlueprintEnableBeads } from '../../config/index.js';
@@ -82,7 +82,18 @@ export async function processOnce(
       if (normalized.changed) {
         workerLogger.info({ requested: normalized.requested, normalized: normalized.normalized }, 'Normalized Gemini model');
       }
-      metadata.model = normalized.normalized;
+
+      // Check for deprecated models and fallback to default
+      const modelValidation = validateModelAllowed(normalized.normalized);
+      if (!modelValidation.ok) {
+        workerLogger.warn(
+          { deprecatedModel: normalized.normalized, fallback: DEFAULT_WORKER_MODEL, reason: modelValidation.reason },
+          'Deprecated model detected, falling back to default'
+        );
+        metadata.model = DEFAULT_WORKER_MODEL;
+      } else {
+        metadata.model = normalized.normalized;
+      }
 
       telemetry.logCheckpoint('initialization', 'metadata_fetched', {
         hasJobName: !!metadata?.jobName,

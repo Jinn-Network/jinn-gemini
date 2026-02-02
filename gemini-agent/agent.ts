@@ -256,6 +256,7 @@ export class Agent {
 
   /**
    * Install a Gemini CLI extension (skips if already installed)
+   * Supports both remote URLs and local extensions via 'local:' prefix
    */
   private async installExtension(
     extensionUrl: string,
@@ -272,25 +273,26 @@ export class Agent {
       const extensionsDir = join(this.geminiHome, 'extensions');
       mkdirSync(extensionsDir, { recursive: true });
 
-      // Handle local extensions (local:dirname format)
+// Handle local extensions (symlink instead of install)
+      // Note: CLI always looks in ~/.gemini/extensions/ for skills, ignoring GEMINI_HOME
       if (extensionUrl.startsWith('local:')) {
-        const localDirName = extensionUrl.slice('local:'.length);
-        const sourceDir = join(this.agentRoot, '..', localDirName);
-        const targetDir = join(extensionsDir, extensionName);
+        const localDir = extensionUrl.replace('local:', '');
+        const sourcePath = resolve(this.agentRoot, '..', localDir);
+        // Install to ~/.gemini/extensions/ where CLI actually discovers extensions
+        const defaultGeminiHome = join(homedir(), '.gemini');
+        const targetPath = join(defaultGeminiHome, 'extensions', extensionName);
 
-        if (!existsSync(sourceDir)) {
-          throw new Error(`Local extension directory not found: ${sourceDir}`);
+        if (!existsSync(sourcePath)) {
+          throw new Error(`Local extension not found: ${sourcePath}`);
         }
 
-        // Create symlink to local extension directory
-        if (!existsSync(targetDir)) {
-          symlinkSync(sourceDir, targetDir, 'dir');
-        }
-        agentLogger.info({ sourceDir, targetDir, extensionName }, `Linked local extension ${extensionName}`);
+        mkdirSync(dirname(targetPath), { recursive: true });
+        symlinkSync(sourcePath, targetPath);
+        agentLogger.info({ sourcePath, targetPath, extensionName }, `Linked local extension ${extensionName}`);
         return;
       }
 
-      // Install remote extensions via Gemini CLI
+      // Install from remote URL to GEMINI_HOME (persists across jobs)
       // input: 'y\n' auto-confirms the interactive safety prompt
       execSync(
         `npx @google/gemini-cli extension install ${extensionUrl}`,
@@ -724,64 +726,19 @@ export class Agent {
         }, 'Prompt too large for argv; piping via stdin and disabling sandbox');
       }
 
-      // Use /tmp for Gemini CLI to avoid macOS com.apple.provenance protection
-      // macOS automatically applies this extended attribute to ~/.gemini which prevents writes
+      // GEMINI_HOME is used for extensions and CLI config (not OAuth credentials)
       const geminiHome = join('/tmp', '.gemini-worker');
+      // OAuth credentials must be in ~/.gemini/ - CLI ignores GEMINI_HOME for auth
+      const userGeminiDir = join(homedir(), '.gemini');
       try {
         mkdirSync(geminiHome, { recursive: true });
+        mkdirSync(userGeminiDir, { recursive: true });
+        envWithJob.GEMINI_HOME = geminiHome; // For extensions only
 
-        // Support passing OAuth credentials via environment variable (for Railway/cloud deployments)
-        // GEMINI_OAUTH_CREDS should contain the full JSON from oauth_creds.json
-        if (process.env.GEMINI_OAUTH_CREDS) {
-          try {
-            const oauthCredsPath = join(geminiHome, 'oauth_creds.json');
-            writeFileSync(oauthCredsPath, process.env.GEMINI_OAUTH_CREDS);
-            agentLogger.info({ geminiHome }, 'Wrote OAuth credentials from GEMINI_OAUTH_CREDS env var');
-          } catch (envCredsErr: any) {
-            agentLogger.warn({ error: envCredsErr.message }, 'Failed to write OAuth credentials from env var');
-          }
-        }
-
-        // Support passing Gemini settings via environment variable (required to enable OAuth auth type)
-        // GEMINI_SETTINGS should contain the full JSON from settings.json with auth.selectedType = "oauth-personal"
-        if (process.env.GEMINI_SETTINGS) {
-          try {
-            const settingsPath = join(geminiHome, 'settings.json');
-            writeFileSync(settingsPath, process.env.GEMINI_SETTINGS);
-            agentLogger.info({ geminiHome }, 'Wrote settings from GEMINI_SETTINGS env var');
-          } catch (settingsErr: any) {
-            agentLogger.warn({ error: settingsErr.message }, 'Failed to write settings from env var');
-          }
-        }
-
-        // Copy OAuth credentials from user's ~/.gemini if they exist and are newer
-        // This enables OAuth authentication for the worker process
-        const userGeminiHome = join(process.env.HOME || '', '.gemini');
-        const filesToCopy = ['oauth_creds.json', 'google_accounts.json', 'settings.json'];
-
-        for (const file of filesToCopy) {
-          const srcPath = join(userGeminiHome, file);
-          const destPath = join(geminiHome, file);
-
-          try {
-            if (existsSync(srcPath)) {
-              const srcStat = statSync(srcPath);
-              const destExists = existsSync(destPath);
-              const destStat = destExists ? statSync(destPath) : null;
-
-              // Copy if dest doesn't exist or source is newer
-              if (!destExists || srcStat.mtimeMs > destStat!.mtimeMs) {
-                const content = readFileSync(srcPath);
-                writeFileSync(destPath, content);
-                agentLogger.debug({ file, geminiHome }, 'Copied OAuth credential file to worker home');
-              }
-            }
-          } catch (copyErr: any) {
-            agentLogger.debug({ file, error: copyErr.message }, 'Failed to copy OAuth file (non-fatal)');
-          }
-        }
+        // OAuth credentials (oauth_creds.json, google_accounts.json, settings.json) are now
+        // written to ~/.gemini/ by geminiQuota.ts during credential selection before job runs
       } catch (err: any) {
-        agentLogger.debug({ error: err.message }, 'Failed to create gemini home directory');
+        agentLogger.debug({ error: err.message }, 'Failed to create gemini directories');
       }
 
       const sandboxMode = useStdinPrompt ? 'false' : getSandboxMode();
@@ -1086,10 +1043,9 @@ export class Agent {
         throw new Error('No MCP servers configured in settings.template.json');
       }
 
+      // Remove unused servers BEFORE substituting env variables to avoid
+      // errors when env vars for unused servers are not set
       // Conditionally include railway server based on railway_deployment meta-tool
-      // If railway_deployment is not in enabledTools, remove the railway server
-      // IMPORTANT: Remove unused servers BEFORE env var substitution to avoid errors
-      // for missing env vars that aren't needed (e.g., FIREFLIES_API_KEY, RAILWAY_API_TOKEN)
       if (templateSettings.mcpServers['railway'] && !hasRailwayDeployment(this.enabledTools)) {
         delete templateSettings.mcpServers['railway'];
         agentLogger.debug('Removed railway server (railway_deployment not enabled)');
@@ -1102,8 +1058,7 @@ export class Agent {
       }
 
       // Substitute ${ENV_VAR} placeholders in MCP server env blocks
-      // NOTE: This must happen AFTER conditional server deletion to avoid errors
-      // for env vars that are only required by servers we're removing
+      // Done AFTER removing unused servers so we don't fail on missing env vars for disabled servers
       substituteEnvVariables(templateSettings);
 
       const serverName = templateSettings.mcpServers.metacog ? 'metacog' : Object.keys(templateSettings.mcpServers)[0];

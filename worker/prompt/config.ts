@@ -8,7 +8,7 @@
  * All environment variable access goes through config/index.ts getters.
  * This module never reads process.env directly.
  *
- * See: docs/spec/code-spec/spec.md "Centralize configuration access"
+ * See: docs/code-spec/spec.md "Centralize configuration access"
  */
 
 import type { BlueprintBuilderConfig } from './types.js';

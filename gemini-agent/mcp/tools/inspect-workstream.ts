@@ -82,7 +82,7 @@ const GET_WORKSTREAM_REQUESTS_QUERY = `
         sourceRequestId
         sourceJobDefinitionId
         delivered
-        deliveryCid
+        deliveryIpfsHash
         blockTimestamp
         ipfsHash
       }
@@ -117,7 +117,7 @@ interface RequestData {
   sourceRequestId?: string;
   sourceJobDefinitionId?: string;
   delivered: boolean;
-  deliveryCid?: string;
+  deliveryIpfsHash?: string;
   blockTimestamp?: string;
   ipfsHash?: string;
 }
@@ -369,8 +369,8 @@ export async function inspectWorkstream(params: unknown) {
       }
 
       // Fetch delivery for metrics
-      if (includeSections.has('metrics') && req.deliveryCid) {
-        const delivery = await fetchIpfsContentMcp(req.deliveryCid, req.id);
+      if (includeSections.has('metrics') && req.deliveryIpfsHash) {
+        const delivery = await fetchIpfsContentMcp(req.deliveryIpfsHash, req.id);
         if (delivery) {
           // Update status
           if (delivery.status === 'FAILED') {

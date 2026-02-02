@@ -7,7 +7,7 @@ async function main() {
 
   const jobSpec = {
     objective: 'Continuously verify main branch of the codebase against venture code-spec.',
-    context: 'Repository: oaksprout/jinn-gemini. Find the code spec in docs/spec/code-spec.',
+    context: 'Repository: oaksprout/jinn-gemini. Find the code spec in docs/code-spec.',
     acceptanceCriteria: 'This workstream – i.e. children downstream of this job – should produce a steady flow of significant codebase violations. Do not duplicate any violations which have been discovered previously. Reports include file context, line numbers, violation explanation, and remediation guidance.',
     jobName: 'Code Spec Verifier for oaksprout/jinn-gemini',
     model: 'gemini-2.5-flash',

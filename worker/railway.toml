@@ -1,9 +1,0 @@
-[build]
-builder = "NIXPACKS"
-nixpacksConfigPath = "worker/nixpacks.toml"
-
-[deploy]
-# Export NODE_OPTIONS to suppress punycode deprecation in all child processes
-startCommand = "export NODE_OPTIONS='--disable-warning=DEP0040' && npx tsx control-api/server.ts & sleep 3 && node dist/worker/worker_launcher.js"
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10

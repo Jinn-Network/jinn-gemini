@@ -1,3 +1,14 @@
+---
+title: Reference Documentation Index
+purpose: reference
+scope: [worker, gemini-agent, frontend, deployment]
+last_verified: 2026-01-30
+related_code:
+  - docs/reference/
+keywords: [reference, documentation, index, lookup]
+when_to_read: "When looking for the right reference document to consult"
+---
+
 # Reference Documentation
 
 Concise, LLM-friendly reference docs for common lookup needs.
@@ -13,20 +24,24 @@ These docs are designed to be:
 
 | Doc | Purpose |
 |-----|---------|
-| [TOOL_POLICY.md](./TOOL_POLICY.md) | Tool enablement hierarchy, meta-tools, UNAUTHORIZED_TOOLS errors |
-| [DISPATCH_TYPES.md](./DISPATCH_TYPES.md) | Dispatch types (verification, parent, cycle, recovery) |
-| [JOB_LIFECYCLE.md](./JOB_LIFECYCLE.md) | Job status values, transitions, inference logic |
-| [ERROR_CODES.md](./ERROR_CODES.md) | Error codes and troubleshooting |
-| [ARTIFACTS.md](./ARTIFACTS.md) | Artifact types, creation, measurement coverage |
+| [tool-policy.md](./tool-policy.md) | Tool enablement hierarchy, meta-tools, UNAUTHORIZED_TOOLS errors |
+| [dispatch-types.md](./dispatch-types.md) | Dispatch types (verification, parent, cycle, recovery) |
+| [job-lifecycle.md](./job-lifecycle.md) | Job status values, transitions, inference logic |
+| [error-codes.md](./error-codes.md) | Error codes and troubleshooting |
+| [artifacts.md](./artifacts.md) | Artifact types, creation, measurement coverage |
+| [measurements.md](./measurements.md) | Measurement types, creation, coverage computation |
+| [olas-contracts.md](./olas-contracts.md) | OLAS contract addresses and staking config |
 
 ---
 
-## Deep Dive Documentation
+## Related Documentation
 
-For comprehensive technical details, see:
-- `docs/documentation/` - Technical architecture docs
-- `docs/spec/` - Specifications and standards
-- `docs/guides/` - How-to guides
+| Directory | Purpose |
+|-----------|---------|
+| `docs/context/` | Architecture and integration docs |
+| `docs/runbooks/` | Procedural how-to guides |
+| `docs/guides/` | Conceptual understanding |
+| `docs/spec/` | Specifications and standards |
 
 ---
 

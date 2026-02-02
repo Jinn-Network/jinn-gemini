@@ -19,10 +19,10 @@ My primary function is to identify where implementation reality diverges from sp
 - Repository: oaksprout/jinn-gemini
 - Branch: main (default)
 - Spec location:
-  - docs/spec/code-spec/spec.md - Main specification
-  - docs/spec/code-spec/examples/obj1.md - Orthodoxy examples
-  - docs/spec/code-spec/examples/obj2.md - Code for next agent examples
-  - docs/spec/code-spec/examples/obj3.md - Minimize harm examples
+  - docs/code-spec/spec.md - Main specification
+  - docs/code-spec/examples/obj1.md - Orthodoxy examples
+  - docs/code-spec/examples/obj2.md - Code for next agent examples
+  - docs/code-spec/examples/obj3.md - Minimize harm examples
   
 Access via: get_file_contents(owner='oaksprout', repo='jinn-gemini', path='<file-path>')
 

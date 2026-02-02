@@ -16,7 +16,7 @@ Before creating the handoff, understand what's happening:
 
 1. **Read the Agent Guide** - Always start with operational context:
    ```
-   Read: AGENT_README_TEST.md
+   Read: AGENTS.md
    ```
    This contains critical operational knowledge, blood-written rules, and system architecture.
 
@@ -54,12 +54,12 @@ Create a structured handoff document that covers:
 - Include any commands or file paths needed
 
 **CRITICAL NOTES**:
-- Any gotchas or warnings discovered
+- Any blood written rules or warnings discovered
 - Failed approaches to avoid
 - Dependencies or prerequisites
 
 **REFERENCE FILES**:
-- AGENT_README_TEST.md - Operational guide (ALWAYS include)
+- AGENTS.md - Operational guide (ALWAYS include)
 - Any other relevant files the next agent should read
 
 ### Step 3: Output the Handoff
@@ -90,7 +90,7 @@ Present the handoff in this format:
 - <note>
 
 📚 REFERENCE FILES
-- AGENT_README_TEST.md (operational guide - read first)
+- AGENTS.md (operational guide - read first)
 - <other files>
 
 ───────────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ After the handoff document, add this instruction block:
 
 You are picking up work from a previous agent session.
 
-1. FIRST: Read AGENT_README_TEST.md for operational context
+1. FIRST: Read AGENTS.md for operational context
 2. THEN: Review the handoff document above carefully
 3. NEXT: Verify current state matches the described progress
 4. FINALLY: Continue with the next steps listed
@@ -135,7 +135,7 @@ Before completing the handoff, verify:
 - [ ] Goal is crystal clear and actionable
 - [ ] No critical context is missing
 - [ ] Next steps are specific enough to follow without guessing
-- [ ] AGENT_README_TEST.md is referenced for operational knowledge
+- [ ] AGENTS.md is referenced for operational knowledge
 - [ ] Any modified files are listed
 
 ### Avoiding Common Mistakes

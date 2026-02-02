@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractToolName, normalizeToolArray } from '../../../gemini-agent/shared/template-tools.js';
+import { extractToolName, normalizeToolArray, parseAnnotatedTools } from '../../../gemini-agent/shared/template-tools.js';
 
 describe('extractToolName', () => {
     it('should extract name from string tool', () => {
@@ -84,5 +84,92 @@ describe('normalizeToolArray', () => {
         expect(normalizeToolArray(null)).toEqual([]);
         expect(normalizeToolArray(undefined)).toEqual([]);
         expect(normalizeToolArray('string')).toEqual([]);
+    });
+});
+
+describe('parseAnnotatedTools', () => {
+    it('should parse simple string tools', () => {
+        const result = parseAnnotatedTools(['tool_a', 'tool_b']);
+        expect(result.requiredTools).toEqual([]);
+        expect(result.availableTools).toContain('tool_a');
+        expect(result.availableTools).toContain('tool_b');
+    });
+
+    it('should parse object tools with required flag', () => {
+        const result = parseAnnotatedTools([
+            { name: 'tool_a', required: true },
+            { name: 'tool_b' }
+        ]);
+        expect(result.requiredTools).toEqual(['tool_a']);
+        expect(result.availableTools).toContain('tool_a');
+        expect(result.availableTools).toContain('tool_b');
+    });
+
+    it('should expand workstream_analysis meta-tool', () => {
+        const result = parseAnnotatedTools([
+            { name: 'workstream_analysis', required: true }
+        ]);
+
+        // Should include the meta-tool itself
+        expect(result.availableTools).toContain('workstream_analysis');
+
+        // Should include expanded individual tools
+        expect(result.availableTools).toContain('inspect_workstream');
+        expect(result.availableTools).toContain('inspect_job');
+        expect(result.availableTools).toContain('inspect_job_run');
+
+        // Required should only have the meta-tool
+        expect(result.requiredTools).toEqual(['workstream_analysis']);
+    });
+
+    it('should expand telegram_messaging meta-tool', () => {
+        const result = parseAnnotatedTools(['telegram_messaging']);
+
+        expect(result.availableTools).toContain('telegram_messaging');
+        expect(result.availableTools).toContain('telegram_send_message');
+        expect(result.availableTools).toContain('telegram_send_photo');
+        expect(result.availableTools).toContain('telegram_send_document');
+    });
+
+    it('should expand ventures_registry meta-tool', () => {
+        const result = parseAnnotatedTools(['ventures_registry']);
+
+        expect(result.availableTools).toContain('ventures_registry');
+        expect(result.availableTools).toContain('venture_mint');
+        expect(result.availableTools).toContain('venture_query');
+        expect(result.availableTools).toContain('venture_update');
+        expect(result.availableTools).toContain('venture_delete');
+    });
+
+    it('should deduplicate when same tool appears multiple times', () => {
+        const result = parseAnnotatedTools([
+            'workstream_analysis',
+            'inspect_workstream' // Already included via expansion
+        ]);
+
+        const inspectCount = result.availableTools.filter(t => t === 'inspect_workstream').length;
+        expect(inspectCount).toBe(1);
+    });
+
+    it('should handle mixed meta-tools and regular tools', () => {
+        const result = parseAnnotatedTools([
+            { name: 'workstream_analysis', required: true },
+            'get_details',
+            'dispatch_new_job'
+        ]);
+
+        // Meta-tool and its expansions
+        expect(result.availableTools).toContain('workstream_analysis');
+        expect(result.availableTools).toContain('inspect_workstream');
+
+        // Regular tools
+        expect(result.availableTools).toContain('get_details');
+        expect(result.availableTools).toContain('dispatch_new_job');
+    });
+
+    it('should return empty arrays for non-array input', () => {
+        expect(parseAnnotatedTools(null)).toEqual({ requiredTools: [], availableTools: [] });
+        expect(parseAnnotatedTools(undefined)).toEqual({ requiredTools: [], availableTools: [] });
+        expect(parseAnnotatedTools('string')).toEqual({ requiredTools: [], availableTools: [] });
     });
 });

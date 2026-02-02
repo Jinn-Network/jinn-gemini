@@ -26,6 +26,54 @@ const LEGACY_MODEL_ALIASES: Record<string, string> = {
   'gemini-2.0-flash-exp': 'auto-gemini-3',
 };
 
+/**
+ * Models that have been deprecated or removed from the Gemini API.
+ * These will be rejected at dispatch time with a helpful suggestion.
+ */
+const DEPRECATED_MODELS = new Set([
+  'gemini-2.0-flash-thinking-exp-1219',
+  'gemini-2.0-flash-thinking-exp-01-21',
+  'gemini-2.0-flash-thinking-exp',
+  'gemini-2.0-flash-thinking',
+  // Add other deprecated models as they are removed
+]);
+
+/**
+ * Check if a model matches any deprecated pattern (e.g., gemini-2.0-flash-thinking-exp-*)
+ */
+function matchesDeprecatedPattern(model: string): boolean {
+  // All gemini-2.0-flash-thinking experimental models are deprecated
+  if (model.startsWith('gemini-2.0-flash-thinking')) {
+    return true;
+  }
+  return false;
+}
+
+export type ModelValidationResult = {
+  ok: boolean;
+  reason?: string;
+  suggestion?: string;
+};
+
+/**
+ * Check if a model is valid and not deprecated.
+ * Deprecated models are rejected with a suggestion for a valid alternative.
+ */
+export function validateModelAllowed(model: string): ModelValidationResult {
+  const stripped = stripModelsPrefix(model.trim());
+
+  // Check if the model or its normalized form is deprecated (exact match or pattern)
+  if (DEPRECATED_MODELS.has(model) || DEPRECATED_MODELS.has(stripped) || matchesDeprecatedPattern(stripped)) {
+    return {
+      ok: false,
+      reason: `Model '${model}' is deprecated and no longer available`,
+      suggestion: DEFAULT_WORKER_MODEL,
+    };
+  }
+
+  return { ok: true };
+}
+
 export type GeminiModelNormalization = {
   requested: string;
   normalized: string;

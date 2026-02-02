@@ -17,6 +17,8 @@ export function setJobContext(params: {
   requiredTools?: string[];
   availableTools?: string[];
   blueprintInvariantIds?: string[];
+  allowedModels?: string[];
+  defaultModel?: string;
 }): void {
   const {
     requestId,
@@ -30,6 +32,8 @@ export function setJobContext(params: {
     requiredTools,
     availableTools,
     blueprintInvariantIds,
+    allowedModels,
+    defaultModel,
   } = params;
   
   if (requestId) {
@@ -90,6 +94,18 @@ export function setJobContext(params: {
   } else {
     delete process.env.JINN_BLUEPRINT_INVARIANT_IDS;
   }
+
+  if (Array.isArray(allowedModels)) {
+    process.env.JINN_ALLOWED_MODELS = JSON.stringify(allowedModels);
+  } else {
+    delete process.env.JINN_ALLOWED_MODELS;
+  }
+
+  if (defaultModel) {
+    process.env.JINN_DEFAULT_MODEL = defaultModel;
+  } else {
+    delete process.env.JINN_DEFAULT_MODEL;
+  }
 }
 
 /**
@@ -108,6 +124,8 @@ export function clearJobContext(): void {
   delete process.env.JINN_REQUIRED_TOOLS;
   delete process.env.JINN_AVAILABLE_TOOLS;
   delete process.env.JINN_BLUEPRINT_INVARIANT_IDS;
+  delete process.env.JINN_ALLOWED_MODELS;
+  delete process.env.JINN_DEFAULT_MODEL;
 }
 
 /**
@@ -126,6 +144,8 @@ export function snapshotJobContext(): {
   requiredTools?: string[];
   availableTools?: string[];
   blueprintInvariantIds?: string[];
+  allowedModels?: string[];
+  defaultModel?: string;
   inheritedEnv?: string;
 } {
   return {
@@ -173,6 +193,16 @@ export function snapshotJobContext(): {
           }
         })()
       : undefined,
+    allowedModels: process.env.JINN_ALLOWED_MODELS
+      ? (() => {
+          try {
+            return JSON.parse(process.env.JINN_ALLOWED_MODELS as string);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined,
+    defaultModel: process.env.JINN_DEFAULT_MODEL,
     inheritedEnv: process.env.JINN_INHERITED_ENV,
   };
 }
@@ -191,6 +221,8 @@ export function restoreJobContext(snapshot: {
   completedChildRequestIds?: string[];
   childWorkReviewed?: string;
   blueprintInvariantIds?: string[];
+  allowedModels?: string[];
+  defaultModel?: string;
   inheritedEnv?: string;
 }): void {
   clearJobContext();
@@ -204,6 +236,8 @@ export function restoreJobContext(snapshot: {
     branchName: snapshot.branchName,
     completedChildRequestIds: snapshot.completedChildRequestIds,
     blueprintInvariantIds: snapshot.blueprintInvariantIds,
+    allowedModels: snapshot.allowedModels,
+    defaultModel: snapshot.defaultModel,
   });
   if (snapshot.childWorkReviewed) {
     process.env.JINN_CHILD_WORK_REVIEWED = snapshot.childWorkReviewed;

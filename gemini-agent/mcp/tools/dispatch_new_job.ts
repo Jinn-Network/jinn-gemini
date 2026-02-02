@@ -7,9 +7,10 @@ import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../
 import { getPonderGraphqlUrl } from './shared/env.js';
 import { buildIpfsPayload } from '../../shared/ipfs-payload-builder.js';
 import { validateInvariantsStrict } from '../../../worker/prompt/invariant-validator.js';
-import { buildAnnotatedTools, normalizeToolArray } from '../../shared/template-tools.js';
+import { buildAnnotatedTools, normalizeToolArray, extractModelPolicyFromBlueprint } from '../../shared/template-tools.js';
 import { blueprintStructureSchema } from '../../shared/blueprint-schema.js';
 import { BASE_UNIVERSAL_TOOLS } from '../../toolPolicy.js';
+import { validateModelAllowed, normalizeGeminiModel, DEFAULT_WORKER_MODEL } from '../../../shared/gemini-models.js';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -401,6 +402,67 @@ export async function dispatchNewJob(args: unknown) {
       };
     }
 
+    // Model validation: check for deprecated models and template policy
+    const modelPolicy = extractModelPolicyFromBlueprint(blueprintObj);
+    const modelToUse = model || modelPolicy.defaultModel;
+
+    // 1. Check for deprecated models (always rejected)
+    const modelValidation = validateModelAllowed(modelToUse);
+    if (!modelValidation.ok) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            data: null,
+            meta: {
+              ok: false,
+              code: 'DEPRECATED_MODEL',
+              message: modelValidation.reason,
+              details: {
+                requestedModel: modelToUse,
+                suggestion: modelValidation.suggestion,
+                allowedModels: modelPolicy.allowedModels.length > 0
+                  ? modelPolicy.allowedModels
+                  : undefined,
+              },
+            },
+          }),
+        }],
+      };
+    }
+
+    // 2. Check against template whitelist (if defined)
+    if (modelPolicy.allowedModels.length > 0) {
+      const normalizedRequested = normalizeGeminiModel(modelToUse, modelPolicy.defaultModel).normalized;
+      const allowedSet = new Set(modelPolicy.allowedModels.map(m =>
+        normalizeGeminiModel(m, modelPolicy.defaultModel).normalized
+      ));
+
+      if (!allowedSet.has(normalizedRequested)) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              data: null,
+              meta: {
+                ok: false,
+                code: 'UNAUTHORIZED_MODEL',
+                message: `Model not allowed by template policy: ${modelToUse}`,
+                details: {
+                  requestedModel: modelToUse,
+                  allowedModels: modelPolicy.allowedModels,
+                  defaultModel: modelPolicy.defaultModel,
+                },
+              },
+            }),
+          }],
+        };
+      }
+    }
+
+    // Use validated model
+    const validatedModel = modelToUse;
+
     const finalBlueprint = blueprint;
     const gqlUrl = getPonderGraphqlUrl();
 
@@ -463,7 +525,7 @@ export async function dispatchNewJob(args: unknown) {
         blueprint: finalBlueprint,
         jobName,
         jobDefinitionId,
-        model,
+        model: validatedModel,
         enabledTools: mergedRequestedTools,
         tools,
         skipBranch,

@@ -2,4 +2,4 @@
 alwaysApply: true
 ---
 
-- always incorporate significant learnings into AGENT_README_TEST.md
+- always incorporate significant learnings into AGENTS.md or docs/reference/blood-written-rules.md

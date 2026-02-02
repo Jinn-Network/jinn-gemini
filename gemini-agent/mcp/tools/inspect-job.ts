@@ -51,7 +51,6 @@ const GET_JOB_DEFINITION_QUERY = `
       id
       name
       lastStatus
-      model
       enabledTools
       blueprint
       createdAt
@@ -71,7 +70,7 @@ const GET_JOB_RUNS_QUERY = `
         id
         jobName
         delivered
-        deliveryCid
+        deliveryIpfsHash
         blockTimestamp
         workstreamId
         sourceRequestId
@@ -115,7 +114,6 @@ interface JobDefinitionData {
   id: string;
   name?: string;
   lastStatus?: string;
-  model?: string;
   enabledTools?: string;
   blueprint?: string;
   createdAt?: string;
@@ -125,7 +123,7 @@ interface RequestData {
   id: string;
   jobName?: string;
   delivered: boolean;
-  deliveryCid?: string;
+  deliveryIpfsHash?: string;
   blockTimestamp?: string;
   workstreamId?: string;
   sourceRequestId?: string;
@@ -155,7 +153,6 @@ interface InspectJobResult {
     id: string;
     name?: string;
     lastStatus?: string;
-    model?: string;
     enabledTools?: string[];
     blueprint?: string;
     createdAt?: string;
@@ -224,7 +221,6 @@ export async function inspectJob(params: unknown) {
         id: jobDef.id,
         name: jobDef.name,
         lastStatus: jobDef.lastStatus,
-        model: jobDef.model,
         enabledTools,
         blueprint: jobDef.blueprint,
         createdAt: jobDef.createdAt,
@@ -303,8 +299,8 @@ export async function inspectJob(params: unknown) {
           }
 
           // Check delivery for failed tool calls
-          if (run.deliveryCid) {
-            const delivery = await fetchIpfsContentMcp(run.deliveryCid, run.id);
+          if (run.deliveryIpfsHash) {
+            const delivery = await fetchIpfsContentMcp(run.deliveryIpfsHash, run.id);
             if (delivery?.telemetry) {
               const failedTools = extractFailedToolCalls(run.id, run.jobName, delivery.telemetry);
               if (failedTools.length > 0) {

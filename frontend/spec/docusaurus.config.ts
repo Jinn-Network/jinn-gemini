@@ -49,14 +49,13 @@ const config: Config = {
       'classic',
       {
         docs: {
-          path: '../../docs/spec',
+          path: '../../docs/site',
           sidebarPath: './sidebars.ts',
           routeBasePath: 'docs',
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/jinn-project/jinn-cli-agents/tree/main/docs/spec/',
-          exclude: ['**/code-spec/AUDIT_PLAN.md'],
+            'https://github.com/jinn-project/jinn-cli-agents/tree/main/docs/site/',
         },
         blog: false,
         theme: {

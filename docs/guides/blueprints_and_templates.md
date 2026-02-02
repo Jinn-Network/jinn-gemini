@@ -1,3 +1,16 @@
+---
+title: Jinn Blueprint & Template Guide
+purpose: guide
+scope: [worker, gemini-agent]
+last_verified: 2026-01-30
+related_code:
+  - worker/prompt/BlueprintBuilder.ts
+  - worker/prompt/providers/invariants/SystemInvariantProvider.ts
+  - blueprints/
+keywords: [template, blueprint, invariants, marketplace, venture]
+when_to_read: "When creating or modifying templates/blueprints for Jinn ventures"
+---
+
 # Jinn Blueprint & Template Guide
 
 This document defines the core concepts of the Jinn Agent System: **Templates**, **Venture Blueprints**, and the **Runtime Blueprint**.

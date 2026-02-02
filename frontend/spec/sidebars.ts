@@ -18,20 +18,6 @@ const sidebars: SidebarsConfig = {
     'introduction',
     {
       type: 'category',
-      label: 'Blueprint',
-      collapsed: false,
-      items: [
-        {
-          type: 'doc',
-          id: 'blueprint/index',
-          label: 'Overview',
-        },
-        'blueprint/constitution',
-        'blueprint/vision',
-      ],
-    },
-    {
-      type: 'category',
       label: 'Documentation',
       collapsed: false,
       link: {

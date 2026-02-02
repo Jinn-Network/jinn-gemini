@@ -81,21 +81,22 @@ export async function ensureRepoCloned(remoteUrl: string, targetPath: string): P
 
   workerLogger.info({ remoteUrl, targetPath }, 'Cloning repository');
 
-  // For HTTPS GitHub URLs, embed token if available for private repo access
+  // If GITHUB_TOKEN is available, prefer HTTPS with token over SSH
+  // This works in containers without SSH keys configured (e.g., Railway)
   let cloneUrl = normalizeSshUrl(remoteUrl);
   const token = process.env.GITHUB_TOKEN;
-  const isHttpsGithub = remoteUrl.startsWith('https://github.com/');
-  workerLogger.info({
-    targetPath,
-    hasToken: !!token,
-    tokenLength: token?.length,
-    isHttpsGithub,
-    willEmbedToken: !!(token && isHttpsGithub)
-  }, 'Clone URL preparation');
 
-  if (token && isHttpsGithub) {
-    cloneUrl = remoteUrl.replace('https://', `https://${token}@`);
-    workerLogger.info({ targetPath }, 'Embedded GITHUB_TOKEN in clone URL');
+  if (token) {
+    const httpsUrl = buildGithubHttpsUrl(remoteUrl);
+    if (httpsUrl) {
+      // Use x-access-token:TOKEN format for GitHub PAT authentication
+      cloneUrl = httpsUrl.replace('https://', `https://x-access-token:${token}@`);
+      workerLogger.info({ targetPath }, 'Using HTTPS with GITHUB_TOKEN for clone');
+    } else {
+      workerLogger.info({ targetPath, hasToken: true }, 'Clone URL preparation (non-GitHub URL, using original)');
+    }
+  } else {
+    workerLogger.info({ targetPath, hasToken: false }, 'Clone URL preparation (no token, using original URL)');
   }
 
   try {

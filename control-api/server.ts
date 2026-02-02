@@ -857,7 +857,8 @@ const schema = createSchema({ typeDefs, resolvers });
 const SUPABASE_URL = getRequiredSupabaseUrl();
 const SUPABASE_SERVICE_ROLE_KEY = getRequiredSupabaseServiceRoleKey();
 const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
-const PORT = getOptionalControlApiPort() || 4001;
+// Railway sets PORT env var, fallback to CONTROL_API_PORT or 4001
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (getOptionalControlApiPort() || 4001);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   logger.fatal('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');

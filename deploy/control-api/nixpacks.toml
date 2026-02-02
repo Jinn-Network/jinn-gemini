@@ -1,0 +1,14 @@
+# Control API service build configuration
+# Pin to nixpkgs archive that includes Node.js 22
+[phases.setup]
+nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
+
+[phases.install]
+cmds = ["yarn install --frozen-lockfile"]
+
+[phases.build]
+# Build main project (control-api runs via tsx, not compiled)
+cmds = ["yarn run build"]
+
+[start]
+cmd = "npx tsx control-api/server.ts"

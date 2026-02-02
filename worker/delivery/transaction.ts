@@ -407,7 +407,7 @@ export async function deliverViaSafeTransaction(
 
   try {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      // Fetch fresh nonce before each attempt for debugging (DEBUG level - see Gotcha #31)
+      // Fetch fresh nonce before each attempt for debugging (DEBUG level - see Blood Written Rule #31)
       try {
         const latestNonce = await web3ForNonce.eth.getTransactionCount(agentAddress, 'latest');
         const pendingNonce = await web3ForNonce.eth.getTransactionCount(agentAddress, 'pending');

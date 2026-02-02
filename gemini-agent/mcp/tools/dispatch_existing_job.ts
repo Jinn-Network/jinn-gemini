@@ -311,7 +311,7 @@ export async function dispatchExistingJob(args: unknown) {
 
   // PRIORITY: Use existing codeMetadata from job definition if it has valid repo.remoteUrl
   // This avoids re-collecting git metadata which can fail if branches don't have upstream tracking
-  // See Gotcha #32: Parent job looked in wrong location due to failed git remote fetch during re-dispatch
+  // See Blood Written Rule #32: Parent job looked in wrong location due to failed git remote fetch during re-dispatch
   const existingCodeMetadata = jobDef.codeMetadata;
   if (existingCodeMetadata?.repo?.remoteUrl) {
     codeMetadata = existingCodeMetadata;

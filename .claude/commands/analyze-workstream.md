@@ -22,12 +22,16 @@ When diagnosing specific issues, read these reference docs:
 
 | Issue Type | Read |
 |------------|------|
-| **UNAUTHORIZED_TOOLS errors** | `docs/reference/TOOL_POLICY.md` |
-| **Dispatch types / recovery** | `docs/reference/DISPATCH_TYPES.md` |
-| **Job status questions** | `docs/reference/JOB_LIFECYCLE.md` |
-| **Error codes** | `docs/reference/ERROR_CODES.md` |
-| **Artifacts / measurements** | `docs/reference/ARTIFACTS.md` |
-| **Git/branch issues** | `docs/documentation/GIT_WORKFLOW.md` |
+| **UNAUTHORIZED_TOOLS errors** | `docs/reference/tool-policy.md` |
+| **Dispatch types / recovery** | `docs/reference/dispatch-types.md` |
+| **Job status questions** | `docs/reference/job-lifecycle.md` |
+| **Status model (detailed)** | `docs/reference/job-status-model.md` |
+| **Error codes** | `docs/reference/error-codes.md` |
+| **Artifacts** | `docs/reference/artifacts.md` |
+| **Measurements / coverage** | `docs/reference/measurements.md` |
+| **Job dependencies** | `docs/reference/dependency-resolution.md` |
+| **IPFS payload structure** | `docs/reference/ipfs-payload-structure.md` |
+| **Ponder GraphQL queries** | `docs/reference/ponder-graphql.md` |
 
 ## Your Approach
 

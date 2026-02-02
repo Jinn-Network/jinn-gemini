@@ -338,6 +338,14 @@ async function main() {
       // Deep substitute {{variable}} placeholders throughout the blueprint
       blueprintObj = deepSubstitute(blueprintObj, inputConfig, blueprintObj.inputSchema);
       scriptLogger.info('Variable substitution applied to blueprint');
+
+      // Inject input config into blueprint context so agent can access parameters
+      // This ensures workstreamId and other input fields reach the agent
+      if (Object.keys(inputConfig).length > 0) {
+        const inputSection = `\n\n[INPUT PARAMETERS]\n${JSON.stringify(inputConfig, null, 2)}`;
+        blueprintObj.context = (blueprintObj.context || '') + inputSection;
+        scriptLogger.info({ keys: Object.keys(inputConfig) }, 'Input parameters injected into context');
+      }
     }
 
     if (blueprintObj.context) {
@@ -459,6 +467,17 @@ async function main() {
     }
     if (!profile.privateKey) {
       throw new Error('No private key found in operate-profile. Check .operate/keys directory.');
+    }
+
+    // Clear any stale JINN_* env vars before building payload
+    // This prevents env contamination from previous worker runs that could
+    // pollute the baseBranch and other metadata in the IPFS payload
+    const jinnEnvVars = Object.keys(process.env).filter(k => k.startsWith('JINN_'));
+    if (jinnEnvVars.length > 0) {
+      scriptLogger.warn({ clearedVars: jinnEnvVars }, 'Clearing stale JINN_* env vars before payload build');
+      for (const key of jinnEnvVars) {
+        delete process.env[key];
+      }
     }
 
     // Use shared payload builder for ALL dispatches (cyclic and non-cyclic)

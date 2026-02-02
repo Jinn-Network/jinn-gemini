@@ -197,6 +197,12 @@ export const EXTENSION_META_TOOLS = {
     requiredEnv: ['GEMINI_API_KEY'],
     tools: [...NANO_BANANA_TOOLS] as string[],
   },
+workstream_analysis: {
+    installUrl: 'local:gemini-extension',
+    extensionName: 'jinn-extensions',
+    requiredEnv: [] as readonly string[],
+    tools: ['inspect_workstream', 'inspect_job_run', 'inspect_job'] as string[],
+  },
   ventures_registry: {
     installUrl: 'local:gemini-extension',
     extensionName: 'jinn-extensions',

@@ -301,7 +301,7 @@ Focus on:
 **DO NOT give generic advice like "Use dispatch_new_job to create child jobs".**
 **DO describe what actually happened: "Called dispatch_new_job 3 times before any web_fetch calls"**
 
-### System Gotchas
+### System Blood Written Rules
 Common issues encountered in past runs:
 - **CODE_METADATA_REPO_ROOT errors:** For research-only jobs (no code changes), always use \`skipBranch: true\` in dispatch_new_job to avoid git branch creation errors
 - **Transaction not found:** Blockchain RPC transient errors - retry dispatch calls that fail with this error

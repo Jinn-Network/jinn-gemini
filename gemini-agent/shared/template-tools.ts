@@ -1,3 +1,11 @@
+import {
+  EXTENSION_META_TOOLS,
+  TELEGRAM_TOOLS,
+  FIREFLIES_TOOLS,
+  RAILWAY_TOOLS,
+  NANO_BANANA_TOOLS,
+} from '../toolPolicy.js';
+
 export type TemplateToolSpec = {
   name: string;
   required?: boolean;
@@ -70,6 +78,46 @@ function uniqueOrdered(values: string[]): string[] {
   return result;
 }
 
+/**
+ * Expand meta-tools to their individual tool names.
+ * This ensures validation accepts both meta-tool names and their expanded tools.
+ *
+ * When a template specifies a meta-tool like "workstream_analysis", agents may
+ * dispatch children requesting the expanded tools (e.g., "inspect_workstream").
+ * This expansion ensures those individual tools are recognized as allowed.
+ */
+function expandMetaTools(tools: string[]): string[] {
+  const expanded: string[] = [];
+
+  for (const tool of tools) {
+    expanded.push(tool); // Keep the meta-tool name itself
+
+    // Expand extension meta-tools (workstream_analysis, ventures_registry, etc.)
+    if (tool in EXTENSION_META_TOOLS) {
+      const config = EXTENSION_META_TOOLS[tool as keyof typeof EXTENSION_META_TOOLS];
+      if (config?.tools) {
+        expanded.push(...config.tools);
+      }
+    }
+
+    // Expand other meta-tools that aren't in EXTENSION_META_TOOLS
+    if (tool === 'telegram_messaging') {
+      expanded.push(...TELEGRAM_TOOLS);
+    }
+    if (tool === 'fireflies_meetings') {
+      expanded.push(...FIREFLIES_TOOLS);
+    }
+    if (tool === 'railway_deployment') {
+      expanded.push(...RAILWAY_TOOLS);
+    }
+    if (tool === 'nano_banana') {
+      expanded.push(...NANO_BANANA_TOOLS);
+    }
+  }
+
+  return expanded;
+}
+
 export function parseAnnotatedTools(tools: unknown): TemplateToolPolicy {
   if (!Array.isArray(tools)) {
     return { requiredTools: [], availableTools: [] };
@@ -100,7 +148,7 @@ export function parseAnnotatedTools(tools: unknown): TemplateToolPolicy {
 
   return {
     requiredTools: uniqueOrdered(requiredTools),
-    availableTools: uniqueOrdered(availableTools),
+    availableTools: uniqueOrdered(expandMetaTools(availableTools)),
   };
 }
 
@@ -126,4 +174,78 @@ export function extractToolPolicyFromBlueprint(blueprint: any): TemplateToolPoli
   }
 
   return { requiredTools: [], availableTools: [] };
+}
+
+// ============================================================================
+// Model Policy
+// ============================================================================
+
+const DEFAULT_MODEL = 'auto-gemini-3';
+
+export interface TemplateModelPolicy {
+  allowedModels: string[];  // Whitelist of valid models (empty = no restriction)
+  defaultModel: string;     // Model to use when not specified
+}
+
+/**
+ * Extract model policy from a blueprint/template.
+ *
+ * Supports multiple formats:
+ * 1. Full config: { models: { allowed: [...], default: "..." } }
+ * 2. Shorthand array: { models: ["model1", "model2"] } - first is default
+ * 3. Legacy single: { model: "model-name" }
+ *
+ * Can be in templateMeta or at blueprint root (templateMeta preferred).
+ */
+export function extractModelPolicyFromBlueprint(blueprint: any): TemplateModelPolicy {
+  const templateMeta = blueprint?.templateMeta && typeof blueprint.templateMeta === 'object'
+    ? blueprint.templateMeta
+    : null;
+
+  const defaultPolicy: TemplateModelPolicy = {
+    allowedModels: [],  // Empty = no restriction (any non-deprecated model allowed)
+    defaultModel: DEFAULT_MODEL,
+  };
+
+  // Check templateMeta first (preferred), then blueprint root
+  const source = templateMeta || blueprint;
+  if (!source) {
+    return defaultPolicy;
+  }
+
+  // Format 1 & 2: models field
+  if (source.models) {
+    // Full config: { allowed: [...], default: "..." }
+    if (typeof source.models === 'object' && !Array.isArray(source.models)) {
+      const modelsConfig = source.models;
+      return {
+        allowedModels: Array.isArray(modelsConfig.allowed)
+          ? modelsConfig.allowed.filter((m: unknown) => typeof m === 'string')
+          : [],
+        defaultModel: typeof modelsConfig.default === 'string'
+          ? modelsConfig.default
+          : defaultPolicy.defaultModel,
+      };
+    }
+
+    // Shorthand: just an array of allowed models (first is default)
+    if (Array.isArray(source.models)) {
+      const validModels = source.models.filter((m: unknown) => typeof m === 'string');
+      return {
+        allowedModels: validModels,
+        defaultModel: validModels[0] || defaultPolicy.defaultModel,
+      };
+    }
+  }
+
+  // Format 3: Legacy single model field
+  if (typeof source.model === 'string' && source.model.trim().length > 0) {
+    const model = source.model.trim();
+    return {
+      allowedModels: [model],
+      defaultModel: model,
+    };
+  }
+
+  return defaultPolicy;
 }

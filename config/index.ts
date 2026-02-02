@@ -13,7 +13,7 @@
  * Note: Calling code is responsible for loading .env files (via env/index.ts or loadEnvOnce())
  * BEFORE importing from this module. This ensures test env var overrides work correctly.
  *
- * See: docs/spec/code-spec/spec.md "Centralize configuration access"
+ * See: docs/code-spec/spec.md "Centralize configuration access"
  */
 
 import { z } from 'zod';
@@ -1116,7 +1116,7 @@ export function getBlueprintEnableBeads(): boolean {
 }
 
 export function getBlueprintEnableContextPhases(): boolean {
-  return getConfig().BLUEPRINT_ENABLE_CONTEXT_PHASES ?? true;
+  return getConfig().BLUEPRINT_ENABLE_CONTEXT_PHASES ?? false;
 }
 
 // ============================================================================

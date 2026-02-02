@@ -1,7 +1,20 @@
+---
+title: Writing Invariants Guide
+purpose: guide
+scope: [gemini-agent, worker]
+last_verified: 2026-01-30
+related_code:
+  - worker/prompt/providers/invariants/
+  - gemini-agent/shared/ipfs-payload-builder.ts
+  - blueprints/
+keywords: [invariants, floor, ceiling, range, boolean, measurement, blueprint]
+when_to_read: "When writing or modifying invariants for blueprints"
+---
+
 # Writing Invariants: A Comprehensive Guide
 
 **Version**: 1.0
-**Last Updated**: 2026-01-13
+**Last Updated**: 2025-01-30
 
 ## Overview
 

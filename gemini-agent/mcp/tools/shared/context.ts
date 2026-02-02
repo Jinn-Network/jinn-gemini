@@ -14,6 +14,8 @@ export interface JobContext {
   branchName?: string | null;
   requiredTools?: string[] | null;
   availableTools?: string[] | null;
+  allowedModels?: string[] | null;
+  defaultModel?: string | null;
 }
 
 // Canonical: read from environment only
@@ -50,6 +52,16 @@ export function getCurrentJobContext(): JobContext {
           }
         })()
       : null,
+    allowedModels: process.env.JINN_ALLOWED_MODELS
+      ? (() => {
+          try {
+            return JSON.parse(process.env.JINN_ALLOWED_MODELS as string);
+          } catch {
+            return null;
+          }
+        })()
+      : null,
+    defaultModel: process.env.JINN_DEFAULT_MODEL || null,
   };
 }
 
@@ -117,5 +129,6 @@ export function clearJobContext() {
   delete process.env.JINN_INHERITED_ENV;
   delete process.env.JINN_REQUIRED_TOOLS;
   delete process.env.JINN_AVAILABLE_TOOLS;
-
+  delete process.env.JINN_ALLOWED_MODELS;
+  delete process.env.JINN_DEFAULT_MODEL;
 }

@@ -65,7 +65,7 @@ describe('inspectJobRun', () => {
             jobDefinitionId: 'def-123',
             workstreamId: '0xworkstream',
             delivered: true,
-            deliveryCid: 'QmTestCid',
+            deliveryIpfsHash: 'QmTestCid',
             blockTimestamp: '2025-01-01T00:00:00Z',
           },
         },
@@ -96,7 +96,7 @@ describe('inspectJobRun', () => {
           request: {
             id: '0xabc123',
             delivered: true,
-            deliveryCid: 'QmTestCid',
+            deliveryIpfsHash: 'QmTestCid',
           },
         },
       });
@@ -127,7 +127,7 @@ describe('inspectJobRun', () => {
           request: {
             id: '0xabc123',
             delivered: true,
-            deliveryCid: 'QmTestCid',
+            deliveryIpfsHash: 'QmTestCid',
           },
         },
       });
@@ -171,7 +171,7 @@ describe('inspectJobRun', () => {
           request: {
             id: '0xabc123',
             delivered: true,
-            deliveryCid: 'QmTestCid',
+            deliveryIpfsHash: 'QmTestCid',
           },
         },
       });

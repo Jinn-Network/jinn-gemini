@@ -1,3 +1,16 @@
+---
+title: Jinn System Guide for Agents
+purpose: guide
+scope: [gemini-agent, worker]
+last_verified: 2026-01-30
+related_code:
+  - worker/prompt/BlueprintBuilder.ts
+  - worker/prompt/providers/invariants/
+  - blueprints/
+keywords: [agent, blueprint, invariants, venture, goals, delegation]
+when_to_read: "When designing blueprints or understanding agent-system separation of concerns"
+---
+
 # Jinn System Guide for Autonomous Agents
 
 **Audience:** This document is written for **AI Agents** (specifically the Venture Foundry) to understand the scope of their design work.

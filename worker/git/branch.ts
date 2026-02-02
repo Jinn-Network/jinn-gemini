@@ -61,6 +61,8 @@ export interface BranchCheckoutResult {
   checkoutMethod: CheckoutMethod;
   /** List of files that were stashed before checkout (if any uncommitted changes existed) */
   stashedChanges?: string[];
+  /** True if baseBranch from metadata was missing and we fell back to DEFAULT_BASE_BRANCH */
+  usedDefaultFallback?: boolean;
 }
 
 /**
@@ -268,8 +270,29 @@ export async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<Bra
   }
 
   // Case 3: Neither exists - create new branch from baseBranch
-  const baseRef = resolveBaseBranchRef(repoRoot, baseBranch, execFileSync);
-  workerLogger.info({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source }, 'Creating new branch from baseBranch');
+  let baseRef = resolveBaseBranchRef(repoRoot, baseBranch, execFileSync);
+  let usedDefaultFallback = false;
+
+  // If baseBranch is missing (stale metadata), fall back to DEFAULT_BASE_BRANCH
+  if (baseRef.source === 'missing') {
+    workerLogger.warn(
+      { branchName, requestedBaseBranch: baseBranch },
+      'Requested baseBranch does not exist, falling back to origin/main'
+    );
+
+    baseRef = resolveBaseBranchRef(repoRoot, DEFAULT_BASE_BRANCH, execFileSync);
+    usedDefaultFallback = true;
+
+    // If even DEFAULT_BASE_BRANCH is missing, that's a real error
+    if (baseRef.source === 'missing') {
+      throw new Error(
+        `Cannot create branch ${branchName}: baseBranch '${baseBranch}' does not exist ` +
+        `and default branch '${DEFAULT_BASE_BRANCH}' is also unavailable`
+      );
+    }
+  }
+
+  workerLogger.info({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source, usedDefaultFallback }, 'Creating new branch from baseBranch');
   try {
     execFileSync('git', ['checkout', '-b', branchName, baseRef.ref], {
       cwd: repoRoot,
@@ -278,12 +301,18 @@ export async function checkoutJobBranch(codeMetadata: CodeMetadata): Promise<Bra
       timeout: GIT_CHECKOUT_TIMEOUT_MS,
       env: process.env as Record<string, string>,
     });
-    workerLogger.info({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source }, 'Successfully created branch from baseBranch');
+    workerLogger.info({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source, usedDefaultFallback }, 'Successfully created branch from baseBranch');
     clearBuildCaches(repoRoot);
-    return { branchName, wasNewlyCreated: true, checkoutMethod: 'new_from_base', ...(stashedFiles.length > 0 ? { stashedChanges: stashedFiles } : {}) };
+    return {
+      branchName,
+      wasNewlyCreated: true,
+      checkoutMethod: 'new_from_base',
+      ...(stashedFiles.length > 0 ? { stashedChanges: stashedFiles } : {}),
+      ...(usedDefaultFallback ? { usedDefaultFallback: true } : {}),
+    };
   } catch (fallbackError: any) {
     const errorMessage = `Failed to create branch ${branchName} from ${baseRef.ref}: ${fallbackError.stderr || fallbackError.message}`;
-    workerLogger.error({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source, error: serializeError(fallbackError) }, errorMessage);
+    workerLogger.error({ branchName, baseBranch, baseRef: baseRef.ref, baseRefSource: baseRef.source, usedDefaultFallback, error: serializeError(fallbackError) }, errorMessage);
     throw new Error(errorMessage);
   }
 }
