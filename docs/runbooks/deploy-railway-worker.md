@@ -28,16 +28,25 @@ The worker polls Ponder for unclaimed mech requests, executes jobs via Gemini ag
 
 ## Architecture
 
-The Railway deployment consists of multiple independent services:
+The Jinn platform uses two Railway projects:
 
-| Service | Config Location | Purpose |
-|---------|-----------------|---------|
-| **Worker** | `deploy/worker-default/` | Polls for jobs, executes Gemini agent |
-| **Control API** | `deploy/control-api/` | Job coordination and status reporting |
-| **Ponder** | `deploy/ponder/` | Blockchain indexer |
-| **X402 Gateway** | `deploy/x402-gateway/` | Payment gateway (optional) |
+### Shared Infrastructure (`jinn-shared` project)
+These services are shared by all workers and already deployed:
 
-Each service has its own Railway service with separate scaling, volumes, and environment variables.
+| Service | Purpose | Config |
+|---------|---------|--------|
+| **Ponder** | Blockchain indexer - indexes mech requests | `deploy/ponder/` |
+| **Control API** | Job coordination and status reporting | `deploy/control-api/` |
+| **X402 Gateway** | Payment gateway (optional) | `deploy/x402-gateway/` |
+
+### Worker Projects
+Each worker deployment is a separate Railway project that connects to the shared services:
+
+| Service | Purpose | Config |
+|---------|---------|--------|
+| **Worker** | Polls for jobs, executes Gemini agent | `deploy/worker-default/` |
+
+Workers need URLs to the shared services (see Step 4).
 
 ### Worker Start Command
 
@@ -140,14 +149,18 @@ railway variables set JINN_SERVICE_PRIVATE_KEY="0x..."
 railway variables set JINN_SERVICE_SAFE_ADDRESS="0x..."
 railway variables set JINN_SERVICE_MECH_ADDRESS="0x..."
 
-# RPC (use a reliable provider)
+# RPC (use a reliable provider - Alchemy, Infura, or public)
 railway variables set RPC_URL="https://base-mainnet.g.alchemy.com/v2/YOUR_KEY"
+# Or public endpoint (less reliable):
+# railway variables set RPC_URL="https://mainnet.base.org"
 
-# Ponder GraphQL
-railway variables set PONDER_GRAPHQL_URL="https://ponder-production.up.railway.app/graphql"
+# Ponder GraphQL - from jinn-shared project
+# Go to Railway → jinn-shared project → ponder service → Settings → Networking → Public Domain
+railway variables set PONDER_GRAPHQL_URL="https://ponder-production-XXXX.up.railway.app/graphql"
 
-# Control API
-railway variables set CONTROL_API_URL="https://control-api-production.up.railway.app/graphql"
+# Control API - from jinn-shared project
+# Go to Railway → jinn-shared project → control-api service → Settings → Networking → Public Domain
+railway variables set CONTROL_API_URL="https://control-api-production-XXXX.up.railway.app/graphql"
 
 # GitHub (for repo cloning and pushing)
 railway variables set GITHUB_TOKEN="ghp_..."
@@ -288,9 +301,10 @@ RESOURCE_EXHAUSTED: Quota exceeded
 - Check `JINN_SERVICE_MECH_ADDRESS` is set correctly
 - Must be a valid 40-character hex address with `0x` prefix
 
-### Connection errors to Ponder
-- Verify `PONDER_GRAPHQL_URL` is accessible
-- Check if the Ponder service is healthy in Railway dashboard
+### Connection errors to Ponder or Control API
+- Verify URLs are correct (get from `jinn-shared` project in Railway)
+- Check if Ponder/Control API services are healthy in `jinn-shared` project dashboard
+- Try accessing the URL directly in browser (should show GraphQL playground)
 
 ### Transaction failures
 - Ensure the Safe has sufficient ETH for gas
@@ -327,13 +341,15 @@ RESOURCE_EXHAUSTED: Quota exceeded
 
 ## Current Deployment
 
-The `jinn-worker` project is deployed in Railway (Oaksprout workspace):
+### Shared Services (`jinn-shared` project)
+- Ponder indexer
+- Control API
+- X402 Gateway
 
-**Services:**
+### Worker (`jinn-worker` project)
 - Worker running standalone with init.sh
-- Control API as separate service
-- Ponder indexer as separate service
 - Volume mounted at `/root` for persistent state
+- Connects to shared services via URLs
 
 **Configuration:**
 - `WORKSTREAM_FILTER` set to specific workstream addresses
