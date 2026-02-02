@@ -8,6 +8,7 @@ import {
 } from '../../config/index.js';
 import { serializeError } from '../logging/errors.js';
 import { DEFAULT_WORKER_MODEL, normalizeGeminiModel } from '../../shared/gemini-models.js';
+import { spawn } from 'child_process';
 
 type QuotaCheckOptions = {
   model?: string;
@@ -128,21 +129,104 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Check quota using Gemini CLI with OAuth (cloudcode-pa endpoint).
+ * This is the same endpoint that actual jobs use.
+ */
+async function checkGeminiQuotaViaCli(model: string, timeoutMs: number): Promise<QuotaCheckResult> {
+  return new Promise((resolve) => {
+    const args = ['@google/gemini-cli', '--model', model, '--output-format', 'json', 'ping'];
+    const child = spawn('npx', args, {
+      timeout: timeoutMs,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let resolved = false;
+
+    const cleanup = () => {
+      if (!resolved) {
+        resolved = true;
+        child.kill('SIGKILL');
+      }
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve({
+        ok: true,
+        checked: false,
+        isQuotaError: false,
+        detail: 'CLI quota check timed out',
+      });
+    }, timeoutMs);
+
+    child.stdout?.on('data', (chunk) => { stdout += chunk.toString(); });
+    child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      if (resolved) return;
+      resolved = true;
+      resolve({
+        ok: true,
+        checked: false,
+        isQuotaError: false,
+        detail: `CLI spawn error: ${err.message}`,
+      });
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (resolved) return;
+      resolved = true;
+
+      const combined = `${stdout}\n${stderr}`;
+      const isQuotaError = isQuotaText(combined);
+
+      if (code === 0) {
+        resolve({
+          ok: true,
+          checked: true,
+          isQuotaError: false,
+          status: 200,
+        });
+      } else if (isQuotaError) {
+        resolve({
+          ok: false,
+          checked: true,
+          isQuotaError: true,
+          status: 429,
+          detail: truncate(combined, 240),
+        });
+      } else {
+        // Non-quota error - still allow job to proceed
+        resolve({
+          ok: true,
+          checked: true,
+          isQuotaError: false,
+          detail: truncate(combined, 240),
+        });
+      }
+    });
+
+    // Send empty input to close stdin
+    child.stdin?.end();
+  });
+}
+
 export async function checkGeminiQuota(
   options: QuotaCheckOptions = {}
 ): Promise<QuotaCheckResult> {
   const apiKey = getOptionalGeminiApiKey() || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return {
-      ok: true,
-      checked: false,
-      isQuotaError: false,
-      detail: 'GEMINI_API_KEY not set',
-    };
-  }
-
   const model = normalizeGeminiModel(resolveModel(options.model), DEFAULT_WORKER_MODEL).normalized;
   const timeoutMs = options.timeoutMs ?? getOptionalGeminiQuotaCheckTimeoutMs() ?? DEFAULT_TIMEOUT_MS;
+
+  // If no API key, use CLI-based quota check (OAuth)
+  if (!apiKey) {
+    return checkGeminiQuotaViaCli(model, timeoutMs);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -209,7 +293,7 @@ export async function waitForGeminiQuota(options: QuotaWaitOptions = {}): Promis
     if (!result.checked) {
       if (!loggedMissingKey) {
         loggedMissingKey = true;
-        workerLogger.info({ model }, 'Skipping Gemini quota check (GEMINI_API_KEY not set)');
+        workerLogger.info({ model, detail: result.detail }, 'Quota check incomplete - proceeding');
       }
       return;
     }
