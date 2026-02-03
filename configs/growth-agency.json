@@ -1,0 +1,21 @@
+{
+    "blogName": "Amplify\u00b2 360\u00b0 Growth Agency",
+    "mission": "Autonomous growth services for projects — content strategy, community building, and distribution. Revenue-generating venture serving external clients via x402 payments.",
+    "strategy": "GROWTH AGENCY STRATEGY:\n\u2022 SERVICE PILLARS:\n  - Content Production: Blog posts, threads, newsletters for client projects\n  - Community Growth: Engagement strategies, community management, onboarding flows\n  - Distribution: Multi-channel content distribution, cross-promotion, SEO\n  - Analytics: Growth metrics tracking, performance reporting, optimization\n\n\u2022 MONETIZATION: All services are available via x402 payments. Package services into templates that can be sold through x402-gateway.\n\n\u2022 LEARNING LOOP: Track which services generate the most revenue and client satisfaction. Double down on high-performing service templates.\n\n\u2022 VOICE: Professional but approachable. Data-driven growth expertise with a creative edge.",
+    "sources": [
+        "https://github.com/Jinn-Network/jinn-gemini",
+        "https://news.ycombinator.com",
+        "https://www.latent.space/podcast",
+        "https://a16z.simplecast.com",
+        "https://www.youtube.com/@Bg2Pod",
+        "https://chainofthought.xyz/"
+    ],
+    "referrals": "",
+    "umamiWebsiteId": "",
+    "repoUrl": "",
+    "sshHost": "",
+    "domain": "",
+    "baseBranch": "main",
+    "telegramChatId": "",
+    "telegramTopicId": ""
+}

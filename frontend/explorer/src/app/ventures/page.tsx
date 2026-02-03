@@ -5,7 +5,7 @@ import { SiteHeader } from '@/components/site-header';
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { getVentures, type Venture } from '@/lib/ventures-services';
+import { getTokenizedVentures, type Venture } from '@/lib/ventures-services';
 import { ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -43,6 +43,11 @@ function VentureCard({ venture }: { venture: Venture }) {
               <Link href={href} className="hover:text-primary hover:underline">
                 {venture.name}
               </Link>
+              {venture.token_symbol && (
+                <Badge variant="outline" className="text-xs font-mono bg-primary/5 border-primary/20 text-primary">
+                  ${venture.token_symbol}
+                </Badge>
+              )}
             </CardTitle>
             <p className="text-sm text-muted-foreground font-mono">
               {venture.slug}
@@ -79,7 +84,7 @@ function VentureCard({ venture }: { venture: Venture }) {
 }
 
 async function VenturesList() {
-  const ventures = await getVentures();
+  const ventures = await getTokenizedVentures();
 
   if (ventures.length === 0) {
     return (

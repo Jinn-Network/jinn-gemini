@@ -16,9 +16,10 @@ It will be possible to launch many ventures via Jinn. It is therefore important 
 
 
 #### Architecture
-- Venture Registry (staking contract): venture id, launcher, Jinn network tag, bound agent blueprint (AgentRegistry id), objective spec hash
-- OLAS VoteWeighting/Gauge: veOLAS gauge weights direct emissions to the venture’s staking contract
-- Optional Venture Token: venture-specific token minting; capital formation via Doppler; integrates with incentives routing (TBD)
+- Venture Registry (staking contract + Supabase): venture id, launcher, Jinn network tag, bound agent blueprint (AgentRegistry id), objective spec hash
+- OLAS VoteWeighting/Gauge: veOLAS gauge weights direct emissions to the venture's staking contract
+- Venture Token Fields: `token_address`, `token_symbol`, `token_name`, `staking_contract_address`, `token_launch_platform`, `token_metadata` (JSONB), `governance_address`, `pool_address`
+- Optional Venture Token: venture-specific token minting via Doppler SDK on Base; multicurve auctions with OLAS as numeraire; automatic Uniswap V4 pool migration
 
 #### Implementation
 
@@ -26,7 +27,13 @@ The Venture Registry is implemented directly as an Olas staking contract that do
 
 Incentives are sourced from veOLAS gauge voting. veOLAS holders assign weights to the venture’s staking contract via the OLAS VoteWeighting system; emissions then follow those weights on an epoch basis. Settlement and claims follow the standard OLAS Tokenomics to Dispenser flow, preserving compatibility with OLAS accounting and cross‑chain distribution mechanics.
 
-An optional venture token can be introduced to enable venture‑specific capital formation and alignment. The intent is to integrate the Doppler protocol to achieve efficient liquidity and capital formation. Exact issuance schedules, bonding mechanisms, and routing policies remain to be specified and will integrate with the incentives surface when finalized.
+An optional venture token can be launched via the Doppler SDK (`@whetstone-research/doppler-sdk`) on Base. The launch flow creates a multicurve auction with OLAS as the numeraire token, allocating 90% of supply to price discovery and 10% to a Gnosis Safe treasury via vesting. Upon auction completion, liquidity migrates to a Uniswap V4 TOKEN/OLAS pool. Doppler auto-creates a governance contract holding the venture's tokens.
+
+**Token earning model:**
+1. **OLAS rewards**: Workers stake 5,000 OLAS into the shared Jinn staking contract (`0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139`), earning ~57.5 OLAS/epoch via veOLAS emissions
+2. **Venture token rewards**: A parallel distribution script queries completed deliveries per workstream, calculates proportional allocation, and transfers venture tokens from the treasury to worker addresses
+
+The shared staking contract (`AgentsFun1`) supports all ventures via a single staking instance. Sub-ventures are differentiated by `WORKSTREAM_FILTER` at the worker level, directing agents to process jobs for their selected venture.
 
 ## Actors
 
@@ -49,4 +56,4 @@ The Task Executor is an open‑source ReAct agent (via the Gemini CLI) that plan
 
 Model Context Protocol (MCP) provides the context and tool interface. A local server exposes a minimal, audited tool surface per job, binding capabilities to explicit schemas and allowlists. Sessions are short‑lived, scoped to a single job, and instrumented for observability without expanding the agent’s authority.
 
-Capital formation can incorporate Doppler to bootstrap and scale venture‑specific tokens. Programmatic bonding and liquidity mechanisms complement veOLAS‑driven emissions, enabling more sophisticated alignment and runway for ventures that demonstrate sustained, verifiable progress.
+Capital formation integrates Doppler to bootstrap and scale venture‑specific tokens. The Doppler SDK enables programmatic multicurve auctions on Base, with OLAS as the numeraire token for direct protocol alignment. Liquidity migrates to Uniswap V4 pools upon auction completion. This complements veOLAS‑driven emissions, enabling sophisticated alignment and runway for ventures that demonstrate sustained, verifiable progress.

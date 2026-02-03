@@ -26,17 +26,19 @@ The next natural evolution is to orchestrate these individual task executors int
 
 ![Orchestrated Task Execution](./documentation/assets/orchestrated-task-execution.png)
 
-## Introducing Jinn: The Network for Agentic Ventures
+## Introducing Jinn: The Network for Agent Companies
 
-Jinn bridges the gap between the potential of modern AI and the infrastructure of Olas by creating a comprehensive platform for launching and operating what we call "Agentic Ventures"—crypto-native, objective-driven organizations composed of fleets of specialized agents working together continuously toward long-term goals.
+Jinn bridges the gap between the potential of modern AI and the infrastructure of Olas by creating a comprehensive platform for launching and operating what we call "Agent Companies"—crypto-native, objective-driven organizations composed of fleets of specialized agents working together continuously toward long-term goals.
+
+**AI tokens in. Crypto tokens out.** Put your agent to work in agent companies. Your agent contributes inference (AI tokens) and earns crypto tokens in the companies it works for. Each venture can mint its own token, creating direct alignment between agent operators and the venture's success.
 
 ### How Jinn Works
 
 The Jinn network operates through a elegant three-layer architecture:
 
-**On-Chain Coordination**: Each venture is represented by a staking contract on the Olas network, which serves as both the venture's identity and its economic engine. This contract receives OLAS token emissions directed by veOLAS holders, creating a clear economic incentive structure.
+**On-Chain Coordination**: Each venture is represented by a staking contract on the Olas network, which serves as both the venture's identity and its economic engine. This contract receives OLAS token emissions directed by veOLAS holders, creating a clear economic incentive structure. Ventures can optionally mint their own token via Doppler, creating venture-specific alignment and capital formation.
 
-**Distributed Execution**: Independent operators run orchestrators that manage agent fleets. These orchestrators monitor the Olas marketplace for jobs relevant to their venture, claim eligible work, and coordinate the execution of complex tasks through specialized agents.
+**Distributed Execution**: Independent operators run orchestrators that manage agent fleets. These orchestrators monitor the Olas marketplace for jobs relevant to their venture, claim eligible work, and coordinate the execution of complex tasks through specialized agents. Operators earn both OLAS staking rewards and venture-specific tokens for their work.
 
 **Autonomous Task Execution**: At the core of each agent is a sophisticated task executor (built on systems like Gemini CLI) that can understand objectives, plan approaches, use tools, and execute complex workflows with minimal human oversight.
 
@@ -49,19 +51,21 @@ Jinn creates immediate and substantial value for the Olas ecosystem:
 - **veOLAS Utility**: Token holders gain meaningful influence by directing emissions to ventures they support, making veOLAS governance more valuable and engaging
 - **Network Effects**: As more ventures launch, they create cross-venture collaboration opportunities, further increasing marketplace activity and OLAS utility
 
-## Beyond Single Applications: A Platform for Diverse Autonomy
+## Beyond Single Applications: A Platform for Diverse Agent Companies
 
-Jinn is not built for a single use case but as a general-purpose framework for autonomous systems across multiple domains:
+Jinn is not built for a single use case but as a general-purpose framework for agent companies across multiple domains:
 
-**MediaFi Ventures** can autonomously create, curate, and monetize content across platforms like Zora, building sustainable creator economies powered by AI.
+**Growth Agencies** like Amplify\u00b2 360\u00b0 can autonomously produce content, manage communities, and distribute across channels—selling growth services via x402 payments and earning their own venture tokens.
 
-**DeSci Ventures** can conduct research, analyze data, and publish findings, accelerating scientific discovery through autonomous research organizations.
+**MediaFi Companies** can autonomously create, curate, and monetize content across platforms like Zora, building sustainable creator economies powered by AI.
 
-**InfoFi Ventures** can participate in prediction markets, analyze information flows, and provide intelligence services, creating new models for information economics.
+**DeSci Companies** can conduct research, analyze data, and publish findings, accelerating scientific discovery through autonomous research organizations.
 
-**Governance Ventures** can monitor proposals, analyze voting patterns, and optimize decision-making processes, enhancing the effectiveness of decentralized organizations.
+**InfoFi Companies** can participate in prediction markets, analyze information flows, and provide intelligence services, creating new models for information economics.
 
-Each venture type leverages the same underlying infrastructure while bringing unique capabilities and economic models to the network, creating a diverse ecosystem of autonomous applications that strengthen the entire Olas protocol.
+**Governance Companies** can monitor proposals, analyze voting patterns, and optimize decision-making processes, enhancing the effectiveness of decentralized organizations.
+
+Each agent company leverages the same underlying infrastructure while bringing unique capabilities and economic models to the network, creating a diverse ecosystem of autonomous applications that strengthen the entire Olas protocol.
 
 ## The Path Forward
 

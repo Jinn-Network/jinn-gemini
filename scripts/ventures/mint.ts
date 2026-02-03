@@ -19,6 +19,14 @@ export interface CreateVentureArgs {
   rootWorkstreamId?: string;
   rootJobInstanceId?: string;
   status?: 'active' | 'paused' | 'archived';
+  tokenAddress?: string;
+  tokenSymbol?: string;
+  tokenName?: string;
+  stakingContractAddress?: string;
+  tokenLaunchPlatform?: string;
+  tokenMetadata?: object;
+  governanceAddress?: string;
+  poolAddress?: string;
 }
 
 export interface Venture {
@@ -33,6 +41,14 @@ export interface Venture {
   status: string;
   created_at: string;
   updated_at: string;
+  token_address: string | null;
+  token_symbol: string | null;
+  token_name: string | null;
+  staking_contract_address: string | null;
+  token_launch_platform: string | null;
+  token_metadata: object | null;
+  governance_address: string | null;
+  pool_address: string | null;
 }
 
 // ============================================================================
@@ -66,7 +82,7 @@ export async function createVenture(args: CreateVentureArgs): Promise<Venture> {
   // Generate slug if not provided
   const slug = args.slug || generateSlug(args.name);
 
-  const record = {
+  const record: Record<string, any> = {
     name: args.name,
     slug,
     description: args.description || null,
@@ -76,6 +92,16 @@ export async function createVenture(args: CreateVentureArgs): Promise<Venture> {
     root_job_instance_id: args.rootJobInstanceId || null,
     status: args.status || 'active',
   };
+
+  // Token fields — only include if provided
+  if (args.tokenAddress !== undefined) record.token_address = args.tokenAddress;
+  if (args.tokenSymbol !== undefined) record.token_symbol = args.tokenSymbol;
+  if (args.tokenName !== undefined) record.token_name = args.tokenName;
+  if (args.stakingContractAddress !== undefined) record.staking_contract_address = args.stakingContractAddress;
+  if (args.tokenLaunchPlatform !== undefined) record.token_launch_platform = args.tokenLaunchPlatform;
+  if (args.tokenMetadata !== undefined) record.token_metadata = args.tokenMetadata;
+  if (args.governanceAddress !== undefined) record.governance_address = args.governanceAddress;
+  if (args.poolAddress !== undefined) record.pool_address = args.poolAddress;
 
   const { data, error } = await supabase
     .from('ventures')
@@ -210,6 +236,38 @@ function parseArgs(): CreateVentureArgs {
         result.status = next as 'active' | 'paused' | 'archived';
         i++;
         break;
+      case '--tokenAddress':
+        result.tokenAddress = next;
+        i++;
+        break;
+      case '--tokenSymbol':
+        result.tokenSymbol = next;
+        i++;
+        break;
+      case '--tokenName':
+        result.tokenName = next;
+        i++;
+        break;
+      case '--stakingContractAddress':
+        result.stakingContractAddress = next;
+        i++;
+        break;
+      case '--tokenLaunchPlatform':
+        result.tokenLaunchPlatform = next;
+        i++;
+        break;
+      case '--tokenMetadata':
+        result.tokenMetadata = JSON.parse(next);
+        i++;
+        break;
+      case '--governanceAddress':
+        result.governanceAddress = next;
+        i++;
+        break;
+      case '--poolAddress':
+        result.poolAddress = next;
+        i++;
+        break;
     }
   }
 
@@ -247,6 +305,14 @@ Optional:
   --rootWorkstreamId <id>    Workstream ID
   --rootJobInstanceId <id>   Root job instance ID
   --status <status>          Status: active, paused, archived
+  --tokenAddress <addr>      Token contract address
+  --tokenSymbol <symbol>     Token symbol (e.g., GROWTH)
+  --tokenName <name>         Token display name
+  --stakingContractAddress <addr>  Staking contract address
+  --tokenLaunchPlatform <platform> Launch platform (e.g., doppler)
+  --tokenMetadata <json>     Platform-specific metadata JSON
+  --governanceAddress <addr> Governance contract address
+  --poolAddress <addr>       Liquidity pool address
 
 Example:
   yarn tsx scripts/ventures/mint.ts \\
