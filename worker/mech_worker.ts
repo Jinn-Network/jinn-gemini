@@ -1240,4 +1240,7 @@ async function main() {
   }
 }
 
-main().catch(() => process.exit(1));
+main().catch((err) => {
+  workerLogger.error({ error: serializeError(err) }, 'Fatal: unhandled error escaped main loop');
+  process.exit(1);
+});

@@ -1,6 +1,6 @@
 import { request } from 'graphql-request'
 
-const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://jinn-gemini-production.up.railway.app/graphql'
+const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://ponder-production-6d16.up.railway.app/graphql'
 
 export interface JobDefinition {
   id: string

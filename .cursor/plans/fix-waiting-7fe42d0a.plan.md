@@ -137,7 +137,7 @@ query GetRequestsForJobDef($jobDefId: String!) {
 
 **Ponder Endpoint:**
 
-- Production: `https://jinn-gemini-production.up.railway.app/graphql`
+- Production: `https://ponder-production-6d16.up.railway.app/graphql`
 - Retrieved via `getPonderGraphqlUrl()` from [`gemini-agent/mcp/tools/shared/env.js`](gemini-agent/mcp/tools/shared/env.js)
 
 ### Logging System
@@ -537,7 +537,7 @@ echo ""
 JOB_ID="23783b40-2ba3-4a21-a998-3ce233ef497c"
 JOB_NAME="Trade Idea Generation & Synthesis"
 WORKSTREAM_ID="0x0d2dcd01a6c0f62dafbc93bc314bd7b766296e8b6cbebf5ae62815ecb453594c"
-PONDER_URL="https://jinn-gemini-production.up.railway.app/graphql"
+PONDER_URL="https://ponder-production-6d16.up.railway.app/graphql"
 
 echo "Test Configuration:"
 echo "  Job ID: $JOB_ID"
@@ -791,7 +791,7 @@ Never rely on `hierarchy.status` for terminal state decisions. Always query Pond
    # Required env vars
    SUPABASE_URL=https://clnwgxgvmnrkwqdblqgf.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=<key>
-   PONDER_GRAPHQL_URL=https://jinn-gemini-production.up.railway.app/graphql
+   PONDER_GRAPHQL_URL=https://ponder-production-6d16.up.railway.app/graphql
    ```
 
 2. Verify job is still in WAITING:

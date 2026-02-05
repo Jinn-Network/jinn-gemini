@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 
 const requestId = '0x59acee61f4404a50a7afb0dfb5005e4f1d4fa5f96d1bcd0524d334cc1c36a330';
-const explorerUrl = `https://jinn-gemini-production.up.railway.app/requests/${requestId}`;
+const explorerUrl = `https://ponder-production-6d16.up.railway.app/requests/${requestId}`;
 
 async function main() {
   const browser = await chromium.launch({ headless: true });

@@ -819,7 +819,8 @@ export async function processOnce(
         message: `Git push failed: ${gitError?.message || serializeError(gitError)}`
       };
     }
-    throw gitError;
+    // Do NOT re-throw: git failures should not kill the worker process.
+    // The error is logged and status updated above; execution continues to delivery.
   } finally {
     telemetry.endPhase('git_operations');
   }
@@ -838,6 +839,9 @@ export async function processOnce(
     }
     await storeOnchainReport(target, workerAddress, result, finalStatus, error, metadata!);
     telemetry.logCheckpoint('reporting', 'report_stored', { status: finalStatus.status });
+  } catch (reportError: any) {
+    telemetry.logError('reporting', reportError);
+    workerLogger.error({ requestId: target.id, error: serializeError(reportError) }, 'Report storage failed (non-fatal)');
   } finally {
     telemetry.endPhase('reporting');
   }

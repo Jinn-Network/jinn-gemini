@@ -5,7 +5,7 @@ import { SiteHeader } from '@/components/site-header';
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { getTokenizedVentures, type Venture } from '@/lib/ventures-services';
+import { getActiveVentures, type Venture } from '@/lib/ventures-services';
 import { ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -58,19 +58,10 @@ function VentureCard({ venture }: { venture: Venture }) {
       </CardHeader>
       <CardContent>
         {venture.description && (
-          <p className="text-sm text-muted-foreground mb-3">
+          <p className="text-sm text-muted-foreground">
             {venture.description}
           </p>
         )}
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span>Owner: {venture.owner_address.slice(0, 8)}...</span>
-          {venture.blueprint?.invariants?.length > 0 && (
-            <span>
-              {venture.blueprint.invariants.length} invariant
-              {venture.blueprint.invariants.length !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
       </CardContent>
       <CardFooter className="pt-0">
         <Button asChild variant="outline" size="sm" className="w-full">
@@ -84,9 +75,12 @@ function VentureCard({ venture }: { venture: Venture }) {
 }
 
 async function VenturesList() {
-  const ventures = await getTokenizedVentures();
+  const allVentures = await getActiveVentures();
 
-  if (ventures.length === 0) {
+  const venturesWithTokens = allVentures.filter(v => v.token_symbol !== null);
+  const venturesWithoutTokens = allVentures.filter(v => v.token_symbol === null);
+
+  if (allVentures.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
         No ventures found
@@ -95,15 +89,30 @@ async function VenturesList() {
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-muted-foreground">
-        {ventures.length} venture{ventures.length !== 1 ? 's' : ''} registered
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {ventures.map((venture) => (
-          <VentureCard key={venture.id} venture={venture} />
-        ))}
-      </div>
+    <div className="space-y-8">
+      {/* Ventures With Tokens */}
+      {venturesWithTokens.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold">Ventures With Tokens</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {venturesWithTokens.map((venture) => (
+              <VentureCard key={venture.id} venture={venture} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ventures Without Tokens */}
+      {venturesWithoutTokens.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold">Ventures Without Tokens</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {venturesWithoutTokens.map((venture) => (
+              <VentureCard key={venture.id} venture={venture} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

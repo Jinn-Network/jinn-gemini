@@ -192,9 +192,15 @@ export async function listVentures(options: {
 // CLI Interface
 // ============================================================================
 
-function parseArgs(): CreateVentureArgs {
+interface MintCliArgs {
+  venture: CreateVentureArgs;
+  safeAddress?: string;
+}
+
+function parseArgs(): MintCliArgs {
   const args = process.argv.slice(2);
   const result: Partial<CreateVentureArgs> = {};
+  let safeAddress: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -268,6 +274,10 @@ function parseArgs(): CreateVentureArgs {
         result.poolAddress = next;
         i++;
         break;
+      case '--safe-address':
+        safeAddress = next;
+        i++;
+        break;
     }
   }
 
@@ -287,7 +297,7 @@ function parseArgs(): CreateVentureArgs {
     process.exit(1);
   }
 
-  return result as CreateVentureArgs;
+  return { venture: result as CreateVentureArgs, safeAddress };
 }
 
 function printUsage() {
@@ -299,26 +309,38 @@ Required:
   --ownerAddress <address>   Ethereum address of the owner
   --blueprint <json>         Blueprint JSON with invariants array
 
+Token launch (auto-deploys a Doppler token if both are provided):
+  --tokenSymbol <symbol>     Token symbol (e.g., GROWTH) — triggers token launch
+  --safe-address <addr>      Gnosis Safe for governance + vesting — required with --tokenSymbol
+
 Optional:
   --slug <slug>              URL-friendly slug (auto-generated if not provided)
   --description <text>       Venture description
   --rootWorkstreamId <id>    Workstream ID
   --rootJobInstanceId <id>   Root job instance ID
   --status <status>          Status: active, paused, archived
-  --tokenAddress <addr>      Token contract address
-  --tokenSymbol <symbol>     Token symbol (e.g., GROWTH)
-  --tokenName <name>         Token display name
+  --tokenAddress <addr>      Token contract address (skip if using --tokenSymbol auto-launch)
+  --tokenName <name>         Token display name (defaults to venture name + " Token")
   --stakingContractAddress <addr>  Staking contract address
   --tokenLaunchPlatform <platform> Launch platform (e.g., doppler)
   --tokenMetadata <json>     Platform-specific metadata JSON
   --governanceAddress <addr> Governance contract address
   --poolAddress <addr>       Liquidity pool address
 
-Example:
+Examples:
+  # Mint a tokenless venture
   yarn tsx scripts/ventures/mint.ts \\
     --name "My Venture" \\
     --ownerAddress "0x1234..." \\
     --blueprint '{"invariants":[{"id":"GOAL-001","form":"constraint","description":"Test invariant"}]}'
+
+  # Mint a venture AND auto-launch a token
+  yarn tsx scripts/ventures/mint.ts \\
+    --name "Growth Agency" \\
+    --ownerAddress "0x1234..." \\
+    --blueprint '{"invariants":[{"id":"GOAL-001","form":"constraint","description":"Growth goals"}]}' \\
+    --tokenSymbol "GROWTH" \\
+    --safe-address "0xSafe..."
 `);
 }
 
@@ -329,9 +351,30 @@ async function main() {
   }
 
   try {
-    const args = parseArgs();
-    const venture = await createVenture(args);
+    const { venture: ventureArgs, safeAddress } = parseArgs();
+    const venture = await createVenture(ventureArgs);
+    console.log('Venture created:');
     console.log(JSON.stringify({ ok: true, data: venture }, null, 2));
+
+    // Auto-launch token if --tokenSymbol and --safe-address are both provided
+    if (ventureArgs.tokenSymbol && safeAddress) {
+      console.log('\nAuto-launching token via Doppler...');
+      // Dynamic import with variable path prevents tsc from resolving doppler-sdk types
+      const launchTokenPath = './launch-token.js';
+      const { launchToken } = await import(launchTokenPath);
+      const tokenName = ventureArgs.tokenName || `${ventureArgs.name} Token`;
+      const tokenResult = await launchToken({
+        ventureId: venture.id,
+        name: tokenName,
+        symbol: ventureArgs.tokenSymbol,
+        safeAddress,
+      });
+      console.log('\nToken launch result:');
+      console.log(JSON.stringify({ ok: true, data: tokenResult }, null, 2));
+    } else if (ventureArgs.tokenSymbol && !safeAddress) {
+      console.warn('\nWarning: --tokenSymbol provided without --safe-address. Token was NOT auto-launched.');
+      console.warn('To launch a token, also provide --safe-address <addr>.');
+    }
   } catch (err: any) {
     console.error(JSON.stringify({ ok: false, error: err.message }));
     process.exit(1);

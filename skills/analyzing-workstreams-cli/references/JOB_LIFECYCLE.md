@@ -1,1 +1,0 @@
-../../../docs/reference/JOB_LIFECYCLE.md

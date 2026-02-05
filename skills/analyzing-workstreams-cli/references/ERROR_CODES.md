@@ -1,1 +1,0 @@
-../../../docs/reference/ERROR_CODES.md

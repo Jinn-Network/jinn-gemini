@@ -12,6 +12,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from 'fs';
+import { execSync } from 'child_process';
 import { join, dirname, parse, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { configLogger } from '../logging/index.js';
@@ -430,4 +431,56 @@ export function getMasterEOA(): string | null {
 export function getMasterSafe(chain: string = 'base'): string | null {
   const wallet = getMasterWallet();
   return wallet?.safes?.[chain] || null;
+}
+
+/**
+ * Decrypt and return the master EOA private key.
+ *
+ * The master wallet keystore is at .operate/wallets/ethereum.txt (V3 JSON).
+ * Requires OPERATE_PASSWORD env var for decryption.
+ * Uses Python eth_account since the middleware is Python-based and
+ * the JS web3-eth-accounts scrypt implementation has compatibility issues.
+ *
+ * @returns Private key hex string (0x-prefixed) or null
+ */
+export function getMasterPrivateKey(): string | null {
+  const operateDir = getOperateDir();
+  if (operateDir === null) {
+    return null;
+  }
+
+  const keystorePath = join(operateDir, 'wallets', 'ethereum.txt');
+  if (!existsSync(keystorePath)) {
+    configLogger.warn({ keystorePath }, 'Master wallet keystore not found');
+    return null;
+  }
+
+  const password = process.env.OPERATE_PASSWORD;
+  if (password === undefined || password === '') {
+    configLogger.warn('OPERATE_PASSWORD env var required to decrypt master wallet');
+    return null;
+  }
+
+  try {
+    const result = execSync(
+      `python3 -c "
+import json
+from eth_account import Account
+ks = json.loads(open('${keystorePath}').read())
+print('0x' + Account.decrypt(ks, '${password.replace(/'/g, "\\'")}').hex())
+"`,
+      { encoding: 'utf-8', timeout: 30000 },
+    ).trim();
+
+    if (/^0x[a-fA-F0-9]{64}$/.test(result)) {
+      configLogger.info(' Decrypted master EOA private key');
+      return result;
+    }
+
+    configLogger.warn('Unexpected output from keystore decryption');
+    return null;
+  } catch (error) {
+    configLogger.warn({ err: error }, 'Failed to decrypt master wallet keystore');
+    return null;
+  }
 }

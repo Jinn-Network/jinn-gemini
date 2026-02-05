@@ -19,6 +19,8 @@ interface Venture {
   description: string | null;
   status: 'active' | 'paused' | 'archived';
   root_workstream_id: string | null;
+  token_address: string | null;
+  token_symbol: string | null;
 }
 
 interface Service {
@@ -125,7 +127,9 @@ export function DashboardView() {
       setVenturesLoading(true)
       try {
         const data = await fetchFromSupabase<Venture>('ventures', {
-          select: 'id,name,slug,description,status,root_workstream_id',
+          select: 'id,name,slug,description,status,root_workstream_id,token_address,token_symbol',
+          token_address: 'not.is.null',
+          status: 'eq.active',
           order: 'created_at.desc',
           limit: '5',
         })
@@ -215,7 +219,14 @@ export function DashboardView() {
                       className="block p-3 rounded-md border hover:bg-accent transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="font-medium text-sm truncate">{venture.name}</div>
+                        <div className="font-medium text-sm truncate flex items-center gap-1.5">
+                          {venture.name}
+                          {venture.token_symbol && (
+                            <Badge variant="outline" className="text-[10px] font-mono bg-primary/5 border-primary/20 text-primary">
+                              ${venture.token_symbol}
+                            </Badge>
+                          )}
+                        </div>
                         <VentureStatusBadge status={venture.status} />
                       </div>
                       <div className="text-xs text-muted-foreground truncate">

@@ -5,6 +5,11 @@
  * Deploys a multicurve auction token paired against OLAS on Base.
  * Updates the venture record in Supabase with token details.
  *
+ * Token allocation (10/10/80):
+ *   - 10% (100M) → Doppler bonding curve (price discovery)
+ *   - 10% (100M) → Safe address (insiders, vested)
+ *   - 80% (800M) → Governance contract (treasury/rewards, controlled by Safe)
+ *
  * Usage:
  *   yarn tsx scripts/ventures/launch-token.ts \
  *     --venture-id "<uuid>" \
@@ -16,8 +21,9 @@
 import { createPublicClient, createWalletClient, http, parseEther } from 'viem';
 import { base } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { DopplerSDK } from '@whetstone-research/doppler-sdk';
+import { DopplerSDK, MulticurveBuilder } from '@whetstone-research/doppler-sdk';
 import { updateVenture } from './update.js';
+import { getMasterPrivateKey } from '../../env/operate-profile.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -25,12 +31,13 @@ dotenv.config();
 // OLAS on Base
 const OLAS_BASE_ADDRESS = '0x54330d28ca3357F294334BDC454a032e7f353416' as const;
 
-// Default token supply: 1 billion
-const TOTAL_SUPPLY = parseEther('1000000000');
-const TOKENS_TO_SELL = parseEther('900000000'); // 90% for auction
-const VESTING_AMOUNT = parseEther('100000000'); // 10% to Safe
+// Token allocation: 10/10/80
+const TOTAL_SUPPLY = parseEther('1000000000');              // 1B
+const TOKENS_FOR_PRICE_DISCOVERY = parseEther('100000000'); // 10% → bonding curve
+const TOKENS_FOR_INSIDERS = parseEther('100000000');        // 10% → vested to Safe
+// Remaining 80% (800M) → governance contract (treasury, controlled by Safe)
 
-interface LaunchTokenArgs {
+export interface LaunchTokenArgs {
   ventureId: string;
   name: string;
   symbol: string;
@@ -39,17 +46,32 @@ interface LaunchTokenArgs {
   rpcUrl?: string;
 }
 
-async function launchToken(args: LaunchTokenArgs) {
+/**
+ * Resolve deployer private key.
+ * Fallback chain: master EOA (via operate-profile) → DEPLOYER_PRIVATE_KEY env → error
+ */
+function resolvePrivateKey(): `0x${string}` {
+  const masterKey = getMasterPrivateKey();
+  if (masterKey) {
+    return masterKey as `0x${string}`;
+  }
+
+  const envKey = process.env.DEPLOYER_PRIVATE_KEY;
+  if (envKey) {
+    return envKey as `0x${string}`;
+  }
+
+  throw new Error(
+    'No deployer key found. Ensure operate-profile + OPERATE_PASSWORD are configured, or set DEPLOYER_PRIVATE_KEY env var.'
+  );
+}
+
+export async function launchToken(args: LaunchTokenArgs) {
   const { ventureId, name, symbol, safeAddress, tokenUri } = args;
   const rpcUrl = args.rpcUrl || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
 
-  // Wallet setup — requires DEPLOYER_PRIVATE_KEY in env
-  const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!privateKey) {
-    throw new Error('DEPLOYER_PRIVATE_KEY env var required');
-  }
-
-  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  const privateKey = resolvePrivateKey();
+  const account = privateKeyToAccount(privateKey);
 
   const publicClient = createPublicClient({
     chain: base,
@@ -68,48 +90,60 @@ async function launchToken(args: LaunchTokenArgs) {
   console.log(`  Safe: ${safeAddress}`);
   console.log(`  Numeraire: OLAS (${OLAS_BASE_ADDRESS})`);
   console.log(`  Total supply: 1B`);
-  console.log(`  Auction: 900M (90%)`);
-  console.log(`  Vesting: 100M (10%) -> Safe`);
+  console.log(`  Price discovery: 100M (10%) → bonding curve`);
+  console.log(`  Insiders: 100M (10%) → vested to Safe`);
+  console.log(`  Treasury: 800M (80%) → governance contract (Safe-controlled)`);
 
   // Initialize Doppler SDK
   const sdk = new DopplerSDK({
     publicClient,
     walletClient,
+    chainId: base.id,
   });
 
-  // Build multicurve params
-  const params = {
-    token: {
+  // Build multicurve params via MulticurveBuilder (handles pool/curve defaults)
+  // TokenFactory80: 80% → governance (Governor+Timelock), 20% → Airlock
+  // Airlock distributes: numTokensToSell → bonding curve, vesting → Safe
+  const params = new MulticurveBuilder(base.id)
+    .tokenConfig({
       name,
       symbol,
       tokenURI: tokenUri || '',
-    },
-    sale: {
+    })
+    .saleConfig({
       initialSupply: TOTAL_SUPPLY,
-      numTokensToSell: TOKENS_TO_SELL,
+      numTokensToSell: TOKENS_FOR_PRICE_DISCOVERY,
       numeraire: OLAS_BASE_ADDRESS,
-    },
-    vesting: {
-      recipient: safeAddress as `0x${string}`,
-      amount: VESTING_AMOUNT,
-    },
-    governance: {
+    })
+    .withMarketCapPresets()  // default 3-curve pool config (low/medium/high market cap tiers)
+    .withVesting({
+      recipients: [safeAddress as `0x${string}`],
+      amounts: [TOKENS_FOR_INSIDERS],
+    })
+    .withGovernance({
       type: 'default' as const,
-    },
-    migration: {
-      type: 'uniswapV4' as const,
-    },
-  };
+    })
+    .withMigration({
+      type: 'uniswapV2' as const,
+    })
+    .withUserAddress(account.address)
+    .build();
 
+  // Simulate first to get predicted addresses
+  console.log('\nSimulating multicurve creation...');
+  const simResult = await sdk.factory.simulateCreateMulticurve(params);
+
+  console.log(`  Predicted token: ${simResult.tokenAddress}`);
+  console.log(`  Predicted pool ID: ${simResult.poolId}`);
+
+  // Execute the actual creation
   console.log('\nSubmitting multicurve creation...');
-
-  // Deploy via Doppler factory
   const result = await sdk.factory.createMulticurve(params);
 
   console.log('\nToken launched successfully!');
   console.log(`  Token address: ${result.tokenAddress}`);
   console.log(`  Pool ID: ${result.poolId}`);
-  console.log(`  Governance: ${result.governanceAddress}`);
+  console.log(`  TX hash: ${result.transactionHash}`);
 
   // Update venture record with token details
   console.log('\nUpdating venture record in Supabase...');
@@ -120,15 +154,15 @@ async function launchToken(args: LaunchTokenArgs) {
     tokenSymbol: symbol,
     tokenName: name,
     tokenLaunchPlatform: 'doppler',
-    governanceAddress: result.governanceAddress,
-    poolAddress: result.poolAddress,
     tokenMetadata: {
       poolId: result.poolId,
       safeAddress,
       totalSupply: '1000000000',
-      tokensToSell: '900000000',
-      vestingAmount: '100000000',
+      priceDiscoveryTokens: '100000000',
+      insiderTokens: '100000000',
+      treasuryTokens: '800000000',
       numeraire: OLAS_BASE_ADDRESS,
+      transactionHash: result.transactionHash,
       launchedAt: new Date().toISOString(),
     },
   });
@@ -138,8 +172,7 @@ async function launchToken(args: LaunchTokenArgs) {
   return {
     tokenAddress: result.tokenAddress,
     poolId: result.poolId,
-    governanceAddress: result.governanceAddress,
-    poolAddress: result.poolAddress,
+    transactionHash: result.transactionHash,
   };
 }
 
@@ -215,22 +248,24 @@ Required:
   --venture-id <uuid>        Venture ID to associate the token with
   --name <name>              Token display name (e.g., "Growth Agency Token")
   --symbol <symbol>          Token symbol (e.g., "GROWTH")
-  --safe-address <addr>      Gnosis Safe address for 10% vesting allocation
+  --safe-address <addr>      Gnosis Safe address (controls governance + receives vested tokens)
 
 Optional:
   --token-uri <uri>          IPFS metadata URI for the token
   --rpc-url <url>            Base RPC URL (default: BASE_RPC_URL env or https://mainnet.base.org)
 
-Environment:
-  DEPLOYER_PRIVATE_KEY       Private key for the deployer wallet (required)
-  BASE_RPC_URL               Default Base RPC endpoint
+Deployer key (fallback chain):
+  1. Master EOA via operate-profile (requires OPERATE_PASSWORD)
+  2. DEPLOYER_PRIVATE_KEY env var (manual override)
 
-Token allocation:
-  - 90% (900M) -> Doppler auction for price discovery
-  - 10% (100M) -> Gnosis Safe (team treasury, via vesting)
+Token allocation (10/10/80):
+  - 10% (100M) → Doppler bonding curve (price discovery)
+  - 10% (100M) → Gnosis Safe (insiders, vested)
+  - 80% (800M) → Governance contract (treasury/rewards, Safe-controlled)
 
+GovernanceLaunchpad: Safe controls the governance contract and the 80% treasury.
 Numeraire: OLAS on Base (${OLAS_BASE_ADDRESS})
-Migration: Uniswap V4 (creates TOKEN/OLAS pool)
+Migration: Uniswap V2 (graduates to TOKEN/numeraire LP pair)
 
 Example:
   yarn tsx scripts/ventures/launch-token.ts \\

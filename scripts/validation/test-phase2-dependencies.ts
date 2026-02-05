@@ -54,7 +54,7 @@ async function runMechWorker(targetRequestId: string): Promise<{ success: boolea
 
 // Helper to check if request is delivered
 async function isRequestDelivered(requestId: string): Promise<boolean> {
-  const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://jinn-gemini-production.up.railway.app/graphql';
+  const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
   
   try {
     const response = await graphqlRequest(PONDER_URL, `
@@ -75,7 +75,7 @@ async function isRequestDelivered(requestId: string): Promise<boolean> {
 
 // Helper to check if job definition is complete
 async function isJobDefinitionComplete(jobDefId: string): Promise<boolean> {
-  const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://jinn-gemini-production.up.railway.app/graphql';
+  const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
   
   try {
     // Get all requests for this job definition
@@ -148,7 +148,7 @@ async function main() {
     
     // Query for Job A's job definition ID
     const { request: graphqlReq } = await import('graphql-request');
-    const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://jinn-gemini-production.up.railway.app/graphql';
+    const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
     
     let jobDefIdA: string | null = null;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -317,4 +317,3 @@ async function main() {
 }
 
 main();
-

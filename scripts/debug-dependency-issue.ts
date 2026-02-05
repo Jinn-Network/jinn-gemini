@@ -7,7 +7,7 @@ import 'dotenv/config';
 import { graphQLRequest } from '../http/client.js';
 import { createClient } from '@supabase/supabase-js';
 
-const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://jinn-gemini-production.up.railway.app/graphql';
+const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -192,4 +192,3 @@ async function main() {
 }
 
 main().catch(console.error);
-

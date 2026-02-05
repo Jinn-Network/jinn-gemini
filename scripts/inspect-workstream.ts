@@ -60,7 +60,7 @@ import {
   type FailedToolCall,
 } from './shared/workstream-utils.js';
 
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'https://jinn-gemini-production.up.railway.app/graphql';
+const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
 
 // --- Types ---
 
