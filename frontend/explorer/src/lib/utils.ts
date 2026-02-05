@@ -46,13 +46,6 @@ export const navigationItems: NavigationItem[] = [
       { label: 'Artifacts', collection: 'artifacts' },
     ]
   },
-  {
-    label: 'Network',
-    collection: 'network',
-    subItems: [
-      { label: 'Nodes', collection: 'nodes' },
-    ]
-  },
 ];
 
 // Format timestamps for display
