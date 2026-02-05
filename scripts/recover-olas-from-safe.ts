@@ -6,8 +6,8 @@
  * back to a recovery address.
  */
 
-import { OlasOperateWrapper } from "../worker/OlasOperateWrapper.js";
-import { logger } from "../logging/index.js";
+import { OlasOperateWrapper } from "jinn-node/worker/OlasOperateWrapper.js";
+import { logger } from "jinn-node/logging/index.js";
 
 const recoveryLogger = logger.child({ component: "OLAS-RECOVERY" });
 

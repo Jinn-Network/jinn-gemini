@@ -1,8 +1,8 @@
 import 'dotenv/config';
-import { enqueueTransaction } from '../gemini-agent/mcp/tools/enqueue-transaction.js';
-import { getTransactionStatus } from '../gemini-agent/mcp/tools/get-transaction-status.js';
-import { searchJobs } from '../gemini-agent/mcp/tools/search-jobs.js';
-import { searchArtifacts } from '../gemini-agent/mcp/tools/search-artifacts.js';
+import { enqueueTransaction } from 'jinn-node/agent/mcp/tools/enqueue-transaction.js';
+import { getTransactionStatus } from 'jinn-node/agent/mcp/tools/get-transaction-status.js';
+import { searchJobs } from 'jinn-node/agent/mcp/tools/search-jobs.js';
+import { searchArtifacts } from 'jinn-node/agent/mcp/tools/search-artifacts.js';
 
 async function main() {
   process.env.JINN_REQUEST_ID = process.env.TEST_REQUEST_ID || '0x273609f62f0510689d41f373426fb08c76b4b9242efe44bc1815e6e5eef54c80';

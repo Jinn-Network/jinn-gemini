@@ -11,8 +11,8 @@
  */
 
 import '../env/index.js';
-import { readServiceConfig, listServiceConfigs } from '../worker/ServiceConfigReader.js';
-import { submitMarketplaceRequest, loadAgentPrivateKey } from '../worker/MechMarketplaceRequester.js';
+import { readServiceConfig, listServiceConfigs } from 'jinn-node/worker/ServiceConfigReader.js';
+import { submitMarketplaceRequest, loadAgentPrivateKey } from 'jinn-node/worker/MechMarketplaceRequester.js';
 import { join } from 'path';
 
 const MIDDLEWARE_PATH = process.env.MIDDLEWARE_PATH || join(process.cwd(), 'olas-operate-middleware');

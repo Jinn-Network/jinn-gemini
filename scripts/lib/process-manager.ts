@@ -10,7 +10,7 @@
 
 import { execa, type ResultPromise } from 'execa';
 import fetch from 'cross-fetch';
-import { scriptLogger } from '../../logging/index.js';
+import { scriptLogger } from 'jinn-node/logging/index.js';
 
 export interface ServiceConfig {
   name: string;

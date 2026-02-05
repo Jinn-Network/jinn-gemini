@@ -7,7 +7,7 @@
  * It focuses on the specific changes made to address the RPC synchronization issue.
  */
 
-import { logger } from '../logging/index.js';
+import { logger } from 'jinn-node/logging';
 
 const validationLogger = logger.child({ component: "JINN-191-VALIDATION" });
 

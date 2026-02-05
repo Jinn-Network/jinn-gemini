@@ -127,7 +127,7 @@ async function runWorkerOnVnet(vnet: VnetResult, privateKey: string): Promise<st
 }
 
 async function extractTransactionsFromLogs(output: string, vnet: VnetResult): Promise<ProofResult['transactions']> {
-  const transactions: ProofResult['transactions'][] = [];
+  const transactions: ProofResult['transactions'] = [];
   
   // Look for transaction hashes in output
   const txHashRegex = /0x[a-fA-F0-9]{64}/g;

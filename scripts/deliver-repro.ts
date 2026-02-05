@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
-import { getMechAddress, getMechChainConfig, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
+import { getMechAddress, getMechChainConfig, getServiceSafeAddress, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 
 function getArg(flag: string, fallback?: string) {
   const i = process.argv.indexOf(flag);

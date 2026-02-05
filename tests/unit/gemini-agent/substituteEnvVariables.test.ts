@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { substituteEnvVariables, type GeminiSettings } from '../../../gemini-agent/agent.js';
+import { substituteEnvVariables, type GeminiSettings } from 'jinn-node/agent/agent.js';
 
 describe('substituteEnvVariables', () => {
   const originalEnv = process.env;

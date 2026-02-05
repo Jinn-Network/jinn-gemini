@@ -19,7 +19,7 @@ import {
   parseToolText,
   cleanupWorkerProcesses,
 } from '../helpers/shared.js';
-import { searchArtifacts, getDetails } from '../../gemini-agent/mcp/tools/index.js';
+import { searchArtifacts, getDetails } from 'jinn-node/agent/mcp/tools/index.js';
 
 describe('Worker: Artifact Creation', () => {
   beforeEach(() => {

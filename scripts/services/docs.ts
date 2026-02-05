@@ -5,7 +5,7 @@
  * Actions: create, get, list, update, delete
  */
 
-import { supabase } from '../../gemini-agent/mcp/tools/shared/supabase.js';
+import { supabase } from 'jinn-node/agent/mcp/tools/shared/supabase.js';
 
 // ============================================================================
 // Types

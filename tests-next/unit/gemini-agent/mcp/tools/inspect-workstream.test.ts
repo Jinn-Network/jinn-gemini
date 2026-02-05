@@ -5,11 +5,11 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { inspectWorkstream } from '../../../../../gemini-agent/mcp/tools/inspect-workstream.js';
+import { inspectWorkstream } from 'jinn-node/agent/mcp/tools/inspect-workstream.js';
 
 // Mock the shared utilities
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/inspection-utils.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../../../../gemini-agent/mcp/tools/shared/inspection-utils.js')>();
+vi.mock('jinn-node/agent/mcp/tools/shared/inspection-utils.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('jinn-node/agent/mcp/tools/shared/inspection-utils.js')>();
   return {
     ...original,
     queryPonder: vi.fn(),
@@ -17,14 +17,14 @@ vi.mock('../../../../../gemini-agent/mcp/tools/shared/inspection-utils.js', asyn
   };
 });
 
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/context.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/context.js', () => ({
   getCurrentJobContext: vi.fn(() => ({
     workstreamId: null,
   })),
 }));
 
-import { queryPonder, fetchIpfsContentMcp } from '../../../../../gemini-agent/mcp/tools/shared/inspection-utils.js';
-import { getCurrentJobContext } from '../../../../../gemini-agent/mcp/tools/shared/context.js';
+import { queryPonder, fetchIpfsContentMcp } from 'jinn-node/agent/mcp/tools/shared/inspection-utils.js';
+import { getCurrentJobContext } from 'jinn-node/agent/mcp/tools/shared/context.js';
 
 describe('inspectWorkstream', () => {
   beforeEach(() => {

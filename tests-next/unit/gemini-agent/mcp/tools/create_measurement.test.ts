@@ -12,7 +12,7 @@ vi.mock('@jinn-network/mech-client-ts/dist/ipfs.js', () => ({
   pushJsonToIpfs: vi.fn().mockResolvedValue(['ipfs://Qm123', '0xabc123']),
 }));
 
-import { createMeasurement } from '../../../../../gemini-agent/mcp/tools/create_measurement.js';
+import { createMeasurement } from 'jinn-node/agent/mcp/tools/create_measurement.js';
 
 describe('create_measurement ID validation', () => {
   const validArgs = {

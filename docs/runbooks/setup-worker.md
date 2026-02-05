@@ -2,7 +2,7 @@
 title: Mech Worker Setup
 purpose: runbook
 scope: [worker, deployment]
-last_verified: 2026-01-30
+last_verified: 2026-02-04
 related_code:
   - worker/mech_worker.ts
   - worker/config.ts
@@ -80,11 +80,17 @@ Service credentials can come from two sources:
 
 **Option A: `.operate` Directory (Local Development)**
 
-The worker reads credentials from `olas-operate-middleware/.operate/services/*/config.json`:
+The worker reads credentials from `olas-operate-middleware/.operate/`:
 
-- Mech address from `env_variables.MECH_TO_CONFIG`
-- Safe address from `chain_configs.<chain>.chain_data.multisig`
-- Private key from `keys/<agent_address>`
+- Mech address from `services/*/config.json` → `env_variables.MECH_TO_CONFIG`
+- Safe address from `services/*/config.json` → `chain_configs.<chain>.chain_data.multisig`
+- Private key from `keys/<agent_address>` (encrypted keystore format)
+
+> **Important**: Agent keys are encrypted with `OPERATE_PASSWORD`. The worker automatically decrypts them at startup using `env/operate-profile.ts`.
+
+| Variable | Description |
+|----------|-------------|
+| `OPERATE_PASSWORD` | **Required** - Password to decrypt agent keystores |
 
 **Option B: Environment Variables (Railway/Production)**
 
@@ -92,7 +98,7 @@ The worker reads credentials from `olas-operate-middleware/.operate/services/*/c
 |----------|-------------|
 | `JINN_SERVICE_MECH_ADDRESS` | Mech contract address (0x...) |
 | `JINN_SERVICE_SAFE_ADDRESS` | Gnosis Safe multisig address (0x...) |
-| `JINN_SERVICE_PRIVATE_KEY` | Agent EOA private key (0x...) |
+| `JINN_SERVICE_PRIVATE_KEY` | Agent EOA private key (0x..., raw hex) |
 
 ### Optional Configuration
 
@@ -215,6 +221,9 @@ Delivered via Safe
 
 | Problem | Possible Cause | Solution |
 |---------|---------------|----------|
+| "WORKER_PRIVATE_KEY must be a 66-character hex string" | Encrypted keystore not decrypted | Set `OPERATE_PASSWORD` env var to decrypt agent keys |
+| "Encrypted keystore detected but OPERATE_PASSWORD not set" | Missing password | Set `OPERATE_PASSWORD` in `.env` |
+| "Failed to decrypt agent keystore: wrong password" | Incorrect password | Verify `OPERATE_PASSWORD` matches the one used during service setup |
 | "Missing service mech address" | Credentials not configured | Set `JINN_SERVICE_*` env vars or configure `.operate` directory |
 | "Control API health check failed" | Control API not running | Start with `yarn control:dev` |
 | "No unclaimed on-chain requests found" | No pending work | Normal when idle; check `WORKSTREAM_FILTER` if expecting work |

@@ -14,7 +14,7 @@
  * - C's output demonstrates awareness of A and B's work
  */
 
-import { dispatchNewJob } from '../../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 import { GraphQLClient, gql } from 'graphql-request';
 import { spawn } from 'child_process';
 import { config } from 'dotenv';

@@ -11,10 +11,10 @@
 import 'dotenv/config';
 
 // Import MCP tool functions directly
-import { ventureMint } from '../../gemini-agent/mcp/tools/venture_mint.js';
-import { ventureQuery } from '../../gemini-agent/mcp/tools/venture_query.js';
-import { ventureUpdate } from '../../gemini-agent/mcp/tools/venture_update.js';
-import { ventureDelete } from '../../gemini-agent/mcp/tools/venture_delete.js';
+import { ventureMint } from 'jinn-node/agent/mcp/tools/venture_mint.js';
+import { ventureQuery } from 'jinn-node/agent/mcp/tools/venture_query.js';
+import { ventureUpdate } from 'jinn-node/agent/mcp/tools/venture_update.js';
+import { ventureDelete } from 'jinn-node/agent/mcp/tools/venture_delete.js';
 
 interface TestResult {
   name: string;

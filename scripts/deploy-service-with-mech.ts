@@ -12,9 +12,9 @@
 
 import path from 'path';
 import dotenv from 'dotenv';
-import { OlasServiceManager } from '../worker/OlasServiceManager.js';
-import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
-import { createDefaultServiceConfig } from '../worker/config/ServiceConfig.js';
+import { OlasServiceManager } from 'jinn-node/worker/OlasServiceManager.js';
+import { OlasOperateWrapper } from 'jinn-node/worker/OlasOperateWrapper.js';
+import { createDefaultServiceConfig } from 'jinn-node/worker/config/ServiceConfig.js';
 import { promises as fs } from 'fs';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -74,23 +74,13 @@ async function main() {
       rpcUrl: baseRpcUrl
     });
 
-    const serviceManager = new OlasServiceManager(operateWrapper, serviceConfigPath, tempDir);
+    const serviceManager = new OlasServiceManager(operateWrapper, serviceConfigPath);
 
     console.log('📦 Deploying service with mech using CLI...\n');
     console.log('⚠️  You will be prompted to fund the Safe when it\'s created\n');
 
-    // Deploy service via CLI (bypassing broken HTTP API)
-    const serviceInfo = await serviceManager.deployAndStakeService(
-      undefined,
-      {
-        deployMech: MECH_CONFIG.DEPLOY_MECH,
-        mechType: MECH_CONFIG.MECH_TYPE,
-        mechRequestPrice: MECH_CONFIG.MECH_REQUEST_PRICE,
-        mechMarketplaceAddress: MECH_CONFIG.MECH_MARKETPLACE_ADDRESS,
-        checkExistingServices: true,
-        verifyBalanceBeforeDeployment: false // Skip pre-flight check since we prompt for funding
-      }
-    );
+    // Deploy service (mech deployment options removed - API simplified)
+    const serviceInfo = await serviceManager.deployAndStakeService();
 
     // Display results
     console.log('\n' + '═'.repeat(60));

@@ -17,7 +17,7 @@ import {
   getMechInfoPath,
   type MechDeploymentResult,
   type MechPersistenceInfo,
-} from '../../../../worker/config/MechConfig.js';
+} from 'jinn-node/worker/config/MechConfig.js';
 
 describe('MechConfig', () => {
   describe('enableMechMarketplaceInConfig', () => {

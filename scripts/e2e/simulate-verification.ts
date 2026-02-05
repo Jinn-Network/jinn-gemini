@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 import 'dotenv/config';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
-import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../env/operate-profile.js';
+import { getMechAddress, getMechChainConfig, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 import { randomUUID } from 'node:crypto';
-import { collectLocalCodeMetadata } from '../../gemini-agent/shared/code_metadata.js';
+import { collectLocalCodeMetadata } from 'jinn-node/agent/shared/code_metadata.js';
 
 // Configuration
 const REPO_ROOT = process.env.CODE_METADATA_REPO_ROOT || '/Users/adrianobradley/jinn-repos/local-arcade';

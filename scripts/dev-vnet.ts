@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Tenderly VNet Development Environment
  *
@@ -18,7 +19,7 @@ import { execa } from 'execa';
 import { createTenderlyClient, ethToWei, type VnetResult } from './lib/tenderly.js';
 import { SessionManager } from './lib/session.js';
 import { ProcessManager } from './lib/process-manager.js';
-import { loadEnvOnce } from '../gemini-agent/mcp/tools/shared/env.js';
+import { loadEnvOnce } from 'jinn-node/agent/mcp/tools/shared/env.js';
 import { queryPonderStats } from './lib/ponder-stats.js';
 
 // Test wallet to fund (from E2E test)

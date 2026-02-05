@@ -110,6 +110,22 @@ codespec/             # Code quality enforcement
 
 ---
 
+## jinn-node Subtree Sync
+
+`jinn-node/` is synced to the standalone repo via git subtree. Run subtree commands from the branch that contains your changes.
+
+Monorepo → standalone:
+```bash
+git subtree push --prefix=jinn-node jinn-node main
+```
+
+Standalone → monorepo:
+```bash
+git subtree pull --prefix=jinn-node jinn-node main
+```
+
+---
+
 ## Key Commands
 
 **Development:**

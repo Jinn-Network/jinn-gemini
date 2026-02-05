@@ -33,9 +33,9 @@ kill_if_running() {
 kill_if_running "ponder dev"
 kill_if_running "tsx control-api/server.ts"
 kill_if_running "control-api/server.ts"
-kill_if_running "tsx worker/mech_worker.ts"
-kill_if_running "worker/mech_worker.ts"
-kill_if_running "gemini-agent/mcp/server.ts"
+kill_if_running "tsx jinn-node/src/worker/mech_worker.ts"
+kill_if_running "jinn-node/src/worker/mech_worker.ts"
+kill_if_running "jinn-node/src/agent/mcp/server.ts"
 
 # Also clean common dev ports if set/known
 # Control API default: 4001, Ponder default (env PONDER_PORT): 42069, Vite dev possible: 5173

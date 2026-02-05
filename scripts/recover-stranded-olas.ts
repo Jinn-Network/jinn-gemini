@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Recovery Script: Sweep OLAS from Stranded Agent EOAs
  * 

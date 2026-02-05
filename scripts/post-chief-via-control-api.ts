@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import fetch from 'cross-fetch';
-import { getMechAddress } from '../env/operate-profile.js';
+import { getMechAddress } from 'jinn-node/env/operate-profile.js';
 
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
 const MECH_WORKER_ADDRESS = getMechAddress();

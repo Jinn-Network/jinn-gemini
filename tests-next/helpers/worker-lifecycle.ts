@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Worker process lifecycle management for tests
  * Migrated from tests/helpers/shared.ts and adapted for tests-next

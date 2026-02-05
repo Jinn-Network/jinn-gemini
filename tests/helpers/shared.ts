@@ -3,7 +3,7 @@
  * Extracted from onchain.marketplace.e2e.test.ts for reusability
  */
 
-import { execa, type ExecaChildProcess } from 'execa';
+import { execa, type ResultPromise } from 'execa';
 import fetch from 'cross-fetch';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -12,8 +12,8 @@ import { tmpdir } from 'node:os';
 import { execSync } from 'child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { loadEnvOnce } from './tools/shared/env.js';
-import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
+import { loadEnvOnce } from 'jinn-node/agent/mcp/tools/shared/env.js';
+import { createTenderlyClient, ethToWei, type VnetResult } from 'jinn-node/lib/tenderly.js';
 import { parseRepoSlug } from './test-git-repo.js';
 
 // Re-export types for convenience
@@ -705,7 +705,7 @@ function createTestOperateDir(): string {
 }
 
 // Registry of active worker processes for cleanup
-const activeWorkerProcesses = new Set<ExecaChildProcess>();
+const activeWorkerProcesses = new Set<ResultPromise>();
 
 /**
  * Cleanup all tracked worker processes
@@ -758,7 +758,7 @@ export async function runWorkerOnce(
     model?: string;
     timeout?: number;
   }
-): Promise<ExecaChildProcess> {
+): Promise<ResultPromise> {
   const env: any = { ...process.env };
   env.PONDER_GRAPHQL_URL = options.gqlUrl;
   env.CONTROL_API_URL = options.controlApiUrl ?? 'http://localhost:4001/graphql';

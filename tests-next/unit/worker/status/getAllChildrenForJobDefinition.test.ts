@@ -15,18 +15,18 @@ import {
   getAllChildrenForJobDefinition,
   queryRequestsByJobDefinition,
   type JobLevelChildStatusResult 
-} from '../../../../worker/status/childJobs.js';
+} from 'jinn-node/worker/status/childJobs.js';
 
 // Mock dependencies
-vi.mock('../../../../http/client.js', () => ({
+vi.mock('jinn-node/http/client.js', () => ({
   graphQLRequest: vi.fn(),
 }));
 
-vi.mock('../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getPonderGraphqlUrl: vi.fn().mockReturnValue('http://localhost:42069/graphql'),
 }));
 
-vi.mock('../../../../logging/index.js', () => ({
+vi.mock('jinn-node/logging/index.js', () => ({
   workerLogger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -35,12 +35,12 @@ vi.mock('../../../../logging/index.js', () => ({
   },
 }));
 
-vi.mock('../../../../worker/logging/errors.js', () => ({
+vi.mock('jinn-node/worker/logging/errors.js', () => ({
   serializeError: vi.fn((error) => error?.message || String(error)),
 }));
 
-import { graphQLRequest } from '../../../../http/client.js';
-import { workerLogger } from '../../../../logging/index.js';
+import { graphQLRequest } from 'jinn-node/http/client.js';
+import { workerLogger } from 'jinn-node/logging/index.js';
 
 describe('getAllChildrenForJobDefinition', () => {
   beforeEach(() => {

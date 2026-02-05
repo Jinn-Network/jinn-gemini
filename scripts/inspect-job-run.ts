@@ -25,7 +25,7 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { GraphQLClient, gql } from 'graphql-request';
-import type { WorkerTelemetryLog } from '../worker/worker_telemetry.js';
+import type { WorkerTelemetryLog } from 'jinn-node/worker/worker_telemetry.js';
 import {
   fetchIpfsContent,
   extractErrorsFromTelemetry,

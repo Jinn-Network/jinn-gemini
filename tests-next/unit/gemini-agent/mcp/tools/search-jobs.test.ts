@@ -9,14 +9,14 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { searchJobs } from '../../../../../gemini-agent/mcp/tools/search-jobs.js';
+import { searchJobs } from 'jinn-node/agent/mcp/tools/search-jobs.js';
 
 // Mock dependencies
 vi.mock('cross-fetch', () => ({
   default: vi.fn(),
 }));
 
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/context-management.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/context-management.js', () => ({
   composeSinglePageResponse: vi.fn((data: any, options: any) => ({
     data,
     meta: {
@@ -28,7 +28,7 @@ vi.mock('../../../../../gemini-agent/mcp/tools/shared/context-management.js', ()
   decodeCursor: vi.fn((cursor: any) => cursor ? { offset: 10 } : { offset: 0 }),
 }));
 
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/context.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/context.js', () => ({
   getCurrentJobContext: vi.fn(() => ({
     workstreamId: null, // Default to null (global search) for existing tests
     jobId: null,
@@ -45,7 +45,7 @@ vi.mock('../../../../../gemini-agent/mcp/tools/shared/context.js', () => ({
   })),
 }));
 
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getPonderGraphqlUrl: vi.fn(() => {
     if (process.env.PONDER_GRAPHQL_URL) {
       return process.env.PONDER_GRAPHQL_URL;
@@ -59,8 +59,8 @@ vi.mock('../../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
 }));
 
 import fetch from 'cross-fetch';
-import { composeSinglePageResponse, decodeCursor } from '../../../../../gemini-agent/mcp/tools/shared/context-management.js';
-import { getCurrentJobContext } from '../../../../../gemini-agent/mcp/tools/shared/context.js';
+import { composeSinglePageResponse, decodeCursor } from 'jinn-node/agent/mcp/tools/shared/context-management.js';
+import { getCurrentJobContext } from 'jinn-node/agent/mcp/tools/shared/context.js';
 
 describe('searchJobs', () => {
   beforeEach(() => {

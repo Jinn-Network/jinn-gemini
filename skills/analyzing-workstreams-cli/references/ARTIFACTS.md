@@ -1,1 +1,1 @@
-../../../docs/reference/ARTIFACTS.md
+../../../docs/reference/artifacts.md

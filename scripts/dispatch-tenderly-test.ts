@@ -1,9 +1,10 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Dispatch a test job on Tenderly VNet for JINN-233 validation
  */
 
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 async function main() {
   console.log('📤 Dispatching test job on Tenderly VNet...\n');

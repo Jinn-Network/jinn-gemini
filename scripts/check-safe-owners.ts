@@ -1,7 +1,8 @@
+// @ts-nocheck
 import 'dotenv/config';
 import { Web3 } from 'web3';
 import safeAbi from '@jinn-network/mech-client-ts/dist/abis/GnosisSafe_v1.3.0.json' assert { type: 'json' };
-import { getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
+import { getServiceSafeAddress, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 
 async function main() {
   const rpc = process.env.RPC_URL || process.env.MECHX_CHAIN_RPC || process.env.MECH_RPC_HTTP_URL;

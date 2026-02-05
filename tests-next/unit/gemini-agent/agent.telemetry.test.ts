@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Agent } from '../../../gemini-agent/agent.js';
+import { Agent } from 'jinn-node/agent/agent.js';
 
 function chunk(attributes: Record<string, any>) {
   return JSON.stringify({ attributes });

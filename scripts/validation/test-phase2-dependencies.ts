@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 import '../../env/index.js';
-import { dispatchNewJob } from '../../gemini-agent/mcp/tools/dispatch_new_job.js';
-import { logger } from '../../logging/index.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
+import { logger } from 'jinn-node/logging/index.js';
 import { randomBytes } from 'crypto';
 import { spawn } from 'child_process';
 import { request as graphqlRequest } from 'graphql-request';

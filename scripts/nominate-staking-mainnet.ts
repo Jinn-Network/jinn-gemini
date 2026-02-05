@@ -31,7 +31,7 @@ import * as fs from 'fs';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 // Import operate profile helpers
-import { getMasterEOA } from '../env/operate-profile.js';
+import { getMasterEOA } from 'jinn-node/env/operate-profile.js';
 
 // ============================================================================
 // CONTRACT ADDRESSES - Ethereum Mainnet

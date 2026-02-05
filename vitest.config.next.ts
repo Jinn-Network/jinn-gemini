@@ -8,8 +8,9 @@ config();
 export default defineConfig({
   resolve: {
     alias: {
+      'jinn-node': path.resolve(__dirname, './jinn-node/src'),
       'mech-client-ts': path.resolve(__dirname, './packages/mech-client-ts'),
-      '@jinn/types': path.resolve(__dirname, './packages/jinn-types/src'),
+      '@jinn/types': path.resolve(__dirname, './jinn-node/src/types'),
       '@codespec': path.resolve(__dirname, './codespec'),
       '@tests-next': path.resolve(__dirname, './tests-next'),
       '@': path.resolve(__dirname, './frontend/explorer/src'),

@@ -7,7 +7,7 @@ import "dotenv/config";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import { marketplaceInteract } from "@jinn-network/mech-client-ts/dist/marketplace_interact.js";
-import { getServiceProfile } from "../env/operate-profile.js";
+import { getServiceProfile } from "jinn-node/env/operate-profile.js";
 
 const template = JSON.parse(fs.readFileSync("blueprints/fireflies-commits-template.json", "utf8"));
 const input = JSON.parse(fs.readFileSync("blueprints/inputs/fireflies-commits-test.json", "utf8"));

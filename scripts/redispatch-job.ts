@@ -21,15 +21,15 @@
 import '../env/index.js';
 import { readFile } from 'fs/promises';
 import { join, resolve } from 'path';
-import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
-import { graphQLRequest } from '../http/client.js';
-import { getPonderGraphqlUrl } from '../gemini-agent/mcp/tools/shared/env.js';
-import { buildIpfsPayload } from '../gemini-agent/shared/ipfs-payload-builder.js';
+import { dispatchExistingJob } from 'jinn-node/agent/mcp/tools/dispatch_existing_job.js';
+import { graphQLRequest } from 'jinn-node/http/client.js';
+import { getPonderGraphqlUrl } from 'jinn-node/agent/mcp/tools/shared/env.js';
+import { buildIpfsPayload } from 'jinn-node/agent/shared/ipfs-payload-builder.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
-import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../env/operate-profile.js';
+import { getMechAddress, getMechChainConfig, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 import { deepSubstitute, loadInputConfig } from './shared/template-substitution.js';
-import { validateInvariantsStrict } from '../worker/prompt/invariant-validator.js';
-import { extractToolPolicyFromBlueprint } from '../gemini-agent/shared/template-tools.js';
+import { validateInvariantsStrict } from 'jinn-node/worker/prompt/invariant-validator.js';
+import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
 
 const args = process.argv.slice(2);
 const jobIdIndex = args.indexOf('--jobId');

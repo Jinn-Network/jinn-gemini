@@ -7,9 +7,9 @@
  * uploaded to the marketplace. Bugs here cause failed deliveries and financial loss.
  */
 import { describe, it, expect } from 'vitest';
-import { buildDeliveryPayload } from '../../../../worker/delivery/payload.js';
-import type { AgentExecutionResult, IpfsMetadata } from '../../../../worker/types.js';
-import type { RecognitionPhaseResult, ReflectionResult } from '../../../../worker/types.js';
+import { buildDeliveryPayload } from 'jinn-node/worker/delivery/payload.js';
+import type { AgentExecutionResult, IpfsMetadata } from 'jinn-node/worker/types.js';
+import type { RecognitionPhaseResult, ReflectionResult } from 'jinn-node/worker/types.js';
 
 describe('buildDeliveryPayload', () => {
   describe('minimal valid payload', () => {

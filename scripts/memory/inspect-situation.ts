@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Inspect memory system for a given request/job
  * 
@@ -14,7 +15,7 @@
 
 import { Client } from 'pg';
 import fetch from 'cross-fetch';
-import type { Situation, SituationNodeEmbeddingRecord } from '../../packages/jinn-types/src/situation.js';
+import type { Situation, SituationNodeEmbeddingRecord } from 'jinn-node/types/situation.js';
 
 const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || `http://localhost:${process.env.PONDER_PORT || '42069'}/graphql`;
 const IPFS_GATEWAY_BASE = (process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/').replace(/\/+$/, '/');

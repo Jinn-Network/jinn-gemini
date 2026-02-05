@@ -1,5 +1,5 @@
 
-import { dispatchNewJob } from './gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 // Simulate loading env settings (like worker does)
 process.env.CODE_METADATA_REPO_ROOT = '/tmp/fake/repo';

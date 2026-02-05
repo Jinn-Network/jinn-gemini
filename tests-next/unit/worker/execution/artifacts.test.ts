@@ -9,22 +9,22 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { consolidateArtifacts, extractArtifactsFromError } from '../../../../worker/execution/artifacts.js';
-import type { AgentExecutionResult } from '../../../../worker/types.js';
-import type { ExtractedArtifact } from '../../../../worker/artifacts.js';
+import { consolidateArtifacts, extractArtifactsFromError } from 'jinn-node/worker/execution/artifacts.js';
+import type { AgentExecutionResult } from 'jinn-node/worker/types.js';
+import type { ExtractedArtifact } from 'jinn-node/worker/artifacts.js';
 
 // Mock dependencies
-vi.mock('../../../../worker/artifacts.js', () => ({
+vi.mock('jinn-node/worker/artifacts.js', () => ({
   extractArtifactsFromOutput: vi.fn(),
   extractArtifactsFromTelemetry: vi.fn(),
 }));
 
-vi.mock('../../../../worker/control_api_client.js', () => ({
+vi.mock('jinn-node/worker/control_api_client.js', () => ({
   createArtifact: vi.fn(),
 }));
 
-import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from '../../../../worker/artifacts.js';
-import { createArtifact } from '../../../../worker/control_api_client.js';
+import { extractArtifactsFromOutput, extractArtifactsFromTelemetry } from 'jinn-node/worker/artifacts.js';
+import { createArtifact } from 'jinn-node/worker/control_api_client.js';
 
 describe('consolidateArtifacts', () => {
   beforeEach(() => {

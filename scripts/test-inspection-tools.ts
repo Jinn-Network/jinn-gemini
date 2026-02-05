@@ -8,7 +8,7 @@
  *   tsx scripts/test-inspection-tools.ts [workstream_id]
  */
 
-import { Agent } from '../gemini-agent/agent.js';
+import { Agent } from 'jinn-node/agent/agent.js';
 import dotenv from 'dotenv';
 import { join } from 'path';
 

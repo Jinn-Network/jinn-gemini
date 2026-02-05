@@ -15,7 +15,7 @@ import {
   clearJobContext,
   snapshotJobContext,
   restoreJobContext,
-} from '../../../../worker/metadata/jobContext.js';
+} from 'jinn-node/worker/metadata/jobContext.js';
 
 describe('jobContext', () => {
   // Save original environment to restore after tests

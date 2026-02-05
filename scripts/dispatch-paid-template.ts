@@ -7,7 +7,7 @@
  */
 
 import "dotenv/config";
-import { logger } from "../logging/index.js";
+import { logger } from "jinn-node/logging/index.js";
 
 const GATEWAY_URL = process.env.X402_GATEWAY_URL || "https://x402-gateway-production.up.railway.app";
 

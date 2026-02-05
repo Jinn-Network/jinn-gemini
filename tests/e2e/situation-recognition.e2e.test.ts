@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { formatRecognitionMarkdown, normalizeLearnings } from '../../worker/recognition_helpers.js';
+import { formatRecognitionMarkdown, normalizeLearnings } from 'jinn-node/worker/recognition_helpers.js';
 
 type StoredRow = {
   nodeId: string;

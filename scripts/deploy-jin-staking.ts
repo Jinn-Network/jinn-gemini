@@ -33,7 +33,7 @@ import * as fs from 'fs';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 // Import operate profile helpers
-import { getMasterSafe, getMasterEOA } from '../env/operate-profile.js';
+import { getMasterSafe, getMasterEOA } from 'jinn-node/env/operate-profile.js';
 
 // ============================================================================
 // IPFS METADATA UPLOAD

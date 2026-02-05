@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from 'vitest';
-import { isControlApiEnabled } from '../../env/control.js';
+import { isControlApiEnabled } from 'jinn-node/env/control.js';
 
 describe('isControlApiEnabled', () => {
   const originalEnv = process.env.USE_CONTROL_API;

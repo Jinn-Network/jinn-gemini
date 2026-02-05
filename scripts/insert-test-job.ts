@@ -1,4 +1,4 @@
-import { supabase } from '../gemini-agent/mcp/tools/shared/supabase.js';
+import { supabase } from 'jinn-node/agent/mcp/tools/shared/supabase.js';
 
 async function main() {
   const projectDefinitionId = process.argv[2] || '20465d3e-b598-433d-b556-cffb5c296de8';

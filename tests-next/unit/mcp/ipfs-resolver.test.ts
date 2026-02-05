@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { __TEST__ } from '../../../gemini-agent/mcp/tools/shared/ipfs.js';
+import { __TEST__ } from 'jinn-node/agent/mcp/tools/shared/ipfs.js';
 
 describe('IPFS resolver helpers', () => {
   it('converts raw delivery CID to directory path with decimal request id', async () => {

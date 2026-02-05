@@ -21,7 +21,7 @@ import crypto from 'crypto';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createTenderlyClient, ethToWei, type VnetResult } from './lib/tenderly.js';
 import { setupOlasEnvironment, createServiceConfig, BASE_MAINNET_CHAIN_ID, type ServiceTestConfig } from './lib/e2e-test-utils.js';
-import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
+import { OlasOperateWrapper } from 'jinn-node/worker/OlasOperateWrapper.js';
 import dotenv from 'dotenv';
 
 // Load environment variables

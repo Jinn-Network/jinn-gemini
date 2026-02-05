@@ -7,7 +7,7 @@
  * and returns IDs with mission prefixes (JOB, GOAL, OUT, STRAT).
  */
 import { describe, it, expect } from 'vitest';
-import { extractMissionInvariantIds } from '../../../../../worker/prompt/utils/invariantIds.js';
+import { extractMissionInvariantIds } from 'jinn-node/worker/prompt/utils/invariantIds.js';
 
 describe('extractMissionInvariantIds', () => {
   it('returns empty array for undefined input', () => {

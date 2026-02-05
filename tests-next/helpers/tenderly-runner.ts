@@ -1,7 +1,7 @@
 import process from 'node:process';
 import { Wallet } from 'ethers';
-import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
-import { getServicePrivateKey, getServiceSafeAddress } from '../../env/operate-profile.js';
+import { createTenderlyClient, ethToWei, type VnetResult } from 'jinn-node/lib/tenderly.js';
+import { getServicePrivateKey, getServiceSafeAddress } from 'jinn-node/env/operate-profile.js';
 
 export interface TenderlyContext {
   vnet: VnetResult;

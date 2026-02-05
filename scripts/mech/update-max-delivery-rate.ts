@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Update the maxDeliveryRate for a mech contract
  * 
@@ -14,7 +15,7 @@
 
 import 'dotenv/config';
 import { Web3 } from 'web3';
-import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from '../../env/operate-profile.js';
+import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 
 // Minimal ABI for changeMaxDeliveryRate function
 const MECH_ABI = [

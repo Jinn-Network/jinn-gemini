@@ -17,7 +17,7 @@ import {
   getMcpClient,
   parseToolText,
 } from '../helpers/shared.js';
-import { dispatchExistingJob, createArtifact } from '../../gemini-agent/mcp/tools/index.js';
+import { dispatchExistingJob, createArtifact } from 'jinn-node/agent/mcp/tools/index.js';
 
 describe('Marketplace: Context Envelope', () => {
   beforeEach(() => {

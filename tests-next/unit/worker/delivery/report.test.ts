@@ -7,26 +7,26 @@
  * Ensures proper payload formatting and error handling.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { storeOnchainReport } from '../../../../worker/delivery/report.js';
-import type { UnclaimedRequest, FinalStatus, AgentExecutionResult, IpfsMetadata } from '../../../../worker/types.js';
+import { storeOnchainReport } from 'jinn-node/worker/delivery/report.js';
+import type { UnclaimedRequest, FinalStatus, AgentExecutionResult, IpfsMetadata } from 'jinn-node/worker/types.js';
 
 // Mock dependencies
-vi.mock('../../../../worker/control_api_client.js', () => ({
+vi.mock('jinn-node/worker/control_api_client.js', () => ({
   createJobReport: vi.fn(),
 }));
 
-vi.mock('../../../../logging/index.js', () => ({
+vi.mock('jinn-node/logging/index.js', () => ({
   workerLogger: {
     warn: vi.fn(),
   },
 }));
 
-vi.mock('../../../../worker/logging/errors.js', () => ({
+vi.mock('jinn-node/worker/logging/errors.js', () => ({
   serializeError: vi.fn((err) => ({ message: err.message, stack: err.stack })),
 }));
 
-import { createJobReport } from '../../../../worker/control_api_client.js';
-import { workerLogger } from '../../../../logging/index.js';
+import { createJobReport } from 'jinn-node/worker/control_api_client.js';
+import { workerLogger } from 'jinn-node/logging/index.js';
 
 describe('storeOnchainReport', () => {
   const mockRequest: UnclaimedRequest = {

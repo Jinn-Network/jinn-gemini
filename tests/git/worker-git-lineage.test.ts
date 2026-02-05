@@ -34,8 +34,8 @@ import {
   fetchJsonWithRetry,
 } from '../helpers/shared.js';
 import { getTestGitRepo } from '../helpers/test-git-repo.js';
-import { extractExecutionSummary, deriveCommitMessage } from '../../worker/git/autoCommit.js';
-import type { FinalStatus } from '../../worker/types.js';
+import { extractExecutionSummary, deriveCommitMessage } from 'jinn-node/worker/git/autoCommit.js';
+import type { FinalStatus } from 'jinn-node/worker/types.js';
 
 let branchPushVerified = false;
 

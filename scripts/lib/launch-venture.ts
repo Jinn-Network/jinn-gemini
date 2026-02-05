@@ -7,8 +7,8 @@
  * Reads parameters from command line arguments and environment variables.
  */
 
-import { dispatchNewJob } from '../../gemini-agent/mcp/tools/dispatch_new_job.js';
-import { dispatchExistingJob } from '../../gemini-agent/mcp/tools/dispatch_existing_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
+import { dispatchExistingJob } from 'jinn-node/agent/mcp/tools/dispatch_existing_job.js';
 
 interface LaunchParams {
   jobName: string;

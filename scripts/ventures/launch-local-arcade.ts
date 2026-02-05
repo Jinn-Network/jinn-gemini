@@ -22,7 +22,7 @@
  */
 
 import 'dotenv/config';
-import { dispatchNewJob } from '../../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 import { readFile } from 'fs/promises';
 import { join, resolve } from 'path';
 

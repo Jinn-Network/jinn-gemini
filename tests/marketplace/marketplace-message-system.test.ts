@@ -15,7 +15,7 @@ import {
   getMcpClient,
   parseToolText,
 } from '../helpers/shared.js';
-import { dispatchExistingJob } from '../../gemini-agent/mcp/tools/index.js';
+import { dispatchExistingJob } from 'jinn-node/agent/mcp/tools/index.js';
 
 describe('Marketplace: Message System', () => {
   beforeEach(() => {

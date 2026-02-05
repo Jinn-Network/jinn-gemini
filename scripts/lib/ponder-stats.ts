@@ -2,7 +2,7 @@
  * Query Ponder GraphQL for run statistics
  */
 
-import { scriptLogger } from '../../logging/index.js';
+import { scriptLogger } from 'jinn-node/logging/index.js';
 
 export interface PonderStats {
   marketplaceRequests: number;

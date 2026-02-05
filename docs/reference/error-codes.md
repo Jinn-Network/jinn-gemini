@@ -2,7 +2,7 @@
 title: Error Codes Reference
 purpose: reference
 scope: [worker, gemini-agent, mcp]
-last_verified: 2026-01-30
+last_verified: 2026-02-02
 related_code:
   - gemini-agent/mcp/tools/shared/types.ts
   - worker/mech_worker.ts
@@ -24,6 +24,7 @@ These errors appear in telemetry when tool calls fail.
 | Code | Meaning | Common Cause | Fix |
 |------|---------|--------------|-----|
 | `UNAUTHORIZED_TOOLS` | Tool not in template whitelist | Used individual tool instead of meta-tool, or tool not in template | See `TOOL_POLICY.md` |
+| `EXECUTION_ERROR` | Tool threw due to missing config | Environment variables not set on worker | Add missing vars to Railway worker (see `deploy-railway-worker.md`) |
 | `NOT_FOUND` | Resource doesn't exist | Invalid ID, resource deleted, or not yet indexed | Verify ID exists, wait for Ponder indexing |
 | `INVALID_BLUEPRINT` | Blueprint validation failed | Missing required fields, invalid invariant format | Check blueprint structure |
 | `INVALID_CURSOR` | Pagination cursor invalid | Cursor expired or malformed | Start fresh without cursor |

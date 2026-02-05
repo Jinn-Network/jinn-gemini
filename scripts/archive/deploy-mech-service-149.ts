@@ -7,8 +7,8 @@
  * Part of JINN-196: Deploy mech contract for service #149 through middleware
  */
 
-import { OlasServiceManager } from '../worker/OlasServiceManager.js';
-import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
+import { OlasServiceManager } from 'jinn-node/worker/OlasServiceManager.js';
+import { OlasOperateWrapper } from 'jinn-node/worker/OlasOperateWrapper.js';
 
 const SERVICE_CONFIG_ID = 'sc-service-149-recovered';
 const MIDDLEWARE_PATH = process.env.OLAS_MIDDLEWARE_PATH || './olas-operate-middleware';

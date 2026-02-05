@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { getFileContents } from '../gemini-agent/mcp/tools/github_tools.js';
+import { getFileContents } from 'jinn-node/agent/mcp/tools/github_tools.js';
 import { config } from 'dotenv';
 
 config();

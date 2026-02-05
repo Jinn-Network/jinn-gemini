@@ -25,11 +25,11 @@
  */
 
 import "dotenv/config";
-import { OlasStakingManager } from "../worker/OlasStakingManager.js";
-import { OlasServiceManager } from "../worker/OlasServiceManager.js";
-import { OlasOperateWrapper } from "../worker/OlasOperateWrapper.js";
-import { createTenderlyClient, ethToWei } from "./lib/tenderly.js";
-import { logger } from "../logging/index.js";
+import { OlasStakingManager } from "jinn-node/worker/OlasStakingManager.js";
+import { OlasServiceManager } from "jinn-node/worker/OlasServiceManager.js";
+import { OlasOperateWrapper } from "jinn-node/worker/OlasOperateWrapper.js";
+import { createTenderlyClient, ethToWei } from "jinn-node/lib/tenderly.js";
+import { logger } from "jinn-node/logging/index.js";
 import { readFile, writeFile, mkdir, access } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
@@ -356,7 +356,7 @@ async function step1_1_environmentSetup(step: ValidationStep, ctx: ValidationCon
       
       // Restart server for service deployment (bootstrapWallet stops it)
       validationLogger.info("Restarting server after bootstrap for service deployment");
-      await ctx.operateWrapper._startServer();
+      await ctx.operateWrapper.startServer();
       validationLogger.info("Server restarted successfully");
       
       // Re-login after server restart (session is lost)
@@ -470,7 +470,7 @@ async function step1_2_configValidation(step: ValidationStep, ctx: ValidationCon
     await writeFile(ctx.serviceConfigPath, JSON.stringify(config, null, 2));
 
     // Validate the configuration using ServiceConfig utilities
-    const { validateServiceConfigFile } = await import("../worker/config/ServiceConfig.js");
+    const { validateServiceConfigFile } = await import("jinn-node/worker/config/ServiceConfig.js");
     const validation = await validateServiceConfigFile(ctx.serviceConfigPath);
 
     if (!validation.isValid) {
@@ -717,7 +717,7 @@ async function step2_2_timeManipulationAndRewardAccrual(step: ValidationStep, ct
       blockMined: true,
     };
 
-    validationLogger.info({ advancedSeconds }, "Time advanced and block mined");
+    validationLogger.info({ advanceSeconds }, "Time advanced and block mined");
   });
 }
 

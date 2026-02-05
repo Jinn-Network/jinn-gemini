@@ -17,8 +17,8 @@
 
 import '../env/index.js';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
-import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
-import { getRequiredRpcUrl, getOptionalMechChainConfig } from '../gemini-agent/mcp/tools/shared/env.js';
+import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
+import { getRequiredRpcUrl, getOptionalMechChainConfig } from 'jinn-node/agent/mcp/tools/shared/env.js';
 
 interface CancelResult {
   requestId: string;

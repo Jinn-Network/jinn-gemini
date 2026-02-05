@@ -20,7 +20,7 @@ import {
   validateServiceConfigFile,
   extractServiceName,
   type ServiceConfigTemplate,
-} from '../../../../worker/config/ServiceConfig.js';
+} from 'jinn-node/worker/config/ServiceConfig.js';
 
 describe('ServiceConfig', () => {
   describe('SUPPORTED_CHAINS', () => {

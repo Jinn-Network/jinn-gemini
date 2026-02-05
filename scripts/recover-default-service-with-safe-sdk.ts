@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Recovery Script: Transfer OLAS from default-service Safe using Safe SDK
  */

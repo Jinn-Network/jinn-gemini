@@ -23,7 +23,7 @@
 
 import 'dotenv/config';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
-import { getServiceProfile } from '../env/operate-profile.js';
+import { getServiceProfile } from 'jinn-node/env/operate-profile.js';
 import { readFile, mkdir, writeFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { join, basename, extname } from 'path';
@@ -31,12 +31,12 @@ import { homedir } from 'os';
 import { execSync } from 'child_process';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { scriptLogger } from '../logging/index.js';
-import { buildIpfsPayload } from '../gemini-agent/shared/ipfs-payload-builder.js';
+import { scriptLogger } from 'jinn-node/logging';
+import { buildIpfsPayload } from 'jinn-node/agent/shared/ipfs-payload-builder.js';
 import { deepSubstitute, loadInputConfig } from './shared/template-substitution.js';
 import { resolveGitUrl } from './shared/git-url.js';
-import { validateInvariantsStrict } from '../worker/prompt/invariant-validator.js';
-import { extractToolPolicyFromBlueprint } from '../gemini-agent/shared/template-tools.js';
+import { validateInvariantsStrict } from 'jinn-node/worker/prompt/invariant-validator.js';
+import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
 
 interface GitHubRepoResponse {
   id: number;

@@ -129,6 +129,8 @@ Thumbs.db
 # Local data directory
 data/
 **/data/
+# But track jinn-node's data module
+!jinn-node/src/data/
 
 
 
@@ -244,6 +246,7 @@ ponder/.ponder-test-*/
 **/.jinn/
 
 gemini-agent/.gemini/settings.json.orig
+jinn-node/src/agent/.gemini/
 code-resources/olas-lst/
 .vercel
 

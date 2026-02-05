@@ -43,7 +43,7 @@ class McpClientWrapper {
     let resolvedArgs: string[] | null = null;
 
     if (resolvedCommand === 'yarn') {
-      resolvedArgs = ['tsx', 'gemini-agent/mcp/server.ts'];
+      resolvedArgs = ['tsx', 'jinn-node/src/agent/mcp/server.ts'];
     } else {
       try {
         if (process.env.JINN_MCP_ARGS) {
@@ -57,7 +57,7 @@ class McpClientWrapper {
       }
 
       if (!resolvedArgs || resolvedArgs.length === 0) {
-        resolvedArgs = ['tsx', 'gemini-agent/mcp/server.ts'];
+        resolvedArgs = ['tsx', 'jinn-node/src/agent/mcp/server.ts'];
       }
     }
 
@@ -154,7 +154,7 @@ class McpClientWrapper {
     // Also try to kill any remaining MCP server processes by command pattern
     // This is a fallback if PID tracking failed
     try {
-      const psOutput = execSync('ps aux | grep "tsx.*gemini-agent/mcp/server.ts" | grep -v grep', { encoding: 'utf-8' }).trim();
+      const psOutput = execSync('ps aux | grep "tsx.*jinn-node/src/agent/mcp/server.ts" | grep -v grep', { encoding: 'utf-8' }).trim();
       if (psOutput) {
         const lines = psOutput.split('\n');
         for (const line of lines) {

@@ -10,7 +10,7 @@
  */
 
 import 'dotenv/config';
-import { dispatchNewJob } from '../../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 import { pushMetadataToIpfs } from '@jinn-network/mech-client-ts/dist/ipfs.js';
 import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';

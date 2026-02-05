@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Recovery Script: Transfer OLAS from default-service Safe to Master Safe
  * Using direct agent key signing (not Safe execTransaction which has signature issues)

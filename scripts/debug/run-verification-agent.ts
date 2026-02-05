@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 import 'dotenv/config';
-import { Agent } from '../../gemini-agent/agent.js';
-import { createBlueprintBuilder } from '../../worker/prompt/BlueprintBuilder.js';
-import type { IpfsMetadata } from '../../worker/types.js';
+import { Agent } from 'jinn-node/agent/agent.js';
+import { createBlueprintBuilder } from 'jinn-node/worker/prompt/BlueprintBuilder.js';
+import type { IpfsMetadata } from 'jinn-node/worker/types.js';
 import { execSync } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';

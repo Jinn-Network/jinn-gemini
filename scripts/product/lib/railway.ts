@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Railway API helper for blog provisioning
  * Creates Railway services linked to customer repos

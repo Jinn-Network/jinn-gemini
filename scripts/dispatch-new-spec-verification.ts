@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 const prompt = `# Objective
 Continuously verify codebase against venture spec

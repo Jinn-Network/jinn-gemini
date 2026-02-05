@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Cleanup script to delete all Tenderly Virtual TestNets
  * 
@@ -6,7 +7,7 @@
 
 import 'dotenv/config';
 import { createTenderlyClient } from './lib/tenderly.js';
-import { getOptionalTenderlyAccountSlug, getOptionalTenderlyProjectSlug, getOptionalTenderlyAccessKey } from '../gemini-agent/mcp/tools/shared/env.js';
+import { getOptionalTenderlyAccountSlug, getOptionalTenderlyProjectSlug, getOptionalTenderlyAccessKey } from 'jinn-node/agent/mcp/tools/shared/env.js';
 
 interface VnetListItem {
   id: string;

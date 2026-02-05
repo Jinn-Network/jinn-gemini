@@ -3,7 +3,7 @@
  * Dispatch corrected spec-violation-analyzer job with GitHub tools enabled
  */
 
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 async function main() {
   console.log('Dispatching corrected spec-violation-analyzer job...\n');

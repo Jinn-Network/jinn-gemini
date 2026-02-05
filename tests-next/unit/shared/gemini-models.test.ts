@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeGeminiModel } from '../../../shared/gemini-models.js';
+import { normalizeGeminiModel } from 'jinn-node/shared/gemini-models.js';
 
 describe('normalizeGeminiModel', () => {
     it('uses default when input is empty', () => {

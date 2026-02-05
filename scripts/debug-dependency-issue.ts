@@ -1,10 +1,11 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Debug script to check why ethereum-contextual-analysis isn't being picked up
  */
 
 import 'dotenv/config';
-import { graphQLRequest } from '../http/client.js';
+import { graphQLRequest } from 'jinn-node/http/client.js';
 import { createClient } from '@supabase/supabase-js';
 
 const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';

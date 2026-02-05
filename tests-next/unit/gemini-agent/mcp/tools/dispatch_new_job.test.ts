@@ -10,11 +10,11 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { dispatchNewJob } from '../../../../../gemini-agent/mcp/tools/dispatch_new_job.js';
-import { setToolRegistry } from '../../../../../gemini-agent/mcp/tools/shared/tool-registry.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
+import { setToolRegistry } from 'jinn-node/agent/mcp/tools/shared/tool-registry.js';
 
 // Mock dependencies
-vi.mock('../../../../../http/client.js', () => ({
+vi.mock('jinn-node/http/client.js', () => ({
   graphQLRequest: vi.fn(),
 }));
 
@@ -22,35 +22,35 @@ vi.mock('@jinn-network/mech-client-ts/dist/marketplace_interact.js', () => ({
   marketplaceInteract: vi.fn(),
 }));
 
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/context.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/context.js', () => ({
   getCurrentJobContext: vi.fn(),
 }));
 
-vi.mock('../../../../../env/operate-profile.js', () => ({
+vi.mock('jinn-node/env/operate-profile.js', () => ({
   getMechAddress: vi.fn(),
   getMechChainConfig: vi.fn(),
   getServicePrivateKey: vi.fn(),
 }));
 
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getPonderGraphqlUrl: vi.fn(),
 }));
 
-vi.mock('../../../../../gemini-agent/shared/code_metadata.js', () => ({
+vi.mock('jinn-node/agent/shared/code_metadata.js', () => ({
   collectLocalCodeMetadata: vi.fn(),
   ensureJobBranch: vi.fn(),
 }));
 
-vi.mock('../../../../../config/index.js', () => ({
+vi.mock('jinn-node/config/index.js', () => ({
   getCodeMetadataDefaultBaseBranch: vi.fn(),
 }));
 
 import { graphQLRequest } from '../../../../../http/client.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
-import { getCurrentJobContext } from '../../../../../gemini-agent/mcp/tools/shared/context.js';
+import { getCurrentJobContext } from 'jinn-node/agent/mcp/tools/shared/context.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../../../../../env/operate-profile.js';
-import { getPonderGraphqlUrl } from '../../../../../gemini-agent/mcp/tools/shared/env.js';
-import { collectLocalCodeMetadata, ensureJobBranch } from '../../../../../gemini-agent/shared/code_metadata.js';
+import { getPonderGraphqlUrl } from 'jinn-node/agent/mcp/tools/shared/env.js';
+import { collectLocalCodeMetadata, ensureJobBranch } from 'jinn-node/agent/shared/code_metadata.js';
 import { getCodeMetadataDefaultBaseBranch } from '../../../../../config/index.js';
 
 // Helper to create valid blueprint JSON

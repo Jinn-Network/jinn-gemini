@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 async function main() {
   console.log('📤 Dispatching Job 4: Math Problem (11+12) - Embedding Indexing Test\n');

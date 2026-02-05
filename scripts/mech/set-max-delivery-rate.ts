@@ -15,7 +15,7 @@
 
 import 'dotenv/config';
 import { ethers } from 'ethers';
-import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from '../../env/operate-profile.js';
+import { getMechAddress, getServiceSafeAddress, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 
 // Minimal ABIs
 const MECH_ABI = [

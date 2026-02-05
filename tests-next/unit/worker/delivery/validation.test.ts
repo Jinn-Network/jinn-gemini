@@ -7,9 +7,9 @@
  * before submission. Prevents invalid deliveries from being submitted on-chain.
  */
 import { describe, it, expect } from 'vitest';
-import { validateDeliveryContext } from '../../../../worker/delivery/validation.js';
-import type { DeliveryValidationContext } from '../../../../worker/delivery/validation.js';
-import type { UnclaimedRequest, AgentExecutionResult, FinalStatus, IpfsMetadata } from '../../../../worker/types.js';
+import { validateDeliveryContext } from 'jinn-node/worker/delivery/validation.js';
+import type { DeliveryValidationContext } from 'jinn-node/worker/delivery/validation.js';
+import type { UnclaimedRequest, AgentExecutionResult, FinalStatus, IpfsMetadata } from 'jinn-node/worker/types.js';
 
 describe('validateDeliveryContext', () => {
   const validRequest: UnclaimedRequest = {

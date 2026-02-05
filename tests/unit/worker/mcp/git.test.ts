@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { process_branch } from '../../../../worker/mcp/tools/git.js';
+import { process_branch } from 'jinn-node/worker/mcp/tools/git.js';
 import { execSync } from 'node:child_process';
 
 // Mock dependencies

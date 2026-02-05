@@ -6,8 +6,8 @@
 import { config } from 'dotenv';
 config();
 
-import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
-import { setJobContext } from '../gemini-agent/mcp/tools/shared/context.js';
+import { dispatchExistingJob } from 'jinn-node/agent/mcp/tools/dispatch_existing_job.js';
+import { setJobContext } from 'jinn-node/agent/mcp/tools/shared/context.js';
 
 async function testDispatchErrorHandling() {
   console.log('=== Testing Dispatch Error Handling ===\n');

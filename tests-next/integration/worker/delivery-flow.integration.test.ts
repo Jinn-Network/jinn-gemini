@@ -26,7 +26,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { buildDeliveryPayload } from '../../../worker/delivery/payload.js';
+import { buildDeliveryPayload } from 'jinn-node/worker/delivery/payload.js';
 import { pushJsonToIpfs, cidToHex, toV1 } from '@jinn-network/mech-client-ts/dist/ipfs.js';
 import { reconstructDirCidFromHexIpfsHash } from '../../helpers/shared-utils.js';
 import fetch from 'cross-fetch';

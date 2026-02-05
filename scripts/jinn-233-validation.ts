@@ -17,7 +17,7 @@
 import { spawn, exec } from 'child_process';
 import { promisify } from 'util';
 import pino from 'pino';
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 const execAsync = promisify(exec);
 const testLogger = pino({ level: 'info' }).child({ component: 'JINN-233-TEST' });

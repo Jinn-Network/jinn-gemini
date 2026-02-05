@@ -66,8 +66,8 @@
 
 import "dotenv/config";
 import { spawn, ChildProcess } from "child_process";
-import { logger } from "../logging/index.js";
-import { TenderlyClient } from "./lib/tenderly.js";
+import { logger } from "jinn-node/logging/index.js";
+import { TenderlyClient } from "jinn-node/lib/tenderly.js";
 import path from "path";
 import fs from "fs/promises";
 

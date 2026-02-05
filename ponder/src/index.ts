@@ -1,9 +1,9 @@
 import { ponder } from "ponder:registry";
 import fetch from "cross-fetch";
 import axios from "axios";
-import { logger, serializeError } from "../../logging/index.js";
+import { logger, serializeError } from "jinn-node/logging";
 import { Pool } from "pg";
-import { extractToolName } from "../../gemini-agent/shared/template-tools.js";
+import { extractToolName } from "jinn-node/shared/template-tools";
 import { jobDefinition, request, delivery, artifact, message, workstream, jobTemplate } from "ponder:schema";
 
 // Minimal local types to avoid implicit any in handler params and align with Ponder 0.7+ DB API

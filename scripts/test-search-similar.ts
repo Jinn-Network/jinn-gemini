@@ -3,7 +3,7 @@
  * Test search_similar_situations directly
  */
 
-import { searchSimilarSituations } from '../gemini-agent/mcp/tools/search_similar_situations.js';
+import { searchSimilarSituations } from 'jinn-node/agent/mcp/tools/search_similar_situations.js';
 
 async function main() {
   console.log('🔍 Testing search_similar_situations...\n');

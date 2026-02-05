@@ -3,15 +3,15 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { BlueprintBuilder, createBlueprintBuilder } from '../../../../worker/prompt/BlueprintBuilder.js';
+import { BlueprintBuilder, createBlueprintBuilder } from 'jinn-node/worker/prompt/BlueprintBuilder.js';
 import {
   getBlueprintEnableContextPhases,
   getBlueprintEnableRecognition,
   getBlueprintEnableProgress,
-} from '../../../../config/index.js';
+} from 'jinn-node/config/index.js';
 import type {
   IpfsMetadata,
-} from '../../../../worker/types.js';
+} from 'jinn-node/worker/types.js';
 import type {
   Invariant,
   BlueprintContext,
@@ -19,7 +19,7 @@ import type {
   InvariantProvider,
   BuildContext,
   BlueprintBuilderConfig,
-} from '../../../../worker/prompt/types.js';
+} from 'jinn-node/worker/prompt/types.js';
 
 describe('BlueprintBuilder', () => {
   describe('createBlueprintBuilder', () => {

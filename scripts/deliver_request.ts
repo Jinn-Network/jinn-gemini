@@ -3,7 +3,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { Web3 } from 'web3';
-import { getMechChainConfig, getServiceSafeAddress, getServicePrivateKey } from '../env/operate-profile.js';
+import { getMechChainConfig, getServiceSafeAddress, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import agentMechArtifact from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';

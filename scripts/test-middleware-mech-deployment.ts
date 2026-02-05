@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Test Mech Deployment via Middleware for Service #149
  * 
@@ -5,8 +6,8 @@
  * which now supports Base chain after adding factory addresses.
  */
 
-import { OlasServiceManager } from '../worker/OlasServiceManager.js';
-import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
+import { OlasServiceManager } from 'jinn-node/worker/OlasServiceManager.js';
+import { OlasOperateWrapper } from 'jinn-node/worker/OlasOperateWrapper.js';
 
 const SERVICE_CONFIG_ID = 'sc-service-149-recovered';
 const MIDDLEWARE_PATH = process.env.OLAS_MIDDLEWARE_PATH || './olas-operate-middleware';

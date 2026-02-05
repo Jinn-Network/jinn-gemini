@@ -21,8 +21,8 @@ import crypto from 'crypto';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createTenderlyClient, ethToWei, type TenderlyClient, type VnetResult } from './lib/tenderly.js';
 import { setupOlasEnvironment, createServiceConfig, BASE_MAINNET_CHAIN_ID } from './lib/e2e-test-utils.js';
-import { OlasServiceManager } from '../worker/OlasServiceManager.js';
-import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
+import { OlasServiceManager } from 'jinn-node/worker/OlasServiceManager.js';
+import { OlasOperateWrapper } from 'jinn-node/worker/OlasOperateWrapper.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -130,7 +130,7 @@ async function createTestContext(): Promise<TestContext> {
 
   await fs.writeFile(serviceConfigPath, JSON.stringify(serviceConfig, null, 2));
 
-  const serviceManager = new OlasServiceManager(operateWrapper, serviceConfigPath, tempDir);
+  const serviceManager = new OlasServiceManager(operateWrapper, serviceConfigPath);
 
   return {
     testId,
@@ -242,20 +242,9 @@ async function runMechDeploymentTest(): Promise<TestResult> {
       throw new Error('Failed to setup test environment');
     }
 
-    // Step 2: Deploy service with mech deployment enabled
-    const deployResult = await runStep('Deploy service with deployMech: true', async () => {
-      const serviceInfo = await context!.serviceManager.deployAndStakeService(
-        undefined,
-        {
-          deployMech: true,
-          mechType: MECH_CONFIG.MECH_TYPE as 'Native',
-          mechRequestPrice: MECH_CONFIG.MECH_REQUEST_PRICE,
-          mechMarketplaceAddress: MECH_CONFIG.MECH_MARKETPLACE_ADDRESS,
-          checkExistingServices: false,
-          verifyBalanceBeforeDeployment: false
-        }
-      );
-
+    // Step 2: Deploy service (mech deployment options removed - API simplified)
+    const deployResult = await runStep('Deploy service', async () => {
+      const serviceInfo = await context!.serviceManager.deployAndStakeService();
       return serviceInfo;
     });
     steps.push(deployResult);
@@ -277,8 +266,11 @@ async function runMechDeploymentTest(): Promise<TestResult> {
     // Step 3: Verify mech info in service config
     const configVerifyResult = await runStep('Verify mech info in middleware config', async () => {
       // Find the service config ID
-      const services = await context!.serviceManager.listExistingServices();
-      const latestService = services[services.length - 1];
+      const servicesResult = await context!.operateWrapper.getServices();
+      if (!servicesResult.services || servicesResult.services.length === 0) {
+        throw new Error('No services found in middleware');
+      }
+      const latestService = servicesResult.services[servicesResult.services.length - 1];
       
       if (!latestService) {
         throw new Error('No service found in middleware');

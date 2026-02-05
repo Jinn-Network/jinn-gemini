@@ -9,8 +9,9 @@ const testEnv = loadEnv('test', process.cwd(), '')
 // Shared alias configuration - preserves main's @jinn/types + adds our aliases
 const sharedResolve = {
   alias: {
+    'jinn-node': path.resolve(__dirname, './jinn-node/src'),
     'mech-client-ts': path.resolve(__dirname, './packages/mech-client-ts'),
-    '@jinn/types': path.resolve(__dirname, './packages/jinn-types/src'),
+    '@jinn/types': path.resolve(__dirname, './jinn-node/src/types'),
     '@codespec': path.resolve(__dirname, './codespec'),
     '@tests': path.resolve(__dirname, './tests'),
   },

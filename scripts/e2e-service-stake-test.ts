@@ -19,10 +19,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createTenderlyClient, ethToWei, type TenderlyClient, type VnetResult } from './lib/tenderly.ts';
-import { setupOlasEnvironment, createServiceConfig, createOnChainVerificationPlaceholder, BASE_MAINNET_CHAIN_ID, type ServiceTestConfig } from './lib/e2e-test-utils.ts';
-import { OlasServiceManager } from '../worker/OlasServiceManager.js';
-import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
+import { createTenderlyClient, ethToWei, type TenderlyClient, type VnetResult } from './lib/tenderly.js';
+import { setupOlasEnvironment, createServiceConfig, createOnChainVerificationPlaceholder, BASE_MAINNET_CHAIN_ID, type ServiceTestConfig } from './lib/e2e-test-utils.js';
+import { OlasServiceManager } from 'jinn-node/worker/OlasServiceManager.js';
+import { OlasOperateWrapper } from 'jinn-node/worker/OlasOperateWrapper.js';
 import dotenv from 'dotenv';
 
 // Load environment variables

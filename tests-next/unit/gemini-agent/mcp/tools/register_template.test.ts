@@ -25,11 +25,11 @@ vi.mock('pg', () => ({
 }));
 
 // Mock env loader
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
     loadEnvOnce: vi.fn(),
 }));
 
-import { registerTemplate } from '../../../../../gemini-agent/mcp/tools/register_template.js';
+import { registerTemplate } from 'jinn-node/agent/mcp/tools/register_template.js';
 
 describe('registerTemplate', () => {
     const baseTools = { tools: ['google_web_search'] };

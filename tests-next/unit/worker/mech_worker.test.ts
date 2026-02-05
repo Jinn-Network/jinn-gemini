@@ -17,7 +17,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 // Since getUndeliveredSet and filterUnclaimed are not exported, we test the integration through the module
 
 // Mock all dependencies
-vi.mock('../../env/index.js', () => ({
+vi.mock('jinn-node/env/index.js', () => ({
   default: {}
 }));
 
@@ -38,11 +38,11 @@ vi.mock('web3', () => ({
   }))
 }));
 
-vi.mock('../../http/client.js', () => ({
+vi.mock('jinn-node/http/client.js', () => ({
   graphQLRequest: vi.fn()
 }));
 
-vi.mock('../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getPonderGraphqlUrl: vi.fn().mockReturnValue('http://localhost:42069/graphql'),
   getUseControlApi: vi.fn().mockReturnValue(true),
   getEnableAutoRepost: vi.fn().mockReturnValue(false),
@@ -51,7 +51,7 @@ vi.mock('../../gemini-agent/mcp/tools/shared/env.js', () => ({
   getOptionalControlApiUrl: vi.fn().mockReturnValue('http://localhost:4001/graphql')
 }));
 
-vi.mock('../../logging/index.js', () => ({
+vi.mock('jinn-node/logging/index.js', () => ({
   workerLogger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -60,33 +60,33 @@ vi.mock('../../logging/index.js', () => ({
   }
 }));
 
-vi.mock('../../worker/control_api_client.js', () => ({
+vi.mock('jinn-node/worker/control_api_client.js', () => ({
   claimRequest: vi.fn()
 }));
 
-vi.mock('../../env/operate-profile.js', () => ({
+vi.mock('jinn-node/env/operate-profile.js', () => ({
   getMechAddress: vi.fn().mockReturnValue('0xMECH123'),
   getServicePrivateKey: vi.fn().mockReturnValue('0xPRIVATE'),
   getMechChainConfig: vi.fn().mockReturnValue({ chainId: 8453 })
 }));
 
-vi.mock('../../gemini-agent/mcp/tools/dispatch_existing_job.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/dispatch_existing_job.js', () => ({
   dispatchExistingJob: vi.fn()
 }));
 
-vi.mock('../../worker/logging/errors.js', () => ({
+vi.mock('jinn-node/worker/logging/errors.js', () => ({
   serializeError: vi.fn(e => e?.message || String(e))
 }));
 
-vi.mock('../../worker/tool_utils.js', () => ({
+vi.mock('jinn-node/worker/tool_utils.js', () => ({
   safeParseToolResponse: vi.fn()
 }));
 
-vi.mock('../../worker/orchestration/jobRunner.js', () => ({
+vi.mock('jinn-node/worker/orchestration/jobRunner.js', () => ({
   processOnce: vi.fn()
 }));
 
-vi.mock('../../worker/metadata/fetchIpfsMetadata.js', () => ({
+vi.mock('jinn-node/worker/metadata/fetchIpfsMetadata.js', () => ({
   fetchIpfsMetadata: vi.fn()
 }));
 
@@ -96,8 +96,8 @@ vi.mock('@jinn-network/mech-client-ts/dist/marketplace_interact.js', () => ({
 
 // Import after mocks
 import { Web3 } from 'web3';
-import { workerLogger } from '../../logging/index.js';
-import { getRequiredRpcUrl } from '../../gemini-agent/mcp/tools/shared/env.js';
+import { workerLogger } from 'jinn-node/logging/index.js';
+import { getRequiredRpcUrl } from 'jinn-node/agent/mcp/tools/shared/env.js';
 
 describe('Worker RPC Filtering (Double-Execution Guard)', () => {
   beforeEach(() => {

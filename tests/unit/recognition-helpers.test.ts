@@ -6,7 +6,7 @@ import {
   formatRecognitionMarkdown,
   normalizeLearnings,
   parseRecognitionJson,
-} from '../../worker/recognition_helpers.js';
+} from 'jinn-node/worker/recognition_helpers.js';
 
 describe('recognition helpers', () => {
   it('extracts structured sections from prompts', () => {

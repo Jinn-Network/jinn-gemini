@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getDetails } from '../../../../../gemini-agent/mcp/tools/get-details.js';
+import { getDetails } from 'jinn-node/agent/mcp/tools/get-details.js';
 
 // Mock dependencies
 vi.mock('cross-fetch');
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/ipfs.js');
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/context-management.js');
+vi.mock('jinn-node/agent/mcp/tools/shared/ipfs.js');
+vi.mock('jinn-node/agent/mcp/tools/shared/context-management.js');
 
 import fetch from 'cross-fetch';
-import { resolveRequestIpfsContent } from '../../../../../gemini-agent/mcp/tools/shared/ipfs.js';
-import { composeSinglePageResponse, decodeCursor } from '../../../../../gemini-agent/mcp/tools/shared/context-management.js';
+import { resolveRequestIpfsContent } from 'jinn-node/agent/mcp/tools/shared/ipfs.js';
+import { composeSinglePageResponse, decodeCursor } from 'jinn-node/agent/mcp/tools/shared/context-management.js';
 
 describe('get-details MCP tool', () => {
   beforeEach(() => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 import 'dotenv/config';
-import { dispatchExistingJob } from '../gemini-agent/mcp/tools/dispatch_existing_job.js';
+import { dispatchExistingJob } from 'jinn-node/agent/mcp/tools/dispatch_existing_job.js';
 
 async function main() {
   const jobId = '27d1ea74-3be2-40c2-81ef-aae291b8d481';

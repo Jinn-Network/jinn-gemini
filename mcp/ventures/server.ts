@@ -20,22 +20,19 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-// Import script functions - these contain the actual Supabase logic
+// Import venture functions from jinn-node package
 import {
   createVenture,
   getVenture,
   getVentureBySlug,
   listVentures,
-  type CreateVentureArgs,
-  type Venture,
-} from '../../scripts/ventures/mint.js';
-
-import {
   updateVenture,
   archiveVenture,
   deleteVenture,
+  type CreateVentureArgs,
   type UpdateVentureArgs,
-} from '../../scripts/ventures/update.js';
+  type Venture,
+} from 'jinn-node/data/ventures.js';
 
 // ============================================================================
 // Tool Schemas

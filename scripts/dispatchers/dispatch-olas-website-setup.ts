@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Dispatch script for Olas Website - Initial Project Setup
  * 
@@ -6,7 +7,7 @@
  * in the oaksprout/olas-website-1 repository.
  */
 
-import { dispatchNewJob } from '../../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 const objective = `Set up a modern Next.js website foundation for the Olas project in the oaksprout/olas-website-1 repository.`;
 

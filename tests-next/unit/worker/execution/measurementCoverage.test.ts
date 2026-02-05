@@ -7,7 +7,7 @@
  * mission invariants were measured during agent execution.
  */
 import { describe, it, expect } from 'vitest';
-import { computeMeasurementCoverage } from '../../../../worker/execution/measurementCoverage.js';
+import { computeMeasurementCoverage } from 'jinn-node/worker/execution/measurementCoverage.js';
 
 const makeBlueprintWith = (invariants: Array<{ id: string; type?: string }>) =>
   JSON.stringify({ invariants });

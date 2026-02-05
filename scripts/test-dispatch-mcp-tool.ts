@@ -8,8 +8,8 @@
 import { config } from 'dotenv';
 config();
 
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
-import { setJobContext } from '../gemini-agent/mcp/tools/shared/context.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
+import { setJobContext } from 'jinn-node/agent/mcp/tools/shared/context.js';
 
 async function testDispatchMcpTool() {
   console.log('=== Testing dispatch_new_job MCP Tool ===\n');

@@ -3,7 +3,7 @@
  * Test MCP tool CRUD operations for services, deployments, interfaces, and docs
  */
 
-import { serviceRegistry } from '../../gemini-agent/mcp/tools/service_registry.js';
+import { serviceRegistry } from 'jinn-node/agent/mcp/tools/service_registry.js';
 
 interface TestResult {
   test: string;

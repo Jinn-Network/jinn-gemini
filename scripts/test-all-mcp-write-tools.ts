@@ -1,7 +1,8 @@
+// @ts-nocheck
 import 'dotenv/config';
-import { createRecord } from '../gemini-agent/mcp/tools/create-record.js';
-import { createArtifactTool } from '../gemini-agent/mcp/tools/create_artifact.js';
-import { createMessageTool } from '../gemini-agent/mcp/tools/create_message.js';
+import { createRecord } from 'jinn-node/agent/mcp/tools/create-record.js';
+import { createArtifactTool } from 'jinn-node/agent/mcp/tools/create_artifact.js';
+import { createMessageTool } from 'jinn-node/agent/mcp/tools/create_message.js';
 
 async function testAllMCPWriteTools() {
   console.log('Testing all MCP write tools with Control API integration...');

@@ -14,11 +14,11 @@ import {
   shouldDispatchParent,
   dispatchParentIfNeeded,
   shouldRequireVerification,
-} from '../../../../worker/status/autoDispatch.js';
-import type { FinalStatus, ParentDispatchDecision } from '../../../../worker/types.js';
+} from 'jinn-node/worker/status/autoDispatch.js';
+import type { FinalStatus, ParentDispatchDecision } from 'jinn-node/worker/types.js';
 
 // Mock dependencies
-vi.mock('../../../../logging/index.js', () => ({
+vi.mock('jinn-node/logging/index.js', () => ({
   logger: {
     child: vi.fn(() => ({
       debug: vi.fn(),
@@ -41,51 +41,51 @@ vi.mock('../../../../logging/index.js', () => ({
   },
 }));
 
-vi.mock('../../../../http/client.js', () => ({
+vi.mock('jinn-node/http/client.js', () => ({
   graphQLRequest: vi.fn(async () => ({
     requests: { items: [] },
     request: { workstreamId: undefined }
   })),
 }));
 
-vi.mock('../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getPonderGraphqlUrl: vi.fn(() => 'http://example.com/graphql'),
   getOptionalControlApiUrl: vi.fn(() => undefined),
 }));
 
-vi.mock('../../../../worker/mcp/tools.js', () => ({
+vi.mock('jinn-node/worker/mcp/tools.js', () => ({
   withJobContext: vi.fn(async (_ctx: any, fn: any) => fn()),
 }));
 
-vi.mock('../../../../gemini-agent/mcp/tools/dispatch_existing_job.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/dispatch_existing_job.js', () => ({
   dispatchExistingJob: vi.fn(),
 }));
 
-vi.mock('../../../../worker/tool_utils.js', () => ({
+vi.mock('jinn-node/worker/tool_utils.js', () => ({
   safeParseToolResponse: vi.fn(),
 }));
 
 // Mock git integration utilities
-vi.mock('../../../../worker/git/integration.js', () => ({
+vi.mock('jinn-node/worker/git/integration.js', () => ({
   isChildIntegrated: vi.fn(() => true), // Default: all children integrated
   batchFetchBranches: vi.fn(),
 }));
 
 // Mock fetchAllChildren for getUnintegratedChildren
-vi.mock('../../../../worker/prompt/providers/context/fetchChildren.js', () => ({
+vi.mock('jinn-node/worker/prompt/providers/context/fetchChildren.js', () => ({
   fetchAllChildren: vi.fn(async () => []),
 }));
 
-import { workerLogger } from '../../../../logging/index.js';
-import { dispatchExistingJob } from '../../../../gemini-agent/mcp/tools/dispatch_existing_job.js';
-import { safeParseToolResponse } from '../../../../worker/tool_utils.js';
-import { graphQLRequest } from '../../../../http/client.js';
-import { withJobContext } from '../../../../worker/mcp/tools.js';
-import { isChildIntegrated } from '../../../../worker/git/integration.js';
-import { fetchAllChildren } from '../../../../worker/prompt/providers/context/fetchChildren.js';
-import { claimParentDispatch } from '../../../../worker/control_api_client.js';
+import { workerLogger } from 'jinn-node/logging/index.js';
+import { dispatchExistingJob } from 'jinn-node/agent/mcp/tools/dispatch_existing_job.js';
+import { safeParseToolResponse } from 'jinn-node/worker/tool_utils.js';
+import { graphQLRequest } from 'jinn-node/http/client.js';
+import { withJobContext } from 'jinn-node/worker/mcp/tools.js';
+import { isChildIntegrated } from 'jinn-node/worker/git/integration.js';
+import { fetchAllChildren } from 'jinn-node/worker/prompt/providers/context/fetchChildren.js';
+import { claimParentDispatch } from 'jinn-node/worker/control_api_client.js';
 
-vi.mock('../../../../worker/control_api_client.js', () => ({
+vi.mock('jinn-node/worker/control_api_client.js', () => ({
   claimParentDispatch: vi.fn(async () => ({ allowed: true })),
 }));
 

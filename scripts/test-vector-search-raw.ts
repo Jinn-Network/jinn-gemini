@@ -5,7 +5,7 @@
 
 import { Client } from 'pg';
 import 'dotenv/config';
-import { embedText } from '../gemini-agent/mcp/tools/embed_text.js';
+import { embedText } from 'jinn-node/agent/mcp/tools/embed_text.js';
 
 function serializeVector(vec: number[]): string {
   return `[${vec.join(',')}]`;

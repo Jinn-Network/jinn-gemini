@@ -2,25 +2,28 @@
 title: Quick Start - Setting Up an OLAS Service
 purpose: runbook
 scope: [deployment]
-last_verified: 2026-01-30
+last_verified: 2026-02-04
 related_code:
   - olas-operate-middleware/.operate/services
+  - worker/SimplifiedServiceBootstrap.ts
+  - env/operate-profile.ts
 keywords: [olas, service, deployment, setup, wizard, master-wallet, master-safe]
 when_to_read: "When deploying your first OLAS service using the interactive setup wizard"
 ---
 
 # Quick Start: Setting Up an OLAS Service
 
-This guide walks you through deploying your first OLAS service using the interactive setup wizard.
+This guide walks you through deploying your first OLAS service using the HTTP daemon flow.
 
 ## Prerequisites
 
-1. **Node.js and Yarn**: Ensure you have Node.js (v18+) and Yarn installed
-2. **Python Environment**: The system requires Python and Poetry (automated via `yarn setup:dev`)
-3. **Funds**: You'll need ETH and OLAS tokens on your chosen network
-   - Base mainnet: ~0.005 ETH + 150 OLAS total
+1. **Node.js and Yarn**: Ensure you have Node.js (v22+) and Yarn installed
+2. **Python Environment**: Python 3.11+ with Poetry
+3. **Funds**: You'll need ETH and OLAS tokens on Base mainnet
+   - ~0.005 ETH (for gas across all operations)
+   - 100 OLAS (50 bond + 50 stake)
    - OLAS Token: `0x54330d28ca3357F294334BDC454a032e7f353416` (Base)
-4. **RPC Access**: A reliable RPC endpoint for your chosen network
+4. **RPC Access**: A reliable RPC endpoint (e.g., Tenderly, Alchemy)
 
 ## Step 1: Environment Setup
 
@@ -28,14 +31,14 @@ Create a `.env` file in the project root:
 
 ```bash
 # Required
-OPERATE_PASSWORD="your-secure-password-here"
-BASE_LEDGER_RPC="https://your-base-rpc-url"
+OPERATE_PASSWORD="your-secure-password-here"  # Used to encrypt/decrypt keystores
+RPC_URL="https://your-base-rpc-url"
 
-# Optional (for other networks)
-GNOSIS_LEDGER_RPC="https://your-gnosis-rpc-url"
-MODE_LEDGER_RPC="https://your-mode-rpc-url"
-OPTIMISM_LEDGER_RPC="https://your-optimism-rpc-url"
+# Optional aliases
+BASE_LEDGER_RPC="https://your-base-rpc-url"
 ```
+
+> **Important**: `OPERATE_PASSWORD` is used to encrypt agent private keys. Choose a secure password and store it safely - you'll need it to run the worker.
 
 Run the development setup:
 
@@ -48,154 +51,101 @@ This will:
 - Set up Python/Poetry environment
 - Install Node.js dependencies
 
-## Step 2: Run the Interactive Setup Wizard
+### Verify Poetry Environment
 
-Launch the wizard:
+If you encounter module errors (e.g., `ModuleNotFoundError: No module named 'certifi'`), manually install dependencies:
 
 ```bash
-yarn setup:service --chain=base
+cd olas-operate-middleware
+poetry install  # Installs ~124 packages
+cd ..
 ```
 
-Or with mech deployment:
+## Step 2: Run the Service Setup
+
+Launch the setup wizard with mech deployment:
 
 ```bash
 yarn setup:service --chain=base --with-mech
 ```
 
-## Step 3: Follow the Wizard
+This starts an HTTP daemon on port 8000 and guides you through deployment.
 
-The wizard will guide you through **4 funding steps**:
+## Step 3: Fund Your Service (2 Steps)
 
-### 3.1: Fund Master Wallet
+For a **new operator** (fresh `.operate` directory), you'll fund **2 addresses**:
+
+### 3.1: Fund Master EOA
+
+The setup will display:
 
 ```
-═══════════════════════════════════════════════════════════════════════════════
-  STEP 1: Master Wallet Creation
-═══════════════════════════════════════════════════════════════════════════════
-
-✅ Master wallet created: 0xABCD...1234
-
-📍 Step 1/4: Fund Master Wallet
+📍 FUNDING REQUIRED - Master EOA
 ───────────────────────────────────────────────────────────────────────────────
+🔑 Address: 0x310b8970...
 
-The Master Wallet is your primary EOA that will deploy the Master Safe.
+💰 Required:
+   • ~0.005 ETH (for gas)
 
-🔑 Address: 0xABCD...1234
-
-💰 Required Funding:
-   • 0.002 ETH
-   • 0 OLAS
-
-📋 Instructions:
-   1. Send 0.002 ETH to the address above
-   2. Send 0 OLAS to the address above
-   3. Type 'check' to verify balance
-   4. Type 'continue' to proceed once funded
-   5. Type 'skip' to bypass check (CAUTION: may fail later)
-
-> check
+Waiting for funding...
 ```
 
 **What to do:**
-1. Send the required ETH from your wallet (MetaMask, hardware wallet, etc.)
-2. Type `check` to verify the wizard sees the funds
-3. Type `continue` to proceed
-
-The wizard shows current vs. required balances and won't proceed until funded.
+1. Send ~0.005 ETH to the Master EOA address shown
+2. The wizard automatically detects the funds and proceeds
 
 ### 3.2: Fund Master Safe
 
+After the Master Safe is created:
+
 ```
-═══════════════════════════════════════════════════════════════════════════════
-  STEP 2: Master Safe Deployment
-═══════════════════════════════════════════════════════════════════════════════
-
-✅ Master Safe deployed: 0xDEF0...5678
-
-📍 Step 2/4: Fund Master Safe
+📍 FUNDING REQUIRED - Master Safe
 ───────────────────────────────────────────────────────────────────────────────
+🔑 Address: 0xe14eb268...
 
-The Master Safe will create and fund service Safes.
+💰 Required:
+   • Small amount of ETH (for gas)
+   • 100 OLAS (50 bond + 50 stake)
 
-🔑 Address: 0xDEF0...5678
-
-💰 Required Funding:
-   • 0.002 ETH
-   • 100 OLAS
-
-   OLAS Token Address: 0x54330d28ca3357F294334BDC454a032e7f353416
+   OLAS Token: 0x54330d28ca3357F294334BDC454a032e7f353416
 ```
 
 **What to do:**
-1. Send 0.002 ETH to the Master Safe address
-2. Send 100 OLAS tokens to the Master Safe address
-   - Use the token address shown (Base: `0x54330...`)
-   - Transfer via MetaMask or your wallet's token interface
-3. Type `check` to verify
-4. Type `continue` to proceed
+1. Send 100 OLAS tokens to the Master Safe address
+2. The wizard automatically detects funds and proceeds to deploy
 
-### 3.3: Create Service
+> **Note**: The 100 OLAS is split: 50 for the security bond, 50 for staking.
 
-```
-═══════════════════════════════════════════════════════════════════════════════
-  STEP 3: Service Creation
-═══════════════════════════════════════════════════════════════════════════════
+### Automatic Deployment
 
-✅ Service config created: sc-abc123-def456-789
-✅ Agent key generated: 0x9876...CDEF
-```
-
-**No funding required** - This step just creates the service configuration locally.
-
-### 3.4: Fund Service Safe
-
-```
-═══════════════════════════════════════════════════════════════════════════════
-  STEP 4: Service Deployment & Staking
-═══════════════════════════════════════════════════════════════════════════════
-
-✅ Service Safe deployed: 0x1234...ABCD
-
-📍 Step 3/4: Fund Service Safe
-───────────────────────────────────────────────────────────────────────────────
-
-The Service Safe executes service operations and holds staked OLAS.
-
-🔑 Address: 0x1234...ABCD
-
-💰 Required Funding:
-   • 0.001 ETH
-   • 50 OLAS
-```
-
-**What to do:**
-1. Send 0.001 ETH to the Service Safe address
-2. Send 50 OLAS tokens to the Service Safe address
-3. Type `check` to verify
-4. Type `continue` to proceed
-
-The service will then be **automatically staked**!
+Once funded, the system automatically:
+1. Creates the service configuration
+2. Generates and encrypts agent keys
+3. Deploys the Service Safe
+4. Registers the service on-chain
+5. Stakes the service
+6. Deploys the mech contract (if `--with-mech`)
 
 ## Step 4: Success!
 
 ```
-═══════════════════════════════════════════════════════════════════════════════
-  ✅ BOOTSTRAP COMPLETE
-═══════════════════════════════════════════════════════════════════════════════
+════════════════════════════════════════════════════════════════════════════════
+  ✅ SETUP COMPLETED SUCCESSFULLY
+════════════════════════════════════════════════════════════════════════════════
 
-Your OLAS service is now fully deployed and staked!
-
-📋 Summary:
-   • Master Wallet:  0xABCD...1234
-   • Master Safe:    0xDEF0...5678
-   • Service Safe:   0x1234...ABCD
-   • Agent Key:      0x9876...CDEF
-   • Service Config: sc-abc123-def456-789
-
-🎉 You can now run the worker to start processing jobs!
+📋 Service Config ID: sc-ea36ee26-af1c-4f36-b888-631fe1ea843d
+🔐 Service Safe: 0x04F2c0dba7EdC67472bd6d89e88849c2dd832aBC
 
 📝 Setup details saved to: /tmp/jinn-service-setup-1234567890.json
 ```
+
+The setup JSON file contains all addresses:
+- **Master EOA**: Your primary wallet
+- **Master Safe**: Controls all services
+- **Service Safe**: Executes operations, holds staked OLAS
+- **Agent EOA**: Signs transactions from Service Safe
+- **Mech Contract**: Receives marketplace requests (if deployed)
+- **Service Token ID**: On-chain service identifier
 
 ## Step 5: Run the Worker
 
@@ -265,7 +215,8 @@ Type `skip` at any funding prompt to bypass the balance check. The deployment ma
 - Service-specific key
 - Signs transactions from Service Safe
 - Stored globally, survives service deletion
-- **Location**: `.operate/keys/{address}.json`
+- **Location**: `.operate/keys/{address}` (encrypted with `OPERATE_PASSWORD`)
+- **Format**: JSON with encrypted keystore in `private_key` field
 
 ### Service Safe
 - Gnosis Safe for the service
@@ -304,12 +255,19 @@ Master Safe (Gnosis Safe)
 
 If you need to access funds from a Safe:
 
-1. **Find the agent key**: `.operate/keys/{agent-address}.json`
-2. **Extract private key**: `cat .operate/keys/{agent-address}.json`
-3. **Import to MetaMask**: Use the private key to import
+1. **Find the agent key file**: `.operate/keys/{agent-address}`
+2. **Decrypt the keystore**: The `private_key` field contains an encrypted keystore
+   ```bash
+   # The worker's decryption is in env/keystore-decrypt.ts
+   # Or use ethers.js:
+   const wallet = await ethers.Wallet.fromEncryptedJson(keystoreJson, OPERATE_PASSWORD);
+   ```
+3. **Import to MetaMask**: Use the decrypted private key
 4. **Access Safe**: Visit https://app.safe.global and connect with the imported key
 
-See `ARCHITECTURE_WALLET_SAFES.md` for complete recovery procedures.
+> **Note**: Agent keys are encrypted with `OPERATE_PASSWORD`. You need this password to decrypt them.
+
+See `docs/runbooks/recover-olas-funds.md` for complete recovery procedures.
 
 ## Resources
 

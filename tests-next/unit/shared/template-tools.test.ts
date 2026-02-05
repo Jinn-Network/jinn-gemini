@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractToolName, normalizeToolArray, parseAnnotatedTools } from '../../../gemini-agent/shared/template-tools.js';
+import { extractToolName, normalizeToolArray, parseAnnotatedTools } from 'jinn-node/shared/template-tools.js';
 
 describe('extractToolName', () => {
     it('should extract name from string tool', () => {

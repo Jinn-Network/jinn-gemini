@@ -5,11 +5,11 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { inspectJob } from '../../../../../gemini-agent/mcp/tools/inspect-job.js';
+import { inspectJob } from 'jinn-node/agent/mcp/tools/inspect-job.js';
 
 // Mock the shared utilities
-vi.mock('../../../../../gemini-agent/mcp/tools/shared/inspection-utils.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../../../../gemini-agent/mcp/tools/shared/inspection-utils.js')>();
+vi.mock('jinn-node/agent/mcp/tools/shared/inspection-utils.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('jinn-node/agent/mcp/tools/shared/inspection-utils.js')>();
   return {
     ...original,
     queryPonder: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('../../../../../gemini-agent/mcp/tools/shared/inspection-utils.js', asyn
   };
 });
 
-import { queryPonder, fetchIpfsContentMcp } from '../../../../../gemini-agent/mcp/tools/shared/inspection-utils.js';
+import { queryPonder, fetchIpfsContentMcp } from 'jinn-node/agent/mcp/tools/shared/inspection-utils.js';
 
 describe('inspectJob', () => {
   beforeEach(() => {

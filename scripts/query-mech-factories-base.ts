@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Query MechFactory addresses from Base MechMarketplace
  */

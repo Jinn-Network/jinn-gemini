@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { composeSinglePageResponse, encodeCursor } from '../../../../../gemini-agent/mcp/tools/shared/context-management.js';
+import { composeSinglePageResponse, encodeCursor } from 'jinn-node/agent/mcp/tools/shared/context-management.js';
 
 describe('pagination upstreamLimit fix', () => {
   it('returns has_more=false when offset reaches upstreamLimit', () => {

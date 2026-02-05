@@ -1,4 +1,5 @@
 #!/usr/bin/env ts-node
+// @ts-nocheck
 
 /**
  * Remove nominee from VoteWeighting contract on Ethereum Mainnet
@@ -18,7 +19,7 @@ import * as fs from 'fs';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 // Import operate profile helpers
-import { getMasterEOA } from '../env/operate-profile.js';
+import { getMasterEOA } from 'jinn-node/env/operate-profile.js';
 
 const VOTE_WEIGHTING = '0x95418b46d5566D3d1ea62C12Aea91227E566c5c1';
 const JINN_CONTRACT = '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139';

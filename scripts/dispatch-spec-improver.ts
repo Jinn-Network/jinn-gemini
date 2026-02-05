@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 import '../env/index.js';
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 async function main() {
   console.log('Dispatching specification and documentation improver job...\n');

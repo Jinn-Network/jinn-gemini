@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { SITUATION_ARTIFACT_VERSION } from '../../../packages/jinn-types/src/situation.js';
+import { SITUATION_ARTIFACT_VERSION } from 'jinn-node/types/situation.js';
 
 const fetchMock = vi.fn();
 

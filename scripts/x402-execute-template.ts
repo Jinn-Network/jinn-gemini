@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * x402 Execute Template - Dispatch a job template via local mech-client
  * 
@@ -21,8 +22,8 @@
 import 'dotenv/config';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { getServiceProfile } from '../env/operate-profile.js';
-import { scriptLogger } from '../logging/index.js';
+import { getServiceProfile } from 'jinn-node/env/operate-profile.js';
+import { scriptLogger } from 'jinn-node/logging';
 
 const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
 const CHAIN_CONFIG = process.env.CHAIN_CONFIG || 'base';

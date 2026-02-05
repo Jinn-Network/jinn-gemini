@@ -3,8 +3,8 @@
  * Shared utilities for end-to-end testing of OLAS service staking
  */
 
-import { VnetResult } from './tenderly.ts';
-import { SERVICE_CONSTANTS, createDefaultServiceConfig } from '../../worker/config/ServiceConfig.js';
+import { VnetResult } from './tenderly.js';
+import { SERVICE_CONSTANTS, createDefaultServiceConfig } from 'jinn-node/worker/config/ServiceConfig.js';
 
 export const BASE_MAINNET_CHAIN_ID = 8453;
 export const OLAS_STAKING_PROGRAM_ENVIRONMENT = "custom_staking";

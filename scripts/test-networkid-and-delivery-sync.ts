@@ -12,7 +12,7 @@
  *   yarn tsx scripts/test-networkid-and-delivery-sync.ts
  */
 
-import { graphQLRequest } from '../http/client.js';
+import { graphQLRequest } from 'jinn-node/http/client.js';
 
 const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
 

@@ -36,7 +36,7 @@ import {
 } from "./pricing.js";
 // buildJobBranchName and CodeMetadata are inlined below (lines 41-74)
 import { deepSubstitute, buildBlueprintFromTemplate as sharedBuildBlueprint } from '../../scripts/shared/template-substitution.js';
-import { buildAnnotatedTools, parseAnnotatedTools } from '../../gemini-agent/shared/template-tools.js';
+import { buildAnnotatedTools, parseAnnotatedTools } from 'jinn-node/shared/template-tools.js';
 
 // Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
 interface BranchSnapshot {

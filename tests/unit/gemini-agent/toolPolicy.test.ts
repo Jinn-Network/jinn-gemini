@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { computeToolPolicy, UNIVERSAL_TOOLS, NATIVE_TOOLS, FIREFLIES_TOOLS, hasFirefliesMeetings, NANO_BANANA_TOOLS, hasNanoBanana } from '../../../gemini-agent/toolPolicy.js';
-import { REGISTERED_MCP_TOOLS } from '../../../gemini-agent/mcp/server.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, NATIVE_TOOLS, FIREFLIES_TOOLS, hasFirefliesMeetings, NANO_BANANA_TOOLS, hasNanoBanana } from 'jinn-node/agent/toolPolicy.js';
+import { REGISTERED_MCP_TOOLS } from 'jinn-node/agent/mcp/server.js';
 
 describe('computeToolPolicy', () => {
   it('exposes universal web tooling to both MCP and CLI whitelists', () => {

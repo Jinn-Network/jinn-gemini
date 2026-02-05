@@ -13,12 +13,12 @@
  */
 
 import "dotenv/config";
-import { OlasStakingManager } from "../worker/OlasStakingManager.js";
-import { OlasServiceManager } from "../worker/OlasServiceManager.js";
-import { OlasOperateWrapper } from "../worker/OlasOperateWrapper.js";
-import { ServiceStateTracker } from "../worker/ServiceStateTracker.js";
-import { createTenderlyClient, ethToWei } from "./lib/tenderly.js";
-import { logger } from "../logging/index.js";
+import { OlasStakingManager } from "jinn-node/worker/OlasStakingManager.js";
+import { OlasServiceManager } from "jinn-node/worker/OlasServiceManager.js";
+import { OlasOperateWrapper } from "jinn-node/worker/OlasOperateWrapper.js";
+import { ServiceStateTracker } from "jinn-node/worker/ServiceStateTracker.js";
+import { createTenderlyClient, ethToWei } from "jinn-node/lib/tenderly.js";
+import { logger } from "jinn-node/logging/index.js";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
@@ -228,7 +228,7 @@ async function step1_1_environmentSetup(step: ValidationStep, ctx: ValidationCon
       ctx.safeAddress = bootstrapResult.safeAddress;
 
       // Restart server and login
-      await ctx.operateWrapper._startServer();
+      await ctx.operateWrapper.startServer();
       const loginResult = await ctx.operateWrapper.login(process.env.OPERATE_PASSWORD || "test-password-12345678");
       if (!loginResult.success) {
         throw new Error(`Login failed: ${loginResult.error}`);
@@ -326,15 +326,11 @@ async function step1_3_serviceDeployment(step: ValidationStep, ctx: ValidationCo
     // Create service manager
     ctx.serviceManager = new OlasServiceManager(
       ctx.operateWrapper!,
-      ctx.serviceConfigPath!,
-      ctx.tempDir // State tracker dir
+      ctx.serviceConfigPath!
     );
 
-    // Deploy with full safety checks
-    const serviceInfo = await ctx.serviceManager.deployAndStakeService(undefined, {
-      checkExistingServices: true,        // List existing services first
-      verifyBalanceBeforeDeployment: !ctx.useTenderly // Skip balance check for Tenderly
-    });
+    // Deploy service (options removed - API simplified)
+    const serviceInfo = await ctx.serviceManager.deployAndStakeService();
 
     ctx.serviceId = serviceInfo.serviceId;
     

@@ -11,24 +11,24 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { claimRequest } from '../../../worker/control_api_client.js';
+import { claimRequest } from 'jinn-node/worker/control_api_client.js';
 
 // Mock dependencies
-vi.mock('../../../env/operate-profile.js', () => ({
+vi.mock('jinn-node/envoperate-profile.js', () => ({
   getMechAddress: vi.fn().mockReturnValue('0xWORKER123'),
   getServicePrivateKey: vi.fn(),
   getMechChainConfig: vi.fn()
 }));
 
-vi.mock('../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getOptionalControlApiUrl: vi.fn().mockReturnValue('http://localhost:4001/graphql')
 }));
 
-vi.mock('../../../http/client.js', () => ({
+vi.mock('jinn-node/http/client.js', () => ({
   postJson: vi.fn()
 }));
 
-import { postJson } from '../../../http/client.js';
+import { postJson } from 'jinn-node/http/client.js';
 
 describe('Control API Client', () => {
   beforeEach(() => {

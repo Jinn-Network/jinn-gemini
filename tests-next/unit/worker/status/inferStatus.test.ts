@@ -10,16 +10,16 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { inferJobStatus } from '../../../../worker/status/inferStatus.js';
-import type { FinalStatus, ChildJobStatus } from '../../../../worker/types.js';
+import { inferJobStatus } from 'jinn-node/worker/status/inferStatus.js';
+import type { FinalStatus, ChildJobStatus } from 'jinn-node/worker/types.js';
 
 // Mock childJobs module
-vi.mock('../../../../worker/status/childJobs.js', () => ({
+vi.mock('jinn-node/worker/status/childJobs.js', () => ({
   getChildJobStatus: vi.fn(),
   getAllChildrenForJobDefinition: vi.fn(),
 }));
 
-import { getChildJobStatus, getAllChildrenForJobDefinition } from '../../../../worker/status/childJobs.js';
+import { getChildJobStatus, getAllChildrenForJobDefinition } from 'jinn-node/worker/status/childJobs.js';
 
 describe('inferJobStatus', () => {
   beforeEach(() => {

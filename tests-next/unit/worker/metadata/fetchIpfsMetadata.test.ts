@@ -10,26 +10,26 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fetchIpfsMetadata } from '../../../../worker/metadata/fetchIpfsMetadata.js';
+import { fetchIpfsMetadata } from 'jinn-node/worker/metadata/fetchIpfsMetadata.js';
 
 // Mock dependencies
-vi.mock('../../../../logging/index.js', () => ({
+vi.mock('jinn-node/logging/index.js', () => ({
   workerLogger: {
     info: vi.fn(),
     warn: vi.fn(),
   },
 }));
 
-vi.mock('../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getOptionalIpfsGatewayUrl: vi.fn(),
   getIpfsFetchTimeoutMs: vi.fn(),
 }));
 
-import { workerLogger } from '../../../../logging/index.js';
+import { workerLogger } from 'jinn-node/logging/index.js';
 import {
   getOptionalIpfsGatewayUrl,
   getIpfsFetchTimeoutMs,
-} from '../../../../gemini-agent/mcp/tools/shared/env.js';
+} from 'jinn-node/agent/mcp/tools/shared/env.js';
 
 // Mock global fetch
 const mockFetch = vi.fn();

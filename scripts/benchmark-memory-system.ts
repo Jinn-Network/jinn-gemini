@@ -1,4 +1,5 @@
 #!/usr/bin/env ts-node
+// @ts-nocheck
 /**
  * Memory System Benchmarking Suite
  * 
@@ -11,7 +12,7 @@
  */
 
 import '../env/index.js';
-import { Agent } from '../gemini-agent/agent.js';
+import { Agent } from 'jinn-node/agent/agent.js';
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 

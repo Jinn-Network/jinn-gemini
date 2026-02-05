@@ -2,7 +2,7 @@
 title: OLAS Integration Architecture
 purpose: context
 scope: [deployment]
-last_verified: 2026-01-30
+last_verified: 2026-02-04
 related_code:
   - olas-operate-middleware/.operate/wallets/
   - olas-operate-middleware/.operate/keys/
@@ -34,8 +34,12 @@ The middleware maintains **two separate** key stores:
 ### 2. Agent Keys
 
 **Location**: `olas-operate-middleware/.operate/keys/`
-**Format**: Plain JSON with private keys
+**Format**: JSON with encrypted keystore in `private_key` field (scrypt KDF + AES-128-CTR)
+**Encryption**: Uses `OPERATE_PASSWORD` environment variable
 **Storage**: Global directory, shared across all services
+
+> **Note**: Older middleware versions stored raw hex keys. Current versions store encrypted keystores.
+> The worker automatically detects and decrypts the format using `OPERATE_PASSWORD`.
 
 **Purpose**:
 - Become the **signers** on Safe multisigs (1/1 configuration)

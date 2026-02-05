@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// @ts-nocheck
 /**
  * Generic Provisioning Script
  * 
@@ -19,8 +20,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createRepository, createFromTemplate } from '../shared/github.js';
-import { createRailwayProject, createRailwayService, setRailwayVariables } from '../shared/railway.js';
+import { createRepository, createFromTemplate } from 'jinn-node/shared/github.js';
+import { createRailwayProject, createRailwayService, setRailwayVariables } from 'jinn-node/shared/railway.js';
 import { createUmamiWebsite, findUmamiWebsite } from './lib/umami.js';
 
 

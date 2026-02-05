@@ -8,7 +8,7 @@
  * 3. Demonstrates that Job = unique node in work graph, not a reusable template
  */
 
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 async function verifyJobDefinitionUniqueness() {
   console.log('🔍 Verifying Job Definition Uniqueness\n');

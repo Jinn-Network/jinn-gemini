@@ -9,7 +9,7 @@
  * - BOOLEAN: condition must be true
  */
 
-import type { Invariant, BooleanInvariant } from '../../worker/prompt/types.js';
+import type { Invariant, BooleanInvariant } from 'jinn-node/worker/prompt/types.js';
 
 export interface BlueprintStructure {
   invariants: Invariant[];

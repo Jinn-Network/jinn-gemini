@@ -9,8 +9,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { shouldRetryJob } from '../../../../worker/status/retryStrategy.js';
-import type { FinalStatus } from '../../../../worker/types.js';
+import { shouldRetryJob } from 'jinn-node/worker/status/retryStrategy.js';
+import type { FinalStatus } from 'jinn-node/worker/types.js';
 
 describe('shouldRetryJob', () => {
   describe('non-retryable statuses', () => {

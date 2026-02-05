@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-nocheck
 
 /**
  * Comprehensive End-to-End Test for Zora Integration with Dual-Rail Execution
@@ -23,7 +24,7 @@ import { promises as fs } from 'fs';
 import { createTenderlyClient, ethToWei, type TenderlyClient, type VnetResult } from './lib/tenderly.js';
 import { privateKeyToAccount } from 'viem/accounts';
 import crypto from 'crypto';
-import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
+import { OlasOperateWrapper } from 'jinn-node/worker/OlasOperateWrapper.js';
 
 // Load environment variables
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

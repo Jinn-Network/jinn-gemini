@@ -18,8 +18,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { privateKeyToAccount } from 'viem/accounts';
-import { OlasServiceManager } from '../worker/OlasServiceManager.js';
-import { OlasOperateWrapper } from '../worker/OlasOperateWrapper.js';
+import { OlasServiceManager } from 'jinn-node/worker/OlasServiceManager.js';
+import { OlasOperateWrapper } from 'jinn-node/worker/OlasOperateWrapper.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -219,7 +219,7 @@ async function executeValidationStep<T>(
 async function runJinn189Validation(ctx: ValidationContext): Promise<ValidationResult> {
   const startTime = Date.now();
   const steps: ValidationStepResult[] = [];
-  const evidence = { transactionHashes: [] as string[] };
+  const evidence: { transactionHashes: string[]; mechInfo?: unknown; serviceInfo?: unknown } = { transactionHashes: [] };
 
   try {
     // Step 1: Environment and configuration validation

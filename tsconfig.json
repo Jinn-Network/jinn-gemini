@@ -11,7 +11,8 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@jinn/types": ["packages/jinn-types/src"]
+      "jinn-node/*": ["jinn-node/src/*"],
+      "@jinn/types": ["jinn-node/src/types"]
     },
     "resolveJsonModule": true,
     "declaration": true,
@@ -22,19 +23,21 @@
     "noImplicitAny": false
   },
   "include": [
-    "gemini-agent/**/*.ts",
-    "worker/**/*.ts",
-    "packages/jinn-types/src/**/*.ts",
-    "types/**/*.d.ts"
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "tests-next/**/*.ts",
+    "control-api/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
+    "jinn-node",
+    "ponder",
+    "scripts/archive",
     "**/*.test.ts",
-    "**/*.spec.ts",
-    "scripts/**",
-    "worker/SimplifiedServiceBootstrap.ts",
-    "worker/TransactionProcessor.ts",
-    "worker/contracts/OlasContractManager.ts"
+    "**/*.spec.ts"
+  ],
+  "references": [
+    { "path": "./jinn-node" }
   ]
 }

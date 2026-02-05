@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { createArtifact } from '../../../../../gemini-agent/mcp/tools/create_artifact.js';
+import { createArtifact } from 'jinn-node/agent/mcp/tools/create_artifact.js';
 
 // Mock IPFS client
 vi.mock('@jinn-network/mech-client-ts/dist/ipfs.js', () => ({

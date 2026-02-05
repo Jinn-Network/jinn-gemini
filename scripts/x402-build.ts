@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * x402 Build - Call the x402 Builder service
  * 
@@ -28,8 +29,8 @@ import { base } from 'viem/chains';
 import { wrapFetchWithPayment } from 'x402-fetch';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { getServiceProfile } from '../env/operate-profile.js';
-import { scriptLogger } from '../logging/index.js';
+import { getServiceProfile } from 'jinn-node/env/operate-profile.js';
+import { scriptLogger } from 'jinn-node/logging';
 
 // USDC on Base mainnet
 const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Test fixture: r1 violation (hardcoded secret)
 // This file intentionally violates r1 (Never commit secrets)
 

@@ -3,7 +3,7 @@
  * Dispatch Job 3 for JINN-233 - Test fixed artifact type field
  */
 
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 
 async function main() {
   console.log('📤 Dispatching Job 3: Math Problem (5+6) - Type Field Fix Test\n');

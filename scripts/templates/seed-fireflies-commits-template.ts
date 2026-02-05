@@ -15,7 +15,7 @@ import { Client } from 'pg';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import dotenv from 'dotenv';
-import { parseAnnotatedTools } from '../../gemini-agent/shared/template-tools.js';
+import { parseAnnotatedTools } from 'jinn-node/shared/template-tools.js';
 
 dotenv.config();
 

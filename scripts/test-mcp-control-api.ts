@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 
 /**
  * Test script for MCP Control API integration
@@ -11,9 +12,9 @@
  */
 
 import 'dotenv/config';
-import { createRecord } from '../gemini-agent/mcp/tools/create-record.js';
-import { createArtifactTool } from '../gemini-agent/mcp/tools/create_artifact.js';
-import { getCurrentJobContext } from '../gemini-agent/mcp/tools/shared/context.js';
+import { createRecord } from 'jinn-node/agent/mcp/tools/create-record.js';
+import { createArtifactTool } from 'jinn-node/agent/mcp/tools/create_artifact.js';
+import { getCurrentJobContext } from 'jinn-node/agent/mcp/tools/shared/context.js';
 
 // Mock the job context for testing
 const originalGetCurrentJobContext = getCurrentJobContext;

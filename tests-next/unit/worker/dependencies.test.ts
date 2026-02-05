@@ -12,15 +12,15 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 // Mock dependencies
-vi.mock('../../../env/index.js', () => ({
+vi.mock('jinn-node/env', () => ({
   default: {}
 }));
 
-vi.mock('../../../http/client.js', () => ({
+vi.mock('jinn-node/http/client.js', () => ({
   graphQLRequest: vi.fn()
 }));
 
-vi.mock('../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getPonderGraphqlUrl: vi.fn().mockReturnValue('http://localhost:42069/graphql'),
   getOptionalControlApiUrl: vi.fn().mockReturnValue('http://localhost:8000'),
   getUseControlApi: vi.fn().mockReturnValue(false),
@@ -29,7 +29,7 @@ vi.mock('../../../gemini-agent/mcp/tools/shared/env.js', () => ({
   getOptionalMechTargetRequestId: vi.fn().mockReturnValue(undefined)
 }));
 
-vi.mock('../../../logging/index.js', async (importOriginal) => {
+vi.mock('jinn-node/logging/index.js', async (importOriginal) => {
   const actual = await importOriginal() as any;
   return {
     ...actual,
@@ -54,9 +54,9 @@ vi.mock('../../../logging/index.js', async (importOriginal) => {
   };
 });
 
-import { graphQLRequest } from '../../../http/client.js';
-import { workerLogger } from '../../../logging/index.js';
-import { isJobDefinitionComplete } from '../../../worker/mech_worker.js';
+import { graphQLRequest } from 'jinn-node/http/client.js';
+import { workerLogger } from 'jinn-node/logging/index.js';
+import { isJobDefinitionComplete } from 'jinn-node/worker/mech_worker.js';
 
 /**
  * Test helper function that mirrors worker/mech_worker.ts internal logic

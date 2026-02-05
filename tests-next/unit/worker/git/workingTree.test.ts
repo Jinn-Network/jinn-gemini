@@ -12,13 +12,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
-import type { CodeMetadata } from '../../../../gemini-agent/shared/code_metadata.js';
+import type { CodeMetadata } from 'jinn-node/agent/shared/code_metadata.js';
 import {
   hasUncommittedChanges,
   stageAllChanges,
   getGitStatus,
   getCommitCount,
-} from '../../../../worker/git/workingTree.js';
+} from 'jinn-node/worker/git/workingTree.js';
 
 function run(cmd: string, cwd: string): string {
   return execSync(cmd, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();

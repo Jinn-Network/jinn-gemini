@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Automated Tenderly Testing Script (JINN-204)
  * 
@@ -18,8 +19,8 @@
 import { spawn } from 'child_process';
 import { writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { logger } from '../logging/index.js';
-import { getOptionalTenderlyAccountSlug, getOptionalTenderlyProjectSlug } from '../gemini-agent/mcp/tools/shared/env.js';
+import { logger } from 'jinn-node/logging';
+import { getOptionalTenderlyAccountSlug, getOptionalTenderlyProjectSlug } from 'jinn-node/agent/mcp/tools/shared/env.js';
 
 const testLogger = logger.child({ component: 'TENDERLY-TEST' });
 

@@ -10,12 +10,12 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('../../../../../../logging/index.js', () => ({
+vi.mock('jinn-node/logging/index.js', () => ({
   workerLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { CoordinationInvariantProvider } from '../../../../../../worker/prompt/providers/invariants/CoordinationInvariantProvider.js';
-import type { BuildContext, BlueprintContext } from '../../../../../../worker/prompt/types.js';
+import { CoordinationInvariantProvider } from 'jinn-node/worker/prompt/providers/invariants/CoordinationInvariantProvider.js';
+import type { BuildContext, BlueprintContext } from 'jinn-node/worker/prompt/types.js';
 
 function makeCtx(overrides: Partial<BuildContext> = {}): BuildContext {
   return {

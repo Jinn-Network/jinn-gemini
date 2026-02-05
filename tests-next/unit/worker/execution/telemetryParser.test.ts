@@ -14,8 +14,8 @@ import {
   parseTelemetry,
   extractOutput,
   mergeTelemetry,
-} from '../../../../worker/execution/telemetryParser.js';
-import type { AgentExecutionResult } from '../../../../worker/types.js';
+} from 'jinn-node/worker/execution/telemetryParser.js';
+import type { AgentExecutionResult } from 'jinn-node/worker/types.js';
 
 describe('telemetryParser', () => {
   describe('parseTelemetry', () => {

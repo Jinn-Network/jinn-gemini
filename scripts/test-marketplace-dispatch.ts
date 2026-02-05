@@ -1,11 +1,12 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Standalone test script to verify mech-client marketplace dispatch works in isolation
  * This bypasses the MCP layer and directly calls marketplaceInteract
  */
 
 import { marketplaceInteract } from '../packages/mech-client-ts/dist/marketplace_interact.js';
-import { getMechAddress, getMechChainConfig, getServicePrivateKey } from '../env/operate-profile.js';
+import { getMechAddress, getMechChainConfig, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 import { randomUUID } from 'node:crypto';
 
 async function testMarketplaceDispatch() {

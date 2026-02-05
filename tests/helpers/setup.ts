@@ -7,22 +7,22 @@
  * - Connects MCP client
  */
 
-import { execa, type ExecaChildProcess } from 'execa';
+import { execa, type ResultPromise } from 'execa';
 import fetch from 'cross-fetch';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'child_process';
 import { Wallet } from 'ethers';
-import { loadEnvOnce } from '../../gemini-agent/mcp/tools/shared/env.js';
-import { createTenderlyClient, ethToWei, type VnetResult } from '../../scripts/lib/tenderly.js';
+import { loadEnvOnce } from 'jinn-node/agent/mcp/tools/shared/env.js';
+import { createTenderlyClient, ethToWei, type VnetResult } from 'jinn-node/lib/tenderly.js';
 import { getMcpClient, cleanupWorkerProcesses } from './shared.js';
 import { findAvailablePort } from './port-utils.js';
 import { getTestGitRepo, type TestGitRepo } from './test-git-repo.js';
-import { getServicePrivateKey, getServiceSafeAddress } from '../../env/operate-profile.js';
+import { getServicePrivateKey, getServiceSafeAddress } from 'jinn-node/env/operate-profile.js';
 
 let vnetResult: VnetResult | null = null;
-let ponderProc: ExecaChildProcess | null = null;
-let controlApiProc: ExecaChildProcess | null = null;
+let ponderProc: ResultPromise | null = null;
+let controlApiProc: ResultPromise | null = null;
 let tenderlyClient: ReturnType<typeof createTenderlyClient> | null = null;
 let testGitRepo: TestGitRepo | null = null;
 let testPonderPort: number | null = null;
@@ -187,7 +187,7 @@ export async function setup() {
   process.env.E2E_SUITE_ID = SUITE_ID;
 
   // Reset config cache in test process so getters re-read overridden env vars
-  const { resetConfigForTests } = await import('../../config/index.js');
+  const { resetConfigForTests } = await import('jinn-node/config/index.js');
   resetConfigForTests();
 
   // NOW connect MCP client (spawns MCP server with overridden env vars)
@@ -410,7 +410,7 @@ export async function setup() {
           ponderProc.kill('SIGTERM');
         }
         
-        // Wait for process to exit - ExecaChildProcess is a promise that resolves/rejects on exit
+        // Wait for process to exit - ResultPromise is a promise that resolves/rejects on exit
         // When killed, it rejects with isTerminated: true, which is expected
         try {
           await ponderProc;

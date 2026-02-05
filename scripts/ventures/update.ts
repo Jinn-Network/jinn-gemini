@@ -1,119 +1,22 @@
 #!/usr/bin/env tsx
 /**
- * Update an existing venture
+ * Update an existing venture - CLI wrapper
  * Usage: yarn tsx scripts/ventures/update.ts --id <uuid> [--name "New Name"] [--status "paused"]
+ *
+ * Business logic is in jinn-node/src/data/ventures.ts
+ * This file provides the CLI interface only.
  */
 
-import { supabase } from '../../gemini-agent/mcp/tools/shared/supabase.js';
-import type { Venture } from './mint.js';
+// Re-export everything from jinn-node for backwards compatibility
+export {
+  updateVenture,
+  archiveVenture,
+  deleteVenture,
+  type UpdateVentureArgs,
+  type Venture,
+} from 'jinn-node/data/ventures.js';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface UpdateVentureArgs {
-  id: string;
-  name?: string;
-  slug?: string;
-  description?: string;
-  ownerAddress?: string;
-  blueprint?: string | object;
-  rootWorkstreamId?: string | null;
-  rootJobInstanceId?: string | null;
-  status?: 'active' | 'paused' | 'archived';
-  tokenAddress?: string;
-  tokenSymbol?: string;
-  tokenName?: string;
-  stakingContractAddress?: string;
-  tokenLaunchPlatform?: string;
-  tokenMetadata?: object;
-  governanceAddress?: string;
-  poolAddress?: string;
-}
-
-// ============================================================================
-// Exported Functions (for MCP tool usage)
-// ============================================================================
-
-/**
- * Update an existing venture
- */
-export async function updateVenture(args: UpdateVentureArgs): Promise<Venture> {
-  const { id, ...updates } = args;
-
-  // Build the update object, only including provided fields
-  const record: Record<string, any> = {};
-
-  if (updates.name !== undefined) record.name = updates.name;
-  if (updates.slug !== undefined) record.slug = updates.slug;
-  if (updates.description !== undefined) record.description = updates.description;
-  if (updates.ownerAddress !== undefined) record.owner_address = updates.ownerAddress;
-  if (updates.rootWorkstreamId !== undefined) record.root_workstream_id = updates.rootWorkstreamId;
-  if (updates.rootJobInstanceId !== undefined) record.root_job_instance_id = updates.rootJobInstanceId;
-  if (updates.status !== undefined) record.status = updates.status;
-  if (updates.tokenAddress !== undefined) record.token_address = updates.tokenAddress;
-  if (updates.tokenSymbol !== undefined) record.token_symbol = updates.tokenSymbol;
-  if (updates.tokenName !== undefined) record.token_name = updates.tokenName;
-  if (updates.stakingContractAddress !== undefined) record.staking_contract_address = updates.stakingContractAddress;
-  if (updates.tokenLaunchPlatform !== undefined) record.token_launch_platform = updates.tokenLaunchPlatform;
-  if (updates.tokenMetadata !== undefined) record.token_metadata = updates.tokenMetadata;
-  if (updates.governanceAddress !== undefined) record.governance_address = updates.governanceAddress;
-  if (updates.poolAddress !== undefined) record.pool_address = updates.poolAddress;
-
-  if (updates.blueprint !== undefined) {
-    const blueprint = typeof updates.blueprint === 'string'
-      ? JSON.parse(updates.blueprint)
-      : updates.blueprint;
-
-    // Validate blueprint has invariants array
-    if (!blueprint.invariants || !Array.isArray(blueprint.invariants)) {
-      throw new Error('Blueprint must contain an "invariants" array');
-    }
-    record.blueprint = blueprint;
-  }
-
-  if (Object.keys(record).length === 0) {
-    throw new Error('No fields to update');
-  }
-
-  const { data, error } = await supabase
-    .from('ventures')
-    .update(record)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update venture: ${error.message}`);
-  }
-
-  if (!data) {
-    throw new Error(`Venture not found: ${id}`);
-  }
-
-  return data as Venture;
-}
-
-/**
- * Delete a venture (sets status to archived)
- */
-export async function archiveVenture(id: string): Promise<Venture> {
-  return updateVenture({ id, status: 'archived' });
-}
-
-/**
- * Permanently delete a venture
- */
-export async function deleteVenture(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('ventures')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    throw new Error(`Failed to delete venture: ${error.message}`);
-  }
-}
+import { updateVenture, type UpdateVentureArgs } from 'jinn-node/data/ventures.js';
 
 // ============================================================================
 // CLI Interface
@@ -167,38 +70,6 @@ function parseArgs(): UpdateVentureArgs {
         result.status = next as 'active' | 'paused' | 'archived';
         i++;
         break;
-      case '--tokenAddress':
-        result.tokenAddress = next;
-        i++;
-        break;
-      case '--tokenSymbol':
-        result.tokenSymbol = next;
-        i++;
-        break;
-      case '--tokenName':
-        result.tokenName = next;
-        i++;
-        break;
-      case '--stakingContractAddress':
-        result.stakingContractAddress = next;
-        i++;
-        break;
-      case '--tokenLaunchPlatform':
-        result.tokenLaunchPlatform = next;
-        i++;
-        break;
-      case '--tokenMetadata':
-        result.tokenMetadata = JSON.parse(next);
-        i++;
-        break;
-      case '--governanceAddress':
-        result.governanceAddress = next;
-        i++;
-        break;
-      case '--poolAddress':
-        result.poolAddress = next;
-        i++;
-        break;
     }
   }
 
@@ -227,14 +98,6 @@ Optional (at least one required):
   --rootWorkstreamId <id>    New workstream ID (or "null" to clear)
   --rootJobInstanceId <id>   New root job instance ID (or "null" to clear)
   --status <status>          New status: active, paused, archived
-  --tokenAddress <addr>      Token contract address
-  --tokenSymbol <symbol>     Token symbol
-  --tokenName <name>         Token display name
-  --stakingContractAddress <addr>  Staking contract address
-  --tokenLaunchPlatform <platform> Launch platform (e.g., doppler)
-  --tokenMetadata <json>     Platform-specific metadata JSON
-  --governanceAddress <addr> Governance contract address
-  --poolAddress <addr>       Liquidity pool address
 
 Example:
   yarn tsx scripts/ventures/update.ts \\

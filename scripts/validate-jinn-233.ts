@@ -67,12 +67,12 @@ async function main() {
   // AC-1: SITUATION artifact creation
   info('AC-1: Checking SITUATION artifact creation components...');
   
-  const situationEncoderExists = await fileExists('worker/situation_encoder.ts');
-  const situationArtifactExists = await fileExists('worker/situation_artifact.ts');
-  const situationTypesExists = await fileExists('packages/jinn-types/src/situation.ts');
-  
+  const situationEncoderExists = await fileExists('jinn-node/src/worker/situation_encoder.ts');
+  const situationArtifactExists = await fileExists('jinn-node/src/worker/situation_artifact.ts');
+  const situationTypesExists = await fileExists('jinn-node/src/types/situation.ts');
+
   if (situationEncoderExists && situationArtifactExists && situationTypesExists) {
-    const canImportTypes = await canImport('../packages/jinn-types/src/situation');
+    const canImportTypes = await canImport('jinn-node/types/situation.js');
     if (canImportTypes) {
       pass('AC-1', 'SITUATION artifact components present and importable');
     } else {
@@ -104,8 +104,8 @@ async function main() {
   // AC-3: Recognition agent
   info('AC-3: Checking recognition agent implementation...');
   
-  const recognitionHelpersExists = await fileExists('worker/recognition_helpers.ts');
-  const searchSimilarExists = await fileExists('gemini-agent/mcp/tools/search_similar_situations.ts');
+  const recognitionHelpersExists = await fileExists('jinn-node/src/worker/recognition_helpers.ts');
+  const searchSimilarExists = await fileExists('jinn-node/src/agent/mcp/tools/search_similar_situations.ts');
   
   if (recognitionHelpersExists && searchSimilarExists) {
     pass('AC-3', 'Recognition agent components present');
@@ -116,7 +116,7 @@ async function main() {
   // AC-4: Synthesis (get_details tool)
   info('AC-4: Checking synthesis tools...');
   
-  const getDetailsExists = await fileExists('gemini-agent/mcp/tools/get-details.ts');
+  const getDetailsExists = await fileExists('jinn-node/src/agent/mcp/tools/get-details.ts');
   
   if (getDetailsExists && recognitionHelpersExists) {
     pass('AC-4', 'Synthesis tools (get-details + recognition helpers) present');
@@ -127,9 +127,9 @@ async function main() {
   // AC-5: Prompt injection
   info('AC-5: Checking prompt injection in worker...');
   
-  const workerExists = await fileExists('worker/mech_worker.ts');
+  const workerExists = await fileExists('jinn-node/src/worker/mech_worker.ts');
   if (workerExists) {
-    const workerContent = await fs.readFile('worker/mech_worker.ts', 'utf-8');
+    const workerContent = await fs.readFile('jinn-node/src/worker/mech_worker.ts', 'utf-8');
     if (workerContent.includes('recognition') || workerContent.includes('Recognition')) {
       pass('AC-5', 'Worker has recognition phase integration');
     } else {
@@ -143,7 +143,7 @@ async function main() {
   info('AC-6: Checking error handling...');
   
   if (recognitionHelpersExists) {
-    const recognitionContent = await fs.readFile('worker/recognition_helpers.ts', 'utf-8');
+    const recognitionContent = await fs.readFile('jinn-node/src/worker/recognition_helpers.ts', 'utf-8');
     if (recognitionContent.includes('try') && recognitionContent.includes('catch')) {
       pass('AC-6', 'Recognition helpers have error handling');
     } else {
@@ -157,7 +157,7 @@ async function main() {
   info('Bonus: Checking critical imports...');
   
   try {
-    const { SITUATION_ARTIFACT_VERSION } = await import('../packages/jinn-types/src/situation');
+    const { SITUATION_ARTIFACT_VERSION } = await import('jinn-node/types/situation.js');
     if (SITUATION_ARTIFACT_VERSION === 'sit-enc-v1.1') {
       pass('Imports', `Situation types import correctly (version: ${SITUATION_ARTIFACT_VERSION})`);
     } else {

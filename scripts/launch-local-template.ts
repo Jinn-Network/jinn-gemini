@@ -10,15 +10,15 @@
  */
 
 import 'dotenv/config';
-import { dispatchNewJob } from '../gemini-agent/mcp/tools/dispatch_new_job.js';
+import { dispatchNewJob } from 'jinn-node/agent/mcp/tools/dispatch_new_job.js';
 import { readFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, basename, extname } from 'path';
 import { execSync } from 'child_process';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { scriptLogger } from '../logging/index.js';
-import { extractToolPolicyFromBlueprint } from '../gemini-agent/shared/template-tools.js';
+import { scriptLogger } from 'jinn-node/logging';
+import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
 import { resolveGitUrl } from './shared/git-url.js';
 
 // --- Helper Functions (Reused from x402-execute-template.ts) ---

@@ -7,9 +7,9 @@
  * delivery submissions. Bugs here cause failed transactions and wasted gas.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { isUndeliveredOnChain, deliverViaSafeTransaction } from '../../../../worker/delivery/transaction.js';
-import type { DeliveryTransactionContext } from '../../../../worker/delivery/transaction.js';
-import type { UnclaimedRequest, AgentExecutionResult, FinalStatus, IpfsMetadata } from '../../../../worker/types.js';
+import { isUndeliveredOnChain, deliverViaSafeTransaction } from 'jinn-node/worker/delivery/transaction.js';
+import type { DeliveryTransactionContext } from 'jinn-node/worker/delivery/transaction.js';
+import type { UnclaimedRequest, AgentExecutionResult, FinalStatus, IpfsMetadata } from 'jinn-node/worker/types.js';
 
 // Mock AgentMech ABI import
 vi.mock('@jinn-network/mech-client-ts/dist/abis/AgentMech.json', () => ({
@@ -38,7 +38,7 @@ vi.mock('web3', () => {
   };
 });
 
-vi.mock('../../../../logging/index.js', () => ({
+vi.mock('jinn-node/logging/index.js', () => ({
   logger: {
     child: vi.fn(() => ({
       warn: vi.fn(),
@@ -55,17 +55,17 @@ vi.mock('../../../../logging/index.js', () => ({
   },
 }));
 
-vi.mock('../../../../gemini-agent/mcp/tools/shared/env.js', () => ({
+vi.mock('jinn-node/agent/mcp/tools/shared/env.js', () => ({
   getOptionalMechChainConfig: vi.fn(() => 'base'),
   getRequiredRpcUrl: vi.fn(() => 'http://localhost:8545'),
 }));
 
-vi.mock('../../../../env/operate-profile.js', () => ({
+vi.mock('jinn-node/env/operate-profile.js', () => ({
   getServiceSafeAddress: vi.fn(() => '0xSafeAddress'),
   getServicePrivateKey: vi.fn(() => '0xprivatekey'),
 }));
 
-vi.mock('../../../../worker/delivery/payload.js', () => ({
+vi.mock('jinn-node/worker/delivery/payload.js', () => ({
   buildDeliveryPayload: vi.fn((params) => ({
     requestId: params.requestId,
     output: params.result.output,
@@ -76,10 +76,10 @@ vi.mock('../../../../worker/delivery/payload.js', () => ({
 
 import { deliverViaSafe } from '@jinn-network/mech-client-ts/dist/post_deliver.js';
 import { Web3 } from 'web3';
-import { workerLogger } from '../../../../logging/index.js';
-import { getOptionalMechChainConfig, getRequiredRpcUrl } from '../../../../gemini-agent/mcp/tools/shared/env.js';
-import { getServiceSafeAddress, getServicePrivateKey } from '../../../../env/operate-profile.js';
-import { buildDeliveryPayload } from '../../../../worker/delivery/payload.js';
+import { workerLogger } from 'jinn-node/logging/index.js';
+import { getOptionalMechChainConfig, getRequiredRpcUrl } from 'jinn-node/agent/mcp/tools/shared/env.js';
+import { getServiceSafeAddress, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
+import { buildDeliveryPayload } from 'jinn-node/worker/delivery/payload.js';
 
 /**
  * NOTE: Tests for isUndeliveredOnChain() have been removed due to dynamic import mocking limitations.

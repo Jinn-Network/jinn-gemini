@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createBlueprintBuilder } from '../../../worker/prompt/index.js';
-import type { IpfsMetadata } from '../../../worker/types.js';
+import { createBlueprintBuilder } from 'jinn-node/worker/prompt/index.js';
+import type { IpfsMetadata } from 'jinn-node/worker/types.js';
 import {
   buildTestBlueprint,
   buildMinimalAssertion,

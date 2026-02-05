@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Test fixture: Clean file (no violations)
 // This file follows all CodeSpec rules and objectives
 

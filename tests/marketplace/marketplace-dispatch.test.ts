@@ -13,7 +13,7 @@ import {
   fetchJsonWithRetry,
   parseToolText,
 } from '../helpers/shared.js';
-import { searchJobs, getDetails } from '../../gemini-agent/mcp/tools/index.js';
+import { searchJobs, getDetails } from 'jinn-node/agent/mcp/tools/index.js';
 
 describe('Marketplace: dispatch_new_job → IPFS → Ponder', () => {
   beforeEach(() => {

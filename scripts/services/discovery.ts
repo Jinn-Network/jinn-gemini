@@ -1,11 +1,12 @@
 #!/usr/bin/env tsx
+// @ts-nocheck
 /**
  * Service Discovery operations
  * Usage: yarn tsx scripts/services/discovery.ts <action> [options]
  * Actions: search, by-venture, by-type, by-tag, full-text
  */
 
-import { supabase } from '../../gemini-agent/mcp/tools/shared/supabase.js';
+import { supabase } from 'jinn-node/agent/mcp/tools/shared/supabase.js';
 import type { Service, ServiceType, ServiceStatus } from './crud.js';
 import type { Deployment, DeploymentStatus, HealthStatus, Environment, Provider } from './deployments.js';
 import type { Interface, InterfaceType, AuthType, InterfaceStatus } from './interfaces.js';

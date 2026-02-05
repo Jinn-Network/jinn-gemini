@@ -1,13 +1,13 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { JobContextProvider } from '../../../../../../worker/prompt/providers/context/JobContextProvider.js';
-import * as fetchChildrenModule from '../../../../../../worker/prompt/providers/context/fetchChildren.js';
+import { JobContextProvider } from 'jinn-node/worker/prompt/providers/context/JobContextProvider.js';
+import * as fetchChildrenModule from 'jinn-node/worker/prompt/providers/context/fetchChildren.js';
 import childProcess from 'node:child_process';
-import { BlueprintBuilderConfig } from '../../../../../../worker/prompt/types.js';
+import { BlueprintBuilderConfig } from 'jinn-node/worker/prompt/types.js';
 
 vi.mock('node:child_process');
-vi.mock('../../../../../../worker/prompt/providers/context/fetchChildren.js');
-vi.mock('../../../../../../worker/logging/index.js', () => ({
+vi.mock('jinn-node/worker/prompt/providers/context/fetchChildren.js');
+vi.mock('jinn-node/worker/logging/index.js', () => ({
     workerLogger: {
         info: vi.fn(),
         warn: vi.fn(),

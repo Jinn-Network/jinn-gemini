@@ -7,17 +7,17 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { pushJsonToIpfs } from '@jinn-network/mech-client-ts/dist/ipfs.js';
-import type { CodeMetadata } from '../../../../gemini-agent/shared/code_metadata.js';
-import { createOrUpdatePullRequest, createPullRequestArtifact } from '../../../../worker/git/pr.js';
-import { DEFAULT_BASE_BRANCH } from '../../../../worker/constants.js';
-import { createArtifact as controlApiCreateArtifact } from '../../../../worker/control_api_client.js';
+import type { CodeMetadata } from 'jinn-node/agent/shared/code_metadata.js';
+import { createOrUpdatePullRequest, createPullRequestArtifact } from 'jinn-node/worker/git/pr.js';
+import { DEFAULT_BASE_BRANCH } from 'jinn-node/worker/constants.js';
+import { createArtifact as controlApiCreateArtifact } from 'jinn-node/worker/control_api_client.js';
 
 // Mock fetch globally
 global.fetch = vi.fn();
 
 // Mock config module to avoid RPC_URL/CHAIN_ID validation errors in tests
-vi.mock('../../../../config/index.js', async () => {
-  const actual = await vi.importActual('../../../../config/index.js');
+vi.mock('jinn-node/config/index.js', async () => {
+  const actual = await vi.importActual('jinn-node/config/index.js');
   return {
     ...actual,
     getOptionalGithubToken: vi.fn(() => process.env.GITHUB_TOKEN),
@@ -31,12 +31,12 @@ vi.mock('@jinn-network/mech-client-ts/dist/ipfs.js', () => ({
   pushJsonToIpfs: vi.fn(),
 }));
 
-vi.mock('../../../../worker/control_api_client.js', () => ({
+vi.mock('jinn-node/worker/control_api_client.js', () => ({
   createArtifact: vi.fn(),
 }));
 
 // Mock formatSummaryForPr
-vi.mock('../../../../worker/git/autoCommit.js', () => ({
+vi.mock('jinn-node/worker/git/autoCommit.js', () => ({
   formatSummaryForPr: vi.fn(() => '### Execution Summary\n- Test summary'),
 }));
 
