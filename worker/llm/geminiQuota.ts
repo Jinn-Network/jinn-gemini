@@ -53,6 +53,7 @@ const DEFAULT_MAX_BACKOFF_MS = 10 * 60_000;
 
 let loggedMissingKey = false;
 let loggedNonQuotaFailure = false;
+let loggedDiskCreds = false;
 
 function normalizeModel(model: string): string {
   const trimmed = model.trim();
@@ -153,6 +154,30 @@ async function sleep(ms: number): Promise<void> {
 // Gemini CLI's OAuth client credentials for token refresh
 const OAUTH_CLIENT_ID = '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com';
 const OAUTH_CLIENT_SECRET = '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';
+
+const GEMINI_OAUTH_CREDS_PATH = join(homedir(), '.gemini', 'oauth_creds.json');
+
+function loadOAuthCreds(): { creds: any; source: 'env' | 'disk' } | null {
+  const envCreds = process.env.GEMINI_OAUTH_CREDS;
+  if (envCreds && envCreds.trim().length > 0) {
+    try {
+      return { creds: JSON.parse(envCreds), source: 'env' };
+    } catch (e: any) {
+      workerLogger.warn({ error: e.message }, 'Failed to parse GEMINI_OAUTH_CREDS');
+    }
+  }
+
+  if (existsSync(GEMINI_OAUTH_CREDS_PATH)) {
+    try {
+      const raw = readFileSync(GEMINI_OAUTH_CREDS_PATH, 'utf-8');
+      return { creds: JSON.parse(raw), source: 'disk' };
+    } catch (e: any) {
+      workerLogger.warn({ error: e.message }, 'Failed to read OAuth creds from ~/.gemini/oauth_creds.json');
+    }
+  }
+
+  return null;
+}
 
 // Parse multi-credential array from env var
 function parseCredentialsArray(): OAuthCredentialSet[] | null {
@@ -343,15 +368,25 @@ export async function selectAvailableCredential(
 }
 
 // Legacy OAuth quota check via CodeAssist API (for backwards compatibility)
-// Uses GEMINI_OAUTH_CREDS env var
+// Uses GEMINI_OAUTH_CREDS env var or ~/.gemini/oauth_creds.json
 async function checkOAuthQuota(model?: string, timeoutMs?: number): Promise<QuotaCheckResult> {
-  const oauthCredsJson = process.env.GEMINI_OAUTH_CREDS;
-  if (!oauthCredsJson) {
-    return { ok: true, checked: false, isQuotaError: false, detail: 'GEMINI_OAUTH_CREDS not set' };
-  }
-
   try {
-    const creds = JSON.parse(oauthCredsJson);
+    const loaded = loadOAuthCreds();
+    if (!loaded) {
+      return {
+        ok: true,
+        checked: false,
+        isQuotaError: false,
+        detail: 'No OAuth creds found (GEMINI_OAUTH_CREDS or ~/.gemini/oauth_creds.json)',
+      };
+    }
+
+    if (loaded.source === 'disk' && !loggedDiskCreds) {
+      loggedDiskCreds = true;
+      workerLogger.info({ path: GEMINI_OAUTH_CREDS_PATH }, 'Using OAuth creds from ~/.gemini/oauth_creds.json');
+    }
+
+    const creds = loaded.creds;
     let accessToken = creds.access_token;
 
     // Refresh token if expired
@@ -451,14 +486,12 @@ export async function checkGeminiQuota(
   options: QuotaCheckOptions = {}
 ): Promise<QuotaCheckResult> {
   // Try OAuth quota check first (uses CodeAssist API)
-  if (process.env.GEMINI_OAUTH_CREDS) {
-    const oauthResult = await checkOAuthQuota(options.model, options.timeoutMs);
-    if (oauthResult.checked) {
-      return oauthResult;
-    }
-    // Fall through to API key check if OAuth check didn't work
-    workerLogger.debug({ detail: oauthResult.detail }, 'OAuth quota check skipped, falling back to API key');
+  const oauthResult = await checkOAuthQuota(options.model, options.timeoutMs);
+  if (oauthResult.checked) {
+    return oauthResult;
   }
+  // Fall through to API key check if OAuth check didn't work
+  workerLogger.debug({ detail: oauthResult.detail }, 'OAuth quota check skipped, falling back to API key');
 
   // Existing API key quota check
   const apiKey = getOptionalGeminiApiKey() || process.env.GEMINI_API_KEY;
