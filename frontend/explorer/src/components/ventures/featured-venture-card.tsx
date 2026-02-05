@@ -7,16 +7,34 @@ interface FeaturedVentureCardProps {
     instance: ServiceInstance;
     name: string;
     description: string;
+    tokenSymbol?: string | null;
+    poolAddress?: string | null;
 }
 
-export function FeaturedVentureCard({ instance, name, description }: FeaturedVentureCardProps) {
+export function FeaturedVentureCard({ instance, name, description, tokenSymbol, poolAddress }: FeaturedVentureCardProps) {
     return (
         <Card className="relative overflow-hidden border-primary/50 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
             {/* Glow effect */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-transparent opacity-50" />
 
             <CardHeader className="relative">
-                <CardTitle className="text-2xl">{name}</CardTitle>
+                <div className="flex items-center gap-3">
+                    <CardTitle className="text-2xl">{name}</CardTitle>
+                    {tokenSymbol && (
+                        poolAddress ? (
+                            <a
+                                href={`https://basescan.org/address/${poolAddress}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm font-mono text-primary hover:underline"
+                            >
+                                ${tokenSymbol}
+                            </a>
+                        ) : (
+                            <span className="text-sm font-mono text-primary">${tokenSymbol}</span>
+                        )
+                    )}
+                </div>
                 <CardDescription className="mt-2 text-base">
                     {description}
                 </CardDescription>

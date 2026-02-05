@@ -28,20 +28,31 @@ export interface NavigationItem {
 }
 
 export const navigationItems: NavigationItem[] = [
-  { label: 'Ventures', collection: 'ventures' },
-  { label: 'Services', collection: 'services' },
-  { label: 'Workstreams', collection: 'workstreams' },
-  { label: 'Templates', collection: 'templates' },
   {
-    label: 'Jobs',
-    collection: 'requests',
+    label: 'Ecosystem',
+    collection: 'ecosystem',
     subItems: [
-      { label: 'Definitions', collection: 'jobDefinitions' },
-      { label: 'Runs', collection: 'requests' },
+      { label: 'Ventures', collection: 'ventures' },
+      { label: 'Services', collection: 'services' },
     ]
   },
-  { label: 'Artifacts', collection: 'artifacts' },
-  { label: 'Nodes', collection: 'nodes' },
+  {
+    label: 'Work',
+    collection: 'work',
+    subItems: [
+      { label: 'Instances', collection: 'jobDefinitions' },
+      { label: 'Runs', collection: 'requests' },
+      { label: 'Workstreams', collection: 'workstreams' },
+      { label: 'Artifacts', collection: 'artifacts' },
+    ]
+  },
+  {
+    label: 'Network',
+    collection: 'network',
+    subItems: [
+      { label: 'Nodes', collection: 'nodes' },
+    ]
+  },
 ];
 
 // Format timestamps for display

@@ -14,6 +14,14 @@ export const ventureUpdateParams = z.object({
   rootWorkstreamId: z.string().optional().describe('New workstream ID for the venture'),
   rootJobInstanceId: z.string().optional().describe('New root job instance ID'),
   status: z.enum(['active', 'paused', 'archived']).optional().describe('Venture status'),
+  tokenAddress: z.string().optional().describe('Token contract address on Base'),
+  tokenSymbol: z.string().optional().describe('Token symbol (e.g., GROWTH)'),
+  tokenName: z.string().optional().describe('Token display name'),
+  stakingContractAddress: z.string().optional().describe('Staking contract address'),
+  tokenLaunchPlatform: z.string().optional().describe('Token launch platform (e.g., doppler)'),
+  tokenMetadata: z.string().optional().describe('Platform-specific metadata JSON string'),
+  governanceAddress: z.string().optional().describe('Governance contract address'),
+  poolAddress: z.string().optional().describe('Liquidity pool address'),
 });
 
 export type VentureUpdateParams = z.infer<typeof ventureUpdateParams>;
@@ -36,6 +44,14 @@ Parameters:
 - rootWorkstreamId: Associated workstream ID
 - rootJobInstanceId: Associated root job instance ID
 - status: 'active', 'paused', or 'archived'
+- tokenAddress: Token contract address on Base
+- tokenSymbol: Token symbol (e.g., GROWTH)
+- tokenName: Token display name
+- stakingContractAddress: Staking contract address
+- tokenLaunchPlatform: Launch platform (e.g., doppler)
+- tokenMetadata: Platform-specific metadata JSON string
+- governanceAddress: Governance contract address
+- poolAddress: Liquidity pool address
 
 Returns: { venture: { id, name, slug, ... } }`,
   inputSchema: ventureUpdateParams.shape,
@@ -69,6 +85,14 @@ export async function ventureUpdate(args: unknown) {
       rootWorkstreamId,
       rootJobInstanceId,
       status,
+      tokenAddress,
+      tokenSymbol,
+      tokenName,
+      stakingContractAddress,
+      tokenLaunchPlatform,
+      tokenMetadata,
+      governanceAddress,
+      poolAddress,
     } = parsed.data;
 
     // Build update args - only include defined fields
@@ -80,6 +104,14 @@ export async function ventureUpdate(args: unknown) {
     if (rootWorkstreamId !== undefined) scriptArgs.rootWorkstreamId = rootWorkstreamId;
     if (rootJobInstanceId !== undefined) scriptArgs.rootJobInstanceId = rootJobInstanceId;
     if (status !== undefined) scriptArgs.status = status;
+    if (tokenAddress !== undefined) scriptArgs.tokenAddress = tokenAddress;
+    if (tokenSymbol !== undefined) scriptArgs.tokenSymbol = tokenSymbol;
+    if (tokenName !== undefined) scriptArgs.tokenName = tokenName;
+    if (stakingContractAddress !== undefined) scriptArgs.stakingContractAddress = stakingContractAddress;
+    if (tokenLaunchPlatform !== undefined) scriptArgs.tokenLaunchPlatform = tokenLaunchPlatform;
+    if (tokenMetadata !== undefined) scriptArgs.tokenMetadata = JSON.parse(tokenMetadata);
+    if (governanceAddress !== undefined) scriptArgs.governanceAddress = governanceAddress;
+    if (poolAddress !== undefined) scriptArgs.poolAddress = poolAddress;
 
     // Use the script function which handles all Supabase logic
     const venture = await updateVenture(scriptArgs);

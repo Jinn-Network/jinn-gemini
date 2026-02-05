@@ -109,6 +109,7 @@
     "@safe-global/protocol-kit": "^6.1.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.53.0",
+    "@whetstone-research/doppler-sdk": "^0.0.17",
     "@zoralabs/coins-sdk": "^0.3.0",
     "better-sqlite3": "^12.4.1",
     "civitai": "^0.1.15",

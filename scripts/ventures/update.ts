@@ -21,6 +21,14 @@ export interface UpdateVentureArgs {
   rootWorkstreamId?: string | null;
   rootJobInstanceId?: string | null;
   status?: 'active' | 'paused' | 'archived';
+  tokenAddress?: string;
+  tokenSymbol?: string;
+  tokenName?: string;
+  stakingContractAddress?: string;
+  tokenLaunchPlatform?: string;
+  tokenMetadata?: object;
+  governanceAddress?: string;
+  poolAddress?: string;
 }
 
 // ============================================================================
@@ -43,6 +51,14 @@ export async function updateVenture(args: UpdateVentureArgs): Promise<Venture> {
   if (updates.rootWorkstreamId !== undefined) record.root_workstream_id = updates.rootWorkstreamId;
   if (updates.rootJobInstanceId !== undefined) record.root_job_instance_id = updates.rootJobInstanceId;
   if (updates.status !== undefined) record.status = updates.status;
+  if (updates.tokenAddress !== undefined) record.token_address = updates.tokenAddress;
+  if (updates.tokenSymbol !== undefined) record.token_symbol = updates.tokenSymbol;
+  if (updates.tokenName !== undefined) record.token_name = updates.tokenName;
+  if (updates.stakingContractAddress !== undefined) record.staking_contract_address = updates.stakingContractAddress;
+  if (updates.tokenLaunchPlatform !== undefined) record.token_launch_platform = updates.tokenLaunchPlatform;
+  if (updates.tokenMetadata !== undefined) record.token_metadata = updates.tokenMetadata;
+  if (updates.governanceAddress !== undefined) record.governance_address = updates.governanceAddress;
+  if (updates.poolAddress !== undefined) record.pool_address = updates.poolAddress;
 
   if (updates.blueprint !== undefined) {
     const blueprint = typeof updates.blueprint === 'string'
@@ -151,6 +167,38 @@ function parseArgs(): UpdateVentureArgs {
         result.status = next as 'active' | 'paused' | 'archived';
         i++;
         break;
+      case '--tokenAddress':
+        result.tokenAddress = next;
+        i++;
+        break;
+      case '--tokenSymbol':
+        result.tokenSymbol = next;
+        i++;
+        break;
+      case '--tokenName':
+        result.tokenName = next;
+        i++;
+        break;
+      case '--stakingContractAddress':
+        result.stakingContractAddress = next;
+        i++;
+        break;
+      case '--tokenLaunchPlatform':
+        result.tokenLaunchPlatform = next;
+        i++;
+        break;
+      case '--tokenMetadata':
+        result.tokenMetadata = JSON.parse(next);
+        i++;
+        break;
+      case '--governanceAddress':
+        result.governanceAddress = next;
+        i++;
+        break;
+      case '--poolAddress':
+        result.poolAddress = next;
+        i++;
+        break;
     }
   }
 
@@ -179,6 +227,14 @@ Optional (at least one required):
   --rootWorkstreamId <id>    New workstream ID (or "null" to clear)
   --rootJobInstanceId <id>   New root job instance ID (or "null" to clear)
   --status <status>          New status: active, paused, archived
+  --tokenAddress <addr>      Token contract address
+  --tokenSymbol <symbol>     Token symbol
+  --tokenName <name>         Token display name
+  --stakingContractAddress <addr>  Staking contract address
+  --tokenLaunchPlatform <platform> Launch platform (e.g., doppler)
+  --tokenMetadata <json>     Platform-specific metadata JSON
+  --governanceAddress <addr> Governance contract address
+  --poolAddress <addr>       Liquidity pool address
 
 Example:
   yarn tsx scripts/ventures/update.ts \\

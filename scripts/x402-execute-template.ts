@@ -24,7 +24,7 @@ import { hideBin } from 'yargs/helpers';
 import { getServiceProfile } from '../env/operate-profile.js';
 import { scriptLogger } from '../logging/index.js';
 
-const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://jinn-gemini-production.up.railway.app/graphql';
+const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
 const CHAIN_CONFIG = process.env.CHAIN_CONFIG || 'base';
 
 interface PonderJobTemplate {
@@ -361,7 +361,7 @@ async function main() {
     console.log(`   Job Definition: ${jobDefinitionId}`);
     console.log(`   Template: ${template.name}`);
     console.log(`\n   Run worker: yarn dev:mech --workstream=${requestId} --single`);
-    console.log(`   Explorer: https://jinn-gemini-production.up.railway.app/requests/${requestId}`);
+    console.log(`   Explorer: https://ponder-production-6d16.up.railway.app/requests/${requestId}`);
 
   } catch (e: any) {
     scriptLogger.error({ err: e }, 'Dispatch failed');
@@ -371,4 +371,3 @@ async function main() {
 }
 
 main();
-

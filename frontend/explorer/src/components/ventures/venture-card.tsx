@@ -8,7 +8,7 @@ interface VentureCardProps {
   instance: ServiceInstance;
 }
 
-export function VentureCard({ instance }: VentureCardProps) {
+export function VentureCard({ instance, tokenSymbol, poolAddress }: VentureCardProps & { tokenSymbol?: string | null; poolAddress?: string | null }) {
   const status = instance.delivered ? 'completed' : 'active';
 
   return (
@@ -19,6 +19,23 @@ export function VentureCard({ instance }: VentureCardProps) {
             <Link href={`/ventures/${instance.workstreamId}`}>
               <CardTitle className="text-lg hover:text-primary transition-colors cursor-pointer">
                 {instance.jobName}
+                {tokenSymbol && (
+                  <span className="ml-2 text-sm font-mono text-primary">
+                    {poolAddress ? (
+                      <a
+                        href={`https://basescan.org/address/${poolAddress}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        ${tokenSymbol}
+                      </a>
+                    ) : (
+                      `$${tokenSymbol}`
+                    )}
+                  </span>
+                )}
               </CardTitle>
             </Link>
             <CardDescription className="mt-1">

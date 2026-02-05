@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { request } from 'graphql-request'
 
-const PONDER_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://jinn-gemini-production.up.railway.app/graphql'
+const PONDER_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://ponder-production-6d16.up.railway.app/graphql'
 
 // Query to get SITUATION artifact for a request
 const GET_SITUATION_ARTIFACT = `
@@ -306,4 +306,3 @@ export async function GET(req: NextRequest) {
     )
   }
 }
-

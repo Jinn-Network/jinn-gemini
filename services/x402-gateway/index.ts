@@ -83,7 +83,7 @@ const network = (env.X402_NETWORK || "base") as Network;
 const mechAddress = env.MECH_ADDRESS;
 const privateKey = env.PRIVATE_KEY;
 // Ponder GraphQL endpoint - sole data source for templates
-const ponderUrl = env.PONDER_GRAPHQL_URL || "https://jinn-gemini-production.up.railway.app/graphql";
+const ponderUrl = env.PONDER_GRAPHQL_URL || "https://ponder-production-6d16.up.railway.app/graphql";
 const chainConfig = env.CHAIN_CONFIG || "base";
 
 // Types - Ponder jobTemplate schema

@@ -18,7 +18,7 @@ export const ventureQueryParams = z.object({
 export type VentureQueryParams = z.infer<typeof ventureQueryParams>;
 
 export const ventureQuerySchema = {
-  description: `Query ventures from the registry.
+  description: `Query ventures from the registry. Returns all venture fields including token data (token_address, token_symbol, token_name, staking_contract_address, token_launch_platform, token_metadata, governance_address, pool_address) via select('*').
 
 MODES:
 - get: Retrieve a single venture by ID

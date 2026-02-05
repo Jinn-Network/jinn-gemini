@@ -11,7 +11,7 @@ I will query the production Ponder subgraph to find a completed job that already
 
     -   **Command**:
         ```bash
-        curl -s https://jinn-gemini-production.up.railway.app/graphql -H "Content-Type: application/json" -d '{"query": "{ artifacts(where: {topic: \\"SITUATION\\"}, limit: 1) { items { requestId } } }"}'
+        curl -s https://ponder-production-6d16.up.railway.app/graphql -H "Content-Type: application/json" -d '{"query": "{ artifacts(where: {topic: \\"SITUATION\\"}, limit: 1) { items { requestId } } }"}'
         ```
 
     -   **Expected Outcome**: A JSON response containing a `requestId` that I can use for the subsequent verification steps.

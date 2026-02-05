@@ -65,8 +65,8 @@ Contract addresses, endpoints, and other constants used throughout the Jinn syst
 
 | Service | URL |
 |---------|-----|
-| Ponder GraphQL | `https://jinn-gemini-production.up.railway.app/graphql` |
-| Explorer | `https://jinn-gemini-production.up.railway.app/` |
+| Ponder GraphQL | `https://ponder-production-6d16.up.railway.app/graphql` |
+| Explorer | `https://ponder-production-6d16.up.railway.app/` |
 
 ---
 

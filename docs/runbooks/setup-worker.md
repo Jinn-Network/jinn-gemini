@@ -71,7 +71,7 @@ cp .env.template .env
 | `RPC_URL` | HTTP RPC endpoint for the target blockchain | `https://mainnet.base.org` |
 | `CHAIN_ID` | Network identifier (8453 = Base mainnet, 84532 = Base Sepolia) | `8453` |
 | `GEMINI_API_KEY` | Google Gemini API key for agent execution | `AIza...` |
-| `PONDER_GRAPHQL_URL` | Ponder GraphQL endpoint (defaults to Railway production) | `https://jinn-gemini-production.up.railway.app/graphql` |
+| `PONDER_GRAPHQL_URL` | Ponder GraphQL endpoint (defaults to Railway production) | `https://ponder-production-6d16.up.railway.app/graphql` |
 | `CONTROL_API_URL` | Control API GraphQL endpoint | `http://localhost:4001/graphql` |
 
 ### Service Credentials
@@ -124,7 +124,7 @@ Verify: `curl -X POST http://localhost:4001/graphql -H "Content-Type: applicatio
 
 ## Step 4: Set Up Ponder
 
-**Production:** Use default `PONDER_GRAPHQL_URL=https://jinn-gemini-production.up.railway.app/graphql`
+**Production:** Use default `PONDER_GRAPHQL_URL=https://ponder-production-6d16.up.railway.app/graphql`
 
 **Local:** `yarn ponder:dev` (port 42069)
 
@@ -233,4 +233,3 @@ Delivered via Safe
 | `config/index.ts` | Configuration with Zod validation |
 
 See `docs/context/system-overview.md` for full architecture.
-

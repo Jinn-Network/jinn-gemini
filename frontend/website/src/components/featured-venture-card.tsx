@@ -3,15 +3,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Sparkles } from 'lucide-react';
 import { getExplorerUrl } from '@/lib/featured-services';
-import type { ServiceInstance } from '@/lib/service-types';
+import type { Venture } from '@/lib/ventures-queries';
 
 interface FeaturedVentureCardProps {
-    instance: ServiceInstance;
-    name: string;
-    description: string;
+    venture: Venture;
 }
 
-export function FeaturedVentureCard({ instance, name, description }: FeaturedVentureCardProps) {
+export function FeaturedVentureCard({ venture }: FeaturedVentureCardProps) {
+    const explorerHref = venture.root_workstream_id
+        ? getExplorerUrl('workstream', venture.root_workstream_id)
+        : getExplorerUrl('venture', venture.id);
+
     return (
         <Card className="relative overflow-hidden border-primary/50 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
             {/* Glow effect */}
@@ -22,20 +24,25 @@ export function FeaturedVentureCard({ instance, name, description }: FeaturedVen
                     <div className="flex items-center gap-2">
                         <Sparkles className="h-5 w-5 text-primary" />
                         <Badge variant="outline" className="border-primary/50 text-primary">
-                            Featured Venture
+                            Active Venture
                         </Badge>
                     </div>
+                    {venture.token_symbol && (
+                        <Badge variant="outline" className="text-xs font-mono bg-primary/10 border-primary/30 text-primary">
+                            ${venture.token_symbol}
+                        </Badge>
+                    )}
                 </div>
-                <CardTitle className="mt-4 text-2xl">{name}</CardTitle>
+                <CardTitle className="mt-4 text-2xl">{venture.name}</CardTitle>
                 <CardDescription className="mt-2 text-base">
-                    {description}
+                    {venture.description || 'An autonomous venture on the Jinn network.'}
                 </CardDescription>
             </CardHeader>
 
             <CardFooter className="relative">
                 <Button asChild variant="default" className="w-full">
                     <a
-                        href={getExplorerUrl('venture', instance.workstreamId)}
+                        href={explorerHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2"

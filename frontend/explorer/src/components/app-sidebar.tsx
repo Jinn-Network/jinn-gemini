@@ -58,6 +58,10 @@ export function AppSidebar() {
 
                 if (item.subItems) {
                   // Collapsible item with sub-items
+                  const ParentIcon = item.collection === 'ecosystem' ? Rocket
+                    : item.collection === 'work' ? Briefcase
+                    : item.collection === 'network' ? Server
+                    : Briefcase
                   return (
                     <Collapsible
                       key={item.collection}
@@ -67,7 +71,7 @@ export function AppSidebar() {
                       <SidebarMenuItem>
                         <CollapsibleTrigger asChild>
                           <SidebarMenuButton isActive={isActive}>
-                            <Briefcase />
+                            <ParentIcon />
                             <span>{item.label}</span>
                             <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
                           </SidebarMenuButton>

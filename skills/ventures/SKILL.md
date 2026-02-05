@@ -32,13 +32,37 @@ Create a new venture with a blueprint defining success criteria.
 - `rootJobInstanceId`: Associated root job instance UUID
 - `status`: 'active', 'paused', or 'archived' (default: active)
 
-**Example:**
+**Token parameters (all optional):**
+- `tokenAddress`: Token contract address on Base
+- `tokenSymbol`: Token symbol (e.g., GROWTH, AMP2)
+- `tokenName`: Token display name
+- `stakingContractAddress`: Staking contract address
+- `tokenLaunchPlatform`: Launch platform (e.g., "doppler")
+- `tokenMetadata`: Platform-specific metadata JSON string (poolId, curves, safeAddress, etc.)
+- `governanceAddress`: Governance contract address (e.g., Doppler governance)
+- `poolAddress`: Liquidity pool address (e.g., GROWTH/OLAS Uniswap pool)
+
+**Example (basic):**
 ```json
 {
   "name": "My Venture",
   "ownerAddress": "0x1234567890abcdef1234567890abcdef12345678",
   "blueprint": "{\"invariants\":[{\"id\":\"INV-001\",\"description\":\"Test invariant\"}]}",
   "status": "active"
+}
+```
+
+**Example (with token):**
+```json
+{
+  "name": "Growth Agency",
+  "ownerAddress": "0x...",
+  "blueprint": "{\"invariants\":[{\"id\":\"INV-001\",\"description\":\"Generate growth services\"}]}",
+  "tokenAddress": "0x...",
+  "tokenSymbol": "GROWTH",
+  "tokenName": "Growth Agency Token",
+  "tokenLaunchPlatform": "doppler",
+  "poolAddress": "0x..."
 }
 ```
 
@@ -61,7 +85,7 @@ Create a new venture with a blueprint defining success criteria.
 
 ### UPDATE - Modify Venture Details
 
-Update any combination of venture fields. Only provided fields are modified.
+Update any combination of venture fields. Only provided fields are modified. Supports all token fields (tokenAddress, tokenSymbol, tokenName, stakingContractAddress, tokenLaunchPlatform, tokenMetadata, governanceAddress, poolAddress).
 
 ```json
 {

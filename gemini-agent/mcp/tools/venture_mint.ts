@@ -14,6 +14,14 @@ export const ventureMintParams = z.object({
   rootWorkstreamId: z.string().optional().describe('Workstream ID for the venture'),
   rootJobInstanceId: z.string().optional().describe('Optional root job instance ID'),
   status: z.enum(['active', 'paused', 'archived']).optional().default('active').describe('Venture status'),
+  tokenAddress: z.string().optional().describe('Token contract address on Base'),
+  tokenSymbol: z.string().optional().describe('Token symbol (e.g., GROWTH)'),
+  tokenName: z.string().optional().describe('Token display name'),
+  stakingContractAddress: z.string().optional().describe('Staking contract address'),
+  tokenLaunchPlatform: z.string().optional().describe('Token launch platform (e.g., doppler)'),
+  tokenMetadata: z.string().optional().describe('Platform-specific metadata JSON string (e.g., poolId, curves, safeAddress)'),
+  governanceAddress: z.string().optional().describe('Governance contract address'),
+  poolAddress: z.string().optional().describe('Liquidity pool address'),
 });
 
 export type VentureMintParams = z.infer<typeof ventureMintParams>;
@@ -25,6 +33,7 @@ A venture is a persistent project entity that owns workstreams and services. Eac
 - A blueprint containing invariants (success criteria)
 - An owner address (Ethereum address)
 - Optional workstream and job instance associations
+- Optional token fields for venture-specific tokens (launched via Doppler or other platforms)
 
 PREREQUISITES:
 - Have a valid blueprint with invariants array
@@ -39,6 +48,14 @@ Parameters:
 - rootWorkstreamId: Associated workstream ID
 - rootJobInstanceId: Associated root job instance
 - status: 'active', 'paused', or 'archived'
+- tokenAddress: Token contract address on Base
+- tokenSymbol: Token symbol (e.g., GROWTH)
+- tokenName: Token display name
+- stakingContractAddress: Staking contract address
+- tokenLaunchPlatform: Launch platform (e.g., doppler)
+- tokenMetadata: Platform-specific metadata JSON string
+- governanceAddress: Governance contract address
+- poolAddress: Liquidity pool address
 
 Returns: { venture: { id, name, slug, ... } }`,
   inputSchema: ventureMintParams.shape,
@@ -72,6 +89,14 @@ export async function ventureMint(args: unknown) {
       rootWorkstreamId,
       rootJobInstanceId,
       status,
+      tokenAddress,
+      tokenSymbol,
+      tokenName,
+      stakingContractAddress,
+      tokenLaunchPlatform,
+      tokenMetadata,
+      governanceAddress,
+      poolAddress,
     } = parsed.data;
 
     // Use the script function which handles all Supabase logic
@@ -84,6 +109,14 @@ export async function ventureMint(args: unknown) {
       rootWorkstreamId,
       rootJobInstanceId,
       status,
+      tokenAddress,
+      tokenSymbol,
+      tokenName,
+      stakingContractAddress,
+      tokenLaunchPlatform,
+      tokenMetadata: tokenMetadata ? JSON.parse(tokenMetadata) : undefined,
+      governanceAddress,
+      poolAddress,
     };
 
     const venture = await createVenture(scriptArgs);

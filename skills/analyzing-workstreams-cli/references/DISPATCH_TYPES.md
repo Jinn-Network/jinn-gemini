@@ -1,1 +1,0 @@
-../../../docs/reference/DISPATCH_TYPES.md

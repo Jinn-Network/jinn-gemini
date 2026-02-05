@@ -25,6 +25,14 @@ export interface Venture {
   status: 'active' | 'paused' | 'archived';
   created_at: string;
   updated_at: string;
+  token_address: string | null;
+  token_symbol: string | null;
+  token_name: string | null;
+  staking_contract_address: string | null;
+  token_launch_platform: string | null;
+  token_metadata: Record<string, unknown> | null;
+  governance_address: string | null;
+  pool_address: string | null;
 }
 
 export interface Service {
@@ -139,6 +147,15 @@ async function supabaseQuery<T>(
 export async function getVentures(): Promise<Venture[]> {
   return supabaseQuery<Venture>('ventures', {
     select: '*',
+    order: 'created_at.desc',
+  });
+}
+
+export async function getTokenizedVentures(): Promise<Venture[]> {
+  return supabaseQuery<Venture>('ventures', {
+    select: '*',
+    status: 'eq.active',
+    token_address: 'not.is.null',
     order: 'created_at.desc',
   });
 }

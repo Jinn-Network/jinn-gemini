@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "predev": "lsof -ti:${PONDER_PORT:-42069} | xargs kill -9 2>/dev/null || true",
-    "dev": "NEXT_PUBLIC_SUBGRAPH_URL=https://jinn-gemini-production.up.railway.app/graphql NEXT_PUBLIC_X402_GATEWAY_URL=https://x402-gateway-production.up.railway.app next dev --turbopack",
+    "dev": "NEXT_PUBLIC_SUBGRAPH_URL=https://ponder-production-6d16.up.railway.app/graphql NEXT_PUBLIC_X402_GATEWAY_URL=https://x402-gateway-production.up.railway.app next dev --turbopack",
     "dev:local": "env NEXT_PUBLIC_SUBGRAPH_URL=${NEXT_PUBLIC_SUBGRAPH_URL:-http://localhost:42069/graphql} next dev --turbopack",
     "dev:with-ponder": "env NEXT_PUBLIC_SUBGRAPH_URL=${NEXT_PUBLIC_SUBGRAPH_URL:-http://localhost:42069/graphql} NEXT_PUBLIC_PONDER_PORT=${PONDER_PORT:-42069} concurrently \"next dev --turbopack\" \"cd ../../ponder && yarn dev\"",
     "build": "next build",
