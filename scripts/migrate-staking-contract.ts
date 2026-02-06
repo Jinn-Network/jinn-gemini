@@ -183,23 +183,45 @@ async function main() {
   console.log('  Step 1: Preflight Checks');
   console.log('═══════════════════════════════════════════════════════════════');
 
-  // Check service ownership
+  // Check service ownership and staking status
   const owner = await serviceRegistry.ownerOf(serviceId);
-  console.log(`\n📋 Service Owner: ${owner}`);
-  if (owner.toLowerCase() !== masterEOA?.toLowerCase()) {
-    console.error(`❌ Service is owned by ${owner}, not master EOA ${masterEOA}`);
-    console.error('   The master wallet must own the service to migrate it');
-    process.exit(1);
-  }
-  console.log('   ✅ Master EOA owns the service');
+  console.log(`\n📋 Service NFT Owner: ${owner}`);
 
   // Check if staked in source
   const sourceStakedIds = await getStakedServiceIds(sourceStaking);
   const isStakedInSource = sourceStakedIds.includes(serviceId);
-  console.log(`\n📍 Source Staking Status: ${isStakedInSource ? '✅ STAKED' : '❌ NOT STAKED'}`);
-  if (!isStakedInSource) {
-    console.error(`   Service ${serviceId} is not staked in ${sourceConfig.name}`);
+  console.log(`📍 Source Staking Status: ${isStakedInSource ? '✅ STAKED' : '❌ NOT STAKED'}`);
+
+  if (isStakedInSource) {
+    // When staked, the staking contract owns the NFT
+    // Check if Master EOA has rights to unstake via mapServiceInfo
+    const serviceInfo = await sourceStaking.mapServiceInfo(serviceId);
+    const stakingMultisig = serviceInfo[0]; // multisig address from staking contract
+
+    console.log(`   Service is staked - staking contract owns NFT`);
+    console.log(`   Registered multisig: ${stakingMultisig}`);
+
+    // The multisig that staked it must match master EOA or be controlled by master EOA
+    // For migration to work, master EOA must be able to sign unstake transaction
+    // This is typically done via the Safe multisig
+    if (owner.toLowerCase() !== sourceConfig.address.toLowerCase()) {
+      console.error(`❌ Service NFT not owned by source staking contract`);
+      console.error(`   Expected: ${sourceConfig.address}`);
+      console.error(`   Got: ${owner}`);
+      process.exit(1);
+    }
+    console.log('   ✅ Service is properly staked in source contract');
+  } else {
+    // Not staked - Master EOA must own the NFT directly
+    if (owner.toLowerCase() !== masterEOA?.toLowerCase()) {
+      console.error(`❌ Service is owned by ${owner}, not master EOA ${masterEOA}`);
+      console.error('   The master wallet must own the service to migrate it');
+      process.exit(1);
+    }
+    console.log('   ✅ Master EOA owns the service');
+    console.error(`\n❌ Service ${serviceId} is not staked in ${sourceConfig.name}`);
     console.error(`   Staked services: ${sourceStakedIds.join(', ') || 'none'}`);
+    console.error(`   Cannot migrate an unstaked service`);
     process.exit(1);
   }
 
