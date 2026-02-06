@@ -1,22 +1,22 @@
 import { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
-import { TemplatesCatalog } from '@/components/templates-catalog'
+import { AgentsCatalog } from '@/components/agents-catalog'
 
 export const metadata: Metadata = {
-  title: 'Job Templates',
-  description: 'Browse and execute job templates via x402 payments',
+  title: 'Agents',
+  description: 'Browse active agents with execution history and metrics',
 }
 
-export default function TemplatesPage() {
+export default function AgentsPage() {
   const breadcrumbs = [
-    { label: 'Templates' }
+    { label: 'Agents' }
   ]
 
   return (
     <>
       <SiteHeader breadcrumbs={breadcrumbs} />
       <div className="p-4 md:p-6">
-        <TemplatesCatalog />
+        <AgentsCatalog />
       </div>
     </>
   )

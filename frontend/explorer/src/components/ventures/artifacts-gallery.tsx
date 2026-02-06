@@ -8,7 +8,25 @@ import { MarkdownField } from '@/components/markdown-field';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { formatRelativeTime } from '@jinn/shared-ui';
+// Format timestamp in social media style (e.g., "2 mins ago", "3 hours ago")
+function formatTimeAgo(timestamp: string | number): string {
+    const ts = typeof timestamp === 'string' ? Number(timestamp) * 1000 : Number(timestamp) * 1000;
+    const now = Date.now();
+    const diff = now - ts;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const months = Math.floor(days / 30);
+    const years = Math.floor(days / 365);
+
+    if (seconds < 60) return 'just now';
+    if (minutes < 60) return `${minutes} min${minutes !== 1 ? 's' : ''} ago`;
+    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    if (days < 30) return `${days} day${days !== 1 ? 's' : ''} ago`;
+    if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`;
+    return `${years} year${years !== 1 ? 's' : ''} ago`;
+}
 
 interface ArtifactsGalleryProps {
   workstreamId: string;
@@ -67,11 +85,11 @@ export function ArtifactsGallery({ workstreamId, onNavigateToJob }: ArtifactsGal
         allArtifacts.push(...response.items);
       }
 
-      // Sort by blockTimestamp ascending (oldest first at top)
+      // Sort by blockTimestamp descending (newest first at top)
       allArtifacts.sort((a, b) => {
         const tsA = Number(a.blockTimestamp || 0);
         const tsB = Number(b.blockTimestamp || 0);
-        return tsA - tsB;
+        return tsB - tsA;
       });
 
       // Filter out operational topics (case-insensitive)
@@ -90,7 +108,23 @@ export function ArtifactsGallery({ workstreamId, onNavigateToJob }: ArtifactsGal
         })
       );
 
-      setArtifacts(artifactsWithJobNames);
+      // Only update state if artifacts have actually changed
+      setArtifacts(prev => {
+        // If lengths differ, update
+        if (prev.length !== artifactsWithJobNames.length) {
+          return artifactsWithJobNames;
+        }
+        
+        // Check if any artifact IDs or timestamps have changed
+        const hasChanges = artifactsWithJobNames.some((newArtifact, index) => {
+          const oldArtifact = prev[index];
+          return !oldArtifact || 
+                 oldArtifact.id !== newArtifact.id || 
+                 oldArtifact.blockTimestamp !== newArtifact.blockTimestamp;
+        });
+        
+        return hasChanges ? artifactsWithJobNames : prev;
+      });
 
       // Auto-select most recent artifact only on initial load
       if (!hasAutoSelected.current && artifactsWithJobNames.length > 0) {
@@ -252,7 +286,7 @@ export function ArtifactsGallery({ workstreamId, onNavigateToJob }: ArtifactsGal
       )}
       <div className="text-[10px] text-muted-foreground/70 mt-1">
         {artifact.blockTimestamp
-          ? formatRelativeTime(Number(artifact.blockTimestamp) * 1000)
+          ? formatTimeAgo(artifact.blockTimestamp)
           : 'Unknown time'}
       </div>
     </button>

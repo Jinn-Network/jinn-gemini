@@ -33,6 +33,8 @@ export const navigationItems: NavigationItem[] = [
     collection: 'ecosystem',
     subItems: [
       { label: 'Ventures', collection: 'ventures' },
+      { label: 'Agents', collection: 'agents' },
+      { label: 'Blueprints', collection: 'blueprints' },
       { label: 'Services', collection: 'services' },
     ]
   },

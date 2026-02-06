@@ -83,7 +83,7 @@
         "search_file_content",
         "glob",
         "read_many_files",
-        "register_template"
+        "template_create"
     ],
     "invariants": [
         {
@@ -248,17 +248,17 @@
         {
             "id": "GOAL-010",
             "form": "directive",
-            "invariant": "TEMPLATE REGISTRATION (AFTER RE-INVOCATION): When re-invoked with completed test children (visible in context.hierarchy.children with status=COMPLETED), register each successful venture as a template using register_template. Use the pricing from GOAL-004's economic thesis. Status MUST be 'hidden' pending approval.",
-            "measurement": "Verify register_template called for each completed child venture with status='hidden'. Verify templateId returned.",
+            "invariant": "TEMPLATE REGISTRATION (AFTER RE-INVOCATION): When re-invoked with completed test children (visible in context.hierarchy.children with status=COMPLETED), register each successful venture as a template using template_create. Use the pricing from GOAL-004's economic thesis. Status MUST be 'draft' pending approval.",
+            "measurement": "Verify template_create called for each completed child venture with status='draft'. Verify template id returned.",
             "examples": {
                 "do": [
                     "Check context.hierarchy.children for completed test runs",
-                    "register_template({ name: 'FlakePay', priceWei: '10000000000000000', status: 'hidden', ... })",
-                    "Report templateId and marketplaceUrl in final summary"
+                    "template_create({ name: 'FlakePay', priceWei: '10000000000000000', status: 'draft', ... })",
+                    "Report template id and slug in final summary"
                 ],
                 "dont": [
-                    "Call register_template before test jobs complete",
-                    "Set status='visible' without approval"
+                    "Call template_create before test jobs complete",
+                    "Set status='published' without approval"
                 ]
             },
             "commentary": "Hidden templates require approval before becoming visible. Registration happens on re-invocation after children complete."

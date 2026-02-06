@@ -2,7 +2,7 @@
 /**
  * Launch a venture token via Doppler on Base
  *
- * Deploys a multicurve auction token paired against OLAS on Base.
+ * Deploys a multicurve auction token paired against WETH (default) or OLAS on Base.
  * Updates the venture record in Supabase with token details.
  *
  * Token allocation (10/10/80):
@@ -18,7 +18,7 @@
  *     --safe-address "0x..."
  */
 
-import { createPublicClient, createWalletClient, http, parseEther } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbi, parseEther } from 'viem';
 import { base } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { DopplerSDK, MulticurveBuilder } from '@whetstone-research/doppler-sdk';
@@ -28,8 +28,27 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// OLAS on Base
+// Supported numeraire tokens on Base
+const WETH_BASE_ADDRESS = '0x4200000000000000000000000000000000000006' as const;
 const OLAS_BASE_ADDRESS = '0x54330d28ca3357F294334BDC454a032e7f353416' as const;
+
+const NUMERAIRE_OPTIONS: Record<string, `0x${string}`> = {
+  weth: WETH_BASE_ADDRESS,
+  eth: WETH_BASE_ADDRESS,  // alias
+  olas: OLAS_BASE_ADDRESS,
+};
+
+const NUMERAIRE_NAMES: Record<string, string> = {
+  [WETH_BASE_ADDRESS]: 'WETH',
+  [OLAS_BASE_ADDRESS]: 'OLAS',
+};
+
+// Doppler Airlock on Base — holds asset data for all launched tokens
+const AIRLOCK_ADDRESS = '0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12' as const;
+
+const airlockAbi = parseAbi([
+  'function getAssetData(address asset) view returns (address numeraire, address timelock, address governance, address liquidityMigrator, address poolInitializer, address pool, address migrationPool, uint256 numTokensToSell, uint256 totalSupply, address integrator)',
+]);
 
 // Token allocation: 10/10/80
 const TOTAL_SUPPLY = parseEther('1000000000');              // 1B
@@ -42,6 +61,7 @@ export interface LaunchTokenArgs {
   name: string;
   symbol: string;
   safeAddress: string;
+  numeraire?: string;  // 'weth' (default), 'olas', or a custom address
   tokenUri?: string;
   rpcUrl?: string;
 }
@@ -70,6 +90,11 @@ export async function launchToken(args: LaunchTokenArgs) {
   const { ventureId, name, symbol, safeAddress, tokenUri } = args;
   const rpcUrl = args.rpcUrl || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
 
+  // Resolve numeraire: default to WETH for Doppler app compatibility
+  const numeraireInput = args.numeraire?.toLowerCase() || 'weth';
+  const numeraireAddress = NUMERAIRE_OPTIONS[numeraireInput] || (numeraireInput as `0x${string}`);
+  const numeraireName = NUMERAIRE_NAMES[numeraireAddress] || numeraireAddress;
+
   const privateKey = resolvePrivateKey();
   const account = privateKeyToAccount(privateKey);
 
@@ -88,7 +113,7 @@ export async function launchToken(args: LaunchTokenArgs) {
   console.log(`  Name: ${name}`);
   console.log(`  Symbol: ${symbol}`);
   console.log(`  Safe: ${safeAddress}`);
-  console.log(`  Numeraire: OLAS (${OLAS_BASE_ADDRESS})`);
+  console.log(`  Numeraire: ${numeraireName} (${numeraireAddress})`);
   console.log(`  Total supply: 1B`);
   console.log(`  Price discovery: 100M (10%) → bonding curve`);
   console.log(`  Insiders: 100M (10%) → vested to Safe`);
@@ -113,7 +138,7 @@ export async function launchToken(args: LaunchTokenArgs) {
     .saleConfig({
       initialSupply: TOTAL_SUPPLY,
       numTokensToSell: TOKENS_FOR_PRICE_DISCOVERY,
-      numeraire: OLAS_BASE_ADDRESS,
+      numeraire: numeraireAddress,
     })
     .withMarketCapPresets()  // default 3-curve pool config (low/medium/high market cap tiers)
     .withVesting({
@@ -145,7 +170,23 @@ export async function launchToken(args: LaunchTokenArgs) {
   console.log(`  Pool ID: ${result.poolId}`);
   console.log(`  TX hash: ${result.transactionHash}`);
 
-  // Update venture record with token details
+  // Read full asset data from Airlock to get all contract addresses
+  console.log('\nReading asset data from Airlock...');
+  const assetData = await publicClient.readContract({
+    address: AIRLOCK_ADDRESS,
+    abi: airlockAbi,
+    functionName: 'getAssetData',
+    args: [result.tokenAddress as `0x${string}`],
+  });
+
+  const [numeraire, timelock, governance, liquidityMigrator, poolInitializer, pool, migrationPool] = assetData;
+  console.log(`  Governor: ${governance}`);
+  console.log(`  Timelock: ${timelock}`);
+  console.log(`  Pool Initializer: ${poolInitializer}`);
+  console.log(`  Migration Pool: ${migrationPool}`);
+  console.log(`  Liquidity Migrator: ${liquidityMigrator}`);
+
+  // Update venture record with token details + all on-chain addresses
   console.log('\nUpdating venture record in Supabase...');
 
   await updateVenture({
@@ -154,6 +195,8 @@ export async function launchToken(args: LaunchTokenArgs) {
     tokenSymbol: symbol,
     tokenName: name,
     tokenLaunchPlatform: 'doppler',
+    governanceAddress: governance,
+    poolAddress: poolInitializer,
     tokenMetadata: {
       poolId: result.poolId,
       safeAddress,
@@ -161,9 +204,16 @@ export async function launchToken(args: LaunchTokenArgs) {
       priceDiscoveryTokens: '100000000',
       insiderTokens: '100000000',
       treasuryTokens: '800000000',
-      numeraire: OLAS_BASE_ADDRESS,
+      numeraire,
       transactionHash: result.transactionHash,
       launchedAt: new Date().toISOString(),
+      // On-chain contract addresses from Airlock getAssetData
+      governor: governance,
+      timelock,
+      liquidityMigrator,
+      poolInitializer,
+      migrationPool,
+      integrator: assetData[9], // 10th return value
     },
   });
 
@@ -203,6 +253,10 @@ function parseArgs(): LaunchTokenArgs {
         break;
       case '--safe-address':
         result.safeAddress = next;
+        i++;
+        break;
+      case '--numeraire':
+        result.numeraire = next;
         i++;
         break;
       case '--token-uri':
@@ -251,6 +305,7 @@ Required:
   --safe-address <addr>      Gnosis Safe address (controls governance + receives vested tokens)
 
 Optional:
+  --numeraire <token>        Numeraire token: 'weth' (default), 'olas', or a custom address
   --token-uri <uri>          IPFS metadata URI for the token
   --rpc-url <url>            Base RPC URL (default: BASE_RPC_URL env or https://mainnet.base.org)
 
@@ -264,7 +319,8 @@ Token allocation (10/10/80):
   - 80% (800M) → Governance contract (treasury/rewards, Safe-controlled)
 
 GovernanceLaunchpad: Safe controls the governance contract and the 80% treasury.
-Numeraire: OLAS on Base (${OLAS_BASE_ADDRESS})
+Numeraire: WETH on Base by default (Doppler app compatible)
+           Use --numeraire olas for OLAS pairing
 Migration: Uniswap V2 (graduates to TOKEN/numeraire LP pair)
 
 Example:

@@ -1,6 +1,6 @@
 'use client';
 
-import { HeartPulse, Activity, ArrowRight, Bot, GitBranch, Coins, ExternalLink } from 'lucide-react';
+import { HeartPulse, Activity, ArrowRight, Bot, GitBranch } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LiveOutputView } from './live-output-view';
@@ -9,11 +9,32 @@ import { ActivityFeed } from './activity-feed';
 import { HealthSummary } from './health-summary';
 import { InvariantList, type InvariantWithMeasurement } from './invariant-list';
 import { ServiceOutputCard } from './service-output-card';
+import { TokenInfoCard } from './token-info-card';
 import { WorkstreamTreeList } from '@/components/workstream-tree-list';
 import { transformToActivityItems } from '@/lib/ventures/activity-utils';
 import type { ServiceOutput } from '@/lib/ventures/service-types';
 import type { JobDefinition } from '@/lib/subgraph';
-import { formatRelativeTime, type HealthStatus } from '@jinn/shared-ui';
+import { type HealthStatus } from '@jinn/shared-ui';
+import { formatDate } from '@/lib/utils';
+
+// Format timestamp in social media style (e.g., "2 mins ago", "3 hours ago")
+function formatTimeAgo(timestamp: number): string {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const months = Math.floor(days / 30);
+    const years = Math.floor(days / 365);
+
+    if (seconds < 60) return 'just now';
+    if (minutes < 60) return `${minutes} min${minutes !== 1 ? 's' : ''} ago`;
+    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    if (days < 30) return `${days} day${days !== 1 ? 's' : ''} ago`;
+    if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`;
+    return `${years} year${years !== 1 ? 's' : ''} ago`;
+}
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -24,6 +45,7 @@ interface TokenInfo {
     token_launch_platform: string | null;
     governance_address: string | null;
     pool_address: string | null;
+    token_metadata: Record<string, unknown> | null;
 }
 
 interface VentureDashboardProps {
@@ -39,6 +61,7 @@ interface VentureDashboardProps {
     initialSelectedJobId?: string | null;
     tokenInfo?: TokenInfo | null;
 }
+
 
 export function VentureDashboard({
     liveOutputUrl,
@@ -178,6 +201,11 @@ export function VentureDashboard({
 
                     {/* Right Column: Health + Activity (1/3) */}
                     <div className="lg:col-span-1 flex flex-col gap-4">
+                        {/* Token Info Card */}
+                        {tokenInfo?.token_address && (
+                            <TokenInfoCard tokenInfo={tokenInfo} />
+                        )}
+
                         {/* Health Summary Card */}
                         <Card>
                             <CardHeader className="pb-2">
@@ -222,74 +250,6 @@ export function VentureDashboard({
                                 )}
                             </CardContent>
                         </Card>
-
-                        {/* Token Info Card */}
-                        {tokenInfo?.token_address && (
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        <Coins className="h-4 w-4" />
-                                        Token
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Name</span>
-                                        <span className="font-medium">{tokenInfo.token_name}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Symbol</span>
-                                        <span className="font-mono font-medium">${tokenInfo.token_symbol}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-muted-foreground">Contract</span>
-                                        <a
-                                            href={`https://basescan.org/address/${tokenInfo.token_address}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-primary hover:underline flex items-center gap-1 font-mono text-xs"
-                                        >
-                                            {tokenInfo.token_address.slice(0, 6)}...{tokenInfo.token_address.slice(-4)}
-                                            <ExternalLink className="h-3 w-3" />
-                                        </a>
-                                    </div>
-                                    {tokenInfo.pool_address && (
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-muted-foreground">Pool</span>
-                                            <a
-                                                href={`https://basescan.org/address/${tokenInfo.pool_address}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-primary hover:underline flex items-center gap-1 font-mono text-xs"
-                                            >
-                                                {tokenInfo.pool_address.slice(0, 6)}...{tokenInfo.pool_address.slice(-4)}
-                                                <ExternalLink className="h-3 w-3" />
-                                            </a>
-                                        </div>
-                                    )}
-                                    {tokenInfo.governance_address && (
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-muted-foreground">Governance</span>
-                                            <a
-                                                href={`https://basescan.org/address/${tokenInfo.governance_address}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-primary hover:underline flex items-center gap-1 font-mono text-xs"
-                                            >
-                                                {tokenInfo.governance_address.slice(0, 6)}...{tokenInfo.governance_address.slice(-4)}
-                                                <ExternalLink className="h-3 w-3" />
-                                            </a>
-                                        </div>
-                                    )}
-                                    {tokenInfo.token_launch_platform && (
-                                        <div className="flex justify-between">
-                                            <span className="text-muted-foreground">Platform</span>
-                                            <span className="capitalize">{tokenInfo.token_launch_platform}</span>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        )}
 
                         {/* Activity Preview Card */}
                         <Card className="flex-1 flex flex-col min-h-0">
@@ -336,7 +296,9 @@ export function VentureDashboard({
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-baseline gap-1.5 mb-0.5">
                                                         <span className="font-medium text-xs text-foreground">{item.jobName}</span>
-                                                        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(item.timestamp)}</span>
+                                                        <span className="text-[10px] text-muted-foreground">
+                                                            {formatTimeAgo(item.timestamp)}
+                                                        </span>
                                                     </div>
                                                     <p className="text-xs text-muted-foreground line-clamp-2">
                                                         {item.message}

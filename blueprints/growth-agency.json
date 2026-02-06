@@ -85,7 +85,7 @@
         "search_artifacts",
         "google_web_search",
         "web_fetch",
-        "register_template"
+        "template_create"
     ],
     "invariants": [
         {
@@ -322,36 +322,44 @@
         {
             "id": "GOAL-009",
             "type": "BOOLEAN",
-            "condition": "You register each template that passes the quality gate using register_template with status='hidden'. You set priceWei from observed test cost × {{pricingBenchmarkMultiplier}} margin, floored at the economic thesis price. You include descriptive tags for marketplace discovery. You record the returned templateId and marketplaceUrl.",
-            "assessment": "Verify register_template called for each passing template with status='hidden'. Verify pricing uses observed cost with margin. Verify templateId returned and recorded.",
+            "condition": "You register each template that passes the quality gate using template_create, which stores templates in Supabase (NOT x402 gateway). Required fields: name (string), blueprint (JSON string with 'invariants' array), description (string), tags (string array for discovery), priceWei/priceUsd (pricing), status ('draft' for new templates). The blueprint field MUST be a JSON string containing an object with an 'invariants' array from your designed blueprint. Optional: inputSchema (object), outputSpec (object), enabledTools (string array), version (default: '0.1.0'), safetyTier ('public'/'private'/'restricted'), defaultCyclic (boolean). Set status='draft' initially. After approval, use template_update to change status to 'published'. Record the returned template id and slug for reference. Use template_query to check existing templates. Pricing: observed test cost × {{pricingBenchmarkMultiplier}} margin, floored at economic thesis price.",
+            "assessment": "Verify template_create called with all required fields. Verify blueprint is JSON string with 'invariants' array. Verify status='draft'. Verify pricing calculation. Verify template id and slug recorded.",
             "examples": {
                 "do": [
-                    "register_template({ name: 'SEO Audit', priceWei: '60000000000000000', status: 'hidden', tags: ['seo', 'growth', 'audit'], ... })",
-                    "Record: templateId='seo-audit-bph12345', marketplaceUrl='https://x402-gateway-production-1b84.up.railway.app/templates/seo-audit-bph12345'",
-                    "Pricing: test cost 0.05 ETH × 1.2 = 0.06 ETH"
+                    "template_create({ name: 'SEO Audit', description: 'Comprehensive SEO analysis', blueprint: '{\"invariants\":[{\"id\":\"GOAL-001\",\"form\":\"constraint\",\"description\":\"Analysis must cite ≥3 sources\"}]}', tags: ['seo', 'growth', 'audit'], priceWei: '60000000000000000', priceUsd: '$0.06', status: 'draft' })",
+                    "Record returned: { id: '<uuid>', slug: 'seo-audit', status: 'draft', created_at: '...' }",
+                    "Pricing calculation: test cost 0.05 ETH × 1.2 margin = 0.06 ETH",
+                    "Later approval: template_update({ id: '<uuid>', status: 'published' })"
                 ],
                 "dont": [
-                    "Set status='visible' without approval",
+                    "Set status='published' on initial creation — use 'draft' first",
+                    "Pass blueprint as an object — must be JSON string",
+                    "Omit the 'invariants' array from blueprint JSON",
                     "Register templates that failed quality gate",
-                    "Omit tags — they enable discovery"
+                    "Omit tags — they are critical for discovery",
+                    "Forget to record template id and slug for later reference"
                 ]
             }
         },
         {
             "id": "GOAL-010",
             "type": "BOOLEAN",
-            "condition": "You produce a summary artifact (via create_artifact) containing: all registered templates with their templateIds, marketplace URLs, pricing, value theses, and test run performance metrics. All URLs are clickable — IPFS gateway URLs for artifacts and marketplace URLs for templates. No local file paths.",
-            "assessment": "Verify summary artifact contains all registered templates with clickable URLs. Verify no local file paths or placeholder URLs.",
+            "condition": "You produce a summary artifact (via create_artifact) containing: all registered templates with their template IDs, slugs, Jinn Explorer URLs (https://explorer.jinn.network/blueprints), pricing, value theses, and test run performance metrics. Templates are stored in Supabase and viewable via Jinn Explorer. Use template_query({ mode: 'list', status: 'draft' }) to retrieve your created templates. All URLs are clickable — IPFS gateway URLs for test artifacts and Jinn Explorer URLs for templates. No local file paths.",
+            "assessment": "Verify summary artifact contains all registered templates with template IDs, slugs, and clickable Jinn Explorer URLs. Verify test run metrics included. Verify no local file paths.",
             "examples": {
                 "do": [
+                    "Use template_query({ mode: 'list', status: 'draft' }) to get your templates",
                     "Upload summary via create_artifact with full catalog listing",
-                    "Include: [SEO Audit](https://x402-gateway-production-1b84.up.railway.app/templates/seo-audit-bph12345) — $0.06 ETH — Replaces $500/mo agency",
-                    "Include test run metrics: completion time, cost, output quality score"
+                    "Include: [SEO Audit](https://explorer.jinn.network/blueprints) (ID: <uuid>, slug: seo-audit) — $0.06 ETH — Replaces $500/mo agency",
+                    "Include test run metrics: completion time, cost, output quality score",
+                    "Reference test artifacts with IPFS gateway URLs"
                 ],
                 "dont": [
+                    "Reference x402 gateway URLs — templates are in Supabase now",
                     "Reference local file paths as deliverables",
                     "Omit pricing or value theses from catalog",
-                    "Use CIDs without gateway prefix"
+                    "Use raw CIDs without gateway prefix",
+                    "Forget to query templates back to verify they were created"
                 ]
             }
         },

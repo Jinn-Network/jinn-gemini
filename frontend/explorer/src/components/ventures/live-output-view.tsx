@@ -1,16 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, memo, useMemo } from 'react';
 import { ExternalLink, Globe, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+// Separate memoized iframe component to prevent re-renders
+const StableIframe = memo(function StableIframe({ url }: { url: string }) {
+    return (
+        <iframe
+            src={url}
+            className="w-full h-full border-0"
+            title="Live Service Output - Blog"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+        />
+    );
+});
 
 interface LiveOutputViewProps {
     url: string;
     telegramUrl?: string;
 }
 
-export function LiveOutputView({ url, telegramUrl }: LiveOutputViewProps) {
+export const LiveOutputView = memo(function LiveOutputView({ url, telegramUrl }: LiveOutputViewProps) {
     const [activeTab, setActiveTab] = useState<'blog' | 'telegram'>('blog');
 
     return (
@@ -75,13 +88,7 @@ export function LiveOutputView({ url, telegramUrl }: LiveOutputViewProps) {
             {/* Content Area */}
             <div className="w-full flex-1 bg-white relative">
                 {activeTab === 'blog' || !telegramUrl ? (
-                    <iframe
-                        src={url}
-                        className="w-full h-full border-0"
-                        title="Live Service Output - Blog"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-                    />
+                    <StableIframe url={url} />
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#0088cc]/5 to-[#0088cc]/10 p-8">
                         <div className="max-w-md text-center space-y-6">
@@ -114,4 +121,4 @@ export function LiveOutputView({ url, telegramUrl }: LiveOutputViewProps) {
             </div>
         </div>
     );
-}
+});

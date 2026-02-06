@@ -3,11 +3,29 @@
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bot } from "lucide-react";
-import { formatRelativeTime } from "@jinn/shared-ui";
 import { useEffect, useState, useRef } from "react";
 import { transformToActivityItems, type ActivityItem } from "@/lib/ventures/activity-utils";
 import type { JobDefinition } from "@/lib/subgraph";
 import { cn } from "@/lib/utils";
+
+// Format timestamp in social media style (e.g., "2 mins ago", "3 hours ago")
+function formatTimeAgo(timestamp: number): string {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const months = Math.floor(days / 30);
+    const years = Math.floor(days / 365);
+
+    if (seconds < 60) return 'just now';
+    if (minutes < 60) return `${minutes} min${minutes !== 1 ? 's' : ''} ago`;
+    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    if (days < 30) return `${days} day${days !== 1 ? 's' : ''} ago`;
+    if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`;
+    return `${years} year${years !== 1 ? 's' : ''} ago`;
+}
 
 interface ActivityFeedProps {
     initialData: { jobDefinitions: JobDefinition[] };
@@ -127,7 +145,7 @@ function ChatMessage({ message, isNew }: { message: ActivityItem; isNew?: boolea
                         {message.jobName}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                        {formatRelativeTime(message.timestamp)}
+                        {formatTimeAgo(message.timestamp)}
                     </span>
                 </div>
 

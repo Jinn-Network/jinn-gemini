@@ -37,7 +37,7 @@
         "list_tools",
         "dispatch_new_job",
         "create_artifact",
-        "register_template"
+        "template_create"
     ],
     "invariants": [
         {
@@ -55,8 +55,8 @@
         {
             "id": "GOAL-010",
             "type": "BOOLEAN",
-            "condition": "TEMPLATE REGISTRATION (AFTER RE-INVOCATION): When re-invoked with completed test children, register the venture as a template using register_template. Use priceWei='100000000000000' (0.0001 ETH) and status='hidden'.",
-            "assessment": "Verify register_template was called after re-invocation with priceWei='100000000000000' and status='hidden'."
+            "condition": "TEMPLATE REGISTRATION (AFTER RE-INVOCATION): When re-invoked with completed test children, register the venture as a template using template_create. Use priceWei='100000000000000' (0.0001 ETH) and status='draft'.",
+            "assessment": "Verify template_create was called after re-invocation with priceWei='100000000000000' and status='draft'."
         }
     ]
 }

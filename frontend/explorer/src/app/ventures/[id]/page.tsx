@@ -11,6 +11,7 @@ import {
   getServiceOutputs,
   getWorkstreamActivity,
 } from '@/lib/ventures/service-queries';
+import { getVentureByWorkstreamId } from '@/lib/ventures-services';
 import { fetchIpfsContent, type Artifact, type JobDefinition } from '@/lib/subgraph';
 import {
   parseInvariants,
@@ -115,12 +116,13 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
   }
 
   // Fetch all data in parallel
-  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts, activityData] = await Promise.all([
+  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts, activityData, venture] = await Promise.all([
     getRootJobDefinition(id),
     getRootRequest(id),
     getMeasurementArtifacts(id),
     getServiceOutputs(id),
-    getWorkstreamActivity(id)
+    getWorkstreamActivity(id),
+    getVentureByWorkstreamId(id)
   ]);
 
   // Parse service outputs from artifacts
@@ -182,6 +184,15 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
         fetchActivity={fetchWorkstreamActivityAction}
         initialTab={initialTab}
         initialSelectedJobId={initialSelectedJobId}
+        tokenInfo={venture ? {
+          token_address: venture.token_address,
+          token_symbol: venture.token_symbol,
+          token_name: venture.token_name,
+          token_launch_platform: venture.token_launch_platform,
+          governance_address: venture.governance_address,
+          pool_address: venture.pool_address,
+          token_metadata: venture.token_metadata,
+        } : undefined}
       />
     </div>
   );
