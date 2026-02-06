@@ -1,10 +1,25 @@
 import { ponder } from "ponder:registry";
 import fetch from "cross-fetch";
 import axios from "axios";
-import { logger, serializeError } from "jinn-node/logging";
 import { Pool } from "pg";
-import { extractToolName } from "jinn-node/shared/template-tools";
 import { jobDefinition, request, delivery, artifact, message, workstream, jobTemplate, mechServiceMapping, stakedService } from "ponder:schema";
+
+// Local utilities to avoid jinn-node imports in Ponder build
+const logger = {
+  error: (...args: any[]) => console.error(...args),
+  warn: (...args: any[]) => console.warn(...args),
+  info: (...args: any[]) => console.log(...args),
+  debug: (...args: any[]) => console.log(...args),
+};
+
+function serializeError(error: any) {
+  return error instanceof Error ? { message: error.message, stack: error.stack } : error;
+}
+
+function extractToolName(tool: string | { name: string; required?: boolean }): string | null {
+  if (typeof tool === 'string') return tool;
+  return tool && typeof tool === 'object' && 'name' in tool ? tool.name : null;
+}
 
 // Minimal local types to avoid implicit any in handler params and align with Ponder 0.7+ DB API
 type Repository = {
