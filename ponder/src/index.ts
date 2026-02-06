@@ -4,7 +4,7 @@ import axios from "axios";
 import { logger, serializeError } from "jinn-node/logging";
 import { Pool } from "pg";
 import { extractToolName } from "jinn-node/shared/template-tools";
-import { jobDefinition, request, delivery, artifact, message, workstream, jobTemplate } from "ponder:schema";
+import { jobDefinition, request, delivery, artifact, message, workstream, jobTemplate, mechServiceMapping, stakedService } from "ponder:schema";
 
 // Minimal local types to avoid implicit any in handler params and align with Ponder 0.7+ DB API
 type Repository = {
@@ -1362,3 +1362,166 @@ ponder.on(
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index OlasMech Deliver");
     }
   });
+
+// ============================================================================
+// CreateMech handler: Maps service IDs to mech addresses
+// This enables looking up which mech belongs to which service
+// ============================================================================
+ponder.on(
+  "MechMarketplace:CreateMech",
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+    try {
+      const db = (context as any).db;
+      if (!db) {
+        logger.error("Ponder context.db is not available; cannot index CreateMech");
+        return;
+      }
+
+      const mech: string = String(event.args.mech).toLowerCase();
+      const serviceId: bigint = BigInt(toBigIntCoercible(event.args.serviceId));
+      const mechFactory: string = String(event.args.mechFactory).toLowerCase();
+      const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+      const mechServiceMappingRepo: Repository = createRepository(db, mechServiceMapping, "mechServiceMapping");
+
+      await mechServiceMappingRepo.upsert({
+        id: mech,
+        create: {
+          id: mech,
+          mech: mech as `0x${string}`,
+          serviceId,
+          mechFactory: mechFactory as `0x${string}`,
+          blockTimestamp,
+        },
+        update: {
+          // Don't update - first seen is authoritative
+        },
+      });
+
+      logger.info({ mech, serviceId: serviceId.toString(), mechFactory }, "Indexed CreateMech (service-to-mech mapping)");
+    } catch (e: any) {
+      logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index CreateMech");
+    }
+  }
+);
+
+// ============================================================================
+// ServiceStaked handler: Track when services are staked in staking contracts
+// ============================================================================
+ponder.on(
+  "StakingContracts:ServiceStaked",
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+    try {
+      const db = (context as any).db;
+      if (!db) {
+        logger.error("Ponder context.db is not available; cannot index ServiceStaked");
+        return;
+      }
+
+      const serviceId: bigint = BigInt(toBigIntCoercible(event.args.serviceId));
+      const owner: string = String(event.args.owner).toLowerCase();
+      const multisig: string = String(event.args.multisig).toLowerCase();
+      const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+      // Get the staking contract address from the event log
+      // In Ponder, event.log.address contains the contract that emitted the event
+      const stakingContract: string = String((event as any).log?.address || "").toLowerCase();
+
+      if (!stakingContract || stakingContract === "") {
+        logger.warn({ serviceId: serviceId.toString() }, "ServiceStaked event missing contract address");
+        return;
+      }
+
+      const id = `${serviceId.toString()}:${stakingContract}`;
+
+      const stakedServiceRepo: Repository = createRepository(db, stakedService, "stakedService");
+
+      await stakedServiceRepo.upsert({
+        id,
+        create: {
+          id,
+          serviceId,
+          stakingContract: stakingContract as `0x${string}`,
+          owner: owner as `0x${string}`,
+          multisig: multisig as `0x${string}`,
+          stakedAt: blockTimestamp,
+          unstakedAt: undefined,
+          isStaked: true,
+        },
+        update: {
+          // Re-staking: update staked status and timestamp
+          owner: owner as `0x${string}`,
+          multisig: multisig as `0x${string}`,
+          stakedAt: blockTimestamp,
+          unstakedAt: undefined,
+          isStaked: true,
+        },
+      });
+
+      logger.info({
+        serviceId: serviceId.toString(),
+        stakingContract,
+        owner,
+        multisig
+      }, "Indexed ServiceStaked");
+    } catch (e: any) {
+      logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index ServiceStaked");
+    }
+  }
+);
+
+// ============================================================================
+// ServiceUnstaked handler: Track when services are unstaked from staking contracts
+// ============================================================================
+ponder.on(
+  "StakingContracts:ServiceUnstaked",
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+    try {
+      const db = (context as any).db;
+      if (!db) {
+        logger.error("Ponder context.db is not available; cannot index ServiceUnstaked");
+        return;
+      }
+
+      const serviceId: bigint = BigInt(toBigIntCoercible(event.args.serviceId));
+      const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+      // Get the staking contract address from the event log
+      const stakingContract: string = String((event as any).log?.address || "").toLowerCase();
+
+      if (!stakingContract || stakingContract === "") {
+        logger.warn({ serviceId: serviceId.toString() }, "ServiceUnstaked event missing contract address");
+        return;
+      }
+
+      const id = `${serviceId.toString()}:${stakingContract}`;
+
+      const stakedServiceRepo: Repository = createRepository(db, stakedService, "stakedService");
+
+      // Check if record exists before updating
+      const existing = await stakedServiceRepo.findUnique({ id });
+      if (!existing) {
+        logger.warn({
+          serviceId: serviceId.toString(),
+          stakingContract
+        }, "ServiceUnstaked event for unknown staked service");
+        return;
+      }
+
+      await stakedServiceRepo.upsert({
+        id,
+        update: {
+          unstakedAt: blockTimestamp,
+          isStaked: false,
+        },
+      });
+
+      logger.info({
+        serviceId: serviceId.toString(),
+        stakingContract
+      }, "Indexed ServiceUnstaked");
+    } catch (e: any) {
+      logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index ServiceUnstaked");
+    }
+  }
+);

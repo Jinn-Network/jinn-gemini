@@ -1,6 +1,7 @@
 import 'jinn-node/env';
 import MechMarketplaceAbi from './abis/MechMarketplace.json';
 import AgentMechAbi from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
+import StakingTokenAbi from './abis/StakingToken.json';
 import { createConfig, factory } from "ponder";
 import { http } from "viem";
 import fetch from 'cross-fetch';
@@ -187,7 +188,7 @@ export default createConfig({
       // 1. Test VNets are small (few hundred blocks) so scanning all addresses is fast
       // 2. Tests dispatch to known mech address, so events will be indexed
       // 3. Production (FACTORY_START_BLOCK=25M) still uses factory pattern for efficiency
-      address: FACTORY_START_BLOCK === 0 
+      address: FACTORY_START_BLOCK === 0
         ? undefined // undefined = index from all addresses (test mode only!)
         : factory({
             address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
@@ -200,6 +201,18 @@ export default createConfig({
       // Index Deliver events only from recent high-volume window (or env override)
       // CRITICAL: Call getChildStartBlock() here (not at module-load time) so test env vars are set first
       startBlock: getChildStartBlock(),
+      endBlock,
+    },
+    // OLAS Staking Contracts - track which services are staked in which contracts
+    // This enables dynamic mech filtering based on staking contract membership
+    StakingContracts: {
+      chain: "base",
+      abi: StakingTokenAbi,
+      address: [
+        '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking (5,000 OLAS min)
+        '0x2585e63df7BD9De8e058884D496658a030b5c6ce', // AgentsFun1 (50 OLAS min)
+      ],
+      startBlock: FACTORY_START_BLOCK,
       endBlock,
     },
   },

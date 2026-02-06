@@ -166,6 +166,46 @@ export const workstream = onchainTable(
  * blueprints and tool configurations. They represent callable workflows
  * that can be executed via x402 payments.
  */
+/**
+ * Maps service IDs to mech addresses (from CreateMech events)
+ * Enables lookup of mech address for a given service ID
+ */
+export const mechServiceMapping = onchainTable(
+  "mech_service_mapping",
+  (t) => ({
+    id: t.text().primaryKey(), // mech address (lowercase)
+    mech: t.hex().notNull(),
+    serviceId: t.bigint().notNull(),
+    mechFactory: t.hex().notNull(),
+    blockTimestamp: t.bigint().notNull(),
+  }),
+  (table) => ({
+    serviceIdIdx: index().on(table.serviceId),
+  })
+);
+
+/**
+ * Tracks staked services by staking contract
+ * Enables lookup of all mechs staked in a given staking contract
+ */
+export const stakedService = onchainTable(
+  "staked_service",
+  (t) => ({
+    id: t.text().primaryKey(), // `${serviceId}:${stakingContract}`
+    serviceId: t.bigint().notNull(),
+    stakingContract: t.hex().notNull(),
+    owner: t.hex().notNull(),
+    multisig: t.hex().notNull(),
+    stakedAt: t.bigint().notNull(),
+    unstakedAt: t.bigint(), // null if still staked
+    isStaked: t.boolean().notNull(),
+  }),
+  (table) => ({
+    stakingContractIsStakedIdx: index().on(table.stakingContract, table.isStaked),
+    serviceIdIdx: index().on(table.serviceId),
+  })
+);
+
 export const jobTemplate = onchainTable(
   "job_template",
   (t) => ({
