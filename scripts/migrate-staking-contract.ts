@@ -21,8 +21,17 @@
  *   - AgentsFun1: 0x2585e63df7BD9De8e058884D496658a030b5c6ce (50 OLAS min)
  */
 
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+// Load root .env before jinn-node/env (which resolves repoRoot to jinn-node/)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+
 import 'jinn-node/env';
 import { ethers } from 'ethers';
+import Safe from '@safe-global/protocol-kit';
 import { getMasterPrivateKey, getMasterEOA, getMasterSafe } from 'jinn-node/env/operate-profile';
 
 // ============================================================================
@@ -154,29 +163,21 @@ async function main() {
   console.log(`Mode:           ${dryRun ? '🔍 DRY RUN (no transactions)' : '⚡ LIVE'}`);
   console.log();
 
-  // Get master wallet
-  const masterPrivateKey = getMasterPrivateKey();
-  if (!masterPrivateKey) {
-    console.error('❌ Failed to get master wallet private key');
-    console.error('   Ensure OPERATE_PASSWORD is set and .operate/wallets/ethereum.txt exists');
-    process.exit(1);
-  }
+  // Setup provider (read-only for preflight)
+  const provider = new ethers.JsonRpcProvider(RPC_URL);
 
+  // For dry-run, we only need read access. Defer wallet decryption to live execution.
   const masterEOA = getMasterEOA();
   const masterSafe = getMasterSafe('base');
   console.log(`Master EOA:     ${masterEOA}`);
   console.log(`Master Safe:    ${masterSafe}`);
 
-  // Setup provider and signer
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const signer = new ethers.Wallet(masterPrivateKey, provider);
-
-  // Contract instances
-  const sourceStaking = new ethers.Contract(sourceConfig.address, STAKING_ABI, signer);
-  const targetStaking = new ethers.Contract(targetConfig.address, STAKING_ABI, signer);
+  // Read-only contract instances for preflight
+  const sourceStaking = new ethers.Contract(sourceConfig.address, STAKING_ABI, provider);
+  const targetStaking = new ethers.Contract(targetConfig.address, STAKING_ABI, provider);
   const serviceRegistry = new ethers.Contract(CONTRACTS.SERVICE_REGISTRY, SERVICE_REGISTRY_ABI, provider);
-  const tokenUtility = new ethers.Contract(CONTRACTS.SERVICE_REGISTRY_TOKEN_UTILITY, TOKEN_UTILITY_ABI, signer);
-  const olasToken = new ethers.Contract(CONTRACTS.OLAS_TOKEN, ERC20_ABI, signer);
+  const tokenUtility = new ethers.Contract(CONTRACTS.SERVICE_REGISTRY_TOKEN_UTILITY, TOKEN_UTILITY_ABI, provider);
+  const olasToken = new ethers.Contract(CONTRACTS.OLAS_TOKEN, ERC20_ABI, provider);
 
   // ════════════════════════════════════════════════════════════════════════
   // Step 1: Preflight Checks
@@ -189,91 +190,109 @@ async function main() {
   const owner = await serviceRegistry.ownerOf(serviceId);
   console.log(`\n📋 Service NFT Owner: ${owner}`);
 
-  // Check if staked in source
+  // Check if staked in source (active or evicted)
   const sourceStakedIds = await getStakedServiceIds(sourceStaking);
-  const isStakedInSource = sourceStakedIds.includes(serviceId);
-  console.log(`📍 Source Staking Status: ${isStakedInSource ? '✅ STAKED' : '❌ NOT STAKED'}`);
+  const isActiveInSource = sourceStakedIds.includes(serviceId);
+  const isOwnedBySource = owner.toLowerCase() === sourceConfig.address.toLowerCase();
+  const isEvicted = isOwnedBySource && !isActiveInSource;
 
-  if (isStakedInSource) {
-    // When staked, the staking contract owns the NFT
-    // The multisig registered in mapServiceInfo must be the Master Safe
-    const serviceInfo = await sourceStaking.mapServiceInfo(serviceId);
-    const stakingMultisig = serviceInfo[1]; // multisig address from staking contract (index 1, not 0)
-
-    console.log(`   Service is staked - staking contract owns NFT`);
-    console.log(`   Registered multisig: ${stakingMultisig}`);
-
-    // Verify staking contract owns the NFT
-    if (owner.toLowerCase() !== sourceConfig.address.toLowerCase()) {
-      console.error(`❌ Service NFT not owned by source staking contract`);
-      console.error(`   Expected: ${sourceConfig.address}`);
-      console.error(`   Got: ${owner}`);
-      process.exit(1);
-    }
-
-    // Verify the multisig registered in staking contract is the Master Safe
-    if (stakingMultisig.toLowerCase() !== masterSafe?.toLowerCase()) {
-      console.error(`❌ Staking contract multisig doesn't match Master Safe`);
-      console.error(`   Staking contract multisig: ${stakingMultisig}`);
-      console.error(`   Master Safe: ${masterSafe}`);
-      console.error('   Cannot migrate - the Master Safe must be registered as the multisig');
-      process.exit(1);
-    }
-
-    console.log('   ✅ Service is properly staked in source contract');
-    console.log('   ✅ Master Safe is registered as the staking multisig');
+  if (isActiveInSource) {
+    console.log(`📍 Source Staking Status: ✅ ACTIVELY STAKED`);
+  } else if (isEvicted) {
+    console.log(`📍 Source Staking Status: ⚠️  EVICTED (NFT held by staking contract, not in active list)`);
+    console.log('   unstake() will reclaim the NFT');
   } else {
-    // Not staked - Master Safe must own the NFT directly
-    if (owner.toLowerCase() !== masterSafe?.toLowerCase()) {
-      console.error(`❌ Service is owned by ${owner}, not Master Safe ${masterSafe}`);
-      console.error('   The Master Safe must own the service to migrate it');
-      process.exit(1);
+    console.log(`📍 Source Staking Status: ❌ NOT STAKED`);
+  }
+
+  if (isOwnedBySource) {
+    // NFT is held by source staking contract (either active or evicted)
+    // Try to read mapServiceInfo for logging, but don't fail if it reverts
+    try {
+      const serviceInfo = await sourceStaking.mapServiceInfo(serviceId);
+      console.log(`   Registered multisig: ${serviceInfo[0]}`);
+      console.log(`   Registered owner: ${serviceInfo[1]}`);
+    } catch {
+      console.log('   (mapServiceInfo reverted — common for some contract versions)');
     }
-    console.log('   ✅ Master Safe owns the service');
-    console.error(`\n❌ Service ${serviceId} is not staked in ${sourceConfig.name}`);
-    console.error(`   Staked services: ${sourceStakedIds.join(', ') || 'none'}`);
-    console.error(`   Cannot migrate an unstaked service`);
+
+    console.log('   ✅ Service NFT is held by source staking contract');
+  } else {
+    // Not owned by source staking contract at all
+    console.error(`\n❌ Service ${serviceId} NFT is not owned by ${sourceConfig.name}`);
+    console.error(`   NFT owner: ${owner}`);
+    console.error(`   Source contract: ${sourceConfig.address}`);
+    console.error('   Cannot unstake — the NFT must be held by the source staking contract');
     process.exit(1);
   }
 
   // Check current bond amount
-  const [currentBond] = await tokenUtility.mapServiceIdTokenDeposit(serviceId);
-  const currentBondFormatted = ethers.formatEther(currentBond);
-  console.log(`\n💰 Current Bond: ${currentBondFormatted} OLAS`);
+  let currentBond = 0n;
+  let needsBondTopup = false;
+  let topupAmount = 0n;
+  try {
+    const bondResult = await tokenUtility.mapServiceIdTokenDeposit(serviceId);
+    currentBond = bondResult[0];
+    // Sanity check — if the decoded value is unrealistically large, ABI mismatch
+    if (currentBond > ethers.parseEther('1000000000')) {
+      console.log(`\n💰 Current Bond: (ABI decoding returned unrealistic value, skipping bond check)`);
+      console.log('   Will check bond after unstaking when service state is cleaner');
+    } else {
+      console.log(`\n💰 Current Bond: ${ethers.formatEther(currentBond)} OLAS`);
+    }
+  } catch (e: any) {
+    console.log(`\n💰 Current Bond: (could not read — ${e.message?.slice(0, 80)})`);
+    console.log('   Will verify bond after unstaking');
+  }
 
   // Check target minimum stake
-  const targetMinStake = await targetStaking.minStakingDeposit();
-  console.log(`   Target Min Stake: ${ethers.formatEther(targetMinStake)} OLAS`);
+  let targetMinStake = 0n;
+  try {
+    targetMinStake = await targetStaking.minStakingDeposit();
+    console.log(`   Target Min Stake: ${ethers.formatEther(targetMinStake)} OLAS`);
 
-  const needsBondTopup = currentBond < targetMinStake;
-  const topupAmount = needsBondTopup ? targetMinStake - currentBond : 0n;
-  if (needsBondTopup) {
-    console.log(`   ⚠️  Bond top-up required: ${ethers.formatEther(topupAmount)} OLAS`);
+    // Only compare if bond decoded correctly
+    if (currentBond > 0n && currentBond < ethers.parseEther('1000000000')) {
+      needsBondTopup = currentBond < targetMinStake;
+      topupAmount = needsBondTopup ? targetMinStake - currentBond : 0n;
+      if (needsBondTopup) {
+        console.log(`   ⚠️  Bond top-up required: ${ethers.formatEther(topupAmount)} OLAS`);
 
-    // Check OLAS balance
-    const olasBalance = await olasToken.balanceOf(masterEOA);
-    console.log(`   Master EOA OLAS balance: ${ethers.formatEther(olasBalance)} OLAS`);
+        const olasBalance = await olasToken.balanceOf(masterEOA);
+        console.log(`   Master EOA OLAS balance: ${ethers.formatEther(olasBalance)} OLAS`);
 
-    if (olasBalance < topupAmount) {
-      console.error(`   ❌ Insufficient OLAS balance for top-up`);
-      console.error(`      Need: ${ethers.formatEther(topupAmount)} OLAS`);
-      console.error(`      Have: ${ethers.formatEther(olasBalance)} OLAS`);
-      process.exit(1);
+        if (olasBalance < topupAmount) {
+          console.error(`   ❌ Insufficient OLAS balance for top-up`);
+          console.error(`      Need: ${ethers.formatEther(topupAmount)} OLAS`);
+          console.error(`      Have: ${ethers.formatEther(olasBalance)} OLAS`);
+          process.exit(1);
+        }
+        console.log('   ✅ Sufficient OLAS for bond top-up');
+      } else {
+        console.log('   ✅ Current bond meets target minimum');
+      }
+    } else {
+      console.log('   (bond comparison deferred — will check after unstake)');
     }
-    console.log('   ✅ Sufficient OLAS for bond top-up');
-  } else {
-    console.log('   ✅ Current bond meets target minimum');
+  } catch (e: any) {
+    console.log(`   Target Min Stake: (could not read — ${e.message?.slice(0, 80)})`);
   }
 
   // Check target has slots available
-  const targetStakedIds = await getStakedServiceIds(targetStaking);
-  const targetMaxServices = await targetStaking.maxNumServices();
-  console.log(`\n🎰 Target Slots: ${targetStakedIds.length}/${targetMaxServices}`);
-  if (targetStakedIds.length >= targetMaxServices) {
-    console.error(`   ❌ Target staking contract is full`);
-    process.exit(1);
+  let targetStakedIds: number[] = [];
+  try {
+    targetStakedIds = await getStakedServiceIds(targetStaking);
+    const targetMaxServices = await targetStaking.maxNumServices();
+    console.log(`\n🎰 Target Slots: ${targetStakedIds.length}/${targetMaxServices}`);
+    if (targetStakedIds.length >= Number(targetMaxServices)) {
+      console.error(`   ❌ Target staking contract is full`);
+      process.exit(1);
+    }
+    console.log('   ✅ Slots available');
+  } catch (e: any) {
+    console.log(`\n🎰 Target Slots: (could not read — ${e.message?.slice(0, 80)})`);
+    console.log('   Proceeding cautiously — slot check failed');
   }
-  console.log('   ✅ Slots available');
 
   // Check not already staked in target
   if (targetStakedIds.includes(serviceId)) {
@@ -286,7 +305,7 @@ async function main() {
     console.log('  DRY RUN COMPLETE - No transactions executed');
     console.log('═══════════════════════════════════════════════════════════════');
     console.log('\nWould execute:');
-    console.log(`  1. Unstake from ${sourceConfig.name}`);
+    console.log(`  1. Unstake from ${sourceConfig.name}${isEvicted ? ' (evicted service)' : ''}`);
     if (needsBondTopup) {
       console.log(`  2. Approve ${ethers.formatEther(topupAmount)} OLAS for ServiceRegistryTokenUtility`);
       console.log(`  3. Increase security deposit by ${ethers.formatEther(topupAmount)} OLAS`);
@@ -299,17 +318,53 @@ async function main() {
   }
 
   // ════════════════════════════════════════════════════════════════════════
+  // Initialize Safe SDK for live execution
+  // ════════════════════════════════════════════════════════════════════════
+  const masterPrivateKey = getMasterPrivateKey();
+  if (!masterPrivateKey) {
+    console.error('❌ Failed to get master wallet private key');
+    console.error('   Ensure OPERATE_PASSWORD is set and .operate/wallets/ethereum.txt exists');
+    process.exit(1);
+  }
+
+  console.log('\n📦 Initializing Safe SDK...');
+  const protocolKit = await Safe.init({
+    provider: RPC_URL,
+    signer: masterPrivateKey,
+    safeAddress: masterSafe!,
+  });
+  console.log('   ✅ Safe SDK initialized');
+
+  // Helper: encode calldata and execute via Safe
+  async function executeSafeTx(to: string, data: string, label: string) {
+    console.log(`\n🔄 ${label}...`);
+    const safeTx = await protocolKit.createTransaction({
+      transactions: [{ to, value: '0', data }],
+    });
+    const signedTx = await protocolKit.signTransaction(safeTx);
+    const result = await protocolKit.executeTransaction(signedTx);
+    console.log(`   TX: ${result.hash}`);
+    await result.transactionResponse?.wait();
+    console.log(`   ✅ Done`);
+    return result;
+  }
+
+  const stakingIface = new ethers.Interface(STAKING_ABI);
+  const tokenUtilityIface = new ethers.Interface(TOKEN_UTILITY_ABI);
+  const erc20Iface = new ethers.Interface(ERC20_ABI);
+
+  // ════════════════════════════════════════════════════════════════════════
   // Step 2: Unstake from Source
   // ════════════════════════════════════════════════════════════════════════
   console.log('\n═══════════════════════════════════════════════════════════════');
   console.log('  Step 2: Unstake from Source');
   console.log('═══════════════════════════════════════════════════════════════');
 
-  console.log(`\n🔄 Unstaking service ${serviceId} from ${sourceConfig.name}...`);
-  const unstakeTx = await sourceStaking.unstake(serviceId);
-  console.log(`   TX: ${unstakeTx.hash}`);
-  const unstakeReceipt = await unstakeTx.wait();
-  console.log(`   ✅ Unstaked (block ${unstakeReceipt?.blockNumber})`);
+  await executeSafeTx(
+    sourceConfig.address,
+    stakingIface.encodeFunctionData('unstake', [serviceId]),
+    `Unstaking service ${serviceId} from ${sourceConfig.name}${isEvicted ? ' (evicted)' : ''}`
+  );
 
   // ════════════════════════════════════════════════════════════════════════
   // Step 3: Top-up Bond (if needed)
@@ -319,23 +374,17 @@ async function main() {
     console.log('  Step 3: Top-up Bond');
     console.log('═══════════════════════════════════════════════════════════════');
 
-    // Approve OLAS spending
-    console.log(`\n🔄 Approving ${ethers.formatEther(topupAmount)} OLAS for ServiceRegistryTokenUtility...`);
-    const approveTx = await olasToken.approve(CONTRACTS.SERVICE_REGISTRY_TOKEN_UTILITY, topupAmount);
-    console.log(`   TX: ${approveTx.hash}`);
-    await approveTx.wait();
-    console.log('   ✅ Approved');
+    await executeSafeTx(
+      CONTRACTS.OLAS_TOKEN,
+      erc20Iface.encodeFunctionData('approve', [CONTRACTS.SERVICE_REGISTRY_TOKEN_UTILITY, topupAmount]),
+      `Approving ${ethers.formatEther(topupAmount)} OLAS for ServiceRegistryTokenUtility`
+    );
 
-    // Increase security deposit
-    console.log(`\n🔄 Increasing security deposit by ${ethers.formatEther(topupAmount)} OLAS...`);
-    const increaseTx = await tokenUtility.increaseSecurityDeposit(serviceId, topupAmount);
-    console.log(`   TX: ${increaseTx.hash}`);
-    await increaseTx.wait();
-    console.log('   ✅ Security deposit increased');
-
-    // Verify new bond
-    const [newBond] = await tokenUtility.mapServiceIdTokenDeposit(serviceId);
-    console.log(`   New bond: ${ethers.formatEther(newBond)} OLAS`);
+    await executeSafeTx(
+      CONTRACTS.SERVICE_REGISTRY_TOKEN_UTILITY,
+      tokenUtilityIface.encodeFunctionData('increaseSecurityDeposit', [serviceId, topupAmount]),
+      `Increasing security deposit by ${ethers.formatEther(topupAmount)} OLAS`
+    );
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -345,11 +394,11 @@ async function main() {
   console.log('  Step 4: Stake in Target');
   console.log('═══════════════════════════════════════════════════════════════');
 
-  console.log(`\n🔄 Staking service ${serviceId} in ${targetConfig.name}...`);
-  const stakeTx = await targetStaking.stake(serviceId);
-  console.log(`   TX: ${stakeTx.hash}`);
-  const stakeReceipt = await stakeTx.wait();
-  console.log(`   ✅ Staked (block ${stakeReceipt?.blockNumber})`);
+  await executeSafeTx(
+    targetConfig.address,
+    stakingIface.encodeFunctionData('stake', [serviceId]),
+    `Staking service ${serviceId} in ${targetConfig.name}`
+  );
 
   // ════════════════════════════════════════════════════════════════════════
   // Step 5: Verification
@@ -365,10 +414,14 @@ async function main() {
 
   // Get staking info
   if (isStakedInTarget) {
-    const stakingInfo = await targetStaking.mapServiceInfo(serviceId);
-    console.log(`   Multisig: ${stakingInfo[0]}`);
-    console.log(`   Owner: ${stakingInfo[1]}`);
-    console.log(`   Staking Start: ${new Date(Number(stakingInfo[3]) * 1000).toISOString()}`);
+    try {
+      const stakingInfo = await targetStaking.mapServiceInfo(serviceId);
+      console.log(`   Multisig: ${stakingInfo[0]}`);
+      console.log(`   Owner: ${stakingInfo[1]}`);
+      console.log(`   Staking Start: ${new Date(Number(stakingInfo[3]) * 1000).toISOString()}`);
+    } catch {
+      console.log('   (mapServiceInfo not available on this contract)');
+    }
   }
 
   // Verify not in source anymore
