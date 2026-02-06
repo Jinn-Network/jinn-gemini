@@ -1,0 +1,25 @@
+[build]
+builder = "NIXPACKS"
+nixpacksConfigPath = "deploy/worker-default/nixpacks.toml"
+watchPatterns = ["/jinn-node/**", "/package.json"]
+
+[deploy]
+# Uses worker_launcher.js which provides:
+# - Healthcheck server for Railway monitoring
+# - Multi-process support (WORKER_COUNT env var)
+# - Graceful shutdown handling
+# - Log prefixing for worker identification
+#
+# init.sh runs first to configure:
+# - Git identity from GIT_AUTHOR_* env vars
+# - SSH known_hosts for GitHub
+# - Required directories
+startCommand = "export NODE_OPTIONS='--disable-warning=DEP0040' && bash deploy/worker-default/init.sh && node jinn-node/dist/worker/worker_launcher.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# Environment variables (set in Railway dashboard):
+# - CONTROL_API_URL: URL to Control API GraphQL
+# - PONDER_GRAPHQL_URL: URL to Ponder GraphQL
+# - WORKSTREAM_FILTER: (empty for all, or hex ID for specific workstream)
+# - WORKER_ID: Identifier for this worker instance
