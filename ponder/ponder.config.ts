@@ -1,4 +1,3 @@
-import 'jinn-node/env';
 import MechMarketplaceAbi from './abis/MechMarketplace.json';
 import AgentMechAbi from '@jinn-network/mech-client-ts/dist/abis/AgentMech.json';
 import StakingTokenAbi from './abis/StakingToken.json';
