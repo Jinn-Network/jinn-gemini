@@ -4,6 +4,7 @@ import StakingTokenAbi from './abis/StakingToken.json';
 import { createConfig, factory } from "ponder";
 import { http } from "viem";
 import fetch from 'cross-fetch';
+// Force rebuild to include venture type fixes and staking schema
 
 // Suppress config logs when running under non-default runtime environments
 const runtimeMode = process.env.RUNTIME_ENVIRONMENT || 'default';
