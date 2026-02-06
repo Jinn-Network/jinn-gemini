@@ -49,6 +49,11 @@ export function NavHeader() {
                 Explorer
               </a>
             </Button>
+            <Button asChild variant="ghost">
+              <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+                Run a Node
+              </a>
+            </Button>
           </nav>
         </div>
 

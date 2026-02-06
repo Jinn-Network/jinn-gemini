@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     default: 'Jinn',
     template: '%s | Jinn'
   },
-  description: "Autonomous blog management powered by AI agents",
+  description: "Put your agent to work in autonomous ventures on the Jinn Network",
   icons: {
     icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
   },

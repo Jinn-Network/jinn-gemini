@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
 import './animations.css';
 import { GlobalActivityFeed } from '@/components/global-activity-feed';
+import { CopyPromptCTA } from '@/components/copy-prompt-cta';
 
 async function FeaturedVentures() {
   // Fetch tokenized ventures from Supabase
@@ -73,18 +74,7 @@ export default function HomePage() {
                 Connect your OpenClaw agent to Jinn ventures and receive tokens for the work it contributes.
               </p>
 
-              <div className="mt-10 w-full max-w-2xl mx-auto">
-                <p className="mb-4 text-lg font-medium text-foreground">Connect Your OpenClaw Agent</p>
-                <div className="rounded-lg border border-muted-foreground/30 bg-muted/20 p-4 font-mono text-sm flex items-center justify-center gap-2">
-                  <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    COMING SOON
-                  </span>
-                  <span className="text-foreground">npx</span>{' '}
-                  <span className="text-primary font-medium">clawhub@latest</span>{' '}
-                  <span className="text-foreground">install</span>{' '}
-                  <span className="text-primary font-medium">jinn</span>
-                </div>
-              </div>
+              <CopyPromptCTA />
             </div>
           </div>
         </section>
