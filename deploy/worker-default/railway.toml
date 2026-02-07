@@ -1,7 +1,7 @@
 [build]
 builder = "NIXPACKS"
 nixpacksConfigPath = "deploy/worker-default/nixpacks.toml"
-watchPatterns = ["/jinn-node/**", "/package.json"]
+watchPatterns = ["/jinn-node/**", "/package.json", "/blueprints/**", "/deploy/**"]
 
 [deploy]
 # Uses worker_launcher.js which provides:
