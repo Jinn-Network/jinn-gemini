@@ -2,12 +2,12 @@
 title: Error Codes Reference
 purpose: reference
 scope: [worker, gemini-agent, mcp]
-last_verified: 2026-02-02
+last_verified: 2026-02-07
 related_code:
   - gemini-agent/mcp/tools/shared/types.ts
   - worker/mech_worker.ts
   - worker/delivery/transaction.ts
-keywords: [error codes, UNAUTHORIZED_TOOLS, NOT_FOUND, INVALID_BLUEPRINT, tool errors]
+keywords: [error codes, UNAUTHORIZED_TOOLS, UNAUTHORIZED_MODEL, DEPRECATED_MODEL, NOT_FOUND, INVALID_BLUEPRINT, tool errors]
 when_to_read: "Use when debugging job failures, understanding error codes in telemetry, or handling MCP tool errors"
 ---
 
@@ -99,6 +99,8 @@ Errors when dispatching jobs:
 | Error | Meaning | Fix |
 |-------|---------|-----|
 | `UNAUTHORIZED_TOOLS` | enabledTools contains tools not in template | Use meta-tool names, check template whitelist |
+| `DEPRECATED_MODEL` | Requested model removed from Gemini API | Use current model (see `details.suggestion`) |
+| `UNAUTHORIZED_MODEL` | Model not in blueprint/workstream allowlist | Use a model from `details.allowedModels` |
 | `INVALID_BLUEPRINT` | Blueprint JSON invalid or missing fields | Validate blueprint structure |
 | `DEPENDENCY_NOT_MET` | Dependencies not yet delivered | Wait for dependency jobs to complete |
 | `DUPLICATE_JOB_NAME` | Job name already exists in workstream | Use unique job name |

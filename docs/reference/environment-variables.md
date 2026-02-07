@@ -2,7 +2,7 @@
 title: Environment Variables Reference
 purpose: reference
 scope: [worker, gemini-agent, frontend, deployment]
-last_verified: 2026-02-02
+last_verified: 2026-02-07
 related_code:
   - config/index.ts
   - worker/mech_worker.ts
@@ -114,6 +114,8 @@ Set by worker during job execution. See [Worker Environment](../context/worker-e
 | `JINN_REQUIRED_TOOLS` | JSON | Array of required tools from template policy |
 | `JINN_AVAILABLE_TOOLS` | JSON | Array of available tools from template policy |
 | `JINN_BLUEPRINT_INVARIANT_IDS` | JSON | Array of blueprint invariant IDs |
+| `JINN_ALLOWED_MODELS` | JSON | Array of allowed Gemini model names (cascaded from blueprint `models.allowed`). Agents cannot dispatch children with models outside this list. |
+| `JINN_DEFAULT_MODEL` | string | Default model from blueprint `models.default`. Only set when different from `gemini-3-flash`. |
 | `JINN_INHERITED_ENV` | JSON | Inherited env vars from parent job |
 
 ## Git Workflow

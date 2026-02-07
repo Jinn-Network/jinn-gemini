@@ -2,7 +2,7 @@
 title: Troubleshoot Dispatch
 purpose: runbook
 scope: [worker, gemini-agent]
-last_verified: 2026-01-30
+last_verified: 2026-02-07
 related_code:
   - gemini-agent/mcp/tools/dispatch_new_job.ts
   - gemini-agent/mcp/tools/dispatch_existing_job.ts
@@ -30,6 +30,8 @@ Debug job dispatch failures for `dispatch_new_job` and `dispatch_existing_job` t
 | `MISSING_DEPENDENCY` | Dependencies not found | Dependency job definition not indexed in Ponder yet | Wait for Ponder indexing. Increase retries: `JINN_DEPENDENCY_VALIDATION_RETRIES=5`. Increase delay: `JINN_DEPENDENCY_VALIDATION_DELAY_MS=1000`. |
 | `CIRCULAR_DEPENDENCY` | Child depends on parent | Child job lists its parent job definition in dependencies | Remove circular dependency. Children cannot wait on parents - this creates deadlock. Dependencies are for sibling coordination only. |
 | `UNAUTHORIZED_TOOLS` | Tool policy violation | Requested tool not in template's `availableTools` | Use meta-tools or update template policy. Universal tools (dispatch, search, etc.) are always allowed. |
+| `DEPRECATED_MODEL` | Model rejected | Requested model is deprecated/removed from Gemini API | Use a current model (e.g., `gemini-3-flash`, `gemini-2.5-pro`). Check `details.suggestion` for recommended alternative. |
+| `UNAUTHORIZED_MODEL` | Model not in allowlist | Requested model not in blueprint `models.allowed` or parent workstream's `allowedModels` | Use a model from the allowlist. Check `details.allowedModels` for permitted models. |
 | `PAYLOAD_BUILD_ERROR` | IPFS payload build failed | Error in `buildIpfsPayload` | Check code metadata collection, branch creation. Review logs for specific field errors. |
 | `DISPATCH_FAILED` | Marketplace returns no request IDs | On-chain transaction failed or mech misconfigured | Check mech balance, private key, RPC endpoint. See diagnostics below. |
 | `EXECUTION_ERROR` | Runtime error during dispatch | Mech address/private key missing or marketplace call threw | Verify `.operate` config has `MECH_TO_CONFIG`. Check `.operate/keys` directory. |

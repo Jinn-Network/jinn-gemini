@@ -2,14 +2,14 @@
 title: IPFS Payload Structure Reference
 purpose: reference
 scope: [worker, gemini-agent]
-last_verified: 2026-01-30
+last_verified: 2026-02-07
 related_code:
   - gemini-agent/mcp/tools/dispatch_new_job.ts
   - gemini-agent/shared/ipfs-payload-builder.ts
   - worker/metadata/fetchIpfsMetadata.ts
   - worker/types.ts
   - ponder/src/index.ts
-keywords: [ipfs, payload, metadata, blueprint, lineage, code metadata]
+keywords: [ipfs, payload, metadata, blueprint, lineage, code metadata, model policy, allowedModels]
 when_to_read: "When understanding job payload structure or debugging IPFS data"
 ---
 
@@ -35,7 +35,8 @@ gemini-agent/shared/ipfs-payload-builder.ts  -->  IPFS  -->  worker/metadata/fet
 | `blueprint` | `string` | Yes | JSON string containing invariants array. Primary job specification. |
 | `jobName` | `string` | Yes | Human-readable name for the job. |
 | `jobDefinitionId` | `string` | Yes | UUID identifying this job definition. |
-| `model` | `string` | No | Gemini model (e.g., `"gemini-2.5-pro"`). Default: `"auto-gemini-3"`. |
+| `model` | `string` | No | Gemini model (e.g., `"gemini-2.5-pro"`). Default: `"gemini-3-flash"`. |
+| `allowedModels` | `string[]` | No | Model allowlist cascaded from blueprint/workstream. Child agents inherit this constraint. |
 | `enabledTools` | `string[]` | No | Tool names available to the agent. |
 | `tools` | `TemplateToolSpec[]` | No | Annotated tool specs with `{name, required}` for policy enforcement. |
 | `nonce` | `string` | Yes | UUID for request uniqueness. |
@@ -154,6 +155,7 @@ Added when a branch is created. Instructs the agent on branch requirements:
   "jobName": "Fix authentication bug",
   "jobDefinitionId": "550e8400-e29b-41d4-a716-446655440000",
   "model": "gemini-2.5-pro",
+  "allowedModels": ["gemini-3-flash", "gemini-3-pro-preview", "gemini-2.5-pro"],
   "enabledTools": ["read_file", "write_file", "run_shell_command"],
   "nonce": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "networkId": "jinn",
