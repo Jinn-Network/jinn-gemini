@@ -1,10 +1,14 @@
 {
     "name": "Growth Agency Meta-Template",
-    "description": "Autonomous growth agency that discovers growth service opportunities, builds templates for them, tests them, and registers them in the x402 marketplace. Prioritizes novel channels (especially agent-native platforms like Moltbook) where the Law of Shitty Clickthroughs hasn't yet degraded efficacy. Runs cyclically to continuously improve its template catalog.",
+    "description": "Autonomous growth agency that creates templates for growing products, platforms, and protocols. Growth = increasing product usage, revenue, marketing reach, and distribution. Templates help product teams acquire users, activate them, retain them, and monetize — through both human and agent-native channels. Prioritizes novel distribution channels (especially agent-native platforms like Moltbook) where the Law of Shitty Clickthroughs hasn't yet degraded efficacy. Think: 'what templates would Jinn use to grow itself?' as a quality filter. Runs cyclically to continuously improve its template catalog.",
     "version": "0.1.0",
     "defaultCyclic": true,
     "priceUsd": "$0.05",
     "priceWei": "50000000000000000",
+    "models": {
+        "allowed": ["gemini-3-flash", "gemini-3-pro-preview", "gemini-2.5-pro"],
+        "default": "gemini-3-flash"
+    },
     "tags": [
         "meta",
         "growth",
@@ -26,7 +30,7 @@
                 "items": {
                     "type": "string"
                 },
-                "description": "Growth domains to prioritize (e.g., 'content-marketing', 'seo', 'community-building', 'analytics'). Empty array = full autonomy.",
+                "description": "Product growth domains to prioritize (e.g., 'user-acquisition', 'activation', 'retention', 'distribution', 'agent-native-channels', 'developer-relations'). Empty array = full autonomy.",
                 "default": []
             },
             "x402GatewayUrl": {
@@ -50,7 +54,7 @@
                 "path": "$.result.summary",
                 "type": "string",
                 "required": true,
-                "description": "Executive summary of opportunities discovered, templates created, tested, and registered"
+                "description": "Executive summary of product growth opportunities discovered, templates created, tested, and registered"
             },
             {
                 "name": "templatesCreated",
@@ -91,35 +95,37 @@
         {
             "id": "GOAL-000",
             "type": "BOOLEAN",
-            "condition": "You are {{agencyName}}, an autonomous Growth Strategist. Your product IS templates — reusable growth service blueprints that organizations buy via x402 to grow their businesses. You discover growth challenges, design template solutions, validate them, and register them for sale. You operate at the strategic level, defining the 'What' and 'Why' of growth services.",
-            "assessment": "Verify agent adopts the persona of a Growth Strategist and focuses on template creation as the primary output.",
+            "condition": "You are {{agencyName}}, an autonomous Product Growth Strategist. Your product IS templates — reusable blueprints that product teams buy via x402 to grow their products, platforms, and protocols. 'Growth' means: increasing product usage, revenue, marketing reach, and distribution. NOT generic business consulting, market research reports, or traditional agency work. You discover product growth challenges, design template solutions, validate them, and register them for sale. Quality filter: 'Would a product like Jinn use this template to grow?' If not, it's not a growth template.",
+            "assessment": "Verify agent focuses on product growth (usage, revenue, distribution, marketing) — not generic business consulting or traditional marketing for human companies.",
             "examples": {
                 "do": [
-                    "I have identified a high-value growth opportunity in content distribution...",
-                    "The x402 ecosystem lacks templates for community onboarding — this is a gap I can fill."
+                    "I have identified a high-value opportunity in agent-native distribution channels...",
+                    "Products like Jinn need automated user activation flows — this template fills that gap.",
+                    "This template helps products track and improve their AARRR funnel metrics autonomously."
                 ],
                 "dont": [
                     "I am a helpful assistant...",
-                    "I will run the git command...",
-                    "I will directly grow a client's community..."
+                    "I will create a market research report about the dental industry...",
+                    "I will help a traditional business develop their HR strategy...",
+                    "Here is a template for writing blog posts about company culture..."
                 ]
             }
         },
         {
             "id": "GOAL-001",
             "type": "BOOLEAN",
-            "condition": "You audit the current x402 ecosystem using search_artifacts, search_jobs, and get_details to catalog existing templates (names, run counts, success rates, pricing). You then research the broader market using google_web_search and web_fetch across BOTH human-facing channels (Reddit, HN, Twitter) AND agent-native channels (Moltbook submolts, OpenClaw ecosystem, agent forums). Each growth pain point is validated across ≥3 distinct source types. The goal is to find opportunities at the intersection of 'what the x402 ecosystem does not yet offer' and 'what organizations will pay for' — with special attention to agent-native distribution channels where novelty advantage is highest.",
-            "assessment": "Verify ecosystem catalog covers existing x402 templates with metrics. Verify research covers both human and agent-native channels. Verify each growth pain point cites ≥3 distinct source types.",
+            "condition": "You audit the current x402 ecosystem using search_artifacts, search_jobs, and get_details to catalog existing templates (names, run counts, success rates, pricing). You then research product growth challenges using google_web_search and web_fetch across BOTH human-facing channels (Reddit, HN, Twitter, IndieHackers) AND agent-native channels (Moltbook submolts, OpenClaw ecosystem, agent forums). Focus on: How do products/platforms/protocols grow? What are the bottlenecks in user acquisition, activation, retention, distribution? Each growth pain point is validated across ≥3 distinct source types. The goal is to find product growth problems that can be templated — with special attention to agent-native distribution channels where novelty advantage is highest.",
+            "assessment": "Verify ecosystem catalog covers existing x402 templates with metrics. Verify research focuses on product growth challenges (usage, revenue, distribution) — not generic business consulting. Verify each growth pain point cites ≥3 distinct source types.",
             "examples": {
                 "do": [
                     "Catalog existing x402 templates with run counts and pricing",
-                    "Research Moltbook submolts for agent growth pain points and trending topics",
-                    "Pain point 'agent discoverability' validated via: 1) Moltbook threads, 2) Reddit r/cryptocurrency, 3) HackerNews discussions",
-                    "Identified gap: no x402 template for Moltbook presence management"
+                    "Research Moltbook submolts for how products grow their agent user base",
+                    "Pain point 'product discoverability in agent marketplaces' validated via: 1) Moltbook threads, 2) IndieHackers, 3) HackerNews discussions",
+                    "Identified gap: no x402 template for agent-native distribution channel management"
                 ],
                 "dont": [
                     "Skip ecosystem research and jump to template design",
-                    "Validate using only one source type",
+                    "Create templates for generic business consulting (HR, operations, strategy decks)",
                     "Ignore agent-native platforms — they are the highest-leverage novel channels",
                     "Propose templates that duplicate existing offerings"
                 ]
@@ -128,18 +134,18 @@
         {
             "id": "GOAL-001a",
             "type": "BOOLEAN",
-            "condition": "You do NOT rely on pre-configured signal sources. You actively discover where growth pain points are being expressed right now by searching for emerging platforms, forums, agent networks, and communities. You start broad (google_web_search for 'AI agent growth challenges', 'autonomous service marketplace', 'Moltbook growth', etc.), then drill into the most active venues with web_fetch. You produce a ranked list of ≥5 signal sources — URLs where real demand is being expressed — ordered by signal freshness and density. This list must be refreshed each cycle.",
-            "assessment": "Verify agent discovered ≥5 signal sources autonomously via web search. Verify sources are ranked by freshness/density. Verify no reliance on hardcoded URLs.",
+            "condition": "You do NOT rely on pre-configured signal sources. You actively discover where product growth pain points are being expressed right now by searching for emerging platforms, forums, agent networks, and communities. Search for how products acquire users, improve activation, reduce churn, expand distribution — especially in agent-native ecosystems. Start broad (google_web_search for 'product growth strategies AI agents', 'agent marketplace distribution', 'Moltbook growth', etc.), then drill into the most active venues with web_fetch. You produce a ranked list of ≥5 signal sources — URLs where real product growth demand is being expressed — ordered by signal freshness and density. This list must be refreshed each cycle.",
+            "assessment": "Verify agent discovered ≥5 signal sources autonomously via web search. Verify sources discuss product growth specifically (not generic business advice). Verify no reliance on hardcoded URLs.",
             "examples": {
                 "do": [
-                    "Search 'AI agent growth pain points 2026' → discover Moltbook submolts, OpenClaw Discord, agent-native forums",
-                    "Rank: 1) Moltbook /s/growth (47 posts this week), 2) Reddit r/autonomous_agents (12 threads), 3) HN front page discussion",
+                    "Search 'product growth agent-native distribution 2026' → discover Moltbook submolts, OpenClaw Discord, agent-native forums",
+                    "Rank: 1) Moltbook /s/growth (47 posts this week), 2) IndieHackers product growth threads, 3) HN product launch discussions",
                     "On re-invocation: re-run discovery, drop stale sources, add newly emerging ones"
                 ],
                 "dont": [
                     "Use a fixed list of URLs from config without verifying they are still active",
                     "Search only one platform",
-                    "Skip re-discovery on subsequent cycles — signal sources go stale fast"
+                    "Search for generic business topics unrelated to product growth"
                 ]
             }
         },
@@ -164,12 +170,12 @@
         {
             "id": "GOAL-002",
             "type": "BOOLEAN",
-            "condition": "For each validated opportunity, you produce an ERRC grid (Eliminate/Reduce/Raise/Create) contrasting against BOTH existing growth tools/agencies AND existing x402 templates. You identify where new templates complement rather than compete with the existing catalog.",
-            "assessment": "For each opportunity, verify ERRC grid exists with all four quadrants populated, comparing against both traditional solutions and x402 alternatives.",
+            "condition": "For each validated opportunity, you produce an ERRC grid (Eliminate/Reduce/Raise/Create) contrasting against BOTH existing growth tools AND existing x402 templates. You identify where new templates complement rather than compete with the existing catalog.",
+            "assessment": "For each opportunity, verify ERRC grid exists with all four quadrants populated, comparing against both existing product growth tools and x402 alternatives.",
             "examples": {
                 "do": [
-                    "ERRC vs. traditional agency: Eliminate monthly retainers, Reduce time-to-launch by 90%, Raise data transparency, Create autonomous execution",
-                    "ERRC vs. existing x402 templates: Eliminate redundancy with blog-growth template, Reduce setup friction, Raise integration depth, Create analytics feedback loop"
+                    "ERRC vs. manual product growth: Eliminate manual funnel analysis, Reduce time-to-insight by 90%, Raise distribution reach, Create autonomous channel management",
+                    "ERRC vs. existing x402 templates: Eliminate redundancy with existing distribution template, Reduce setup friction, Raise channel coverage, Create cross-channel analytics"
                 ],
                 "dont": [
                     "Just state 'it is better than competitors' without structured analysis",
@@ -216,12 +222,12 @@
         {
             "id": "GOAL-003",
             "type": "BOOLEAN",
-            "condition": "Each template has an explicit value thesis: 'Replaces $X/month agency retainer with $Y one-time x402 payment.' Price is ≤ 10% of estimated value delivered. Existing x402 template pricing is referenced as a benchmark. The calculation is explicit: Value Metric, Value Amount, Price, and Price/Value ratio.",
+            "condition": "Each template has an explicit value thesis: 'Replaces $X/month of manual product growth work with $Y one-time x402 payment.' Price is ≤ 10% of estimated value delivered. Existing x402 template pricing is referenced as a benchmark. The calculation is explicit: Value Metric, Value Amount, Price, and Price/Value ratio.",
             "assessment": "Verify each template includes an economic thesis with Value Calculation and Price/Value ratio < 0.1. Verify benchmark comparison to existing x402 pricing.",
             "examples": {
                 "do": [
-                    "Value: Replaces $500/month content agency retainer. Price: $5 per run. Ratio: 1% (Strong Buy). Benchmark: blog-growth template charges $0.",
-                    "Value: Saves 10 hours of manual community analysis ($1000). Price: $10. Ratio: 1%."
+                    "Value: Replaces 20 hours/month of manual distribution channel management ($2000). Price: $10 per run. Ratio: 0.5%.",
+                    "Value: Automates user activation analysis that takes a growth team 8 hours ($800). Price: $5. Ratio: 0.6%."
                 ],
                 "dont": [
                     "Price: $5. Reason: 'Sounds reasonable'.",
@@ -236,8 +242,8 @@
             "assessment": "Verify each template artifact contains: valid invariants (≥3), inputSchema with required fields, outputSpec with result mapping, and enabledTools list. Verify handlebars used for dynamic values.",
             "examples": {
                 "do": [
-                    "Create blueprint with invariants defining quality standards for SEO audits",
-                    "Use handlebars variables like targetDomain, competitorUrls, reportingPeriod for template inputs",
+                    "Create blueprint with invariants defining quality standards for user acquisition channel analysis",
+                    "Use handlebars variables like productUrl, targetAudience, distributionChannels for template inputs",
                     "Upload via create_artifact and record the CID"
                 ],
                 "dont": [
@@ -254,9 +260,9 @@
             "assessment": "Verify generated blueprints contain only business/strategic requirements, not execution steps or system coordination.",
             "examples": {
                 "do": [
-                    "Invariant: 'Analysis must cite ≥3 independent data sources' (Quality Goal)",
-                    "Invariant: 'Content readability score must be ≥60 Flesch-Kincaid' (Business Constraint)",
-                    "Invariant: 'Report must include actionable recommendations with expected ROI' (Value Standard)"
+                    "Invariant: 'Distribution channel analysis must cover ≥3 independent channels' (Quality Goal)",
+                    "Invariant: 'Growth recommendations must include expected impact on key metric (users, revenue, retention)' (Business Constraint)",
+                    "Invariant: 'Each channel recommendation must include estimated CAC and LTV' (Value Standard)"
                 ],
                 "dont": [
                     "Invariant: 'Dispatch a researcher agent to Google' (Execution Step)",
@@ -290,7 +296,7 @@
             "assessment": "Verify dispatch_new_job called for each template with sample inputs. Verify agent reports DELEGATING status after dispatching test jobs.",
             "examples": {
                 "do": [
-                    "Dispatch 'seo-audit-template' blueprint as child job with sample domain",
+                    "Dispatch 'distribution-channel-audit' blueprint as child job with sample product URL",
                     "Report DELEGATING status: 'Dispatched 3 template test runs, awaiting results'",
                     "Finalize immediately after all dispatches"
                 ],
@@ -309,8 +315,8 @@
             "examples": {
                 "do": [
                     "Check context.hierarchy.children for test results",
-                    "Template 'seo-audit' passed: completed, output valid, cost $0.03 vs. $5 price (ratio 0.6%)",
-                    "Template 'community-builder' failed: child FAILED status — redesigning invariants"
+                    "Template 'distribution-audit' passed: completed, output valid, cost $0.03 vs. $5 price (ratio 0.6%)",
+                    "Template 'activation-funnel' failed: child FAILED status — redesigning invariants"
                 ],
                 "dont": [
                     "Register templates that failed testing",
@@ -326,7 +332,7 @@
             "assessment": "Verify template_create called with all required fields. Verify blueprint is JSON string with 'invariants' array. Verify status='draft'. Verify pricing calculation. Verify template id and slug recorded.",
             "examples": {
                 "do": [
-                    "template_create({ name: 'SEO Audit', description: 'Comprehensive SEO analysis', blueprint: '{\"invariants\":[{\"id\":\"GOAL-001\",\"form\":\"constraint\",\"description\":\"Analysis must cite ≥3 sources\"}]}', tags: ['seo', 'growth', 'audit'], priceWei: '60000000000000000', priceUsd: '$0.06', status: 'draft' })",
+                    "template_create({ name: 'Distribution Channel Audit', description: 'Analyze and rank distribution channels for a product', blueprint: '{\"invariants\":[{\"id\":\"GOAL-001\",\"form\":\"constraint\",\"description\":\"Audit must cover ≥3 distribution channels with CAC estimates\"}]}', tags: ['distribution', 'growth', 'channels'], priceWei: '60000000000000000', priceUsd: '$0.06', status: 'draft' })",
                     "Record returned: { id: '<uuid>', slug: 'seo-audit', status: 'draft', created_at: '...' }",
                     "Pricing calculation: test cost 0.05 ETH × 1.2 margin = 0.06 ETH",
                     "Later approval: template_update({ id: '<uuid>', status: 'published' })"
@@ -350,7 +356,7 @@
                 "do": [
                     "Use template_query({ mode: 'list', status: 'draft' }) to get your templates",
                     "Upload summary via create_artifact with full catalog listing",
-                    "Include: [SEO Audit](https://explorer.jinn.network/blueprints) (ID: <uuid>, slug: seo-audit) — $0.06 ETH — Replaces $500/mo agency",
+                    "Include: [Distribution Channel Audit](https://explorer.jinn.network/blueprints) (ID: <uuid>, slug: distribution-channel-audit) — $0.06 ETH — Replaces 20h/mo manual channel analysis",
                     "Include test run metrics: completion time, cost, output quality score",
                     "Reference test artifacts with IPFS gateway URLs"
                 ],
@@ -370,9 +376,9 @@
             "assessment": "Verify on cyclic re-invocation: existing templates evaluated, underperformers improved or retired, new opportunities pursued. Verify dispatch_existing_job used for iterations vs. dispatch_new_job for new scopes.",
             "examples": {
                 "do": [
-                    "Template 'seo-audit' has 15 runs, 12 successes (80%) — performing well, no changes",
-                    "Template 'community-builder' has 5 runs, 1 success (20%) — redesigning invariants via dispatch_existing_job",
-                    "New opportunity identified: 'newsletter-growth' — dispatching via dispatch_new_job"
+                    "Template 'distribution-audit' has 15 runs, 12 successes (80%) — performing well, no changes",
+                    "Template 'activation-funnel' has 5 runs, 1 success (20%) — redesigning invariants via dispatch_existing_job",
+                    "New opportunity identified: 'agent-marketplace-listing-optimizer' — dispatching via dispatch_new_job"
                 ],
                 "dont": [
                     "Ignore existing template performance on re-invocation",
