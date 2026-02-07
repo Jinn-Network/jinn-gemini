@@ -89,7 +89,7 @@
         "search_artifacts",
         "google_web_search",
         "web_fetch",
-        "template_create"
+        "templates_registry"
     ],
     "invariants": [
         {
