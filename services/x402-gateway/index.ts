@@ -871,6 +871,7 @@ const buildBlueprintFromTemplate = sharedBuildBlueprint;
 
 import { getGrant } from './credentials/acl.js';
 import { getNangoAccessToken } from './credentials/nango-client.js';
+import { getStaticCredential } from './credentials/static-providers.js';
 import { checkAndStoreNonce } from './credentials/redis.js';
 import { verifyPayment, type PaymentErrorCode } from './credentials/x402-verify.js';
 import { checkRateLimit, getRateLimitHeaders } from './credentials/rate-limit.js';
@@ -1041,21 +1042,22 @@ app.post("/credentials/:provider", async (c) => {
     console.log(`[x402] Payment verified: ${result.payer} → ${provider}`);
   }
 
-  // Fetch fresh token from Nango
+  // Fetch token: check static providers first, then fall back to Nango
   try {
-    const token = await getNangoAccessToken(grant.nangoConnectionId, provider);
+    const staticToken = await getStaticCredential(provider);
+    const token = staticToken || await getNangoAccessToken(grant.nangoConnectionId, provider);
     const response: CredentialResponse = {
       access_token: token.access_token,
       expires_in: token.expires_in,
       provider,
     };
-    logAudit({ address: recoveredAddress, provider, action: 'token_issued', ip: clientIp, userAgent, nonce: body.nonce });
+    logAudit({ address: recoveredAddress, provider, action: 'token_issued', ip: clientIp, userAgent, nonce: body.nonce, metadata: { source: staticToken ? 'static' : 'nango' } });
     return c.json(response, { headers: getRateLimitHeaders(rateLimit) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logAudit({ address: recoveredAddress, provider, action: 'nango_error', ip: clientIp, userAgent, nonce: body.nonce, metadata: { error: message } });
     return c.json(
-      { error: `Nango error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError,
+      { error: `Credential fetch error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError,
       { status: 502, headers: getRateLimitHeaders(rateLimit) }
     );
   }
