@@ -101,7 +101,7 @@ Some tools are "meta-tools" that expand to multiple individual tools at runtime:
 | `fireflies_meetings` | `fireflies_search`, `fireflies_get_transcripts`, `fireflies_get_summary` |
 | `browser_automation` | 26 Chrome DevTools tools |
 | `railway_deployment` | 24 Railway management tools |
-| `nano_banana` | 7 image generation tools |
+| ~~`nano_banana`~~ | Deprecated — silently ignored |
 
 **Important:** Always use the meta-tool name in templates and `enabledTools`. The expansion happens automatically at runtime.
 
