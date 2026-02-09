@@ -661,6 +661,10 @@ ponder.on(
           ? content.inputSchema
           : undefined;
 
+        // Extract venture and template IDs from content
+        const ventureId: string | undefined = typeof content.ventureId === 'string' ? content.ventureId : undefined;
+        const templateId: string | undefined = typeof content.templateId === 'string' ? content.templateId : undefined;
+
         // Extract dependencies array from content
         dependencies = Array.isArray(content.dependencies)
           ? content.dependencies.map((dep: any) => String(dep))
@@ -681,6 +685,8 @@ ponder.on(
               enabledTools,
               blueprint,
               dependencies,
+              ventureId,
+              templateId,
               sourceJobDefinitionId: parentJobDefinitionId,
               sourceRequestId: sourceRequestId,
               codeMetadata,
@@ -697,6 +703,7 @@ ponder.on(
               lastStatus: 'PENDING',
               // Do NOT re-attribute lineage on updates; preserve original creator
               // Do NOT update dependencies - immutable per job definition
+              // Do NOT update ventureId/templateId - preserve original association
             },
           });
 
@@ -763,13 +770,15 @@ ponder.on(
         // The create path should never execute here since we pre-seeded above,
         // but include it as a safety fallback
         try {
-          logger.info({ requestId: id, jobName, jobDefinitionId, workstreamId }, "Updating request row with enriched metadata");
+          logger.info({ requestId: id, jobName, jobDefinitionId, workstreamId, ventureId, templateId }, "Updating request row with enriched metadata");
           await repo.upsert({
             id,
             create: {
               mech,
               sender,
               workstreamId,
+              ventureId,
+              templateId,
               jobDefinitionId: jobDefinitionId,
               sourceRequestId: sourceRequestId,
               sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
@@ -787,6 +796,8 @@ ponder.on(
             update: {
               // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
               workstreamId,
+              ventureId,
+              templateId,
               jobDefinitionId: jobDefinitionId,
               sourceRequestId: sourceRequestId,
               sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
