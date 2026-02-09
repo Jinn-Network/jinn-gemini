@@ -215,11 +215,15 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 
 ## Worker & Execution
 
-### 35. Worker Runs Locally
-**CRITICAL:** Worker is NOT deployed to Railway or any cloud service
-- Runs locally via `yarn dev:mech` from current git branch
-- Changes take effect immediately on current branch
-- No merge/deploy cycle needed
+### 35. Workers Are Network Nodes
+**CRITICAL:** Workers are nodes on a network, coordinated via the on-chain marketplace.
+- Production workers are deployed on Railway (see `docs/runbooks/deploy-railway-worker.md`)
+- `yarn dev:mech` runs a local worker for development only
+- To inject updated blueprints/configs into a live workstream, use `redispatch-job.ts`:
+  ```bash
+  tsx scripts/redispatch-job.ts --jobName "<name>" --input configs/<config>.json --template blueprints/<blueprint>.json --cyclic
+  ```
+- This redispatches the root job with new invariants, env vars, and tools — no need to start a fresh workstream
 
 ### 36. Verification Run Incorrectly Blocked Parent Dispatch (REFIXED)
 **Issue:** Jobs with children enter infinite loop: parent run → verification run → parent run...

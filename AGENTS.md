@@ -146,12 +146,23 @@ Details: [docs/runbooks/subtree-workflow.md](docs/runbooks/subtree-workflow.md)
 
 ## Key Commands
 
-**Development:**
+**Development (local worker):**
 ```bash
 yarn dev:stack              # Full stack
 yarn dev:mech --single      # Single job execution
 yarn dev:mech --workstream=0x...  # Filter by workstream
 yarn dev:mech:parallel -w 3 # 3 parallel workers
+```
+
+**Operations (live workstreams):**
+```bash
+# Inject updated blueprint + config into a live workstream
+tsx scripts/redispatch-job.ts --jobName "<name>" \
+  --input configs/<config>.json \
+  --template blueprints/<template>.json --cyclic
+
+# Launch a fresh workstream
+yarn launch:workstream blog-growth-template --input configs/the-lamp.json
 ```
 
 **Testing:**
@@ -160,7 +171,7 @@ yarn test                   # All tests
 yarn inspect-job-run <id>   # Job snapshot
 ```
 
-More: [Setup Worker](docs/runbooks/setup-worker.md)
+More: [Setup Worker](docs/runbooks/setup-worker.md) | [Deploy Worker](docs/runbooks/deploy-railway-worker.md)
 
 ---
 
@@ -231,7 +242,7 @@ Full reference: [Environment Variables](docs/reference/environment-variables.md)
 6. **Double Execution**: Control API tracks claim staleness (5-minute threshold).
 7. **Recognition Mimicry**: Learnings describe what PAST jobs did, not what CURRENT should do.
 8. **IPFS Upload**: Use wrap-with-directory:true. Test `{dir-CID}/{requestId}` not raw digest.
-9. **Worker Runs Locally**: No cloud deployment - runs from current git branch.
+9. **Workers Are Network Nodes**: Workers are deployed on Railway (or run locally for dev). Use `redispatch-job.ts` to inject updated blueprints/configs into live workstreams.
 10. **SSH Aliases**: Normalize to `git@github.com:` at dispatch time.
 
 Full list: [Blood Written Rules](docs/reference/blood-written-rules.md) (~60 rules)
