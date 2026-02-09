@@ -67,6 +67,26 @@
                     "type": "string",
                     "description": "Telegram topic/thread ID (optional, for forum groups)",
                     "envVar": "TELEGRAM_TOPIC_ID"
+                },
+                "telegramBotToken": {
+                    "type": "string",
+                    "description": "Telegram Bot API token",
+                    "envVar": "TELEGRAM_BOT_TOKEN"
+                },
+                "umamiHost": {
+                    "type": "string",
+                    "description": "Umami analytics host URL",
+                    "envVar": "UMAMI_HOST"
+                },
+                "umamiUsername": {
+                    "type": "string",
+                    "description": "Umami login username",
+                    "envVar": "UMAMI_USERNAME"
+                },
+                "umamiPassword": {
+                    "type": "string",
+                    "description": "Umami login password",
+                    "envVar": "UMAMI_PASSWORD"
                 }
             },
             "required": [
@@ -205,6 +225,22 @@
                     "Site Manager edits site code directly",
                     "Distribution Manager posts to Telegram directly",
                     "Any Manager executes GOAL work without dispatching a specialist"
+                ]
+            }
+        },
+        {
+            "id": "COORD-FANOUT-LIMIT",
+            "type": "BOOLEAN",
+            "condition": "A single job MUST NOT dispatch more than 8 child jobs. If a task requires more parallelism, decompose into intermediate coordinator jobs first.",
+            "assessment": "Count dispatch_new_job calls per execution. Fail if > 8.",
+            "examples": {
+                "do": [
+                    "Dispatch 4 specialist writers, each writing 2 posts",
+                    "Create intermediate coordinator if 12+ tasks needed"
+                ],
+                "dont": [
+                    "Dispatch 20 individual post-writing jobs from one manager",
+                    "Fan out all subtasks from a single root job"
                 ]
             }
         },

@@ -428,6 +428,17 @@ async function main() {
           scriptLogger.debug({ field, envVar: fieldSpec.envVar }, 'Extracted env var from inputConfig');
         }
       }
+      // Merge secrets from process.env for envVar fields not provided in inputConfig.
+      // This keeps secrets (tokens, passwords) out of config files while still
+      // passing them through to the agent environment.
+      const secretEnvVars = ['TELEGRAM_BOT_TOKEN', 'UMAMI_USERNAME', 'UMAMI_PASSWORD'];
+      for (const envKey of secretEnvVars) {
+        if (!extractedEnv[envKey] && process.env[envKey]) {
+          extractedEnv[envKey] = process.env[envKey]!;
+          scriptLogger.debug({ envVar: envKey }, 'Merged secret from process.env');
+        }
+      }
+
       if (Object.keys(extractedEnv).length > 0) {
         // Merge with CLI --env flags (CLI takes precedence)
         additionalContextOverrides.env = { ...extractedEnv, ...additionalContextOverrides.env };

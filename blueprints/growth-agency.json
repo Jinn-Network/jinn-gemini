@@ -308,6 +308,22 @@
             }
         },
         {
+            "id": "COORD-FANOUT-LIMIT",
+            "type": "BOOLEAN",
+            "condition": "A single job MUST NOT dispatch more than 8 child jobs. If a task requires more parallelism, decompose into intermediate coordinator jobs first.",
+            "assessment": "Count dispatch_new_job calls per execution. Fail if > 8.",
+            "examples": {
+                "do": [
+                    "Dispatch 4 template test runs in parallel",
+                    "Create intermediate coordinator if 12+ tests needed"
+                ],
+                "dont": [
+                    "Dispatch 20 individual template tests from one root job",
+                    "Fan out all research and testing from a single execution"
+                ]
+            }
+        },
+        {
             "id": "GOAL-008",
             "type": "BOOLEAN",
             "condition": "On re-invocation with completed test children (visible in context.hierarchy.children), a template passes quality gate only if: (1) child completed without FAILED status, (2) output matches the template's outputSpec schema, (3) execution cost aligns with the economic thesis from GOAL-003. Templates failing quality gate are refined and re-tested, not registered.",

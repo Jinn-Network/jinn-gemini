@@ -19,6 +19,7 @@
     ],
     "referrals": "",
     "umamiWebsiteId": "0d8e685a-d498-445d-99c6-671bf3d63b1d",
+    "umamiHost": "https://umami-production-ae2b.up.railway.app",
     "repoUrl": "git@ritsukai:Jinn-Network/blog-the-lamp.git",
     "sshHost": "ritsukai",
     "domain": "blog.jinn.network",

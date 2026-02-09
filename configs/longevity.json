@@ -20,7 +20,12 @@
         "https://news.ycombinator.com"
     ],
     "referrals": "",
-    "repoUrl": "https://github.com/oaksprout/the-long-run-blog",
+    "repoUrl": "git@github.com:oaksprout/the-long-run-blog.git",
+    "sshHost": "github",
+    "domain": "blog-the-long-run.up.railway.app",
+    "baseBranch": "main",
+    "umamiWebsiteId": "00ba0400-cc63-4405-965f-650ca8e6c30e",
+    "umamiHost": "https://umami-production-ae2b.up.railway.app",
     "telegramChatId": "-1003682777125",
     "telegramTopicId": "3"
 }
