@@ -1,32 +1,8 @@
-# Large non-essential directories - exclude to reduce upload size
 code-resources/
 frontend/
-services/
-contracts/
-logs/
 tests-next/
-service-backups/
-
-# Development/docs directories
+.beads/
 docs/
-blueprints/
-codespec/
-tests/
-
-# OLAS operate local data (secrets) - only exclude root .operate
-# Keep olas-operate-middleware/.operate/ for middleware functionality
-.operate/
-
-# Markdown files except README
+olas-operate-middleware/
+.claude/
 *.md
-!README.md
-
-# Environment files - prevent dotenv overriding Railway env vars
-.env
-.env.*
-!.env.template
-
-# Git and IDE
-.git/
-.vscode/
-.idea/
