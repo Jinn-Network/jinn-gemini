@@ -112,17 +112,35 @@ codespec/             # Code quality enforcement
 
 ## jinn-node Subtree Sync
 
-`jinn-node/` is synced to the standalone repo via git subtree. Run subtree commands from the branch that contains your changes.
+`jinn-node/` is synced to the standalone repo (`https://github.com/Jinn-Network/jinn-node.git`) via git subtree.
 
-Monorepo → standalone:
+**First time setup (required once per clone):**
 ```bash
-git subtree push --prefix=jinn-node jinn-node main
+yarn subtree:setup
 ```
 
-Standalone → monorepo:
+**Check sync status:**
 ```bash
-git subtree pull --prefix=jinn-node jinn-node main
+yarn subtree:status
 ```
+
+**Push monorepo changes to standalone:**
+```bash
+yarn subtree:push
+```
+
+**Pull standalone changes into monorepo:**
+```bash
+yarn subtree:pull
+```
+
+**Rules:**
+- Run from the branch containing your changes
+- Working tree must be clean (commit or stash first)
+- Setup is idempotent — safe to run multiple times
+- Do NOT use `--squash` (the subtree was added without it; mixing causes errors)
+
+Details: [docs/runbooks/subtree-workflow.md](docs/runbooks/subtree-workflow.md)
 
 ---
 
