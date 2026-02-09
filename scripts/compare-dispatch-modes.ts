@@ -57,15 +57,12 @@ async function main() {
     requests: { items: Array<{ id: string; delivered: boolean; blockTimestamp: string; templateId: string | null }> };
   }>(`query {
     requests(
-      where: {
-        ventureId: { equals: "${ventureId}" }
-        blockTimestamp: { gte: "${sinceTimestamp}" }
-      }
+      where: { ventureId: "${ventureId}", blockTimestamp_gte: "${sinceTimestamp}" }
       limit: 500
-      orderBy: { blockTimestamp: "desc" }
+      orderBy: "blockTimestamp"
+      orderDirection: "desc"
     ) {
       items { id delivered blockTimestamp templateId }
-    }
   }`);
 
   // Query measurement artifacts for this venture
@@ -73,14 +70,10 @@ async function main() {
     artifacts: { items: Array<{ id: string; type: string; blockTimestamp: string }> };
   }>(`query {
     artifacts(
-      where: {
-        type: { equals: "MEASUREMENT" }
-        blockTimestamp: { gte: "${sinceTimestamp}" }
-      }
+      where: { topic: "MEASUREMENT", blockTimestamp_gte: "${sinceTimestamp}" }
       limit: 500
     ) {
-      items { id type blockTimestamp }
-    }
+      items { id topic blockTimestamp }
   }`);
 
   const scheduledItems = scheduled?.requests?.items || [];
