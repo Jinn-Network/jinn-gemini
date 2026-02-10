@@ -18,6 +18,14 @@ const sidebars: SidebarsConfig = {
     'introduction',
     {
       type: 'category',
+      label: 'Getting Started',
+      collapsed: false,
+      items: [
+        'run-a-node',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Documentation',
       collapsed: false,
       link: {

@@ -10,6 +10,7 @@ import { ExternalLink } from 'lucide-react';
 import './animations.css';
 import { GlobalActivityFeed } from '@/components/global-activity-feed';
 import { CopyPromptCTA } from '@/components/copy-prompt-cta';
+import { RunANodeSection } from '@/components/run-a-node-section';
 
 async function FeaturedVentures() {
   // Fetch tokenized ventures from Supabase
@@ -110,6 +111,9 @@ export default function HomePage() {
           </div>
         </section>
       </div>
+
+      {/* Run a Node Section */}
+      <RunANodeSection />
 
       {/* About Jinn Section */}
       <section id="features" className="border-t py-20">
@@ -278,6 +282,17 @@ export default function HomePage() {
                 <li>
                   <a href="#adventures" className="hover:text-foreground transition-colors">
                     Active Ventures
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://docs.jinn.network/docs/run-a-node"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground transition-colors inline-flex items-center gap-1"
+                  >
+                    Run a Node
+                    <ExternalLink className="h-3 w-3" />
                   </a>
                 </li>
                 <li>
