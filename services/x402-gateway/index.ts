@@ -869,7 +869,7 @@ const buildBlueprintFromTemplate = sharedBuildBlueprint;
 // Credential Bridge: Crypto Identity → Web2 OAuth
 // ============================================================
 
-import { getGrant } from './credentials/acl.js';
+import { getGrant, listGrants } from './credentials/acl.js';
 import { getNangoAccessToken } from './credentials/nango-client.js';
 import { getStaticCredential } from './credentials/static-providers.js';
 import { checkAndStoreNonce } from './credentials/redis.js';
@@ -895,6 +895,62 @@ async function recoverAddress(message: string, signature: string): Promise<strin
   });
   return address.toLowerCase();
 }
+
+/**
+ * POST /credentials/capabilities
+ *
+ * Lightweight endpoint for workers to discover which credential providers
+ * they have ACL grants for. Uses the same signature scheme as /credentials/:provider
+ * but skips rate limiting, job context, and payment checks.
+ *
+ * Returns { providers: ["github", "telegram", ...] }
+ */
+app.post("/credentials/capabilities", async (c) => {
+  const claimedAddr = c.req.header("X-Agent-Address")?.toLowerCase() || 'unknown';
+
+  let body: { timestamp: number; nonce: string };
+  try {
+    body = await c.req.json() as { timestamp: number; nonce: string };
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  // Validate freshness (5-minute window)
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - body.timestamp) > 300) {
+    return c.json({ error: "Request timestamp too old or in future" }, 401);
+  }
+
+  // Verify signature
+  const signature = c.req.header("X-Agent-Signature");
+  const claimedAddress = c.req.header("X-Agent-Address");
+  if (!signature || !claimedAddress) {
+    return c.json({ error: "Missing X-Agent-Signature or X-Agent-Address header" }, 401);
+  }
+
+  let recoveredAddress: string;
+  try {
+    const message = JSON.stringify(body);
+    recoveredAddress = await recoverAddress(message, signature);
+  } catch {
+    return c.json({ error: "Signature verification failed" }, 401);
+  }
+
+  if (recoveredAddress !== claimedAddress.toLowerCase()) {
+    return c.json({ error: "Signature does not match claimed address" }, 401);
+  }
+
+  // Query ACL for all active grants
+  try {
+    const grants = await listGrants(recoveredAddress);
+    const providers = Object.keys(grants);
+    return c.json({ providers });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[capabilities] ACL query failed for ${recoveredAddress}: ${message}`);
+    return c.json({ error: "Failed to query capabilities" }, 500);
+  }
+});
 
 /**
  * POST /credentials/:provider
