@@ -397,4 +397,18 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 
 ---
 
+### 65. Parent Dispatch Cascade Under API Rate Limits
+**Issue:** When Gemini API returns persistent 429 (capacity exhausted), the worker creates an unbounded number of on-chain requests. A workstream that should have ~13 requests grew to 27, with the Distribution Campaign dispatched 5x and orchestrator 4x.
+**Root Cause:** The `autoDispatch.ts` parent dispatch mechanism triggers a new on-chain request for each child completion/failure event. When a parent runs and fails (429), the failure cascading UP the tree triggers more parent dispatches. Each dispatch costs ~310K gas. The `MAX_VERIFICATION_ATTEMPTS=3` limit exists but doesn't prevent the cascade because each child event independently triggers `dispatchParentIfNeeded()`.
+**Solution:** Don't restart workers during sustained API outages. Kill the worker, wait for capacity to recover, then restart. For a permanent fix, add a global max total dispatches per job definition ID (e.g., 5) across all dispatch types in `autoDispatch.ts`, and add a cooldown between parent re-dispatches.
+**Prevention:** Monitor Gemini API status before running workstreams. When 429s start, stop the worker early before the cascade grows.
+
+### 66. ventureId Not Propagated to Child Dispatches
+**Issue:** Child jobs dispatched by agents via `dispatch_new_job` or `dispatch_existing_job` have `ventureId: null` in IPFS metadata, making them invisible in the explorer's venture Schedule tab.
+**Root Cause:** The agent's job context includes `ventureId` but neither `dispatch_new_job.ts` nor `dispatch_existing_job.ts` passed it to `dispatchToMarketplace()`. Also `agent.ts` didn't set the `JINN_VENTURE_ID` environment variable for Gemini CLI subprocesses.
+**Solution:** (1) Set `envWithJob.JINN_VENTURE_ID = this.jobContext.ventureId` in `agent.ts`, (2) Pass `ventureId: context.ventureId` in `dispatch_new_job.ts`, (3) Add `ventureId` to `lineageContext` in `dispatch_existing_job.ts`. Commit: `9567ae14`.
+**Prevention:** When adding new metadata fields to the IPFS payload, check all dispatch paths (agent.ts, dispatch_new_job, dispatch_existing_job, redispatch-job.ts).
+
+---
+
 *Keep this file updated with new blood written rules as they're discovered.*
