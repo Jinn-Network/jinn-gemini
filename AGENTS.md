@@ -142,6 +142,15 @@ yarn subtree:pull
 
 Details: [docs/runbooks/subtree-workflow.md](docs/runbooks/subtree-workflow.md)
 
+**E2E testing workflow:** To test jinn-node changes end-to-end, push them to the standalone repo first, then run the E2E skill against that branch:
+```bash
+# 1. Commit changes in the monorepo
+# 2. Push to a feature branch on the standalone repo
+git subtree push --prefix=jinn-node jinn-node feature/my-changes
+# 3. Run E2E skill — it will ask which branch to clone
+/node-e2e-testing
+```
+
 ---
 
 ## Key Commands

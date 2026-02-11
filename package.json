@@ -5,16 +5,15 @@
   "description": "Gemini CLI Jinn worker system",
   "type": "module",
   "workspaces": [
-    "jinn-node",
     "packages/*",
     "frontend/*"
   ],
   "main": "dist/worker.js",
   "scripts": {
-    "build": "yarn workspace jinn-node build",
-    "dev:mech": "yarn workspace jinn-node run",
+    "build": "cd jinn-node && yarn build",
+    "dev:mech": "cd jinn-node && yarn run worker",
     "dev:mech:parallel": "tsx scripts/dev-mech-parallel.ts",
-    "worker:start": "yarn workspace jinn-node node dist/worker/mech_worker.js",
+    "worker:start": "cd jinn-node && node dist/worker/mech_worker.js",
     "ponder:predev": "node ponder/scripts/set-start-block.js && node -e \"try{require('better-sqlite3');console.log('better-sqlite3 ok')}catch(e){process.exitCode=0}\" || npm rebuild better-sqlite3",
     "ponder:dev": "yarn ponder:predev && cd ponder && ponder dev --port ${PONDER_PORT:-42069}",
     "ponder:build": "cd ponder && ponder build",
@@ -42,6 +41,10 @@
     "test:e2e:vitest": "vitest run --project e2e",
     "test:e2e:dual-rail": "tsx scripts/dual-rail-e2e-test.ts",
     "test:e2e:zora": "tsx scripts/zora-dual-rail-e2e-test.ts",
+    "test:e2e:vnet": "sh -c 'tsx scripts/test/e2e-harness.ts \"$@\"' --",
+    "test:e2e:dispatch": "sh -c 'tsx scripts/test/dispatch-workstream-job.ts \"$@\"' --",
+    "test:e2e:stack": "sh -c 'tsx scripts/test/start-e2e-stack.ts \"$@\"' --",
+    "test:e2e:docker-run": "sh -c 'tsx scripts/test/docker-run.ts \"$@\"' --",
     "test:worker-e2e": "tsx scripts/test-worker-e2e.ts",
     "test:jinn-198": "tsx scripts/jinn-198-mech-deployment-test.ts",
     "test:tenderly": "tsx scripts/test-on-tenderly.ts",
@@ -101,7 +104,10 @@
     "dispatch-paid-template": "sh -c 'tsx scripts/dispatch-paid-template.ts \"$@\" | tsx logging/dev-pretty-cli.ts' --",
     "codespec:review": "./codespec/scripts/review.sh",
     "codespec:render": "tsx codespec/scripts/render-spec.ts",
-    "provision": "tsx scripts/product/provision.ts"
+    "provision": "tsx scripts/product/provision.ts",
+    "postinstall": "cd jinn-node && yarn install",
+    "olas:dashboard": "tsx scripts/olas/dashboard.ts",
+    "olas:economics": "tsx scripts/olas/economics.ts"
   },
   "dependencies": {
     "@jinn-network/mech-client-ts": "^0.0.6",

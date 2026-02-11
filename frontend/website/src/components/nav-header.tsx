@@ -50,7 +50,7 @@ export function NavHeader() {
               </a>
             </Button>
             <Button asChild variant="ghost">
-              <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+              <a href="https://docs.jinn.network/docs/run-a-node" target="_blank" rel="noopener noreferrer">
                 Run a Node
               </a>
             </Button>
