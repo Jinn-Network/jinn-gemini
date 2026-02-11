@@ -18,7 +18,7 @@
  *   --template <path>      Path to blueprint template JSON (required with --input)
  */
 
-import '../env/index.js';
+import 'jinn-node/env/index.js';
 import { readFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { dispatchExistingJob } from 'jinn-node/agent/mcp/tools/dispatch_existing_job.js';
@@ -39,6 +39,8 @@ const workstreamIdIndex = args.indexOf('--workstreamId');
 const cyclicIndex = args.indexOf('--cyclic');
 const inputIndex = args.indexOf('--input');
 const templateIndex = args.indexOf('--template');
+const ventureIdIndex = args.indexOf('--ventureId');
+const templateIdIndex = args.indexOf('--templateId');
 
 let jobId: string | undefined;
 let jobName: string | undefined;
@@ -47,6 +49,8 @@ let workstreamId: string | undefined;
 let cyclic = false;
 let inputConfigPath: string | undefined;
 let templatePath: string | undefined;
+let ventureId: string | undefined;
+let templateId: string | undefined;
 
 if (jobIdIndex !== -1 && args[jobIdIndex + 1]) {
   jobId = args[jobIdIndex + 1];
@@ -74,6 +78,14 @@ if (inputIndex !== -1 && args[inputIndex + 1]) {
 
 if (templateIndex !== -1 && args[templateIndex + 1]) {
   templatePath = args[templateIndex + 1];
+}
+
+if (ventureIdIndex !== -1 && args[ventureIdIndex + 1]) {
+  ventureId = args[ventureIdIndex + 1];
+}
+
+if (templateIdIndex !== -1 && args[templateIdIndex + 1]) {
+  templateId = args[templateIdIndex + 1];
 }
 
 // Validate input/template pairing
@@ -277,6 +289,8 @@ async function main() {
       additionalContextOverrides,
       workstreamId,
       codeMetadata: jobDef.codeMetadata,
+      ventureId,
+      templateId,
     } as any);
 
     const mechAddress = getMechAddress();
