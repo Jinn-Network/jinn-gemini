@@ -4,7 +4,7 @@ description: End-to-end test the jinn-node operator experience using Tenderly VN
 allowed-tools: Bash Read Edit Write Glob Grep
 user-invocable: true
 disable-model-invocation: true
-argument-hint: "[worker|wallet|docker|all]"
+argument-hint: "[worker|wallet|docker|credential|all]"
 ---
 
 # jinn-node E2E Testing
@@ -22,11 +22,13 @@ Tenderly free tier allows ~5-10 write transactions per VNet. Full coverage requi
 | `worker` | 1 VNet | Setup → Dispatch → Worker execution (bare) |
 | `wallet` | 1 VNet | Setup → Wallet info → Recovery (unstake + withdraw) |
 | `docker` | 1 VNet | Setup (bare) → Docker build → Docker worker execution |
-| `all` | 3 VNets | `worker` first, then `wallet`, then `docker` |
+| `credential` | 1 VNet | Setup → ACL seed → Worker credential probe → Gateway tests |
+| `all` | 4 VNets | `worker` first, then `wallet`, then `credential`, then `docker` |
 
 **Based on the argument, read the corresponding session file:**
 - `worker` or `all` → read [references/worker-session.md](references/worker-session.md)
 - `wallet` or `all` → read [references/wallet-session.md](references/wallet-session.md)
+- `credential` or `all` → read [references/credential-session.md](references/credential-session.md)
 - `docker` or `all` → read [references/docker-session.md](references/docker-session.md)
 
 For `all`: complete each session (including cleanup) before starting the next.
@@ -41,7 +43,7 @@ For `all`: complete each session (including cleanup) before starting the next.
 | `yarn test:e2e:vnet status` | Check VNet health + quota |
 | `yarn test:e2e:vnet cleanup --max-age-hours=0` | Delete all VNets |
 | `yarn test:e2e:dispatch --workstream <id> --cwd <path>` | Dispatch job in workstream |
-| `yarn test:e2e:stack` | Start local Ponder + Control API |
+| `yarn test:e2e:stack` | Start local Ponder + Control API + Gateway |
 | `docker build -f jinn-node/Dockerfile jinn-node/ -t jinn-node:e2e` | Build Docker image for testing |
 
 ## Prerequisites
@@ -60,11 +62,11 @@ For `all`: complete each session (including cleanup) before starting the next.
 ```bash
 yarn test:e2e:vnet cleanup --max-age-hours=0  # Delete any stale VNets
 yarn test:e2e:vnet create   # Creates NEW VNet, writes fresh .env.e2e
-yarn test:e2e:stack          # Kills old processes, cleans .ponder cache, starts Ponder + Control API
+yarn test:e2e:stack          # Kills old processes, cleans .ponder cache, starts Ponder + Control API + Gateway
 # Wait for "Local stack ready" — leave running in its own terminal
 ```
 
-The stack script automatically kills port processes, cleans `.ponder` cache, sets `PONDER_START_BLOCK` near VNet head, and reads RPC_URL from `.env.e2e`.
+The stack script automatically kills port processes, cleans `.ponder` cache, sets `PONDER_START_BLOCK` near VNet head, reads RPC_URL from `.env.e2e`, and starts the x402-gateway credential bridge on :3001.
 
 ### 2. Setup
 

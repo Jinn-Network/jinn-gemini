@@ -18,6 +18,10 @@
 | `$CLONE_DIR` lost between shell calls | Save it to `.env.e2e`: `echo "CLONE_DIR=$CLONE_DIR" >> .env.e2e`. Read it back: `source .env.e2e`. |
 | Dispatch fails with MAC mismatch / wrong password | `OPERATE_PASSWORD` in `.env` or `.env.test` is overriding the E2E password. Fix: ensure `OPERATE_PASSWORD=e2e-test-password-2024` is in `.env.e2e` (loaded last with `override: true`). The skill instructs saving it there during Module 2. |
 | Agent went off-task (explored codebase instead of doing the job) | Blueprint invariants describe tool-validation meta-goals, not the actual task. The worker reads ONLY `metadata.blueprint` — it ignores `metadata.prompt`. The blueprint must contain GOAL invariants describing what the agent should do. The dispatch script's `DEFAULT_BLUEPRINT` has this correct. If using a custom `--blueprint`, ensure it has a GOAL-001 invariant with the actual task description. |
+| Gateway won't start (`[ACL] Set CREDENTIAL_ACL_PATH...`) | The stack script auto-creates `.env.e2e.acl.json` on first run. If it's missing, create it: `echo '{"grants":{},"connections":{}}' > .env.e2e.acl.json`. |
+| Worker credential probe returns empty providers | Check: 1) `CREDENTIAL_BRIDGE_URL=http://localhost:3001` is set in clone's `.env`. 2) Gateway is running (check stack output for `[gateway]` lines). 3) ACL file has a grant for the agent's address (lowercase). |
+| Gateway returns 403 NOT_AUTHORIZED | The agent address in the ACL file must be lowercase (e.g., `0xabcd...`). The `getGrant()` method normalizes to lowercase. Also check the grant has `"active": true` and isn't expired. |
+| Gateway test-e2e.ts fails with ECONNREFUSED | Gateway not running. Start it via `yarn test:e2e:stack` or manually: `PORT=3001 CREDENTIAL_ACL_PATH=.env.e2e.acl.json npx tsx services/x402-gateway/index.ts`. |
 
 ## VNet Quota Strategy
 

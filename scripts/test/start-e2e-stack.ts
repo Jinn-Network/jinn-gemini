@@ -18,7 +18,7 @@
  */
 
 import dotenv from 'dotenv';
-import { promises as fs } from 'fs';
+import { promises as fs, writeFileSync, existsSync as fsExistsSync } from 'fs';
 import { resolve } from 'path';
 import { execSync } from 'child_process';
 import { ProcessManager } from '../lib/process-manager.js';
@@ -34,6 +34,8 @@ dotenv.config({ path: resolve(MONOREPO_ROOT, '.env.test'), override: true, quiet
 const PONDER_CACHE_DIR = resolve(MONOREPO_ROOT, 'ponder', '.ponder');
 const PONDER_PORT = '42069';
 const CONTROL_PORT = '4001';
+const GATEWAY_PORT = '3001';
+const GATEWAY_ACL_PATH = resolve(MONOREPO_ROOT, '.env.e2e.acl.json');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +136,14 @@ async function main() {
   console.log('\nPre-flight checks...');
   killPort(PONDER_PORT);
   killPort(CONTROL_PORT);
+  killPort(GATEWAY_PORT);
   await cleanPonderCache();
+
+  // Ensure ACL file exists for the credential gateway (empty grants by default)
+  if (!fsExistsSync(GATEWAY_ACL_PATH)) {
+    writeFileSync(GATEWAY_ACL_PATH, JSON.stringify({ grants: {}, connections: {} }, null, 2) + '\n');
+    console.log(`  Created empty ACL file: ${GATEWAY_ACL_PATH}`);
+  }
 
   // Build env overrides for Ponder + Control API
   // Start from a clean env — don't inherit .env values that conflict
@@ -192,6 +201,21 @@ async function main() {
     },
   });
 
+  // Start x402 Gateway (credential bridge)
+  pm.startService({
+    name: 'gateway',
+    command: 'npx',
+    args: ['tsx', 'services/x402-gateway/index.ts'],
+    cwd: MONOREPO_ROOT,
+    env: {
+      ...envOverrides,
+      PORT: GATEWAY_PORT,
+      CREDENTIAL_ACL_PATH: GATEWAY_ACL_PATH,
+      REQUIRE_JOB_CONTEXT: 'false',  // Skip job verification in E2E
+      PONDER_GRAPHQL_URL: ponderGraphqlUrl,
+    },
+  });
+
   // Wait for Ponder to be healthy
   console.log('Waiting for Ponder to be healthy...');
   try {
@@ -226,9 +250,32 @@ async function main() {
     process.exit(1);
   }
 
+  // Wait for Gateway to be healthy
+  console.log('Waiting for Gateway to be healthy...');
+  try {
+    const gatewayUrl = `http://localhost:${GATEWAY_PORT}/health`;
+    const gwStart = Date.now();
+    while (Date.now() - gwStart < 30_000) {
+      try {
+        const res = await fetch(gatewayUrl);
+        if (res.ok) {
+          console.log(`  Gateway ready at :${GATEWAY_PORT}`);
+          break;
+        }
+      } catch { /* not ready yet */ }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  } catch (e: any) {
+    console.error(`  Gateway failed to start: ${e.message}`);
+    // Non-fatal — gateway is optional for non-credential sessions
+    console.log('  (Credential bridge unavailable — credential session will not work)');
+  }
+
   console.log(`\nLocal stack ready.`);
   console.log(`  Ponder:      http://localhost:${PONDER_PORT}/graphql`);
   console.log(`  Control API: http://localhost:${CONTROL_PORT}/graphql`);
+  console.log(`  Gateway:     http://localhost:${GATEWAY_PORT} (credential bridge)`);
+  console.log(`  ACL file:    ${GATEWAY_ACL_PATH}`);
   console.log('\nPress Ctrl+C to stop.\n');
 
   // Keep alive
