@@ -22,8 +22,10 @@ After setup, get the agent EOA address from the setup output (or from `yarn wall
 cd "$CLONE_DIR" && AGENT_ADDR=$(node -e "
 const fs = require('fs');
 const keys = fs.readdirSync('.operate/keys');
-if (keys.length > 0) console.log('0x' + keys[0]);
-else process.exit(1);
+if (keys.length === 0) process.exit(1);
+// Key directory names already include '0x' prefix
+const addr = keys[0].startsWith('0x') ? keys[0] : '0x' + keys[0];
+console.log(addr);
 ")
 echo "Agent address: $AGENT_ADDR"
 ```
@@ -132,10 +134,14 @@ Or for the capabilities probe:
 You can also test the credential bridge independently using the gateway's built-in E2E tests. From the monorepo root:
 
 ```bash
-GATEWAY_URL=http://localhost:3001 npx tsx services/x402-gateway/credentials/test-e2e.ts
+GATEWAY_URL=http://localhost:3001 \
+  CREDENTIAL_ACL_PATH=.env.e2e.acl.json \
+  npx tsx services/x402-gateway/credentials/test-e2e.ts
 ```
 
-This runs the full ACL/signature/payment test suite against the local gateway. Expected: all ACL tests pass, Nango tests skip (no Nango running).
+This runs the full ACL/signature/payment test suite against the local gateway. `CREDENTIAL_ACL_PATH` is required because `test-e2e.ts` imports the ACL module directly.
+
+Expected: all ACL tests pass (8/8), Nango tests skip (no Nango running), payment validation tests fail (no `GATEWAY_PAYMENT_ADDRESS` set — these test x402 payment, not credential ACL).
 
 ### 6d. Manual credential request (optional)
 
@@ -172,14 +178,18 @@ getCredential('github')
 ## Acceptable Failures
 
 - **Gateway test Nango errors**: Expected — no Nango running locally. Static provider tests should pass.
+- **Payment validation tests fail**: Expected — `GATEWAY_PAYMENT_ADDRESS` not set. These test x402 payment infrastructure, not credential ACL.
 - **Rate limit tests skip**: Expected — no Redis running. Rate limiting is disabled.
 - **Nonce replay tests skip**: Expected — no Redis running.
 - **Manual credential fetch fails without signing proxy**: Expected — the proxy only runs during agent execution.
+- **Worker credential probe not shown**: Expected on branches without the credential bridge feature (e.g., `codex/railway-ssh-init-flow`). The probe requires `CREDENTIAL_BRIDGE_URL` support in the worker code.
 
 ## Success Criteria
 
 - [ ] Gateway started as part of E2E stack (healthy on :3001)
 - [ ] ACL file seeded with agent address and github grant
-- [ ] Worker probed credential bridge and discovered `github` provider
-- [ ] Gateway `test-e2e.ts` ACL tests pass (signature, unauthorized, expired, revoked)
+- [ ] Worker probed credential bridge and discovered `github` provider (requires branch with credential bridge support)
+- [ ] Gateway `test-e2e.ts` ACL tests pass (8/8: signature, unauthorized, expired, revoked, etc.)
 - [ ] Static provider returned token for `github` (visible in test-e2e.ts or audit logs)
+
+**Note**: The credential probe (step 3) and static token fetch (step 5) require the jinn-node branch to have the credential bridge integration (signing proxy, `CREDENTIAL_BRIDGE_URL` handling). Branches without this feature can still validate steps 1, 2, and 4.
