@@ -37,6 +37,8 @@ export interface Request {
   jobName?: string
   enabledTools: string[]
   additionalContext?: Record<string, unknown>
+  ventureId?: string
+  templateId?: string
   dependencies?: string[]
   // Marketplace delivery fields (global Jinn explorer)
   deliveryMech?: string
@@ -268,6 +270,8 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Paginat
           jobName
           enabledTools
           additionalContext
+          ventureId
+          templateId
           dependencies
           deliveryMech
         }

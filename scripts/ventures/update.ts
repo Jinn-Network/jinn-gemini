@@ -70,6 +70,10 @@ function parseArgs(): UpdateVentureArgs {
         result.status = next as 'active' | 'paused' | 'archived';
         i++;
         break;
+      case '--dispatch-schedule':
+        result.dispatchSchedule = JSON.parse(next);
+        i++;
+        break;
     }
   }
 
@@ -98,6 +102,7 @@ Optional (at least one required):
   --rootWorkstreamId <id>    New workstream ID (or "null" to clear)
   --rootJobInstanceId <id>   New root job instance ID (or "null" to clear)
   --status <status>          New status: active, paused, archived
+  --dispatch-schedule <json> Dispatch schedule as JSON array
 
 Example:
   yarn tsx scripts/ventures/update.ts \\

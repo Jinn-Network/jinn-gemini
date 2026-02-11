@@ -29,10 +29,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function VentureCard({ venture }: { venture: Venture }) {
-  // Link to the root workstream if available, otherwise to the venture ID
-  const href = venture.root_workstream_id
-    ? `/ventures/${venture.root_workstream_id}`
-    : `/ventures/${venture.id}`;
+  const href = `/ventures/${venture.id}`;
 
   return (
     <Card className="hover:border-primary/50 transition-colors">

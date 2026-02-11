@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { SiteHeader } from '@/components/site-header';
-import { getServiceInstance } from '@/lib/ventures/service-queries';
+import { getVenture } from '@/lib/ventures-services';
 import { VentureDetail, VentureDetailSkeleton } from '../page';
 
 interface VentureTreePageProps {
@@ -10,9 +10,9 @@ interface VentureTreePageProps {
 
 export default async function VentureTreePage({ params }: VentureTreePageProps) {
   const { id } = await params;
-  const instance = await getServiceInstance(id);
+  const venture = await getVenture(id);
 
-  if (!instance) {
+  if (!venture) {
     notFound();
   }
 
@@ -22,7 +22,7 @@ export default async function VentureTreePage({ params }: VentureTreePageProps) 
         breadcrumbs={[
           { label: 'Explorer', href: '/' },
           { label: 'Ventures', href: '/ventures' },
-          { label: instance.jobName }
+          { label: venture.name }
         ]}
       />
 

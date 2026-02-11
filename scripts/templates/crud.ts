@@ -12,7 +12,7 @@
  *   delete  --id <uuid> --confirm
  */
 
-import { supabase } from '../../gemini-agent/mcp/tools/shared/supabase.js';
+import { supabase } from 'jinn-node/agent/mcp/tools/shared/supabase.js';
 
 // ============================================================================
 // Types

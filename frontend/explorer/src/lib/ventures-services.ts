@@ -6,6 +6,15 @@
  */
 
 // Types
+export interface ScheduleEntry {
+  id: string;
+  templateId: string;
+  cron: string;
+  input?: Record<string, any>;
+  label?: string;
+  enabled?: boolean;
+}
+
 export interface Venture {
   id: string;
   name: string;
@@ -22,6 +31,7 @@ export interface Venture {
   };
   root_workstream_id: string | null;
   root_job_instance_id: string | null;
+  dispatch_schedule: ScheduleEntry[];
   status: 'active' | 'paused' | 'archived';
   created_at: string;
   updated_at: string;

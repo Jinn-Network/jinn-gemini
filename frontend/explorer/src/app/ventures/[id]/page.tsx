@@ -1,18 +1,14 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { SiteHeader } from '@/components/site-header';
-import { Card, CardContent } from '@/components/ui/card';
 import { VentureDashboard } from '@/components/ventures/venture-dashboard';
 import {
-  getServiceInstance,
   getRootJobDefinition,
   getRootRequest,
-  getMeasurementArtifacts,
-  getServiceOutputs,
-  getWorkstreamActivity,
 } from '@/lib/ventures/service-queries';
-import { getVentureByWorkstreamId } from '@/lib/ventures-services';
-import { fetchIpfsContent, type Artifact, type JobDefinition } from '@/lib/subgraph';
+import { getVenture } from '@/lib/ventures-services';
+import { getVentureActivity, getVentureMeasurements, getVentureServiceOutputs, getScheduleDispatches } from '@/lib/ventures/venture-queries';
+import { fetchIpfsContent, type Artifact, type Request } from '@/lib/subgraph';
 import {
   parseInvariants,
   determineHealthStatus,
@@ -28,7 +24,7 @@ import {
 } from '@jinn/shared-ui';
 import type { ServiceOutput } from '@/lib/ventures/service-types';
 import type { InvariantWithMeasurement } from '@/components/ventures/invariant-list';
-import { fetchWorkstreamActivityAction } from '../actions';
+import { fetchVentureActivityAction } from '../actions';
 
 /**
  * Parse SERVICE_OUTPUT artifact contentPreview to get output metadata
@@ -104,25 +100,75 @@ interface VenturePageProps {
 
 interface VentureDetailProps {
   id: string;
-  initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree';
+  initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree' | 'schedule';
   initialSelectedJobId?: string | null;
 }
 
 export async function VentureDetail({ id, initialTab, initialSelectedJobId }: VentureDetailProps) {
-  const instance = await getServiceInstance(id);
-
-  if (!instance) {
+  // Fetch venture from Supabase by UUID
+  const venture = await getVenture(id);
+  if (!venture) {
     notFound();
   }
 
-  // Fetch all data in parallel
-  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts, activityData, venture] = await Promise.all([
-    getRootJobDefinition(id),
-    getRootRequest(id),
-    getMeasurementArtifacts(id),
-    getServiceOutputs(id),
-    getWorkstreamActivity(id),
-    getVentureByWorkstreamId(id)
+  const workstreamId = venture.root_workstream_id;
+
+  // Fetch schedule dispatch data for all schedule entries
+  const scheduleEntries = venture.dispatch_schedule || [];
+  const scheduleDispatches = await Promise.all(
+    scheduleEntries.map(entry =>
+      getScheduleDispatches(venture.id, entry.templateId, 30)
+    )
+  );
+  const dispatchMap: Record<string, { count: number; latestRequest: Request | null; requests: Request[] }> = {};
+  scheduleEntries.forEach((entry, i) => {
+    dispatchMap[entry.templateId] = scheduleDispatches[i];
+  });
+
+  // If no root workstream yet, show minimal dashboard
+  if (!workstreamId) {
+    // Parse invariants from Supabase blueprint directly
+    const invariants = parseInvariants(venture.blueprint);
+    const invariantsWithMeasurements = matchInvariantsWithMeasurements(invariants, []);
+    const statusCounts = countByStatus(invariantsWithMeasurements.map(i => ({ status: i.status })));
+
+    return (
+      <div className="flex flex-col h-full gap-6">
+        <VentureDashboard
+          liveOutputUrl={null}
+          telegramUrl={null}
+          activityData={{ jobDefinitions: [] }}
+          workstreamId=""
+          ventureId={venture.id}
+          venture={venture}
+          invariants={invariantsWithMeasurements}
+          statusCounts={statusCounts}
+          primaryOutput={null}
+          fetchActivity={fetchVentureActivityAction}
+          initialTab={initialTab}
+          initialSelectedJobId={initialSelectedJobId}
+          dispatches={dispatchMap}
+          tokenInfo={venture ? {
+            token_address: venture.token_address,
+            token_symbol: venture.token_symbol,
+            token_name: venture.token_name,
+            token_launch_platform: venture.token_launch_platform,
+            governance_address: venture.governance_address,
+            pool_address: venture.pool_address,
+            token_metadata: venture.token_metadata,
+          } : undefined}
+        />
+      </div>
+    );
+  }
+
+  // Fetch all data in parallel — use venture-scoped queries where possible
+  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts, activityData] = await Promise.all([
+    getRootJobDefinition(workstreamId),
+    getRootRequest(workstreamId),
+    getVentureMeasurements(venture.id),
+    getVentureServiceOutputs(venture.id),
+    getVentureActivity(venture.id),
   ]);
 
   // Parse service outputs from artifacts
@@ -131,39 +177,41 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
     .filter((o): o is ServiceOutput => o !== null);
   const primaryOutput = serviceOutputs.find(o => o.primary) || serviceOutputs[0] || null;
 
-  // Parse invariants from blueprint
-  let blueprintJson: unknown = null;
-  let rawBlueprintContent: string | null = null;
+  // Parse invariants — prefer Supabase blueprint (always available), fall back to IPFS
+  let invariants = parseInvariants(venture.blueprint);
 
-  // Try to fetch from IPFS first (source of truth)
-  if (rootRequest?.ipfsHash) {
-    try {
-      const ipfsResult = await fetchIpfsContent(rootRequest.ipfsHash);
-      if (ipfsResult) {
-        const parsed = JSON.parse(ipfsResult.content);
-        rawBlueprintContent = parsed.blueprint || parsed.prompt || ipfsResult.content;
+  // If Supabase blueprint has no invariants, try IPFS as fallback
+  if (invariants.length === 0) {
+    let rawBlueprintContent: string | null = null;
+
+    if (rootRequest?.ipfsHash) {
+      try {
+        const ipfsResult = await fetchIpfsContent(rootRequest.ipfsHash);
+        if (ipfsResult) {
+          const parsed = JSON.parse(ipfsResult.content);
+          rawBlueprintContent = parsed.blueprint || parsed.prompt || ipfsResult.content;
+        }
+      } catch (e) {
+        console.error('Failed to fetch/parse IPFS content', e);
       }
-    } catch (e) {
-      console.error('Failed to fetch/parse IPFS content', e);
+    }
+
+    if (!rawBlueprintContent && rootJobDef?.blueprint) {
+      rawBlueprintContent = rootJobDef.blueprint;
+    }
+
+    if (rawBlueprintContent) {
+      try {
+        const blueprintJson = typeof rawBlueprintContent === 'string'
+          ? JSON.parse(rawBlueprintContent)
+          : rawBlueprintContent;
+        invariants = parseInvariants(blueprintJson);
+      } catch {
+        // Invalid JSON, ignore
+      }
     }
   }
 
-  // Fallback to subgraph blueprint if IPFS failed or missing
-  if (!rawBlueprintContent && rootJobDef?.blueprint) {
-    rawBlueprintContent = rootJobDef.blueprint;
-  }
-
-  if (rawBlueprintContent) {
-    try {
-      blueprintJson = typeof rawBlueprintContent === 'string'
-        ? JSON.parse(rawBlueprintContent)
-        : rawBlueprintContent;
-    } catch {
-      // Invalid JSON, might be raw text, ignore for invariants
-    }
-  }
-
-  const invariants = parseInvariants(blueprintJson);
   const invariantsWithMeasurements = matchInvariantsWithMeasurements(invariants, measurementArtifacts);
   const statusCounts = countByStatus(invariantsWithMeasurements.map(i => ({ status: i.status })));
 
@@ -177,14 +225,17 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
         liveOutputUrl={liveOutputUrl}
         telegramUrl={telegramUrl}
         activityData={activityData}
-        workstreamId={id}
+        workstreamId={workstreamId}
+        ventureId={venture.id}
+        venture={venture}
         invariants={invariantsWithMeasurements}
         statusCounts={statusCounts}
         primaryOutput={primaryOutput}
-        fetchActivity={fetchWorkstreamActivityAction}
+        fetchActivity={fetchVentureActivityAction}
         initialTab={initialTab}
         initialSelectedJobId={initialSelectedJobId}
-        tokenInfo={venture ? {
+        dispatches={dispatchMap}
+        tokenInfo={{
           token_address: venture.token_address,
           token_symbol: venture.token_symbol,
           token_name: venture.token_name,
@@ -192,7 +243,7 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
           governance_address: venture.governance_address,
           pool_address: venture.pool_address,
           token_metadata: venture.token_metadata,
-        } : undefined}
+        }}
       />
     </div>
   );
@@ -212,9 +263,9 @@ export function VentureDetailSkeleton() {
 
 export default async function VenturePage({ params }: VenturePageProps) {
   const { id } = await params;
-  const instance = await getServiceInstance(id);
+  const venture = await getVenture(id);
 
-  if (!instance) {
+  if (!venture) {
     notFound();
   }
 
@@ -224,7 +275,7 @@ export default async function VenturePage({ params }: VenturePageProps) {
         breadcrumbs={[
           { label: 'Explorer', href: '/' },
           { label: 'Ventures', href: '/ventures' },
-          { label: instance.jobName }
+          { label: venture.name }
         ]}
       />
 
