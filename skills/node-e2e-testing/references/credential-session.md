@@ -19,11 +19,10 @@ Agent → Signing Proxy → x402-Gateway → Static Provider (env var)
 After setup, get the agent EOA address from the setup output (or from `yarn wallet:info`). Then seed the gateway's ACL file with a grant for that address:
 
 ```bash
-cd "$CLONE_DIR" && AGENT_ADDR=$(node -e "
+AGENT_ADDR=$(node -e "
 const fs = require('fs');
-const keys = fs.readdirSync('.operate/keys');
+const keys = fs.readdirSync('$CLONE_DIR/.operate/keys');
 if (keys.length === 0) process.exit(1);
-// Key directory names already include '0x' prefix
 const addr = keys[0].startsWith('0x') ? keys[0] : '0x' + keys[0];
 console.log(addr);
 ")
@@ -61,8 +60,7 @@ ACLEOF
 Add the credential bridge URL to the jinn-node clone's `.env`:
 
 ```bash
-cd "$CLONE_DIR"
-echo "CREDENTIAL_BRIDGE_URL=http://localhost:3001" >> .env
+echo "CREDENTIAL_BRIDGE_URL=http://localhost:3001" >> "$CLONE_DIR/.env"
 ```
 
 ## 3. Set a Static Provider Token
@@ -97,7 +95,7 @@ yarn test:e2e:dispatch \
 
 ```bash
 yarn test:e2e:vnet fund <agent-eoa-address> --eth 0.01
-cd "$CLONE_DIR" && yarn worker --single
+yarn --cwd "$CLONE_DIR" worker --single
 ```
 
 ## 6. Verify Credential Bridge
@@ -155,9 +153,8 @@ To verify the signing proxy → gateway flow manually:
 
 ```bash
 # From the jinn-node clone, use the credential client directly
-cd "$CLONE_DIR"
 node -e "
-const { getCredential } = require('./dist/agent/shared/credential-client.js');
+const { getCredential } = require('$CLONE_DIR/dist/agent/shared/credential-client.js');
 getCredential('github')
   .then(token => console.log('Token received:', token.substring(0, 10) + '...'))
   .catch(err => console.error('Error:', err.message));

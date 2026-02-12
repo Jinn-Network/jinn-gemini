@@ -94,8 +94,14 @@ Clone the chosen branch:
 CLONE_DIR=$(mktemp -d)/jinn-node
 BRANCH=main  # or the branch the user chose
 git clone -b "$BRANCH" https://github.com/Jinn-Network/jinn-node.git "$CLONE_DIR"
-cd "$CLONE_DIR" && yarn install
-cp .env.example .env
+```
+
+Install dependencies and verify (use `--cwd` to avoid directory issues):
+```bash
+yarn --cwd "$CLONE_DIR" install
+# Verify tsx is available (required for setup/worker scripts):
+ls "$CLONE_DIR/node_modules/.bin/tsx" || echo "ERROR: tsx not installed"
+cp "$CLONE_DIR/.env.example" "$CLONE_DIR/.env"
 ```
 
 Save session state to `.env.e2e`:
@@ -117,10 +123,10 @@ X402_GATEWAY_URL=https://x402-gateway-production-1b84.up.railway.app
 
 **Setup is iterative** — it pauses when funding is needed, prints exact addresses and amounts. Fund those exact amounts and re-run until it completes:
 ```bash
-cd "$CLONE_DIR" && yarn setup
+yarn --cwd "$CLONE_DIR" setup
 # Read funding requirements from output, then from monorepo root:
 yarn test:e2e:vnet fund <address> --eth <amount> --olas <amount>
-cd "$CLONE_DIR" && yarn setup
+yarn --cwd "$CLONE_DIR" setup
 # Repeat until complete.
 ```
 

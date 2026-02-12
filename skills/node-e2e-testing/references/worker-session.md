@@ -41,7 +41,7 @@ yarn test:e2e:vnet fund <agent-eoa-address> --eth 0.01
 
 Wait a few seconds for Ponder to index the marketplace request, then:
 ```bash
-cd "$CLONE_DIR" && yarn worker --single
+yarn --cwd "$CLONE_DIR" worker --single
 ```
 
 ## Verify Tool Use

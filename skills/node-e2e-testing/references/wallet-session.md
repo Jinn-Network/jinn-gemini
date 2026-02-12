@@ -7,8 +7,7 @@ Tests: Setup → Wallet info → Key export → Time warp → Unstake → Withdr
 ## Wallet Info
 
 ```bash
-cd "$CLONE_DIR"
-yarn wallet:info
+yarn --cwd "$CLONE_DIR" wallet:info
 ```
 
 Expected output: Master EOA, Master Safe, Service Safe, Agent EOA addresses with ETH/OLAS balances. Verify all addresses match the setup output.
@@ -16,8 +15,7 @@ Expected output: Master EOA, Master Safe, Service Safe, Agent EOA addresses with
 ## Export Keys
 
 ```bash
-cd "$CLONE_DIR"
-yarn wallet:export-keys
+yarn --cwd "$CLONE_DIR" wallet:export-keys
 ```
 
 Expected output: BIP-39 mnemonic for the master EOA. Verify it produces a valid 12/24-word phrase.
@@ -37,7 +35,7 @@ yarn test:e2e:vnet time-warp 259200   # 72 hours in seconds
 
 Test recovery without executing:
 ```bash
-cd "$CLONE_DIR" && yarn wallet:recover --to <destination-address> --dry-run
+yarn --cwd "$CLONE_DIR" wallet:recover --to <destination-address> --dry-run
 ```
 
 Use any valid address as the destination (e.g., the Master EOA). The dry run should show:
@@ -49,7 +47,7 @@ Use any valid address as the destination (e.g., the Master EOA). The dry run sho
 ### 3. Execute Recovery
 
 ```bash
-cd "$CLONE_DIR" && yarn wallet:recover --to <destination-address>
+yarn --cwd "$CLONE_DIR" wallet:recover --to <destination-address>
 ```
 
 This performs:
@@ -59,7 +57,7 @@ This performs:
 ### 4. Verify
 
 ```bash
-cd "$CLONE_DIR" && yarn wallet:info
+yarn --cwd "$CLONE_DIR" wallet:info
 ```
 
 After recovery:
