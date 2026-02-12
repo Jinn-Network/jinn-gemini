@@ -12,7 +12,7 @@ export function GlobalActivityFeed() {
 
     async function fetchData() {
         const { requests, deliveries } = await fetchGlobalActivityAction();
-        const items = transformToActivityItems(requests, deliveries);
+        const items = await transformToActivityItems(requests, deliveries);
         setActivities(items);
     }
 
@@ -85,16 +85,13 @@ export function GlobalActivityFeed() {
 
 function ActivityRow({ item }: { item: ActivityItem }) {
     return (
-        <motion.a
-            href={item.explorerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+        <motion.div
             layout
             initial={{ opacity: 0, x: -20, filter: "blur(10px)" }}
             animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
-            className="grid grid-cols-12 gap-4 items-center p-3 rounded-lg border border-transparent hover:border-white/10 hover:bg-white/5 transition-colors group cursor-pointer block"
+            className="grid grid-cols-12 gap-4 items-center p-3 rounded-lg border border-transparent hover:border-white/10 hover:bg-white/5 transition-colors group"
         >
             {/* Timestamp */}
             <div className="col-span-2 text-xs text-muted-foreground font-mono">
@@ -103,15 +100,29 @@ function ActivityRow({ item }: { item: ActivityItem }) {
 
             {/* Venture Name */}
             <div className="col-span-2">
-                <Badge variant="secondary" className="bg-white/5 hover:bg-white/10 text-[10px] font-normal border-white/10 text-muted-foreground group-hover:text-foreground transition-colors">
-                    {item.ventureName}
-                </Badge>
+                <a
+                    href={item.explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <Badge variant="secondary" className="bg-white/5 hover:bg-white/10 text-[10px] font-normal border-white/10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                        {item.ventureName}
+                    </Badge>
+                </a>
             </div>
 
             {/* Job Name */}
-            <div className="col-span-2 text-xs text-cyan-400 truncate opacity-80 group-hover:opacity-100 transition-opacity">
+            <a
+                href={item.explorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="col-span-2 text-xs text-cyan-400 truncate opacity-80 hover:opacity-100 hover:underline transition-opacity cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {item.jobName}
-            </div>
+            </a>
 
             {/* Message & Icon */}
             <div className="col-span-6 flex items-center gap-3">
@@ -120,7 +131,7 @@ function ActivityRow({ item }: { item: ActivityItem }) {
                     {item.message}
                 </span>
             </div>
-        </motion.a>
+        </motion.div>
     );
 }
 

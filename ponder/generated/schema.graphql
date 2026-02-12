@@ -34,6 +34,12 @@ type Query {
   messages(where: messageFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): messagePage!
   workstream(id: String!): workstream
   workstreams(where: workstreamFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): workstreamPage!
+  mechServiceMapping(id: String!): mechServiceMapping
+  mechServiceMappings(where: mechServiceMappingFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): mechServiceMappingPage!
+  stakedService(id: String!): stakedService
+  stakedServices(where: stakedServiceFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): stakedServicePage!
+  jobTemplate(id: String!): jobTemplate
+  jobTemplates(where: jobTemplateFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): jobTemplatePage!
   _meta: Meta
 }
 
@@ -50,6 +56,8 @@ type jobDefinition {
   createdAt: BigInt
   lastInteraction: BigInt
   lastStatus: String
+  latestStatusUpdate: String
+  latestStatusUpdateAt: BigInt
 }
 
 type jobDefinitionPage {
@@ -155,6 +163,24 @@ input jobDefinitionFilter {
   lastStatus_ends_with: String
   lastStatus_not_starts_with: String
   lastStatus_not_ends_with: String
+  latestStatusUpdate: String
+  latestStatusUpdate_not: String
+  latestStatusUpdate_in: [String]
+  latestStatusUpdate_not_in: [String]
+  latestStatusUpdate_contains: String
+  latestStatusUpdate_not_contains: String
+  latestStatusUpdate_starts_with: String
+  latestStatusUpdate_ends_with: String
+  latestStatusUpdate_not_starts_with: String
+  latestStatusUpdate_not_ends_with: String
+  latestStatusUpdateAt: BigInt
+  latestStatusUpdateAt_not: BigInt
+  latestStatusUpdateAt_in: [BigInt]
+  latestStatusUpdateAt_not_in: [BigInt]
+  latestStatusUpdateAt_gt: BigInt
+  latestStatusUpdateAt_lt: BigInt
+  latestStatusUpdateAt_gte: BigInt
+  latestStatusUpdateAt_lte: BigInt
 }
 
 type request {
@@ -361,6 +387,7 @@ type delivery {
   transactionHash: String!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
+  jobInstanceStatusUpdate: String
 }
 
 type deliveryPage {
@@ -486,6 +513,16 @@ input deliveryFilter {
   blockTimestamp_lt: BigInt
   blockTimestamp_gte: BigInt
   blockTimestamp_lte: BigInt
+  jobInstanceStatusUpdate: String
+  jobInstanceStatusUpdate_not: String
+  jobInstanceStatusUpdate_in: [String]
+  jobInstanceStatusUpdate_not_in: [String]
+  jobInstanceStatusUpdate_contains: String
+  jobInstanceStatusUpdate_not_contains: String
+  jobInstanceStatusUpdate_starts_with: String
+  jobInstanceStatusUpdate_ends_with: String
+  jobInstanceStatusUpdate_not_starts_with: String
+  jobInstanceStatusUpdate_not_ends_with: String
 }
 
 type artifact {
@@ -826,4 +863,341 @@ input workstreamFilter {
   delivered_not: Boolean
   delivered_in: [Boolean]
   delivered_not_in: [Boolean]
+}
+
+type mechServiceMapping {
+  id: String!
+  mech: String!
+  serviceId: BigInt!
+  mechFactory: String!
+  blockTimestamp: BigInt!
+}
+
+type mechServiceMappingPage {
+  items: [mechServiceMapping!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input mechServiceMappingFilter {
+  AND: [mechServiceMappingFilter]
+  OR: [mechServiceMappingFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  mech: String
+  mech_not: String
+  mech_in: [String]
+  mech_not_in: [String]
+  mech_contains: String
+  mech_not_contains: String
+  mech_starts_with: String
+  mech_ends_with: String
+  mech_not_starts_with: String
+  mech_not_ends_with: String
+  serviceId: BigInt
+  serviceId_not: BigInt
+  serviceId_in: [BigInt]
+  serviceId_not_in: [BigInt]
+  serviceId_gt: BigInt
+  serviceId_lt: BigInt
+  serviceId_gte: BigInt
+  serviceId_lte: BigInt
+  mechFactory: String
+  mechFactory_not: String
+  mechFactory_in: [String]
+  mechFactory_not_in: [String]
+  mechFactory_contains: String
+  mechFactory_not_contains: String
+  mechFactory_starts_with: String
+  mechFactory_ends_with: String
+  mechFactory_not_starts_with: String
+  mechFactory_not_ends_with: String
+  blockTimestamp: BigInt
+  blockTimestamp_not: BigInt
+  blockTimestamp_in: [BigInt]
+  blockTimestamp_not_in: [BigInt]
+  blockTimestamp_gt: BigInt
+  blockTimestamp_lt: BigInt
+  blockTimestamp_gte: BigInt
+  blockTimestamp_lte: BigInt
+}
+
+type stakedService {
+  id: String!
+  serviceId: BigInt!
+  stakingContract: String!
+  owner: String!
+  multisig: String!
+  stakedAt: BigInt!
+  unstakedAt: BigInt
+  isStaked: Boolean!
+}
+
+type stakedServicePage {
+  items: [stakedService!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input stakedServiceFilter {
+  AND: [stakedServiceFilter]
+  OR: [stakedServiceFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  serviceId: BigInt
+  serviceId_not: BigInt
+  serviceId_in: [BigInt]
+  serviceId_not_in: [BigInt]
+  serviceId_gt: BigInt
+  serviceId_lt: BigInt
+  serviceId_gte: BigInt
+  serviceId_lte: BigInt
+  stakingContract: String
+  stakingContract_not: String
+  stakingContract_in: [String]
+  stakingContract_not_in: [String]
+  stakingContract_contains: String
+  stakingContract_not_contains: String
+  stakingContract_starts_with: String
+  stakingContract_ends_with: String
+  stakingContract_not_starts_with: String
+  stakingContract_not_ends_with: String
+  owner: String
+  owner_not: String
+  owner_in: [String]
+  owner_not_in: [String]
+  owner_contains: String
+  owner_not_contains: String
+  owner_starts_with: String
+  owner_ends_with: String
+  owner_not_starts_with: String
+  owner_not_ends_with: String
+  multisig: String
+  multisig_not: String
+  multisig_in: [String]
+  multisig_not_in: [String]
+  multisig_contains: String
+  multisig_not_contains: String
+  multisig_starts_with: String
+  multisig_ends_with: String
+  multisig_not_starts_with: String
+  multisig_not_ends_with: String
+  stakedAt: BigInt
+  stakedAt_not: BigInt
+  stakedAt_in: [BigInt]
+  stakedAt_not_in: [BigInt]
+  stakedAt_gt: BigInt
+  stakedAt_lt: BigInt
+  stakedAt_gte: BigInt
+  stakedAt_lte: BigInt
+  unstakedAt: BigInt
+  unstakedAt_not: BigInt
+  unstakedAt_in: [BigInt]
+  unstakedAt_not_in: [BigInt]
+  unstakedAt_gt: BigInt
+  unstakedAt_lt: BigInt
+  unstakedAt_gte: BigInt
+  unstakedAt_lte: BigInt
+  isStaked: Boolean
+  isStaked_not: Boolean
+  isStaked_in: [Boolean]
+  isStaked_not_in: [Boolean]
+}
+
+type jobTemplate {
+  id: String!
+  name: String!
+  description: String
+  tags: [String!]
+  enabledTools: [String!]
+  blueprintHash: String
+  blueprint: String
+  inputSchema: JSON
+  outputSpec: JSON
+  priceWei: BigInt
+  priceUsd: String
+  canonicalJobDefinitionId: String
+  runCount: Int!
+  successCount: Int!
+  avgDurationSeconds: Int
+  avgCostWei: BigInt
+  createdAt: BigInt!
+  lastUsedAt: BigInt
+  status: String!
+  defaultCyclic: Boolean
+}
+
+type jobTemplatePage {
+  items: [jobTemplate!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input jobTemplateFilter {
+  AND: [jobTemplateFilter]
+  OR: [jobTemplateFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  name: String
+  name_not: String
+  name_in: [String]
+  name_not_in: [String]
+  name_contains: String
+  name_not_contains: String
+  name_starts_with: String
+  name_ends_with: String
+  name_not_starts_with: String
+  name_not_ends_with: String
+  description: String
+  description_not: String
+  description_in: [String]
+  description_not_in: [String]
+  description_contains: String
+  description_not_contains: String
+  description_starts_with: String
+  description_ends_with: String
+  description_not_starts_with: String
+  description_not_ends_with: String
+  tags: [String]
+  tags_not: [String]
+  tags_has: String
+  tags_not_has: String
+  enabledTools: [String]
+  enabledTools_not: [String]
+  enabledTools_has: String
+  enabledTools_not_has: String
+  blueprintHash: String
+  blueprintHash_not: String
+  blueprintHash_in: [String]
+  blueprintHash_not_in: [String]
+  blueprintHash_contains: String
+  blueprintHash_not_contains: String
+  blueprintHash_starts_with: String
+  blueprintHash_ends_with: String
+  blueprintHash_not_starts_with: String
+  blueprintHash_not_ends_with: String
+  blueprint: String
+  blueprint_not: String
+  blueprint_in: [String]
+  blueprint_not_in: [String]
+  blueprint_contains: String
+  blueprint_not_contains: String
+  blueprint_starts_with: String
+  blueprint_ends_with: String
+  blueprint_not_starts_with: String
+  blueprint_not_ends_with: String
+  priceWei: BigInt
+  priceWei_not: BigInt
+  priceWei_in: [BigInt]
+  priceWei_not_in: [BigInt]
+  priceWei_gt: BigInt
+  priceWei_lt: BigInt
+  priceWei_gte: BigInt
+  priceWei_lte: BigInt
+  priceUsd: String
+  priceUsd_not: String
+  priceUsd_in: [String]
+  priceUsd_not_in: [String]
+  priceUsd_contains: String
+  priceUsd_not_contains: String
+  priceUsd_starts_with: String
+  priceUsd_ends_with: String
+  priceUsd_not_starts_with: String
+  priceUsd_not_ends_with: String
+  canonicalJobDefinitionId: String
+  canonicalJobDefinitionId_not: String
+  canonicalJobDefinitionId_in: [String]
+  canonicalJobDefinitionId_not_in: [String]
+  canonicalJobDefinitionId_contains: String
+  canonicalJobDefinitionId_not_contains: String
+  canonicalJobDefinitionId_starts_with: String
+  canonicalJobDefinitionId_ends_with: String
+  canonicalJobDefinitionId_not_starts_with: String
+  canonicalJobDefinitionId_not_ends_with: String
+  runCount: Int
+  runCount_not: Int
+  runCount_in: [Int]
+  runCount_not_in: [Int]
+  runCount_gt: Int
+  runCount_lt: Int
+  runCount_gte: Int
+  runCount_lte: Int
+  successCount: Int
+  successCount_not: Int
+  successCount_in: [Int]
+  successCount_not_in: [Int]
+  successCount_gt: Int
+  successCount_lt: Int
+  successCount_gte: Int
+  successCount_lte: Int
+  avgDurationSeconds: Int
+  avgDurationSeconds_not: Int
+  avgDurationSeconds_in: [Int]
+  avgDurationSeconds_not_in: [Int]
+  avgDurationSeconds_gt: Int
+  avgDurationSeconds_lt: Int
+  avgDurationSeconds_gte: Int
+  avgDurationSeconds_lte: Int
+  avgCostWei: BigInt
+  avgCostWei_not: BigInt
+  avgCostWei_in: [BigInt]
+  avgCostWei_not_in: [BigInt]
+  avgCostWei_gt: BigInt
+  avgCostWei_lt: BigInt
+  avgCostWei_gte: BigInt
+  avgCostWei_lte: BigInt
+  createdAt: BigInt
+  createdAt_not: BigInt
+  createdAt_in: [BigInt]
+  createdAt_not_in: [BigInt]
+  createdAt_gt: BigInt
+  createdAt_lt: BigInt
+  createdAt_gte: BigInt
+  createdAt_lte: BigInt
+  lastUsedAt: BigInt
+  lastUsedAt_not: BigInt
+  lastUsedAt_in: [BigInt]
+  lastUsedAt_not_in: [BigInt]
+  lastUsedAt_gt: BigInt
+  lastUsedAt_lt: BigInt
+  lastUsedAt_gte: BigInt
+  lastUsedAt_lte: BigInt
+  status: String
+  status_not: String
+  status_in: [String]
+  status_not_in: [String]
+  status_contains: String
+  status_not_contains: String
+  status_starts_with: String
+  status_ends_with: String
+  status_not_starts_with: String
+  status_not_ends_with: String
+  defaultCyclic: Boolean
+  defaultCyclic_not: Boolean
+  defaultCyclic_in: [Boolean]
+  defaultCyclic_not_in: [Boolean]
 }

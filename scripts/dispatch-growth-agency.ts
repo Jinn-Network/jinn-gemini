@@ -2,7 +2,7 @@
 /**
  * Dispatch Growth Agency job with updated template system
  */
-import { dispatchExistingJob } from '../gemini-agent/mcp/tools/index.js';
+import { dispatchExistingJob } from '../jinn-node/src/agent/mcp/tools/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,7 +20,7 @@ async function dispatch() {
     jobName: 'Growth Agency – TC2',
     workstreamId: '0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac',
     blueprint: JSON.stringify(blueprint),
-    message: 'Growth Agency re-dispatch with updated template CRUD system (template_create, template_query, template_update, template_delete). Templates now stored in Supabase and viewable via Jinn Explorer.',
+    message: 'Growth Agency re-dispatch with refocused blueprint. IMPORTANT: Growth = product growth (usage, revenue, marketing, distribution). Create templates that product teams would use to grow their products/platforms/protocols. NOT generic business consulting, market research, or traditional agency work. Quality filter: would a product like Jinn use this template to grow itself? If not, skip it.',
   });
 
   const response = JSON.parse(result.content[0].text);

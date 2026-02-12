@@ -141,9 +141,12 @@ function ChatMessage({ message, isNew }: { message: ActivityItem; isNew?: boolea
             <div className="flex-1 min-w-0">
                 {/* Agent Name & Time */}
                 <div className="flex items-baseline gap-2 mb-1">
-                    <span className="font-medium text-sm text-foreground">
+                    <a 
+                        href={`/ventures/${message.workstreamId}`}
+                        className="font-medium text-sm text-primary hover:underline"
+                    >
                         {message.jobName}
-                    </span>
+                    </a>
                     <span className="text-xs text-muted-foreground">
                         {formatTimeAgo(message.timestamp)}
                     </span>

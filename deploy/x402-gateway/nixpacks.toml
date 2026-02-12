@@ -1,16 +1,17 @@
-# x402 Gateway service build configuration
+# x402 Gateway service build configuration (v2 — ACP integration)
 # Pin to nixpkgs archive that includes Node.js 22
 [phases.setup]
 nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
+aptPkgs = ["python3"]
 
 [phases.install]
-# Install root deps then x402-gateway deps
-cmds = ["yarn install --frozen-lockfile", "cd services/x402-gateway && yarn install --frozen-lockfile"]
+# Only install gateway deps — jinn-node relative imports (template-tools, toolPolicy) have zero npm deps
+# Root monorepo install is too heavy and causes build timeouts
+# Symlink root node_modules → gateway's so scripts/shared/*.ts can resolve npm packages
+cmds = ["cd services/x402-gateway && yarn install", "ln -s /app/services/x402-gateway/node_modules /app/node_modules"]
 
 [phases.build]
-# Skip tsc build - tsx compiles on-the-fly at runtime
-# (x402-gateway imports from parent dirs which aren't in its tsconfig)
-cmds = ["echo 'Skipping tsc - using tsx runtime'"]
+cmds = ["echo 'Build complete - using tsx runtime + pre-built jinn-node dist'"]
 
 [start]
 cmd = "cd services/x402-gateway && npx tsx index.ts"

@@ -1,17 +1,31 @@
+# Railway upload exclusions — primarily used for x402-gateway deploys via `railway up`.
+# The worker service deploys via GitHub trigger and does NOT use this file.
 # Large non-essential directories - exclude to reduce upload size
 code-resources/
 frontend/
-services/
+services/*
+!services/x402-gateway
 contracts/
 logs/
 tests-next/
 service-backups/
+olas-operate-middleware/
+skills/
+ponder/
+control-api/
+worker/
+gemini-agent/
+migrations/
+configs/
 
 # Development/docs directories
 docs/
 blueprints/
 codespec/
 tests/
+
+# Build artifacts not needed at deploy time
+jinn-node/dist/
 
 # OLAS operate local data (secrets) - only exclude root .operate
 # Keep olas-operate-middleware/.operate/ for middleware functionality
@@ -26,7 +40,12 @@ tests/
 .env.*
 !.env.template
 
-# Git and IDE
+# Git, IDE, and tooling artifacts
 .git/
 .vscode/
 .idea/
+.conductor/
+.playwright-mcp/
+.cursor/
+.beads/
+packages/
