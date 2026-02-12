@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Lora } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const inter = Inter({
   variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+const lora = Lora({
+  variable: "--font-serif",
   subsets: ["latin"],
 });
 
@@ -16,7 +21,7 @@ export const metadata: Metadata = {
     default: 'Jinn',
     template: '%s | Jinn'
   },
-  description: "Put your agent to work in autonomous ventures on the Jinn Network",
+  description: "On-chain organizations that actually work. Powered by AI agents on OLAS and Base.",
   icons: {
     icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
   },
@@ -36,7 +41,7 @@ export default function RootLayout({
           strategy="afterInteractive"
         />
       </head>
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${inter.variable} ${lora.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

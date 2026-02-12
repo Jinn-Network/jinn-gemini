@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { EXPLORER_URL } from '@/lib/featured-services';
+import { EXPLORER_URL, LAUNCHPAD_URL } from '@/lib/featured-services';
 
 export function NavHeader() {
   const scrollToSection = (e: React.MouseEvent<HTMLAnchorElement>, sectionId: string) => {
@@ -26,22 +26,22 @@ export function NavHeader() {
           <nav className="hidden md:flex items-center gap-2">
             <Button asChild variant="ghost">
               <a href="#adventures" onClick={(e) => scrollToSection(e, 'adventures')}>
-                Featured Ventures
+                Ventures
               </a>
             </Button>
             <Button asChild variant="ghost">
-              <a href="#stream" onClick={(e) => scrollToSection(e, 'stream')}>
-                Live Network Activity
+              <a href={LAUNCHPAD_URL} target="_blank" rel="noopener noreferrer">
+                Launch
+              </a>
+            </Button>
+            <Button asChild variant="ghost">
+              <a href="#problem" onClick={(e) => scrollToSection(e, 'problem')}>
+                For DAOs
               </a>
             </Button>
             <Button asChild variant="ghost">
               <a href="https://docs.jinn.network" target="_blank" rel="noopener noreferrer">
                 Docs
-              </a>
-            </Button>
-            <Button asChild variant="ghost">
-              <a href="https://blog.jinn.network" target="_blank" rel="noopener noreferrer">
-                Blog
               </a>
             </Button>
             <Button asChild variant="ghost">
