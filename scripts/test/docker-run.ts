@@ -10,8 +10,9 @@
  * Usage:
  *   yarn test:e2e:docker-run --cwd /path/to/clone
  *   yarn test:e2e:docker-run --cwd /path/to/clone --single
- *   yarn test:e2e:docker-run --cwd /path/to/clone --telemetry
  *   yarn test:e2e:docker-run --cwd /path/to/clone --healthcheck
+ *
+ * Telemetry files are always mounted at /tmp/jinn-telemetry/ on the host.
  */
 
 import { execSync } from 'child_process';
@@ -38,7 +39,7 @@ const { flags } = parseArgs(process.argv.slice(2));
 
 const cloneDir = flags['cwd'];
 if (!cloneDir) {
-  console.error('Usage: yarn test:e2e:docker-run --cwd <clone-dir> [--single] [--telemetry] [--healthcheck]');
+  console.error('Usage: yarn test:e2e:docker-run --cwd <clone-dir> [--single] [--healthcheck]');
   process.exit(1);
 }
 
@@ -52,7 +53,6 @@ if (!existsSync(envFile)) {
 const home = homedir();
 const isMac = process.platform === 'darwin';
 const single = flags['single'] === 'true';
-const telemetry = flags['telemetry'] === 'true';
 const healthcheck = flags['healthcheck'] === 'true';
 const image = flags['image'] || 'jinn-node:e2e';
 
@@ -102,10 +102,10 @@ if (existsSync(googleAccounts)) {
   args.push('-v', `${googleAccounts}:/home/jinn/.gemini/google_accounts.json`);
 }
 
-if (telemetry) {
-  execSync('mkdir -p /tmp/jinn-telemetry');
-  args.push('-v', '/tmp/jinn-telemetry:/tmp');
-}
+// Always mount telemetry dir so files survive container exit (--rm).
+// Previously this was --telemetry-only, forcing a second dispatch just to capture tool use.
+execSync('mkdir -p /tmp/jinn-telemetry');
+args.push('-v', '/tmp/jinn-telemetry:/tmp');
 
 args.push('--shm-size=2g');
 
@@ -116,7 +116,7 @@ if (healthcheck) {
 args.push(image);
 
 // CMD override
-if (single || telemetry) {
+if (single) {
   args.push('node', 'dist/worker/mech_worker.js', '--single');
 }
 // healthcheck and default: use image's CMD (worker_launcher.js)

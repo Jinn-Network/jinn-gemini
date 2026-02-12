@@ -46,30 +46,85 @@ The wrapper script handles:
 - All fixed env vars (`GEMINI_SANDBOX`, `OPERATE_PROFILE_DIR`, etc.)
 - `--shm-size=2g` for Chromium
 
-## Verify Healthcheck (optional)
+## Verify Healthcheck (required)
 
 ```bash
 yarn test:e2e:docker-run --cwd "$CLONE_DIR" --healthcheck
 ```
 
-Wait ~60s for startup, then:
+Wait ~60s for startup, then validate the endpoint returns all required fields:
 ```bash
-curl http://localhost:8080/health
-# Should return JSON with status, nodeId, uptime, processedJobs
+curl -s http://localhost:8080/health | jq '{
+  status: .status,
+  nodeId: .nodeId,
+  workerId: .workerId,
+  processedJobs: .processedJobs,
+  heapUsedMB: .memory.heapUsedMB,
+  heapTotalMB: .memory.heapTotalMB,
+  rssMB: .memory.rssMB,
+  idlePercent: .efficiency.idlePercent
+}'
+```
 
+**Required assertions** (fail the test if any are false):
+- `.status` equals `"ok"`
+- `.memory.heapUsedMB` is a number > 0
+- `.memory.heapTotalMB` is a number > 0 and <= 2200 (heap cap is 2048MB, allow overhead)
+- `.memory.rssMB` is a number > 0
+- `.nodeId` is a non-empty string
+
+Clean up:
+```bash
 docker stop jinn-e2e-healthcheck && docker rm jinn-e2e-healthcheck
 ```
 
 ## Verify Tool Use
 
-Run with telemetry capture:
+**WARNING: Do NOT run Docker again or dispatch a new job for this step.** Telemetry files from the `--single` run above are already on the host at `/tmp/jinn-telemetry/`. Just parse them.
+
+Find the telemetry file and parse it:
 ```bash
-yarn test:e2e:docker-run --cwd "$CLONE_DIR" --telemetry
+TFILE=$(ls -t /tmp/jinn-telemetry/telemetry-*.json 2>/dev/null | head -1)
+echo "Telemetry file: $TFILE"
+python3 -c "
+import json
+content = open('$TFILE').read()
+events, buf, started, brace_count, in_string, escape_next = [], '', False, 0, False, False
+for ch in content:
+    if not started:
+        if ch == '{':
+            started, brace_count, buf, in_string, escape_next = True, 1, '{', False, False
+        continue
+    buf += ch
+    if escape_next: escape_next = False
+    elif ch == '\\\\' and in_string: escape_next = True
+    elif ch == '\"': in_string = not in_string
+    elif not in_string:
+        if ch == '{': brace_count += 1
+        elif ch == '}': brace_count -= 1
+    if started and brace_count == 0:
+        try: events.append(json.loads(buf))
+        except: pass
+        started, buf, in_string, escape_next = False, '', False, False
+for evt in events:
+    attrs = evt.get('attributes', {})
+    if attrs.get('event.name') == 'gemini_cli.config':
+        print(f\"core_tools_enabled: {attrs.get('core_tools_enabled', '')}\")
+tools = []
+for evt in events:
+    attrs = evt.get('attributes', {})
+    if attrs.get('event.name') in ('gemini_cli.tool_call', 'gemini_cli.function_call'):
+        name = attrs.get('function_name') or attrs.get('tool_name') or 'unknown'
+        tools.append(name)
+        print(f\"Tool call: {name} (success={attrs.get('success','?')}, {attrs.get('duration_ms','?')}ms)\")
+if not tools:
+    print('ERROR: No tool calls found in telemetry')
+else:
+    print(f'Total tool calls: {len(tools)}')
+    for req in ['google_web_search', 'create_artifact']:
+        print(f\"  [{'PASS' if req in tools else 'FAIL'}] {req}\")
+"
 ```
-
-The `--telemetry` flag mounts `/tmp/jinn-telemetry:/tmp` so telemetry files are accessible on the host after the container exits.
-
-Then parse telemetry using the streaming parser from [worker-session.md](worker-session.md#step-1-parse-telemetry-and-check-tool-configuration).
 
 ## Expected Flow
 
@@ -86,7 +141,7 @@ Then parse telemetry using the streaming parser from [worker-session.md](worker-
 Always report these paths at session end for investigation:
 
 - **Docker worker output**: stdout from `yarn test:e2e:docker-run`
-- **Telemetry file**: `/tmp/jinn-telemetry/telemetry-*.json` (when `--telemetry` used)
+- **Telemetry file**: `/tmp/jinn-telemetry/telemetry-*.json` (always available)
 - **Docker logs**: `docker logs jinn-e2e-worker` (if container still running)
 - **Ponder logs**: Background stack output (task output file)
 - **Clone directory**: `$CLONE_DIR` — contains `.env`, `.operate/`, service config
@@ -106,4 +161,5 @@ Always report these paths at session end for investigation:
 - [ ] Agent called `create_artifact` at least once
 - [ ] Result was uploaded to IPFS
 - [ ] On-chain delivery attempted (success or quota error)
-- [ ] Healthcheck returns valid JSON (if tested)
+- [ ] Healthcheck returns `status: "ok"` with valid memory metrics
+- [ ] Heap total is within cap (`heapTotalMB <= 2200`)
