@@ -171,14 +171,20 @@ async function main() {
     },
   });
 
-  // Graceful shutdown
-  const shutdown = async () => {
-    console.log('\nShutting down...');
+  // SIGINT (Ctrl+C): full cleanup — kill all children and exit
+  process.on('SIGINT', async () => {
+    console.log('\nShutting down (SIGINT)...');
     await pm.killAll();
     process.exit(0);
-  };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  });
+
+  // SIGTERM (Bash tool cleanup, etc.): let detached children survive.
+  // Just exit the parent — children keep running on their ports.
+  // Next "yarn test:e2e:stack" start kills by port (killPort).
+  process.on('SIGTERM', () => {
+    console.log('\nParent exiting (SIGTERM) — services continue on their ports.');
+    process.exit(0);
+  });
 
   // Start Ponder (uses yarn ponder:dev which handles predev + ponder dev)
   pm.startService({
