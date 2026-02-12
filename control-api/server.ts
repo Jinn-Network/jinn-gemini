@@ -13,6 +13,7 @@ import {
   getOptionalControlApiPort
 } from 'jinn-node/config';
 import { getMasterSafe, getServiceSafeAddress } from 'jinn-node/env/operate-profile.js';
+import { InMemoryNonceStore, verifyControlApiRequest } from 'jinn-node/http/erc8128.js';
 
 // Load environment variables
 dotenv.config();
@@ -21,6 +22,7 @@ type Context = {
   supabase: ReturnType<typeof createClient>;
   ponderUrl: string;
   req: Request;
+  verifiedAddress: string;
 };
 
 const typeDefs = /* GraphQL */ `
@@ -193,6 +195,15 @@ async function assertRequestExists(ctx: Context, requestId: string) {
 
     clearTimeout(timeout);
 
+    // If Ponder is unavailable (5xx), skip validation rather than blocking claims
+    if (!res.ok) {
+      logger.warn({
+        requestId,
+        status: res.status,
+      }, 'Ponder returned non-OK status, skipping validation');
+      return;
+    }
+
     // Check if response is actually JSON before parsing
     const contentType = res.headers.get('content-type');
     if (!contentType?.includes('application/json')) {
@@ -216,11 +227,7 @@ async function assertRequestExists(ctx: Context, requestId: string) {
 }
 
 function getWorkerAddress(ctx: Context): string {
-  const headerVal = (ctx.req.headers as any).get?.('x-worker-address') || (ctx.req as any).headers?.['x-worker-address'];
-  if (!headerVal || typeof headerVal !== 'string') {
-    throw new Error('Missing x-worker-address');
-  }
-  return headerVal;
+  return ctx.verifiedAddress;
 }
 
 const resolvers = {
@@ -872,13 +879,23 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
+const nonceStore = new InMemoryNonceStore();
+
 const yoga = createYoga<Context>({
   schema,
-  context: ({ request }) => ({
-    supabase,
-    ponderUrl: PONDER_GRAPHQL_URL,
-    req: request,
-  }),
+  context: async ({ request }) => {
+    const result = await verifyControlApiRequest(request.clone(), nonceStore);
+    if (!result.ok) {
+      logger.warn({ reason: result.reason, detail: result.detail }, 'ERC-8128 auth failed');
+      throw new Error(`ERC-8128 auth failed: ${result.reason}${result.detail ? ` (${result.detail})` : ''}`);
+    }
+    return {
+      supabase,
+      ponderUrl: PONDER_GRAPHQL_URL,
+      req: request,
+      verifiedAddress: result.address,
+    };
+  },
   graphqlEndpoint: '/graphql',
 });
 
