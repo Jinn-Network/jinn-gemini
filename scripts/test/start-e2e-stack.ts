@@ -278,12 +278,24 @@ async function main() {
   const gwPayAddr = process.env.GATEWAY_PAYMENT_ADDRESS || '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
   const hasCdp = Boolean(process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET);
 
+  // Write service PIDs to .env.e2e so cleanup can find orphaned processes
+  const pids = pm.getPids();
+  const pidLines = Array.from(pids.entries())
+    .map(([name, pid]) => `E2E_PID_${name.toUpperCase().replace(/-/g, '_')}=${pid}`)
+    .join('\n');
+  if (pidLines) {
+    await fs.appendFile(E2E_ENV_FILE, pidLines + '\n');
+  }
+
   console.log(`\nLocal stack ready.`);
   console.log(`  Ponder:      http://localhost:${PONDER_PORT}/graphql`);
   console.log(`  Control API: http://localhost:${CONTROL_PORT}/graphql`);
   console.log(`  Gateway:     http://localhost:${GATEWAY_PORT} (credential bridge)`);
   console.log(`  ACL file:    ${GATEWAY_ACL_PATH}`);
   console.log(`  Payment:     ${gwPayAddr} (CDP: ${hasCdp ? 'enabled' : 'NOT configured — set CDP_API_KEY_ID/SECRET in .env'})`);
+  for (const [name, pid] of pids) {
+    console.log(`  ${name} PID:  ${pid}`);
+  }
   console.log('\nPress Ctrl+C to stop.\n');
 
   // Keep alive

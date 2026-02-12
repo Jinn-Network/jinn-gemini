@@ -50,6 +50,7 @@ export class ProcessManager {
       cwd: config.cwd,
       env: { ...process.env, ...config.env },
       stdio: 'pipe',
+      detached: true,  // Survive parent death (e.g. Bash tool cleanup)
     });
 
     // Stream stdout with prefix and detect quota errors
@@ -155,11 +156,21 @@ export class ProcessManager {
       killPromises.push(
         new Promise<void>((resolve) => {
           try {
-            proc.kill('SIGTERM');
+            // Kill the process group (negative PID) so grandchildren die too.
+            // Detached processes run in their own group with pgid === pid.
+            if (proc.pid) {
+              process.kill(-proc.pid, 'SIGTERM');
+            } else {
+              proc.kill('SIGTERM');
+            }
             // Force kill after timeout
             setTimeout(() => {
               try {
-                proc.kill('SIGKILL');
+                if (proc.pid) {
+                  process.kill(-proc.pid, 'SIGKILL');
+                } else {
+                  proc.kill('SIGKILL');
+                }
               } catch (e) {
                 // Already dead
               }
