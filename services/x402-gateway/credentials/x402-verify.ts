@@ -163,12 +163,12 @@ export async function verifyPayment(opts: VerifyPaymentOptions): Promise<VerifyR
 
   try {
     const result = await verify(payload, requirements);
-    if (result.error) {
+    if (!result.isValid) {
       return {
         valid: false,
         error: {
           code: 'PAYMENT_SIGNATURE_INVALID',
-          message: `Facilitator rejected: ${result.error}`,
+          message: `Facilitator rejected: ${result.invalidReason}`,
         },
       };
     }

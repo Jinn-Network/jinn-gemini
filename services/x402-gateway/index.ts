@@ -36,7 +36,7 @@ import {
 } from "./pricing.js";
 // buildJobBranchName and CodeMetadata are inlined below (lines 41-74)
 import { deepSubstitute, buildBlueprintFromTemplate as sharedBuildBlueprint } from '../../scripts/shared/template-substitution.js';
-import { buildAnnotatedTools, parseAnnotatedTools } from 'jinn-node/shared/template-tools.js';
+import { buildAnnotatedTools, parseAnnotatedTools } from '../../jinn-node/src/shared/template-tools.js';
 
 // Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
 interface BranchSnapshot {
@@ -478,7 +478,14 @@ app.post("/templates/:id/execute", async (c) => {
 
   // Build blueprint from template
   // If template has stored blueprint from Ponder, use it; otherwise generate
-  const { invariants } = await buildBlueprintFromTemplate(template, enrichedInput);
+  const { invariants } = await buildBlueprintFromTemplate(
+    {
+      blueprint: template.blueprint ?? undefined,
+      inputSchema: template.inputSchema ?? undefined,
+      name: template.name,
+    },
+    enrichedInput
+  );
 
   try {
     // Dispatch to Jinn
