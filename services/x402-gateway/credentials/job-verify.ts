@@ -1,8 +1,8 @@
 /**
  * Job Claim Verification for Credential Bridge
  *
- * Verifies that credential requests are coming from agents actively
- * working on claimed jobs, preventing unauthorized direct access.
+ * Verifies that credential requests come from the same service EOA that
+ * currently owns the on-chain request claim.
  *
  * Control API is the source of truth for claim ownership/state.
  */
@@ -74,7 +74,7 @@ function getControlApiSigner(): Erc8128Signer | null {
  * Verify that the requester holds an active claim for the given requestId.
  *
  * @param requestId - The on-chain request ID (JINN_REQUEST_ID)
- * @param requesterAddress - The request signer wallet address (from ERC-8128 auth)
+ * @param requesterAddress - The credential request signer EOA (from ERC-8128 auth)
  * @returns Explicit result state: valid, invalid, or unavailable
  */
 export async function verifyJobClaim(

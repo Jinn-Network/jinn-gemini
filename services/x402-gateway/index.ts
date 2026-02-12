@@ -974,8 +974,9 @@ app.post("/credentials/capabilities", async (c) => {
 /**
  * POST /credentials/:provider
  *
- * Agent signs a request body with its private key.
- * Gateway verifies signature, checks ACL, optionally verifies x402 payment,
+ * Requester signs the HTTP request with ERC-8128.
+ * Gateway verifies signer EOA, enforces optional job claim ownership
+ * against Control API, checks ACL, optionally verifies x402 payment,
  * then returns a fresh OAuth token from Nango.
  */
 app.post("/credentials/:provider", async (c) => {
