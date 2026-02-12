@@ -82,14 +82,17 @@ yarn test:e2e:stack
 
 ## 4. Dispatch a Job
 
-Dispatch with `get_file_contents` enabled — this maps to the `github` credential provider in `TOOL_CREDENTIAL_MAP` (`credentialFilter.ts`), triggering the full credential flow:
+Dispatch with `get_file_contents` enabled AND a blueprint that **instructs the agent to use it**. This maps to the `github` credential provider in `TOOL_CREDENTIAL_MAP` (`credentialFilter.ts`), triggering the full credential flow: agent → signing proxy → credential bridge → GitHub API.
 
 ```bash
 yarn test:e2e:dispatch \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --cwd "$CLONE_DIR" \
-  --enabled-tools "get_file_contents,google_web_search,web_fetch,create_artifact"
+  --enabled-tools "get_file_contents,google_web_search,web_fetch,create_artifact" \
+  --blueprint '{"invariants":[{"id":"GOAL-001","type":"BOOLEAN","condition":"Fetch the README.md file from the Jinn-Network/jinn-node GitHub repository using the get_file_contents tool. Report the first 3 lines of the file.","assessment":"Agent used get_file_contents to retrieve README.md and reported its contents"},{"id":"TOOL-001","type":"BOOLEAN","condition":"Must use the get_file_contents tool to fetch from GitHub","assessment":"get_file_contents was called at least once"},{"id":"TOOL-002","type":"BOOLEAN","condition":"Must use create_artifact to store the result","assessment":"create_artifact was called at least once"}]}'
 ```
+
+**CRITICAL**: The blueprint GOAL must explicitly instruct the agent to use `get_file_contents`. Without this, the agent will answer using web search alone and never trigger the credential flow.
 
 ## 5. Fund and Run the Worker
 
@@ -197,7 +200,9 @@ In addition to the shared prerequisites (SKILL.md), the credential session requi
 
 - [ ] Gateway started as part of E2E stack (healthy on :3001, CDP enabled)
 - [ ] ACL file seeded with agent address and github grant
+- [ ] `get_file_contents` NOT dropped by tool policy (no `Dropping unknown tool` warning)
 - [ ] Worker probed credential bridge and discovered `github` provider
+- [ ] Agent called `get_file_contents` → triggered `getCredential('github')` via signing proxy
 - [ ] Gateway `test-e2e.ts` ACL tests pass (8/8: signature, unauthorized, expired, revoked, etc.)
 - [ ] Static provider test passes (GITHUB_TOKEN served from env)
 - [ ] Payment basic validation tests pass (amount, recipient, expiry, network)
