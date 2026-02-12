@@ -1037,11 +1037,24 @@ app.post("/credentials/:provider", async (c) => {
     }
 
     const jobValid = await verifyJobClaim(body.requestId, requesterAddress);
-    if (!jobValid.valid) {
-      logAudit({ address: requesterAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'job_not_active', requestId: body.requestId, detail: jobValid.error } });
+    if (jobValid.state !== 'valid') {
+      const denyStatus = jobValid.state === 'unavailable' ? 503 : 403;
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'auth_failed',
+        ip: clientIp,
+        userAgent,
+        metadata: {
+          reason: jobValid.state === 'unavailable' ? 'job_verification_unavailable' : 'job_not_active',
+          requestId: body.requestId,
+          detail: jobValid.error,
+          verifyDetail: jobValid.detail,
+        },
+      });
       return c.json(
         { error: jobValid.error || 'Job verification failed', code: 'JOB_NOT_ACTIVE' } satisfies CredentialError,
-        { status: 403, headers: getRateLimitHeaders(rateLimit) }
+        { status: denyStatus, headers: getRateLimitHeaders(rateLimit) }
       );
     }
   }

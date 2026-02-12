@@ -4,17 +4,23 @@
  * Verifies that credential requests are coming from agents actively
  * working on claimed jobs, preventing unauthorized direct access.
  *
- * Queries Control API to check:
- * 1. Request is claimed
- * 2. Claim is held by the requesting agent (X-Worker-Address match)
- * 3. Request is in-progress (not completed)
+ * Control API is the source of truth for claim ownership/state.
  */
 
+import {
+  createPrivateKeyHttpSigner,
+  resolveChainId,
+  signRequestWithErc8128,
+  type Erc8128Signer,
+} from '../../../jinn-node/src/http/erc8128.js';
+
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
+const CONTROL_API_TIMEOUT_MS = Number.parseInt(process.env.CONTROL_API_TIMEOUT_MS || '5000', 10);
 
 export interface JobVerifyResult {
-  valid: boolean;
+  state: 'valid' | 'invalid' | 'unavailable';
   error?: string;
+  detail?: string;
 }
 
 interface RequestClaim {
@@ -32,17 +38,58 @@ interface GraphQLResponse {
   errors?: Array<{ message: string }>;
 }
 
+let cachedSigner: Erc8128Signer | null = null;
+
+function getControlApiPrivateKey(): `0x${string}` | null {
+  const key = (
+    process.env.CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY ||
+    process.env.JINN_SERVICE_PRIVATE_KEY ||
+    process.env.PRIVATE_KEY ||
+    ''
+  ).trim();
+  if (/^0x[a-fA-F0-9]{64}$/.test(key)) {
+    return key as `0x${string}`;
+  }
+  return null;
+}
+
+function getControlApiSigner(): Erc8128Signer | null {
+  if (cachedSigner) return cachedSigner;
+
+  const privateKey = getControlApiPrivateKey();
+  if (!privateKey) return null;
+
+  const chainId = resolveChainId(
+    process.env.CHAIN_ID ||
+    process.env.CHAIN_CONFIG ||
+    process.env.X402_NETWORK ||
+    'base',
+  );
+
+  cachedSigner = createPrivateKeyHttpSigner(privateKey, chainId);
+  return cachedSigner;
+}
+
 /**
- * Verify that the agent holds an active claim for the given requestId.
+ * Verify that the requester holds an active claim for the given requestId.
  *
- * @param requestId - The on-chain request ID (JINN_JOB_ID)
- * @param agentAddress - The agent's wallet address (from signature)
- * @returns JobVerifyResult with valid status and optional error message
+ * @param requestId - The on-chain request ID (JINN_REQUEST_ID)
+ * @param requesterAddress - The request signer wallet address (from ERC-8128 auth)
+ * @returns Explicit result state: valid, invalid, or unavailable
  */
 export async function verifyJobClaim(
   requestId: string,
-  agentAddress: string
+  requesterAddress: string
 ): Promise<JobVerifyResult> {
+  const signer = getControlApiSigner();
+  if (!signer) {
+    return {
+      state: 'unavailable',
+      error: 'Bridge signer private key is not configured',
+      detail: 'Set CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY or JINN_SERVICE_PRIVATE_KEY',
+    };
+  }
+
   const query = `query GetClaim($requestId: String!) {
     getRequestClaim(requestId: $requestId) {
       request_id
@@ -53,46 +100,67 @@ export async function verifyJobClaim(
   }`;
 
   try {
-    const response = await fetch(CONTROL_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables: { requestId } }),
+    const request = await signRequestWithErc8128({
+      signer,
+      input: CONTROL_API_URL,
+      init: {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `verify-claim:${requestId}:${Date.now()}`,
+        },
+        body: JSON.stringify({ query, variables: { requestId } }),
+        signal: AbortSignal.timeout(CONTROL_API_TIMEOUT_MS),
+      },
+      signOptions: {
+        label: 'eth',
+        binding: 'request-bound',
+        replay: 'non-replayable',
+        ttlSeconds: 60,
+      },
     });
 
+    const response = await fetch(request);
+
     if (!response.ok) {
-      console.error('[credential-bridge] Control API returned', response.status);
-      // Fail open if Control API unreachable
-      return { valid: true };
+      return {
+        state: 'unavailable',
+        error: `Control API returned HTTP ${response.status}`,
+      };
     }
 
     const data = await response.json() as GraphQLResponse;
 
     if (data.errors?.length) {
-      console.error('[credential-bridge] Control API error:', data.errors[0].message);
-      // Fail open on GraphQL errors
-      return { valid: true };
+      return {
+        state: 'unavailable',
+        error: 'Control API GraphQL error',
+        detail: data.errors[0].message,
+      };
     }
 
     const claim = data?.data?.getRequestClaim;
 
     if (!claim) {
-      return { valid: false, error: `Request ${requestId} not claimed` };
+      return { state: 'invalid', error: `Request ${requestId} not claimed` };
     }
 
-    // Verify claim is held by this agent
-    if (claim.worker_address?.toLowerCase() !== agentAddress.toLowerCase()) {
-      return { valid: false, error: 'Request claimed by different agent' };
+    // Verify claim is held by this requester EOA
+    if (claim.worker_address?.toLowerCase() !== requesterAddress.toLowerCase()) {
+      return { state: 'invalid', error: 'Request claimed by different address' };
     }
 
     // Verify still in progress
     if (claim.status === 'COMPLETED' || claim.status === 'FAILED') {
-      return { valid: false, error: `Request ${requestId} already ${claim.status.toLowerCase()}` };
+      return { state: 'invalid', error: `Request ${requestId} already ${claim.status.toLowerCase()}` };
     }
 
-    return { valid: true };
+    return { state: 'valid' };
   } catch (err) {
-    // Fail open if Control API unreachable
-    console.error('[credential-bridge] Control API verification failed:', err);
-    return { valid: true };
+    return {
+      state: 'unavailable',
+      error: 'Control API verification failed',
+      detail: err instanceof Error ? err.message : String(err),
+    };
   }
 }
