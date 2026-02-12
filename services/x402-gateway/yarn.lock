@@ -2,6 +2,14 @@
 # yarn lockfile v1
 
 
+"@slicekit/erc8128@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@slicekit/erc8128/-/erc8128-0.1.0.tgz#63c34784d9c60ad54dc97d69c2aeb24e1619a5a8"
+  integrity sha512-App9GeEN2jDtGWKKLn2C9UC3NJCae5kxzZz9EyySMHzIKQAfCbMMbZwFQryUoStAfG92YS8nQlhYtHd4GZq8qw==
+  dependencies:
+    "@noble/hashes" "^1.8.0"
+
+
 "@adraffy/ens-normalize@1.10.1", "@adraffy/ens-normalize@^1.10.1", "@adraffy/ens-normalize@^1.8.8":
   version "1.10.1"
   resolved "https://registry.npmjs.org/@adraffy/ens-normalize/-/ens-normalize-1.10.1.tgz"

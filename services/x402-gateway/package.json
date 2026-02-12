@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "jinn-node": "workspace:*",
+    "@slicekit/erc8128": "^0.1.0",
     "@coinbase/x402": "^1.0.0",
     "@hono/node-server": "^1.19.7",
     "@jinn-network/mech-client-ts": "^0.0.6",
