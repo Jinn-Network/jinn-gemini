@@ -12,7 +12,7 @@
  *   delete  --id <uuid> --confirm
  */
 
-import { supabase } from '../../gemini-agent/mcp/tools/shared/supabase.js';
+import { supabase } from 'jinn-node/agent/mcp/tools/shared/supabase.js';
 
 // ============================================================================
 // Types
@@ -77,6 +77,7 @@ export interface UpdateTemplateArgs {
   defaultCyclic?: boolean;
   ventureId?: string | null;
   status?: 'draft' | 'published' | 'archived';
+  olasAgentId?: number | null;
 }
 
 // ============================================================================
@@ -228,6 +229,7 @@ export async function updateTemplate(args: UpdateTemplateArgs): Promise<Template
   if (updates.ventureId !== undefined) record.venture_id = updates.ventureId;
   if (updates.status !== undefined) record.status = updates.status;
   if (updates.type !== undefined) record.type = updates.type;
+  if (updates.olasAgentId !== undefined) record.olas_agent_id = updates.olasAgentId;
 
   if (updates.blueprint !== undefined) {
     record.blueprint = parseBlueprint(updates.blueprint);

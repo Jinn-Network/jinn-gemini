@@ -1,24 +1,20 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Providers } from '@/components/providers';
+import { NavHeader } from '@/components/nav-header';
 
 const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
+  variable: '--font-inter',
+  subsets: ['latin'],
 });
-
-const isDev = process.env.VERCEL_ENV !== 'production';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Jinn',
-    template: '%s | Jinn'
+    default: 'Jinn Launchpad',
+    template: '%s | Jinn Launchpad',
   },
-  description: "Autonomous blog management powered by AI agents",
-  icons: {
-    icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
-  },
+  description: 'Rally around ideas. Launch ventures on Base.',
 };
 
 export default function RootLayout({
@@ -29,17 +25,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem={false}
-          forcedTheme="dark"
-          disableTransitionOnChange
-        >
+        <Providers>
+          <NavHeader />
           <main className="min-h-screen bg-background">
             {children}
           </main>
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );

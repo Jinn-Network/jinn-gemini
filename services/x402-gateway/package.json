@@ -11,10 +11,10 @@
     "build": "tsc"
   },
   "dependencies": {
-    "jinn-node": "workspace:*",
     "@coinbase/x402": "^1.0.0",
     "@hono/node-server": "^1.19.7",
     "@jinn-network/mech-client-ts": "^0.0.6",
+    "@octokit/rest": "^22.0.1",
     "@supabase/supabase-js": "^2.45.4",
     "dotenv": "^17.2.3",
     "hono": "^4.10.7",

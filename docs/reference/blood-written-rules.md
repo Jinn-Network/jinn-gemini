@@ -401,6 +401,48 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Solution:** Call logger methods directly on `workerLogger` (or bind explicitly) instead of storing method references.
 **Prevention:** Avoid destructuring or assigning Pino logger methods before invocation in worker execution paths.
 
+### 66. x402 Gateway Crashes Without CDP Credentials
+**Issue:** Setting `PAYMENT_WALLET_ADDRESS` without `CDP_API_KEY_ID` + `CDP_API_KEY_SECRET` causes the gateway to crash at startup with `RouteConfigurationError: Facilitator does not support scheme "exact"`
+**Root Cause:** `@x402/core`'s `HTTPFacilitatorClient` calls the CDP facilitator API to validate supported schemes. Without CDP credentials, the API returns 401 Unauthorized, and the library throws an unrecoverable error.
+**Solution:** Only initialize `x402ResourceServer` when ALL three env vars are present: `PAYMENT_WALLET_ADDRESS`, `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`. Without CDP keys, run in "discovery-only" mode (payTo visible in `/.well-known/x402` but payment enforcement disabled).
+**Prevention:** Always set CDP credentials before or alongside `PAYMENT_WALLET_ADDRESS`.
+
+### 67. OLAS AgentRegistry Only Exists on Ethereum Mainnet
+**Issue:** Sending `AgentRegistry.create()` transactions on Base silently succeeds (status=1, 0 logs) but does nothing — the contract doesn't exist on Base.
+**Root Cause:** The OLAS AgentRegistry (`0x2F1f7D38e4772884b88f3eCd8B6b9faCdC319112`) is deployed ONLY on Ethereum mainnet (chainId 1). On L2s like Base, the `ServiceRegistryL2` uses an "optimistic" approach — agent IDs reference mainnet-registered agents without local validation. There is no AgentRegistry or ComponentRegistry on Base.
+**Solution:** Mint agents on Ethereum mainnet using `ETH_RPC_URL` (not `BASE_RPC_URL`). Reference the resulting `agentId` in Base's `ServiceRegistryL2` using the optimistic approach.
+**Prevention:** Always verify contract deployment chain. Use `code = await provider.getCode(address)` — if `code === '0x'`, the contract doesn't exist on that chain.
+
+### 68. OLAS Agent Minting Requires Component Dependencies
+**Issue:** `AgentRegistry.create(owner, hash)` with the ABI in OlasContractInterfaces.ts reverts because the actual function signature is `create(address owner, bytes32 hash, uint32[] dependencies)`.
+**Root Cause:** The OLAS architecture requires agents to list component dependencies. The full registration flow is: (1) Register component in ComponentRegistry, (2) Register agent in AgentRegistry with component IDs as dependencies. An agent cannot be created with an empty dependencies array.
+**Solution:** Either use the `autonomy mint` CLI which handles the full flow, or first register a component, then create the agent with that component ID as a dependency. The ABI in `OlasContractInterfaces.ts` also needs the third `uint32[]` parameter added.
+**Prevention:** Check the actual contract ABI on Etherscan before writing registry interaction code. The OLAS contracts have strict hierarchical dependencies: Components → Agents → Services.
+
+### 69. OLAS Registry Must Go Through RegistriesManager
+**Issue:** Direct calls to `ComponentRegistry.create()` or `AgentRegistry.create()` revert with `ManagerOnly`.
+**Root Cause:** The OLAS registry contracts delegate creation authority to the `RegistriesManager` at `0x9eC9156dEF5C613B2a7D4c46C383F9B58DfcD6fE`. Only the manager can call `create()` on the underlying registries. The manager's `create()` takes `(uint8 unitType, address owner, bytes32 hash, uint32[] dependencies)` where unitType=0 is Component, unitType=1 is Agent.
+**Solution:** Call `RegistriesManager.create()` instead of the individual registry contracts. The `REGISTRIES_MANAGER_ABI` is now in `OlasContractInterfaces.ts`. Use `OlasContractHelpers.encodeComponentCreation()` and `OlasContractHelpers.encodeAgentCreationViaManager()`.
+**Prevention:** Always check if a registry contract has a manager/owner guard before calling create directly. The OLAS Jinn component is ID 314 on Ethereum mainnet.
+
+### 70. OLAS unitHash is SHA-256 Digest, NOT keccak256
+**Issue:** Agents and components registered on OLAS showed no metadata on marketplace — "unpinned from IPFS".
+**Root Cause:** The on-chain `unitHash` (bytes32) must be the raw SHA-256 digest from the IPFS CID, NOT `keccak256(toUtf8Bytes("ipfs://"+cid))`. The contract's `tokenURI()` reconstructs the IPFS URL by prepending `f01701220` to the stored hash. If you store a keccak256 hash, the reconstructed CID points to nothing.
+**Solution:** Use `bs58.decode(cid).slice(2)` to extract the 32-byte SHA-256 digest from a CIDv0 (Qm...). The first 2 bytes (0x12=sha2-256, 0x20=32 bytes) are the multihash prefix.
+**Prevention:** See `skills/olas-registry/SKILL.md`. The function `cidToBytes32()` in `mint-olas-agent.ts` does this correctly. Three rounds of minting (IDs 88-92, 93-97) were wasted before this was discovered. Component 315, Agents 98-102, Service 365 are the correct entries.
+
+### 71. OLAS Metadata Must Include image, code_uri, attributes
+**Issue:** Even with correct hashes, OLAS marketplace showed blank metadata fields.
+**Root Cause:** The OLAS marketplace frontend (`autonolas-frontend-mono`) expects specific JSON fields: `name` (org/slug:version format), `description`, `image` (ipfs://...), `code_uri`, `attributes` ([{trait_type,value}]). Custom-only schemas are ignored.
+**Solution:** Include all 5 required fields in metadata JSON. Additional custom fields are allowed and harmlessly ignored by the marketplace.
+**Prevention:** Check `skills/olas-registry/SKILL.md` for the expected schema before minting.
+
+### 72. ServiceManager.create() on Base: Token, Bond, and Threshold Requirements
+**Issue:** Multiple reverts when trying to create services on Base: `ZeroValue` (0x7c946ed7), `WrongThreshold`, `TokenRejected`.
+**Root Cause:** (1) Bond must be >= 1 wei even if not activating. (2) Threshold must be >= ceil(2/3 * totalSlots). (3) Must use ETH sentinel address `0xEeee...eEEeE` for the token param, not zero address or OLAS token.
+**Solution:** Set bond=1n per agent, threshold=ceil(2/3*numAgents), token=`0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE`. Must go through ServiceManagerToken, not ServiceRegistryL2 directly (ManagerOnly error).
+**Prevention:** See `skills/olas-registry/SKILL.md` for full service creation reference.
+
 ---
 
 *Keep this file updated with new blood written rules as they're discovered.*
