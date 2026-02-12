@@ -401,6 +401,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Solution:** Left-pad the IV hex string to 32 characters before creating the Buffer: `iv.padStart(32, '0')`
 **Prevention:** Always normalize IV length in `keystore-decrypt.ts` before passing to `createDecipheriv`
 
+### 66. Credential Bridge Job Verification Must Fail Closed
+**Issue:** Credential requests could be accepted when Control API verification failed, allowing unbound credential access during outages
+**Root Cause:** Bridge job verification logic previously treated Control API errors as success ("fail open")
+**Solution:** Require ERC-8128 signed bridge->Control API `getRequestClaim` checks and return explicit `valid | invalid | unavailable` states; deny issuance on `invalid` and `unavailable` when `REQUIRE_JOB_CONTEXT=true`
+**Prevention:** Keep claim ownership source-of-truth in Control API, compare requester signer EOA to claim owner EOA, and never issue credentials on verification unavailability in job-bound mode
+
 ---
 
 *Keep this file updated with new blood written rules as they're discovered.*

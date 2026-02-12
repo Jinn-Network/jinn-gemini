@@ -47,6 +47,10 @@ cd services/x402-gateway
 export NANGO_HOST=http://localhost:3003
 export NANGO_SECRET_KEY=nango-dev-secret-key
 export CREDENTIAL_ACL_PATH=$(pwd)/credentials/test-acl.json
+# Optional: strict request-bound claim checks (recommended)
+export REQUIRE_JOB_CONTEXT=true
+# Optional explicit key for bridge -> control-api signed claim checks
+export CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY=0x...
 
 # Start gateway
 tsx index.ts
@@ -57,34 +61,32 @@ tsx index.ts
 ```bash
 cd services/x402-gateway/credentials
 
-# Run tests (ACL + signature verification — works without Twitter)
-NANGO_HOST=http://localhost:3003 \
-NANGO_SECRET_KEY=nango-dev-secret-key \
-CREDENTIAL_ACL_PATH=$(pwd)/test-acl.json \
-GATEWAY_URL=http://localhost:3001 \
-  tsx test-e2e.ts
-
-# Run tests + post a real tweet
-NANGO_HOST=http://localhost:3003 \
-NANGO_SECRET_KEY=nango-dev-secret-key \
-CREDENTIAL_ACL_PATH=$(pwd)/test-acl.json \
-GATEWAY_URL=http://localhost:3001 \
-  tsx test-e2e.ts --tweet "Hello from the credential bridge! 🤖"
+# Runs auth + fail-closed + payment + structured-audit scenarios
+tsx test-e2e.ts
 ```
 
-## 5. Manual Testing with curl
+## 5. Manual Testing (ERC-8128 Signed Request)
 
 ```bash
-# Generate a signed request (use the test script or viem directly)
-# The test private key is: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-# Its address is: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-
-# After running the test script (which sets up ACL), you can also use:
-curl -X POST http://localhost:3001/credentials/twitter \
-  -H "Content-Type: application/json" \
-  -H "X-Agent-Signature: <signature>" \
-  -H "X-Agent-Address: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266" \
-  -d '{"timestamp": <unix_seconds>, "nonce": "<uuid>"}'
+cd jinn-node
+tsx -e "
+import { createPrivateKeyHttpSigner, signRequestWithErc8128 } from './src/http/erc8128.ts';
+const signer = createPrivateKeyHttpSigner(
+  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+  8453
+);
+const request = await signRequestWithErc8128({
+  signer,
+  input: 'http://localhost:3001/credentials/github',
+  init: {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: '0xabc' }),
+  },
+});
+const response = await fetch(request);
+console.log(response.status, await response.text());
+"
 ```
 
 ## Cleanup
