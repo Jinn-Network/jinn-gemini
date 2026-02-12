@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-02
+last_verified: 2026-02-12
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -394,6 +394,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 1. `getPrivateKeyPath()` auto-overwrites `ethereum_private_key.txt` with `MECH_PRIVATE_KEY` env var
 2. Two separate private key env vars: `MECH_PRIVATE_KEY` (mech-client) vs `WORKER_PRIVATE_KEY` (worker)
 **Solution:** Set `MECH_PRIVATE_KEY` to match funded wallet, ensure `RPC_URL` points to correct endpoint
+
+### 65. Keystore IV Too Short — Invalid Initialization Vector
+**Issue:** `decryptKeystoreV3` throws `Invalid initialization vector` when decrypting agent keystores
+**Root Cause:** Some Python AEA-generated keystores produce IVs shorter than 16 bytes (e.g., 15 bytes / 30 hex chars). Node.js `createDecipheriv('aes-128-ctr', ...)` requires exactly 16 bytes.
+**Solution:** Left-pad the IV hex string to 32 characters before creating the Buffer: `iv.padStart(32, '0')`
+**Prevention:** Always normalize IV length in `keystore-decrypt.ts` before passing to `createDecipheriv`
 
 ---
 
