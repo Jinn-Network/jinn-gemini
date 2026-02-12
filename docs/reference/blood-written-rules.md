@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-02
+last_verified: 2026-02-12
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -394,6 +394,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 1. `getPrivateKeyPath()` auto-overwrites `ethereum_private_key.txt` with `MECH_PRIVATE_KEY` env var
 2. Two separate private key env vars: `MECH_PRIVATE_KEY` (mech-client) vs `WORKER_PRIVATE_KEY` (worker)
 **Solution:** Set `MECH_PRIVATE_KEY` to match funded wallet, ensure `RPC_URL` points to correct endpoint
+
+### 65. Unbound Pino Logger Methods Crash Execution Before Agent Spawn
+**Issue:** Worker crashes during job initialization with `Cannot read properties of undefined (reading 'Symbol(pino.msgPrefix)')`.
+**Root Cause:** `workerLogger.warn` / `workerLogger.info` were captured into a variable and invoked unbound, losing `this` context required by Pino internals.
+**Solution:** Call logger methods directly on `workerLogger` (or bind explicitly) instead of storing method references.
+**Prevention:** Avoid destructuring or assigning Pino logger methods before invocation in worker execution paths.
 
 ---
 
