@@ -2,6 +2,7 @@
 // TODO: Generate proper Supabase Database types to remove @ts-nocheck
 // Run: npx supabase gen types typescript --project-id <project-id> > types/database.ts
 import { createYoga, createSchema } from 'graphql-yoga';
+import { GraphQLError } from 'graphql';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'cross-fetch';
 import dotenv from 'dotenv';
@@ -12,6 +13,11 @@ import {
   getPonderGraphqlUrl,
   getOptionalControlApiPort
 } from 'jinn-node/config';
+import {
+  InMemoryNonceStore,
+  verifyRequestWithErc8128,
+  resolveChainId,
+} from 'jinn-node/http/erc8128.js';
 import { getMasterSafe, getServiceSafeAddress } from 'jinn-node/env/operate-profile.js';
 
 // Load environment variables
@@ -21,6 +27,7 @@ type Context = {
   supabase: ReturnType<typeof createClient>;
   ponderUrl: string;
   req: Request;
+  workerAddress: string;
 };
 
 const typeDefs = /* GraphQL */ `
@@ -217,11 +224,67 @@ async function assertRequestExists(ctx: Context, requestId: string) {
 }
 
 function getWorkerAddress(ctx: Context): string {
-  const headerVal = (ctx.req.headers as any).get?.('x-worker-address') || (ctx.req as any).headers?.['x-worker-address'];
-  if (!headerVal || typeof headerVal !== 'string') {
-    throw new Error('Missing x-worker-address');
+  if (!ctx.workerAddress || typeof ctx.workerAddress !== 'string') {
+    throw new Error('Missing authenticated worker address');
   }
-  return headerVal;
+  return ctx.workerAddress;
+}
+
+const controlApiNonceStore = new InMemoryNonceStore();
+const controlApiChainId = resolveChainId(
+  process.env.CHAIN_ID ||
+  process.env.MECH_CHAIN_CONFIG ||
+  process.env.CHAIN_CONFIG ||
+  'base',
+);
+
+function unauthenticatedError(message: string, reason: string, detail?: string): GraphQLError {
+  return new GraphQLError(message, {
+    extensions: {
+      code: 'UNAUTHENTICATED',
+      reason,
+      ...(detail ? { detail } : {}),
+      http: { status: 401 },
+    },
+  });
+}
+
+async function authenticateGraphqlRequest(request: Request): Promise<string> {
+  if (request.method === 'OPTIONS') {
+    return '0x0000000000000000000000000000000000000000';
+  }
+
+  const verifyResult = await verifyRequestWithErc8128({
+    request: request.clone(),
+    nonceStore: controlApiNonceStore,
+    policy: {
+      label: 'eth',
+      strictLabel: true,
+      replayable: false,
+      clockSkewSec: 5,
+      maxValiditySec: 300,
+      maxNonceWindowSec: 300,
+    },
+  });
+
+  if (!verifyResult.ok) {
+    logger.warn({
+      reason: verifyResult.reason,
+      detail: verifyResult.detail,
+      method: request.method,
+      url: request.url,
+    }, 'Rejected unsigned or invalid GraphQL request');
+    throw unauthenticatedError('Invalid ERC-8128 signature', verifyResult.reason, verifyResult.detail);
+  }
+
+  if (verifyResult.chainId !== controlApiChainId) {
+    throw unauthenticatedError(
+      `Signer chain mismatch: expected ${controlApiChainId}, got ${verifyResult.chainId}`,
+      'chain_id_mismatch',
+    );
+  }
+
+  return verifyResult.address.toLowerCase();
 }
 
 const resolvers = {
@@ -888,11 +951,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const yoga = createYoga<Context>({
   schema,
-  context: ({ request }) => ({
-    supabase,
-    ponderUrl: PONDER_GRAPHQL_URL,
-    req: request,
-  }),
+  context: async ({ request }) => {
+    const workerAddress = await authenticateGraphqlRequest(request);
+    return {
+      supabase,
+      ponderUrl: PONDER_GRAPHQL_URL,
+      req: request,
+      workerAddress,
+    };
+  },
   graphqlEndpoint: '/graphql',
 });
 
@@ -962,4 +1029,3 @@ server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`Jinn Control API running on http://localhost:${PORT}/graphql`);
 });
-
