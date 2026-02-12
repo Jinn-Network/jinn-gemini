@@ -84,12 +84,13 @@ yarn test:e2e:stack
 
 ## 4. Dispatch a Job
 
-Use the standard dispatch, but the key verification is in the worker logs, not the agent's tool use:
+Dispatch with `get_file_contents` enabled — this maps to the `github` credential provider in `TOOL_CREDENTIAL_MAP` (`credentialFilter.ts`), triggering the full credential flow:
 
 ```bash
 yarn test:e2e:dispatch \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
-  --cwd "$CLONE_DIR"
+  --cwd "$CLONE_DIR" \
+  --enabled-tools "get_file_contents,google_web_search,web_fetch,create_artifact"
 ```
 
 ## 5. Fund and Run the Worker
@@ -103,18 +104,18 @@ cd "$CLONE_DIR" && yarn worker --single
 
 ### 6a. Check worker credential probe
 
-In the worker output, look for credential discovery logs:
+With `get_file_contents` in the enabled tools, the worker should probe the credential bridge during job filtering. Look for:
 
+```
+probeCredentialBridge → providers: ['github']
+```
+
+Or:
 ```
 Worker credential capabilities discovered via bridge
 ```
 
-Or the debug-level probe log:
-```
-probeCredentialBridge
-```
-
-If you see `No service private key available` or `providers: []`, the probe failed — check that `CREDENTIAL_BRIDGE_URL` is set in the clone's `.env` and the gateway is running.
+If you see `providers: []`, the probe failed — check that `CREDENTIAL_BRIDGE_URL` is set in the clone's `.env` and the gateway is running. If you see `No service private key available`, the signing proxy couldn't access the agent's private key.
 
 ### 6b. Check gateway audit logs
 

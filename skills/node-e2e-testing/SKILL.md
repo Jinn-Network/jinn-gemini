@@ -62,8 +62,22 @@ For `all`: complete each session (including cleanup) before starting the next.
 ```bash
 yarn test:e2e:vnet cleanup --max-age-hours=0  # Delete any stale VNets
 yarn test:e2e:vnet create   # Creates NEW VNet, writes fresh .env.e2e
-yarn test:e2e:stack          # Kills old processes, cleans .ponder cache, starts Ponder + Control API + Gateway
-# Wait for "Local stack ready" — leave running in its own terminal
+```
+
+Start the stack **in the background** (it runs forever — Ponder + Control API + Gateway):
+```bash
+yarn test:e2e:stack &
+```
+
+Wait ~30-60 seconds, then verify all services are ready:
+```bash
+curl -s http://localhost:42069/graphql -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ _meta { status } }"}' | grep -q data && echo "Ponder ready"
+curl -s http://localhost:4001/graphql -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ __typename }"}' | grep -q data && echo "Control API ready"
+curl -s http://localhost:3001/health | grep -q ok && echo "Gateway ready"
 ```
 
 The stack script automatically kills port processes, cleans `.ponder` cache, sets `PONDER_START_BLOCK` near VNet head, reads RPC_URL from `.env.e2e`, and starts the x402-gateway credential bridge on :3001.
