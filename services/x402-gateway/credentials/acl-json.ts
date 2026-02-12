@@ -22,7 +22,17 @@ export class JsonAclBackend implements AclBackend {
       return { connections: {}, grants: {} };
     }
     const raw = readFileSync(this.path, 'utf-8');
-    return JSON.parse(raw) as CredentialACL;
+    const acl = JSON.parse(raw) as CredentialACL;
+
+    // Normalize grant keys to lowercase for case-insensitive address matching.
+    // Addresses may be EIP-55 checksummed when files are written outside setGrant().
+    const normalizedGrants: typeof acl.grants = {};
+    for (const [addr, grants] of Object.entries(acl.grants)) {
+      normalizedGrants[addr.toLowerCase()] = grants;
+    }
+    acl.grants = normalizedGrants;
+
+    return acl;
   }
 
   private save(acl: CredentialACL): void {

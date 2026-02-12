@@ -24,7 +24,7 @@ const fs = require('fs');
 const keys = fs.readdirSync('$CLONE_DIR/.operate/keys');
 if (keys.length === 0) process.exit(1);
 const addr = keys[0].startsWith('0x') ? keys[0] : '0x' + keys[0];
-console.log(addr);
+console.log(addr.toLowerCase());
 ")
 echo "Agent address: $AGENT_ADDR"
 ```
