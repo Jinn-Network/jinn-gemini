@@ -141,7 +141,12 @@ GATEWAY_URL=http://localhost:3001 \
 
 This runs the full ACL/signature/payment test suite against the local gateway. `CREDENTIAL_ACL_PATH` is required because `test-e2e.ts` imports the ACL module directly.
 
-Expected: all ACL tests pass (8/8), Nango tests skip (no Nango running), payment validation tests fail (no `GATEWAY_PAYMENT_ADDRESS` set — these test x402 payment, not credential ACL).
+Expected results:
+- **ACL tests**: All pass (8/8 — signature, unauthorized, expired, revoked, etc.)
+- **Static provider test**: Pass (returns GITHUB_TOKEN from env)
+- **Payment validation tests**: Basic checks pass (amount, recipient, expiry, network). CDP facilitator correctly rejects dummy test signatures (FACILITATOR_REJECTED — this is correct production behavior).
+- **Nango tests**: Skip (no Nango running)
+- **Rate limit tests**: Skip (no Redis running)
 
 ### 6d. Manual credential request (optional)
 
@@ -177,19 +182,25 @@ getCredential('github')
 
 ## Acceptable Failures
 
-- **Gateway test Nango errors**: Expected — no Nango running locally. Static provider tests should pass.
-- **Payment validation tests fail**: Expected — `GATEWAY_PAYMENT_ADDRESS` not set. These test x402 payment infrastructure, not credential ACL.
-- **Rate limit tests skip**: Expected — no Redis running. Rate limiting is disabled.
+- **Gateway test Nango errors**: Expected — no Nango running locally.
+- **CDP FACILITATOR_REJECTED on payment tests**: Expected — `createTestPaymentHeader()` uses dummy signatures. The facilitator correctly rejects them. This proves the production payment path works.
+- **Rate limit tests skip**: Expected — no Redis running.
 - **Nonce replay tests skip**: Expected — no Redis running.
 - **Manual credential fetch fails without signing proxy**: Expected — the proxy only runs during agent execution.
-- **Worker credential probe not shown**: Expected on branches without the credential bridge feature (e.g., `codex/railway-ssh-init-flow`). The probe requires `CREDENTIAL_BRIDGE_URL` support in the worker code.
+
+## Prerequisites
+
+In addition to the shared prerequisites (SKILL.md), the credential session requires:
+- `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` in monorepo `.env` (for production-mode x402 payment verification)
+- `GATEWAY_PAYMENT_ADDRESS` in monorepo `.env` (or defaults to hardhat account #0)
+- `GITHUB_TOKEN` in `.env.test` (for static provider test — a real PAT or dummy token)
 
 ## Success Criteria
 
-- [ ] Gateway started as part of E2E stack (healthy on :3001)
+- [ ] Gateway started as part of E2E stack (healthy on :3001, CDP enabled)
 - [ ] ACL file seeded with agent address and github grant
-- [ ] Worker probed credential bridge and discovered `github` provider (requires branch with credential bridge support)
+- [ ] Worker probed credential bridge and discovered `github` provider
 - [ ] Gateway `test-e2e.ts` ACL tests pass (8/8: signature, unauthorized, expired, revoked, etc.)
-- [ ] Static provider returned token for `github` (visible in test-e2e.ts or audit logs)
-
-**Note**: The credential probe (step 3) and static token fetch (step 5) require the jinn-node branch to have the credential bridge integration (signing proxy, `CREDENTIAL_BRIDGE_URL` handling). Branches without this feature can still validate steps 1, 2, and 4.
+- [ ] Static provider test passes (GITHUB_TOKEN served from env)
+- [ ] Payment basic validation tests pass (amount, recipient, expiry, network)
+- [ ] CDP facilitator correctly processes payment signatures (FACILITATOR_REJECTED for test dummies)

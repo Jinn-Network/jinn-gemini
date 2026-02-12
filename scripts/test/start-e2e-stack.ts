@@ -213,6 +213,10 @@ async function main() {
       CREDENTIAL_ACL_PATH: GATEWAY_ACL_PATH,
       REQUIRE_JOB_CONTEXT: 'false',  // Skip job verification in E2E
       PONDER_GRAPHQL_URL: ponderGraphqlUrl,
+      // x402 payment verification — production path via CDP facilitator
+      GATEWAY_PAYMENT_ADDRESS: process.env.GATEWAY_PAYMENT_ADDRESS || '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+      X402_NETWORK: 'base',
+      // CDP_API_KEY_ID and CDP_API_KEY_SECRET inherited from process.env (.env file)
     },
   });
 
@@ -271,11 +275,15 @@ async function main() {
     console.log('  (Credential bridge unavailable — credential session will not work)');
   }
 
+  const gwPayAddr = process.env.GATEWAY_PAYMENT_ADDRESS || '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+  const hasCdp = Boolean(process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET);
+
   console.log(`\nLocal stack ready.`);
   console.log(`  Ponder:      http://localhost:${PONDER_PORT}/graphql`);
   console.log(`  Control API: http://localhost:${CONTROL_PORT}/graphql`);
   console.log(`  Gateway:     http://localhost:${GATEWAY_PORT} (credential bridge)`);
   console.log(`  ACL file:    ${GATEWAY_ACL_PATH}`);
+  console.log(`  Payment:     ${gwPayAddr} (CDP: ${hasCdp ? 'enabled' : 'NOT configured — set CDP_API_KEY_ID/SECRET in .env'})`);
   console.log('\nPress Ctrl+C to stop.\n');
 
   // Keep alive

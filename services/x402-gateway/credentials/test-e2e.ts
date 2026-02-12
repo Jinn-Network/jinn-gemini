@@ -283,22 +283,29 @@ async function testPaymentRequired() {
     log('✗', `Expected 402, got ${status}`);
   }
 
-  // Request with valid payment header (should pass payment check in dev mode, may fail on Nango)
+  // Request with payment header (basic fields correct, signature is dummy)
   const validHeader = createTestPaymentHeader({
     from: TEST_ADDRESS,
-    to: process.env.GATEWAY_PAYMENT_ADDRESS || '0x1234567890123456789012345678901234567890',
+    to: GATEWAY_PAYMENT_ADDRESS,
     value: '1000', // Matches pricePerAccess
-    network: process.env.X402_NETWORK || 'base',
+    network: X402_NETWORK,
   });
 
-  const { status: paidStatus } = await credentialRequest('paid-provider', TEST_ACCOUNT, {
+  const { status: paidStatus, body: paidBody } = await credentialRequest('paid-provider', TEST_ACCOUNT, {
     paymentHeader: validHeader,
   });
 
+  // With CDP credentials: facilitator correctly rejects dummy signature → 402 FACILITATOR_REJECTED
+  // With dev mode: payment accepted, downstream Nango error → non-402
+  // Without CDP and without dev mode: 402 FACILITATOR_UNAVAILABLE
   if (paidStatus !== 402) {
     log('✓', `Payment accepted (got ${paidStatus} — expected Nango error since connection is fake)`);
+  } else if (paidBody?.paymentError === 'FACILITATOR_REJECTED') {
+    log('✓', `Payment correctly rejected by CDP facilitator (dummy test signature — production path working)`);
+  } else if (paidBody?.paymentError === 'FACILITATOR_UNAVAILABLE') {
+    log('⊘', `CDP credentials not configured (set CDP_API_KEY_ID/SECRET for production-mode payment verification)`);
   } else {
-    log('✗', `Still got 402 even with valid payment header`);
+    log('✗', `Unexpected 402: ${JSON.stringify(paidBody)}`);
   }
 }
 
@@ -414,6 +421,44 @@ async function testRealTweet(tweetText: string) {
   } else {
     const error = await tweetRes.text();
     log('✗', `Tweet failed (${tweetRes.status}): ${error}`);
+  }
+}
+
+// ============================================
+// Static Provider Tests
+// ============================================
+
+async function testStaticProviderTokenFetch() {
+  console.log('\n--- Static Provider Token Fetch (GitHub) ---');
+
+  const githubToken = process.env.GITHUB_TOKEN;
+  if (!githubToken) {
+    log('⊘', 'Skipped — GITHUB_TOKEN not set in env');
+    return;
+  }
+
+  // Set up a free grant for github
+  await setGrant(TEST_ADDRESS, 'github', {
+    nangoConnectionId: 'static-github',
+    pricePerAccess: '0',
+    expiresAt: null,
+    active: true,
+  });
+  await setConnection('static-github', {
+    provider: 'github',
+    metadata: { scope: 'e2e-static-test' },
+  });
+
+  const { status, body } = await credentialRequest('github', TEST_ACCOUNT);
+
+  if (status === 200 && body?.access_token) {
+    if (body.access_token === githubToken) {
+      log('✓', `Static provider returned correct token (source: static, expires_in: ${body.expires_in}s)`);
+    } else {
+      log('✗', `Token returned but doesn't match GITHUB_TOKEN env var`);
+    }
+  } else {
+    log('✗', `Expected 200 with access_token, got ${status}: ${JSON.stringify(body)}`);
   }
 }
 
@@ -769,6 +814,9 @@ async function main() {
   await testPaymentRequired();
   await testExpiredGrant();
   await testRevokedGrant();
+
+  // Static provider tests (GITHUB_TOKEN from env)
+  await testStaticProviderTokenFetch();
 
   // x402 Payment verification tests
   await testPaymentInvalidFormat();
