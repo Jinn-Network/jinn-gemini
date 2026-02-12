@@ -32,7 +32,16 @@ export interface AuditEntry {
   action: AuditAction;
   ip: string;
   userAgent: string;
-  nonce?: string;
+  requestId?: string;
+  paymentRequiredAmount?: string;
+  paymentPaidAmount?: string;
+  paymentPayer?: string;
+  paymentNetwork?: string;
+  paymentErrorCode?: string;
+  paymentErrorMessage?: string;
+  verificationState?: 'valid' | 'invalid' | 'unavailable' | 'not_required';
+  verificationError?: string;
+  verificationDetail?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -69,15 +78,27 @@ export function logAudit(entry: AuditEntry): void {
   if (pool) {
     pool.query(
       `INSERT INTO credential_audit_log
-       (address, provider, action, ip, user_agent, nonce, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       (address, provider, action, ip, user_agent, request_id,
+        payment_required_amount, payment_paid_amount, payment_payer, payment_network,
+        payment_error_code, payment_error_message, verification_state, verification_error, verification_detail,
+        metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         entry.address,
         entry.provider,
         entry.action,
         entry.ip,
         entry.userAgent,
-        entry.nonce || null,
+        entry.requestId || null,
+        entry.paymentRequiredAmount || null,
+        entry.paymentPaidAmount || null,
+        entry.paymentPayer || null,
+        entry.paymentNetwork || null,
+        entry.paymentErrorCode || null,
+        entry.paymentErrorMessage || null,
+        entry.verificationState || null,
+        entry.verificationError || null,
+        entry.verificationDetail || null,
         entry.metadata ? JSON.stringify(entry.metadata) : null,
       ]
     ).catch((err) => console.error('[audit] DB write failed:', err.message));

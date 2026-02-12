@@ -1015,11 +1015,12 @@ app.post("/credentials/:provider", async (c) => {
     logAudit({ address: requesterAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'invalid_json' } });
     return c.json({ error: "Invalid JSON body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
   }
+  const requestId = body.requestId;
 
   // Rate limit check (before ACL/payment to fail fast)
   const rateLimit = await checkRateLimit(requesterAddress, provider);
   if (!rateLimit.allowed) {
-    logAudit({ address: requesterAddress, provider, action: 'rate_limited', ip: clientIp, userAgent });
+    logAudit({ address: requesterAddress, provider, action: 'rate_limited', ip: clientIp, userAgent, requestId });
     return c.json(
       { error: 'Rate limit exceeded. Try again later.', code: 'RATE_LIMITED' } satisfies CredentialError,
       { status: 429, headers: getRateLimitHeaders(rateLimit) }
@@ -1030,7 +1031,17 @@ app.post("/credentials/:provider", async (c) => {
   const requireJobContext = process.env.REQUIRE_JOB_CONTEXT !== 'false';
   if (requireJobContext) {
     if (!body.requestId) {
-      logAudit({ address: requesterAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'missing_job_context' } });
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'auth_failed',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState: 'invalid',
+        verificationError: 'Job context (requestId) required',
+        metadata: { reason: 'missing_job_context' },
+      });
       return c.json(
         { error: 'Job context (requestId) required', code: 'JOB_NOT_ACTIVE' } satisfies CredentialError,
         { status: 403, headers: getRateLimitHeaders(rateLimit) }
@@ -1046,6 +1057,10 @@ app.post("/credentials/:provider", async (c) => {
         action: 'auth_failed',
         ip: clientIp,
         userAgent,
+        requestId,
+        verificationState: jobValid.state,
+        verificationError: jobValid.error,
+        verificationDetail: jobValid.detail,
         metadata: {
           reason: jobValid.state === 'unavailable' ? 'job_verification_unavailable' : 'job_not_active',
           requestId: body.requestId,
@@ -1059,13 +1074,28 @@ app.post("/credentials/:provider", async (c) => {
       );
     }
   }
+  const verificationState = requireJobContext ? 'valid' : 'not_required';
 
   // Check ACL
   const grant = await getGrant(requesterAddress, provider);
   if (!grant) {
-    logAudit({ address: requesterAddress, provider, action: 'not_authorized', ip: clientIp, userAgent });
+    logAudit({
+      address: requesterAddress,
+      provider,
+      action: 'not_authorized',
+      ip: clientIp,
+      userAgent,
+      requestId,
+      verificationState,
+    });
     return c.json({ error: `No active grant for ${provider}`, code: "NOT_AUTHORIZED" } satisfies CredentialError, 403);
   }
+  const paymentAudit: {
+    paymentRequiredAmount?: string;
+    paymentPaidAmount?: string;
+    paymentPayer?: string;
+    paymentNetwork?: string;
+  } = {};
 
   // Check payment if required
   const price = BigInt(grant.pricePerAccess || '0');
@@ -1073,14 +1103,36 @@ app.post("/credentials/:provider", async (c) => {
     const paymentHeader = c.req.header("X-Payment") || c.req.header("X-402-Payment");
     const gatewayAddress = process.env.GATEWAY_PAYMENT_ADDRESS as `0x${string}`;
     const x402Network = process.env.X402_NETWORK || 'base';
+    paymentAudit.paymentRequiredAmount = grant.pricePerAccess;
+    paymentAudit.paymentNetwork = x402Network;
 
     if (!gatewayAddress) {
-      logAudit({ address: requesterAddress, provider, action: 'payment_required', ip: clientIp, userAgent, metadata: { reason: 'server_misconfigured' } });
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'payment_required',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState,
+        ...paymentAudit,
+        metadata: { reason: 'server_misconfigured' },
+      });
       return c.json({ error: "Server misconfigured: GATEWAY_PAYMENT_ADDRESS not set", code: "PAYMENT_REQUIRED" } satisfies CredentialError, 500);
     }
 
     if (!paymentHeader) {
-      logAudit({ address: requesterAddress, provider, action: 'payment_required', ip: clientIp, userAgent, metadata: { amount: grant.pricePerAccess } });
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'payment_required',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState,
+        ...paymentAudit,
+        metadata: { amount: grant.pricePerAccess },
+      });
       return c.json({
         error: `Payment required: ${grant.pricePerAccess} (USDC atomic units)`,
         code: "PAYMENT_REQUIRED"
@@ -1097,7 +1149,19 @@ app.post("/credentials/:provider", async (c) => {
 
     if (!result.valid) {
       const status = result.error?.code === 'FACILITATOR_UNAVAILABLE' ? 503 : 402;
-      logAudit({ address: requesterAddress, provider, action: 'payment_invalid', ip: clientIp, userAgent, metadata: { errorCode: result.error?.code, errorMessage: result.error?.message } });
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'payment_invalid',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState,
+        ...paymentAudit,
+        paymentErrorCode: result.error?.code,
+        paymentErrorMessage: result.error?.message,
+        metadata: { errorCode: result.error?.code, errorMessage: result.error?.message },
+      });
       return c.json({
         error: result.error?.message || 'Payment verification failed',
         code: "PAYMENT_INVALID",
@@ -1105,6 +1169,8 @@ app.post("/credentials/:provider", async (c) => {
       } satisfies CredentialError & { paymentError?: PaymentErrorCode }, status);
     }
 
+    paymentAudit.paymentPaidAmount = grant.pricePerAccess;
+    paymentAudit.paymentPayer = result.payer;
     console.log(`[x402] Payment verified: ${result.payer} → ${provider}`);
   }
 
@@ -1117,11 +1183,31 @@ app.post("/credentials/:provider", async (c) => {
       expires_in: token.expires_in,
       provider,
     };
-    logAudit({ address: requesterAddress, provider, action: 'token_issued', ip: clientIp, userAgent, metadata: { source: staticToken ? 'static' : 'nango' } });
+    logAudit({
+      address: requesterAddress,
+      provider,
+      action: 'token_issued',
+      ip: clientIp,
+      userAgent,
+      requestId,
+      verificationState,
+      ...paymentAudit,
+      metadata: { source: staticToken ? 'static' : 'nango' },
+    });
     return c.json(response, { headers: getRateLimitHeaders(rateLimit) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logAudit({ address: requesterAddress, provider, action: 'nango_error', ip: clientIp, userAgent, metadata: { error: message } });
+    logAudit({
+      address: requesterAddress,
+      provider,
+      action: 'nango_error',
+      ip: clientIp,
+      userAgent,
+      requestId,
+      verificationState,
+      ...paymentAudit,
+      metadata: { error: message },
+    });
     return c.json(
       { error: `Credential fetch error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError,
       { status: 502, headers: getRateLimitHeaders(rateLimit) }
