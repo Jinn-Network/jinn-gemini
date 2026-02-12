@@ -879,28 +879,65 @@ const buildBlueprintFromTemplate = sharedBuildBlueprint;
 import { getGrant, listGrants } from './credentials/acl.js';
 import { getNangoAccessToken } from './credentials/nango-client.js';
 import { getStaticCredential } from './credentials/static-providers.js';
-import { checkAndStoreNonce } from './credentials/redis.js';
+import { getCredentialNonceStore } from './credentials/redis.js';
 import { verifyPayment, type PaymentErrorCode } from './credentials/x402-verify.js';
 import { checkRateLimit, getRateLimitHeaders } from './credentials/rate-limit.js';
 import { logAudit, getClientIp, getUserAgent } from './credentials/audit.js';
 import { verifyJobClaim } from './credentials/job-verify.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
+import { verifyRequestWithErc8128 } from '../../jinn-node/src/http/erc8128.js';
 
-/** Extended request body with optional requestId for job-bound credentials */
-interface CredentialRequestWithJob extends CredentialRequest {
-  requestId?: string;
+const credentialNonceStore = getCredentialNonceStore();
+
+async function parseCredentialBody(request: Request): Promise<CredentialRequest> {
+  const raw = await request.text();
+  if (!raw.trim()) {
+    return {};
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('invalid_json');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('invalid_json');
+  }
+
+  return parsed as CredentialRequest;
 }
 
-/**
- * Recover signer address from EIP-191 personal_sign signature.
- */
-async function recoverAddress(message: string, signature: string): Promise<string> {
-  const { recoverMessageAddress } = await import('viem');
-  const address = await recoverMessageAddress({
-    message,
-    signature: signature as `0x${string}`,
+async function authenticateCredentialRequest(request: Request): Promise<
+  | { ok: true; address: string }
+  | { ok: false; reason: string; detail?: string }
+> {
+  const verifyResult = await verifyRequestWithErc8128({
+    request,
+    nonceStore: credentialNonceStore,
+    policy: {
+      label: 'eth',
+      strictLabel: true,
+      replayable: false,
+      clockSkewSec: 5,
+      maxValiditySec: 300,
+      maxNonceWindowSec: 300,
+    },
   });
-  return address.toLowerCase();
+
+  if (!verifyResult.ok) {
+    return {
+      ok: false,
+      reason: verifyResult.reason,
+      detail: verifyResult.detail,
+    };
+  }
+
+  return {
+    ok: true,
+    address: verifyResult.address.toLowerCase(),
+  };
 }
 
 /**
@@ -913,48 +950,23 @@ async function recoverAddress(message: string, signature: string): Promise<strin
  * Returns { providers: ["github", "telegram", ...] }
  */
 app.post("/credentials/capabilities", async (c) => {
-  const claimedAddr = c.req.header("X-Agent-Address")?.toLowerCase() || 'unknown';
-
-  let body: { timestamp: number; nonce: string };
-  try {
-    body = await c.req.json() as { timestamp: number; nonce: string };
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  // Validate freshness (5-minute window)
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - body.timestamp) > 300) {
-    return c.json({ error: "Request timestamp too old or in future" }, 401);
-  }
-
-  // Verify signature
-  const signature = c.req.header("X-Agent-Signature");
-  const claimedAddress = c.req.header("X-Agent-Address");
-  if (!signature || !claimedAddress) {
-    return c.json({ error: "Missing X-Agent-Signature or X-Agent-Address header" }, 401);
-  }
-
-  let recoveredAddress: string;
-  try {
-    const message = JSON.stringify(body);
-    recoveredAddress = await recoverAddress(message, signature);
-  } catch {
-    return c.json({ error: "Signature verification failed" }, 401);
-  }
-
-  if (recoveredAddress !== claimedAddress.toLowerCase()) {
-    return c.json({ error: "Signature does not match claimed address" }, 401);
+  const authResult = await authenticateCredentialRequest(c.req.raw.clone());
+  if (!authResult.ok) {
+    return c.json({
+      error: "Invalid ERC-8128 signature",
+      reason: authResult.reason,
+      detail: authResult.detail,
+    }, 401);
   }
 
   // Query ACL for all active grants
   try {
-    const grants = await listGrants(recoveredAddress);
+    const grants = await listGrants(authResult.address);
     const providers = Object.keys(grants);
     return c.json({ providers });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[capabilities] ACL query failed for ${recoveredAddress}: ${message}`);
+    console.error(`[capabilities] ACL query failed for ${authResult.address}: ${message}`);
     return c.json({ error: "Failed to query capabilities" }, 500);
   }
 });
@@ -972,64 +984,41 @@ app.post("/credentials/:provider", async (c) => {
   // Extract audit context early
   const clientIp = getClientIp(c);
   const userAgent = getUserAgent(c);
-  const claimedAddr = c.req.header("X-Agent-Address")?.toLowerCase() || 'unknown';
+  const authResult = await authenticateCredentialRequest(c.req.raw.clone());
+
+  if (!authResult.ok) {
+    logAudit({
+      address: 'unknown',
+      provider,
+      action: 'auth_failed',
+      ip: clientIp,
+      userAgent,
+      metadata: {
+        reason: 'erc8128_invalid',
+        verifyReason: authResult.reason,
+        verifyDetail: authResult.detail,
+      },
+    });
+    return c.json(
+      { error: "Invalid ERC-8128 signature", code: "INVALID_SIGNATURE" } satisfies CredentialError,
+      401,
+    );
+  }
+  const requesterAddress = authResult.address;
 
   // Parse request body
-  let body: CredentialRequestWithJob;
+  let body: CredentialRequest;
   try {
-    body = await c.req.json() as CredentialRequestWithJob;
+    body = await parseCredentialBody(c.req.raw);
   } catch {
-    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'invalid_json' } });
+    logAudit({ address: requesterAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'invalid_json' } });
     return c.json({ error: "Invalid JSON body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
   }
 
-  // Validate request freshness (within 5 minutes)
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - body.timestamp) > 300) {
-    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'stale_timestamp' } });
-    return c.json({ error: "Request timestamp too old or in future", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
-  }
-
-  // Check nonce uniqueness (replay protection)
-  if (!body.nonce) {
-    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'missing_nonce' } });
-    return c.json({ error: "Missing nonce in request body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
-  }
-  const nonceIsNew = await checkAndStoreNonce(body.nonce);
-  if (!nonceIsNew) {
-    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'nonce_reused' } });
-    return c.json({ error: "Nonce already used", code: "NONCE_REUSED" } satisfies CredentialError, 401);
-  }
-
-  // Extract signature and address from headers
-  const signature = c.req.header("X-Agent-Signature");
-  const claimedAddress = c.req.header("X-Agent-Address");
-
-  if (!signature || !claimedAddress) {
-    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'missing_headers' } });
-    return c.json({ error: "Missing X-Agent-Signature or X-Agent-Address header", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
-  }
-
-  // Verify signature: agent signed the JSON body
-  let recoveredAddress: string;
-  try {
-    const message = JSON.stringify(body);
-    recoveredAddress = await recoverAddress(message, signature);
-  } catch (err) {
-    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'signature_recovery_failed' } });
-    return c.json({ error: "Signature verification failed", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
-  }
-
-  // Check recovered address matches claimed address
-  if (recoveredAddress !== claimedAddress.toLowerCase()) {
-    logAudit({ address: claimedAddr, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'address_mismatch', recovered: recoveredAddress } });
-    return c.json({ error: "Signature does not match claimed address", code: "INVALID_SIGNATURE" } satisfies CredentialError, 401);
-  }
-
   // Rate limit check (before ACL/payment to fail fast)
-  const rateLimit = await checkRateLimit(recoveredAddress, provider);
+  const rateLimit = await checkRateLimit(requesterAddress, provider);
   if (!rateLimit.allowed) {
-    logAudit({ address: recoveredAddress, provider, action: 'rate_limited', ip: clientIp, userAgent, nonce: body.nonce });
+    logAudit({ address: requesterAddress, provider, action: 'rate_limited', ip: clientIp, userAgent });
     return c.json(
       { error: 'Rate limit exceeded. Try again later.', code: 'RATE_LIMITED' } satisfies CredentialError,
       { status: 429, headers: getRateLimitHeaders(rateLimit) }
@@ -1040,16 +1029,16 @@ app.post("/credentials/:provider", async (c) => {
   const requireJobContext = process.env.REQUIRE_JOB_CONTEXT !== 'false';
   if (requireJobContext) {
     if (!body.requestId) {
-      logAudit({ address: recoveredAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'missing_job_context' } });
+      logAudit({ address: requesterAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'missing_job_context' } });
       return c.json(
         { error: 'Job context (requestId) required', code: 'JOB_NOT_ACTIVE' } satisfies CredentialError,
         { status: 403, headers: getRateLimitHeaders(rateLimit) }
       );
     }
 
-    const jobValid = await verifyJobClaim(body.requestId, recoveredAddress);
+    const jobValid = await verifyJobClaim(body.requestId, requesterAddress);
     if (!jobValid.valid) {
-      logAudit({ address: recoveredAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'job_not_active', requestId: body.requestId, detail: jobValid.error } });
+      logAudit({ address: requesterAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'job_not_active', requestId: body.requestId, detail: jobValid.error } });
       return c.json(
         { error: jobValid.error || 'Job verification failed', code: 'JOB_NOT_ACTIVE' } satisfies CredentialError,
         { status: 403, headers: getRateLimitHeaders(rateLimit) }
@@ -1058,9 +1047,9 @@ app.post("/credentials/:provider", async (c) => {
   }
 
   // Check ACL
-  const grant = await getGrant(recoveredAddress, provider);
+  const grant = await getGrant(requesterAddress, provider);
   if (!grant) {
-    logAudit({ address: recoveredAddress, provider, action: 'not_authorized', ip: clientIp, userAgent, nonce: body.nonce });
+    logAudit({ address: requesterAddress, provider, action: 'not_authorized', ip: clientIp, userAgent });
     return c.json({ error: `No active grant for ${provider}`, code: "NOT_AUTHORIZED" } satisfies CredentialError, 403);
   }
 
@@ -1072,12 +1061,12 @@ app.post("/credentials/:provider", async (c) => {
     const x402Network = process.env.X402_NETWORK || 'base';
 
     if (!gatewayAddress) {
-      logAudit({ address: recoveredAddress, provider, action: 'payment_required', ip: clientIp, userAgent, nonce: body.nonce, metadata: { reason: 'server_misconfigured' } });
+      logAudit({ address: requesterAddress, provider, action: 'payment_required', ip: clientIp, userAgent, metadata: { reason: 'server_misconfigured' } });
       return c.json({ error: "Server misconfigured: GATEWAY_PAYMENT_ADDRESS not set", code: "PAYMENT_REQUIRED" } satisfies CredentialError, 500);
     }
 
     if (!paymentHeader) {
-      logAudit({ address: recoveredAddress, provider, action: 'payment_required', ip: clientIp, userAgent, nonce: body.nonce, metadata: { amount: grant.pricePerAccess } });
+      logAudit({ address: requesterAddress, provider, action: 'payment_required', ip: clientIp, userAgent, metadata: { amount: grant.pricePerAccess } });
       return c.json({
         error: `Payment required: ${grant.pricePerAccess} (USDC atomic units)`,
         code: "PAYMENT_REQUIRED"
@@ -1094,7 +1083,7 @@ app.post("/credentials/:provider", async (c) => {
 
     if (!result.valid) {
       const status = result.error?.code === 'FACILITATOR_UNAVAILABLE' ? 503 : 402;
-      logAudit({ address: recoveredAddress, provider, action: 'payment_invalid', ip: clientIp, userAgent, nonce: body.nonce, metadata: { errorCode: result.error?.code, errorMessage: result.error?.message } });
+      logAudit({ address: requesterAddress, provider, action: 'payment_invalid', ip: clientIp, userAgent, metadata: { errorCode: result.error?.code, errorMessage: result.error?.message } });
       return c.json({
         error: result.error?.message || 'Payment verification failed',
         code: "PAYMENT_INVALID",
@@ -1114,11 +1103,11 @@ app.post("/credentials/:provider", async (c) => {
       expires_in: token.expires_in,
       provider,
     };
-    logAudit({ address: recoveredAddress, provider, action: 'token_issued', ip: clientIp, userAgent, nonce: body.nonce, metadata: { source: staticToken ? 'static' : 'nango' } });
+    logAudit({ address: requesterAddress, provider, action: 'token_issued', ip: clientIp, userAgent, metadata: { source: staticToken ? 'static' : 'nango' } });
     return c.json(response, { headers: getRateLimitHeaders(rateLimit) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logAudit({ address: recoveredAddress, provider, action: 'nango_error', ip: clientIp, userAgent, nonce: body.nonce, metadata: { error: message } });
+    logAudit({ address: requesterAddress, provider, action: 'nango_error', ip: clientIp, userAgent, metadata: { error: message } });
     return c.json(
       { error: `Credential fetch error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError,
       { status: 502, headers: getRateLimitHeaders(rateLimit) }

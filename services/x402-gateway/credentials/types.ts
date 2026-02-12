@@ -2,8 +2,8 @@
  * Credential Bridge Types
  *
  * Defines the ACL structure for mapping agent addresses to OAuth credentials.
- * Agents authenticate via EIP-191 signatures; the bridge verifies identity
- * and returns fresh OAuth tokens from Nango.
+ * Agents authenticate via ERC-8128 signed HTTP requests; the bridge verifies
+ * signer identity and returns fresh OAuth tokens from Nango.
  */
 
 /** Metadata about a Nango OAuth connection */
@@ -28,8 +28,7 @@ export interface CredentialACL {
 
 /** Request body for credential access */
 export interface CredentialRequest {
-  timestamp: number;
-  nonce: string;
+  requestId?: string;
 }
 
 /** Response from credential endpoint */
