@@ -57,10 +57,10 @@ ACLEOF
 
 ## 2. Configure the Clone
 
-Add the credential bridge URL to the jinn-node clone's `.env`:
+The `yarn test:e2e:clone` script already sets `CREDENTIAL_BRIDGE_URL=http://localhost:3001` in the clone's `.env`. Verify it's present:
 
 ```bash
-echo "CREDENTIAL_BRIDGE_URL=http://localhost:3001" >> "$CLONE_DIR/.env"
+grep CREDENTIAL_BRIDGE_URL "$CLONE_DIR/.env"
 ```
 
 ## 3. Set a Static Provider Token

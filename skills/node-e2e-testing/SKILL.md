@@ -42,6 +42,7 @@ For `all`: complete each session (including cleanup) before starting the next.
 | `yarn test:e2e:vnet time-warp <seconds>` | Advance VNet time |
 | `yarn test:e2e:vnet status` | Check VNet health + quota |
 | `yarn test:e2e:vnet cleanup --max-age-hours=0` | Delete all VNets |
+| `yarn test:e2e:clone --branch <name>` | Clone jinn-node, install deps, configure .env |
 | `yarn test:e2e:dispatch --workstream <id> --cwd <path>` | Dispatch job in workstream |
 | `yarn test:e2e:stack` | Start local Ponder + Control API + Gateway |
 | `docker build -f jinn-node/Dockerfile jinn-node/ -t jinn-node:e2e` | Build Docker image for testing |
@@ -86,43 +87,19 @@ The stack script automatically kills port processes, cleans `.ponder` cache, set
 
 Ask the user which branch to test. List available branches:
 ```bash
-git ls-remote --heads git@github.com:Jinn-Network/jinn-node.git | sed 's|.*refs/heads/||'
+yarn test:e2e:clone --list-branches
 ```
 
-Clone the chosen branch:
+Clone, install, and configure in one step:
 ```bash
-CLONE_DIR=$(mktemp -d)/jinn-node
-BRANCH=main  # or the branch the user chose
-git clone -b "$BRANCH" https://github.com/Jinn-Network/jinn-node.git "$CLONE_DIR"
+yarn test:e2e:clone --branch main   # or the branch the user chose
 ```
 
-Install dependencies and verify (use `--cwd` to avoid directory issues):
-```bash
-yarn --cwd "$CLONE_DIR" install
-# Verify tsx is available (required for setup/worker scripts):
-ls "$CLONE_DIR/node_modules/.bin/tsx" || echo "ERROR: tsx not installed"
-cp "$CLONE_DIR/.env.example" "$CLONE_DIR/.env"
-```
-
-Save session state to `.env.e2e`:
-```bash
-echo "CLONE_DIR=$CLONE_DIR" >> .env.e2e
-echo "OPERATE_PASSWORD=e2e-test-password-2024" >> .env.e2e
-```
-
-Edit `$CLONE_DIR/.env` — read RPC_URL from `.env.e2e`:
-```
-RPC_URL=<from .env.e2e>
-OPERATE_PASSWORD=e2e-test-password-2024
-PONDER_GRAPHQL_URL=http://localhost:42069/graphql
-CONTROL_API_URL=http://localhost:4001/graphql
-STAKING_CONTRACT=0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139
-WORKSTREAM_FILTER=0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac
-X402_GATEWAY_URL=https://x402-gateway-production-1b84.up.railway.app
-```
+This script clones to a temp directory, runs `yarn install`, verifies tsx, configures `.env` with VNet settings, and saves `CLONE_DIR` to `.env.e2e`. Read the `CLONE_DIR` path from the script output.
 
 **Setup is iterative** — it pauses when funding is needed, prints exact addresses and amounts. Fund those exact amounts and re-run until it completes:
 ```bash
+CLONE_DIR=$(grep '^CLONE_DIR=' .env.e2e | cut -d= -f2)
 yarn --cwd "$CLONE_DIR" setup
 # Read funding requirements from output, then from monorepo root:
 yarn test:e2e:vnet fund <address> --eth <amount> --olas <amount>
