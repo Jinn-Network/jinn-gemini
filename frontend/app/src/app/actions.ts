@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { supabaseMutate, supabaseAdminQuery } from '@/lib/supabase';
+import { getWorkstreamActivity } from '@/lib/ventures/service-queries';
+import type { JobDefinition } from '@/lib/subgraph';
 
 interface CreateVentureInput {
   name: string;
@@ -114,6 +116,124 @@ export async function postComment(ventureId: string, userAddress: string, conten
     user_address: userAddress,
     content
   });
+}
+
+// Workstream Activity (for VentureDashboard polling)
+
+export async function fetchWorkstreamActivityAction(workstreamId: string): Promise<{ jobDefinitions: JobDefinition[] }> {
+    try {
+        return await getWorkstreamActivity(workstreamId);
+    } catch (error) {
+        console.error('Failed to fetch activity:', error);
+        return { jobDefinitions: [] };
+    }
+}
+
+// Artifact queries (server-side — shared-ui's graphql-request can't resolve env vars in the client bundle)
+
+import { queryRequests, queryArtifacts, getJobName, type Artifact } from '@jinn/shared-ui';
+
+// Operational topics to exclude — internal system artifacts
+const OPERATIONAL_TOPICS = ['situation', 'measurement', 'git_branch', 'git/branch', 'service_output'];
+
+export interface ArtifactWithJobName extends Artifact {
+  jobName?: string;
+}
+
+export async function fetchWorkstreamArtifactsAction(workstreamId: string): Promise<ArtifactWithJobName[]> {
+  try {
+    const requestsResponse = await queryRequests({ where: { workstreamId }, limit: 200 });
+    const requestIds = [workstreamId, ...requestsResponse.items.map((r: { id: string }) => r.id)];
+
+    // Fetch artifacts for all requests in parallel (batches of 20 to avoid overwhelming Ponder)
+    const BATCH_SIZE = 20;
+    const allArtifacts: Artifact[] = [];
+    for (let i = 0; i < requestIds.length; i += BATCH_SIZE) {
+      const batch = requestIds.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map(requestId =>
+          queryArtifacts({
+            where: { requestId },
+            orderBy: 'blockTimestamp',
+            orderDirection: 'desc',
+            limit: 50,
+          }).catch(() => ({ items: [] as Artifact[] }))
+        )
+      );
+      for (const r of results) allArtifacts.push(...r.items);
+    }
+
+    // Sort newest first
+    allArtifacts.sort((a, b) => Number(b.blockTimestamp || 0) - Number(a.blockTimestamp || 0));
+
+    // Filter out operational topics
+    const contentArtifacts = allArtifacts.filter(
+      (a) => !OPERATIONAL_TOPICS.includes(a.topic.toLowerCase())
+    );
+
+    // Resolve job names in parallel (deduplicate IDs first)
+    const jobDefIds = [...new Set(
+      contentArtifacts
+        .map(a => a.sourceJobDefinitionId)
+        .filter((id): id is string => !!id)
+    )];
+    const jobNameMap = new Map<string, string>();
+    const nameResults = await Promise.all(
+      jobDefIds.map(async id => {
+        const name = await getJobName(id).catch(() => null);
+        return [id, name] as const;
+      })
+    );
+    for (const [id, name] of nameResults) {
+      if (name) jobNameMap.set(id, name);
+    }
+
+    return contentArtifacts.map(artifact => ({
+      ...artifact,
+      jobName: artifact.sourceJobDefinitionId
+        ? jobNameMap.get(artifact.sourceJobDefinitionId) || undefined
+        : undefined,
+    }));
+  } catch (error) {
+    console.error('Failed to fetch workstream artifacts:', error);
+    return [];
+  }
+}
+
+export async function fetchArtifactContentAction(
+  cid: string,
+): Promise<{ content: string; contentType: string } | null> {
+  const gateways = ['https://gateway.autonolas.tech/ipfs/', 'https://ipfs.io/ipfs/'];
+
+  for (const gateway of gateways) {
+    try {
+      const url = `${gateway}${cid}`;
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(10000),
+        cache: 'no-store',
+      });
+      if (!response.ok) continue;
+
+      const text = await response.text();
+      const contentType = response.headers.get('content-type') || 'text/plain';
+
+      // Extract .content field if it exists (standard artifact format)
+      try {
+        const parsed = JSON.parse(text);
+        const content = parsed.content || text;
+        return {
+          content: typeof content === 'string' ? content : JSON.stringify(content, null, 2),
+          contentType: 'application/json',
+        };
+      } catch {
+        return { content: text, contentType };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 // KPI Management
