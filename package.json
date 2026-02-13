@@ -63,6 +63,7 @@
     "clean": "rm -rf dist && cd frontend/explorer && yarn run clean",
     "skills:sync": "tsx scripts/sync-skills.ts",
     "skills:copy": "tsx scripts/sync-skills.ts --copy",
+    "hooks:install": "cp hooks/* .git/hooks/ && chmod +x .git/hooks/*",
     "test:zora-e2e": "tsx scripts/zora-e2e-test.ts",
     "test:unit:next": "vitest run --config vitest.config.next.ts tests-next/unit",
     "test:integration:next": "vitest run --config vitest.config.next.ts tests-next/integration",
