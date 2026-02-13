@@ -6,6 +6,106 @@
  * signer identity and returns fresh OAuth tokens from Nango.
  */
 
+// ============================================================
+// Trust & Identity
+// ============================================================
+
+/** Progressive trust levels based on staking + admin whitelist */
+export type TrustTier = 'unverified' | 'staked' | 'trusted' | 'premium';
+
+/** Ordered trust tiers for comparison (higher index = more trust) */
+export const TRUST_TIER_ORDER: TrustTier[] = ['unverified', 'staked', 'trusted', 'premium'];
+
+/** Returns true if `actual` meets or exceeds `required` */
+export function tierMeetsMinimum(actual: TrustTier, required: TrustTier): boolean {
+  return TRUST_TIER_ORDER.indexOf(actual) >= TRUST_TIER_ORDER.indexOf(required);
+}
+
+/** Registered operator with calculated trust tier */
+export interface Operator {
+  address: string;
+  serviceId: number | null;
+  trustTier: TrustTier;
+  tierOverride: TrustTier | null;
+  whitelisted: boolean;
+  whitelistedBy: string | null;
+  whitelistedAt: string | null;
+  stakingContract: string | null;
+  stakeVerifiedAt: string | null;
+  registeredAt: string;
+  updatedAt: string;
+}
+
+/** Approved staking contract configuration */
+export interface StakingContractConfig {
+  name: string;
+  minStakeOlas: number;
+}
+
+// ============================================================
+// Credential Policies
+// ============================================================
+
+/** Global policy for auto-provisioning credentials to operators */
+export interface CredentialPolicy {
+  provider: string;
+  minTrustTier: TrustTier;
+  autoGrant: boolean;
+  requiresApproval: boolean;
+  defaultPrice: string;
+  defaultNangoConnection: string | null;
+  maxRequestsPerMinute: number;
+  metadata: Record<string, unknown> | null;
+}
+
+// ============================================================
+// Venture-Scoped Credentials
+// ============================================================
+
+/** How venture credential access interacts with global grants */
+export type AccessMode = 'venture_only' | 'union_with_global';
+
+/** A credential registered by a venture owner */
+export interface VentureCredential {
+  ventureId: string;
+  provider: string;
+  nangoConnectionId: string | null;
+  minTrustTier: TrustTier;
+  accessMode: AccessMode;
+  pricePerAccess: string;
+  active: boolean;
+}
+
+/** Operator entry in a venture's whitelist/blocklist */
+export interface VentureCredentialOperator {
+  ventureId: string;
+  provider: string;
+  operatorAddress: string;
+  status: 'allowed' | 'blocked';
+  grantedBy: string;
+  grantedAt: string;
+}
+
+// ============================================================
+// Admin Audit
+// ============================================================
+
+/** Admin action audit entry */
+export interface AdminAuditEntry {
+  action: string;
+  actorAddress: string;
+  targetAddress?: string;
+  targetVentureId?: string;
+  targetProvider?: string;
+  beforeState?: Record<string, unknown>;
+  afterState?: Record<string, unknown>;
+  ipAddress?: string;
+}
+
+// ============================================================
+// Existing ACL Types
+// ============================================================
+
 /** Metadata about a Nango OAuth connection */
 export interface ConnectionEntry {
   provider: string;
@@ -18,6 +118,10 @@ export interface CredentialGrant {
   pricePerAccess: string; // wei, "0" = free
   expiresAt: string | null; // ISO timestamp or null = never
   active: boolean;
+  ventureId?: string;
+  autoProvisioned?: boolean;
+  provisionedBy?: string;
+  trustTierAtGrant?: TrustTier;
 }
 
 /** Full ACL file structure */

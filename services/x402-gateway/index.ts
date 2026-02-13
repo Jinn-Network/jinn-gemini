@@ -873,6 +873,11 @@ const summarizeOutputSpec = summarizeSpec;
 const buildBlueprintFromTemplate = sharedBuildBlueprint;
 
 // ============================================================
+// Admin Routes: Operator Management, Policies, Venture Credentials
+// ============================================================
+app.route('/admin', adminApp);
+
+// ============================================================
 // Credential Bridge: Crypto Identity → Web2 OAuth
 // ============================================================
 
@@ -885,6 +890,8 @@ import { checkRateLimit, getRateLimitHeaders } from './credentials/rate-limit.js
 import { logAudit, getClientIp, getUserAgent } from './credentials/audit.js';
 import { verifyJobClaim } from './credentials/job-verify.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
+import { adminApp } from './credentials/admin-routes.js';
+import { checkVentureCredentialAccess, discoverVentureProviders } from './credentials/venture-resolver.js';
 import { verifyRequestWithErc8128 } from '../../jinn-node/src/http/erc8128.js';
 
 const credentialNonceStore = getCredentialNonceStore();
@@ -947,6 +954,11 @@ async function authenticateCredentialRequest(request: Request): Promise<
  * they have ACL grants for. Uses the same signature scheme as /credentials/:provider
  * but skips rate limiting, job context, and payment checks.
  *
+ * Body: { requestId?: string }
+ *   - If requestId provided: returns union of global grants + venture-scoped providers
+ *     (requires active claim for the requestId)
+ *   - If no requestId: returns global grants only (startup probe)
+ *
  * Returns { providers: ["github", "telegram", ...] }
  */
 app.post("/credentials/capabilities", async (c) => {
@@ -959,11 +971,32 @@ app.post("/credentials/capabilities", async (c) => {
     }, 401);
   }
 
-  // Query ACL for all active grants
+  // Parse optional requestId from body
+  let requestId: string | undefined;
   try {
+    const body = await parseCredentialBody(c.req.raw);
+    requestId = body.requestId;
+  } catch {
+    // Empty body is fine — treated as startup probe (no requestId)
+  }
+
+  try {
+    // Global grants (always returned)
     const grants = await listGrants(authResult.address);
-    const providers = Object.keys(grants);
-    return c.json({ providers });
+    const globalProviders = new Set(Object.keys(grants));
+
+    // Venture-scoped providers (only when requestId provided)
+    if (requestId) {
+      const ventureProviders = await discoverVentureProviders({
+        requestId,
+        operatorAddress: authResult.address,
+      });
+      for (const p of ventureProviders) {
+        globalProviders.add(p);
+      }
+    }
+
+    return c.json({ providers: [...globalProviders] });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[capabilities] ACL query failed for ${authResult.address}: ${message}`);
@@ -1080,8 +1113,41 @@ app.post("/credentials/:provider", async (c) => {
   }
   const verificationState = requireJobContext ? 'valid' : 'not_required';
 
-  // Check ACL
-  const grant = await getGrant(requesterAddress, provider);
+  // Venture-scoped credential check (if requestId available)
+  // This runs before global ACL to respect venture owner sovereignty.
+  let ventureNangoConnectionId: string | null = null;
+  if (requestId) {
+    const ventureAccess = await checkVentureCredentialAccess({
+      requestId,
+      provider,
+      operatorAddress: requesterAddress,
+    });
+
+    if (ventureAccess.ventureAccessGranted && ventureAccess.ventureCredential?.nangoConnectionId) {
+      // Venture-scoped access granted — use venture's Nango connection
+      ventureNangoConnectionId = ventureAccess.ventureCredential.nangoConnectionId;
+    } else if (ventureAccess.blockGlobalFallback && !ventureAccess.ventureAccessGranted) {
+      // Venture has this provider registered with venture_only mode but denied access
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'not_authorized',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState,
+        metadata: { reason: `venture_denied:${ventureAccess.reason}` },
+      });
+      return c.json({ error: `Not authorized for ${provider} in this venture`, code: "NOT_AUTHORIZED" } satisfies CredentialError, 403);
+    }
+    // Otherwise: no venture credential for this provider, or union_with_global — fall through to global ACL
+  }
+
+  // Check global ACL (skipped if venture-scoped access was already granted)
+  const grant = ventureNangoConnectionId
+    ? { nangoConnectionId: ventureNangoConnectionId, pricePerAccess: '0', expiresAt: null, active: true }
+    : await getGrant(requesterAddress, provider);
+
   if (!grant) {
     logAudit({
       address: requesterAddress,
