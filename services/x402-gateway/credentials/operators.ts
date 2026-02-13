@@ -65,6 +65,51 @@ export function calculateTrustTier(op: {
   return 'unverified';
 }
 
+/** Maximum age for staking verification before tier is considered stale (default 24h). */
+export const STAKE_VERIFY_MAX_AGE_MS = parseInt(
+  process.env.STAKE_VERIFY_MAX_AGE_MS || '86400000',
+  10,
+);
+
+export interface StaleTierCheck {
+  /** Whether the operator's tier is still valid */
+  valid: boolean;
+  /** Current effective tier (may be 'unverified' if stale) */
+  effectiveTier: TrustTier;
+  /** Why the tier was downgraded (if invalid) */
+  reason?: 'stale_stake' | 'not_registered';
+}
+
+/**
+ * Check if an operator's trust tier is still valid.
+ *
+ * Staking-derived tiers become stale when stake_verified_at exceeds
+ * STAKE_VERIFY_MAX_AGE_MS. Admin overrides and whitelisting are never stale.
+ *
+ * Returns the effective tier (downgraded to 'unverified' if stale).
+ */
+export function checkTierStaleness(operator: Operator | null): StaleTierCheck {
+  if (!operator) {
+    return { valid: false, effectiveTier: 'unverified', reason: 'not_registered' };
+  }
+
+  // Admin override and whitelist tiers are never stale
+  if (operator.tierOverride || operator.whitelisted) {
+    return { valid: true, effectiveTier: operator.trustTier };
+  }
+
+  // Staking-derived tier: check freshness of stake_verified_at
+  if (operator.stakingContract && operator.stakeVerifiedAt) {
+    const verifiedAt = new Date(operator.stakeVerifiedAt).getTime();
+    const age = Date.now() - verifiedAt;
+    if (age > STAKE_VERIFY_MAX_AGE_MS) {
+      return { valid: false, effectiveTier: 'unverified', reason: 'stale_stake' };
+    }
+  }
+
+  return { valid: true, effectiveTier: operator.trustTier };
+}
+
 export async function getOperator(address: string): Promise<Operator | null> {
   const p = getPool();
   const { rows } = await p.query(
