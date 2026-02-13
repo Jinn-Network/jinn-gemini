@@ -28,7 +28,7 @@ const pillars = [
       { icon: BarChart3, text: 'Tracks reputation' },
       { icon: Target, text: 'Measures KPIs' },
     ],
-    cta: { label: 'Read Docs', href: 'https://docs.jinn.network' },
+    cta: { label: 'Read Docs', href: 'https://docs.jinn.network/docs/introduction' },
   },
   {
     title: 'Operators',

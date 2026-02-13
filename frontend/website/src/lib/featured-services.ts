@@ -37,7 +37,7 @@ export const FEATURED_INSTANCES: FeaturedInstance[] = [
 export const EXPLORER_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || 'https://explorer.jinn.network';
 
 // Launchpad base URL for venture pages
-export const LAUNCHPAD_URL = process.env.NEXT_PUBLIC_LAUNCHPAD_URL || 'https://jinn.network';
+export const LAUNCHPAD_URL = process.env.NEXT_PUBLIC_LAUNCHPAD_URL || 'https://app.jinn.network';
 
 // Generate explorer link for different entity types
 export function getExplorerUrl(type: 'workstream' | 'request' | 'jobDefinitions' | 'templates' | 'venture', id: string): string {

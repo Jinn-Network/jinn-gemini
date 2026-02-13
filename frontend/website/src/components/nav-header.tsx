@@ -40,7 +40,7 @@ export function NavHeader() {
               </a>
             </Button>
             <Button asChild variant="ghost">
-              <a href="https://docs.jinn.network" target="_blank" rel="noopener noreferrer">
+              <a href="https://docs.jinn.network/docs/introduction" target="_blank" rel="noopener noreferrer">
                 Docs
               </a>
             </Button>

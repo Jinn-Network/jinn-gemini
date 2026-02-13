@@ -225,7 +225,7 @@ export default function HomePage() {
                 </p>
                 <Button asChild className="mt-6" size="lg">
                   <a
-                    href="https://docs.jinn.network"
+                    href="https://docs.jinn.network/docs/introduction"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2"
@@ -425,7 +425,7 @@ export default function HomePage() {
                 </li>
                 <li>
                   <a
-                    href="https://docs.jinn.network"
+                    href="https://docs.jinn.network/docs/introduction"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-foreground transition-colors inline-flex items-center gap-1"
