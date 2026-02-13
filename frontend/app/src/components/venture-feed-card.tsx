@@ -87,7 +87,7 @@ export function VentureFeedCard({ venture }: VentureFeedCardProps) {
             <ShareButton
               url={`https://app.jinn.network/ventures/${venture.slug}`}
               title={venture.name}
-              description={venture.description || undefined}
+              status={venture.status}
             />
             <Link
               href={`/ventures/${venture.slug}`}

@@ -8,9 +8,17 @@ interface ShareButtonProps {
   url: string;
   title: string;
   description?: string;
+  status?: string;
 }
 
-export function ShareButton({ url, title, description }: ShareButtonProps) {
+function getShareText(title: string, status?: string): string {
+  if (status === 'proposed' || status === 'bonding') {
+    return `Check out ${title}, a seed autonomous venture on Jinn. Show your support and help get it launched!`;
+  }
+  return `Check out ${title}, an autonomous venture running live on Jinn.`;
+}
+
+export function ShareButton({ url, title, description, status }: ShareButtonProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -47,7 +55,7 @@ export function ShareButton({ url, title, description }: ShareButtonProps) {
   function handleShareX(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const text = description ? `${title} - ${description}` : title;
+    const text = getShareText(title, status);
     window.open(
       `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
       '_blank',
@@ -58,8 +66,9 @@ export function ShareButton({ url, title, description }: ShareButtonProps) {
   function handleShareTelegram(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    const text = getShareText(title, status);
     window.open(
-      `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`,
+      `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
       '_blank',
     );
     setOpen(false);

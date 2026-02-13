@@ -144,7 +144,7 @@ export default async function VentureDetailPage({
             <ShareButton
               url={`https://app.jinn.network/ventures/${venture.slug}`}
               title={venture.name}
-              description={venture.description || undefined}
+              status={venture.status}
             />
           </div>
         </div>
