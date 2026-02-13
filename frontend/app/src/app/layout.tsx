@@ -34,14 +34,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
+      <body className={`${inter.variable} antialiased`}>
         <Script
           src="https://cloud.umami.is/script.js"
           data-website-id="748fefe3-aa39-4f01-b4e4-70ccd27ecc30"
           strategy="afterInteractive"
         />
-      </head>
-      <body className={`${inter.variable} antialiased`}>
         <Providers>
           <NavHeader />
           <main className="min-h-screen bg-background">
