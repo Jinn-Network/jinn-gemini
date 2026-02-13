@@ -10,6 +10,8 @@ const inter = Inter({
   subsets: ['latin'],
 });
 
+const isDev = process.env.VERCEL_ENV !== 'production';
+
 export const metadata: Metadata = {
   metadataBase: new URL('https://app.jinn.network'),
   title: {
@@ -17,6 +19,9 @@ export const metadata: Metadata = {
     template: '%s | Jinn Launchpad',
   },
   description: 'Rally around ideas. Launch ventures on Base.',
+  icons: {
+    icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
+  },
   openGraph: {
     siteName: 'Jinn Launchpad',
     images: [{ url: '/og-default.png', width: 1200, height: 630 }],
@@ -36,7 +41,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`}>
         <Script
-          src="https://cloud.umami.is/script.js"
+          src="https://umami-production-ae2b.up.railway.app/script.js"
           data-website-id="748fefe3-aa39-4f01-b4e4-70ccd27ecc30"
           strategy="afterInteractive"
         />
