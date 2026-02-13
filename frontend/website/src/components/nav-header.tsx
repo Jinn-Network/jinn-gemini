@@ -36,7 +36,7 @@ export function NavHeader() {
             </Button>
             <Button asChild variant="ghost">
               <a href="#problem" onClick={(e) => scrollToSection(e, 'problem')}>
-                For DAOs
+                How It Works
               </a>
             </Button>
             <Button asChild variant="ghost">

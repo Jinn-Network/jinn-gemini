@@ -5,13 +5,13 @@ import { LAUNCHPAD_URL } from '@/lib/featured-services';
 
 const pillars = [
   {
-    title: 'Launchers',
-    description: 'Define what gets built. Set measurable goals. Fund execution with tokens.',
+    title: 'Founders',
+    description: 'You define the vision. Set what success looks like. AI handles the rest.',
     color: 'text-blue-400',
     borderColor: 'border-blue-500/30',
     steps: [
-      { icon: Lightbulb, text: 'Define ventures' },
-      { icon: Target, text: 'Set goals' },
+      { icon: Lightbulb, text: 'Describe your vision' },
+      { icon: Target, text: 'Set success criteria' },
       { icon: Rocket, text: 'Launch tokens' },
       { icon: Cpu, text: 'AI executes' },
     ],

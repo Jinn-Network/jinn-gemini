@@ -11,12 +11,12 @@ const steps = [
   {
     icon: Target,
     title: 'Set Success Criteria',
-    description: 'Define measurable KPIs that map directly to AI agent invariants.',
+    description: 'Define measurable KPIs — what success looks like for your venture.',
   },
   {
     icon: Coins,
     title: 'Launch & Execute',
-    description: 'Launch a token on a bonding curve. AI agents begin executing against your goals.',
+    description: 'Launch a token on a bonding curve. AI agents begin executing against your goals 24/7.',
   },
 ];
 
@@ -26,14 +26,14 @@ export function LaunchVentureSection() {
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-4xl text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-4 py-1.5">
-            <span className="text-sm font-medium text-blue-400">Launchers</span>
+            <span className="text-sm font-medium text-blue-400">For Founders</span>
           </div>
 
           <h2 className="font-[family-name:var(--font-serif)] text-3xl font-bold tracking-tight sm:text-4xl">
             Launch a Venture
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Turn an idea into a funded, AI-executed operation in three steps.
+            Turn your idea into reality. Three steps, no team required.
           </p>
 
           <div className="mt-12 grid gap-6 md:grid-cols-3">

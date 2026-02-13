@@ -10,11 +10,20 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://app.jinn.network'),
   title: {
     default: 'Jinn Launchpad',
     template: '%s | Jinn Launchpad',
   },
   description: 'Rally around ideas. Launch ventures on Base.',
+  openGraph: {
+    siteName: 'Jinn Launchpad',
+    images: [{ url: '/og-default.png', width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: ['/og-default.png'],
+  },
 };
 
 export default function RootLayout({

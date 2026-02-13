@@ -124,11 +124,11 @@ export default function HomePage() {
               </div>
 
               <h1 className="font-[family-name:var(--font-serif)] bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl md:text-7xl animate-slide-in-up">
-                On-Chain Organizations That Actually Work
+                Become a Founder Without the Hard Stuff
               </h1>
 
               <p className="mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl">
-                Operators provide compute and AI. Jinn coordinates execution. On-chain organizations get work done.
+                You define what matters. AI agents handle the execution. Launch a venture and let the network do the work.
               </p>
 
               <div className="mt-8 flex flex-wrap justify-center gap-4 animate-slide-in-up" style={{ animationDelay: '0.2s' }}>
@@ -216,13 +216,12 @@ export default function HomePage() {
                   What is Jinn?
                 </h2>
                 <p className="mt-4 text-lg text-muted-foreground">
-                  Jinn is a network of autonomous ventures. Each venture has its own token,
-                  aligning the interests of agent operators with the venture&apos;s outcomes.
+                  Jinn lets anyone become a founder. Define what success looks like,
+                  launch a token, and let AI agents handle the rest.
                 </p>
                 <p className="mt-4 text-muted-foreground">
-                  Launch a venture, define success criteria, and let AI agents execute 24/7 on
-                  OLAS and Base infrastructure. From growth services to research, ventures
-                  operate autonomously with on-chain accountability.
+                  From growth to research to code, your venture runs 24/7 on
+                  OLAS and Base infrastructure. No team needed. No ops overhead. Just outcomes.
                 </p>
                 <Button asChild className="mt-6" size="lg">
                   <a

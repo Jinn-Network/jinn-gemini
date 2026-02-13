@@ -17,13 +17,22 @@ const lora = Lora({
 const isDev = process.env.VERCEL_ENV !== 'production';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://jinn.network'),
   title: {
     default: 'Jinn',
     template: '%s | Jinn'
   },
-  description: "On-chain organizations that actually work. Powered by AI agents on OLAS and Base.",
+  description: "Become a founder without the hard stuff. AI agents handle the execution on OLAS and Base.",
   icons: {
     icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
+  },
+  openGraph: {
+    siteName: 'Jinn',
+    images: [{ url: '/og-default.png', width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: ['/og-default.png'],
   },
 };
 

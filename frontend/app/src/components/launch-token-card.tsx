@@ -21,7 +21,7 @@ interface LaunchTokenCardProps {
 
 export function LaunchTokenCard({ ventureId, ventureName, kpiCount = 0 }: LaunchTokenCardProps) {
   const router = useRouter();
-  const { ready, authenticated, login } = usePrivy();
+  const { ready, authenticated, login, connectWallet } = usePrivy();
   const { isConnected, address } = useAccount();
   const { connect, connectors } = useConnect();
   const { deploy } = useDeployToken();
@@ -38,6 +38,19 @@ export function LaunchTokenCard({ ventureId, ventureName, kpiCount = 0 }: Launch
 
   const [symbol, setSymbol] = useState('');
   const [step, setStep] = useState<'form' | 'deploying' | 'updating'>('form');
+  const [walletTimedOut, setWalletTimedOut] = useState(false);
+
+  // Timeout for wallet auto-connect — show manual connect after 5s
+  useEffect(() => {
+    if (ready && authenticated && !isConnected) {
+      setWalletTimedOut(false);
+      const timer = setTimeout(() => setWalletTimedOut(true), 5000);
+      return () => clearTimeout(timer);
+    }
+    if (isConnected) {
+      setWalletTimedOut(false);
+    }
+  }, [ready, authenticated, isConnected]);
 
   const isValid = symbol.trim().length >= 2 && symbol.trim().length <= 10;
 
@@ -166,10 +179,17 @@ export function LaunchTokenCard({ ventureId, ventureName, kpiCount = 0 }: Launch
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Wallet className="h-4 w-4" />
-            <span>Waiting for wallet...</span>
-          </div>
+          {walletTimedOut ? (
+            <Button onClick={() => connectWallet()} className="w-full">
+              <Wallet className="h-4 w-4 mr-2" />
+              Connect Wallet
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Connecting wallet...</span>
+            </div>
+          )}
         </CardContent>
       </Card>
     );

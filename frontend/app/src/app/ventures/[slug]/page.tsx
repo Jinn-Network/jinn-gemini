@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ExternalLink, User, Bot } from 'lucide-react';
 import { getVentureBySlug } from '@/lib/ventures';
@@ -10,10 +11,53 @@ import { BondingProgress } from '@/components/bonding-progress';
 import { LaunchTokenCard } from '@/components/launch-token-card';
 import { CommentSection } from '@/components/comment-section';
 import { LikeButton } from '@/components/like-button';
+import { ShareButton } from '@/components/share-button';
 import { KPIEditor } from '@/components/kpi-editor';
 import type { KPIInvariant } from '@/app/actions';
 
 export const revalidate = 30;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const venture = await getVentureBySlug(slug);
+  if (!venture) return {};
+
+  const description = venture.description
+    ? venture.description.slice(0, 160)
+    : 'A venture on Jinn';
+  const blueprint = venture.blueprint as { category?: string } | null;
+  const status = venture.status === 'active' && venture.token_address ? 'graduated' : venture.status;
+
+  const ogParams = new URLSearchParams({
+    name: venture.name,
+    description: description,
+    status: status,
+    ...(venture.token_symbol && { symbol: venture.token_symbol }),
+    ...(blueprint?.category && { category: blueprint.category }),
+  });
+
+  const ogImage = `/api/og?${ogParams.toString()}`;
+
+  return {
+    title: venture.name,
+    description,
+    openGraph: {
+      title: venture.name,
+      description,
+      images: [{ url: ogImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: venture.name,
+      description,
+      images: [ogImage],
+    },
+  };
+}
 
 /** Format large token supply numbers compactly */
 function formatSupply(raw: unknown): string | null {
@@ -92,10 +136,17 @@ export default async function VentureDetailPage({
               <ExternalLink className="inline h-3 w-3 ml-0.5" />
             </a>
           </div>
-          <LikeButton
-            ventureId={venture.id}
-            initialCount={venture.likes?.[0]?.count || 0}
-          />
+          <div className="flex items-center gap-2">
+            <LikeButton
+              ventureId={venture.id}
+              initialCount={venture.likes?.[0]?.count || 0}
+            />
+            <ShareButton
+              url={`https://app.jinn.network/ventures/${venture.slug}`}
+              title={venture.name}
+              description={venture.description || undefined}
+            />
+          </div>
         </div>
       </div>
 

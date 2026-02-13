@@ -8,6 +8,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Venture } from '@/lib/ventures';
 import { LikeButton } from '@/components/like-button';
+import { ShareButton } from '@/components/share-button';
 import { MessageSquare } from 'lucide-react';
 
 interface VentureFeedCardProps {
@@ -83,6 +84,11 @@ export function VentureFeedCard({ venture }: VentureFeedCardProps) {
               <MessageSquare className="h-4 w-4" />
               <span>{venture.comments?.[0]?.count || 0}</span>
             </div>
+            <ShareButton
+              url={`https://app.jinn.network/ventures/${venture.slug}`}
+              title={venture.name}
+              description={venture.description || undefined}
+            />
             <Link
               href={`/ventures/${venture.slug}`}
               className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "ml-auto")}
