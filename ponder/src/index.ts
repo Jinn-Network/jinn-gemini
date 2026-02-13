@@ -877,6 +877,12 @@ ponder.on(
         // Update workstream table
         const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
 
+        // Extract ventureId and templateId from content if available
+        const contentVentureId = typeof content.ventureId === 'string' ? content.ventureId
+          : (additionalContext && typeof additionalContext.ventureId === 'string' ? additionalContext.ventureId : undefined);
+        const contentTemplateId = typeof content.templateId === 'string' ? content.templateId
+          : (additionalContext && typeof additionalContext.templateId === 'string' ? additionalContext.templateId : undefined);
+
         // If this is a root request (sourceRequestId is null), create a workstream entry
         if (!sourceRequestId) {
           await workstreamRepo.upsert({
@@ -891,9 +897,13 @@ ponder.on(
               childRequestCount: 0,
               hasLauncherBriefing: false,
               delivered: false,
+              ventureId: contentVentureId,
+              templateId: contentTemplateId,
             },
             update: {
               lastActivity: blockTimestamp,
+              ...(contentVentureId ? { ventureId: contentVentureId } : {}),
+              ...(contentTemplateId ? { templateId: contentTemplateId } : {}),
             },
           });
           logger.debug({ workstreamId, requestId: id }, "Created/updated workstream entry for root request");

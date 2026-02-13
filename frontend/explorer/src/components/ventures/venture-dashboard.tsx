@@ -1,6 +1,6 @@
 'use client';
 
-import { HeartPulse, Activity, ArrowRight, Bot, GitBranch, Calendar } from 'lucide-react';
+import { HeartPulse, Activity, ArrowRight, Bot, Rows3, Calendar } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LiveOutputView } from './live-output-view';
@@ -12,7 +12,6 @@ import { ServiceOutputCard } from './service-output-card';
 import { TokenInfoCard } from './token-info-card';
 import { DispatchScheduleTab } from './dispatch-schedule';
 import { WorkstreamsList } from './workstreams-list';
-import { WorkstreamTreeList } from '@/components/workstream-tree-list';
 import { transformToActivityItems } from '@/lib/ventures/activity-utils';
 import type { ServiceOutput } from '@/lib/ventures/service-types';
 import type { JobDefinition, Request } from '@/lib/subgraph';
@@ -62,8 +61,7 @@ interface VentureDashboardProps {
     statusCounts: Record<HealthStatus, number>;
     primaryOutput: ServiceOutput | null;
     fetchActivity: (id: string) => Promise<{ jobDefinitions: JobDefinition[] }>;
-    initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree' | 'schedule';
-    initialSelectedJobId?: string | null;
+    initialTab?: 'dashboard' | 'health' | 'activity' | 'workstreams' | 'schedule';
     dispatches?: Record<string, { count: number; latestRequest: Request | null; requests: Request[] }>;
     tokenInfo?: TokenInfo | null;
 }
@@ -81,25 +79,19 @@ export function VentureDashboard({
     primaryOutput,
     fetchActivity,
     initialTab,
-    initialSelectedJobId,
     dispatches,
     tokenInfo,
 }: VentureDashboardProps) {
     // Determine if we should show the Artifacts Gallery instead of Live Output
     // Show gallery when neither liveOutputUrl nor telegramUrl is configured
     const showArtifactsGallery = !liveOutputUrl && !telegramUrl;
-    const defaultTab = initialTab ?? (initialSelectedJobId ? 'work-tree' : 'dashboard');
+    const defaultTab = initialTab ?? 'dashboard';
     const router = useRouter();
     const [activeTab, setActiveTab] = useState(defaultTab);
-    const [selectedJobIdOverride, setSelectedJobIdOverride] = useState<string | null>(initialSelectedJobId ?? null);
 
     useEffect(() => {
         setActiveTab(defaultTab);
     }, [defaultTab]);
-
-    useEffect(() => {
-        setSelectedJobIdOverride(initialSelectedJobId ?? null);
-    }, [initialSelectedJobId]);
     const [activityPreviewData, setActivityPreviewData] = useState(activityData);
 
     useEffect(() => {
@@ -156,9 +148,8 @@ export function VentureDashboard({
                     nextPath = `${basePath}/health`;
                 } else if (value === 'activity') {
                     nextPath = `${basePath}/activity`;
-                } else if (value === 'work-tree') {
-                    setSelectedJobIdOverride(null);
-                    nextPath = `${basePath}/tree`;
+                } else if (value === 'workstreams') {
+                    nextPath = `${basePath}/workstreams`;
                 } else if (value === 'schedule') {
                     nextPath = `${basePath}/schedule`;
                 }
@@ -190,10 +181,10 @@ export function VentureDashboard({
                         <span className="hidden sm:inline">Schedule</span>
                     </TabsTrigger>
                 )}
-                <TabsTrigger value="work-tree" className="gap-1 md:gap-2">
-                    <GitBranch className="h-4 w-4" />
-                    <span className="hidden sm:inline">Work Tree</span>
-                    <span className="sm:hidden">Tree</span>
+                <TabsTrigger value="workstreams" className="gap-1 md:gap-2">
+                    <Rows3 className="h-4 w-4" />
+                    <span className="hidden sm:inline">Workstreams</span>
+                    <span className="sm:hidden">Jobs</span>
                 </TabsTrigger>
             </TabsList>
 
@@ -206,15 +197,8 @@ export function VentureDashboard({
                             <ArtifactsGallery
                                 workstreamId={workstreamId}
                                 onNavigateToJob={(jobDefId) => {
-                                    setSelectedJobIdOverride(jobDefId);
-                                    setActiveTab('work-tree');
-                                    const nextPath = `/ventures/${ventureId}/tree/${jobDefId}`;
-                                    if (typeof window !== 'undefined') {
-                                        window.history.pushState({}, '', nextPath);
-                                    } else {
-                                        router.push(nextPath);
-                                    }
-                                }}
+                                    router.push(`/workstreams/${workstreamId}`);
+                                }
                             />
                         ) : (
                             <LiveOutputView url={liveOutputUrl!} telegramUrl={telegramUrl || undefined} />
@@ -302,9 +286,8 @@ export function VentureDashboard({
                                                 type="button"
                                                 className="flex gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-accent/50 text-left"
                                                 onClick={() => {
-                                                    setSelectedJobIdOverride(item.id);
-                                                    setActiveTab('work-tree');
-                                                    const nextPath = `/ventures/${ventureId}/tree/${item.id}`;
+                                                    setActiveTab('activity');
+                                                    const nextPath = `/ventures/${ventureId}/activity`;
                                                     if (typeof window !== 'undefined') {
                                                         window.history.pushState({}, '', nextPath);
                                                     } else {
@@ -365,19 +348,12 @@ export function VentureDashboard({
 
             {/* Activity Tab */}
             <TabsContent value="activity" className="flex-1 min-h-0 mt-4">
-                <div className="space-y-6">
-                    {/* Workstreams overview */}
-                    {ventureId && (
-                        <WorkstreamsList ventureId={ventureId} />
-                    )}
-
-                    <div className="h-[600px]">
-                        <ActivityFeed
-                            initialData={activityData}
-                            workstreamId={pollId}
-                            fetchActivity={fetchActivity}
-                        />
-                    </div>
+                <div className="h-[600px]">
+                    <ActivityFeed
+                        initialData={activityData}
+                        workstreamId={pollId}
+                        fetchActivity={fetchActivity}
+                    />
                 </div>
             </TabsContent>
 
@@ -392,27 +368,14 @@ export function VentureDashboard({
                 </TabsContent>
             )}
 
-            {/* Work Tree Tab */}
-            <TabsContent value="work-tree" className="flex-1 min-h-0 mt-4">
-                {workstreamId ? (
-                    <Card className="py-0 gap-0">
-                        <CardContent className="p-0">
-                            <WorkstreamTreeList
-                                rootId={workstreamId}
-                                initialSelectedJobId={initialSelectedJobId ?? undefined}
-                                selectedJobId={selectedJobIdOverride}
-                                onJobSelectRoute={(jobId) => {
-                                    if (typeof window !== 'undefined') {
-                                        window.history.pushState({}, '', `/ventures/${ventureId}/tree/${jobId}`);
-                                    }
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
+            {/* Workstreams Tab */}
+            <TabsContent value="workstreams" className="flex-1 min-h-0 mt-4">
+                {ventureId ? (
+                    <WorkstreamsList ventureId={ventureId} />
                 ) : (
                     <Card>
                         <CardContent className="py-8 text-center text-muted-foreground">
-                            No workstream dispatched yet
+                            No workstreams dispatched yet
                         </CardContent>
                     </Card>
                 )}

@@ -158,10 +158,13 @@ export const workstream = onchainTable(
     childRequestCount: t.integer().notNull(),
     hasLauncherBriefing: t.boolean().notNull(),
     delivered: t.boolean().notNull(),
+    ventureId: t.text(),
+    templateId: t.text(),
   }),
   (table) => ({
     timestampIdx: index().on(table.blockTimestamp),
     lastActivityIdx: index().on(table.lastActivity),
+    ventureIdIdx: index().on(table.ventureId),
     mechIdx: index().on(table.mech),
     senderIdx: index().on(table.sender),
   })

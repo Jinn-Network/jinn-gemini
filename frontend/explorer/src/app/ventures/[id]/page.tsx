@@ -100,11 +100,10 @@ interface VenturePageProps {
 
 interface VentureDetailProps {
   id: string;
-  initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree' | 'schedule';
-  initialSelectedJobId?: string | null;
+  initialTab?: 'dashboard' | 'health' | 'activity' | 'workstreams' | 'schedule';
 }
 
-export async function VentureDetail({ id, initialTab, initialSelectedJobId }: VentureDetailProps) {
+export async function VentureDetail({ id, initialTab }: VentureDetailProps) {
   // Fetch venture from Supabase by UUID
   const venture = await getVenture(id);
   if (!venture) {
@@ -146,7 +145,7 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
           primaryOutput={null}
           fetchActivity={fetchVentureActivityAction}
           initialTab={initialTab}
-          initialSelectedJobId={initialSelectedJobId}
+
           dispatches={dispatchMap}
           tokenInfo={venture ? {
             token_address: venture.token_address,
@@ -233,7 +232,6 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
         primaryOutput={primaryOutput}
         fetchActivity={fetchVentureActivityAction}
         initialTab={initialTab}
-        initialSelectedJobId={initialSelectedJobId}
         dispatches={dispatchMap}
         tokenInfo={{
           token_address: venture.token_address,

@@ -1,16 +1,25 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import Link from 'next/link';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { GitBranch, CheckCircle2, Clock, Loader2 } from 'lucide-react';
-import type { Request } from '@/lib/subgraph';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Loader2 } from 'lucide-react';
 
 interface WorkstreamGroup {
   workstreamId: string;
   jobName: string;
   templateId?: string;
   createdAt: string;
+  lastActivity?: string;
   delivered: boolean;
   requestCount: number;
 }
@@ -20,7 +29,6 @@ interface WorkstreamsListProps {
 }
 
 async function fetchVentureWorkstreams(ventureId: string): Promise<WorkstreamGroup[]> {
-  // Use the server action pattern — fetch requests from the API
   const response = await fetch(
     `${process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://ponder-production-6d16.up.railway.app/graphql'}`,
     {
@@ -28,18 +36,18 @@ async function fetchVentureWorkstreams(ventureId: string): Promise<WorkstreamGro
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: `query VentureWorkstreams($ventureId: String!) {
-          requests(
+          workstreams(
             where: { ventureId: $ventureId }
-            orderBy: "blockTimestamp"
+            orderBy: "lastActivity"
             orderDirection: "desc"
-            limit: 200
+            limit: 50
           ) {
             items {
               id
-              workstreamId
               jobName
-              templateId
               blockTimestamp
+              lastActivity
+              childRequestCount
               delivered
             }
           }
@@ -52,43 +60,69 @@ async function fetchVentureWorkstreams(ventureId: string): Promise<WorkstreamGro
   if (!response.ok) return [];
 
   const data = await response.json();
-  const requests: any[] = data?.data?.requests?.items || [];
+  const items: any[] = data?.data?.workstreams?.items || [];
 
-  // Group by workstreamId
-  const groups = new Map<string, WorkstreamGroup>();
-  for (const req of requests) {
-    const wsId = req.workstreamId || req.id;
-    if (!groups.has(wsId)) {
-      groups.set(wsId, {
-        workstreamId: wsId,
-        jobName: req.jobName || 'Unnamed',
-        templateId: req.templateId,
-        createdAt: req.blockTimestamp,
-        delivered: req.delivered,
-        requestCount: 0,
-      });
-    }
-    const group = groups.get(wsId)!;
-    group.requestCount++;
-    // Root request (workstreamId === id) has the canonical job name
-    if (req.id === wsId && req.jobName) {
-      group.jobName = req.jobName;
-    }
-  }
-
-  return Array.from(groups.values()).sort(
-    (a, b) => Number(b.createdAt) - Number(a.createdAt)
-  );
+  return items.map(ws => ({
+    workstreamId: ws.id,
+    jobName: ws.jobName || 'Unnamed',
+    createdAt: ws.blockTimestamp,
+    lastActivity: ws.lastActivity,
+    delivered: ws.delivered,
+    requestCount: ws.childRequestCount || 0,
+  }));
 }
 
-function formatTimestamp(ts: string): string {
-  const date = new Date(Number(ts) * 1000);
-  return date.toLocaleDateString(undefined, {
+function formatTimeAgo(timestamp: string): string {
+  const now = Date.now();
+  const diff = now - Number(timestamp) * 1000;
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (seconds < 60) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 30) return `${days}d ago`;
+  return new Date(Number(timestamp) * 1000).toLocaleDateString();
+}
+
+function formatDate(timestamp: string): string {
+  const date = new Date(Number(timestamp) * 1000);
+  return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    year: 'numeric',
   });
+}
+
+function WorkstreamsTableSkeleton() {
+  return (
+    <div className="rounded-md border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Job Name</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Requests</TableHead>
+            <TableHead>Last Activity</TableHead>
+            <TableHead>Started</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {[...Array(3)].map((_, i) => (
+            <TableRow key={i}>
+              <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+              <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+              <TableCell className="text-right"><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
 }
 
 export function WorkstreamsList({ ventureId }: WorkstreamsListProps) {
@@ -103,56 +137,64 @@ export function WorkstreamsList({ ventureId }: WorkstreamsListProps) {
   }, [ventureId]);
 
   if (loading) {
-    return (
-      <Card>
-        <CardContent className="py-6 flex items-center justify-center gap-2 text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading workstreams...
-        </CardContent>
-      </Card>
-    );
+    return <WorkstreamsTableSkeleton />;
   }
 
   if (workstreams.length === 0) {
-    return null; // Don't show if no workstreams
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        No workstreams found
+      </div>
+    );
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <GitBranch className="h-4 w-4" />
-          Workstreams ({workstreams.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-2">
+    <div className="rounded-md border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Job Name</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Requests</TableHead>
+            <TableHead>Last Activity</TableHead>
+            <TableHead>Started</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {workstreams.map((ws) => (
-            <div
-              key={ws.workstreamId}
-              className="flex items-center justify-between py-2 px-3 rounded-md bg-muted/30"
-            >
-              <div className="flex items-center gap-3 min-w-0">
+            <TableRow key={ws.workstreamId} className="cursor-pointer">
+              <TableCell>
+                <Link
+                  href={`/workstreams/${ws.workstreamId}`}
+                  className="text-primary hover:underline font-medium"
+                >
+                  {ws.jobName}
+                </Link>
+              </TableCell>
+              <TableCell>
                 {ws.delivered ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  <Badge className="bg-green-500/15 text-green-600 border-green-500/20 hover:bg-green-500/15">
+                    Delivered
+                  </Badge>
                 ) : (
-                  <Clock className="h-4 w-4 text-yellow-500 shrink-0" />
+                  <Badge className="bg-yellow-500/15 text-yellow-600 border-yellow-500/20 hover:bg-yellow-500/15">
+                    Active
+                  </Badge>
                 )}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{ws.jobName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatTimestamp(ws.createdAt)}
-                    {ws.requestCount > 1 && ` · ${ws.requestCount} requests`}
-                  </p>
-                </div>
-              </div>
-              <Badge variant={ws.delivered ? 'secondary' : 'outline'} className="text-xs shrink-0">
-                {ws.delivered ? 'Delivered' : 'Active'}
-              </Badge>
-            </div>
+              </TableCell>
+              <TableCell className="text-right text-muted-foreground">
+                {ws.requestCount}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {ws.lastActivity ? formatTimeAgo(ws.lastActivity) : '—'}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {formatDate(ws.createdAt)}
+              </TableCell>
+            </TableRow>
           ))}
-        </div>
-      </CardContent>
-    </Card>
+        </TableBody>
+      </Table>
+    </div>
   );
 }
