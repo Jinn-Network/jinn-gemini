@@ -78,6 +78,7 @@ async function getUmamiToken(): Promise<StaticCredentialResult | null> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {

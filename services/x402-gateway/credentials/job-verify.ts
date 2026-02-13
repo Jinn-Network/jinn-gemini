@@ -41,14 +41,19 @@ interface GraphQLResponse {
 let cachedSigner: Erc8128Signer | null = null;
 
 function getControlApiPrivateKey(): `0x${string}` | null {
-  const key = (
-    process.env.CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY ||
-    process.env.JINN_SERVICE_PRIVATE_KEY ||
-    process.env.PRIVATE_KEY ||
-    ''
-  ).trim();
-  if (/^0x[a-fA-F0-9]{64}$/.test(key)) {
-    return key as `0x${string}`;
+  const bridgeKey = process.env.CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY?.trim();
+  if (bridgeKey && /^0x[a-fA-F0-9]{64}$/.test(bridgeKey)) return bridgeKey as `0x${string}`;
+
+  const serviceKey = process.env.JINN_SERVICE_PRIVATE_KEY?.trim();
+  if (serviceKey && /^0x[a-fA-F0-9]{64}$/.test(serviceKey)) {
+    console.warn('[job-verify] Using JINN_SERVICE_PRIVATE_KEY fallback (set CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY)');
+    return serviceKey as `0x${string}`;
+  }
+
+  const genericKey = process.env.PRIVATE_KEY?.trim();
+  if (genericKey && /^0x[a-fA-F0-9]{64}$/.test(genericKey)) {
+    console.warn('[job-verify] Using PRIVATE_KEY fallback — set CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY for production');
+    return genericKey as `0x${string}`;
   }
   return null;
 }
@@ -107,7 +112,7 @@ export async function verifyJobClaim(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': `verify-claim:${requestId}:${Date.now()}`,
+          'Idempotency-Key': `verify-claim:${requestId}`,
         },
         body: JSON.stringify({ query, variables: { requestId } }),
         signal: AbortSignal.timeout(CONTROL_API_TIMEOUT_MS),

@@ -23,7 +23,11 @@ export function getRedis(): Redis | null {
 function initRedis(): void {
   const url = process.env.REDIS_URL;
   if (!url) {
-    console.warn('[credential-bridge] REDIS_URL not set — nonce replay protection DISABLED');
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[credential-bridge] CRITICAL: REDIS_URL not set in production — nonce replay protection DISABLED');
+    } else {
+      console.warn('[credential-bridge] REDIS_URL not set — nonce replay protection disabled (dev mode)');
+    }
     return;
   }
 

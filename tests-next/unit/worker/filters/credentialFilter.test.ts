@@ -176,7 +176,8 @@ describe('credentialFilter', () => {
       expect(result.providers).toEqual(new Set(['github', 'telegram']));
       expect(mockFetch).toHaveBeenCalledOnce();
 
-      const callUrl = mockFetch.mock.calls[0][0] as string;
+      const callArg = mockFetch.mock.calls[0][0];
+      const callUrl = typeof callArg === 'string' ? callArg : (callArg as Request).url;
       expect(callUrl).toBe('http://localhost:3001/credentials/capabilities');
     });
 
@@ -224,7 +225,8 @@ describe('credentialFilter', () => {
       );
 
       await probeCredentialBridge();
-      const callUrl = mockFetch.mock.calls[0][0] as string;
+      const callArg = mockFetch.mock.calls[0][0];
+      const callUrl = typeof callArg === 'string' ? callArg : (callArg as Request).url;
       expect(callUrl).toBe('http://localhost:3001/credentials/capabilities');
     });
   });

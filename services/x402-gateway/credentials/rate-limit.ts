@@ -63,9 +63,8 @@ export async function checkRateLimit(
       resetAt,
     };
   } catch (err) {
-    console.error('[credential-bridge] Rate limit check failed:', err);
-    // Fail open on Redis errors (allow request but log)
-    return { allowed: true, remaining: 0, resetAt: 0 };
+    console.error('[credential-bridge] Rate limit check failed — denying request (fail-closed):', err);
+    return { allowed: false, remaining: 0, resetAt: 0 };
   }
 }
 

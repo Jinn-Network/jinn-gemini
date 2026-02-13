@@ -879,7 +879,7 @@ const buildBlueprintFromTemplate = sharedBuildBlueprint;
 import { getGrant, listGrants } from './credentials/acl.js';
 import { getNangoAccessToken } from './credentials/nango-client.js';
 import { getStaticCredential } from './credentials/static-providers.js';
-import { getCredentialNonceStore } from './credentials/redis.js';
+import { getCredentialNonceStore, getRedis } from './credentials/redis.js';
 import { verifyPayment, type PaymentErrorCode } from './credentials/x402-verify.js';
 import { checkRateLimit, getRateLimitHeaders } from './credentials/rate-limit.js';
 import { logAudit, getClientIp, getUserAgent } from './credentials/audit.js';
@@ -1027,6 +1027,9 @@ app.post("/credentials/:provider", async (c) => {
     );
   }
 
+  // Read idempotency key early, but enforce AFTER auth/payment (see below)
+  const idempotencyKey = c.req.header('Idempotency-Key');
+
   // Job context verification (optional based on REQUIRE_JOB_CONTEXT env)
   const requireJobContext = process.env.REQUIRE_JOB_CONTEXT !== 'false';
   if (requireJobContext) {
@@ -1068,8 +1071,9 @@ app.post("/credentials/:provider", async (c) => {
           verifyDetail: jobValid.detail,
         },
       });
+      const errorCode = jobValid.state === 'unavailable' ? 'JOB_VERIFICATION_UNAVAILABLE' : 'JOB_CLAIM_MISMATCH';
       return c.json(
-        { error: jobValid.error || 'Job verification failed', code: 'JOB_NOT_ACTIVE' } satisfies CredentialError,
+        { error: jobValid.error || 'Job verification failed', code: errorCode } satisfies CredentialError,
         { status: denyStatus, headers: getRateLimitHeaders(rateLimit) }
       );
     }
@@ -1174,6 +1178,37 @@ app.post("/credentials/:provider", async (c) => {
     console.log(`[x402] Payment verified: ${result.payer} → ${provider}`);
   }
 
+  // Idempotency — AFTER auth/payment so cached responses can't bypass security.
+  // Key scoped to (address, provider, clientKey) to prevent cross-caller and cross-provider leakage.
+  // Atomic SET NX prevents concurrent double-issuance.
+  const idempotencyCacheKey = idempotencyKey
+    ? `idempotency:${requesterAddress.toLowerCase()}:${provider}:${idempotencyKey}`
+    : null;
+
+  if (idempotencyCacheKey) {
+    const redis = getRedis();
+    if (redis) {
+      // Atomically claim this key. Returns 'OK' if we got the lock, null if already taken.
+      // Lock TTL (60s) exceeds Nango fetch timeout (15s) + overhead, preventing expiry during processing
+      const claimed = await redis.set(idempotencyCacheKey, 'processing', 'EX', 60, 'NX');
+      if (claimed !== 'OK') {
+        // Key exists — either another request is processing or a result is cached
+        const cached = await redis.get(idempotencyCacheKey);
+        if (cached && cached !== 'processing') {
+          try {
+            const { status, body: cachedBody } = JSON.parse(cached);
+            return c.json(cachedBody, { status, headers: getRateLimitHeaders(rateLimit) });
+          } catch { /* corrupted entry — fall through to 409 */ }
+        }
+        // Another request is in-flight with this key — reject to prevent double-issuance
+        return c.json(
+          { error: 'Duplicate request in progress', code: 'DUPLICATE_REQUEST' } satisfies CredentialError,
+          { status: 409, headers: getRateLimitHeaders(rateLimit) }
+        );
+      }
+    }
+  }
+
   // Fetch token: check static providers first, then fall back to Nango
   try {
     const staticToken = await getStaticCredential(provider);
@@ -1194,6 +1229,13 @@ app.post("/credentials/:provider", async (c) => {
       ...paymentAudit,
       metadata: { source: staticToken ? 'static' : 'nango' },
     });
+    // Overwrite "processing" marker with actual response (longer TTL)
+    if (idempotencyCacheKey) {
+      const redis = getRedis();
+      if (redis) {
+        redis.set(idempotencyCacheKey, JSON.stringify({ status: 200, body: response }), 'EX', 300).catch(() => {});
+      }
+    }
     return c.json(response, { headers: getRateLimitHeaders(rateLimit) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -1208,6 +1250,13 @@ app.post("/credentials/:provider", async (c) => {
       ...paymentAudit,
       metadata: { error: message },
     });
+    // Clear "processing" marker on failure so retries aren't blocked
+    if (idempotencyCacheKey) {
+      const redis = getRedis();
+      if (redis) {
+        redis.del(idempotencyCacheKey).catch(() => {});
+      }
+    }
     return c.json(
       { error: `Credential fetch error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError,
       { status: 502, headers: getRateLimitHeaders(rateLimit) }

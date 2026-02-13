@@ -48,6 +48,7 @@ export async function getNangoAccessToken(connectionId: string, providerConfigKe
     headers: {
       'Authorization': `Bearer ${secretKey}`,
     },
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {

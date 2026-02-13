@@ -15,8 +15,10 @@ import {
 } from 'jinn-node/config';
 import {
   InMemoryNonceStore,
+  RedisNonceStore,
   verifyRequestWithErc8128,
   resolveChainId,
+  type Erc8128NonceStore,
 } from 'jinn-node/http/erc8128.js';
 import { getMasterSafe, getServiceSafeAddress } from 'jinn-node/env/operate-profile.js';
 
@@ -227,10 +229,31 @@ function getWorkerAddress(ctx: Context): string {
   if (!ctx.workerAddress || typeof ctx.workerAddress !== 'string') {
     throw new Error('Missing authenticated worker address');
   }
+  if (ctx.workerAddress === '0x0000000000000000000000000000000000000000') {
+    throw new Error('Zero address is not a valid worker identity');
+  }
   return ctx.workerAddress;
 }
 
-const controlApiNonceStore = new InMemoryNonceStore();
+let controlApiNonceStore: Erc8128NonceStore = new InMemoryNonceStore();
+
+// Use Redis-backed nonce store when available for cross-restart/replica replay protection
+const redisUrl = process.env.REDIS_URL;
+if (redisUrl) {
+  try {
+    const { default: Redis } = await import('ioredis');
+    const redis = new Redis(redisUrl, { maxRetriesPerRequest: 3 });
+    redis.on('error', (err: Error) => logger.error({ error: err.message }, 'Control API Redis error'));
+    redis.on('connect', () => logger.info('Control API Redis connected — nonce replay protection ENABLED'));
+    // ioredis queues commands until connected, so assignment is safe immediately
+    controlApiNonceStore = new RedisNonceStore(redis, 'ctrl:erc8128:nonce:');
+  } catch (err) {
+    logger.warn({ error: String(err) }, 'ioredis not available — using in-memory nonce store');
+  }
+} else {
+  logger.warn('REDIS_URL not set — Control API using in-memory nonce store. Replay protection will not persist across restarts.');
+}
+
 const controlApiChainId = resolveChainId(
   process.env.CHAIN_ID ||
   process.env.MECH_CHAIN_CONFIG ||
