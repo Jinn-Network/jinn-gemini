@@ -9,7 +9,7 @@ cmds = ["yarn install --frozen-lockfile", "npm install -g @google/gemini-cli@lat
 
 [phases.build]
 # Build and copy required ABIs for worker runtime
-cmds = ["echo '=== DEBUG: checking worker dir ===' && ls jinn-node/src/worker/prompt/invariant-validator.ts jinn-node/src/worker/mcp/tools/git.ts jinn-node/src/worker/SimplifiedServiceBootstrap.ts jinn-node/src/worker/llm/authIntegration.ts jinn-node/src/worker/worker_telemetry.ts && echo '=== DEBUG: node_modules tsc ===' && ls -la jinn-node/node_modules/.bin/tsc 2>/dev/null && jinn-node/node_modules/.bin/tsc --version 2>/dev/null && echo '=== DEBUG: NODE_ENV ===' && echo $NODE_ENV && yarn run build && mkdir -p dist/ponder/abis && cp ponder/abis/*.json dist/ponder/abis/ && ln -sf $(which node | xargs dirname)/gemini /usr/bin/gemini"]
+cmds = ["yarn run build && mkdir -p dist/ponder/abis && cp ponder/abis/*.json dist/ponder/abis/ && ln -sf $(which node | xargs dirname)/gemini /usr/bin/gemini"]
 
 [start]
 cmd = "node jinn-node/dist/worker/worker_launcher.js"
