@@ -3,13 +3,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Progress } from '@/components/ui/progress'
 import { TARGET_DELIVERIES_PER_EPOCH } from '@/lib/staking/constants'
-import { getServiceEpochActivity } from '@/app/nodes/staking/actions'
 
 interface EpochData {
   checkpoint: number
   nextCheckpoint: number
   livenessPeriod: number
   targetDeliveries: number
+  deliveryCount?: number
 }
 
 interface EpochProgressProps {
@@ -17,22 +17,23 @@ interface EpochProgressProps {
 }
 
 export function EpochProgress({ multisig }: EpochProgressProps) {
-  const [epoch, setEpoch] = useState<EpochData | null>(null)
-  const [deliveryCount, setDeliveryCount] = useState<number | null>(null)
-  const [error, setError] = useState(false)
+  const [data, setData] = useState<EpochData | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/staking/epoch')
-      if (!res.ok) throw new Error('Failed to fetch epoch')
+      const res = await fetch(`/api/staking/epoch?multisig=${encodeURIComponent(multisig)}`)
+      if (!res.ok) {
+        const body = await res.text()
+        throw new Error(`API ${res.status}: ${body}`)
+      }
       const epochData: EpochData = await res.json()
-      setEpoch(epochData)
-
-      const { deliveryCount: count } = await getServiceEpochActivity(multisig, epochData.checkpoint)
-      setDeliveryCount(count)
-      setError(false)
-    } catch {
-      setError(true)
+      setData(epochData)
+      setError(null)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('EpochProgress fetch failed:', msg)
+      setError(msg)
     }
   }, [multisig])
 
@@ -43,10 +44,10 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
   }, [fetchData])
 
   if (error) {
-    return <span className="text-xs text-muted-foreground">Failed to load</span>
+    return <span className="text-xs text-destructive" title={error}>Failed to load epoch</span>
   }
 
-  if (!epoch || deliveryCount === null) {
+  if (!data) {
     return (
       <div className="space-y-1.5">
         <div className="h-2 w-full bg-muted animate-pulse rounded-full" />
@@ -56,9 +57,10 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
   }
 
   const target = TARGET_DELIVERIES_PER_EPOCH
+  const deliveryCount = data.deliveryCount ?? 0
   const percentage = Math.min((deliveryCount / target) * 100, 100)
   const now = Math.floor(Date.now() / 1000)
-  const remaining = epoch.nextCheckpoint - now
+  const remaining = data.nextCheckpoint - now
   const isOverdue = remaining <= 0
 
   let colorClass = 'text-red-500'
