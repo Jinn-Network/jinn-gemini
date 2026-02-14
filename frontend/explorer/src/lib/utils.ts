@@ -39,6 +39,13 @@ export const navigationItems: NavigationItem[] = [
     ]
   },
   {
+    label: 'Nodes',
+    collection: 'nodes',
+    subItems: [
+      { label: 'Staking', collection: 'nodes/staking' },
+    ]
+  },
+  {
     label: 'Work',
     collection: 'work',
     subItems: [
