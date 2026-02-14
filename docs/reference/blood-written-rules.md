@@ -443,6 +443,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Solution:** Set bond=1n per agent, threshold=ceil(2/3*numAgents), token=`0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE`. Must go through ServiceManagerToken, not ServiceRegistryL2 directly (ManagerOnly error).
 **Prevention:** See `skills/olas-registry/SKILL.md` for full service creation reference.
 
+### 73. Embedded Git Credentials in IPFS Job Metadata Expire
+**Issue:** Manager jobs (Site Manager, Content Manager, Distribution & Analytics Manager) failing with "Invalid username or token" or "Repository not found" at clone time.
+**Root Cause:** Job payloads baked into IPFS contain `codeMetadata.repo.remoteUrl` with embedded PATs (e.g., `https://x-access-token:ghp_xxx@github.com/org/repo`). When these tokens expire, every subsequent re-dispatch of that job fails at clone. The `buildGithubHttpsUrl()` function didn't recognize URLs with embedded credentials as GitHub URLs, so the worker's own `GITHUB_TOKEN` was never applied.
+**Solution:** (1) `buildGithubHttpsUrl()` now strips embedded credentials before URL matching, allowing the worker's `GITHUB_TOKEN` to be used. (2) Clone failures are now non-fatal — the agent runs without a local repo if clone fails, which is fine for research/coordination jobs.
+**Prevention:** When dispatching jobs, use clean repo URLs without embedded tokens. The worker will apply its own `GITHUB_TOKEN` at clone time.
+
 ---
 
 *Keep this file updated with new blood written rules as they're discovered.*
