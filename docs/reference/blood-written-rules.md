@@ -449,7 +449,19 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Solution:** (1) `buildGithubHttpsUrl()` now strips embedded credentials before URL matching, allowing the worker's `GITHUB_TOKEN` to be used. (2) Clone failures are now non-fatal — the agent runs without a local repo if clone fails, which is fine for research/coordination jobs.
 **Prevention:** When dispatching jobs, use clean repo URLs without embedded tokens. The worker will apply its own `GITHUB_TOKEN` at clone time.
 
-### 74. OLAS Staking Contract Takes Ownership of Service NFT
+### 74. Jinn Staking mapServiceInfo Returns 5 Fields (Not 6)
+**Issue:** viem ABI decoding error "Position out of bounds" when reading `mapServiceInfo` on the Jinn staking contract (`0x0dfaFbf...`).
+**Root Cause:** The Jinn contract's `mapServiceInfo` returns `(address multisig, address owner, uint256 tsStart, uint256 reward, uint256 nonces)` — 5 static fields (160 bytes). Other OLAS staking contracts (e.g., AgentsFun1) return 6 fields with `uint256[] nonces` (dynamic) and `uint256 inactivity`. Using the wrong ABI causes the decoder to misinterpret field offsets.
+**Solution:** Use the correct 5-field ABI for Jinn. Always verify the raw return data length first: `client.call()` → check byte count before writing ABI definitions.
+**Prevention:** Don't assume all OLAS staking contracts share the same ABI. Check basescan or do a raw call to determine the actual return layout.
+
+### 75. OLAS Staking Requires NFT Approval Before stake()
+**Issue:** Safe `execTransaction` reverts with GS013 when calling `stake(serviceId)` on the staking contract.
+**Root Cause:** The staking contract calls `safeTransferFrom(msg.sender, address(this), serviceId)` to take ownership of the service NFT. This requires the caller (Safe) to have approved the staking contract as an operator for that specific token ID. Without approval, the inner transfer reverts.
+**Solution:** Before calling `stake()`, execute `approve(stakingContract, serviceId)` on the ServiceRegistry (`0x3C1fF68f5...`) via the Safe. Then call `stake()`.
+**Prevention:** Always approve NFT transfer before staking. The migration script now includes this step.
+
+### 76. OLAS Staking Contract Takes Ownership of Service NFT
 **Issue:** Agent wasted time investigating why `ownerOf(serviceId)` returned the staking contract address, incorrectly concluding the service was "evicted" or in an abnormal state.
 **Root Cause:** When a service is staked, the staking contract **takes ownership of the service NFT** via `transferFrom`. This is the normal, expected state for any staked service. `ownerOf()` returning a staking contract address simply means "this service is staked in that contract."
 **Solution:** To check staking status, call `getServiceIds()` on the staking contract — if the service ID is in the returned array, it's actively staked. If `ownerOf()` returns the staking contract but `getServiceIds()` does NOT include the service, it was evicted (contract holds the NFT but service is inactive). Use `getStakingState(serviceId)` for the authoritative state (0=Unstaked, 1=Staked, 2=Evicted).
