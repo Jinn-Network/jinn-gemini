@@ -337,7 +337,7 @@ async function dispatchAgent(
     chainConfig,
     keyConfig: { source: "value", value: privateKey },
     postOnly: true,
-    responseTimeout: 300,
+    responseTimeout: 61,
   });
 
   if (!result?.request_ids?.[0]) {

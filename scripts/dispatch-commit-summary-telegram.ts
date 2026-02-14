@@ -55,7 +55,7 @@ const result = await marketplaceInteract({
   chainConfig: profile.chainConfig,
   keyConfig: { source: "value", value: profile.privateKey },
   postOnly: true,
-  responseTimeout: 300,
+  responseTimeout: 61,
 });
 
 const requestId = result.request_ids?.[0];
