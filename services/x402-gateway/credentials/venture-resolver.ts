@@ -7,7 +7,7 @@
  * Also provides venture-scoped credential discovery for the capabilities probe.
  */
 
-import { getOperator, checkTierStaleness } from './operators.js';
+import { getOperator } from './operators.js';
 import { checkVentureAccess, listVentureCredentials } from './venture-credentials.js';
 import { getSupabaseClient } from './supabase.js';
 import type { TrustTier, VentureCredential } from './types.js';
@@ -115,10 +115,9 @@ export async function checkVentureCredentialAccess(params: {
     };
   }
 
-  // Get operator's effective trust tier (respects stale stake window)
+  // Get operator's trust tier
   const operator = await getOperator(params.operatorAddress);
-  const staleness = checkTierStaleness(operator);
-  const operatorTier: TrustTier = staleness.effectiveTier;
+  const operatorTier: TrustTier = operator?.trustTier ?? 'untrusted';
 
   // Check access
   const accessResult = await checkVentureAccess({
@@ -163,8 +162,7 @@ export async function discoverVentureProviders(params: {
   if (credentials.length === 0) return [];
 
   const operator = await getOperator(params.operatorAddress);
-  const staleness = checkTierStaleness(operator);
-  const operatorTier: TrustTier = staleness.effectiveTier;
+  const operatorTier: TrustTier = operator?.trustTier ?? 'untrusted';
 
   const accessible: string[] = [];
   for (const vc of credentials) {

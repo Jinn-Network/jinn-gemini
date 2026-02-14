@@ -7,12 +7,11 @@
  * Trust tier precedence:
  * 1. Admin tier_override → use that
  * 2. whitelisted = true → 'trusted'
- * 3. Staked in approved contract → 'staked'
- * 4. Otherwise → 'unverified'
+ * 3. Otherwise → 'untrusted'
  */
 
 import pg from 'pg';
-import type { Operator, TrustTier, CredentialGrant } from './types.js';
+import type { Operator, TrustTier } from './types.js';
 import { tierMeetsMinimum } from './types.js';
 import { listPoliciesTx } from './policies.js';
 import { logAdminAuditTx } from './admin-audit.js';
@@ -44,8 +43,6 @@ function rowToOperator(row: Record<string, unknown>): Operator {
     whitelisted: row.whitelisted as boolean,
     whitelistedBy: (row.whitelisted_by as string) ?? null,
     whitelistedAt: row.whitelisted_at ? (row.whitelisted_at as Date).toISOString() : null,
-    stakingContract: (row.staking_contract as string) ?? null,
-    stakeVerifiedAt: row.stake_verified_at ? (row.stake_verified_at as Date).toISOString() : null,
     registeredAt: (row.registered_at as Date).toISOString(),
     updatedAt: (row.updated_at as Date).toISOString(),
   };
@@ -57,57 +54,10 @@ function rowToOperator(row: Record<string, unknown>): Operator {
 export function calculateTrustTier(op: {
   tierOverride: TrustTier | null;
   whitelisted: boolean;
-  stakingContract: string | null;
 }): TrustTier {
   if (op.tierOverride) return op.tierOverride;
   if (op.whitelisted) return 'trusted';
-  if (op.stakingContract) return 'staked';
-  return 'unverified';
-}
-
-/** Maximum age for staking verification before tier is considered stale (default 24h). */
-export const STAKE_VERIFY_MAX_AGE_MS = parseInt(
-  process.env.STAKE_VERIFY_MAX_AGE_MS || '86400000',
-  10,
-);
-
-export interface StaleTierCheck {
-  /** Whether the operator's tier is still valid */
-  valid: boolean;
-  /** Current effective tier (may be 'unverified' if stale) */
-  effectiveTier: TrustTier;
-  /** Why the tier was downgraded (if invalid) */
-  reason?: 'stale_stake' | 'not_registered';
-}
-
-/**
- * Check if an operator's trust tier is still valid.
- *
- * Staking-derived tiers become stale when stake_verified_at exceeds
- * STAKE_VERIFY_MAX_AGE_MS. Admin overrides and whitelisting are never stale.
- *
- * Returns the effective tier (downgraded to 'unverified' if stale).
- */
-export function checkTierStaleness(operator: Operator | null): StaleTierCheck {
-  if (!operator) {
-    return { valid: false, effectiveTier: 'unverified', reason: 'not_registered' };
-  }
-
-  // Admin override and whitelist tiers are never stale
-  if (operator.tierOverride || operator.whitelisted) {
-    return { valid: true, effectiveTier: operator.trustTier };
-  }
-
-  // Staking-derived tier: check freshness of stake_verified_at
-  if (operator.stakingContract && operator.stakeVerifiedAt) {
-    const verifiedAt = new Date(operator.stakeVerifiedAt).getTime();
-    const age = Date.now() - verifiedAt;
-    if (age > STAKE_VERIFY_MAX_AGE_MS) {
-      return { valid: false, effectiveTier: 'unverified', reason: 'stale_stake' };
-    }
-  }
-
-  return { valid: true, effectiveTier: operator.trustTier };
+  return 'untrusted';
 }
 
 export async function getOperator(address: string): Promise<Operator | null> {
@@ -147,12 +97,11 @@ export async function listOperators(filters?: {
 
 /**
  * Register a new operator (self-service or admin).
- * If the operator already exists, updates staking info and recalculates tier.
+ * If the operator already exists, updates and recalculates tier.
  */
 export async function registerOperator(params: {
   address: string;
   serviceId?: number;
-  stakingContract?: string;
   actorAddress: string;
   ipAddress?: string;
 }): Promise<{ operator: Operator; grantsAdded: string[]; grantsRevoked: string[] }> {
@@ -172,23 +121,16 @@ export async function registerOperator(params: {
 
     // Upsert operator
     const { rows } = await client.query(
-      `INSERT INTO operators (address, service_id, staking_contract, stake_verified_at, trust_tier)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO operators (address, service_id, trust_tier)
+       VALUES ($1, $2, $3)
        ON CONFLICT (address) DO UPDATE SET
          service_id = COALESCE(EXCLUDED.service_id, operators.service_id),
-         staking_contract = COALESCE(EXCLUDED.staking_contract, operators.staking_contract),
-         stake_verified_at = CASE
-           WHEN EXCLUDED.staking_contract IS NOT NULL THEN NOW()
-           ELSE operators.stake_verified_at
-         END,
          updated_at = NOW()
        RETURNING *`,
       [
         addr,
         params.serviceId ?? null,
-        params.stakingContract ?? null,
-        params.stakingContract ? new Date() : null,
-        'unverified', // Initial tier, recalculated below
+        'untrusted', // Initial tier, recalculated below
       ],
     );
 
@@ -196,7 +138,6 @@ export async function registerOperator(params: {
     const newTier = calculateTrustTier({
       tierOverride: opRow.tier_override,
       whitelisted: opRow.whitelisted,
-      stakingContract: opRow.staking_contract,
     });
 
     // Update tier if changed
@@ -290,7 +231,6 @@ export async function updateOperatorAdmin(params: {
     const newTier = calculateTrustTier({
       tierOverride: opRow.tier_override,
       whitelisted: opRow.whitelisted,
-      stakingContract: opRow.staking_contract,
     });
 
     if (opRow.trust_tier !== newTier) {

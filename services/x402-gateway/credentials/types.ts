@@ -10,11 +10,11 @@
 // Trust & Identity
 // ============================================================
 
-/** Progressive trust levels based on staking + admin whitelist */
-export type TrustTier = 'unverified' | 'staked' | 'trusted' | 'premium';
+/** Binary trust: operators are either trusted (admin-whitelisted) or untrusted (default) */
+export type TrustTier = 'untrusted' | 'trusted';
 
 /** Ordered trust tiers for comparison (higher index = more trust) */
-export const TRUST_TIER_ORDER: TrustTier[] = ['unverified', 'staked', 'trusted', 'premium'];
+export const TRUST_TIER_ORDER: TrustTier[] = ['untrusted', 'trusted'];
 
 /** Returns true if `actual` meets or exceeds `required` */
 export function tierMeetsMinimum(actual: TrustTier, required: TrustTier): boolean {
@@ -30,16 +30,8 @@ export interface Operator {
   whitelisted: boolean;
   whitelistedBy: string | null;
   whitelistedAt: string | null;
-  stakingContract: string | null;
-  stakeVerifiedAt: string | null;
   registeredAt: string;
   updatedAt: string;
-}
-
-/** Approved staking contract configuration */
-export interface StakingContractConfig {
-  name: string;
-  minStakeOlas: number;
 }
 
 // ============================================================
@@ -145,5 +137,5 @@ export interface CredentialResponse {
 /** Error response */
 export interface CredentialError {
   error: string;
-  code: 'INVALID_SIGNATURE' | 'NOT_AUTHORIZED' | 'PAYMENT_REQUIRED' | 'PAYMENT_INVALID' | 'PROVIDER_NOT_FOUND' | 'GRANT_EXPIRED' | 'NANGO_ERROR' | 'NONCE_REUSED' | 'RATE_LIMITED' | 'DUPLICATE_REQUEST' | 'JOB_NOT_ACTIVE' | 'JOB_CLAIM_MISMATCH' | 'JOB_VERIFICATION_UNAVAILABLE' | 'STALE_TIER';
+  code: 'INVALID_SIGNATURE' | 'NOT_AUTHORIZED' | 'PAYMENT_REQUIRED' | 'PAYMENT_INVALID' | 'PROVIDER_NOT_FOUND' | 'GRANT_EXPIRED' | 'NANGO_ERROR' | 'NONCE_REUSED' | 'RATE_LIMITED' | 'DUPLICATE_REQUEST' | 'JOB_NOT_ACTIVE' | 'JOB_CLAIM_MISMATCH' | 'JOB_VERIFICATION_UNAVAILABLE';
 }

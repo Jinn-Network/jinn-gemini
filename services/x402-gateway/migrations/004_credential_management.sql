@@ -8,7 +8,7 @@
 
 -- Enum types
 DO $$ BEGIN
-  CREATE TYPE trust_tier AS ENUM ('unverified', 'staked', 'trusted', 'premium');
+  CREATE TYPE trust_tier AS ENUM ('untrusted', 'trusted');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -23,19 +23,16 @@ END $$;
 CREATE TABLE IF NOT EXISTS operators (
   address TEXT PRIMARY KEY CHECK (address = lower(address)),
   service_id BIGINT,
-  trust_tier trust_tier NOT NULL DEFAULT 'unverified',
+  trust_tier trust_tier NOT NULL DEFAULT 'untrusted',
   tier_override trust_tier,
   whitelisted BOOLEAN NOT NULL DEFAULT false,
   whitelisted_by TEXT CHECK (whitelisted_by IS NULL OR whitelisted_by = lower(whitelisted_by)),
   whitelisted_at TIMESTAMPTZ,
-  staking_contract TEXT,
-  stake_verified_at TIMESTAMPTZ,
   registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_operators_tier ON operators(trust_tier);
-CREATE INDEX IF NOT EXISTS idx_operators_staking ON operators(staking_contract) WHERE staking_contract IS NOT NULL;
 
 -- ============================================================
 -- credential_policies: global rules for auto-provisioning

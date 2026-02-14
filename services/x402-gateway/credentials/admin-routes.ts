@@ -22,7 +22,6 @@ import {
   removeOperatorEntry,
   listOperatorEntries,
 } from './venture-credentials.js';
-import { verifyServiceStaking } from './staking.js';
 import { logAdminAudit } from './admin-audit.js';
 import { queryAdminAudit } from './admin-audit.js';
 import { verifyVentureOwner } from './supabase.js';
@@ -87,10 +86,13 @@ function requireAdmin(auth: { ok: true; isAdmin: boolean }): { ok: false; error:
 // ============================================================
 
 /**
- * POST /admin/operators — Self-register with staking verification
+ * POST /admin/operators — Register an operator
  *
- * Body: { serviceId: number }
+ * Body: { serviceId?: number }
  * Auth: ERC-8128 (proves caller owns the EOA)
+ *
+ * Registers the operator. Tier is 'untrusted' by default —
+ * an admin must whitelist to grant 'trusted' status.
  */
 adminApp.post('/operators', async (c) => {
   const auth = await authenticateAdmin(c.req.raw.clone());
@@ -100,34 +102,12 @@ adminApp.post('/operators', async (c) => {
   try {
     body = await c.req.json();
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400);
-  }
-
-  if (!body.serviceId || typeof body.serviceId !== 'number') {
-    return c.json({ error: 'serviceId (number) is required' }, 400);
-  }
-
-  // Verify staking on-chain via Ponder
-  let stakingResult;
-  try {
-    stakingResult = await verifyServiceStaking(auth.address, body.serviceId);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[admin] Staking verification failed for ${auth.address}:`, msg);
-    return c.json({ error: 'Staking verification unavailable — try again later', detail: msg }, 503);
-  }
-
-  if (!stakingResult.verified) {
-    return c.json({
-      error: 'Staking verification failed',
-      detail: `Address ${auth.address} does not own or control service ${body.serviceId} in an approved staking contract`,
-    }, 403);
+    body = {};
   }
 
   const result = await registerOperator({
     address: auth.address,
     serviceId: body.serviceId,
-    stakingContract: stakingResult.stakingContract,
     actorAddress: auth.address,
     ipAddress: getClientIp(c),
   });
@@ -136,7 +116,6 @@ adminApp.post('/operators', async (c) => {
     address: result.operator.address,
     serviceId: result.operator.serviceId,
     trustTier: result.operator.trustTier,
-    stakingContract: result.operator.stakingContract,
     grants: result.grantsAdded,
   }, 201);
 });

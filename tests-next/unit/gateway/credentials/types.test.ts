@@ -2,14 +2,13 @@
  * Unit Test: Credential Management Types
  * Module: services/x402-gateway/credentials/types.ts
  *
- * Tests trust tier comparison and ordering.
+ * Tests trust tier comparison with binary model (untrusted/trusted).
  */
 
 import { describe, expect, it } from 'vitest';
 import {
   tierMeetsMinimum,
   TRUST_TIER_ORDER,
-  type TrustTier,
 } from '../../../../services/x402-gateway/credentials/types.js';
 
 describe('tierMeetsMinimum', () => {
@@ -19,25 +18,15 @@ describe('tierMeetsMinimum', () => {
     }
   });
 
-  it('should allow higher tiers to meet lower minimums', () => {
-    expect(tierMeetsMinimum('premium', 'unverified')).toBe(true);
-    expect(tierMeetsMinimum('premium', 'staked')).toBe(true);
-    expect(tierMeetsMinimum('premium', 'trusted')).toBe(true);
-    expect(tierMeetsMinimum('trusted', 'staked')).toBe(true);
-    expect(tierMeetsMinimum('trusted', 'unverified')).toBe(true);
-    expect(tierMeetsMinimum('staked', 'unverified')).toBe(true);
+  it('trusted meets untrusted minimum', () => {
+    expect(tierMeetsMinimum('trusted', 'untrusted')).toBe(true);
   });
 
-  it('should deny lower tiers from meeting higher minimums', () => {
-    expect(tierMeetsMinimum('unverified', 'staked')).toBe(false);
-    expect(tierMeetsMinimum('unverified', 'trusted')).toBe(false);
-    expect(tierMeetsMinimum('unverified', 'premium')).toBe(false);
-    expect(tierMeetsMinimum('staked', 'trusted')).toBe(false);
-    expect(tierMeetsMinimum('staked', 'premium')).toBe(false);
-    expect(tierMeetsMinimum('trusted', 'premium')).toBe(false);
+  it('untrusted does not meet trusted minimum', () => {
+    expect(tierMeetsMinimum('untrusted', 'trusted')).toBe(false);
   });
 
   it('should have correct tier ordering', () => {
-    expect(TRUST_TIER_ORDER).toEqual(['unverified', 'staked', 'trusted', 'premium']);
+    expect(TRUST_TIER_ORDER).toEqual(['untrusted', 'trusted']);
   });
 });

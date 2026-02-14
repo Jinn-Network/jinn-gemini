@@ -892,7 +892,6 @@ import { verifyJobClaim } from './credentials/job-verify.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
 import { adminApp } from './credentials/admin-routes.js';
 import { checkVentureCredentialAccess, discoverVentureProviders } from './credentials/venture-resolver.js';
-import { getOperator, checkTierStaleness } from './credentials/operators.js';
 import { verifyRequestWithErc8128 } from '../../jinn-node/src/http/erc8128.js';
 
 const credentialNonceStore = getCredentialNonceStore();
@@ -1113,31 +1112,6 @@ app.post("/credentials/:provider", async (c) => {
     }
   }
   const verificationState = requireJobContext ? 'valid' : 'not_required';
-
-  // Stale tier check — reject operators whose staking verification has expired.
-  // Admin overrides and whitelisting are never stale.
-  try {
-    const operator = await getOperator(requesterAddress);
-    const staleness = checkTierStaleness(operator);
-    if (!staleness.valid && staleness.reason === 'stale_stake') {
-      logAudit({
-        address: requesterAddress,
-        provider,
-        action: 'not_authorized',
-        ip: clientIp,
-        userAgent,
-        requestId,
-        verificationState,
-        metadata: { reason: 'stale_stake', effectiveTier: staleness.effectiveTier },
-      });
-      return c.json(
-        { error: 'Staking verification expired. Re-register to refresh.', code: 'STALE_TIER' } satisfies CredentialError,
-        { status: 403, headers: getRateLimitHeaders(rateLimit) }
-      );
-    }
-  } catch {
-    // If operator lookup fails (DB down), continue — the ACL check below will catch unregistered operators
-  }
 
   // Venture-scoped credential check (if requestId available)
   // This runs before global ACL to respect venture owner sovereignty.
