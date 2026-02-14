@@ -39,10 +39,9 @@ export const stakingAbi = [
     outputs: [
       { name: 'multisig', type: 'address' },
       { name: 'owner', type: 'address' },
-      { name: 'nonces', type: 'uint256[]' },
       { name: 'tsStart', type: 'uint256' },
       { name: 'reward', type: 'uint256' },
-      { name: 'inactivity', type: 'uint256' },
+      { name: 'nonces', type: 'uint256' },
     ],
     stateMutability: 'view',
   },

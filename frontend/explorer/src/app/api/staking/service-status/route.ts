@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   try {
     const client = getClient()
 
-    const [activeIds, serviceInfo] = await Promise.all([
+    const [activeIds, serviceInfo, availableRewards] = await Promise.all([
       getActiveServiceIds(client),
       client.readContract({
         address: JINN_STAKING_CONTRACT,
@@ -47,10 +47,16 @@ export async function GET(request: NextRequest) {
         functionName: 'mapServiceInfo',
         args: [serviceId],
       }),
+      client.readContract({
+        address: JINN_STAKING_CONTRACT,
+        abi: stakingAbi,
+        functionName: 'availableRewards',
+      }),
     ])
 
+    // ABI returns: (address multisig, address owner, uint256 tsStart, uint256 reward, uint256 nonces)
+    const [, , tsStart, reward] = serviceInfo
     const isActivelyStaked = activeIds.some(id => id === serviceId)
-    const [, , , tsStart, reward, inactivity] = serviceInfo
     const hasBeenStaked = tsStart > BigInt(0)
     const isEvicted = hasBeenStaked && !isActivelyStaked
 
@@ -69,12 +75,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const availableRewards = await client.readContract({
-      address: JINN_STAKING_CONTRACT,
-      abi: stakingAbi,
-      functionName: 'availableRewards',
-    })
-
     return NextResponse.json({
       serviceId: serviceIdParam,
       isActivelyStaked,
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
       totalClaimable: formatEther(reward),
       hasClaimableRewards: reward > BigInt(0),
       contractAvailableRewards: formatEther(availableRewards),
-      inactivity: Number(inactivity),
+      stakedSince: Number(tsStart) > 0 ? new Date(Number(tsStart) * 1000).toISOString() : null,
     })
   } catch (error) {
     console.error('Error fetching service staking status:', error)
