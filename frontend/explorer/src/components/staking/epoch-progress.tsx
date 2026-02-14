@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Progress } from '@/components/ui/progress'
 import { TARGET_DELIVERIES_PER_EPOCH } from '@/lib/staking/constants'
 
@@ -19,6 +19,7 @@ interface EpochProgressProps {
 export function EpochProgress({ multisig }: EpochProgressProps) {
   const [data, setData] = useState<EpochData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const hasLoadedOnce = useRef(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -30,10 +31,12 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
       const epochData: EpochData = await res.json()
       setData(epochData)
       setError(null)
+      hasLoadedOnce.current = true
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       console.error('EpochProgress fetch failed:', msg)
-      setError(msg)
+      // Only show error if we never successfully loaded — otherwise keep stale data
+      if (!hasLoadedOnce.current) setError(msg)
     }
   }, [multisig])
 
