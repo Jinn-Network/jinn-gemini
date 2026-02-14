@@ -449,6 +449,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Solution:** (1) `buildGithubHttpsUrl()` now strips embedded credentials before URL matching, allowing the worker's `GITHUB_TOKEN` to be used. (2) Clone failures are now non-fatal — the agent runs without a local repo if clone fails, which is fine for research/coordination jobs.
 **Prevention:** When dispatching jobs, use clean repo URLs without embedded tokens. The worker will apply its own `GITHUB_TOKEN` at clone time.
 
+### 74. OLAS Staking Contract Takes Ownership of Service NFT
+**Issue:** Agent wasted time investigating why `ownerOf(serviceId)` returned the staking contract address, incorrectly concluding the service was "evicted" or in an abnormal state.
+**Root Cause:** When a service is staked, the staking contract **takes ownership of the service NFT** via `transferFrom`. This is the normal, expected state for any staked service. `ownerOf()` returning a staking contract address simply means "this service is staked in that contract."
+**Solution:** To check staking status, call `getServiceIds()` on the staking contract — if the service ID is in the returned array, it's actively staked. If `ownerOf()` returns the staking contract but `getServiceIds()` does NOT include the service, it was evicted (contract holds the NFT but service is inactive). Use `getStakingState(serviceId)` for the authoritative state (0=Unstaked, 1=Staked, 2=Evicted).
+**Prevention:** Never interpret `ownerOf()` returning a staking contract as an error. This is how OLAS staking works by design.
+
 ---
 
 *Keep this file updated with new blood written rules as they're discovered.*
