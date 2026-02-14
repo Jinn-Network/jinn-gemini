@@ -7,7 +7,8 @@ import { getServiceEpochActivity } from '@/app/nodes/staking/actions'
 
 interface EpochData {
   checkpoint: number
-  epochEnd: number
+  nextCheckpoint: number
+  livenessPeriod: number
   targetDeliveries: number
 }
 
@@ -57,9 +58,8 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
   const target = TARGET_DELIVERIES_PER_EPOCH
   const percentage = Math.min((deliveryCount / target) * 100, 100)
   const now = Math.floor(Date.now() / 1000)
-  const remaining = Math.max(epoch.epochEnd - now, 0)
-  const hours = Math.floor(remaining / 3600)
-  const minutes = Math.floor((remaining % 3600) / 60)
+  const remaining = epoch.nextCheckpoint - now
+  const isOverdue = remaining <= 0
 
   let colorClass = 'text-red-500'
   let progressColor = '[&_[data-slot=progress-indicator]]:bg-red-500'
@@ -71,6 +71,18 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
     progressColor = '[&_[data-slot=progress-indicator]]:bg-yellow-500'
   }
 
+  let timeLabel: string
+  if (isOverdue) {
+    const overdue = Math.abs(remaining)
+    const hours = Math.floor(overdue / 3600)
+    const minutes = Math.floor((overdue % 3600) / 60)
+    timeLabel = `Checkpoint overdue ${hours}h ${minutes}m`
+  } else {
+    const hours = Math.floor(remaining / 3600)
+    const minutes = Math.floor((remaining % 3600) / 60)
+    timeLabel = `Resets in ${hours}h ${minutes}m`
+  }
+
   return (
     <div className="space-y-1.5">
       <Progress value={deliveryCount} max={target} className={progressColor} />
@@ -78,8 +90,8 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
         <span className={colorClass}>
           {deliveryCount} / {target} deliveries
         </span>
-        <span className="text-muted-foreground">
-          Resets in {hours}h {minutes}m
+        <span className={isOverdue ? 'text-yellow-500' : 'text-muted-foreground'}>
+          {timeLabel}
         </span>
       </div>
     </div>

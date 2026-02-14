@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
-import { JINN_STAKING_CONTRACT, stakingAbi, TARGET_DELIVERIES_PER_EPOCH, LIVENESS_PERIOD } from '@/lib/staking/constants'
+import { JINN_STAKING_CONTRACT, stakingAbi, TARGET_DELIVERIES_PER_EPOCH } from '@/lib/staking/constants'
 
 export async function GET() {
   try {
@@ -11,19 +11,32 @@ export async function GET() {
       transport: http(rpcUrl),
     })
 
-    const checkpoint = await client.readContract({
-      address: JINN_STAKING_CONTRACT,
-      abi: stakingAbi,
-      functionName: 'tsCheckpoint',
-    })
+    const [checkpoint, nextCheckpoint, livenessPeriod] = await Promise.all([
+      client.readContract({
+        address: JINN_STAKING_CONTRACT,
+        abi: stakingAbi,
+        functionName: 'tsCheckpoint',
+      }),
+      client.readContract({
+        address: JINN_STAKING_CONTRACT,
+        abi: stakingAbi,
+        functionName: 'getNextRewardCheckpointTimestamp',
+      }),
+      client.readContract({
+        address: JINN_STAKING_CONTRACT,
+        abi: stakingAbi,
+        functionName: 'livenessPeriod',
+      }),
+    ])
 
     const checkpointNumber = Number(checkpoint)
-    const epochEnd = checkpointNumber + LIVENESS_PERIOD
+    const nextCheckpointNumber = Number(nextCheckpoint)
+    const livenessPeriodNumber = Number(livenessPeriod)
 
     return NextResponse.json({
       checkpoint: checkpointNumber,
-      epochEnd,
-      livenessPeriod: LIVENESS_PERIOD,
+      nextCheckpoint: nextCheckpointNumber,
+      livenessPeriod: livenessPeriodNumber,
       targetDeliveries: TARGET_DELIVERIES_PER_EPOCH,
     })
   } catch (error) {

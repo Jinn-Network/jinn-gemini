@@ -13,6 +13,20 @@ export const stakingAbi = [
   },
   {
     type: 'function',
+    name: 'getNextRewardCheckpointTimestamp',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'livenessPeriod',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'getServiceIds',
     inputs: [],
     outputs: [{ name: '', type: 'uint256[]' }],
