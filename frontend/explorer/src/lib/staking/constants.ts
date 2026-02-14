@@ -41,7 +41,23 @@ export const stakingAbi = [
       { name: 'owner', type: 'address' },
       { name: 'nonces', type: 'uint256[]' },
       { name: 'tsStart', type: 'uint256' },
+      { name: 'reward', type: 'uint256' },
+      { name: 'inactivity', type: 'uint256' },
     ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'calculateStakingReward',
+    inputs: [{ name: 'serviceId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'availableRewards',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
   },
 ] as const

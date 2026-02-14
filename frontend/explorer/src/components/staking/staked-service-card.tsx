@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { EpochProgress } from './epoch-progress'
+import { ServiceStakingStatus } from './service-staking-status'
 import type { StakedService } from '@/lib/staking/queries'
 
 interface StakedServiceCardProps {
@@ -27,9 +27,7 @@ export function StakedServiceCard({ service, lastDeliveryTimestamp }: StakedServ
               Service {service.serviceId}
             </Link>
           </CardTitle>
-          <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
-            staked
-          </Badge>
+          <ServiceStakingStatus serviceId={service.serviceId} variant="badge" />
         </div>
         <p className="text-sm text-muted-foreground font-mono">
           Owner: {truncateAddress(service.owner)}

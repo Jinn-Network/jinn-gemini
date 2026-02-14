@@ -2,8 +2,8 @@ import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { SiteHeader } from '@/components/site-header'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { EpochProgress } from '@/components/staking/epoch-progress'
+import { ServiceStakingStatus } from '@/components/staking/service-staking-status'
 import { DeliveriesTable, RequestsTable } from '@/components/staking/service-deliveries-table'
 import { getStakedServiceByServiceId, getMechsForServiceIds, getRecentDeliveries, getRecentRequests } from '@/lib/staking/queries'
 import { formatDate } from '@/lib/utils'
@@ -71,12 +71,7 @@ export default async function ServiceDetailPage({ params }: PageProps) {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Service {serviceId}</CardTitle>
-                <Badge variant="outline" className={service.isStaked
-                  ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                  : 'bg-gray-500/10 text-gray-500 border-gray-500/20'
-                }>
-                  {service.isStaked ? 'staked' : 'unstaked'}
-                </Badge>
+                <ServiceStakingStatus serviceId={serviceId} variant="badge" />
               </div>
             </CardHeader>
             <CardContent className="space-y-1 divide-y">
@@ -88,6 +83,16 @@ export default async function ServiceDetailPage({ params }: PageProps) {
                 <span className="text-sm text-muted-foreground">Staked Since</span>
                 <span className="text-sm">{formatDate(service.stakedAt)}</span>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Staking Status & Rewards */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Staking Rewards</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ServiceStakingStatus serviceId={serviceId} variant="full" />
             </CardContent>
           </Card>
 
