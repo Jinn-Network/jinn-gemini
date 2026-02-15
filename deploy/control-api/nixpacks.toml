@@ -7,8 +7,9 @@ nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
 cmds = ["yarn install --frozen-lockfile"]
 
 [phases.build]
-# Build jinn-node and symlink it so control-api can import 'jinn-node/...'
-cmds = ["yarn run build", "ln -sf /app/jinn-node /app/node_modules/jinn-node"]
+cmds = ["yarn run build"]
 
 [start]
-cmd = "npx tsx control-api/server.ts"
+# Rebuild jinn-node at startup because nixpacks adds a final COPY layer
+# that overwrites dist/ (gitignored). Also symlink for package resolution.
+cmd = "cd jinn-node && yarn build && cd .. && ln -sf /app/jinn-node /app/node_modules/jinn-node && npx tsx control-api/server.ts"
