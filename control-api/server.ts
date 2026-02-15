@@ -1357,16 +1357,40 @@ const nonceStore = new InMemoryNonceStore();
 const yoga = createYoga<Context>({
   schema,
   context: async ({ request }) => {
-    const result = await verifyControlApiRequest(request.clone(), nonceStore);
-    if (!result.ok) {
-      logger.warn({ reason: result.reason, detail: result.detail }, 'ERC-8128 auth failed');
-      throw new Error(`ERC-8128 auth failed: ${result.reason}${result.detail ? ` (${result.detail})` : ''}`);
+    // Try ERC-8128 signed auth first
+    const hasSignature = request.headers.has('signature');
+    if (hasSignature) {
+      const result = await verifyControlApiRequest(request.clone(), nonceStore);
+      if (!result.ok) {
+        logger.warn({ reason: result.reason, detail: result.detail }, 'ERC-8128 auth failed');
+        throw new Error(`ERC-8128 auth failed: ${result.reason}${result.detail ? ` (${result.detail})` : ''}`);
+      }
+      return {
+        supabase,
+        ponderUrl: PONDER_GRAPHQL_URL,
+        req: request,
+        verifiedAddress: result.address,
+      };
     }
+
+    // Legacy fallback: accept X-Worker-Address header
+    const workerAddress = request.headers.get('x-worker-address');
+    if (workerAddress) {
+      logger.debug({ workerAddress }, 'Legacy auth: using X-Worker-Address header');
+      return {
+        supabase,
+        ponderUrl: PONDER_GRAPHQL_URL,
+        req: request,
+        verifiedAddress: workerAddress,
+      };
+    }
+
+    // No auth at all — allow introspection/health queries with no verified address
     return {
       supabase,
       ponderUrl: PONDER_GRAPHQL_URL,
       req: request,
-      verifiedAddress: result.address,
+      verifiedAddress: undefined as any,
     };
   },
   graphqlEndpoint: '/graphql',
