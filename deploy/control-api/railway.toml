@@ -1,7 +1,7 @@
 [build]
 builder = "NIXPACKS"
 nixpacksConfigPath = "deploy/control-api/nixpacks.toml"
-watchPatterns = ["/control-api/**", "/config/**", "/logging/**", "/env/**", "/package.json", "/deploy/control-api/**", "/jinn-node/src/**"]
+watchPatterns = ["/control-api/**", "/config/**", "/logging/**", "/env/**", "/package.json", "/deploy/control-api/**", "/jinn-node/src/**", "/jinn-node/package.json"]
 
 [deploy]
 # Rebuild jinn-node at startup: nixpacks final COPY overwrites dist/ (gitignored)
