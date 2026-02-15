@@ -13,8 +13,8 @@ import {
   getPonderGraphqlUrl,
   getOptionalControlApiPort
 } from 'jinn-node/config';
-import { getMasterSafe, getServiceSafeAddress } from 'jinn-node/env/operate-profile.js';
-import { InMemoryNonceStore, verifyControlApiRequest } from 'jinn-node/http/erc8128.js';
+import { getMasterSafe, getServiceSafeAddress } from 'jinn-node/env/operate-profile';
+import { InMemoryNonceStore, verifyControlApiRequest } from 'jinn-node/http/erc8128';
 
 // Load environment variables
 dotenv.config();
