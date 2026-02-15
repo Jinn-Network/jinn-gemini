@@ -7,8 +7,8 @@ nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
 cmds = ["yarn install --frozen-lockfile"]
 
 [phases.build]
-# Build main project (control-api runs via tsx, not compiled)
-cmds = ["yarn run build"]
+# Build jinn-node and symlink it so control-api can import 'jinn-node/...'
+cmds = ["yarn run build", "ln -sf /app/jinn-node /app/node_modules/jinn-node"]
 
 [start]
 cmd = "npx tsx control-api/server.ts"
