@@ -1,7 +1,7 @@
 // @ts-nocheck
 // TODO: Generate proper Supabase Database types to remove @ts-nocheck
 // Run: npx supabase gen types typescript --project-id <project-id> > types/database.ts
-// Deploy trigger: 2026-02-15T10:02
+// Deploy trigger: 2026-02-15T10:20
 import { createYoga, createSchema } from 'graphql-yoga';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'cross-fetch';
