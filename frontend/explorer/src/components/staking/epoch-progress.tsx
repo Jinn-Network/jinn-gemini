@@ -2,28 +2,31 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Progress } from '@/components/ui/progress'
-import { TARGET_DELIVERIES_PER_EPOCH } from '@/lib/staking/constants'
+import { TARGET_REQUESTS_PER_EPOCH } from '@/lib/staking/constants'
 
 interface EpochData {
   checkpoint: number
   nextCheckpoint: number
   livenessPeriod: number
-  targetDeliveries: number
-  deliveryCount?: number
+  targetRequests: number
+  requestCount?: number
 }
 
 interface EpochProgressProps {
   multisig: string
+  serviceId?: string
 }
 
-export function EpochProgress({ multisig }: EpochProgressProps) {
+export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
   const [data, setData] = useState<EpochData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const hasLoadedOnce = useRef(false)
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/staking/epoch?multisig=${encodeURIComponent(multisig)}`)
+      const params = new URLSearchParams({ multisig })
+      if (serviceId) params.set('serviceId', serviceId)
+      const res = await fetch(`/api/staking/epoch?${params}`)
       if (!res.ok) {
         const body = await res.text()
         throw new Error(`API ${res.status}: ${body}`)
@@ -38,7 +41,7 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
       // Only show error if we never successfully loaded — otherwise keep stale data
       if (!hasLoadedOnce.current) setError(msg)
     }
-  }, [multisig])
+  }, [multisig, serviceId])
 
   useEffect(() => {
     fetchData()
@@ -59,9 +62,9 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
     )
   }
 
-  const target = TARGET_DELIVERIES_PER_EPOCH
-  const deliveryCount = data.deliveryCount ?? 0
-  const percentage = Math.min((deliveryCount / target) * 100, 100)
+  const target = TARGET_REQUESTS_PER_EPOCH
+  const requestCount = data.requestCount ?? 0
+  const percentage = Math.min((requestCount / target) * 100, 100)
   const now = Math.floor(Date.now() / 1000)
   const remaining = data.nextCheckpoint - now
   const isOverdue = remaining <= 0
@@ -90,10 +93,10 @@ export function EpochProgress({ multisig }: EpochProgressProps) {
 
   return (
     <div className="space-y-1.5">
-      <Progress value={deliveryCount} max={target} className={progressColor} />
+      <Progress value={requestCount} max={target} className={progressColor} />
       <div className="flex items-center justify-between text-xs">
         <span className={colorClass}>
-          {deliveryCount} / {target} deliveries
+          {requestCount} / {target} requests
         </span>
         <span className={isOverdue ? 'text-yellow-500' : 'text-muted-foreground'}>
           {timeLabel}

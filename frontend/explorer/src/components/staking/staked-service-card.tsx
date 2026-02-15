@@ -34,7 +34,7 @@ export function StakedServiceCard({ service, lastDeliveryTimestamp }: StakedServ
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <EpochProgress multisig={service.multisig} />
+        <EpochProgress multisig={service.multisig} serviceId={service.serviceId} />
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Staked {formatDate(service.stakedAt)}</span>
           {lastDeliveryTimestamp && (

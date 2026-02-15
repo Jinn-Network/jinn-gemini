@@ -102,7 +102,7 @@ export default async function ServiceDetailPage({ params }: PageProps) {
               <CardTitle className="text-base">Epoch Progress</CardTitle>
             </CardHeader>
             <CardContent>
-              <EpochProgress multisig={service.multisig} />
+              <EpochProgress multisig={service.multisig} serviceId={service.serviceId} />
             </CardContent>
           </Card>
 
