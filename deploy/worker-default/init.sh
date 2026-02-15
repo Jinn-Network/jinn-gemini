@@ -76,6 +76,22 @@ fi
 # Ensure ~/.gemini exists for OAuth credential storage
 
 mkdir -p ~/.gemini
+
+# If GEMINI_API_KEY is set, pre-configure Gemini CLI to use API key auth
+# This prevents the interactive OAuth dialog from blocking non-interactive workers
+if [ -n "$GEMINI_API_KEY" ] && [ ! -f ~/.gemini/settings.json ]; then
+  cat > ~/.gemini/settings.json << 'SETTINGS'
+{
+  "security": {
+    "auth": {
+      "selectedType": "gemini-api-key"
+    }
+  }
+}
+SETTINGS
+  echo "[init] Configured Gemini CLI for API key auth"
+fi
+
 echo "[init] Ensured ~/.gemini exists"
 
 echo "[init] Worker initialization complete"
