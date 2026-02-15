@@ -102,11 +102,14 @@ export async function GET(request: NextRequest) {
       try {
         const currentCount = await getRequestCount(multisig)
         if (serviceId) {
-          // If we have the serviceId, compute exact epoch delta using on-chain baseline
+          // Compute epoch delta: current marketplace requests minus baseline stored at last checkpoint.
+          // Note: if the activity checker was recently changed (e.g. from Safe nonces to marketplace
+          // request counts), the stored baseline reflects the OLD checker's metric. In that case
+          // the delta will be negative — fall back to raw count until the next checkpoint updates it.
           const baseline = await getEpochBaselineNonce(BigInt(serviceId))
-          requestCount = currentCount - baseline
+          const delta = currentCount - baseline
+          requestCount = delta >= 0 ? delta : currentCount
         } else {
-          // Fallback: just return raw count (less accurate but still useful)
           requestCount = currentCount
         }
       } catch (err) {
