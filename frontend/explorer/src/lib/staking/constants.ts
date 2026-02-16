@@ -1,5 +1,7 @@
 export const JINN_STAKING_CONTRACT = '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139' as const
 
+export const OLAS_STAKING_SUBGRAPH_URL = 'https://staking-base.subgraph.autonolas.tech'
+
 export const TARGET_REQUESTS_PER_EPOCH = 60
 
 export const MECH_MARKETPLACE = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020' as const

@@ -1,31 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPublicClient, http, formatEther } from 'viem'
-import { base } from 'viem/chains'
+import { formatEther } from 'viem'
 import { JINN_STAKING_CONTRACT, stakingAbi } from '@/lib/staking/constants'
-
-// Cache the active service IDs list for 2 minutes
-let activeIdsCache: { ids: bigint[]; fetchedAt: number } | null = null
-const CACHE_TTL_MS = 2 * 60_000
-
-function getClient() {
-  const rpcUrl = process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://mainnet.base.org'
-  return createPublicClient({ chain: base, transport: http(rpcUrl) })
-}
-
-async function getActiveServiceIds(client: ReturnType<typeof getClient>): Promise<bigint[]> {
-  if (activeIdsCache && Date.now() - activeIdsCache.fetchedAt < CACHE_TTL_MS) {
-    return activeIdsCache.ids
-  }
-
-  const ids = await client.readContract({
-    address: JINN_STAKING_CONTRACT,
-    abi: stakingAbi,
-    functionName: 'getServiceIds',
-  })
-
-  activeIdsCache = { ids: [...ids], fetchedAt: Date.now() }
-  return activeIdsCache.ids
-}
+import { getServiceFromSubgraph } from '@/lib/staking/subgraph'
+import { getRpcClient } from '@/lib/staking/rpc'
 
 export async function GET(request: NextRequest) {
   const serviceIdParam = request.nextUrl.searchParams.get('serviceId')
@@ -34,44 +11,57 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'serviceId parameter required' }, { status: 400 })
   }
 
-  const serviceId = BigInt(serviceIdParam)
-
   try {
-    const client = getClient()
+    // Primary: subgraph for staking state and rewards
+    const service = await getServiceFromSubgraph(serviceIdParam)
 
-    const [activeIds, serviceInfo, availableRewards] = await Promise.all([
-      getActiveServiceIds(client),
-      client.readContract({
-        address: JINN_STAKING_CONTRACT,
-        abi: stakingAbi,
-        functionName: 'mapServiceInfo',
-        args: [serviceId],
-      }),
-      client.readContract({
-        address: JINN_STAKING_CONTRACT,
-        abi: stakingAbi,
-        functionName: 'availableRewards',
-      }),
-    ])
+    if (!service) {
+      return NextResponse.json({
+        serviceId: serviceIdParam,
+        isActivelyStaked: false,
+        isEvicted: false,
+        accumulatedReward: '0',
+        pendingReward: '0',
+        totalClaimable: '0',
+        hasClaimableRewards: false,
+        contractAvailableRewards: '0',
+        stakedSince: null,
+      })
+    }
 
-    // ABI returns: (address multisig, address owner, uint256 tsStart, uint256 reward, uint256 nonces)
-    const [, , tsStart, reward] = serviceInfo
-    const isActivelyStaked = activeIds.some(id => id === serviceId)
-    const hasBeenStaked = tsStart > BigInt(0)
+    const isActivelyStaked = service.latestStakingContract?.toLowerCase() === JINN_STAKING_CONTRACT.toLowerCase()
+    const hasBeenStaked = BigInt(service.currentOlasStaked) > BigInt(0)
     const isEvicted = hasBeenStaked && !isActivelyStaked
 
+    // Subgraph rewards are in wei
+    const earned = BigInt(service.olasRewardsEarned)
+    const claimed = BigInt(service.olasRewardsClaimed)
+    const unclaimed = earned > claimed ? earned - claimed : BigInt(0)
+
+    // Optional RPC: pending reward for current epoch (non-fatal if it fails)
+    // Uses shared singleton client with multicall batching.
     let pendingReward = '0'
+    let contractAvailableRewards = '0'
     if (isActivelyStaked) {
       try {
-        const pending = await client.readContract({
-          address: JINN_STAKING_CONTRACT,
-          abi: stakingAbi,
-          functionName: 'calculateStakingReward',
-          args: [serviceId],
-        })
+        const client = getRpcClient()
+        const [pending, available] = await Promise.all([
+          client.readContract({
+            address: JINN_STAKING_CONTRACT,
+            abi: stakingAbi,
+            functionName: 'calculateStakingReward',
+            args: [BigInt(serviceIdParam)],
+          }),
+          client.readContract({
+            address: JINN_STAKING_CONTRACT,
+            abi: stakingAbi,
+            functionName: 'availableRewards',
+          }),
+        ])
         pendingReward = formatEther(pending)
-      } catch {
-        // calculateStakingReward can revert for evicted services
+        contractAvailableRewards = formatEther(available)
+      } catch (err) {
+        console.warn('RPC enhancement failed (non-fatal), using subgraph data only:', err)
       }
     }
 
@@ -79,18 +69,20 @@ export async function GET(request: NextRequest) {
       serviceId: serviceIdParam,
       isActivelyStaked,
       isEvicted,
-      accumulatedReward: formatEther(reward),
+      accumulatedReward: formatEther(earned),
       pendingReward,
-      totalClaimable: formatEther(reward),
-      hasClaimableRewards: reward > BigInt(0),
-      contractAvailableRewards: formatEther(availableRewards),
-      stakedSince: Number(tsStart) > 0 ? new Date(Number(tsStart) * 1000).toISOString() : null,
+      totalClaimable: formatEther(unclaimed),
+      hasClaimableRewards: unclaimed > BigInt(0),
+      contractAvailableRewards,
+      stakedSince: null, // subgraph doesn't expose tsStart; use totalEpochsParticipated instead
+      totalEpochsParticipated: service.totalEpochsParticipated,
+      olasStaked: formatEther(BigInt(service.currentOlasStaked)),
     })
   } catch (error) {
     console.error('Error fetching service staking status:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch service status' },
-      { status: 500 }
+      { error: 'Failed to fetch service status from subgraph' },
+      { status: 502 }
     )
   }
 }

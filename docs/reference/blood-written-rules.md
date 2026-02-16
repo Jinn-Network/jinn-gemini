@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-12
+last_verified: 2026-02-16
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -466,6 +466,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Root Cause:** When a service is staked, the staking contract **takes ownership of the service NFT** via `transferFrom`. This is the normal, expected state for any staked service. `ownerOf()` returning a staking contract address simply means "this service is staked in that contract."
 **Solution:** To check staking status, call `getServiceIds()` on the staking contract — if the service ID is in the returned array, it's actively staked. If `ownerOf()` returns the staking contract but `getServiceIds()` does NOT include the service, it was evicted (contract holds the NFT but service is inactive). Use `getStakingState(serviceId)` for the authoritative state (0=Unstaked, 1=Staked, 2=Evicted).
 **Prevention:** Never interpret `ownerOf()` returning a staking contract as an error. This is how OLAS staking works by design.
+
+### 77. Frontend RPC Rate Limiting: Use Tenderly, Not Public Base RPC
+**Issue:** Staking dashboard showed "Request count unavailable" intermittently. Service 165 would load briefly, then all 3 service cards would fail. Issue was transient — sometimes worked, sometimes didn't.
+**Root Cause:** The staking page renders 3 service cards, each making 2 API calls (epoch + service-status), each creating a **fresh** `createPublicClient` instance making 2 RPC calls each. That's 12 parallel RPC calls to the rate-limited public `mainnet.base.org` endpoint, which throttles after ~4-6 calls. The subgraph data (epoch timing, staking state) loaded fine, but the RPC calls for `mapRequestCounts` and `calculateStakingReward` failed silently, falling through to the "unavailable" state.
+**Solution:** (1) Created a singleton RPC client module (`lib/staking/rpc.ts`) with viem's `batch: { multicall: true }` — this batches concurrent `readContract` calls into a single `eth_call` via Multicall3. (2) Used `loadEnvConfig()` in `next.config.js` to load the root `.env` which contains the Tenderly paid RPC URL. (3) Subgraph-primary architecture means RPC failures are non-fatal — page still renders with subgraph data.
+**Prevention:** Never use the public `mainnet.base.org` endpoint for production frontend reads. Always use the paid Tenderly RPC (`RPC_URL` in root `.env`). For new frontend apps in the monorepo, add `loadEnvConfig()` to `next.config.js` to inherit root env vars.
 
 ---
 

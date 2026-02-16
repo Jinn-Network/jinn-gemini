@@ -28,8 +28,8 @@ export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
       if (serviceId) params.set('serviceId', serviceId)
       const res = await fetch(`/api/staking/epoch?${params}`)
       if (!res.ok) {
-        const body = await res.text()
-        throw new Error(`API ${res.status}: ${body}`)
+        const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        throw new Error(body.error || `HTTP ${res.status}`)
       }
       const epochData: EpochData = await res.json()
       setData(epochData)
@@ -50,7 +50,17 @@ export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
   }, [fetchData])
 
   if (error) {
-    return <span className="text-xs text-destructive" title={error}>Failed to load epoch</span>
+    return (
+      <div className="space-y-1.5">
+        <span className="text-xs text-destructive">Failed to load epoch data</span>
+        <button
+          onClick={fetchData}
+          className="ml-2 text-xs underline text-muted-foreground hover:text-foreground"
+        >
+          Retry
+        </button>
+      </div>
+    )
   }
 
   if (!data) {
@@ -63,15 +73,19 @@ export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
   }
 
   const target = TARGET_REQUESTS_PER_EPOCH
+  const requestCountAvailable = data.requestCount != null
   const requestCount = data.requestCount ?? 0
-  const percentage = Math.min((requestCount / target) * 100, 100)
+  const percentage = requestCountAvailable ? Math.min((requestCount / target) * 100, 100) : 0
   const now = Math.floor(Date.now() / 1000)
   const remaining = data.nextCheckpoint - now
   const isOverdue = remaining <= 0
 
   let colorClass = 'text-red-500'
   let progressColor = '[&_[data-slot=progress-indicator]]:bg-red-500'
-  if (percentage >= 100) {
+  if (!requestCountAvailable) {
+    colorClass = 'text-muted-foreground'
+    progressColor = '[&_[data-slot=progress-indicator]]:bg-muted-foreground'
+  } else if (percentage >= 100) {
     colorClass = 'text-green-500'
     progressColor = '[&_[data-slot=progress-indicator]]:bg-green-500'
   } else if (percentage >= 50) {
@@ -93,10 +107,13 @@ export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
 
   return (
     <div className="space-y-1.5">
-      <Progress value={requestCount} max={target} className={progressColor} />
+      <Progress value={requestCountAvailable ? requestCount : 0} max={target} className={progressColor} />
       <div className="flex items-center justify-between text-xs">
         <span className={colorClass}>
-          {requestCount} / {target} requests
+          {requestCountAvailable
+            ? `${requestCount} / ${target} requests`
+            : 'Request count unavailable'
+          }
         </span>
         <span className={isOverdue ? 'text-yellow-500' : 'text-muted-foreground'}>
           {timeLabel}

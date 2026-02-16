@@ -13,6 +13,8 @@ interface ServiceStatus {
   hasClaimableRewards: boolean
   contractAvailableRewards: string
   stakedSince: string | null
+  totalEpochsParticipated?: number
+  olasStaked?: string
 }
 
 interface ServiceStakingStatusProps {
@@ -58,7 +60,10 @@ export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceSt
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`/api/staking/service-status?serviceId=${encodeURIComponent(serviceId)}`)
-      if (!res.ok) throw new Error(`API ${res.status}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
       const data: ServiceStatus = await res.json()
       setStatus(data)
       setError(null)
@@ -88,8 +93,15 @@ export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceSt
   // Full variant — used on detail page
   if (error) {
     return (
-      <div className="text-sm text-destructive">
-        Failed to load staking status: {error}
+      <div className="rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm">
+        <p className="text-destructive">Failed to load staking status</p>
+        <p className="text-muted-foreground mt-1 text-xs">{error}</p>
+        <button
+          onClick={fetchStatus}
+          className="mt-2 text-xs underline text-muted-foreground hover:text-foreground"
+        >
+          Retry
+        </button>
       </div>
     )
   }
@@ -127,8 +139,17 @@ export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceSt
         </div>
       )}
 
+      {status.olasStaked && (
+        <div className="flex items-center justify-between py-1.5">
+          <span className="text-sm text-muted-foreground">OLAS Staked</span>
+          <span className="text-sm font-mono">
+            {parseFloat(status.olasStaked).toLocaleString()} OLAS
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between py-1.5">
-        <span className="text-sm text-muted-foreground">Accumulated Rewards</span>
+        <span className="text-sm text-muted-foreground">Total Rewards Earned</span>
         <span className="text-sm font-mono">
           {parseFloat(status.accumulatedReward).toFixed(4)} OLAS
         </span>
@@ -153,12 +174,21 @@ export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceSt
         </span>
       </div>
 
-      <div className="flex items-center justify-between py-1.5">
-        <span className="text-sm text-muted-foreground">Contract Reward Pool</span>
-        <span className="text-sm font-mono">
-          {parseFloat(status.contractAvailableRewards).toFixed(2)} OLAS
-        </span>
-      </div>
+      {status.contractAvailableRewards && parseFloat(status.contractAvailableRewards) > 0 && (
+        <div className="flex items-center justify-between py-1.5">
+          <span className="text-sm text-muted-foreground">Contract Reward Pool</span>
+          <span className="text-sm font-mono">
+            {parseFloat(status.contractAvailableRewards).toFixed(2)} OLAS
+          </span>
+        </div>
+      )}
+
+      {status.totalEpochsParticipated != null && (
+        <div className="flex items-center justify-between py-1.5">
+          <span className="text-sm text-muted-foreground">Epochs Participated</span>
+          <span className="text-sm font-mono">{status.totalEpochsParticipated}</span>
+        </div>
+      )}
     </div>
   )
 }
