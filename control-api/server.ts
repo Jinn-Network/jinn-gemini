@@ -1363,7 +1363,16 @@ const yoga = createYoga<Context>({
     if (hasSignature) {
       const result = await verifyControlApiRequest(request.clone(), nonceStore);
       if (!result.ok) {
-        logger.warn({ reason: result.reason, detail: result.detail }, 'ERC-8128 auth failed');
+        logger.warn({
+          reason: result.reason,
+          detail: result.detail,
+          method: request.method,
+          url: request.url,
+          userAgent: request.headers.get('user-agent'),
+          xForwardedFor: request.headers.get('x-forwarded-for'),
+          hasSignature: !!request.headers.get('signature'),
+          hasWorkerAddr: !!request.headers.get('x-worker-address'),
+        }, 'ERC-8128 auth failed');
         throw new Error(`ERC-8128 auth failed: ${result.reason}${result.detail ? ` (${result.detail})` : ''}`);
       }
       return {
