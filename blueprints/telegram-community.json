@@ -74,7 +74,7 @@
             { "name": "telegram_send_message", "required": true },
             { "name": "telegram_send_photo", "required": true },
             { "name": "telegram_send_document", "required": true },
-            { "name": "telegram_get_updates", "required": true, "note": "NEW TOOL — needs building before template can run" },
+            { "name": "telegram_get_updates", "required": true },
             { "name": "google_web_search", "required": true },
             { "name": "web_fetch", "required": true },
             { "name": "create_artifact", "required": true },
