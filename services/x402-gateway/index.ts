@@ -918,12 +918,8 @@ async function authenticateCredentialRequest(request: Request): Promise<
     request,
     nonceStore: credentialNonceStore,
     policy: {
-      label: 'eth',
-      strictLabel: true,
-      replayable: false,
       clockSkewSec: 5,
       maxValiditySec: 300,
-      maxNonceWindowSec: 300,
     },
   });
 
