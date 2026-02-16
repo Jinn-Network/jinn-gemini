@@ -11,16 +11,22 @@
  *
  * Usage:
  *   yarn test:e2e:dispatch --workstream <id> --cwd <jinn-node-clone>
+ *   yarn test:e2e:dispatch --workstream <id> --cwd <path> --blueprint-file blueprints/my-test.json
  *   yarn test:e2e:dispatch --workstream <id> --cwd <path> --blueprint '{"invariants":[...]}'
  *   yarn test:e2e:dispatch --workstream <id> --cwd <path> --job-def-id <uuid>
  *
  * Flags:
- *   --workstream <id>       Required. Workstream hash.
- *   --cwd <path>            Required. Path to jinn-node clone.
- *   --job-name <name>       Job name (default: e2e-test-job).
- *   --job-def-id <uuid>     Job definition ID (default: random UUID).
- *   --blueprint <json>      Blueprint JSON (default: OLAS price research with tool-use invariants).
- *   --enabled-tools <csv>   Comma-separated tool names (default: google_web_search,web_fetch,create_artifact).
+ *   --workstream <id>           Required. Workstream hash.
+ *   --cwd <path>                Required. Path to jinn-node clone.
+ *   --job-name <name>           Job name (default: e2e-test-job).
+ *   --job-def-id <uuid>         Job definition ID (default: random UUID).
+ *   --blueprint-file <path>     Load blueprint from JSON file. Tools extracted automatically.
+ *   --blueprint <json>          Blueprint JSON string (overrides --blueprint-file).
+ *   --enabled-tools <csv>       Comma-separated tool names (overrides blueprint-extracted tools).
+ *
+ * Default (no --blueprint or --blueprint-file):
+ *   Loads blueprints/e2e-infrastructure-test.json which tests web search, artifacts,
+ *   measurements, credential-dependent tools (venture_query), and delegation.
  *
  * Requires:
  *   - OPERATE_PASSWORD env var (for agent key decryption)
@@ -29,13 +35,16 @@
 
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import { readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { buildIpfsPayload } from 'jinn-node/agent/shared/ipfs-payload-builder.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
+import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
 
 const MONOREPO_ROOT = resolve(import.meta.dirname, '..', '..');
 const E2E_ENV_FILE = resolve(MONOREPO_ROOT, '.env.e2e');
+const DEFAULT_BLUEPRINT_FILE = resolve(MONOREPO_ROOT, 'blueprints', 'e2e-infrastructure-test.json');
 
 // Load env files in priority order (later overrides earlier):
 // 1. .env — base monorepo creds
@@ -62,35 +71,39 @@ function parseArgs(args: string[]): Record<string, string> {
   return flags;
 }
 
-// ─── Default Blueprint ───────────────────────────────────────────────────────
-
 /**
- * Default blueprint for E2E testing. GOAL-001 describes the actual task,
- * TOOL-001/002 validate tool invocation. The worker's BlueprintBuilder
- * reads ONLY metadata.blueprint — there is no separate "prompt" field.
+ * Load a blueprint from a JSON file. Returns the parsed object and the
+ * stringified blueprint payload (invariants + context only, no template metadata).
  */
-const DEFAULT_BLUEPRINT = JSON.stringify({
-  invariants: [
-    {
-      id: 'GOAL-001',
-      type: 'BOOLEAN',
-      condition: 'Research the current price of OLAS token using web search. Create an artifact summarizing findings including current price, 24h change, and market cap.',
-      assessment: 'Artifact exists with OLAS price data sourced from web search results',
-    },
-    {
-      id: 'TOOL-001',
-      type: 'BOOLEAN',
-      condition: 'You must use the google_web_search tool to find OLAS token price data',
-      assessment: 'Check telemetry for google_web_search tool calls',
-    },
-    {
-      id: 'TOOL-002',
-      type: 'BOOLEAN',
-      condition: 'You must use the create_artifact tool to store your research findings',
-      assessment: 'Check telemetry for create_artifact tool calls',
-    },
-  ],
-});
+function loadBlueprintFile(filePath: string): { blueprintObj: any; blueprintPayload: string; enabledTools: string[] } {
+  const raw = readFileSync(filePath, 'utf-8');
+  const blueprintObj = JSON.parse(raw);
+
+  // Extract tools from blueprint (same logic as launch_workstream.ts)
+  const { requiredTools, availableTools } = extractToolPolicyFromBlueprint(blueprintObj);
+  const enabledTools = requiredTools.length > 0
+    ? requiredTools
+    : (availableTools.length > 0
+      ? availableTools
+      : (blueprintObj.enabledTools || ['google_web_search', 'web_fetch', 'create_artifact']));
+
+  // Build the payload the worker will see (invariants + context, no template metadata)
+  const cleanBlueprint: Record<string, unknown> = {
+    invariants: blueprintObj.invariants || blueprintObj.assertions || [],
+  };
+  if (blueprintObj.context) {
+    cleanBlueprint.context = blueprintObj.context;
+  }
+  if (blueprintObj.outputSpec) {
+    cleanBlueprint.outputSpec = blueprintObj.outputSpec;
+  }
+
+  return {
+    blueprintObj,
+    blueprintPayload: JSON.stringify(cleanBlueprint),
+    enabledTools,
+  };
+}
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
@@ -104,13 +117,31 @@ async function main() {
   if (!clonePath) throw new Error('--cwd <jinn-node-clone-path> is required');
 
   const jobName = flags['job-name'] || 'e2e-test-job';
-  const blueprint = flags.blueprint || DEFAULT_BLUEPRINT;
   const jobDefinitionId = flags['job-def-id'] || crypto.randomUUID();
 
-  // Tools the agent should have available
-  const enabledTools = flags['enabled-tools']
-    ? flags['enabled-tools'].split(',')
-    : ['google_web_search', 'web_fetch', 'create_artifact'];
+  // Resolve blueprint and tools
+  let blueprint: string;
+  let enabledTools: string[];
+
+  if (flags.blueprint) {
+    // Explicit JSON string — use as-is
+    blueprint = flags.blueprint;
+    enabledTools = flags['enabled-tools']
+      ? flags['enabled-tools'].split(',')
+      : ['google_web_search', 'web_fetch', 'create_artifact'];
+  } else {
+    // Load from file (explicit --blueprint-file or default)
+    const blueprintFile = flags['blueprint-file']
+      ? resolve(flags['blueprint-file'])
+      : DEFAULT_BLUEPRINT_FILE;
+
+    console.log('Loading blueprint from:', blueprintFile);
+    const loaded = loadBlueprintFile(blueprintFile);
+    blueprint = loaded.blueprintPayload;
+    enabledTools = flags['enabled-tools']
+      ? flags['enabled-tools'].split(',')
+      : loaded.enabledTools;
+  }
 
   // Point operate-profile at the jinn-node clone so getMechAddress(),
   // getServicePrivateKey(), getMechChainConfig() read from the right .operate dir

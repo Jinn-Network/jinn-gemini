@@ -22,10 +22,10 @@
 
 ## VNet Quota Strategy
 
-- Tenderly free tier allows ~5-10 write transactions before quota exhaustion
-- After quota hit: reads continue working, writes fail with 403 Forbidden
+- Paid Tenderly tier supports higher write quotas (sufficient for multi-service setup + job execution + rotation testing)
+- If quota is hit: reads continue working, writes fail with 403 Forbidden
 - `yarn test:e2e:vnet status` detects quota exhaustion
-- On-chain state is lost when creating a new VNet, so you must restart from Module 1
+- On-chain state is lost when creating a new VNet, so you must restart from the Infrastructure step
 
 ## Encrypted Keystore Pattern
 

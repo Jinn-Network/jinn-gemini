@@ -110,7 +110,7 @@ describe('Worker RPC Filtering (Double-Execution Guard)', () => {
       // Note: Since getUndeliveredSet is not exported, we test via filterUnclaimed integration
       // This test validates the expected behavior through logging
       
-      const { getRequiredRpcUrl } = await import('../../gemini-agent/mcp/tools/shared/env.js');
+      const { getRequiredRpcUrl } = await import('jinn-node/agent/mcp/tools/shared/env.js');
       (getRequiredRpcUrl as any).mockReturnValueOnce(undefined);
 
       // Would return empty Set when no RPC
