@@ -1,17 +1,20 @@
 /**
  * x402 Gateway Service
- * 
- * Execute job templates via x402 payments. Exposes:
- * - GET /templates - List available templates (free)
- * - POST /templates/:id/execute - Execute template (paid via x402)
+ *
+ * Execute OLAS-registered agents via x402 payments. Exposes:
+ * - GET /agents - List available agents (free)
+ * - GET /agents/:slug - Get agent details (free)
+ * - POST /agents/:slug/execute - Execute agent (paid via x402)
  * - GET /runs/:requestId/status - Check run status (free)
  * - GET /runs/:requestId/result - Get run result (free, 202 if not ready)
- * 
+ *
  * Required env vars:
  * - PAYMENT_WALLET_ADDRESS: Address to receive payments
  * - CDP_API_KEY_ID: Coinbase Developer Platform key ID (for x402)
  * - CDP_API_KEY_SECRET: Coinbase Developer Platform key secret
- * - PONDER_GRAPHQL_URL: Ponder GraphQL endpoint for templates
+ * - SUPABASE_URL: Supabase project URL
+ * - SUPABASE_SERVICE_ROLE_KEY: Supabase service role key
+ * - PONDER_GRAPHQL_URL: Ponder GraphQL endpoint (for run status/results)
  * - PRIVATE_KEY: Wallet private key for dispatching jobs
  * - MECH_ADDRESS: Target mech address
  */
@@ -20,8 +23,9 @@ import 'dotenv/config';
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { paymentMiddleware, type Network } from "x402-hono";
-import { facilitator } from "@coinbase/x402";
+import { createFacilitatorConfig } from "@coinbase/x402";
 import { serve } from "@hono/node-server";
+import { createClient } from "@supabase/supabase-js";
 import {
   extractAndValidate,
   summarizeOutputSpec as summarizeSpec,
@@ -34,9 +38,9 @@ import {
   validateBudget,
   formatWei,
 } from "./pricing.js";
-// buildJobBranchName and CodeMetadata are inlined below (lines 41-74)
 import { deepSubstitute, buildBlueprintFromTemplate as sharedBuildBlueprint } from '../../scripts/shared/template-substitution.js';
 import { buildAnnotatedTools, parseAnnotatedTools } from '../../jinn-node/src/shared/template-tools.js';
+import { buildDiscoveryItems, buildWellKnownManifest } from './discovery.js';
 
 // Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
 interface BranchSnapshot {
@@ -82,82 +86,93 @@ const payTo = env.PAYMENT_WALLET_ADDRESS as `0x${string}` | undefined;
 const network = (env.X402_NETWORK || "base") as Network;
 const mechAddress = env.MECH_ADDRESS;
 const privateKey = env.PRIVATE_KEY;
-// Ponder GraphQL endpoint - sole data source for templates
+// Ponder GraphQL endpoint — used only for /runs/ endpoints (on-chain delivery status)
 const ponderUrl = env.PONDER_GRAPHQL_URL || "https://ponder-production-6d16.up.railway.app/graphql";
 const chainConfig = env.CHAIN_CONFIG || "base";
 
-// Types - Ponder jobTemplate schema
-interface PonderJobTemplate {
+// Supabase client — source of truth for agent templates
+const supabase = createClient(env.SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!);
+
+// Types — Supabase templates table (snake_case)
+interface AgentTemplate {
   id: string;
   name: string;
+  slug: string;
   description: string | null;
+  version: string | null;
+  blueprint: Record<string, any>;       // jsonb — already parsed
+  input_schema: Record<string, any> | null;
+  output_spec: Record<string, any> | null;
+  enabled_tools: any[] | null;           // jsonb array
   tags: string[] | null;
-  enabledTools: string[] | null;
-  blueprintHash: string | null;
-  blueprint: string | null;
-  inputSchema: Record<string, any> | null;
-  outputSpec: Record<string, any> | null;
-  priceWei: string | null;
-  canonicalJobDefinitionId: string | null;
-  runCount: number;
-  successCount: number;
-  avgDurationSeconds: number | null;
-  avgCostWei: string | null;
-  createdAt: string;
-  lastUsedAt: string | null;
-  status: string;
+  price_wei: string | null;
+  price_usd: string | null;
+  default_cyclic: boolean | null;
+  venture_id: string | null;
+  status: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  olas_agent_id: number | null;
 }
 
-function parseTemplateToolPolicy(template: PonderJobTemplate): {
+function parseAgentToolPolicy(agent: AgentTemplate): {
   requiredTools: string[];
   availableTools: string[];
 } {
   // Try blueprint first (for templates with embedded tools in templateMeta.tools)
-  if (template.blueprint) {
-    try {
-      const parsed = JSON.parse(template.blueprint);
-      const tools = parsed?.templateMeta?.tools ?? parsed?.tools;
-      const result = parseAnnotatedTools(tools);
-      if (result.requiredTools.length > 0 || result.availableTools.length > 0) {
-        return result;
-      }
-    } catch {
-      // Ignore malformed blueprint, try enabledTools fallback
+  if (agent.blueprint) {
+    const bp = agent.blueprint; // already parsed jsonb
+    const tools = bp?.templateMeta?.tools ?? bp?.tools;
+    const result = parseAnnotatedTools(tools);
+    if (result.requiredTools.length > 0 || result.availableTools.length > 0) {
+      return result;
     }
   }
 
-  // Fallback to template.enabledTools (for templates where tools were stripped from blueprint)
-  // This happens when launch-local-template.ts creates cleanBlueprint without templateMeta
-  if (template.enabledTools && template.enabledTools.length > 0) {
-    // enabledTools is a flat array - treat all as available (no required annotation)
+  // Fallback to enabled_tools
+  if (agent.enabled_tools && agent.enabled_tools.length > 0) {
+    const result = parseAnnotatedTools(agent.enabled_tools);
+    if (result.requiredTools.length > 0 || result.availableTools.length > 0) {
+      return result;
+    }
+    // If parseAnnotatedTools didn't find anything, treat as flat array
     return {
       requiredTools: [],
-      availableTools: template.enabledTools.filter((t): t is string => typeof t === 'string' && t.length > 0),
+      availableTools: agent.enabled_tools.filter((t): t is string => typeof t === 'string' && t.length > 0),
     };
   }
 
   return { requiredTools: [], availableTools: [] };
 }
-/**
- * Query Ponder GraphQL for job templates
- */
-async function queryPonderTemplates(query: string, variables?: Record<string, any>): Promise<any> {
-  const res = await fetch(ponderUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-  });
 
-  if (!res.ok) {
-    throw new Error(`Ponder query failed: ${res.status} ${res.statusText}`);
+// ============================================================================
+// Supabase data access — agents are templates with olas_agent_id
+// ============================================================================
+
+async function fetchAgents(): Promise<AgentTemplate[]> {
+  const { data, error } = await supabase
+    .from('templates')
+    .select('*')
+    .not('olas_agent_id', 'is', null)
+    .eq('status', 'published')
+    .order('olas_agent_id', { ascending: true });
+
+  if (error) throw new Error(`Supabase query failed: ${error.message}`);
+  return data || [];
+}
+
+async function fetchAgentBySlug(slug: string): Promise<AgentTemplate | null> {
+  const { data, error } = await supabase
+    .from('templates')
+    .select('*')
+    .eq('slug', slug)
+    .not('olas_agent_id', 'is', null)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
+    throw new Error(`Supabase query failed: ${error.message}`);
   }
-
-  const json = await res.json() as { data?: any; errors?: any[] };
-  if (json.errors?.length) {
-    throw new Error(`Ponder query error: ${json.errors[0].message}`);
-  }
-
-  return json.data;
+  return data;
 }
 
 /**
@@ -200,74 +215,6 @@ function buildCodeMetadataFromInput(
   };
 }
 
-/**
- * Fetch all visible templates from Ponder
- */
-async function fetchTemplatesFromPonder(): Promise<PonderJobTemplate[]> {
-  const query = `
-    query ListTemplates {
-      jobTemplates(where: { status: "visible" }, orderBy: "createdAt", orderDirection: "desc", limit: 100) {
-        items {
-          id
-          name
-          description
-          tags
-          enabledTools
-          blueprintHash
-          blueprint
-          inputSchema
-          outputSpec
-          priceWei
-          canonicalJobDefinitionId
-          runCount
-          successCount
-          avgDurationSeconds
-          avgCostWei
-          createdAt
-          lastUsedAt
-          status
-        }
-      }
-    }
-  `;
-
-  const data = await queryPonderTemplates(query);
-  return data?.jobTemplates?.items || [];
-}
-
-/**
- * Fetch a single template by ID from Ponder
- */
-async function fetchTemplateFromPonder(templateId: string): Promise<PonderJobTemplate | null> {
-  const query = `
-    query GetTemplate($id: String!) {
-      jobTemplate(id: $id) {
-        id
-        name
-        description
-        tags
-        enabledTools
-        blueprintHash
-        blueprint
-        inputSchema
-        outputSpec
-        priceWei
-        canonicalJobDefinitionId
-        runCount
-        successCount
-        avgDurationSeconds
-        avgCostWei
-        createdAt
-        lastUsedAt
-        status
-      }
-    }
-  `;
-
-  const data = await queryPonderTemplates(query, { id: templateId });
-  return data?.jobTemplate || null;
-}
-
 interface ExecuteRequest {
   input?: Record<string, any>;
   context?: string;
@@ -275,127 +222,290 @@ interface ExecuteRequest {
   cyclic?: boolean; // Run continuously (auto-restart after completion)
 }
 
+// ============================================================================
+// Shared dispatch logic
+// ============================================================================
+
+interface DispatchOptions {
+  callerBudget?: string;
+  estimatedCost?: string;
+  cyclic?: boolean;
+}
+
+async function dispatchAgent(
+  agent: AgentTemplate,
+  rawInput: Record<string, any>,
+  source: string = 'x402',
+  options: DispatchOptions = {},
+): Promise<{ requestIds: string[]; jobDefinitionId: string }> {
+  if (!mechAddress || !privateKey) {
+    throw new Error('Server not configured for dispatch');
+  }
+
+  const { requiredTools, availableTools } = parseAgentToolPolicy(agent);
+  const enabledTools = requiredTools.length > 0 ? requiredTools : availableTools;
+  if (enabledTools.length === 0) {
+    throw new Error('Agent has no tools configured');
+  }
+
+  const inputSchema = (agent.input_schema || {}) as Record<string, any>;
+
+  // Handle $provision sentinels
+  let enrichedInput = rawInput;
+  try {
+    enrichedInput = await handleProvisioning(rawInput, inputSchema);
+  } catch (provisionError: any) {
+    throw new Error(`Provisioning failed: ${provisionError.message}`);
+  }
+
+  // Inject system-provided context variables
+  enrichedInput = {
+    ...enrichedInput,
+    currentTimestamp: new Date().toISOString(),
+  };
+
+  // Build blueprint from template — sharedBuildBlueprint expects blueprint as JSON string
+  const templateForBlueprint = {
+    blueprint: JSON.stringify(agent.blueprint),
+    inputSchema: agent.input_schema || undefined,
+    name: agent.name,
+  };
+  const { invariants } = await buildBlueprintFromTemplate(templateForBlueprint, enrichedInput);
+
+  const jobDefinitionId = crypto.randomUUID();
+  const jobName = `${agent.name} (via ${source})`;
+  const { marketplaceInteract } = await import("@jinn-network/mech-client-ts/dist/marketplace_interact.js");
+
+  // Build codeMetadata from standardized input fields
+  const codeMetadata = buildCodeMetadataFromInput(enrichedInput, jobDefinitionId, jobName);
+
+  // Build additionalContext with budget info and env vars
+  const additionalContext: Record<string, any> = {};
+  if (options.callerBudget) {
+    additionalContext.budgetCap = options.callerBudget;
+    additionalContext.estimatedCost = options.estimatedCost;
+  }
+  // Extract env vars from inputSchema.envVar mappings
+  const extractedEnv: Record<string, string> = {};
+  if (inputSchema.properties) {
+    for (const [field, spec] of Object.entries(inputSchema.properties)) {
+      const fieldSpec = spec as { envVar?: string };
+      if (fieldSpec.envVar && enrichedInput[field] !== undefined) {
+        extractedEnv[fieldSpec.envVar] = String(enrichedInput[field]);
+      }
+    }
+  }
+  if (Object.keys(extractedEnv).length > 0 || (enrichedInput.env && typeof enrichedInput.env === 'object')) {
+    additionalContext.env = {
+      ...extractedEnv,
+      ...(enrichedInput.env && typeof enrichedInput.env === 'object' ? enrichedInput.env : {}),
+    };
+  }
+
+  const tools = buildAnnotatedTools({ requiredTools, availableTools });
+  const result = await marketplaceInteract({
+    prompts: [JSON.stringify({ invariants })],
+    priorityMech: mechAddress,
+    tools: enabledTools,
+    ipfsJsonContents: [{
+      blueprint: JSON.stringify({ invariants }),
+      jobName,
+      model: "auto-gemini-3",
+      jobDefinitionId,
+      nonce: crypto.randomUUID(),
+      networkId: 'jinn',
+      templateId: agent.id,
+      templateVersion: agent.version || "1.0.0",
+      enabledTools,
+      ...(tools.length > 0 ? { tools } : {}),
+      ...(agent.output_spec && { outputSpec: agent.output_spec }),
+      ...(agent.input_schema && { inputSchema: agent.input_schema }),
+      estimatedCost: options.estimatedCost,
+      cyclic: options.cyclic ?? agent.default_cyclic ?? false,
+      ...(Object.keys(additionalContext).length > 0 && { additionalContext }),
+      ...(codeMetadata && {
+        codeMetadata,
+        branchName: codeMetadata.branch.name,
+        baseBranch: codeMetadata.baseBranch,
+        executionPolicy: {
+          branch: codeMetadata.branch.name,
+          ensureTestsPass: true,
+          description: 'Agent must work on the provided branch.',
+        },
+      }),
+    }],
+    chainConfig,
+    keyConfig: { source: "value", value: privateKey },
+    postOnly: true,
+    responseTimeout: 61,
+  });
+
+  if (!result?.request_ids?.[0]) {
+    throw new Error("Dispatch failed: no request ID");
+  }
+
+  return { requestIds: result.request_ids, jobDefinitionId };
+}
+
 // Health check
 app.get("/health", (c) => c.json({
   status: "ok",
   service: "x402-gateway",
-  timestamp: new Date().toISOString()
+  timestamp: new Date().toISOString(),
 }));
+
+// .well-known/x402 — Discovery endpoint (supports both x402scan and Bazaar formats)
+app.get("/.well-known/x402", async (c) => {
+  if (!payTo) {
+    return c.json({ error: "Payment not configured" }, 503);
+  }
+  try {
+    const agents = await fetchAgents();
+    const baseUrl = `https://${env.RAILWAY_PUBLIC_DOMAIN || c.req.header("host") || "localhost:3001"}`;
+    const format = c.req.query("format");
+
+    if (format === "bazaar") {
+      const items = buildDiscoveryItems(agents, baseUrl, payTo, `eip155:8453`);
+      const limit = parseInt(c.req.query("limit") || "20", 10);
+      const offset = parseInt(c.req.query("offset") || "0", 10);
+      const manifest = buildWellKnownManifest(items, limit, offset);
+      return c.json(manifest);
+    }
+
+    // Default: x402scan-compatible discovery format
+    const resources = agents.map(a => `${baseUrl}/agents/${a.slug}/execute`);
+    return c.json({
+      version: 1,
+      resources,
+      x402Version: 2,
+      items: buildDiscoveryItems(agents, baseUrl, payTo, `eip155:8453`),
+      pagination: {
+        limit: resources.length,
+        offset: 0,
+        total: resources.length,
+      },
+    });
+  } catch (err: any) {
+    return c.json({ error: "Discovery unavailable", details: err.message }, 503);
+  }
+});
 
 // Service info
 app.get("/", (c) => c.json({
   name: "x402 Gateway",
-  description: "Execute job templates via x402 payments",
+  description: "Execute OLAS-registered AI agents via x402 payments",
   network,
-  ponderUrl,
   endpoints: {
-    "GET /templates": { payment: "free", description: "List available templates" },
-    "GET /templates/:id": { payment: "free", description: "Get template details" },
-    "POST /templates/:id/execute": { payment: "dynamic", description: "Execute template (price from template)" },
+    "GET /.well-known/x402": { payment: "free", description: "x402 discovery manifest" },
+    "GET /agents": { payment: "free", description: "List available agents" },
+    "GET /agents/:slug": { payment: "free", description: "Get agent details" },
+    "POST /agents/:slug/execute": { payment: "dynamic", description: "Execute agent (price from agent config)" },
     "GET /runs/:requestId/status": { payment: "free", description: "Check run status" },
     "GET /runs/:requestId/result": { payment: "free", description: "Get run result (202 if pending)" },
   }
 }));
 
-// GET /templates - List available templates from Ponder
-app.get("/templates", async (c) => {
+// GET /agents - List available agents (OLAS-registered templates from Supabase)
+app.get("/agents", async (c) => {
   try {
-    const ponderTemplates = await fetchTemplatesFromPonder();
+    const agents = await fetchAgents();
 
-    // Transform Ponder templates for API response
-    const templates = ponderTemplates.map((t) => ({
-      templateId: t.id,
-      name: t.name,
-      description: t.description,
-      tags: t.tags || [],
-      price: t.priceWei ? formatPrice(t.priceWei) : "free",
-      priceWei: t.priceWei || "0",
-      outputSpecSummary: summarizeOutputSpec(t.outputSpec as OutputSpec | null),
-      // Additional fields from Ponder
-      runCount: t.runCount,
-      successCount: t.successCount,
-      canonicalJobDefinitionId: t.canonicalJobDefinitionId,
+    const items = agents.map((a) => ({
+      slug: a.slug,
+      name: a.name,
+      description: a.description,
+      tags: a.tags || [],
+      olasAgentId: a.olas_agent_id,
+      price: a.price_wei ? formatPrice(a.price_wei) : "free",
+      priceWei: a.price_wei || "0",
+      outputSpecSummary: summarizeOutputSpec(a.output_spec as OutputSpec | null),
     }));
 
-    return c.json({ templates, source: "ponder" });
-  } catch (ponderError: any) {
-    console.error("Ponder query failed:", ponderError.message);
-    return c.json({
-      error: "Template service unavailable",
-      details: ponderError.message,
-      hint: "The jobTemplate table may not be deployed yet. Ponder is still indexing."
-    }, 503);
+    return c.json({ agents: items });
+  } catch (err: any) {
+    console.error("Agent list failed:", err.message);
+    return c.json({ error: "Agent service unavailable", details: err.message }, 503);
   }
 });
 
-// GET /templates/:id - Get template details from Ponder
-app.get("/templates/:id", async (c) => {
-  const templateId = c.req.param("id");
+// GET /agents/:slug - Get agent details
+app.get("/agents/:slug", async (c) => {
+  const slug = c.req.param("slug");
 
   try {
-    const template = await fetchTemplateFromPonder(templateId);
+    const agent = await fetchAgentBySlug(slug);
 
-    if (!template) {
-      return c.json({ error: "Template not found" }, 404);
+    if (!agent) {
+      return c.json({ error: "Agent not found" }, 404);
     }
 
     return c.json({
-      templateId: template.id,
-      name: template.name,
-      description: template.description,
-      tags: template.tags || [],
-      enabledTools: template.enabledTools || [],
-      inputSchema: template.inputSchema || {},
-      outputSpec: template.outputSpec || {},
-      blueprint: template.blueprint, // Include stored blueprint
-      price: formatPrice(template.priceWei || "0"),
-      priceWei: template.priceWei || "0",
-      status: template.status,
-      // Additional Ponder fields
-      canonicalJobDefinitionId: template.canonicalJobDefinitionId,
-      runCount: template.runCount,
-      successCount: template.successCount,
-      avgDurationSeconds: template.avgDurationSeconds,
-      avgCostWei: template.avgCostWei,
-      createdAt: template.createdAt,
-      lastUsedAt: template.lastUsedAt,
-      source: "ponder",
+      slug: agent.slug,
+      name: agent.name,
+      description: agent.description,
+      tags: agent.tags || [],
+      olasAgentId: agent.olas_agent_id,
+      enabledTools: agent.enabled_tools || [],
+      inputSchema: agent.input_schema || {},
+      outputSpec: agent.output_spec || {},
+      price: formatPrice(agent.price_wei || "0"),
+      priceWei: agent.price_wei || "0",
+      status: agent.status,
+      createdAt: agent.created_at,
+      updatedAt: agent.updated_at,
     });
-  } catch (ponderError: any) {
-    console.error("Ponder query failed for template:", templateId, ponderError.message);
-    return c.json({
-      error: "Template service unavailable",
-      details: ponderError.message,
-      hint: "The jobTemplate table may not be deployed yet. Ponder is still indexing."
-    }, 503);
+  } catch (err: any) {
+    console.error("Agent detail failed for slug:", slug, err.message);
+    return c.json({ error: "Agent service unavailable", details: err.message }, 503);
   }
 });
 
-// POST /templates/:id/execute - Execute template
-// Payment middleware is applied dynamically based on template price
-app.post("/templates/:id/execute", async (c) => {
+// POST /agents/:slug/execute - Execute agent
+// x402 payment gate: returns 402 with payment requirements when no valid payment header is present.
+app.post("/agents/:slug/execute", async (c, next) => {
+  // If CDP keys and payment address are configured, apply x402 payment gate
+  if (payTo && env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET) {
+    const slug = c.req.param("slug");
+
+    // Fetch agent to get its price
+    let agentPrice = "$0.001"; // minimum floor
+    try {
+      const a = await fetchAgentBySlug(slug);
+      if (a?.price_wei && a.price_wei !== "0") {
+        const eth = Number(BigInt(a.price_wei)) / 1e18;
+        const usd = eth * 3000; // rough ETH/USD estimate
+        agentPrice = usd < 0.001 ? "$0.001" : `$${usd.toFixed(3)}`;
+      }
+    } catch {
+      // Use default price if agent lookup fails
+    }
+
+    const middleware = paymentMiddleware(
+      payTo,
+      { 'POST *': { price: agentPrice, network } },
+      createFacilitatorConfig(env.CDP_API_KEY_ID, env.CDP_API_KEY_SECRET),
+    );
+    return middleware(c, next);
+  }
+  // No payment gate configured — proceed directly
+  await next();
+}, async (c) => {
   if (!mechAddress || !privateKey) {
     return c.json({ error: "Server not configured for dispatch" }, 500);
   }
 
-  const templateId = c.req.param("id");
+  const slug = c.req.param("slug");
 
-  // Fetch template from Ponder
-  let template: PonderJobTemplate | null = null;
-
+  let agent: AgentTemplate | null = null;
   try {
-    template = await fetchTemplateFromPonder(templateId);
-  } catch (ponderError: any) {
-    console.error("Ponder query failed for execute:", templateId, ponderError.message);
-    return c.json({
-      error: "Template service unavailable",
-      details: ponderError.message,
-      hint: "The jobTemplate table may not be deployed yet. Ponder is still indexing."
-    }, 503);
+    agent = await fetchAgentBySlug(slug);
+  } catch (err: any) {
+    console.error("Agent lookup failed for execute:", slug, err.message);
+    return c.json({ error: "Agent service unavailable", details: err.message }, 503);
   }
 
-  if (!template) {
-    return c.json({ error: "Template not found" }, 404);
+  if (!agent) {
+    return c.json({ error: "Agent not found" }, 404);
   }
 
   // Parse request body
@@ -406,11 +516,11 @@ app.post("/templates/:id/execute", async (c) => {
     body = {};
   }
 
-  const { requiredTools, availableTools } = parseTemplateToolPolicy(template);
+  const { requiredTools, availableTools } = parseAgentToolPolicy(agent);
   if (requiredTools.length === 0 && availableTools.length === 0) {
     return c.json({
-      error: "Template tool policy missing",
-      details: "Template must include a tools list (either in blueprint.templateMeta.tools or enabledTools field).",
+      error: "Agent tool policy missing",
+      details: "Agent must include a tools list (either in blueprint.templateMeta.tools or enabled_tools field).",
     }, 400);
   }
   const enabledTools = requiredTools.length > 0 ? requiredTools : availableTools;
@@ -419,16 +529,16 @@ app.post("/templates/:id/execute", async (c) => {
     const disallowedRequired = requiredTools.filter((tool) => !availableSet.has(String(tool).toLowerCase()));
     if (disallowedRequired.length > 0) {
       return c.json({
-        error: "Template has invalid tool policy",
+        error: "Agent has invalid tool policy",
         details: `requiredTools must be a subset of availableTools. Invalid: ${disallowedRequired.join(', ')}.`,
         invalidTools: disallowedRequired,
         availableTools,
       }, 400);
     }
   }
-  // Compute estimated cost (from template price or historical data)
-  const estimatedCost = template.priceWei ||
-    await computeTemplatePrice(ponderUrl, template.canonicalJobDefinitionId);
+
+  // Use template price directly (set in Supabase), fallback to minimum
+  const estimatedCost = agent.price_wei || '500000000000000'; // 0.0005 ETH min
 
   // Validate caller budget if provided
   const budgetCheck = validateBudget(body.callerBudget, estimatedCost);
@@ -441,12 +551,8 @@ app.post("/templates/:id/execute", async (c) => {
     }, 402);
   }
 
-  // TODO: In production, verify x402 payment here
-  // For hackathon v0, we skip payment verification
-  // The payment middleware should be applied based on template.x402_price
-
   // Validate input against schema (basic validation)
-  const inputSchema = (template.inputSchema || {}) as Record<string, any>;
+  const inputSchema = (agent.input_schema || {}) as Record<string, any>;
   const input = body.input || {};
 
   if (inputSchema.required) {
@@ -457,125 +563,21 @@ app.post("/templates/:id/execute", async (c) => {
     }
   }
 
-  // Handle $provision sentinels - provision resources if needed
-  let enrichedInput = input;
   try {
-    enrichedInput = await handleProvisioning(input, inputSchema);
-  } catch (provisionError: any) {
-    console.error(`[x402] Provisioning failed: ${provisionError.message}`);
-    return c.json({
-      error: `Provisioning failed: ${provisionError.message}`,
-      phase: provisionError.errorPhase || 'unknown',
-    }, 500);
-  }
-
-  // Inject system-provided context variables
-  // currentTimestamp: ISO timestamp at dispatch time (for explicit time calculations in templates)
-  enrichedInput = {
-    ...enrichedInput,
-    currentTimestamp: new Date().toISOString(),
-  };
-
-  // Build blueprint from template
-  // If template has stored blueprint from Ponder, use it; otherwise generate
-  const { invariants } = await buildBlueprintFromTemplate(
-    {
-      blueprint: template.blueprint ?? undefined,
-      inputSchema: template.inputSchema ?? undefined,
-      name: template.name,
-    },
-    enrichedInput
-  );
-
-  try {
-    // Dispatch to Jinn
-    const jobDefinitionId = crypto.randomUUID();
-    const jobName = `${template.name} (via x402)`;
-    const { marketplaceInteract } = await import("@jinn-network/mech-client-ts/dist/marketplace_interact.js");
-
-    // Build codeMetadata from standardized input fields (repoUrl, baseBranch)
-    const codeMetadata = buildCodeMetadataFromInput(enrichedInput, jobDefinitionId, jobName);
-
-    // Build additionalContext with budget info and env vars
-    const additionalContext: Record<string, any> = {};
-    if (body.callerBudget) {
-      additionalContext.budgetCap = body.callerBudget;
-      additionalContext.estimatedCost = estimatedCost;
-    }
-    // Extract env vars from inputSchema.envVar mappings (like launch_workstream.ts)
-    // This maps input fields (e.g., umamiWebsiteId) to env vars (e.g., UMAMI_WEBSITE_ID)
-    const extractedEnv: Record<string, string> = {};
-    if (inputSchema.properties) {
-      for (const [field, spec] of Object.entries(inputSchema.properties)) {
-        const fieldSpec = spec as { envVar?: string };
-        if (fieldSpec.envVar && enrichedInput[field] !== undefined) {
-          extractedEnv[fieldSpec.envVar] = String(enrichedInput[field]);
-        }
-      }
-    }
-    // Merge: extracted envVars first, then explicit enrichedInput.env (takes precedence)
-    if (Object.keys(extractedEnv).length > 0 || (enrichedInput.env && typeof enrichedInput.env === 'object')) {
-      additionalContext.env = {
-        ...extractedEnv,
-        ...(enrichedInput.env && typeof enrichedInput.env === 'object' ? enrichedInput.env : {}),
-      };
-    }
-
-    const tools = buildAnnotatedTools({ requiredTools, availableTools });
-    const result = await marketplaceInteract({
-      prompts: [JSON.stringify({ invariants })],
-      priorityMech: mechAddress,
-      tools: enabledTools,
-      ipfsJsonContents: [{
-        blueprint: JSON.stringify({ invariants }),
-        jobName,
-        model: "auto-gemini-3",
-        jobDefinitionId,
-        nonce: crypto.randomUUID(),
-        networkId: 'jinn',
-        templateId: template.id,
-        templateVersion: "1.0.0",
-        enabledTools,
-        ...(tools.length > 0 ? { tools } : {}),
-        // OutputSpec passthrough: include in dispatch so worker can pass through to delivery
-        ...(template.outputSpec && { outputSpec: template.outputSpec }),
-        // InputSchema for default value resolution
-        ...(template.inputSchema && { inputSchema: template.inputSchema }),
-        // Budget and pricing context
-        estimatedCost,
-        // Cyclic mode: request override > template default > false
-        cyclic: body.cyclic ?? (template as any).defaultCyclic ?? false,
-        // additionalContext (budget, env vars)
-        ...(Object.keys(additionalContext).length > 0 && { additionalContext }),
-        // Git workflow fields (if codeMetadata present)
-        ...(codeMetadata && {
-          codeMetadata,
-          branchName: codeMetadata.branch.name,
-          baseBranch: codeMetadata.baseBranch,
-          executionPolicy: {
-            branch: codeMetadata.branch.name,
-            ensureTestsPass: true,
-            description: 'Agent must work on the provided branch.',
-          },
-        }),
-      }],
-      chainConfig,
-      keyConfig: { source: "value", value: privateKey },
-      postOnly: true,
-      responseTimeout: 300,
+    const { requestIds, jobDefinitionId } = await dispatchAgent(agent, input, 'x402', {
+      callerBudget: body.callerBudget,
+      estimatedCost,
+      cyclic: body.cyclic,
     });
 
-    if (!result?.request_ids?.[0]) {
-      throw new Error("Dispatch failed: no request ID");
-    }
-
-    const requestId = result.request_ids[0];
+    const requestId = requestIds[0];
     const baseUrl = new URL(c.req.url).origin;
 
     return c.json({
       requestId,
       jobDefinitionId,
-      templateId: template.id,
+      agentSlug: agent.slug,
+      olasAgentId: agent.olas_agent_id,
       statusUrl: `${baseUrl}/runs/${requestId}/status`,
       resultUrl: `${baseUrl}/runs/${requestId}/result`,
       explorerUrl: `https://explorer.jinn.network/requests/${requestId}`,
@@ -587,17 +589,17 @@ app.post("/templates/:id/execute", async (c) => {
   }
 });
 
-// GET /runs/:requestId/status - Check run status
+// GET /runs/:requestId/status - Check run status (Ponder — on-chain data)
 app.get("/runs/:requestId/status", async (c) => {
   const requestId = c.req.param("requestId");
 
-  const query = `query ($id: String!) { 
-    request(id: $id) { 
-      id 
-      delivered 
+  const query = `query ($id: String!) {
+    request(id: $id) {
+      id
+      delivered
       jobName
       blockTimestamp
-    } 
+    }
   }`;
 
   try {
@@ -629,20 +631,20 @@ app.get("/runs/:requestId/status", async (c) => {
   }
 });
 
-// GET /runs/:requestId/result - Get run result
+// GET /runs/:requestId/result - Get run result (Ponder + IPFS)
 // Returns the FINAL result of a workstream, not just the initial request's delivery
 app.get("/runs/:requestId/result", async (c) => {
   const requestId = c.req.param("requestId");
 
   // Step 1: Get the request and its jobDefinitionId
-  const requestQuery = `query ($id: String!) { 
-    request(id: $id) { 
-      id 
-      delivered 
+  const requestQuery = `query ($id: String!) {
+    request(id: $id) {
+      id
+      delivered
       deliveryIpfsHash
       jobName
       jobDefinitionId
-    } 
+    }
   }`;
 
   try {
@@ -701,7 +703,6 @@ app.get("/runs/:requestId/result", async (c) => {
       const lastStatus = jobDefData?.data?.jobDefinition?.lastStatus;
 
       // If job is COMPLETED, find the latest delivered request for this job definition
-      // This handles the case where parent was re-run after children completed
       if (lastStatus === "COMPLETED") {
         const latestQuery = `query ($jobDefId: String!) {
           requests(
@@ -762,20 +763,23 @@ app.get("/runs/:requestId/result", async (c) => {
 
     const deliveryPayload = await ipfsRes.json() as Record<string, any>;
 
-    // Get OutputSpec: prefer passthrough from delivery payload, fallback to Ponder lookup
+    // Get OutputSpec: prefer passthrough from delivery payload, fallback to Supabase lookup
     let outputSpec: OutputSpec | undefined;
 
-    // First: try passthrough OutputSpec from delivery payload (fast path)
     if (deliveryPayload.outputSpec && typeof deliveryPayload.outputSpec === 'object') {
       outputSpec = deliveryPayload.outputSpec as OutputSpec;
     } else {
-      // Fallback: fetch from Ponder if templateId is present
+      // Fallback: fetch from Supabase if templateId is present
       const templateId = deliveryPayload.templateId;
       if (templateId) {
         try {
-          const template = await fetchTemplateFromPonder(templateId);
-          if (template?.outputSpec) {
-            outputSpec = template.outputSpec as OutputSpec;
+          const { data: template } = await supabase
+            .from('templates')
+            .select('output_spec')
+            .eq('id', templateId)
+            .single();
+          if (template?.output_spec) {
+            outputSpec = template.output_spec as OutputSpec;
           }
         } catch {
           // OutputSpec lookup failed, proceed without it
@@ -792,7 +796,6 @@ app.get("/runs/:requestId/result", async (c) => {
         result,
       });
     } catch (validationError: any) {
-      // Return 502 if output validation fails
       return c.json({
         status: "error",
         error: validationError.message,
@@ -806,17 +809,13 @@ app.get("/runs/:requestId/result", async (c) => {
 
 // Helper: Convert f01551220... digest to dag-pb CID URL with requestId path
 function buildIpfsUrl(deliveryIpfsHash: string, requestId: string): string {
-  // deliveryIpfsHash is 'f01551220' + 64-hex digest (raw codec)
-  // We need to convert to dag-pb CID (codec 0x70) and append requestId path
   const digestHex = deliveryIpfsHash.replace(/^f01551220/i, '');
 
   if (digestHex.length !== 64) {
-    // Fallback to raw format if not expected length
     return `https://gateway.autonolas.tech/ipfs/${deliveryIpfsHash}/${requestId}`;
   }
 
   try {
-    // Parse digest hex to bytes
     const digestBytes: number[] = [];
     for (let i = 0; i < digestHex.length; i += 2) {
       digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
@@ -825,7 +824,6 @@ function buildIpfsUrl(deliveryIpfsHash: string, requestId: string): string {
     // Build CIDv1 bytes: [0x01] + [0x70] (dag-pb) + multihash: [0x12, 0x20] + digest
     const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
 
-    // Base32 encode (lowercase, no padding), prefix with 'b'
     const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
     let bitBuffer = 0;
     let bitCount = 0;
@@ -847,7 +845,6 @@ function buildIpfsUrl(deliveryIpfsHash: string, requestId: string): string {
     const dirCid = 'b' + out;
     return `https://gateway.autonolas.tech/ipfs/${dirCid}/${requestId}`;
   } catch {
-    // Fallback on any error
     return `https://gateway.autonolas.tech/ipfs/${deliveryIpfsHash}/${requestId}`;
   }
 }
@@ -866,10 +863,7 @@ function formatPrice(weiString: string | number | bigint): string {
   return `${wei} wei`;
 }
 
-// Use imported summarizeOutputSpec from output-spec.ts
 const summarizeOutputSpec = summarizeSpec;
-
-// Use shared template substitution functions (imported from scripts/shared/template-substitution.ts)
 const buildBlueprintFromTemplate = sharedBuildBlueprint;
 
 // ============================================================
@@ -1333,6 +1327,7 @@ app.post("/credentials/:provider", async (c) => {
 // Start server
 const port = parseInt(env.PORT || "3001", 10);
 console.log(`x402 Gateway running on :${port}`);
-console.log(`Ponder endpoint: ${ponderUrl}`);
+console.log(`Supabase: ${env.SUPABASE_URL}`);
+console.log(`Ponder (runs): ${ponderUrl}`);
 
 serve({ fetch: app.fetch, port });

@@ -213,13 +213,14 @@ describe('storeOnchainReport', () => {
       // Should not throw
       await expect(storeOnchainReport(mockRequest, workerAddress, result, finalStatus)).resolves.toBeUndefined();
 
-      // Should log warning
+      // Should log warning (source includes status in message and object)
       expect(workerLogger.warn).toHaveBeenCalledWith(
         expect.objectContaining({
           requestId: '0x1234',
+          status: 'COMPLETED',
           error: expect.any(Object),
         }),
-        'Failed to store on-chain report'
+        'Failed to store on-chain report (status COMPLETED)'
       );
     });
   });

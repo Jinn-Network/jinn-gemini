@@ -1,37 +1,67 @@
 ---
 name: node-e2e-testing
-description: End-to-end test the jinn-node operator experience using Tenderly VNets. Activates when running E2E tests, validating operator setup, testing worker job execution, or verifying wallet recovery. Use when asked to "run e2e tests", "test jinn-node", "validate operator flow", or "test on tenderly".
+description: End-to-end test the jinn-node operator experience using Tenderly VNets. Validates the full lifecycle in a single structured run with explicit pass/fail checkpoints. Use when asked to "run e2e tests", "test jinn-node", "validate operator flow", or "test on tenderly".
 allowed-tools: Bash Read Edit Write Glob Grep
 user-invocable: true
 disable-model-invocation: true
-argument-hint: "[worker|wallet|docker|credential|all]"
 ---
 
 # jinn-node E2E Testing
 
-Validates the full jinn-node operator lifecycle on a Tenderly VNet.
+**IMPORTANT: Always start fresh.** Every session creates a new VNet and jinn-node clone.
 
-**IMPORTANT: Always start fresh.** Every session must create a new VNet and a new jinn-node clone. Never reuse existing VNets or clones.
+## Sessions
 
-## Session Strategy
+This skill supports multiple test sessions. Each is self-contained with its own VNet.
 
-Tenderly free tier allows ~5-10 write transactions per VNet. Full coverage requires multiple sessions:
+| Session | Argument | What it tests | Reference |
+|---------|----------|---------------|-----------|
+| **Worker** *(default)* | *(none)* | Setup, 2nd service, worker execution, rotation, telemetry | Phases 0-5 below |
+| **Lifecycle** | `lifecycle` | Service lifecycle without worker: setup, stake, checkpoint, rewards, recovery | [lifecycle-session.md](references/lifecycle-session.md) |
 
-| Argument | Sessions | What it tests |
-|----------|----------|---------------|
-| `worker` | 1 VNet | Setup → Dispatch → Worker execution (bare) |
-| `wallet` | 1 VNet | Setup → Wallet info → Recovery (unstake + withdraw) |
-| `docker` | 1 VNet | Setup (bare) → Docker build → Docker worker execution |
-| `credential` | 1 VNet | Setup → ACL seed → Worker credential probe → Gateway tests |
-| `all` | 4 VNets | `worker` first, then `wallet`, then `credential`, then `docker` |
+**Default session** (`/node-e2e-testing`): Full worker execution flow — 6 phases, requires Docker + Gemini CLI.
 
-**Based on the argument, read the corresponding session file:**
-- `worker` or `all` → read [references/worker-session.md](references/worker-session.md)
-- `wallet` or `all` → read [references/wallet-session.md](references/wallet-session.md)
-- `credential` or `all` → read [references/credential-session.md](references/credential-session.md)
-- `docker` or `all` → read [references/docker-session.md](references/docker-session.md)
+**Lifecycle session** (`/node-e2e-testing lifecycle`): Faster, lower-quota path — no Docker, no worker, no telemetry. Tests the operator experience from setup through fund recovery.
 
-For `all`: complete each session (including cleanup) before starting the next.
+If the argument is `lifecycle`, read and follow [lifecycle-session.md](references/lifecycle-session.md) instead of the phases below.
+
+## Diagnostic Only — Never Fix
+
+This skill is a **test runner**. When something fails:
+1. **Capture** the exact error output, relevant log lines, config state
+2. **Diagnose** what went wrong and identify likely root cause
+3. **Document** in the checkpoint with enough detail for the implementation session
+4. **Continue or abort** per the abort logic — never attempt a fix
+5. **Report** all diagnostic artifacts in the final report
+
+The user takes the E2E report and passes it to their implementation session for fixing.
+
+## Default Session — Phases
+
+| Phase | Name | Reference | Abort on failure |
+|-------|------|-----------|-----------------|
+| 0 | Infrastructure | [phase-0-infrastructure.md](references/phase-0-infrastructure.md) | Abort run |
+| 1 | Clone & Setup | [phase-1-setup.md](references/phase-1-setup.md) | Abort run |
+| 2 | Add Second Service | [phase-2-add-service.md](references/phase-2-add-service.md) | Skip 3/4 |
+| 3 | Worker Execution (Docker) | [phase-3-worker.md](references/phase-3-worker.md) | Skip 4/5 |
+| 4 | Rotation Worker (Docker) | [phase-4-rotation.md](references/phase-4-rotation.md) | Continue |
+| 5 | Telemetry Verification | [phase-5-telemetry.md](references/phase-5-telemetry.md) | Continue |
+
+Execute phases sequentially. Read each phase's reference file and follow its instructions. Report CHECKPOINT at the end of each phase before moving to the next.
+
+Operator scripts are tested at the points where their output is most meaningful:
+- `service:add --dry-run` + `service:list` — Phase 2 (after deploying 2nd service)
+- `service:status` — Phase 3 (after worker runs, shows real activity)
+
+## Prerequisites
+
+1. **Tenderly creds in `.env.test`**: `TENDERLY_ACCESS_KEY`, `TENDERLY_ACCOUNT_SLUG`, `TENDERLY_PROJECT_SLUG`
+2. **Supabase creds in `.env`**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+3. **Runtime**: Node 22+, Python 3.10-3.11, Poetry, `yarn install` completed
+4. **Gemini CLI**: Authenticated (`~/.gemini/oauth_creds.json`)
+5. **Docker**: Running and accessible
+
+**Env file priority**: `.env` -> `.env.test` override -> `.env.e2e` override
 
 ## Quick Reference
 
@@ -42,78 +72,75 @@ For `all`: complete each session (including cleanup) before starting the next.
 | `yarn test:e2e:vnet time-warp <seconds>` | Advance VNet time |
 | `yarn test:e2e:vnet status` | Check VNet health + quota |
 | `yarn test:e2e:vnet cleanup --max-age-hours=0` | Delete all VNets |
-| `yarn test:e2e:clone --branch <name>` | Clone jinn-node, install deps, configure .env |
-| `yarn test:e2e:dispatch --workstream <id> --cwd <path>` | Dispatch job in workstream |
-| `yarn test:e2e:stack` | Start local Ponder + Control API + Gateway |
-| `docker build -f jinn-node/Dockerfile jinn-node/ -t jinn-node:e2e` | Build Docker image for testing |
+| `yarn test:e2e:dispatch --workstream <id> --cwd <path>` | Dispatch job |
+| `yarn test:e2e:stack` | Start local Ponder + Control API |
+| `yarn test:e2e:docker-run --cwd <path> [--single] [--telemetry]` | Run worker in Docker |
+| `yarn test:e2e:parse-telemetry <file> [--required-tools t1,t2]` | Parse Gemini telemetry |
 
-## Prerequisites
+## State Tracking
 
-1. **Tenderly creds in `.env.test`** (monorepo root): `TENDERLY_ACCESS_KEY`, `TENDERLY_ACCOUNT_SLUG`, `TENDERLY_PROJECT_SLUG`.
-2. **Supabase creds in `.env`**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (needed by Control API).
-3. **Runtime**: Node 22+, Python 3.10-3.11, Poetry, `yarn install` completed.
-4. **Gemini CLI**: Authenticated (`~/.gemini/oauth_creds.json`).
+Shell state does not persist between bash calls. Persist values in `.env.e2e`:
 
-**Environment file priority**: `.env` (base creds) -> `.env.test` override (Tenderly creds) -> `.env.e2e` override (VNet RPC_URL).
+| Variable | Set in | Used by |
+|----------|--------|---------|
+| `CLONE_DIR` | Phase 1 | All phases |
+| `SERVICE_A_SAFE` | Phase 1 | Phase 4 |
+| `SERVICE_B_SAFE` | Phase 2 | Phase 4 |
+| `AGENT_EOA_1` | Phase 1 | Phase 3 |
+| `AGENT_EOA_2` | Phase 2 | Phase 3 |
+| `TELEMETRY_DIR_WORKER` | Phase 3 | Phase 5 |
+| `TELEMETRY_DIR_ROTATION` | Phase 4 | Phase 5 |
 
-## Shared Steps (every session starts with these)
+## Checkpoint Format
 
-### 1. Infrastructure
-
-```bash
-yarn test:e2e:vnet cleanup --max-age-hours=0  # Delete any stale VNets
-yarn test:e2e:vnet create   # Creates NEW VNet, writes fresh .env.e2e
+Every phase ends with a checkpoint block:
+```
+## CHECKPOINT: Phase N — <Name>
+- [PASS] Criterion passed
+- [FAIL] Criterion failed — <diagnostic detail>
 ```
 
-Start the stack **in the background** (it runs forever — Ponder + Control API + Gateway):
-```bash
-yarn test:e2e:stack &
+## Final Report
+
+After all phases (or after abort), produce:
+
+```
+## E2E TEST REPORT
+Branch: <branch>
+VNet ID: <from .env.e2e>
+Clone: <CLONE_DIR>
+Date: <timestamp>
+
+| Phase | Name                       | Result |
+|-------|----------------------------|--------|
+| 0     | Infrastructure             | PASS   |
+| 1     | Clone & Setup              | PASS   |
+| 2     | Add Second Service         | PASS   |
+| 3     | Worker Execution (Docker)  | PASS   |
+| 4     | Rotation Worker (Docker)   | PASS   |
+| 5     | Telemetry Verification     | PASS   |
+
+Overall: N/6 PASS
+
+### Debugging Artifacts
+- Clone: $CLONE_DIR
+- VNet config: .env.e2e
+- Telemetry (worker): $TELEMETRY_DIR_WORKER
+- Telemetry (rotation): $TELEMETRY_DIR_ROTATION
+- Ponder logs: <background task output>
 ```
 
-Wait ~30-60 seconds, then verify all services are ready:
-```bash
-curl -s http://localhost:42069/graphql -X POST \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"{ _meta { status } }"}' | grep -q data && echo "Ponder ready"
-curl -s http://localhost:4001/graphql -X POST \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"{ __typename }"}' | grep -q data && echo "Control API ready"
-curl -s http://localhost:3001/health | grep -q ok && echo "Gateway ready"
-```
+## Known Benign Conditions
 
-The stack script automatically kills port processes, cleans `.ponder` cache, sets `PONDER_START_BLOCK` near VNet head, reads RPC_URL from `.env.e2e`, and starts the x402-gateway credential bridge on :3001.
-
-### 2. Setup
-
-Ask the user which branch to test. List available branches:
-```bash
-yarn test:e2e:clone --list-branches
-```
-
-Clone, install, and configure in one step:
-```bash
-yarn test:e2e:clone --branch main   # or the branch the user chose
-```
-
-This script clones to a temp directory, runs `yarn install`, verifies tsx, configures `.env` with VNet settings, and saves `CLONE_DIR` to `.env.e2e`. Read the `CLONE_DIR` path from the script output.
-
-**Setup is iterative** — it pauses when funding is needed, prints exact addresses and amounts. Fund those exact amounts and re-run until it completes:
-```bash
-CLONE_DIR=$(grep '^CLONE_DIR=' .env.e2e | cut -d= -f2)
-yarn --cwd "$CLONE_DIR" setup
-# Read funding requirements from output, then from monorepo root:
-yarn test:e2e:vnet fund <address> --eth <amount> --olas <amount>
-yarn --cwd "$CLONE_DIR" setup
-# Repeat until complete.
-```
-
-### 3. Continue with session-specific steps
-
-Now read the relevant session file and follow its instructions.
+These are NOT failures — do not mark FAIL for these:
+- **Delivery 403 (quota exhausted)**: Key validation is agent execution + IPFS upload
+- **AEA deployment failed during setup**: Expected CLI version mismatch
+- **Web search returns no results**: Tool was *called* — that's what matters
+- **Chromium sandbox warning in Docker**: Expected with `GEMINI_SANDBOX=false`
 
 ## Cleanup
 
-After each session, ask user: clean up or leave for debugging?
+After reporting, ask user: clean up or leave for debugging?
 - `yarn test:e2e:vnet cleanup --max-age-hours=0` — delete all VNets
 - `rm -rf "$CLONE_DIR"` — remove temp clone
 - Ctrl+C — stop local stack

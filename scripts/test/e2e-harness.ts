@@ -9,6 +9,8 @@
  *   fund <addr>         Fund address with ETH + OLAS
  *   mine [n]            Mine n blocks (default 1)
  *   time-warp <seconds> Advance time + mine a block
+ *   checkpoint          Call checkpoint() on staking contract (fund OLAS if needed)
+ *   seed-activity       Set Safe nonce + marketplace request count for activity check
  *   cleanup             Delete all stale e2e-test-* VNets
  *   status              Check VNet health + quota status
  *
@@ -16,6 +18,8 @@
  *   yarn test:e2e:vnet create
  *   yarn test:e2e:vnet fund 0x1234... --eth 0.1 --olas 20
  *   yarn test:e2e:vnet time-warp 259200    # 72 hours
+ *   yarn test:e2e:vnet checkpoint --staking 0x0dfa... --key 0xabc...
+ *   yarn test:e2e:vnet seed-activity 0xSafe... --staking 0x0dfa... --value 1000
  *   yarn test:e2e:vnet status
  */
 
@@ -208,6 +212,155 @@ async function cmdTimeWarp(positional: string[], flags: Record<string, string>) 
   console.log(`Done. Current block: ${parseInt(blockHex, 16)}`);
 }
 
+// Minimal staking contract ABI for checkpoint
+const STAKING_ABI = [
+  'function checkpoint() returns (uint256[], uint256[], uint256[], uint256[])',
+  'function availableRewards() view returns (uint256)',
+  'function tsCheckpoint() view returns (uint256)',
+  'function getNextRewardCheckpointTimestamp() view returns (uint256)',
+  'function calculateStakingReward(uint256 serviceId) view returns (uint256)',
+  'function getServiceIds() view returns (uint256[])',
+];
+
+async function cmdCheckpoint(flags: Record<string, string>) {
+  const stakingAddr = flags['staking'];
+  const privateKey = flags['key'];
+  if (!stakingAddr || !privateKey) {
+    throw new Error('Usage: checkpoint --staking <address> --key <private-key>');
+  }
+
+  const rpcUrl = await getRpcUrl(flags);
+
+  // Dynamic import — ethers is only needed for this command
+  const { ethers } = await import('ethers');
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const wallet = new ethers.Wallet(privateKey, provider);
+  const staking = new ethers.Contract(stakingAddr, STAKING_ABI, wallet);
+
+  // 1. Read pre-checkpoint state
+  console.log('Staking contract state (pre-checkpoint):');
+  const availableRewards = await staking.availableRewards();
+  const tsCheckpoint = await staking.tsCheckpoint();
+  const nextCheckpoint = await staking.getNextRewardCheckpointTimestamp();
+  const serviceIds: bigint[] = await staking.getServiceIds();
+
+  console.log(`  Available rewards: ${ethers.formatEther(availableRewards)} OLAS`);
+  console.log(`  Last checkpoint:   ${new Date(Number(tsCheckpoint) * 1000).toISOString()}`);
+  console.log(`  Next eligible:     ${new Date(Number(nextCheckpoint) * 1000).toISOString()}`);
+  console.log(`  Staked services:   [${serviceIds.map(id => id.toString()).join(', ')}]`);
+
+  // 2. Fund staking contract with OLAS if rewards are empty
+  if (availableRewards === 0n) {
+    const fundAmount = ethers.parseEther('10000'); // 10,000 OLAS
+    console.log(`\nNo rewards available — funding staking contract with 10,000 OLAS...`);
+    await rpcCall(rpcUrl, 'tenderly_setErc20Balance', [
+      OLAS_TOKEN_ADDRESS,
+      [stakingAddr],
+      `0x${fundAmount.toString(16)}`,
+    ]);
+    const newRewards = await staking.availableRewards();
+    console.log(`  Available rewards now: ${ethers.formatEther(newRewards)} OLAS`);
+  }
+
+  // 3. Pre-checkpoint reward estimates per service
+  console.log('\nPre-checkpoint reward estimates:');
+  for (const serviceId of serviceIds) {
+    const reward = await staking.calculateStakingReward(serviceId);
+    console.log(`  Service ${serviceId}: ${ethers.formatEther(reward)} OLAS`);
+  }
+
+  // 4. Call checkpoint
+  console.log('\nCalling checkpoint()...');
+  const tx = await staking.checkpoint();
+  const receipt = await tx.wait();
+  console.log(`  TX: ${receipt.hash}`);
+  console.log(`  Gas used: ${receipt.gasUsed.toString()}`);
+
+  // 5. Parse return values from checkpoint event logs
+  // checkpoint() returns (serviceIds, eligibleServiceIds, eligibleServiceRewards, evictServiceIds)
+  // We read them from post-state since return values aren't in receipt
+  console.log('\nPost-checkpoint state:');
+  const postRewards = await staking.availableRewards();
+  console.log(`  Available rewards: ${ethers.formatEther(postRewards)} OLAS`);
+
+  let anyRewards = false;
+  for (const serviceId of serviceIds) {
+    const reward = await staking.calculateStakingReward(serviceId);
+    const status = reward > 0n ? 'REWARDED' : 'no reward';
+    console.log(`  Service ${serviceId}: ${ethers.formatEther(reward)} OLAS (${status})`);
+    if (reward > 0n) anyRewards = true;
+  }
+
+  if (anyRewards) {
+    console.log('\nCheckpoint successful — at least one service has rewards.');
+  } else {
+    console.log('\nWARNING: No services received rewards. Check activity checker requirements.');
+  }
+}
+
+// Minimal activity checker ABI
+const ACTIVITY_CHECKER_ABI = [
+  'function mechMarketplace() view returns (address)',
+  'function getMultisigNonces(address multisig) view returns (uint256[])',
+];
+
+async function cmdSeedActivity(positional: string[], flags: Record<string, string>) {
+  const multisig = positional[0];
+  const stakingAddr = flags['staking'];
+  const value = parseInt(flags['value'] || '1000', 10);
+  if (!multisig || !stakingAddr) {
+    throw new Error('Usage: seed-activity <multisig> --staking <staking-address> [--value <n>]');
+  }
+
+  const rpcUrl = await getRpcUrl(flags);
+  const { ethers } = await import('ethers');
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+  // 1. Query activity checker address from staking contract
+  const staking = new ethers.Contract(stakingAddr, [
+    'function activityChecker() view returns (address)',
+  ], provider);
+  const checkerAddr = await staking.activityChecker();
+  console.log(`Activity checker: ${checkerAddr}`);
+
+  // 2. Query marketplace address from activity checker
+  const checker = new ethers.Contract(checkerAddr, ACTIVITY_CHECKER_ABI, provider);
+  const marketplaceAddr = await checker.mechMarketplace();
+  console.log(`Mech marketplace:  ${marketplaceAddr}`);
+
+  // 3. Read current nonces
+  const nonces: bigint[] = await checker.getMultisigNonces(multisig);
+  console.log(`Current nonces:    [${nonces.map(n => n.toString()).join(', ')}]`);
+
+  const valueHex = ethers.zeroPadValue(ethers.toBeHex(value), 32);
+
+  // 4. Set Safe nonce (slot 5 in GnosisSafe)
+  const safeSlot = ethers.zeroPadValue(ethers.toBeHex(5), 32);
+  console.log(`\nSetting Safe nonce to ${value}...`);
+  await rpcCall(rpcUrl, 'tenderly_setStorageAt', [multisig, safeSlot, valueHex]);
+
+  // 5. Set marketplace request count (mapping slot 9, keyed by multisig)
+  const mappingSlot = ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      ['address', 'uint256'],
+      [multisig, 9]
+    )
+  );
+  console.log(`Setting request count to ${value}...`);
+  await rpcCall(rpcUrl, 'tenderly_setStorageAt', [marketplaceAddr, mappingSlot, valueHex]);
+
+  // 6. Verify
+  const newNonces: bigint[] = await checker.getMultisigNonces(multisig);
+  console.log(`\nVerified nonces:   [${newNonces.map(n => n.toString()).join(', ')}]`);
+
+  if (newNonces[0] === BigInt(value) && newNonces[1] === BigInt(value)) {
+    console.log('Activity seeded successfully.');
+  } else {
+    console.error('WARNING: Nonces do not match expected values!');
+    process.exit(1);
+  }
+}
+
 async function cmdCleanup(flags: Record<string, string>) {
   const dryRun = flags['dry-run'] === 'true';
   const maxAgeHours = parseInt(flags['max-age-hours'] || '1', 10);
@@ -309,6 +462,10 @@ async function main() {
       return cmdMine(positional, flags);
     case 'time-warp':
       return cmdTimeWarp(positional, flags);
+    case 'checkpoint':
+      return cmdCheckpoint(flags);
+    case 'seed-activity':
+      return cmdSeedActivity(positional, flags);
     case 'cleanup':
       return cmdCleanup(flags);
     case 'status':
@@ -316,7 +473,7 @@ async function main() {
     default:
       console.error(`Unknown command: ${command || '(none)'}`);
       console.error('\nUsage: e2e-harness.ts <command> [options]');
-      console.error('Commands: create, fund, mine, time-warp, cleanup, status');
+      console.error('Commands: create, fund, mine, time-warp, checkpoint, seed-activity, cleanup, status');
       process.exit(1);
   }
 }

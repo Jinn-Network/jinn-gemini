@@ -275,27 +275,18 @@ export function VentureDashboard({
                                 ) : (
                                     <div className="space-y-3">
                                         {activityItems.map((item) => (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                className="flex gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-accent/50 text-left"
-                                                onClick={() => {
-                                                    setSelectedJobIdOverride(item.id);
-                                                    setActiveTab('work-tree');
-                                                    const nextPath = `/ventures/${workstreamId}/tree/${item.id}`;
-                                                    if (typeof window !== 'undefined') {
-                                                        window.history.pushState({}, '', nextPath);
-                                                    } else {
-                                                        router.push(nextPath);
-                                                    }
-                                                }}
-                                            >
+                                            <div key={item.id} className="flex gap-2 rounded-md px-1.5 py-1">
                                                 <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                                                     <Bot className="h-3 w-3 text-primary" />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-baseline gap-1.5 mb-0.5">
-                                                        <span className="font-medium text-xs text-foreground">{item.jobName}</span>
+                                                        <a 
+                                                            href={`/ventures/${item.workstreamId}`}
+                                                            className="font-medium text-xs text-primary hover:underline"
+                                                        >
+                                                            {item.jobName}
+                                                        </a>
                                                         <span className="text-[10px] text-muted-foreground">
                                                             {formatTimeAgo(item.timestamp)}
                                                         </span>
@@ -304,7 +295,7 @@ export function VentureDashboard({
                                                         {item.message}
                                                     </p>
                                                 </div>
-                                            </button>
+                                            </div>
                                         ))}
                                     </div>
                                 )}

@@ -14,6 +14,9 @@ const sharedResolve = {
     '@jinn/types': path.resolve(__dirname, './jinn-node/src/types'),
     '@codespec': path.resolve(__dirname, './codespec'),
     '@tests': path.resolve(__dirname, './tests'),
+    // Deduplicate ethers so vi.mock('ethers') works for jinn-node modules
+    // (jinn-node has its own node_modules/ethers@6.16.0; root has 6.15.0)
+    'ethers': path.resolve(__dirname, './node_modules/ethers'),
   },
 }
 

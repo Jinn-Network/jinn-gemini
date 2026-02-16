@@ -21,7 +21,7 @@ export interface Venture {
   };
   root_workstream_id: string | null;
   root_job_instance_id: string | null;
-  status: 'active' | 'paused' | 'archived';
+  status: 'proposed' | 'bonding' | 'active' | 'paused' | 'archived';
   created_at: string;
   updated_at: string;
   token_address: string | null;
@@ -102,6 +102,27 @@ export async function getTokenizedVentures(limit: number = 10): Promise<Venture[
   }
   
   const results = await supabaseQuery<Venture>('ventures', params);
-  
+
   return results;
+}
+
+/**
+ * Fetch seed ventures (proposed, not yet tokenized) from the launchpad
+ */
+export async function getSeedVentures(limit: number = 6): Promise<Venture[]> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return [];
+  }
+
+  const params: Record<string, string> = {
+    select: '*',
+    status: 'eq.proposed',
+    order: 'created_at.desc',
+  };
+
+  if (limit > 0) {
+    params.limit = limit.toString();
+  }
+
+  return supabaseQuery<Venture>('ventures', params);
 }

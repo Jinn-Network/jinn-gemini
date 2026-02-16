@@ -1,7 +1,7 @@
 [build]
 builder = "NIXPACKS"
 nixpacksConfigPath = "deploy/x402-gateway/nixpacks.toml"
-watchPatterns = ["/services/x402-gateway/**"]
+watchPatterns = ["/services/x402-gateway/**", "/deploy/x402-gateway/**", "/jinn-node/**"]
 
 [deploy]
 startCommand = "cd services/x402-gateway && npx tsx index.ts"

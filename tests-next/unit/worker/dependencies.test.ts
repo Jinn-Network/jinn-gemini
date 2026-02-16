@@ -79,7 +79,7 @@ async function resolveJobDefinitionId(
   try {
     const data = await graphQLRequest<any>({
       url: 'http://localhost:42069/graphql',
-      query: expect.any(String),
+      query: `query resolveJobName($workstreamId: String!, $jobName: String!) { requests(where: { workstreamId: $workstreamId, jobName: $jobName }, limit: 1) { items { jobDefinitionId } } }`,
       variables: { workstreamId, jobName: identifier },
       context: { operation: 'resolveJobDefinitionId', identifier, workstreamId }
     });
@@ -455,7 +455,7 @@ describe('Dependency Resolution', () => {
       // For UUID: direct completion check
       // For Name: resolution query + completion check
       (graphQLRequest as any).mockImplementation(async ({ query }: any) => {
-        if (query.includes('CheckJobDefCompletion')) {
+        if (query.includes('CheckJobDefStatus')) {
           // Completion check - return COMPLETED
           return {
             jobDefinitions: {

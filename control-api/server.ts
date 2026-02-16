@@ -1,6 +1,7 @@
 // @ts-nocheck
 // TODO: Generate proper Supabase Database types to remove @ts-nocheck
 // Run: npx supabase gen types typescript --project-id <project-id> > types/database.ts
+// Deploy trigger: 2026-02-15T10:32
 import { createYoga, createSchema } from 'graphql-yoga';
 import { GraphQLError } from 'graphql';
 import { createClient } from '@supabase/supabase-js';
@@ -13,14 +14,8 @@ import {
   getPonderGraphqlUrl,
   getOptionalControlApiPort
 } from 'jinn-node/config';
-import {
-  InMemoryNonceStore,
-  RedisNonceStore,
-  verifyRequestWithErc8128,
-  resolveChainId,
-  type Erc8128NonceStore,
-} from 'jinn-node/http/erc8128.js';
-import { getMasterSafe, getServiceSafeAddress } from 'jinn-node/env/operate-profile.js';
+import { getMasterSafe, getServiceSafeAddress } from 'jinn-node/env/operate-profile';
+import { InMemoryNonceStore, verifyControlApiRequest } from 'jinn-node/http/erc8128';
 
 // Load environment variables
 dotenv.config();
@@ -29,7 +24,7 @@ type Context = {
   supabase: ReturnType<typeof createClient>;
   ponderUrl: string;
   req: Request;
-  workerAddress: string;
+  verifiedAddress: string;
 };
 
 const typeDefs = /* GraphQL */ `
@@ -158,6 +153,53 @@ const typeDefs = /* GraphQL */ `
     canonical_job_definition_id: String
   }
 
+  # Wishlist Types
+  type WishlistWallet {
+    id: String!
+    address: String!
+    public_key: String
+    deployed: Boolean!
+    total_points: Int!
+    created_at: String!
+  }
+
+  type Wish {
+    id: String!
+    wallet_address: String!
+    intent: String!
+    context: String
+    category: String
+    upvotes: Int!
+    fulfilled_by: String
+    fulfilled_at: String
+    status: String!
+    created_at: String!
+    updated_at: String!
+  }
+
+  type WishlistPoints {
+    id: String!
+    wallet_address: String!
+    reason: String!
+    points: Int!
+    wish_id: String
+    created_at: String!
+  }
+
+  type LeaderboardEntry {
+    address: String!
+    total_points: Int!
+  }
+
+  type WalletStats {
+    address: String!
+    total_points: Int!
+    wishes_created: Int!
+    upvotes_given: Int!
+    upvotes_received: Int!
+    wishes_fulfilled: Int!
+  }
+
   type Mutation {
     claimRequest(requestId: String!): RequestClaim!
     claimParentDispatch(parentJobDefId: String!, childJobDefId: String!): DispatchClaim!
@@ -171,6 +213,13 @@ const typeDefs = /* GraphQL */ `
     updateTransactionStatus(id: String!, status: String!, safe_tx_hash: String, tx_hash: String, error_code: String, error_message: String): TransactionRequest!
     createJobTemplate(id: String!, templateData: JobTemplateInput!): JobTemplate!
     updateJobTemplate(id: String!, templateData: JobTemplateInput!): JobTemplate!
+
+    # Wishlist Mutations
+    createWishlistWallet(address: String!, publicKey: String): WishlistWallet!
+    createWish(walletAddress: String!, intent: String!, context: String, category: String): Wish!
+    upvoteWish(wishId: String!, walletAddress: String!): Wish!
+    fulfillWish(wishId: String!, workstreamTemplateId: String!): Wish!
+    awardPoints(walletAddress: String!, reason: String!, points: Int!, wishId: String): WishlistPoints!
   }
 
   type Query {
@@ -178,6 +227,12 @@ const typeDefs = /* GraphQL */ `
     jobTemplates(status: String, safety_tier: String, limit: Int): [JobTemplate!]!
     jobTemplate(id: String!): JobTemplate
     getRequestClaim(requestId: String!): RequestClaim
+
+    # Wishlist Queries
+    wishes(status: String, category: String, orderBy: String, limit: Int, offset: Int): [Wish!]!
+    wish(id: String!): Wish
+    leaderboard(limit: Int): [LeaderboardEntry!]!
+    walletStats(address: String!): WalletStats
   }
 `;
 
@@ -203,6 +258,15 @@ async function assertRequestExists(ctx: Context, requestId: string) {
 
     clearTimeout(timeout);
 
+    // If Ponder is unavailable (5xx), skip validation rather than blocking claims
+    if (!res.ok) {
+      logger.warn({
+        requestId,
+        status: res.status,
+      }, 'Ponder returned non-OK status, skipping validation');
+      return;
+    }
+
     // Check if response is actually JSON before parsing
     const contentType = res.headers.get('content-type');
     if (!contentType?.includes('application/json')) {
@@ -226,88 +290,7 @@ async function assertRequestExists(ctx: Context, requestId: string) {
 }
 
 function getWorkerAddress(ctx: Context): string {
-  if (!ctx.workerAddress || typeof ctx.workerAddress !== 'string') {
-    throw new Error('Missing authenticated worker address');
-  }
-  if (ctx.workerAddress === '0x0000000000000000000000000000000000000000') {
-    throw new Error('Zero address is not a valid worker identity');
-  }
-  return ctx.workerAddress;
-}
-
-let controlApiNonceStore: Erc8128NonceStore = new InMemoryNonceStore();
-
-// Use Redis-backed nonce store when available for cross-restart/replica replay protection
-const redisUrl = process.env.REDIS_URL;
-if (redisUrl) {
-  try {
-    const { default: Redis } = await import('ioredis');
-    const redis = new Redis(redisUrl, { maxRetriesPerRequest: 3 });
-    redis.on('error', (err: Error) => logger.error({ error: err.message }, 'Control API Redis error'));
-    redis.on('connect', () => logger.info('Control API Redis connected — nonce replay protection ENABLED'));
-    // ioredis queues commands until connected, so assignment is safe immediately
-    controlApiNonceStore = new RedisNonceStore(redis, 'ctrl:erc8128:nonce:');
-  } catch (err) {
-    logger.warn({ error: String(err) }, 'ioredis not available — using in-memory nonce store');
-  }
-} else {
-  logger.warn('REDIS_URL not set — Control API using in-memory nonce store. Replay protection will not persist across restarts.');
-}
-
-const controlApiChainId = resolveChainId(
-  process.env.CHAIN_ID ||
-  process.env.MECH_CHAIN_CONFIG ||
-  process.env.CHAIN_CONFIG ||
-  'base',
-);
-
-function unauthenticatedError(message: string, reason: string, detail?: string): GraphQLError {
-  return new GraphQLError(message, {
-    extensions: {
-      code: 'UNAUTHENTICATED',
-      reason,
-      ...(detail ? { detail } : {}),
-      http: { status: 401 },
-    },
-  });
-}
-
-async function authenticateGraphqlRequest(request: Request): Promise<string> {
-  if (request.method === 'OPTIONS') {
-    return '0x0000000000000000000000000000000000000000';
-  }
-
-  const verifyResult = await verifyRequestWithErc8128({
-    request: request.clone(),
-    nonceStore: controlApiNonceStore,
-    policy: {
-      label: 'eth',
-      strictLabel: true,
-      replayable: false,
-      clockSkewSec: 5,
-      maxValiditySec: 300,
-      maxNonceWindowSec: 300,
-    },
-  });
-
-  if (!verifyResult.ok) {
-    logger.warn({
-      reason: verifyResult.reason,
-      detail: verifyResult.detail,
-      method: request.method,
-      url: request.url,
-    }, 'Rejected unsigned or invalid GraphQL request');
-    throw unauthenticatedError('Invalid ERC-8128 signature', verifyResult.reason, verifyResult.detail);
-  }
-
-  if (verifyResult.chainId !== controlApiChainId) {
-    throw unauthenticatedError(
-      `Signer chain mismatch: expected ${controlApiChainId}, got ${verifyResult.chainId}`,
-      'chain_id_mismatch',
-    );
-  }
-
-  return verifyResult.address.toLowerCase();
+  return ctx.verifiedAddress;
 }
 
 const resolvers = {
@@ -379,6 +362,123 @@ const resolvers = {
 
       if (error) throw new Error(error.message);
       return data; // Returns null if not found
+    },
+
+    // Wishlist Queries
+    wishes: async (
+      _: any,
+      args: { status?: string; category?: string; orderBy?: string; limit?: number; offset?: number },
+      ctx: Context
+    ) => {
+      let query = ctx.supabase
+        .from('wishlist_wishes')
+        .select('*');
+
+      if (args.status) {
+        query = query.eq('status', args.status);
+      }
+      if (args.category) {
+        query = query.eq('category', args.category);
+      }
+
+      // Order by: upvotes (default), created_at, or updated_at
+      const orderField = args.orderBy === 'created_at' ? 'created_at'
+        : args.orderBy === 'updated_at' ? 'updated_at'
+        : 'upvotes';
+      query = query.order(orderField, { ascending: false });
+
+      if (args.limit) {
+        query = query.limit(args.limit);
+      }
+      if (args.offset) {
+        query = query.range(args.offset, args.offset + (args.limit || 50) - 1);
+      }
+
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      return (data || []).map((w: any) => ({
+        ...w,
+        context: w.context ? JSON.stringify(w.context) : null,
+      }));
+    },
+
+    wish: async (_: any, args: { id: string }, ctx: Context) => {
+      const { data, error } = await ctx.supabase
+        .from('wishlist_wishes')
+        .select('*')
+        .eq('id', args.id)
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+
+      return {
+        ...data,
+        context: data.context ? JSON.stringify(data.context) : null,
+      };
+    },
+
+    leaderboard: async (_: any, args: { limit?: number }, ctx: Context) => {
+      const limit = args.limit || 100;
+
+      const { data, error } = await ctx.supabase
+        .from('wishlist_wallets')
+        .select('address, total_points')
+        .order('total_points', { ascending: false })
+        .limit(limit);
+
+      if (error) throw new Error(error.message);
+
+      return (data || []).map((w: any) => ({
+        address: w.address,
+        total_points: w.total_points || 0,
+      }));
+    },
+
+    walletStats: async (_: any, args: { address: string }, ctx: Context) => {
+      // Get wallet
+      const { data: wallet, error: walletErr } = await ctx.supabase
+        .from('wishlist_wallets')
+        .select('*')
+        .eq('address', args.address)
+        .maybeSingle();
+
+      if (walletErr) throw new Error(walletErr.message);
+      if (!wallet) return null;
+
+      // Get wish counts
+      const { count: wishesCreated } = await ctx.supabase
+        .from('wishlist_wishes')
+        .select('*', { count: 'exact', head: true })
+        .eq('wallet_address', args.address);
+
+      const { count: upvotesGiven } = await ctx.supabase
+        .from('wishlist_upvotes')
+        .select('*', { count: 'exact', head: true })
+        .eq('wallet_address', args.address);
+
+      // Upvotes received = sum of upvotes on wishes created by this wallet
+      const { data: wishesData } = await ctx.supabase
+        .from('wishlist_wishes')
+        .select('upvotes')
+        .eq('wallet_address', args.address);
+      const upvotesReceived = (wishesData || []).reduce((sum: number, w: any) => sum + (w.upvotes || 0), 0);
+
+      const { count: wishesFulfilled } = await ctx.supabase
+        .from('wishlist_wishes')
+        .select('*', { count: 'exact', head: true })
+        .eq('wallet_address', args.address)
+        .eq('status', 'fulfilled');
+
+      return {
+        address: args.address,
+        total_points: wallet.total_points || 0,
+        wishes_created: wishesCreated || 0,
+        upvotes_given: upvotesGiven || 0,
+        upvotes_received: upvotesReceived,
+        wishes_fulfilled: wishesFulfilled || 0,
+      };
     },
   },
   Mutation: {
@@ -952,6 +1052,302 @@ const resolvers = {
         x402_price: String(t.x402_price || 0),
       };
     },
+
+    // Wishlist Mutations
+    createWishlistWallet: async (
+      _: any,
+      args: { address: string; publicKey?: string },
+      ctx: Context
+    ) => {
+      const payload = {
+        address: args.address,
+        public_key: args.publicKey ?? null,
+        deployed: false,
+        total_points: 0,
+      };
+
+      const { data, error } = await ctx.supabase
+        .from('wishlist_wallets')
+        .insert(payload)
+        .select()
+        .limit(1);
+
+      if (error) {
+        // If duplicate, return existing
+        if (error.code === '23505') {
+          const { data: existing } = await ctx.supabase
+            .from('wishlist_wallets')
+            .select('*')
+            .eq('address', args.address)
+            .single();
+          return existing;
+        }
+        throw new Error(error.message);
+      }
+
+      return data![0];
+    },
+
+    createWish: async (
+      _: any,
+      args: { walletAddress: string; intent: string; context?: string; category?: string },
+      ctx: Context
+    ) => {
+      // Ensure wallet exists
+      const { data: wallet } = await ctx.supabase
+        .from('wishlist_wallets')
+        .select('address')
+        .eq('address', args.walletAddress)
+        .maybeSingle();
+
+      if (!wallet) {
+        throw new Error(`Wallet not found: ${args.walletAddress}`);
+      }
+
+      const payload = {
+        wallet_address: args.walletAddress,
+        intent: args.intent,
+        context: args.context ? JSON.parse(args.context) : {},
+        category: args.category ?? null,
+        upvotes: 0,
+        status: 'pending',
+      };
+
+      const { data, error } = await ctx.supabase
+        .from('wishlist_wishes')
+        .insert(payload)
+        .select()
+        .limit(1);
+
+      if (error) throw new Error(error.message);
+
+      const wish = data![0];
+
+      // Award 10 points for creating a wish
+      await ctx.supabase.from('wishlist_points').insert({
+        wallet_address: args.walletAddress,
+        reason: 'wish_created',
+        points: 10,
+        wish_id: wish.id,
+      });
+
+      // Update wallet total points
+      await ctx.supabase
+        .from('wishlist_wallets')
+        .update({ total_points: wallet.total_points + 10 })
+        .eq('address', args.walletAddress);
+
+      return {
+        ...wish,
+        context: wish.context ? JSON.stringify(wish.context) : null,
+      };
+    },
+
+    upvoteWish: async (
+      _: any,
+      args: { wishId: string; walletAddress: string },
+      ctx: Context
+    ) => {
+      // Ensure upvoter wallet exists
+      const { data: voterWallet } = await ctx.supabase
+        .from('wishlist_wallets')
+        .select('address')
+        .eq('address', args.walletAddress)
+        .maybeSingle();
+
+      if (!voterWallet) {
+        throw new Error(`Wallet not found: ${args.walletAddress}`);
+      }
+
+      // Get the wish
+      const { data: wish, error: wishErr } = await ctx.supabase
+        .from('wishlist_wishes')
+        .select('*')
+        .eq('id', args.wishId)
+        .single();
+
+      if (wishErr || !wish) {
+        throw new Error(`Wish not found: ${args.wishId}`);
+      }
+
+      // Prevent self-upvoting
+      if (wish.wallet_address === args.walletAddress) {
+        throw new Error('Cannot upvote your own wish');
+      }
+
+      // Try to insert upvote (will fail if already exists due to unique constraint)
+      const { error: upvoteErr } = await ctx.supabase
+        .from('wishlist_upvotes')
+        .insert({
+          wish_id: args.wishId,
+          wallet_address: args.walletAddress,
+        });
+
+      if (upvoteErr) {
+        if (upvoteErr.code === '23505') {
+          throw new Error('Already upvoted this wish');
+        }
+        throw new Error(upvoteErr.message);
+      }
+
+      // Increment upvote count on wish
+      const newUpvotes = (wish.upvotes || 0) + 1;
+      const { data: updatedWish, error: updateErr } = await ctx.supabase
+        .from('wishlist_wishes')
+        .update({ upvotes: newUpvotes })
+        .eq('id', args.wishId)
+        .select()
+        .limit(1);
+
+      if (updateErr) throw new Error(updateErr.message);
+
+      // Award 1 point to the wish creator for receiving an upvote
+      await ctx.supabase.from('wishlist_points').insert({
+        wallet_address: wish.wallet_address,
+        reason: 'upvote_received',
+        points: 1,
+        wish_id: args.wishId,
+      });
+
+      // Update wish creator's total points
+      const { data: creatorWallet } = await ctx.supabase
+        .from('wishlist_wallets')
+        .select('total_points')
+        .eq('address', wish.wallet_address)
+        .single();
+
+      if (creatorWallet) {
+        await ctx.supabase
+          .from('wishlist_wallets')
+          .update({ total_points: (creatorWallet.total_points || 0) + 1 })
+          .eq('address', wish.wallet_address);
+      }
+
+      const result = updatedWish![0];
+      return {
+        ...result,
+        context: result.context ? JSON.stringify(result.context) : null,
+      };
+    },
+
+    fulfillWish: async (
+      _: any,
+      args: { wishId: string; workstreamTemplateId: string },
+      ctx: Context
+    ) => {
+      // Get the wish
+      const { data: wish, error: wishErr } = await ctx.supabase
+        .from('wishlist_wishes')
+        .select('*')
+        .eq('id', args.wishId)
+        .single();
+
+      if (wishErr || !wish) {
+        throw new Error(`Wish not found: ${args.wishId}`);
+      }
+
+      if (wish.status === 'fulfilled') {
+        throw new Error('Wish already fulfilled');
+      }
+
+      // Verify the template exists
+      const { data: template } = await ctx.supabase
+        .from('job_templates')
+        .select('id')
+        .eq('id', args.workstreamTemplateId)
+        .maybeSingle();
+
+      if (!template) {
+        throw new Error(`Template not found: ${args.workstreamTemplateId}`);
+      }
+
+      // Update wish to fulfilled
+      const { data: updatedWish, error: updateErr } = await ctx.supabase
+        .from('wishlist_wishes')
+        .update({
+          status: 'fulfilled',
+          fulfilled_by: args.workstreamTemplateId,
+          fulfilled_at: new Date().toISOString(),
+        })
+        .eq('id', args.wishId)
+        .select()
+        .limit(1);
+
+      if (updateErr) throw new Error(updateErr.message);
+
+      // Award 50 points to the wish creator
+      await ctx.supabase.from('wishlist_points').insert({
+        wallet_address: wish.wallet_address,
+        reason: 'fulfilled',
+        points: 50,
+        wish_id: args.wishId,
+      });
+
+      // Update wallet total points
+      const { data: wallet } = await ctx.supabase
+        .from('wishlist_wallets')
+        .select('total_points')
+        .eq('address', wish.wallet_address)
+        .single();
+
+      if (wallet) {
+        await ctx.supabase
+          .from('wishlist_wallets')
+          .update({ total_points: (wallet.total_points || 0) + 50 })
+          .eq('address', wish.wallet_address);
+      }
+
+      const result = updatedWish![0];
+      return {
+        ...result,
+        context: result.context ? JSON.stringify(result.context) : null,
+      };
+    },
+
+    awardPoints: async (
+      _: any,
+      args: { walletAddress: string; reason: string; points: number; wishId?: string },
+      ctx: Context
+    ) => {
+      // Validate reason
+      const validReasons = ['wish_created', 'upvote_received', 'fulfilled', 'executed', 'referral'];
+      if (!validReasons.includes(args.reason)) {
+        throw new Error(`Invalid reason. Must be one of: ${validReasons.join(', ')}`);
+      }
+
+      // Ensure wallet exists
+      const { data: wallet } = await ctx.supabase
+        .from('wishlist_wallets')
+        .select('total_points')
+        .eq('address', args.walletAddress)
+        .maybeSingle();
+
+      if (!wallet) {
+        throw new Error(`Wallet not found: ${args.walletAddress}`);
+      }
+
+      // Insert points record
+      const { data, error } = await ctx.supabase
+        .from('wishlist_points')
+        .insert({
+          wallet_address: args.walletAddress,
+          reason: args.reason,
+          points: args.points,
+          wish_id: args.wishId ?? null,
+        })
+        .select()
+        .limit(1);
+
+      if (error) throw new Error(error.message);
+
+      // Update wallet total points
+      await ctx.supabase
+        .from('wishlist_wallets')
+        .update({ total_points: (wallet.total_points || 0) + args.points })
+        .eq('address', args.walletAddress);
+
+      return data![0];
+    },
   },
 };
 
@@ -972,15 +1368,54 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
+const nonceStore = new InMemoryNonceStore();
+
 const yoga = createYoga<Context>({
   schema,
   context: async ({ request }) => {
-    const workerAddress = await authenticateGraphqlRequest(request);
+    // Try ERC-8128 signed auth first
+    const hasSignature = request.headers.has('signature');
+    if (hasSignature) {
+      const result = await verifyControlApiRequest(request.clone(), nonceStore);
+      if (!result.ok) {
+        logger.warn({
+          reason: result.reason,
+          detail: result.detail,
+          method: request.method,
+          url: request.url,
+          userAgent: request.headers.get('user-agent'),
+          xForwardedFor: request.headers.get('x-forwarded-for'),
+          hasSignature: !!request.headers.get('signature'),
+          hasWorkerAddr: !!request.headers.get('x-worker-address'),
+        }, 'ERC-8128 auth failed');
+        throw new Error(`ERC-8128 auth failed: ${result.reason}${result.detail ? ` (${result.detail})` : ''}`);
+      }
+      return {
+        supabase,
+        ponderUrl: PONDER_GRAPHQL_URL,
+        req: request,
+        verifiedAddress: result.address,
+      };
+    }
+
+    // Legacy fallback: accept X-Worker-Address header
+    const workerAddress = request.headers.get('x-worker-address');
+    if (workerAddress) {
+      logger.debug({ workerAddress }, 'Legacy auth: using X-Worker-Address header');
+      return {
+        supabase,
+        ponderUrl: PONDER_GRAPHQL_URL,
+        req: request,
+        verifiedAddress: workerAddress,
+      };
+    }
+
+    // No auth at all — allow introspection/health queries with no verified address
     return {
       supabase,
       ponderUrl: PONDER_GRAPHQL_URL,
       req: request,
-      workerAddress,
+      verifiedAddress: undefined as any,
     };
   },
   graphqlEndpoint: '/graphql',

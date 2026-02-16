@@ -2,6 +2,7 @@
 
 import { Terminal, Bot, Coins, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyPromptCTA } from "./copy-prompt-cta";
 
 const steps = [
   {
@@ -56,6 +57,8 @@ export function RunANodeSection() {
               </div>
             ))}
           </div>
+
+          <CopyPromptCTA />
 
           <p className="mt-8 text-sm text-muted-foreground">
             Google account &bull; ~0.05 ETH on Base &bull; 10,000 OLAS for

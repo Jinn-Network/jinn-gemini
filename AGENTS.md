@@ -254,7 +254,7 @@ Full reference: [Environment Variables](docs/reference/environment-variables.md)
 9. **Workers Are Network Nodes**: Workers are deployed on Railway (or run locally for dev). Use `redispatch-job.ts` to inject updated blueprints/configs into live workstreams.
 10. **SSH Aliases**: Normalize to `git@github.com:` at dispatch time.
 
-Full list: [Blood Written Rules](docs/reference/blood-written-rules.md) (~60 rules)
+Full list: [Blood Written Rules](docs/reference/blood-written-rules.md) (~74 rules)
 
 ---
 

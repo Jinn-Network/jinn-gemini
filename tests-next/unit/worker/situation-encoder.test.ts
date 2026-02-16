@@ -117,7 +117,7 @@ beforeEach(async () => {
     return { ok: true, json: async () => ({ data: { requests: { items: [] } } }) };
   });
 
-  ({ encodeSituation, createInitialSituation } = await import('../../../worker/situation_encoder.js'));
+  ({ encodeSituation, createInitialSituation } = await import('jinn-node/worker/situation_encoder.js'));
 });
 
 describe('encodeSituation', () => {

@@ -325,7 +325,7 @@ async function main() {
       chainConfig,
       keyConfig: { source: 'value', value: privateKey },
       postOnly: true,
-      responseTimeout: 300,
+      responseTimeout: 61,
     });
 
     result = {

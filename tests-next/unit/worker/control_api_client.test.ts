@@ -14,7 +14,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { claimRequest } from 'jinn-node/worker/control_api_client.js';
 
 // Mock dependencies
-vi.mock('jinn-node/envoperate-profile.js', () => ({
+vi.mock('jinn-node/env/operate-profile.js', () => ({
   getMechAddress: vi.fn().mockReturnValue('0xWORKER123'),
   getServicePrivateKey: vi.fn(),
   getMechChainConfig: vi.fn()

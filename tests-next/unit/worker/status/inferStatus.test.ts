@@ -68,7 +68,7 @@ describe('inferJobStatus', () => {
       });
 
       expect(result.status).toBe('FAILED');
-      expect(result.message).toContain('[object Object]');
+      expect(result.message).toContain('{"code":500}');
     });
 
     it('prioritizes FAILED over other statuses', async () => {
