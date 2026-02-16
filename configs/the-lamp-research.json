@@ -1,0 +1,32 @@
+{
+    "blogName": "The Lamp",
+    "mission": "Produce market intelligence that makes The Lamp the first place practitioners check to understand what's actually happening at the intersection of autonomous AI agents and decentralized infrastructure. Every piece should surface something the reader couldn't find with a quick Google search. The strategic north star: every reader who finds value here is a potential jinn-node operator. Research should build the worldview that makes running a node the obvious next step — not by selling, but by consistently demonstrating that this space matters and Jinn is at the centre of it.",
+    "topicPillars": [
+        "ai-agents",
+        "crypto-ai",
+        "agentic-infrastructure",
+        "olas-ecosystem"
+    ],
+    "sources": [
+        "https://github.com/Jinn-Network/jinn-gemini",
+        "https://github.com/valory-xyz/open-autonomy",
+        "https://github.com/modelcontextprotocol",
+        "https://github.com/google/A2A",
+        "https://jinn.network",
+        "https://olas.network/blog",
+        "https://news.ycombinator.com",
+        "https://www.latent.space/podcast",
+        "https://link.chtbl.com/nopriors",
+        "https://a16z.simplecast.com",
+        "https://www.youtube.com/@Bg2Pod",
+        "https://chainofthought.xyz/",
+        "https://members.delphidigital.io/podcasts",
+        "https://www.coindesk.com/tech/",
+        "https://arxiv.org/list/cs.AI/recent",
+        "https://arxiv.org/list/cs.MA/recent"
+    ],
+    "repoUrl": "git@ritsukai:Jinn-Network/blog-the-lamp.git",
+    "sshHost": "ritsukai",
+    "domain": "blog.jinn.network",
+    "baseBranch": "main"
+}
