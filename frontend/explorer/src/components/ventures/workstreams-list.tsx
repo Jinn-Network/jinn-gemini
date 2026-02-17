@@ -1,80 +1,12 @@
-'use client';
-
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2 } from 'lucide-react';
+import { ArrowRight, GitBranch } from 'lucide-react';
+import type { Workstream } from '@/lib/subgraph';
 
-interface WorkstreamGroup {
-  workstreamId: string;
-  jobName: string;
-  templateId?: string;
-  createdAt: string;
-  lastActivity?: string;
-  delivered: boolean;
-  requestCount: number;
-}
-
-interface WorkstreamsListProps {
-  ventureId: string;
-}
-
-async function fetchVentureWorkstreams(ventureId: string): Promise<WorkstreamGroup[]> {
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://ponder-production-6d16.up.railway.app/graphql'}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query VentureWorkstreams($ventureId: String!) {
-          workstreams(
-            where: { ventureId: $ventureId }
-            orderBy: "lastActivity"
-            orderDirection: "desc"
-            limit: 50
-          ) {
-            items {
-              id
-              jobName
-              blockTimestamp
-              lastActivity
-              childRequestCount
-              delivered
-            }
-          }
-        }`,
-        variables: { ventureId },
-      }),
-    }
-  );
-
-  if (!response.ok) return [];
-
-  const data = await response.json();
-  const items: any[] = data?.data?.workstreams?.items || [];
-
-  return items.map(ws => ({
-    workstreamId: ws.id,
-    jobName: ws.jobName || 'Unnamed',
-    createdAt: ws.blockTimestamp,
-    lastActivity: ws.lastActivity,
-    delivered: ws.delivered,
-    requestCount: ws.childRequestCount || 0,
-  }));
-}
-
-function formatTimeAgo(timestamp: string): string {
+function formatTimeAgo(unixSeconds: string): string {
   const now = Date.now();
-  const diff = now - Number(timestamp) * 1000;
+  const diff = now - Number(unixSeconds) * 1000;
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
@@ -84,117 +16,71 @@ function formatTimeAgo(timestamp: string): string {
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 30) return `${days}d ago`;
-  return new Date(Number(timestamp) * 1000).toLocaleDateString();
+  return new Date(Number(unixSeconds) * 1000).toLocaleDateString();
 }
 
-function formatDate(timestamp: string): string {
-  const date = new Date(Number(timestamp) * 1000);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+interface WorkstreamsListProps {
+  workstreams: Workstream[];
+  ventureName: string;
 }
 
-function WorkstreamsTableSkeleton() {
-  return (
-    <div className="rounded-md border overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Job Name</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Requests</TableHead>
-            <TableHead>Last Activity</TableHead>
-            <TableHead>Started</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {[...Array(3)].map((_, i) => (
-            <TableRow key={i}>
-              <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-              <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-              <TableCell className="text-right"><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-export function WorkstreamsList({ ventureId }: WorkstreamsListProps) {
-  const [workstreams, setWorkstreams] = useState<WorkstreamGroup[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchVentureWorkstreams(ventureId).then((ws) => {
-      setWorkstreams(ws);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [ventureId]);
-
-  if (loading) {
-    return <WorkstreamsTableSkeleton />;
-  }
-
+export function WorkstreamsList({ workstreams, ventureName }: WorkstreamsListProps) {
   if (workstreams.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
-        No workstreams found
-      </div>
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground">
+          No workstreams found for this venture yet.
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="rounded-md border overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Job Name</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Requests</TableHead>
-            <TableHead>Last Activity</TableHead>
-            <TableHead>Started</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {workstreams.map((ws) => (
-            <TableRow key={ws.workstreamId} className="cursor-pointer">
-              <TableCell>
-                <Link
-                  href={`/workstreams/${ws.workstreamId}`}
-                  className="text-primary hover:underline font-medium"
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <GitBranch className="h-4 w-4" />
+        <span>{workstreams.length} workstream{workstreams.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {workstreams.map((ws) => (
+          <Card key={ws.id} className="hover:border-primary/50 transition-colors">
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-base leading-tight">
+                  <Link
+                    href={`/ventures/${ws.id}`}
+                    className="hover:text-primary hover:underline"
+                  >
+                    {ws.jobName || 'Unnamed Workstream'}
+                  </Link>
+                </CardTitle>
+                <Badge
+                  variant="outline"
+                  className={ws.delivered
+                    ? 'bg-green-500/10 text-green-500 border-green-500/20 shrink-0'
+                    : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20 shrink-0'
+                  }
                 >
-                  {ws.jobName}
-                </Link>
-              </TableCell>
-              <TableCell>
-                {ws.delivered ? (
-                  <Badge className="bg-green-500/15 text-green-600 border-green-500/20 hover:bg-green-500/15">
-                    Delivered
-                  </Badge>
-                ) : (
-                  <Badge className="bg-yellow-500/15 text-yellow-600 border-yellow-500/20 hover:bg-yellow-500/15">
-                    Active
-                  </Badge>
-                )}
-              </TableCell>
-              <TableCell className="text-right text-muted-foreground">
-                {ws.requestCount}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {ws.lastActivity ? formatTimeAgo(ws.lastActivity) : '—'}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(ws.createdAt)}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                  {ws.delivered ? 'delivered' : 'active'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>{ws.childRequestCount} request{ws.childRequestCount !== 1 ? 's' : ''}</span>
+                <span>Last active {formatTimeAgo(ws.lastActivity || ws.blockTimestamp)}</span>
+              </div>
+              <Link
+                href={`/ventures/${ws.id}`}
+                className="flex items-center gap-1 text-sm text-primary hover:underline"
+              >
+                View details <ArrowRight className="h-3 w-3" />
+              </Link>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

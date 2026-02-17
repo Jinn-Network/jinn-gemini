@@ -348,7 +348,7 @@ async function main() {
       chainConfig: profile.chainConfig || CHAIN_CONFIG,
       keyConfig: { source: 'value', value: profile.privateKey },
       postOnly: true,
-      responseTimeout: 300,
+      responseTimeout: 61,
     });
 
     if (!result?.request_ids?.[0]) {

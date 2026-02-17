@@ -41,7 +41,7 @@ describe('ServiceConfig', () => {
 
   describe('SERVICE_CONSTANTS', () => {
     it('defines valid default service bond', () => {
-      expect(SERVICE_CONSTANTS.DEFAULT_SERVICE_BOND_WEI).toBe('10000000000000000');
+      expect(SERVICE_CONSTANTS.DEFAULT_SERVICE_BOND_WEI).toBe('50000000000000000000');
       expect(typeof SERVICE_CONSTANTS.DEFAULT_SERVICE_BOND_WEI).toBe('string');
     });
 
@@ -104,13 +104,12 @@ describe('ServiceConfig', () => {
       expect(typeof ethFunding.safe).toBe('number');
     });
 
-    it('includes OLAS token fund requirements', () => {
+    it('does not include OLAS token in default fund requirements', () => {
       const config = createDefaultServiceConfig();
       const olasFunding = config.configurations.base.fund_requirements['0x54330d28ca3357F294334BDC454a032e7f353416'];
 
-      expect(olasFunding).toBeDefined();
-      expect(typeof olasFunding.agent).toBe('number');
-      expect(typeof olasFunding.safe).toBe('number');
+      // OLAS token is not included in default config — middleware handles staking bond separately
+      expect(olasFunding).toBeUndefined();
     });
 
     it('sets mech marketplace disabled by default', () => {

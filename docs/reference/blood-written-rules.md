@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-02
+last_verified: 2026-02-16
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -394,6 +394,84 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 1. `getPrivateKeyPath()` auto-overwrites `ethereum_private_key.txt` with `MECH_PRIVATE_KEY` env var
 2. Two separate private key env vars: `MECH_PRIVATE_KEY` (mech-client) vs `WORKER_PRIVATE_KEY` (worker)
 **Solution:** Set `MECH_PRIVATE_KEY` to match funded wallet, ensure `RPC_URL` points to correct endpoint
+
+### 65. Unbound Pino Logger Methods Crash Execution Before Agent Spawn
+**Issue:** Worker crashes during job initialization with `Cannot read properties of undefined (reading 'Symbol(pino.msgPrefix)')`.
+**Root Cause:** `workerLogger.warn` / `workerLogger.info` were captured into a variable and invoked unbound, losing `this` context required by Pino internals.
+**Solution:** Call logger methods directly on `workerLogger` (or bind explicitly) instead of storing method references.
+**Prevention:** Avoid destructuring or assigning Pino logger methods before invocation in worker execution paths.
+
+### 66. x402 Gateway Crashes Without CDP Credentials
+**Issue:** Setting `PAYMENT_WALLET_ADDRESS` without `CDP_API_KEY_ID` + `CDP_API_KEY_SECRET` causes the gateway to crash at startup with `RouteConfigurationError: Facilitator does not support scheme "exact"`
+**Root Cause:** `@x402/core`'s `HTTPFacilitatorClient` calls the CDP facilitator API to validate supported schemes. Without CDP credentials, the API returns 401 Unauthorized, and the library throws an unrecoverable error.
+**Solution:** Only initialize `x402ResourceServer` when ALL three env vars are present: `PAYMENT_WALLET_ADDRESS`, `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`. Without CDP keys, run in "discovery-only" mode (payTo visible in `/.well-known/x402` but payment enforcement disabled).
+**Prevention:** Always set CDP credentials before or alongside `PAYMENT_WALLET_ADDRESS`.
+
+### 67. OLAS AgentRegistry Only Exists on Ethereum Mainnet
+**Issue:** Sending `AgentRegistry.create()` transactions on Base silently succeeds (status=1, 0 logs) but does nothing — the contract doesn't exist on Base.
+**Root Cause:** The OLAS AgentRegistry (`0x2F1f7D38e4772884b88f3eCd8B6b9faCdC319112`) is deployed ONLY on Ethereum mainnet (chainId 1). On L2s like Base, the `ServiceRegistryL2` uses an "optimistic" approach — agent IDs reference mainnet-registered agents without local validation. There is no AgentRegistry or ComponentRegistry on Base.
+**Solution:** Mint agents on Ethereum mainnet using `ETH_RPC_URL` (not `BASE_RPC_URL`). Reference the resulting `agentId` in Base's `ServiceRegistryL2` using the optimistic approach.
+**Prevention:** Always verify contract deployment chain. Use `code = await provider.getCode(address)` — if `code === '0x'`, the contract doesn't exist on that chain.
+
+### 68. OLAS Agent Minting Requires Component Dependencies
+**Issue:** `AgentRegistry.create(owner, hash)` with the ABI in OlasContractInterfaces.ts reverts because the actual function signature is `create(address owner, bytes32 hash, uint32[] dependencies)`.
+**Root Cause:** The OLAS architecture requires agents to list component dependencies. The full registration flow is: (1) Register component in ComponentRegistry, (2) Register agent in AgentRegistry with component IDs as dependencies. An agent cannot be created with an empty dependencies array.
+**Solution:** Either use the `autonomy mint` CLI which handles the full flow, or first register a component, then create the agent with that component ID as a dependency. The ABI in `OlasContractInterfaces.ts` also needs the third `uint32[]` parameter added.
+**Prevention:** Check the actual contract ABI on Etherscan before writing registry interaction code. The OLAS contracts have strict hierarchical dependencies: Components → Agents → Services.
+
+### 69. OLAS Registry Must Go Through RegistriesManager
+**Issue:** Direct calls to `ComponentRegistry.create()` or `AgentRegistry.create()` revert with `ManagerOnly`.
+**Root Cause:** The OLAS registry contracts delegate creation authority to the `RegistriesManager` at `0x9eC9156dEF5C613B2a7D4c46C383F9B58DfcD6fE`. Only the manager can call `create()` on the underlying registries. The manager's `create()` takes `(uint8 unitType, address owner, bytes32 hash, uint32[] dependencies)` where unitType=0 is Component, unitType=1 is Agent.
+**Solution:** Call `RegistriesManager.create()` instead of the individual registry contracts. The `REGISTRIES_MANAGER_ABI` is now in `OlasContractInterfaces.ts`. Use `OlasContractHelpers.encodeComponentCreation()` and `OlasContractHelpers.encodeAgentCreationViaManager()`.
+**Prevention:** Always check if a registry contract has a manager/owner guard before calling create directly. The OLAS Jinn component is ID 314 on Ethereum mainnet.
+
+### 70. OLAS unitHash is SHA-256 Digest, NOT keccak256
+**Issue:** Agents and components registered on OLAS showed no metadata on marketplace — "unpinned from IPFS".
+**Root Cause:** The on-chain `unitHash` (bytes32) must be the raw SHA-256 digest from the IPFS CID, NOT `keccak256(toUtf8Bytes("ipfs://"+cid))`. The contract's `tokenURI()` reconstructs the IPFS URL by prepending `f01701220` to the stored hash. If you store a keccak256 hash, the reconstructed CID points to nothing.
+**Solution:** Use `bs58.decode(cid).slice(2)` to extract the 32-byte SHA-256 digest from a CIDv0 (Qm...). The first 2 bytes (0x12=sha2-256, 0x20=32 bytes) are the multihash prefix.
+**Prevention:** See `skills/olas-registry/SKILL.md`. The function `cidToBytes32()` in `mint-olas-agent.ts` does this correctly. Three rounds of minting (IDs 88-92, 93-97) were wasted before this was discovered. Component 315, Agents 98-102, Service 365 are the correct entries.
+
+### 71. OLAS Metadata Must Include image, code_uri, attributes
+**Issue:** Even with correct hashes, OLAS marketplace showed blank metadata fields.
+**Root Cause:** The OLAS marketplace frontend (`autonolas-frontend-mono`) expects specific JSON fields: `name` (org/slug:version format), `description`, `image` (ipfs://...), `code_uri`, `attributes` ([{trait_type,value}]). Custom-only schemas are ignored.
+**Solution:** Include all 5 required fields in metadata JSON. Additional custom fields are allowed and harmlessly ignored by the marketplace.
+**Prevention:** Check `skills/olas-registry/SKILL.md` for the expected schema before minting.
+
+### 72. ServiceManager.create() on Base: Token, Bond, and Threshold Requirements
+**Issue:** Multiple reverts when trying to create services on Base: `ZeroValue` (0x7c946ed7), `WrongThreshold`, `TokenRejected`.
+**Root Cause:** (1) Bond must be >= 1 wei even if not activating. (2) Threshold must be >= ceil(2/3 * totalSlots). (3) Must use ETH sentinel address `0xEeee...eEEeE` for the token param, not zero address or OLAS token.
+**Solution:** Set bond=1n per agent, threshold=ceil(2/3*numAgents), token=`0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE`. Must go through ServiceManagerToken, not ServiceRegistryL2 directly (ManagerOnly error).
+**Prevention:** See `skills/olas-registry/SKILL.md` for full service creation reference.
+
+### 73. Embedded Git Credentials in IPFS Job Metadata Expire
+**Issue:** Manager jobs (Site Manager, Content Manager, Distribution & Analytics Manager) failing with "Invalid username or token" or "Repository not found" at clone time.
+**Root Cause:** Job payloads baked into IPFS contain `codeMetadata.repo.remoteUrl` with embedded PATs (e.g., `https://x-access-token:ghp_xxx@github.com/org/repo`). When these tokens expire, every subsequent re-dispatch of that job fails at clone. The `buildGithubHttpsUrl()` function didn't recognize URLs with embedded credentials as GitHub URLs, so the worker's own `GITHUB_TOKEN` was never applied.
+**Solution:** (1) `buildGithubHttpsUrl()` now strips embedded credentials before URL matching, allowing the worker's `GITHUB_TOKEN` to be used. (2) Clone failures are now non-fatal — the agent runs without a local repo if clone fails, which is fine for research/coordination jobs.
+**Prevention:** When dispatching jobs, use clean repo URLs without embedded tokens. The worker will apply its own `GITHUB_TOKEN` at clone time.
+
+### 74. Jinn Staking mapServiceInfo Returns 5 Fields (Not 6)
+**Issue:** viem ABI decoding error "Position out of bounds" when reading `mapServiceInfo` on the Jinn staking contract (`0x0dfaFbf...`).
+**Root Cause:** The Jinn contract's `mapServiceInfo` returns `(address multisig, address owner, uint256 tsStart, uint256 reward, uint256 nonces)` — 5 static fields (160 bytes). Other OLAS staking contracts (e.g., AgentsFun1) return 6 fields with `uint256[] nonces` (dynamic) and `uint256 inactivity`. Using the wrong ABI causes the decoder to misinterpret field offsets.
+**Solution:** Use the correct 5-field ABI for Jinn. Always verify the raw return data length first: `client.call()` → check byte count before writing ABI definitions.
+**Prevention:** Don't assume all OLAS staking contracts share the same ABI. Check basescan or do a raw call to determine the actual return layout.
+
+### 75. OLAS Staking Requires NFT Approval Before stake()
+**Issue:** Safe `execTransaction` reverts with GS013 when calling `stake(serviceId)` on the staking contract.
+**Root Cause:** The staking contract calls `safeTransferFrom(msg.sender, address(this), serviceId)` to take ownership of the service NFT. This requires the caller (Safe) to have approved the staking contract as an operator for that specific token ID. Without approval, the inner transfer reverts.
+**Solution:** Before calling `stake()`, execute `approve(stakingContract, serviceId)` on the ServiceRegistry (`0x3C1fF68f5...`) via the Safe. Then call `stake()`.
+**Prevention:** Always approve NFT transfer before staking. The migration script now includes this step.
+
+### 76. OLAS Staking Contract Takes Ownership of Service NFT
+**Issue:** Agent wasted time investigating why `ownerOf(serviceId)` returned the staking contract address, incorrectly concluding the service was "evicted" or in an abnormal state.
+**Root Cause:** When a service is staked, the staking contract **takes ownership of the service NFT** via `transferFrom`. This is the normal, expected state for any staked service. `ownerOf()` returning a staking contract address simply means "this service is staked in that contract."
+**Solution:** To check staking status, call `getServiceIds()` on the staking contract — if the service ID is in the returned array, it's actively staked. If `ownerOf()` returns the staking contract but `getServiceIds()` does NOT include the service, it was evicted (contract holds the NFT but service is inactive). Use `getStakingState(serviceId)` for the authoritative state (0=Unstaked, 1=Staked, 2=Evicted).
+**Prevention:** Never interpret `ownerOf()` returning a staking contract as an error. This is how OLAS staking works by design.
+
+### 77. Frontend RPC Rate Limiting: Use Tenderly, Not Public Base RPC
+**Issue:** Staking dashboard showed "Request count unavailable" intermittently. Service 165 would load briefly, then all 3 service cards would fail. Issue was transient — sometimes worked, sometimes didn't.
+**Root Cause:** The staking page renders 3 service cards, each making 2 API calls (epoch + service-status), each creating a **fresh** `createPublicClient` instance making 2 RPC calls each. That's 12 parallel RPC calls to the rate-limited public `mainnet.base.org` endpoint, which throttles after ~4-6 calls. The subgraph data (epoch timing, staking state) loaded fine, but the RPC calls for `mapRequestCounts` and `calculateStakingReward` failed silently, falling through to the "unavailable" state.
+**Solution:** (1) Created a singleton RPC client module (`lib/staking/rpc.ts`) with viem's `batch: { multicall: true }` — this batches concurrent `readContract` calls into a single `eth_call` via Multicall3. (2) Used `loadEnvConfig()` in `next.config.js` to load the root `.env` which contains the Tenderly paid RPC URL. (3) Subgraph-primary architecture means RPC failures are non-fatal — page still renders with subgraph data.
+**Prevention:** Never use the public `mainnet.base.org` endpoint for production frontend reads. Always use the paid Tenderly RPC (`RPC_URL` in root `.env`). For new frontend apps in the monorepo, add `loadEnvConfig()` to `next.config.js` to inherit root env vars.
 
 ---
 

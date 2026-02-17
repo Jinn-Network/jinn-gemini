@@ -1,6 +1,6 @@
 'use client';
 
-import { HeartPulse, Activity, ArrowRight, Bot, Rows3, Calendar } from 'lucide-react';
+import { HeartPulse, Activity, ArrowRight, Bot, GitBranch } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LiveOutputView } from './live-output-view';
@@ -10,12 +10,10 @@ import { HealthSummary } from './health-summary';
 import { InvariantList, type InvariantWithMeasurement } from './invariant-list';
 import { ServiceOutputCard } from './service-output-card';
 import { TokenInfoCard } from './token-info-card';
-import { DispatchScheduleTab } from './dispatch-schedule';
-import { WorkstreamsList } from './workstreams-list';
+import { WorkstreamTreeList } from '@/components/workstream-tree-list';
 import { transformToActivityItems } from '@/lib/ventures/activity-utils';
 import type { ServiceOutput } from '@/lib/ventures/service-types';
-import type { JobDefinition, Request } from '@/lib/subgraph';
-import type { Venture } from '@/lib/ventures-services';
+import type { JobDefinition } from '@/lib/subgraph';
 import { type HealthStatus } from '@jinn/shared-ui';
 import { formatDate } from '@/lib/utils';
 
@@ -55,14 +53,12 @@ interface VentureDashboardProps {
     telegramUrl: string | null;
     activityData: { jobDefinitions: JobDefinition[] };
     workstreamId: string;
-    ventureId: string;
-    venture?: Venture | null;
     invariants: InvariantWithMeasurement[];
     statusCounts: Record<HealthStatus, number>;
     primaryOutput: ServiceOutput | null;
-    fetchActivity: (id: string) => Promise<{ jobDefinitions: JobDefinition[] }>;
-    initialTab?: 'dashboard' | 'health' | 'activity' | 'workstreams' | 'schedule';
-    dispatches?: Record<string, { count: number; latestRequest: Request | null; requests: Request[] }>;
+    fetchActivity: (workstreamId: string) => Promise<{ jobDefinitions: JobDefinition[] }>;
+    initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree';
+    initialSelectedJobId?: string | null;
     tokenInfo?: TokenInfo | null;
 }
 
@@ -72,41 +68,41 @@ export function VentureDashboard({
     telegramUrl,
     activityData,
     workstreamId,
-    ventureId,
-    venture,
     invariants,
     statusCounts,
     primaryOutput,
     fetchActivity,
     initialTab,
-    dispatches,
+    initialSelectedJobId,
     tokenInfo,
 }: VentureDashboardProps) {
     // Determine if we should show the Artifacts Gallery instead of Live Output
     // Show gallery when neither liveOutputUrl nor telegramUrl is configured
     const showArtifactsGallery = !liveOutputUrl && !telegramUrl;
-    const defaultTab = initialTab ?? 'dashboard';
+    const defaultTab = initialTab ?? (initialSelectedJobId ? 'work-tree' : 'dashboard');
     const router = useRouter();
     const [activeTab, setActiveTab] = useState(defaultTab);
+    const [selectedJobIdOverride, setSelectedJobIdOverride] = useState<string | null>(initialSelectedJobId ?? null);
 
     useEffect(() => {
         setActiveTab(defaultTab);
     }, [defaultTab]);
+
+    useEffect(() => {
+        setSelectedJobIdOverride(initialSelectedJobId ?? null);
+    }, [initialSelectedJobId]);
     const [activityPreviewData, setActivityPreviewData] = useState(activityData);
 
     useEffect(() => {
         setActivityPreviewData(activityData);
     }, [activityData]);
 
-    // Use ventureId for polling (aggregate across all workstreams)
-    const pollId = ventureId || workstreamId;
-
     useEffect(() => {
-        if (!pollId) return;
+        if (!workstreamId) return;
 
         const interval = setInterval(async () => {
             try {
-                const newData = await fetchActivity(pollId);
+                const newData = await fetchActivity(workstreamId);
                 if (newData.jobDefinitions.length > 0) {
                     setActivityPreviewData(prev => {
                         const prevCount = prev.jobDefinitions.length;
@@ -126,7 +122,7 @@ export function VentureDashboard({
         }, 5000);
 
         return () => clearInterval(interval);
-    }, [pollId, fetchActivity]);
+    }, [workstreamId, fetchActivity]);
 
     // Get latest 10 activity items for preview
     const activityItems = transformToActivityItems(activityPreviewData.jobDefinitions).slice(0, 10);
@@ -135,23 +131,20 @@ export function VentureDashboard({
     const measured = total - statusCounts.unknown;
     const passing = statusCounts.healthy;
 
-    const hasSchedule = venture?.dispatch_schedule && venture.dispatch_schedule.length > 0;
-
     return (
         <Tabs
             value={activeTab}
             onValueChange={(value) => {
                 setActiveTab(value as typeof activeTab);
-                const basePath = `/ventures/${ventureId}`;
+                const basePath = `/ventures/${workstreamId}`;
                 let nextPath = basePath;
                 if (value === 'health') {
                     nextPath = `${basePath}/health`;
                 } else if (value === 'activity') {
                     nextPath = `${basePath}/activity`;
-                } else if (value === 'workstreams') {
-                    nextPath = `${basePath}/workstreams`;
-                } else if (value === 'schedule') {
-                    nextPath = `${basePath}/schedule`;
+                } else if (value === 'work-tree') {
+                    setSelectedJobIdOverride(null);
+                    nextPath = `${basePath}/tree`;
                 }
                 if (typeof window !== 'undefined') {
                     window.history.pushState({}, '', nextPath);
@@ -175,16 +168,10 @@ export function VentureDashboard({
                     <Activity className="h-4 w-4" />
                     <span className="hidden sm:inline">Activity</span>
                 </TabsTrigger>
-                {hasSchedule && (
-                    <TabsTrigger value="schedule" className="gap-1 md:gap-2">
-                        <Calendar className="h-4 w-4" />
-                        <span className="hidden sm:inline">Schedule</span>
-                    </TabsTrigger>
-                )}
-                <TabsTrigger value="workstreams" className="gap-1 md:gap-2">
-                    <Rows3 className="h-4 w-4" />
-                    <span className="hidden sm:inline">Workstreams</span>
-                    <span className="sm:hidden">Jobs</span>
+                <TabsTrigger value="work-tree" className="gap-1 md:gap-2">
+                    <GitBranch className="h-4 w-4" />
+                    <span className="hidden sm:inline">Work Tree</span>
+                    <span className="sm:hidden">Tree</span>
                 </TabsTrigger>
             </TabsList>
 
@@ -197,7 +184,14 @@ export function VentureDashboard({
                             <ArtifactsGallery
                                 workstreamId={workstreamId}
                                 onNavigateToJob={(jobDefId) => {
-                                    router.push(`/workstreams/${workstreamId}`);
+                                    setSelectedJobIdOverride(jobDefId);
+                                    setActiveTab('work-tree');
+                                    const nextPath = `/ventures/${workstreamId}/tree/${jobDefId}`;
+                                    if (typeof window !== 'undefined') {
+                                        window.history.pushState({}, '', nextPath);
+                                    } else {
+                                        router.push(nextPath);
+                                    }
                                 }}
                             />
                         ) : (
@@ -281,26 +275,18 @@ export function VentureDashboard({
                                 ) : (
                                     <div className="space-y-3">
                                         {activityItems.map((item) => (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                className="flex gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-accent/50 text-left"
-                                                onClick={() => {
-                                                    setActiveTab('activity');
-                                                    const nextPath = `/ventures/${ventureId}/activity`;
-                                                    if (typeof window !== 'undefined') {
-                                                        window.history.pushState({}, '', nextPath);
-                                                    } else {
-                                                        router.push(nextPath);
-                                                    }
-                                                }}
-                                            >
+                                            <div key={item.id} className="flex gap-2 rounded-md px-1.5 py-1">
                                                 <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                                                     <Bot className="h-3 w-3 text-primary" />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-baseline gap-1.5 mb-0.5">
-                                                        <span className="font-medium text-xs text-foreground">{item.jobName}</span>
+                                                        <a 
+                                                            href={`/ventures/${item.workstreamId}`}
+                                                            className="font-medium text-xs text-primary hover:underline"
+                                                        >
+                                                            {item.jobName}
+                                                        </a>
                                                         <span className="text-[10px] text-muted-foreground">
                                                             {formatTimeAgo(item.timestamp)}
                                                         </span>
@@ -309,7 +295,7 @@ export function VentureDashboard({
                                                         {item.message}
                                                     </p>
                                                 </div>
-                                            </button>
+                                            </div>
                                         ))}
                                     </div>
                                 )}
@@ -351,34 +337,28 @@ export function VentureDashboard({
                 <div className="h-[600px]">
                     <ActivityFeed
                         initialData={activityData}
-                        workstreamId={pollId}
+                        workstreamId={workstreamId}
                         fetchActivity={fetchActivity}
                     />
                 </div>
             </TabsContent>
 
-            {/* Schedule Tab */}
-            {hasSchedule && (
-                <TabsContent value="schedule" className="flex-1 min-h-0 mt-4 overflow-auto">
-                    <DispatchScheduleTab
-                        ventureId={ventureId}
-                        schedule={venture!.dispatch_schedule}
-                        dispatches={dispatches}
-                    />
-                </TabsContent>
-            )}
-
-            {/* Workstreams Tab */}
-            <TabsContent value="workstreams" className="flex-1 min-h-0 mt-4">
-                {ventureId ? (
-                    <WorkstreamsList ventureId={ventureId} />
-                ) : (
-                    <Card>
-                        <CardContent className="py-8 text-center text-muted-foreground">
-                            No workstreams dispatched yet
-                        </CardContent>
-                    </Card>
-                )}
+            {/* Work Tree Tab */}
+            <TabsContent value="work-tree" className="flex-1 min-h-0 mt-4">
+                <Card className="py-0 gap-0">
+                    <CardContent className="p-0">
+                        <WorkstreamTreeList
+                            rootId={workstreamId}
+                            initialSelectedJobId={initialSelectedJobId ?? undefined}
+                            selectedJobId={selectedJobIdOverride}
+                            onJobSelectRoute={(jobId) => {
+                                if (typeof window !== 'undefined') {
+                                    window.history.pushState({}, '', `/ventures/${workstreamId}/tree/${jobId}`);
+                                }
+                            }}
+                        />
+                    </CardContent>
+                </Card>
             </TabsContent>
         </Tabs>
     );

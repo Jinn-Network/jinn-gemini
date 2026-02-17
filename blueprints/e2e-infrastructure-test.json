@@ -1,0 +1,55 @@
+{
+  "name": "E2E Infrastructure Test",
+  "description": "Validates full agent infrastructure: web search, artifacts, measurements, credential-dependent tools, and delegation.",
+  "version": "1.0.0",
+  "enabledTools": [
+    "google_web_search",
+    "web_fetch",
+    "create_artifact",
+    "create_measurement",
+    "ventures_registry",
+    "dispatch_new_job"
+  ],
+  "invariants": [
+    {
+      "id": "GOAL-001",
+      "type": "BOOLEAN",
+      "condition": "Research the current price of OLAS token using web search. Create an artifact summarizing findings including current price, 24h change, and market cap.",
+      "assessment": "Artifact exists with OLAS price data sourced from web search results.",
+      "measurement": {
+        "type": "BOOLEAN",
+        "hint": "Measure whether the research artifact was created with OLAS price data."
+      }
+    },
+    {
+      "id": "TOOL-SEARCH",
+      "type": "BOOLEAN",
+      "condition": "You must use the google_web_search tool to find OLAS token price data.",
+      "assessment": "Check telemetry for google_web_search tool calls."
+    },
+    {
+      "id": "TOOL-ARTIFACT",
+      "type": "BOOLEAN",
+      "condition": "You must use the create_artifact tool to store your research findings.",
+      "assessment": "Check telemetry for create_artifact tool calls."
+    },
+    {
+      "id": "TOOL-MEASURE",
+      "type": "BOOLEAN",
+      "condition": "You must measure GOAL-001 using create_measurement after completing the research.",
+      "assessment": "Check telemetry for create_measurement tool call targeting GOAL-001."
+    },
+    {
+      "id": "TOOL-REGISTRY",
+      "type": "BOOLEAN",
+      "condition": "You must use the venture_query tool to list active ventures from the registry. Call it with mode 'list' and status 'active'.",
+      "assessment": "Check telemetry for venture_query tool call with mode=list."
+    },
+    {
+      "id": "DELEGATE-001",
+      "type": "BOOLEAN",
+      "condition": "Delegate a sub-task: use dispatch_new_job to dispatch a child job. The child blueprint should have one invariant requiring it to create an artifact summarizing the OLAS token ecosystem (what it does, key protocols). Use enabledTools: ['google_web_search', 'web_fetch', 'create_artifact'].",
+      "assessment": "Check telemetry for dispatch_new_job tool call that returned a request ID."
+    }
+  ]
+}

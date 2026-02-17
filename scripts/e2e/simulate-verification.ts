@@ -116,7 +116,7 @@ async function main() {
         chainConfig,
         keyConfig: { source: 'value', value: privateKey },
         postOnly: true,
-        responseTimeout: 300,
+        responseTimeout: 61,
     });
 
     if (result && result.request_ids && result.request_ids.length > 0) {

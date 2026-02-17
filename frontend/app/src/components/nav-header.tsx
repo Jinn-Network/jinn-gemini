@@ -1,53 +1,46 @@
-"use client";
+'use client';
 
 import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
+import { Rocket } from 'lucide-react';
+import { usePrivy } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
-import { EXPLORER_URL } from '@/lib/featured-services';
 
 export function NavHeader() {
-  return (
-    <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="text-xl font-bold">Jinn</span>
-        </Link>
+  const { ready, authenticated, user, login, logout } = usePrivy();
 
-        <nav className="flex items-center gap-4">
-          <Button asChild variant="ghost">
-            <a
-              href="https://docs.jinn.network"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1"
-            >
-              Docs
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </Button>
-          <Button asChild variant="ghost">
-            <a
-              href="https://blog.jinn.network"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1"
-            >
-              Blog
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </Button>
-          <Button asChild>
-            <a
-              href={EXPLORER_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1"
-            >
-              Explorer
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </Button>
-        </nav>
+  return (
+    <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
+      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+        <div className="flex items-center gap-6">
+          <Link href="/" className="flex items-center gap-2 font-semibold text-lg">
+            <Rocket className="h-5 w-5 text-primary" />
+            Jinn
+          </Link>
+          <nav className="flex items-center gap-4 text-sm">
+            <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">
+              Explore
+            </Link>
+            <Link href="/create" className="text-muted-foreground hover:text-foreground transition-colors">
+              Post Idea
+            </Link>
+          </nav>
+        </div>
+        {ready && (
+          authenticated ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">
+                {user?.email?.address || user?.wallet?.address?.slice(0, 6) + '...' + user?.wallet?.address?.slice(-4) || 'Connected'}
+              </span>
+              <Button variant="outline" size="sm" onClick={logout}>
+                Sign Out
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={login} size="sm">
+              Sign In
+            </Button>
+          )
+        )}
       </div>
     </header>
   );

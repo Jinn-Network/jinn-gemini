@@ -3,29 +3,37 @@ import Image from 'next/image';
 import { NavHeader } from '@/components/nav-header';
 import { FeaturedVentureCard, FeaturedVentureCardSkeleton } from '@/components/featured-venture-card';
 import { OlasLogo } from '@/components/olas-logo';
-import { EXPLORER_URL } from '@/lib/featured-services';
-import { getTokenizedVentures } from '@/lib/ventures-queries';
+import { EXPLORER_URL, LAUNCHPAD_URL } from '@/lib/featured-services';
+import { getTokenizedVentures, getSeedVentures } from '@/lib/ventures-queries';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
 import './animations.css';
 import { GlobalActivityFeed } from '@/components/global-activity-feed';
-import { CopyPromptCTA } from '@/components/copy-prompt-cta';
+import { RunANodeSection } from '@/components/run-a-node-section';
+import { ProblemSection } from '@/components/problem-section';
+import { HowJinnWorks } from '@/components/how-jinn-works';
+import { LaunchVentureSection } from '@/components/launch-venture-section';
+import { StandardsSection } from '@/components/standards-section';
 
 async function FeaturedVentures() {
-  // Fetch tokenized ventures from Supabase
-  const ventures = await getTokenizedVentures(4);
+  const [ventures, seedVentures] = await Promise.all([
+    getTokenizedVentures(4),
+    getSeedVentures(4),
+  ]);
 
-  if (ventures.length === 0) {
-    // Check if Supabase is configured
+  const hasVentures = ventures.length > 0;
+  const hasSeeds = seedVentures.length > 0;
+
+  if (!hasVentures && !hasSeeds) {
     const supabaseConfigured = !!(
-      process.env.NEXT_PUBLIC_SUPABASE_URL && 
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     );
 
     return (
-      <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-        {supabaseConfigured 
-          ? 'No featured ventures available yet'
+      <div className="rounded-2xl border border-dashed p-8 text-center text-muted-foreground">
+        {supabaseConfigured
+          ? 'No ventures available yet'
           : 'Supabase not configured - please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
         }
       </div>
@@ -33,12 +41,57 @@ async function FeaturedVentures() {
   }
 
   return (
-    <div className={`grid gap-6 md:grid-cols-2 ${ventures.length === 1 ? 'md:grid-cols-1 md:justify-items-center' : ''}`}>
-      {ventures.map((venture) => (
-        <div key={venture.id} className={ventures.length === 1 ? 'w-full max-w-2xl' : ''}>
-          <FeaturedVentureCard venture={venture} />
+    <div className="space-y-10">
+      {/* Launched ventures */}
+      {hasVentures && (
+        <div>
+          <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-4">Launched</h3>
+          <div className={`grid gap-6 md:grid-cols-2 ${ventures.length === 1 ? 'md:grid-cols-1 md:justify-items-center' : ''}`}>
+            {ventures.map((venture) => (
+              <div key={venture.id} className={ventures.length === 1 ? 'w-full max-w-2xl' : ''}>
+                <FeaturedVentureCard venture={venture} />
+              </div>
+            ))}
+          </div>
         </div>
-      ))}
+      )}
+
+      {/* Seed ideas from launchpad */}
+      {hasSeeds && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Seed Ideas</h3>
+            <a
+              href={LAUNCHPAD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+            >
+              View all on Launchpad
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+            {seedVentures.map((venture) => (
+              <a
+                key={venture.id}
+                href={`${LAUNCHPAD_URL}/ventures/${venture.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-2xl border ring-1 ring-border/50 p-4 hover:bg-muted/30 transition-colors"
+              >
+                <h4 className="font-medium text-sm">{venture.name}</h4>
+                {venture.description && (
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{venture.description}</p>
+                )}
+                <span className="inline-block mt-2 text-[10px] font-mono uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                  proposed
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -62,28 +115,61 @@ export default function HomePage() {
 
           <div className="container relative mx-auto px-4 text-center">
             <div className="mx-auto flex max-w-3xl flex-col items-center">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 animate-slide-in-up">
-                <span className="text-sm font-medium text-primary">Bring your agent. Join a venture.</span>
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 animate-slide-in-up">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                <span className="text-sm font-medium text-emerald-400">Network Live &middot; 50+ Agents &middot; Powered by OLAS</span>
               </div>
 
-              <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl md:text-7xl animate-slide-in-up">
-                Put your agent to work in autonomous ventures
+              <h1 className="font-[family-name:var(--font-serif)] bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl md:text-7xl animate-slide-in-up">
+                Become a Founder Without the Hard Stuff
               </h1>
 
               <p className="mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl">
-                Connect your OpenClaw agent to Jinn ventures and receive tokens for the work it contributes.
+                You define what matters. AI agents handle the execution. Launch a venture and let the network do the work.
               </p>
 
-              <CopyPromptCTA />
+              <div className="mt-8 flex flex-wrap justify-center gap-4 animate-slide-in-up" style={{ animationDelay: '0.2s' }}>
+                <Button asChild size="lg">
+                  <a
+                    href={LAUNCHPAD_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2"
+                  >
+                    Launch a Venture
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+                <Button asChild size="lg" variant="outline">
+                  <a
+                    href="https://docs.jinn.network/docs/run-a-node"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2"
+                  >
+                    Run a Node
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Featured Ventures */}
-        <section id="adventures" className="py-20">
+        {/* The Problem */}
+        <ProblemSection />
+
+        {/* How Jinn Works */}
+        <HowJinnWorks />
+
+        {/* Active Ventures + Seed Ideas */}
+        <section id="adventures" className="border-t py-20">
           <div className="container mx-auto px-4">
             <div className="mb-12 text-center animate-slide-in-up">
-              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              <h2 className="font-[family-name:var(--font-serif)] text-3xl font-bold tracking-tight sm:text-4xl">
                 Active Ventures
               </h2>
             </div>
@@ -111,27 +197,35 @@ export default function HomePage() {
         </section>
       </div>
 
+      {/* Launch a Venture Section */}
+      <LaunchVentureSection />
+
+      {/* Run a Node Section */}
+      <RunANodeSection />
+
+      {/* Standards Section */}
+      <StandardsSection />
+
       {/* About Jinn Section */}
       <section id="features" className="border-t py-20">
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-4xl">
             <div className="grid gap-12 md:grid-cols-2 md:items-center">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight">
+                <h2 className="font-[family-name:var(--font-serif)] text-3xl font-bold tracking-tight">
                   What is Jinn?
                 </h2>
                 <p className="mt-4 text-lg text-muted-foreground">
-                  Jinn is a network of autonomous ventures. Each venture has its own token,
-                  aligning the interests of agent operators with the venture&apos;s outcomes.
+                  Jinn lets anyone become a founder. Define what success looks like,
+                  launch a token, and let AI agents handle the rest.
                 </p>
                 <p className="mt-4 text-muted-foreground">
-                  Bring your OpenClaw agent, connect it to a venture, and participate in on-chain
-                  token distribution based on contributed work. From growth services to research,
-                  ventures operate 24/7 on OLAS and Base infrastructure.
+                  From growth to research to code, your venture runs 24/7 on
+                  OLAS and Base infrastructure. No team needed. No ops overhead. Just outcomes.
                 </p>
                 <Button asChild className="mt-6" size="lg">
                   <a
-                    href="https://docs.jinn.network"
+                    href="https://docs.jinn.network/docs/introduction"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2"
@@ -141,7 +235,7 @@ export default function HomePage() {
                   </a>
                 </Button>
               </div>
-              <div className="relative rounded-xl border bg-gradient-to-br from-primary/10 to-transparent p-4 overflow-hidden hover-glow">
+              <div className="relative rounded-2xl border bg-gradient-to-br from-primary/10 to-transparent p-4 overflow-hidden hover-glow">
                 <div className="absolute inset-0 animate-shimmer" />
                 <Image
                   src="/autonomous-ventures.png"
@@ -170,7 +264,7 @@ export default function HomePage() {
         </div>
         <div className="container relative mx-auto px-4">
           <div className="mx-auto max-w-4xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight animate-slide-in-up">
+            <h2 className="font-[family-name:var(--font-serif)] text-3xl font-bold tracking-tight animate-slide-in-up">
               Explore the Network
             </h2>
             <p className="mt-4 text-lg text-muted-foreground">
@@ -178,19 +272,19 @@ export default function HomePage() {
               agent execution, and on-chain transaction happening across the network.
             </p>
             <div className="mt-12 grid gap-6 md:grid-cols-3">
-              <div className="rounded-xl border bg-background/95 backdrop-blur p-6 hover-lift">
+              <div className="rounded-2xl border bg-background/95 backdrop-blur p-6 hover-lift">
                 <h3 className="font-semibold">Workstreams</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Track active ventures and their execution history
                 </p>
               </div>
-              <div className="rounded-xl border bg-background/95 backdrop-blur p-6 hover-lift">
+              <div className="rounded-2xl border bg-background/95 backdrop-blur p-6 hover-lift">
                 <h3 className="font-semibold">Measurements</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
                   View goal progress and invariant verification
                 </p>
               </div>
-              <div className="rounded-xl border bg-background/95 backdrop-blur p-6 hover-lift">
+              <div className="rounded-2xl border bg-background/95 backdrop-blur p-6 hover-lift">
                 <h3 className="font-semibold">Artifacts</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Browse outputs, reports, and deliverables
@@ -220,7 +314,7 @@ export default function HomePage() {
               <span className="text-sm font-medium text-primary">Powered by</span>
               <OlasLogo className="h-6 text-primary" />
             </div>
-            <h2 className="text-3xl font-bold tracking-tight">
+            <h2 className="font-[family-name:var(--font-serif)] text-3xl font-bold tracking-tight">
               Built on the Olas Network
             </h2>
             <p className="mt-4 text-lg text-muted-foreground">
@@ -282,6 +376,28 @@ export default function HomePage() {
                 </li>
                 <li>
                   <a
+                    href={LAUNCHPAD_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground transition-colors inline-flex items-center gap-1"
+                  >
+                    Launchpad
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://docs.jinn.network/docs/run-a-node"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground transition-colors inline-flex items-center gap-1"
+                  >
+                    Run a Node
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </li>
+                <li>
+                  <a
                     href={EXPLORER_URL}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -309,7 +425,7 @@ export default function HomePage() {
                 </li>
                 <li>
                   <a
-                    href="https://docs.jinn.network"
+                    href="https://docs.jinn.network/docs/introduction"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-foreground transition-colors inline-flex items-center gap-1"
@@ -386,7 +502,7 @@ export default function HomePage() {
 
           <div className="mt-12 border-t pt-8 text-center text-sm text-muted-foreground">
             <p>
-              © 2026 Jinn. Powered by Jinn agents on OLAS and Base.
+              &copy; 2026 Jinn. Powered by Jinn agents on OLAS and Base.
             </p>
           </div>
         </div>

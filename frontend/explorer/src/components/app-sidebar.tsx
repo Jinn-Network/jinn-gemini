@@ -53,13 +53,14 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navigationItems.map((item) => {
-                const isActive = pathname === `/${item.collection}` || 
-                  (item.subItems?.some(subItem => pathname === `/${subItem.collection}`))
+                const isActive = pathname === `/${item.collection}` ||
+                  (item.subItems?.some(subItem => pathname.startsWith(`/${subItem.collection}`)))
 
                 if (item.subItems) {
                   // Collapsible item with sub-items
                   const ParentIcon = item.collection === 'ecosystem' ? Rocket
                     : item.collection === 'work' ? Briefcase
+                    : item.collection === 'nodes' ? Server
                     : item.collection === 'network' ? Server
                     : Briefcase
                   return (
@@ -79,7 +80,7 @@ export function AppSidebar() {
                         <CollapsibleContent>
                           <SidebarMenuSub>
                             {item.subItems.map((subItem) => {
-                              const isSubItemActive = pathname === `/${subItem.collection}`
+                              const isSubItemActive = pathname.startsWith(`/${subItem.collection}`)
                               return (
                                 <SidebarMenuSubItem key={subItem.collection}>
                                   <SidebarMenuSubButton

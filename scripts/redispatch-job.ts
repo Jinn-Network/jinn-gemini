@@ -112,6 +112,7 @@ async function buildSubstitutedBlueprint(templatePath: string, inputConfigPath: 
   blueprint: string;
   enabledTools: string[];
   workspaceRepoUrl?: string;
+  extractedEnv?: Record<string, string>;
 }> {
   // Load template
   let resolvedTemplatePath = templatePath;
@@ -161,6 +162,30 @@ async function buildSubstitutedBlueprint(templatePath: string, inputConfigPath: 
       'dispatch_new_job',
     ]);
 
+  // Extract env vars from inputConfig using inputSchema.envVar mappings
+  // (mirrors launch_workstream.ts logic)
+  let extractedEnv: Record<string, string> | undefined;
+  if (inputSchema?.properties) {
+    const env: Record<string, string> = {};
+    for (const [field, spec] of Object.entries(inputSchema.properties)) {
+      const fieldSpec = spec as { envVar?: string };
+      if (fieldSpec.envVar && inputConfig[field] !== undefined) {
+        env[fieldSpec.envVar] = String(inputConfig[field]);
+      }
+    }
+    // Merge secrets from process.env for envVar fields not in inputConfig
+    const secretEnvVars = ['TELEGRAM_BOT_TOKEN', 'UMAMI_USERNAME', 'UMAMI_PASSWORD'];
+    for (const envKey of secretEnvVars) {
+      if (!env[envKey] && process.env[envKey]) {
+        env[envKey] = process.env[envKey]!;
+      }
+    }
+    if (Object.keys(env).length > 0) {
+      extractedEnv = env;
+      console.log(`  Extracted ${Object.keys(env).length} env vars from inputConfig`);
+    }
+  }
+
   // Build clean blueprint (strip template metadata)
   const cleanBlueprint: Record<string, unknown> = {
     invariants: blueprintObj.invariants || blueprintObj.assertions || [],
@@ -174,6 +199,7 @@ async function buildSubstitutedBlueprint(templatePath: string, inputConfigPath: 
     blueprint: JSON.stringify(cleanBlueprint),
     enabledTools,
     workspaceRepoUrl,
+    extractedEnv,
   };
 }
 
@@ -191,12 +217,14 @@ async function main() {
   let overrideBlueprint: string | undefined;
   let overrideEnabledTools: string[] | undefined;
   let workspaceRepoUrl: string | undefined;
+  let extractedEnv: Record<string, string> | undefined;
   if (inputConfigPath && templatePath) {
     console.log('\nBuilding substituted blueprint...');
     const result = await buildSubstitutedBlueprint(templatePath, inputConfigPath);
     overrideBlueprint = result.blueprint;
     overrideEnabledTools = result.enabledTools;
     workspaceRepoUrl = result.workspaceRepoUrl;
+    extractedEnv = result.extractedEnv;
     console.log('  Blueprint ready for dispatch\n');
   }
 
@@ -209,6 +237,7 @@ async function main() {
       message,
       workstreamId,
       blueprint: overrideBlueprint,
+      ...(extractedEnv ? { additionalContext: { env: extractedEnv } } : {}),
     });
   } else {
     // Cyclic: need to fetch job def and dispatch directly
@@ -271,12 +300,14 @@ async function main() {
       process.exit(1);
     }
 
-    const additionalContextOverrides: Record<string, any> | undefined = workspaceRepoUrl || message
-      ? {
-        ...(workspaceRepoUrl ? { workspaceRepo: { url: workspaceRepoUrl } } : {}),
-        ...(message ? { message: { content: message, to: jobDefinitionId } } : {}),
-      }
-      : undefined;
+    const additionalContextOverrides: Record<string, any> | undefined =
+      workspaceRepoUrl || message || extractedEnv
+        ? {
+          ...(extractedEnv ? { env: extractedEnv } : {}),
+          ...(workspaceRepoUrl ? { workspaceRepo: { url: workspaceRepoUrl } } : {}),
+          ...(message ? { message: { content: message, to: jobDefinitionId } } : {}),
+        }
+        : undefined;
 
     const { ipfsJsonContents } = await buildIpfsPayload({
       blueprint,
@@ -308,7 +339,7 @@ async function main() {
       chainConfig,
       keyConfig: { source: 'value', value: privateKey },
       postOnly: true,
-      responseTimeout: 300,
+      responseTimeout: 61,
     });
 
     result = {

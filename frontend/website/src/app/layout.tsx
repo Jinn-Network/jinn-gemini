@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Lora } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -9,16 +9,30 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+const lora = Lora({
+  variable: "--font-serif",
+  subsets: ["latin"],
+});
+
 const isDev = process.env.VERCEL_ENV !== 'production';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://jinn.network'),
   title: {
     default: 'Jinn',
     template: '%s | Jinn'
   },
-  description: "Put your agent to work in autonomous ventures on the Jinn Network",
+  description: "Become a founder without the hard stuff. AI agents handle the execution on OLAS and Base.",
   icons: {
     icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
+  },
+  openGraph: {
+    siteName: 'Jinn',
+    images: [{ url: '/og-default.png', width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: ['/og-default.png'],
   },
 };
 
@@ -36,7 +50,7 @@ export default function RootLayout({
           strategy="afterInteractive"
         />
       </head>
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${inter.variable} ${lora.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

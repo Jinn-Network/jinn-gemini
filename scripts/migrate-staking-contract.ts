@@ -74,6 +74,8 @@ const STAKING_ABI = [
 const SERVICE_REGISTRY_ABI = [
   'function ownerOf(uint256 tokenId) view returns (address)',
   'function getService(uint256 serviceId) view returns (tuple(uint96 securityDeposit, address multisig, bytes32 configHash, uint32 threshold, uint32 maxNumAgentInstances, uint32 numAgentInstances, uint8 state, address[] agentIds))',
+  'function approve(address to, uint256 tokenId) external',
+  'function getApproved(uint256 tokenId) view returns (address)',
 ];
 
 const TOKEN_UTILITY_ABI = [
@@ -393,6 +395,21 @@ async function main() {
   console.log('\n═══════════════════════════════════════════════════════════════');
   console.log('  Step 4: Stake in Target');
   console.log('═══════════════════════════════════════════════════════════════');
+
+  // Approve the service NFT for transfer to the staking contract
+  const registryIface = new ethers.Interface(SERVICE_REGISTRY_ABI);
+  const registry = new ethers.Contract(CONTRACTS.SERVICE_REGISTRY, SERVICE_REGISTRY_ABI, provider);
+  const currentApproval = await registry.getApproved(serviceId);
+  if (currentApproval.toLowerCase() !== targetConfig.address.toLowerCase()) {
+    console.log(`\n🔑 Approving NFT transfer to ${targetConfig.name}...`);
+    await executeSafeTx(
+      CONTRACTS.SERVICE_REGISTRY,
+      registryIface.encodeFunctionData('approve', [targetConfig.address, serviceId]),
+      `Approving service NFT ${serviceId} for ${targetConfig.name}`
+    );
+  } else {
+    console.log(`\n✅ NFT already approved for ${targetConfig.name}`);
+  }
 
   await executeSafeTx(
     targetConfig.address,

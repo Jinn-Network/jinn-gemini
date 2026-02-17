@@ -142,6 +142,15 @@ yarn subtree:pull
 
 Details: [docs/runbooks/subtree-workflow.md](docs/runbooks/subtree-workflow.md)
 
+**E2E testing workflow:** To test jinn-node changes end-to-end, push them to the standalone repo first, then run the E2E skill against that branch:
+```bash
+# 1. Commit changes in the monorepo
+# 2. Push to a feature branch on the standalone repo
+git subtree push --prefix=jinn-node jinn-node feature/my-changes
+# 3. Run E2E skill — it will ask which branch to clone
+/node-e2e-testing
+```
+
 ---
 
 ## Key Commands
@@ -245,7 +254,7 @@ Full reference: [Environment Variables](docs/reference/environment-variables.md)
 9. **Workers Are Network Nodes**: Workers are deployed on Railway (or run locally for dev). Use `redispatch-job.ts` to inject updated blueprints/configs into live workstreams.
 10. **SSH Aliases**: Normalize to `git@github.com:` at dispatch time.
 
-Full list: [Blood Written Rules](docs/reference/blood-written-rules.md) (~60 rules)
+Full list: [Blood Written Rules](docs/reference/blood-written-rules.md) (~74 rules)
 
 ---
 
