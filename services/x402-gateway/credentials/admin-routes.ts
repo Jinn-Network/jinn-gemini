@@ -327,11 +327,16 @@ async function requireVentureOwnerOrAdmin(
 ): Promise<{ ok: false; error: string; status: ContentfulStatusCode } | null> {
   if (auth.isAdmin) return null;
 
-  const venture = await verifyVentureOwner(ventureId, auth.address);
-  if (!venture) {
-    return { ok: false, error: 'Not the venture owner', status: 403 as ContentfulStatusCode };
+  try {
+    const venture = await verifyVentureOwner(ventureId, auth.address);
+    if (!venture) {
+      return { ok: false, error: 'Not the venture owner', status: 403 as ContentfulStatusCode };
+    }
+    return null;
+  } catch (err) {
+    console.error('[admin] Venture ownership check failed (fail-closed):', err instanceof Error ? err.message : String(err));
+    return { ok: false, error: 'Venture ownership verification failed', status: 403 as ContentfulStatusCode };
   }
-  return null;
 }
 
 /**

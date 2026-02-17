@@ -21,6 +21,11 @@ export function tierMeetsMinimum(actual: TrustTier, required: TrustTier): boolea
   return TRUST_TIER_ORDER.indexOf(actual) >= TRUST_TIER_ORDER.indexOf(required);
 }
 
+/** Normalize an Ethereum address to lowercase for consistent comparisons and storage */
+export function normalizeAddress(address: string): string {
+  return address.toLowerCase();
+}
+
 /** Registered operator with calculated trust tier */
 export interface Operator {
   address: string;
@@ -137,5 +142,5 @@ export interface CredentialResponse {
 /** Error response */
 export interface CredentialError {
   error: string;
-  code: 'INVALID_SIGNATURE' | 'NOT_AUTHORIZED' | 'PAYMENT_REQUIRED' | 'PAYMENT_INVALID' | 'PROVIDER_NOT_FOUND' | 'GRANT_EXPIRED' | 'NANGO_ERROR' | 'NONCE_REUSED' | 'RATE_LIMITED' | 'DUPLICATE_REQUEST' | 'JOB_NOT_ACTIVE' | 'JOB_CLAIM_MISMATCH' | 'JOB_VERIFICATION_UNAVAILABLE';
+  code: 'INVALID_REQUEST' | 'INVALID_SIGNATURE' | 'NOT_AUTHORIZED' | 'PAYMENT_REQUIRED' | 'PAYMENT_INVALID' | 'PROVIDER_NOT_FOUND' | 'GRANT_EXPIRED' | 'NANGO_ERROR' | 'NONCE_REUSED' | 'RATE_LIMITED' | 'DUPLICATE_REQUEST' | 'JOB_NOT_ACTIVE' | 'JOB_CLAIM_MISMATCH' | 'JOB_VERIFICATION_UNAVAILABLE';
 }

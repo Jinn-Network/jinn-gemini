@@ -12,7 +12,7 @@
 
 import pg from 'pg';
 import type { Operator, TrustTier } from './types.js';
-import { tierMeetsMinimum } from './types.js';
+import { tierMeetsMinimum, normalizeAddress, TRUST_TIER_ORDER } from './types.js';
 import { listPoliciesTx } from './policies.js';
 import { logAdminAuditTx } from './admin-audit.js';
 
@@ -55,7 +55,7 @@ export function calculateTrustTier(op: {
   tierOverride: TrustTier | null;
   whitelisted: boolean;
 }): TrustTier {
-  if (op.tierOverride) return op.tierOverride;
+  if (op.tierOverride && TRUST_TIER_ORDER.includes(op.tierOverride)) return op.tierOverride;
   if (op.whitelisted) return 'trusted';
   return 'untrusted';
 }
@@ -64,7 +64,7 @@ export async function getOperator(address: string): Promise<Operator | null> {
   const p = getPool();
   const { rows } = await p.query(
     'SELECT * FROM operators WHERE address = $1',
-    [address.toLowerCase()],
+    [normalizeAddress(address)],
   );
   return rows[0] ? rowToOperator(rows[0]) : null;
 }
@@ -106,7 +106,7 @@ export async function registerOperator(params: {
   ipAddress?: string;
 }): Promise<{ operator: Operator; grantsAdded: string[]; grantsRevoked: string[] }> {
   const p = getPool();
-  const addr = params.address.toLowerCase();
+  const addr = normalizeAddress(params.address);
   const client = await p.connect();
 
   try {
@@ -186,7 +186,7 @@ export async function updateOperatorAdmin(params: {
   ipAddress?: string;
 }): Promise<{ operator: Operator; grantsAdded: string[]; grantsRevoked: string[] }> {
   const p = getPool();
-  const addr = params.address.toLowerCase();
+  const addr = normalizeAddress(params.address);
   const client = await p.connect();
 
   try {
@@ -210,7 +210,7 @@ export async function updateOperatorAdmin(params: {
       updates.push(`whitelisted = $${idx++}`);
       values.push(params.whitelisted);
       updates.push(`whitelisted_by = $${idx++}`);
-      values.push(params.whitelisted ? params.actorAddress.toLowerCase() : null);
+      values.push(params.whitelisted ? normalizeAddress(params.actorAddress) : null);
       updates.push(`whitelisted_at = $${idx++}`);
       values.push(params.whitelisted ? new Date() : null);
     }
@@ -320,7 +320,7 @@ async function autoProvision(
           policy.provider,
           policy.defaultNangoConnection ?? policy.provider,
           policy.defaultPrice,
-          provisionedBy.toLowerCase(),
+          normalizeAddress(provisionedBy),
           newTier,
         ],
       );

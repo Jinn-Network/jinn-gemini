@@ -10,6 +10,7 @@
 
 import pg from 'pg';
 import type { AdminAuditEntry } from './types.js';
+import { normalizeAddress } from './types.js';
 
 const { Pool } = pg;
 
@@ -40,8 +41,8 @@ export function logAdminAudit(entry: AdminAuditEntry): void {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         entry.action,
-        entry.actorAddress.toLowerCase(),
-        entry.targetAddress?.toLowerCase() ?? null,
+        normalizeAddress(entry.actorAddress),
+        entry.targetAddress ? normalizeAddress(entry.targetAddress) : null,
         entry.targetVentureId ?? null,
         entry.targetProvider ?? null,
         entry.beforeState ? JSON.stringify(entry.beforeState) : null,
@@ -69,8 +70,8 @@ export async function logAdminAuditTx(
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       entry.action,
-      entry.actorAddress.toLowerCase(),
-      entry.targetAddress?.toLowerCase() ?? null,
+      normalizeAddress(entry.actorAddress),
+      entry.targetAddress ? normalizeAddress(entry.targetAddress) : null,
       entry.targetVentureId ?? null,
       entry.targetProvider ?? null,
       entry.beforeState ? JSON.stringify(entry.beforeState) : null,
@@ -99,11 +100,11 @@ export async function queryAdminAudit(filters: {
 
   if (filters.actor) {
     conditions.push(`actor_address = $${idx++}`);
-    params.push(filters.actor.toLowerCase());
+    params.push(normalizeAddress(filters.actor));
   }
   if (filters.target) {
     conditions.push(`target_address = $${idx++}`);
-    params.push(filters.target.toLowerCase());
+    params.push(normalizeAddress(filters.target));
   }
   if (filters.action) {
     conditions.push(`action = $${idx++}`);
@@ -115,8 +116,8 @@ export async function queryAdminAudit(filters: {
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const limit = filters.limit ?? 50;
-  const offset = filters.offset ?? 0;
+  const limit = Math.min(Math.max(filters.limit ?? 50, 1), 1000);
+  const offset = Math.min(Math.max(filters.offset ?? 0, 0), 1_000_000);
 
   const { rows } = await pool.query(
     `SELECT id, action, actor_address, target_address, target_venture_id, target_provider,

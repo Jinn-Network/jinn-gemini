@@ -22,7 +22,7 @@ import type {
   TrustTier,
   AccessMode,
 } from './types.js';
-import { tierMeetsMinimum } from './types.js';
+import { tierMeetsMinimum, normalizeAddress } from './types.js';
 
 const { Pool } = pg;
 
@@ -141,9 +141,9 @@ export async function setOperatorStatus(params: {
     [
       params.ventureId,
       params.provider,
-      params.operatorAddress.toLowerCase(),
+      normalizeAddress(params.operatorAddress),
       params.status,
-      params.grantedBy.toLowerCase(),
+      normalizeAddress(params.grantedBy),
     ],
   );
   return rowToOperatorEntry(rows[0]);
@@ -158,7 +158,7 @@ export async function removeOperatorEntry(
   const result = await p.query(
     `DELETE FROM venture_credential_operators
      WHERE venture_id = $1 AND provider = $2 AND operator_address = $3`,
-    [ventureId, provider, operatorAddress.toLowerCase()],
+    [ventureId, provider, normalizeAddress(operatorAddress)],
   );
   return (result.rowCount ?? 0) > 0;
 }
@@ -213,7 +213,7 @@ export async function checkVentureAccess(params: {
   const { rows: blockedRows } = await p.query(
     `SELECT 1 FROM venture_credential_operators
      WHERE venture_id = $1 AND provider = $2 AND operator_address = $3 AND status = 'blocked'`,
-    [params.ventureId, params.provider, params.operatorAddress.toLowerCase()],
+    [params.ventureId, params.provider, normalizeAddress(params.operatorAddress)],
   );
   if (blockedRows.length > 0) {
     return { allowed: false, reason: 'blocked', ventureCredential: vc, blockGlobalFallback: blockGlobal };
@@ -223,7 +223,7 @@ export async function checkVentureAccess(params: {
   const { rows: allowedRows } = await p.query(
     `SELECT 1 FROM venture_credential_operators
      WHERE venture_id = $1 AND provider = $2 AND operator_address = $3 AND status = 'allowed'`,
-    [params.ventureId, params.provider, params.operatorAddress.toLowerCase()],
+    [params.ventureId, params.provider, normalizeAddress(params.operatorAddress)],
   );
   if (allowedRows.length > 0) {
     return { allowed: true, reason: 'whitelisted', ventureCredential: vc, blockGlobalFallback: blockGlobal };

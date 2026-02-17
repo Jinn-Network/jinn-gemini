@@ -24,7 +24,8 @@ export type AuditAction =
   | 'payment_required'
   | 'payment_invalid'
   | 'not_authorized'
-  | 'nango_error';
+  | 'nango_error'
+  | 'invalid_idempotency_key';
 
 export interface AuditEntry {
   address: string;

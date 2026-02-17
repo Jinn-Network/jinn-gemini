@@ -33,6 +33,13 @@ function getNangoConfig() {
   return { host: host.replace(/\/$/, ''), secretKey };
 }
 
+/** Validate that an identifier contains only safe characters (no path traversal) */
+function validateIdentifier(value: string, label: string): void {
+  if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+    throw new Error(`Invalid ${label}: must contain only alphanumeric characters, hyphens, and underscores`);
+  }
+}
+
 /**
  * Get a fresh access token for a Nango connection.
  * Nango automatically refreshes expired tokens before returning.
@@ -43,8 +50,11 @@ export async function getNangoAccessToken(connectionId: string, providerConfigKe
 }> {
   const { host, secretKey } = getNangoConfig();
 
-  const params = providerConfigKey ? `?provider_config_key=${providerConfigKey}` : '';
-  const response = await fetch(`${host}/connection/${connectionId}${params}`, {
+  validateIdentifier(connectionId, 'connectionId');
+  if (providerConfigKey) validateIdentifier(providerConfigKey, 'providerConfigKey');
+
+  const params = providerConfigKey ? `?provider_config_key=${encodeURIComponent(providerConfigKey)}` : '';
+  const response = await fetch(`${host}/connection/${encodeURIComponent(connectionId)}${params}`, {
     headers: {
       'Authorization': `Bearer ${secretKey}`,
     },
@@ -52,8 +62,8 @@ export async function getNangoAccessToken(connectionId: string, providerConfigKe
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Nango API error: ${response.status} ${response.statusText} - ${errorText}`);
+    console.error(`[nango] API error for connection ${connectionId}: ${response.status} ${response.statusText}`);
+    throw new Error('Failed to fetch OAuth token from provider');
   }
 
   const data = await response.json() as NangoConnectionResponse;

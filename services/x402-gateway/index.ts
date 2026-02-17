@@ -1050,8 +1050,19 @@ app.post("/credentials/:provider", async (c) => {
     );
   }
 
-  // Read idempotency key early, but enforce AFTER auth/payment (see below)
-  const idempotencyKey = c.req.header('Idempotency-Key');
+  // Read and validate idempotency key early, but enforce AFTER auth/payment (see below)
+  const rawIdempotencyKey = c.req.header('Idempotency-Key');
+  let idempotencyKey: string | undefined;
+  if (rawIdempotencyKey) {
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(rawIdempotencyKey)) {
+      logAudit({ address: requesterAddress, provider, action: 'invalid_idempotency_key', ip: clientIp, userAgent, requestId });
+      return c.json(
+        { error: 'Invalid Idempotency-Key format. Must be 1-64 alphanumeric, hyphen, or underscore characters.', code: 'INVALID_REQUEST' } satisfies CredentialError,
+        { status: 400, headers: getRateLimitHeaders(rateLimit) }
+      );
+    }
+    idempotencyKey = rawIdempotencyKey;
+  }
 
   // Job context verification (optional based on REQUIRE_JOB_CONTEXT env)
   const requireJobContext = process.env.REQUIRE_JOB_CONTEXT !== 'false';

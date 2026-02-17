@@ -1,75 +1,339 @@
 /**
  * Unit Test: Venture Credential Access Resolution
  * Module: services/x402-gateway/credentials/venture-credentials.ts
+ *        services/x402-gateway/credentials/venture-resolver.ts
  *
- * Tests the access resolution logic contracts with binary trust model.
+ * Tests the access resolution logic by calling the real checkVentureAccess
+ * and checkVentureCredentialAccess functions with properly mocked DB/network deps.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { VentureCredential, TrustTier } from '../../../../services/x402-gateway/credentials/types.js';
-import { tierMeetsMinimum } from '../../../../services/x402-gateway/credentials/types.js';
 
-describe('Venture Access Resolution Logic', () => {
-  describe('access_mode behavior', () => {
-    it('venture_only should block global fallback when denied', () => {
-      const accessMode = 'venture_only';
-      expect(accessMode === 'venture_only').toBe(true);
-    });
+// ---------------------------------------------------------------------------
+// Hoisted setup — runs before any module-level side-effects
+// ---------------------------------------------------------------------------
+const { mockQuery, mockGetOperator, mockGetSupabaseClient } = vi.hoisted(() => {
+  process.env.ACL_DATABASE_URL = 'postgresql://mock:mock@localhost:5432/mockdb';
+  return {
+    mockQuery: vi.fn(),
+    mockGetOperator: vi.fn(),
+    mockGetSupabaseClient: vi.fn().mockReturnValue(null),
+  };
+});
 
-    it('union_with_global should allow global fallback when denied', () => {
-      const accessMode = 'union_with_global';
-      expect(accessMode === 'venture_only').toBe(false);
+// ---------------------------------------------------------------------------
+// Mock pg — controls what pool.query() returns
+// ---------------------------------------------------------------------------
+vi.mock('pg', () => ({
+  __esModule: true,
+  default: {
+    Pool: vi.fn().mockImplementation(() => ({
+      query: mockQuery,
+      on: vi.fn(),
+    })),
+  },
+}));
+
+// ---------------------------------------------------------------------------
+// Mock operators (getOperator used by venture-resolver)
+// ---------------------------------------------------------------------------
+vi.mock('../../../../services/x402-gateway/credentials/operators.js', () => ({
+  getOperator: (...args: unknown[]) => mockGetOperator(...args),
+  calculateTrustTier: vi.fn(),
+}));
+
+// ---------------------------------------------------------------------------
+// Mock supabase (imported by venture-resolver)
+// ---------------------------------------------------------------------------
+vi.mock('../../../../services/x402-gateway/credentials/supabase.js', () => ({
+  getSupabaseClient: (...args: unknown[]) => mockGetSupabaseClient(...args),
+}));
+
+// ---------------------------------------------------------------------------
+// Imports (AFTER vi.mock — vitest hoists mocks above imports)
+// ---------------------------------------------------------------------------
+import { checkVentureAccess } from '../../../../services/x402-gateway/credentials/venture-credentials.js';
+import { checkVentureCredentialAccess } from '../../../../services/x402-gateway/credentials/venture-resolver.js';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeVC(overrides: Partial<VentureCredential> = {}): VentureCredential {
+  return {
+    ventureId: 'v-test',
+    provider: 'twitter',
+    nangoConnectionId: 'conn-1',
+    minTrustTier: 'untrusted',
+    accessMode: 'venture_only',
+    pricePerAccess: '0',
+    active: true,
+    ...overrides,
+  };
+}
+
+function vcToRow(vc: VentureCredential): Record<string, unknown> {
+  return {
+    venture_id: vc.ventureId,
+    provider: vc.provider,
+    nango_connection_id: vc.nangoConnectionId,
+    min_trust_tier: vc.minTrustTier,
+    access_mode: vc.accessMode,
+    price_per_access: vc.pricePerAccess,
+    active: vc.active,
+  };
+}
+
+/**
+ * Configure mockQuery for the sequential pool.query() calls that
+ * checkVentureAccess makes:
+ *  1. getVentureCredential SELECT
+ *  2. blocklist SELECT (only if credential is active)
+ *  3. whitelist SELECT (only if not blocked)
+ */
+function setupPoolQueries(opts: {
+  credential?: VentureCredential | null;
+  blockedRows?: Record<string, unknown>[];
+  allowedRows?: Record<string, unknown>[];
+}) {
+  const vc = opts.credential;
+  mockQuery.mockResolvedValueOnce({ rows: vc ? [vcToRow(vc)] : [] });
+  if (vc && vc.active) {
+    mockQuery.mockResolvedValueOnce({ rows: opts.blockedRows ?? [] });
+    mockQuery.mockResolvedValueOnce({ rows: opts.allowedRows ?? [] });
+  }
+}
+
+function makeOperator(overrides: Partial<{ trustTier: TrustTier }> = {}) {
+  return {
+    address: '0xoperator1',
+    serviceId: 1,
+    trustTier: 'trusted' as TrustTier,
+    tierOverride: null,
+    whitelisted: true,
+    whitelistedBy: null,
+    whitelistedAt: null,
+    registeredAt: '2025-01-01',
+    updatedAt: '2025-01-01',
+    ...overrides,
+  };
+}
+
+/**
+ * Mock global.fetch to simulate Ponder returning a sender address,
+ * and mock getSupabaseClient to simulate Supabase returning a venture.
+ */
+function setupVentureContext(sender: string, venture: { id: string; name: string } | null) {
+  // Mock fetch (Ponder GraphQL query)
+  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({
+      data: { request: { sender } },
+    }),
+  } as Response);
+
+  // Mock supabase client
+  if (venture) {
+    mockGetSupabaseClient.mockReturnValueOnce({
+      from: () => ({
+        select: () => ({
+          eq: (_col1: string, _val1: string) => ({
+            eq: (_col2: string, _val2: string) => ({
+              limit: () => ({
+                single: () =>
+                  Promise.resolve({ data: venture, error: null }),
+              }),
+            }),
+          }),
+        }),
+      }),
     });
+  } else {
+    mockGetSupabaseClient.mockReturnValueOnce(null);
+  }
+}
+
+/**
+ * Setup for when we want resolveVentureContext to return null
+ * (no Ponder result → null).
+ */
+function setupNoVentureContext() {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({
+      data: { request: null },
+    }),
+  } as Response);
+}
+
+// ---------------------------------------------------------------------------
+// Reset ALL mocks between tests (including queued values)
+// ---------------------------------------------------------------------------
+
+beforeEach(() => {
+  mockQuery.mockReset();
+  mockGetOperator.mockReset();
+  mockGetSupabaseClient.mockReset().mockReturnValue(null);
+  vi.restoreAllMocks(); // Restore fetch spy
+});
+
+// ===== checkVentureAccess (direct DB mock) ============================
+
+describe('checkVentureAccess', () => {
+  const defaultParams = {
+    ventureId: 'v-test',
+    provider: 'twitter',
+    operatorAddress: '0xOperator1',
+    operatorTrustTier: 'trusted' as TrustTier,
+  };
+
+  it('returns no_credential with blockGlobalFallback=false when credential is missing', async () => {
+    setupPoolQueries({ credential: null });
+    const result = await checkVentureAccess(defaultParams);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('no_credential');
+    expect(result.blockGlobalFallback).toBe(false);
   });
 
-  describe('tier precedence in access decisions', () => {
-    it('blocklist overrides tier qualification', () => {
-      // Even if tier meets minimum, blocked operators should be denied.
-      const operatorTier: TrustTier = 'trusted';
-      const minTier: TrustTier = 'untrusted';
-      expect(tierMeetsMinimum(operatorTier, minTier)).toBe(true);
-      // But blocklist check happens BEFORE tier check → blocked
-    });
-
-    it('whitelist bypasses tier check', () => {
-      // Whitelisted operators are allowed regardless of tier.
-      const operatorTier: TrustTier = 'untrusted';
-      const minTier: TrustTier = 'trusted';
-      expect(tierMeetsMinimum(operatorTier, minTier)).toBe(false);
-      // But whitelist check happens BEFORE tier check → allowed
-    });
-
-    it('tier check is the final gate', () => {
-      const cases: Array<{ op: TrustTier; min: TrustTier; expected: boolean }> = [
-        { op: 'trusted', min: 'untrusted', expected: true },
-        { op: 'trusted', min: 'trusted', expected: true },
-        { op: 'untrusted', min: 'untrusted', expected: true },
-        { op: 'untrusted', min: 'trusted', expected: false },
-      ];
-
-      for (const { op, min, expected } of cases) {
-        expect(tierMeetsMinimum(op, min)).toBe(expected);
-      }
-    });
+  it('returns no_credential when credential is inactive', async () => {
+    setupPoolQueries({ credential: makeVC({ active: false }) });
+    const result = await checkVentureAccess(defaultParams);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('no_credential');
+    expect(result.blockGlobalFallback).toBe(false);
   });
 
-  describe('VentureAccessResult contract', () => {
-    it('no_credential should never block global fallback', () => {
-      const blockGlobalFallback = false;
-      expect(blockGlobalFallback).toBe(false);
+  it('venture_only sets blockGlobalFallback=true when operator meets tier', async () => {
+    setupPoolQueries({
+      credential: makeVC({ accessMode: 'venture_only', minTrustTier: 'untrusted' }),
     });
+    const result = await checkVentureAccess({ ...defaultParams, operatorTrustTier: 'trusted' });
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBe('tier_met');
+    expect(result.blockGlobalFallback).toBe(true);
+  });
 
-    it('blocked reason should preserve venture credential for audit', () => {
-      const vc: VentureCredential = {
-        ventureId: 'v1',
-        provider: 'twitter',
-        nangoConnectionId: 'conn-1',
-        minTrustTier: 'trusted',
-        accessMode: 'venture_only',
-        pricePerAccess: '0',
-        active: true,
-      };
-      expect(vc).toBeDefined();
+  it('union_with_global sets blockGlobalFallback=false even when denied', async () => {
+    setupPoolQueries({
+      credential: makeVC({ accessMode: 'union_with_global', minTrustTier: 'trusted' }),
     });
+    const result = await checkVentureAccess({ ...defaultParams, operatorTrustTier: 'untrusted' });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('tier_not_met');
+    expect(result.blockGlobalFallback).toBe(false);
+  });
+
+  it('blocklist denies even when operator meets tier', async () => {
+    setupPoolQueries({
+      credential: makeVC({ minTrustTier: 'untrusted' }),
+      blockedRows: [{ '?column?': 1 }],
+    });
+    const result = await checkVentureAccess({ ...defaultParams, operatorTrustTier: 'trusted' });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('blocked');
+    expect(result.ventureCredential).toBeDefined();
+  });
+
+  it('whitelist allows even when operator does not meet tier', async () => {
+    setupPoolQueries({
+      credential: makeVC({ minTrustTier: 'trusted' }),
+      blockedRows: [],
+      allowedRows: [{ '?column?': 1 }],
+    });
+    const result = await checkVentureAccess({ ...defaultParams, operatorTrustTier: 'untrusted' });
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBe('whitelisted');
+    expect(result.ventureCredential).toBeDefined();
+  });
+
+  it('tier_met when operator meets minimum trust tier (no list entries)', async () => {
+    setupPoolQueries({ credential: makeVC({ minTrustTier: 'untrusted' }) });
+    const result = await checkVentureAccess({ ...defaultParams, operatorTrustTier: 'trusted' });
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBe('tier_met');
+  });
+
+  it('tier_not_met when operator is below minimum trust tier (no list entries)', async () => {
+    setupPoolQueries({ credential: makeVC({ minTrustTier: 'trusted' }) });
+    const result = await checkVentureAccess({ ...defaultParams, operatorTrustTier: 'untrusted' });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('tier_not_met');
+  });
+
+  it('blocked result preserves ventureCredential for audit', async () => {
+    const vc = makeVC({ ventureId: 'v-audit', provider: 'github' });
+    setupPoolQueries({ credential: vc, blockedRows: [{ '?column?': 1 }] });
+    const result = await checkVentureAccess({
+      ventureId: 'v-audit',
+      provider: 'github',
+      operatorAddress: '0xBlocked',
+      operatorTrustTier: 'trusted',
+    });
+    expect(result.ventureCredential).toBeDefined();
+    expect(result.ventureCredential!.ventureId).toBe('v-audit');
+    expect(result.ventureCredential!.provider).toBe('github');
+  });
+
+  it.each([
+    { op: 'trusted' as TrustTier, min: 'untrusted' as TrustTier, expected: true },
+    { op: 'trusted' as TrustTier, min: 'trusted' as TrustTier, expected: true },
+    { op: 'untrusted' as TrustTier, min: 'untrusted' as TrustTier, expected: true },
+    { op: 'untrusted' as TrustTier, min: 'trusted' as TrustTier, expected: false },
+  ])('tier gate: op=$op min=$min → allowed=$expected', async ({ op, min, expected }) => {
+    setupPoolQueries({ credential: makeVC({ minTrustTier: min }) });
+    const result = await checkVentureAccess({ ...defaultParams, operatorTrustTier: op });
+    expect(result.allowed).toBe(expected);
+    expect(result.reason).toBe(expected ? 'tier_met' : 'tier_not_met');
+  });
+});
+
+// ===== checkVentureCredentialAccess (mock fetch + supabase + operators) ====
+
+describe('checkVentureCredentialAccess', () => {
+  const defaultParams = {
+    requestId: 'req-1',
+    provider: 'twitter',
+    operatorAddress: '0xOperator1',
+  };
+
+  it('returns no_venture_context when no sender in Ponder', async () => {
+    setupNoVentureContext();
+    const result = await checkVentureCredentialAccess(defaultParams);
+    expect(result.ventureAccessGranted).toBe(false);
+    expect(result.reason).toBe('no_venture_context');
+    expect(result.blockGlobalFallback).toBe(false);
+  });
+
+  it('denies unregistered operators with operator_not_registered', async () => {
+    setupVentureContext('0xSender1', { id: 'v-test', name: 'Test Venture' });
+    mockGetOperator.mockResolvedValue(null);
+    // The code looks up the credential even for unregistered operators
+    // to determine whether venture_only should block global fallback.
+    setupPoolQueries({ credential: makeVC({ accessMode: 'venture_only' }) });
+    const result = await checkVentureCredentialAccess(defaultParams);
+    expect(result.ventureAccessGranted).toBe(false);
+    expect(result.reason).toBe('operator_not_registered');
+    expect(result.blockGlobalFallback).toBe(true); // venture_only blocks global fallback
+  });
+
+  it('grants access to registered trusted operator with matching credential', async () => {
+    setupVentureContext('0xSender1', { id: 'v-test', name: 'Test Venture' });
+    mockGetOperator.mockResolvedValue(makeOperator({ trustTier: 'trusted' }));
+    setupPoolQueries({ credential: makeVC({ minTrustTier: 'untrusted' }) });
+    const result = await checkVentureCredentialAccess(defaultParams);
+    expect(result.ventureAccessGranted).toBe(true);
+    expect(result.reason).toBe('tier_met');
+    expect(result.ventureCredential).toBeDefined();
+  });
+
+  it('returns venture_no_credential when venture has no credential for provider', async () => {
+    setupVentureContext('0xSender1', { id: 'v-test', name: 'Test Venture' });
+    mockGetOperator.mockResolvedValue(makeOperator());
+    setupPoolQueries({ credential: null });
+    const result = await checkVentureCredentialAccess(defaultParams);
+    expect(result.ventureAccessGranted).toBe(false);
+    expect(result.reason).toBe('venture_no_credential');
+    expect(result.blockGlobalFallback).toBe(false);
   });
 });

@@ -24,7 +24,7 @@ type Context = {
   supabase: ReturnType<typeof createClient>;
   ponderUrl: string;
   req: Request;
-  verifiedAddress: string;
+  verifiedAddress: string | undefined;
 };
 
 const typeDefs = /* GraphQL */ `
@@ -290,6 +290,11 @@ async function assertRequestExists(ctx: Context, requestId: string) {
 }
 
 function getWorkerAddress(ctx: Context): string {
+  if (!ctx.verifiedAddress) {
+    throw new GraphQLError('Authentication required: no verified worker address', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
   return ctx.verifiedAddress;
 }
 
@@ -1398,24 +1403,19 @@ const yoga = createYoga<Context>({
       };
     }
 
-    // Legacy fallback: accept X-Worker-Address header
+    // Legacy fallback removed — bare X-Worker-Address is no longer accepted.
+    // Mutations that call getWorkerAddress() will throw UNAUTHENTICATED if verifiedAddress is undefined.
     const workerAddress = request.headers.get('x-worker-address');
     if (workerAddress) {
-      logger.debug({ workerAddress }, 'Legacy auth: using X-Worker-Address header');
-      return {
-        supabase,
-        ponderUrl: PONDER_GRAPHQL_URL,
-        req: request,
-        verifiedAddress: workerAddress,
-      };
+      logger.warn({ workerAddress }, 'Rejected legacy auth: bare X-Worker-Address without ERC-8128 signature');
     }
 
-    // No auth at all — allow introspection/health queries with no verified address
+    // No auth — only introspection/health queries work without a verified address
     return {
       supabase,
       ponderUrl: PONDER_GRAPHQL_URL,
       req: request,
-      verifiedAddress: undefined as any,
+      verifiedAddress: undefined,
     };
   },
   graphqlEndpoint: '/graphql',

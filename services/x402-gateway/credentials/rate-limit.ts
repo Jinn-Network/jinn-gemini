@@ -8,6 +8,7 @@
  */
 
 import { getRedis } from './redis.js';
+import { normalizeAddress } from './types.js';
 
 const RATE_LIMIT = 10;           // requests per window
 const WINDOW_SECONDS = 60;       // 1 minute window
@@ -35,7 +36,7 @@ export async function checkRateLimit(
     return { allowed: true, remaining: RATE_LIMIT, resetAt: 0 };
   }
 
-  const key = `${KEY_PREFIX}${address.toLowerCase()}:${provider}`;
+  const key = `${KEY_PREFIX}${normalizeAddress(address)}:${provider.toLowerCase()}`;
   const now = Math.floor(Date.now() / 1000);
   const windowStart = now - WINDOW_SECONDS;
 

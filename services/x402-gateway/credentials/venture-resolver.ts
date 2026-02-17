@@ -8,7 +8,7 @@
  */
 
 import { getOperator } from './operators.js';
-import { checkVentureAccess, listVentureCredentials } from './venture-credentials.js';
+import { checkVentureAccess, listVentureCredentials, getVentureCredential } from './venture-credentials.js';
 import { getSupabaseClient } from './supabase.js';
 import type { TrustTier, VentureCredential } from './types.js';
 
@@ -115,16 +115,26 @@ export async function checkVentureCredentialAccess(params: {
     };
   }
 
-  // Get operator's trust tier
+  // Get operator — unregistered operators are denied outright,
+  // but we must still respect venture_only access mode to block global fallback.
   const operator = await getOperator(params.operatorAddress);
-  const operatorTier: TrustTier = operator?.trustTier ?? 'untrusted';
+  if (!operator) {
+    const vc = await getVentureCredential(ventureCtx.ventureId, params.provider);
+    const blockGlobal = vc?.active && vc.accessMode === 'venture_only';
+    return {
+      ventureCredential: null,
+      blockGlobalFallback: blockGlobal ?? false,
+      ventureAccessGranted: false,
+      reason: 'operator_not_registered',
+    };
+  }
 
-  // Check access
+  // Check access using operator's actual trust tier
   const accessResult = await checkVentureAccess({
     ventureId: ventureCtx.ventureId,
     provider: params.provider,
     operatorAddress: params.operatorAddress,
-    operatorTrustTier: operatorTier,
+    operatorTrustTier: operator.trustTier,
   });
 
   if (accessResult.reason === 'no_credential') {
@@ -162,7 +172,7 @@ export async function discoverVentureProviders(params: {
   if (credentials.length === 0) return [];
 
   const operator = await getOperator(params.operatorAddress);
-  const operatorTier: TrustTier = operator?.trustTier ?? 'untrusted';
+  if (!operator) return []; // Unregistered operators see no venture providers
 
   const accessible: string[] = [];
   for (const vc of credentials) {
@@ -170,7 +180,7 @@ export async function discoverVentureProviders(params: {
       ventureId: ventureCtx.ventureId,
       provider: vc.provider,
       operatorAddress: params.operatorAddress,
-      operatorTrustTier: operatorTier,
+      operatorTrustTier: operator.trustTier,
     });
     if (access.allowed) {
       accessible.push(vc.provider);
