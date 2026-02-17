@@ -137,7 +137,23 @@ export interface Blueprint {
   default_cyclic: boolean;
   venture_id: string | null;
   status: 'draft' | 'published' | 'archived';
-  type: 'venture' | 'agent';
+  olas_agent_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VentureTemplate {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  version: string;
+  blueprint: object;
+  enabled_tools: string[];
+  tags: string[];
+  model: string;
+  venture_id: string | null;
+  status: 'draft' | 'published' | 'archived';
   created_at: string;
   updated_at: string;
 }
@@ -379,7 +395,6 @@ export async function getServiceWithAllDetails(serviceId: string): Promise<{
 // Blueprint (Template) Queries
 export async function getBlueprints(options: {
   status?: string;
-  type?: 'venture' | 'agent';
   limit?: number;
 } = {}): Promise<Blueprint[]> {
   const params: Record<string, string> = {
@@ -388,12 +403,41 @@ export async function getBlueprints(options: {
   };
 
   if (options.status) params.status = `eq.${options.status}`;
-  if (options.type) params.type = `eq.${options.type}`;
   if (options.limit) params.limit = String(options.limit);
 
   return supabaseQuery<Blueprint>('templates', params);
 }
 
-// Keep old name for backwards compatibility
-export const getAgents = getBlueprints;
-export type Agent = Blueprint;
+export async function getBlueprint(id: string): Promise<Blueprint | null> {
+  const results = await supabaseQuery<Blueprint>('templates', {
+    select: '*',
+    id: `eq.${id}`,
+    limit: '1',
+  });
+  return results[0] || null;
+}
+
+// Venture Template Queries
+export async function getVentureTemplates(options: {
+  status?: string;
+  limit?: number;
+} = {}): Promise<VentureTemplate[]> {
+  const params: Record<string, string> = {
+    select: '*',
+    order: 'created_at.desc',
+  };
+
+  if (options.status) params.status = `eq.${options.status}`;
+  if (options.limit) params.limit = String(options.limit);
+
+  return supabaseQuery<VentureTemplate>('venture_templates', params);
+}
+
+export async function getVentureTemplate(id: string): Promise<VentureTemplate | null> {
+  const results = await supabaseQuery<VentureTemplate>('venture_templates', {
+    select: '*',
+    id: `eq.${id}`,
+    limit: '1',
+  });
+  return results[0] || null;
+}
