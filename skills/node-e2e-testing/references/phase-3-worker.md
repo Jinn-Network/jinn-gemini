@@ -16,13 +16,14 @@ yarn test:e2e:dispatch \
   --cwd "$CLONE_DIR"
 ```
 
-Default blueprint (`blueprints/e2e-infrastructure-test.json`): Seven invariants exercising 7 tools across 5 credential types:
+Default blueprint (`blueprints/e2e-infrastructure-test.json`): Eight invariants exercising 8 tools across 5 credential types:
 - `google_web_search` — Gemini CLI OAuth (file mount)
 - `get_file_contents` — GitHub operator credential (GITHUB_TOKEN from env)
 - `create_artifact` — Agent private key (on-chain IPFS)
 - `create_measurement` — Internal measurement system
 - `venture_query` — Supabase credentials (env var)
 - `dispatch_new_job` — Agent private key + mech address (on-chain delegation)
+- `blog_get_stats` — Credential bridge (agent → signing proxy → ERC-8128 → gateway → Umami JWT)
 
 **CRITICAL**: The worker reads ONLY `metadata.blueprint` — there is no `prompt` field.
 
@@ -54,12 +55,14 @@ yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --env SUPABASE_URL=$SUPABASE_URL \
   --env SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY \
-  --env X402_GATEWAY_URL=http://host.docker.internal:3001
+  --env X402_GATEWAY_URL=http://host.docker.internal:3001 \
+  --env UMAMI_HOST=$UMAMI_HOST \
+  --env UMAMI_WEBSITE_ID=$UMAMI_WEBSITE_ID
 ```
 
 The `--single` flag makes the worker exit after processing one request, preserving the child job for Phase 4's rotation test.
 The `--workstream` flag sets `WORKSTREAM_FILTER` to only process requests in this workstream.
-The `--env` flags pass Supabase credentials for `venture_query` and the credential bridge URL (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host).
+The `--env` flags pass Supabase credentials for `venture_query`, the credential bridge URL (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host), and Umami config for `blog_get_stats` (the agent needs `UMAMI_HOST` and `UMAMI_WEBSITE_ID`; the JWT is fetched via the credential bridge at runtime).
 `WORKER_MECH_FILTER_MODE=any` is set automatically (cross-mech job pickup).
 
 ### 5. Save telemetry location
@@ -93,7 +96,7 @@ In the Docker worker output, look for the credential bridge probe result logged 
 Worker credential capabilities discovered via bridge
 ```
 
-Or search for a non-empty providers list (e.g., `providers: ['supabase']`).
+Or search for a non-empty providers list (e.g., `providers: ['umami']`).
 Note: GitHub is an operator-level credential — it won't appear in bridge capabilities.
 
 If you see `providers: []`, the probe failed — document and continue. Common causes:
@@ -124,7 +127,7 @@ Expected results:
 
 ## Expected Output
 
-- Dispatch: `Dispatched successfully!` with request IDs and `enabledTools: google_web_search, get_file_contents, web_fetch, create_artifact, ...` (7 tools)
+- Dispatch: `Dispatched successfully!` with request IDs and `enabledTools: google_web_search, get_file_contents, web_fetch, create_artifact, ...` (8 tools)
 - Docker worker: Container starts, worker polls Ponder, finds request, claims it
 - Look for: `Multi-service rotation active` with `activeService` and `reason`
 - Agent executes: tool calls visible in output:
@@ -134,6 +137,7 @@ Expected results:
   - `create_measurement` — agent measured GOAL-001 invariant
   - `venture_query` — agent queried the venture registry (may return empty list — that's OK, the tool call is what matters)
   - `dispatch_new_job` — agent dispatched a child job (look for child request ID in output)
+  - `blog_get_stats` — agent fetched analytics via credential bridge (Umami JWT from gateway)
 - IPFS upload: `Uploaded to IPFS` or similar
 - Delivery: On-chain delivery attempted (success or quota error is OK)
 - `service:status`: Shows real epoch info and per-service activity data
@@ -162,6 +166,7 @@ Expected results:
 - [PASS|FAIL] `create_measurement` called (measurement system)
 - [PASS|FAIL] `venture_query` called (credential-dependent tool)
 - [PASS|FAIL] `dispatch_new_job` called (delegation — child request ID visible)
+- [PASS|FAIL] `blog_get_stats` called (credential bridge → umami JWT → API response)
 - [PASS|FAIL] On-chain delivery attempted (success or quota error OK)
 - [PASS|FAIL] `service:status` showed epoch info and per-service activity
 - [PASS|FAIL] Gateway test suite (Step 8): ACL + static provider tests pass

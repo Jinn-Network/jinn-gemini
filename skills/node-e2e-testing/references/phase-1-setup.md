@@ -44,6 +44,22 @@ echo "GITHUB_TOKEN=ghp_test_dummy_for_e2e" >> .env.test
 yarn test:e2e:stack
 ```
 
+### 2b. Ensure Umami env vars for credential bridge test
+
+The `blog_get_stats` tool exercises the full credential bridge pipeline. The gateway needs Umami credentials to log in and serve JWTs. Add to `.env.test` (gateway inherits from the stack env):
+
+```bash
+# Umami analytics (credential bridge E2E — values from configs/the-lamp.json)
+echo "UMAMI_HOST=https://umami-production-ae2b.up.railway.app" >> .env.test
+echo "UMAMI_USERNAME=admin" >> .env.test
+echo "UMAMI_PASSWORD=<password from .env or Railway>" >> .env.test
+echo "UMAMI_WEBSITE_ID=0d8e685a-d498-445d-99c6-671bf3d63b1d" >> .env.test
+```
+
+`UMAMI_HOST` and `UMAMI_WEBSITE_ID` are also needed by the agent (on the env allowlist in `agent.ts`). `UMAMI_USERNAME`/`UMAMI_PASSWORD` are gateway-side secrets only.
+
+**Restart the stack** if already running so the gateway picks up the new env vars.
+
 ### 3. Configure .env
 
 Edit `$CLONE_DIR/.env` — read RPC_URL from `.env.e2e`:
@@ -94,8 +110,8 @@ cat > .env.e2e.acl.json << ACLEOF
 {
   "grants": {
     "$AGENT_ADDR": {
-      "github": {
-        "nangoConnectionId": "e2e-github",
+      "umami": {
+        "nangoConnectionId": "e2e-umami",
         "pricePerAccess": "0",
         "expiresAt": null,
         "active": true
@@ -103,8 +119,8 @@ cat > .env.e2e.acl.json << ACLEOF
     }
   },
   "connections": {
-    "e2e-github": {
-      "provider": "github",
+    "e2e-umami": {
+      "provider": "umami",
       "metadata": { "scope": "e2e-test" }
     }
   }
@@ -146,6 +162,7 @@ This validates the multi-stage build: TypeScript compilation, Chromium install, 
 
 - [PASS|FAIL] Clone created and dependencies installed
 - [PASS|FAIL] `.env` configured with VNet RPC and `X402_GATEWAY_URL=http://localhost:3001`
+- [PASS|FAIL] Umami env vars set (`UMAMI_HOST`, `UMAMI_WEBSITE_ID` in `.env.test`)
 - [PASS|FAIL] `yarn setup` completed (service staked)
-- [PASS|FAIL] ACL seeded — `cat .env.e2e.acl.json` shows agent address under `grants`
+- [PASS|FAIL] ACL seeded — `cat .env.e2e.acl.json` shows agent address under `grants` with `umami` provider
 - [PASS|FAIL] Docker image built (`jinn-node:e2e`)

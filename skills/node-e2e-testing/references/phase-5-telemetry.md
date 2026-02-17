@@ -11,7 +11,7 @@ Parse telemetry files from Phases 3 and/or 4 to verify the agent used the requir
 
 ```bash
 yarn test:e2e:parse-telemetry '/tmp/jinn-telemetry-worker/telemetry-*.json' \
-  --required-tools google_web_search,get_file_contents,create_artifact,create_measurement,venture_query,dispatch_new_job
+  --required-tools google_web_search,get_file_contents,create_artifact,create_measurement,venture_query,dispatch_new_job,blog_get_stats
 ```
 
 The script exits 0 if all required tools were called, 1 otherwise.
@@ -34,6 +34,7 @@ Also check the Docker worker stdout captured during Phases 3/4 for tool evidence
 - `create_measurement` — agent measured GOAL-001 invariant
 - `venture_query` — agent queried venture registry (Supabase credentials worked)
 - `dispatch_new_job` — agent dispatched a child job (delegation worked)
+- `blog_get_stats` — agent fetched analytics via credential bridge (umami JWT)
 - `web_fetch` — agent fetched a URL
 
 ## Expected Output
@@ -66,6 +67,7 @@ The parse-telemetry script outputs:
 - [PASS|FAIL] `create_measurement` called at least once
 - [PASS|FAIL] `venture_query` called at least once (credential-dependent)
 - [PASS|FAIL] `dispatch_new_job` called at least once (delegation)
+- [PASS|FAIL] `blog_get_stats` called at least once (credential bridge → umami)
 - [PASS|FAIL] Token usage reported (input + output > 0)
 
 ### Phase 4 (Child — Rotation Pickup)

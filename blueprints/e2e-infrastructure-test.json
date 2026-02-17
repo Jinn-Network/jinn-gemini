@@ -1,7 +1,7 @@
 {
   "name": "E2E Infrastructure Test",
-  "description": "Validates full agent infrastructure: web search, GitHub credential bridge, artifacts, measurements, credential-dependent tools, and delegation.",
-  "version": "1.1.0",
+  "description": "Validates full agent infrastructure: web search, GitHub operator credential, credential bridge (Umami), artifacts, measurements, credential-dependent tools, and delegation.",
+  "version": "1.2.0",
   "enabledTools": [
     "google_web_search",
     "get_file_contents",
@@ -9,7 +9,8 @@
     "create_artifact",
     "create_measurement",
     "ventures_registry",
-    "dispatch_new_job"
+    "dispatch_new_job",
+    "blog_get_stats"
   ],
   "invariants": [
     {
@@ -57,6 +58,12 @@
       "type": "BOOLEAN",
       "condition": "Delegate a sub-task: use dispatch_new_job to dispatch a child job. The child blueprint should have one invariant requiring it to create an artifact summarizing the OLAS token ecosystem (what it does, key protocols). Use enabledTools: ['google_web_search', 'web_fetch', 'create_artifact'].",
       "assessment": "Check telemetry for dispatch_new_job tool call that returned a request ID."
+    },
+    {
+      "id": "TOOL-BRIDGE",
+      "type": "BOOLEAN",
+      "condition": "Use the blog_get_stats tool to fetch website analytics for the past 7 days. This tool fetches a credential from the credential bridge. Report the stats or any error returned.",
+      "assessment": "Check telemetry for a blog_get_stats tool call. The tool call itself validates the full credential bridge pipeline (agent → signing proxy → ERC-8128 → bridge → ACL → token → API)."
     }
   ]
 }
