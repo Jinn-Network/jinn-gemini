@@ -12,7 +12,7 @@ import {
   resolveChainId,
   signRequestWithErc8128,
   type Erc8128Signer,
-} from 'jinn-node/http/erc8128.js';
+} from 'jinn-node/http/erc8128';
 
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
 const CONTROL_API_TIMEOUT_MS = Number.parseInt(process.env.CONTROL_API_TIMEOUT_MS || '5000', 10);
