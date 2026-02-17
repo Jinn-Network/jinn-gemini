@@ -30,7 +30,6 @@ describe('verifyJobClaim', () => {
 
   it('returns unavailable when signer key is not configured', async () => {
     delete process.env.CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY;
-    delete process.env.JINN_SERVICE_PRIVATE_KEY;
     delete process.env.PRIVATE_KEY;
     const verifyJobClaim = await loadVerifyJobClaim();
 

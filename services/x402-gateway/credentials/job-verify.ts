@@ -12,7 +12,7 @@ import {
   resolveChainId,
   signRequestWithErc8128,
   type Erc8128Signer,
-} from '../../../jinn-node/src/http/erc8128.js';
+} from 'jinn-node/http/erc8128.js';
 
 const CONTROL_API_URL = process.env.CONTROL_API_URL || 'http://localhost:4001/graphql';
 const CONTROL_API_TIMEOUT_MS = Number.parseInt(process.env.CONTROL_API_TIMEOUT_MS || '5000', 10);
@@ -43,12 +43,6 @@ let cachedSigner: Erc8128Signer | null = null;
 function getControlApiPrivateKey(): `0x${string}` | null {
   const bridgeKey = process.env.CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY?.trim();
   if (bridgeKey && /^0x[a-fA-F0-9]{64}$/.test(bridgeKey)) return bridgeKey as `0x${string}`;
-
-  const serviceKey = process.env.JINN_SERVICE_PRIVATE_KEY?.trim();
-  if (serviceKey && /^0x[a-fA-F0-9]{64}$/.test(serviceKey)) {
-    console.warn('[job-verify] Using JINN_SERVICE_PRIVATE_KEY fallback (set CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY)');
-    return serviceKey as `0x${string}`;
-  }
 
   const genericKey = process.env.PRIVATE_KEY?.trim();
   if (genericKey && /^0x[a-fA-F0-9]{64}$/.test(genericKey)) {
@@ -91,7 +85,7 @@ export async function verifyJobClaim(
     return {
       state: 'unavailable',
       error: 'Bridge signer private key is not configured',
-      detail: 'Set CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY or JINN_SERVICE_PRIVATE_KEY',
+      detail: 'Set CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY or PRIVATE_KEY',
     };
   }
 

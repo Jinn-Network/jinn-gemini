@@ -98,7 +98,6 @@ The worker reads credentials from `olas-operate-middleware/.operate/`:
 |----------|-------------|
 | `JINN_SERVICE_MECH_ADDRESS` | Mech contract address (0x...) |
 | `JINN_SERVICE_SAFE_ADDRESS` | Gnosis Safe multisig address (0x...) |
-| `JINN_SERVICE_PRIVATE_KEY` | Agent EOA private key (0x..., raw hex) |
 
 ### Optional Configuration
 

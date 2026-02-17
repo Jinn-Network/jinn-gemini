@@ -30,7 +30,6 @@ Priority: env var > `.operate/services/*/config.json`
 |----------|------|-------------|
 | `JINN_SERVICE_MECH_ADDRESS` | address | Mech contract (overrides `.operate`) |
 | `JINN_SERVICE_SAFE_ADDRESS` | address | Gnosis Safe (overrides `.operate`) |
-| `JINN_SERVICE_PRIVATE_KEY` | hex | Agent key (overrides `.operate`) |
 | `OPERATE_PROFILE_DIR` | path | Override `.operate` directory location |
 | `OPERATE_PASSWORD` | string | Middleware keystore password |
 

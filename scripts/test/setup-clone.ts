@@ -129,7 +129,6 @@ async function setupClone(branch: string) {
     PONDER_GRAPHQL_URL: 'http://localhost:42069/graphql',
     CONTROL_API_URL: 'http://localhost:4001/graphql',
     X402_GATEWAY_URL: 'http://localhost:3001',
-    CREDENTIAL_BRIDGE_URL: 'http://localhost:3001',
   };
 
   for (const [key, value] of Object.entries(overrides)) {

@@ -25,7 +25,7 @@ import {
 import { logAdminAudit } from './admin-audit.js';
 import { queryAdminAudit } from './admin-audit.js';
 import { verifyVentureOwner } from './supabase.js';
-import { verifyRequestWithErc8128 } from '../../../jinn-node/src/http/erc8128.js';
+import { verifyRequestWithErc8128 } from 'jinn-node/http/erc8128.js';
 import { getCredentialNonceStore } from './redis.js';
 import { getClientIp } from './audit.js';
 

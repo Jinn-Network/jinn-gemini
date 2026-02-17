@@ -11,7 +11,7 @@ Parse telemetry files from Phases 3 and/or 4 to verify the agent used the requir
 
 ```bash
 yarn test:e2e:parse-telemetry '/tmp/jinn-telemetry-worker/telemetry-*.json' \
-  --required-tools google_web_search,create_artifact,create_measurement,venture_query,dispatch_new_job
+  --required-tools google_web_search,get_file_contents,create_artifact,create_measurement,venture_query,dispatch_new_job
 ```
 
 The script exits 0 if all required tools were called, 1 otherwise.
@@ -29,6 +29,7 @@ yarn test:e2e:parse-telemetry '/tmp/jinn-telemetry-rotation/telemetry-*.json' \
 
 Also check the Docker worker stdout captured during Phases 3/4 for tool evidence:
 - `google_web_search` — agent searched the web
+- `get_file_contents` — agent fetched from GitHub via operator GITHUB_TOKEN (GitHub API error acceptable)
 - `create_artifact` — agent created an artifact with results
 - `create_measurement` — agent measured GOAL-001 invariant
 - `venture_query` — agent queried venture registry (Supabase credentials worked)
@@ -60,6 +61,7 @@ The parse-telemetry script outputs:
 - [PASS|FAIL] Telemetry file(s) found and parseable
 - [PASS|FAIL] `core_tools_enabled` is non-empty
 - [PASS|FAIL] `google_web_search` called at least once
+- [PASS|FAIL] `get_file_contents` called at least once (operator GITHUB_TOKEN)
 - [PASS|FAIL] `create_artifact` called at least once
 - [PASS|FAIL] `create_measurement` called at least once
 - [PASS|FAIL] `venture_query` called at least once (credential-dependent)

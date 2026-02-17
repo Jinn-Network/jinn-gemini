@@ -26,7 +26,7 @@ yarn test:e2e:stack
 ```
 
 Leave running in background. The script automatically:
-- Kills existing processes on ports 42069 and 4001
+- Kills existing processes on ports 42069, 4001, and 3001
 - Cleans stale `.ponder` cache
 - Sets `PONDER_START_BLOCK` near VNet head
 - Reads RPC_URL from `.env.e2e`
@@ -36,7 +36,7 @@ Wait for `Local stack ready` message.
 ## Expected Output
 
 - VNet creation: JSON with `vnetId`, `adminRpcUrl`, `blockNumber`
-- Stack startup: `Ponder ready at :42069`, `Control API ready at :4001`, `Local stack ready`
+- Stack startup: `Ponder ready at :42069`, `Control API ready at :4001`, `Gateway ready at :3001`, `Local stack ready`
 
 ## On Failure
 
@@ -49,3 +49,4 @@ Wait for `Local stack ready` message.
 - [PASS|FAIL] VNet created (RPC_URL written to `.env.e2e`)
 - [PASS|FAIL] Ponder healthy (`http://localhost:42069/graphql` responds)
 - [PASS|FAIL] Control API healthy (`http://localhost:4001/graphql` responds)
+- [PASS|FAIL] Gateway healthy (`http://localhost:3001/health` responds) — non-fatal; if FAIL, credential bridge steps in Phase 3 will not work

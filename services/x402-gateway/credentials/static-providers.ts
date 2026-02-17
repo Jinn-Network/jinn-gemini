@@ -25,10 +25,8 @@ interface StaticProviderConfig {
 }
 
 const STATIC_PROVIDERS: Record<string, StaticProviderConfig> = {
-  github: {
-    envVars: ['GITHUB_TOKEN'],
-    expiresIn: 3600,
-  },
+  // github: operator-level credential — operators provide GITHUB_TOKEN in their .env directly.
+  // Not served through the bridge.
   telegram: {
     envVars: ['TELEGRAM_BOT_TOKEN'],
     expiresIn: 3600,

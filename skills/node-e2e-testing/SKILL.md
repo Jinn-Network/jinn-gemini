@@ -73,7 +73,7 @@ Operator scripts are tested at the points where their output is most meaningful:
 | `yarn test:e2e:vnet status` | Check VNet health + quota |
 | `yarn test:e2e:vnet cleanup --max-age-hours=0` | Delete all VNets |
 | `yarn test:e2e:dispatch --workstream <id> --cwd <path>` | Dispatch job |
-| `yarn test:e2e:stack` | Start local Ponder + Control API |
+| `yarn test:e2e:stack` | Start local Ponder + Control API + Gateway |
 | `yarn test:e2e:docker-run --cwd <path> [--single] [--telemetry]` | Run worker in Docker |
 | `yarn test:e2e:parse-telemetry <file> [--required-tools t1,t2]` | Parse Gemini telemetry |
 
@@ -137,6 +137,7 @@ These are NOT failures — do not mark FAIL for these:
 - **AEA deployment failed during setup**: Expected CLI version mismatch
 - **Web search returns no results**: Tool was *called* — that's what matters
 - **Chromium sandbox warning in Docker**: Expected with `GEMINI_SANDBOX=false`
+- **GitHub API 401 in `get_file_contents`**: Expected with dummy `GITHUB_TOKEN`. The credential bridge handshake (probe → ACL → token served) is what's validated — the downstream GitHub API response is not.
 
 ## Cleanup
 

@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createPrivateKeyHttpSigner, signRequestWithErc8128 } from '../../../jinn-node/src/http/erc8128.js';
+import { createPrivateKeyHttpSigner, signRequestWithErc8128 } from 'jinn-node/http/erc8128.js';
 import { createTestPaymentHeader } from './x402-verify.js';
 
 const __filename = fileURLToPath(import.meta.url);

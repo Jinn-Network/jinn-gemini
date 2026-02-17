@@ -16,8 +16,9 @@ yarn test:e2e:dispatch \
   --cwd "$CLONE_DIR"
 ```
 
-Default blueprint (`blueprints/e2e-infrastructure-test.json`): Six invariants exercising 6 tools across 4 credential types:
+Default blueprint (`blueprints/e2e-infrastructure-test.json`): Seven invariants exercising 7 tools across 5 credential types:
 - `google_web_search` — Gemini CLI OAuth (file mount)
+- `get_file_contents` — GitHub operator credential (GITHUB_TOKEN from env)
 - `create_artifact` — Agent private key (on-chain IPFS)
 - `create_measurement` — Internal measurement system
 - `venture_query` — Supabase credentials (env var)
@@ -52,12 +53,13 @@ rm -rf /tmp/jinn-telemetry
 yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --env SUPABASE_URL=$SUPABASE_URL \
-  --env SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+  --env SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY \
+  --env X402_GATEWAY_URL=http://host.docker.internal:3001
 ```
 
 The `--single` flag makes the worker exit after processing one request, preserving the child job for Phase 4's rotation test.
 The `--workstream` flag sets `WORKSTREAM_FILTER` to only process requests in this workstream.
-The `--env` flags pass Supabase credentials for `venture_query`.
+The `--env` flags pass Supabase credentials for `venture_query` and the credential bridge URL (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host).
 `WORKER_MECH_FILTER_MODE=any` is set automatically (cross-mech job pickup).
 
 ### 5. Save telemetry location
@@ -83,13 +85,51 @@ Expected:
 - Staking health (slots used, APY, deposit amount)
 - Wallet balances (non-zero for funded safes)
 
+### 7. Verify credential bridge probe
+
+In the Docker worker output, look for the credential bridge probe result logged at startup:
+
+```
+Worker credential capabilities discovered via bridge
+```
+
+Or search for a non-empty providers list (e.g., `providers: ['supabase']`).
+Note: GitHub is an operator-level credential — it won't appear in bridge capabilities.
+
+If you see `providers: []`, the probe failed — document and continue. Common causes:
+- `X402_GATEWAY_URL` not passed via `--env` to Docker (check Step 4 command)
+- Gateway not running on :3001 (check Phase 0 gateway checkpoint)
+- ACL not seeded with the correct agent address (check Phase 1 Step 4a)
+- `No service private key available` — the worker couldn't read the agent key; check `.operate` mount
+
+### 8. Run gateway test suite
+
+After the worker completes, validate the credential bridge independently. From the monorepo root:
+
+```bash
+CREDENTIAL_ACL_PATH=.env.e2e.acl.json \
+  GITHUB_TOKEN=ghp_test_dummy_for_e2e \
+  npx tsx services/x402-gateway/credentials/test-e2e.ts
+```
+
+This script spawns its own isolated gateway instances (it does not connect to the running gateway on :3001). `CREDENTIAL_ACL_PATH` is needed because the test imports the ACL module directly.
+
+Expected results:
+- ACL tests: All pass (signature, unauthorized, expired, revoked, etc.)
+- Static provider test: Pass (venture tokens served from env)
+- Payment basic validation: Pass (amount, recipient, expiry, network checks)
+- CDP facilitator: `FACILITATOR_REJECTED` for test dummy signatures — this is correct production behavior, not a failure
+- Nango tests: Skip (no Nango running locally)
+- Rate limit / replay tests: Skip (no Redis running locally)
+
 ## Expected Output
 
-- Dispatch: `Dispatched successfully!` with request IDs and `enabledTools: google_web_search, web_fetch, create_artifact, ...`
+- Dispatch: `Dispatched successfully!` with request IDs and `enabledTools: google_web_search, get_file_contents, web_fetch, create_artifact, ...` (7 tools)
 - Docker worker: Container starts, worker polls Ponder, finds request, claims it
 - Look for: `Multi-service rotation active` with `activeService` and `reason`
 - Agent executes: tool calls visible in output:
   - `google_web_search` — agent searched the web
+  - `get_file_contents` — agent fetched from GitHub via operator GITHUB_TOKEN (API 401 with dummy token is acceptable)
   - `create_artifact` — agent created an artifact with results
   - `create_measurement` — agent measured GOAL-001 invariant
   - `venture_query` — agent queried the venture registry (may return empty list — that's OK, the tool call is what matters)
@@ -110,15 +150,18 @@ Expected:
 
 ## CHECKPOINT: Phase 3 — Worker Execution (Docker)
 
-- [PASS|FAIL] Job dispatched (request ID returned, 6 enabled tools listed)
+- [PASS|FAIL] Job dispatched (request ID returned, 7 enabled tools listed)
 - [PASS|FAIL] Docker container started without crash
 - [PASS|FAIL] Worker initialized multi-service rotation (logged "Multi-service rotation active")
 - [PASS|FAIL] Worker found and claimed the dispatched request
+- [PASS|FAIL] Credential bridge probed at startup — non-empty providers in worker logs (if FAIL, document reason and continue)
 - [PASS|FAIL] Agent executed (non-empty output)
 - [PASS|FAIL] `google_web_search` called (web search tool)
+- [PASS|FAIL] `get_file_contents` called (operator GITHUB_TOKEN from env; GitHub API error acceptable)
 - [PASS|FAIL] `create_artifact` called (IPFS artifact)
 - [PASS|FAIL] `create_measurement` called (measurement system)
 - [PASS|FAIL] `venture_query` called (credential-dependent tool)
 - [PASS|FAIL] `dispatch_new_job` called (delegation — child request ID visible)
 - [PASS|FAIL] On-chain delivery attempted (success or quota error OK)
 - [PASS|FAIL] `service:status` showed epoch info and per-service activity
+- [PASS|FAIL] Gateway test suite (Step 8): ACL + static provider tests pass

@@ -1,9 +1,10 @@
 {
   "name": "E2E Infrastructure Test",
-  "description": "Validates full agent infrastructure: web search, artifacts, measurements, credential-dependent tools, and delegation.",
-  "version": "1.0.0",
+  "description": "Validates full agent infrastructure: web search, GitHub credential bridge, artifacts, measurements, credential-dependent tools, and delegation.",
+  "version": "1.1.0",
   "enabledTools": [
     "google_web_search",
+    "get_file_contents",
     "web_fetch",
     "create_artifact",
     "create_measurement",
@@ -26,6 +27,12 @@
       "type": "BOOLEAN",
       "condition": "You must use the google_web_search tool to find OLAS token price data.",
       "assessment": "Check telemetry for google_web_search tool calls."
+    },
+    {
+      "id": "TOOL-CRED",
+      "type": "BOOLEAN",
+      "condition": "Use the get_file_contents tool to fetch the file 'README.md' from the GitHub repository 'Jinn-Network/jinn-node' (owner: 'Jinn-Network', repo: 'jinn-node', path: 'README.md'). The tool reads GITHUB_TOKEN from the operator's environment. Report whether the file was retrieved or an error was returned.",
+      "assessment": "Check telemetry for a get_file_contents tool call. A GitHub API 401 error with a dummy token is acceptable — the tool call itself is what is being validated."
     },
     {
       "id": "TOOL-ARTIFACT",

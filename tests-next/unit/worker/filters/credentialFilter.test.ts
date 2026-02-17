@@ -34,7 +34,7 @@ import {
 describe('credentialFilter', () => {
   afterEach(() => {
     _resetCredentialInfoCache();
-    delete process.env.CREDENTIAL_BRIDGE_URL;
+    delete process.env.X402_GATEWAY_URL;
     vi.restoreAllMocks();
   });
 
@@ -45,10 +45,10 @@ describe('credentialFilter', () => {
       expect(TOOL_CREDENTIAL_MAP['telegram_send_document']).toEqual(['telegram']);
     });
 
-    it('maps github tools to github provider', () => {
-      expect(TOOL_CREDENTIAL_MAP['get_file_contents']).toEqual(['github']);
-      expect(TOOL_CREDENTIAL_MAP['search_code']).toEqual(['github']);
-      expect(TOOL_CREDENTIAL_MAP['list_commits']).toEqual(['github']);
+    it('github tools are operator-level (not in credential map)', () => {
+      expect(TOOL_CREDENTIAL_MAP['get_file_contents']).toBeUndefined();
+      expect(TOOL_CREDENTIAL_MAP['search_code']).toBeUndefined();
+      expect(TOOL_CREDENTIAL_MAP['list_commits']).toBeUndefined();
     });
 
     it('maps meta-tools', () => {
@@ -79,9 +79,9 @@ describe('credentialFilter', () => {
     });
 
     it('returns multiple providers for tools requiring different credentials', () => {
-      const result = getRequiredCredentials(['telegram_send_message', 'get_file_contents']);
+      const result = getRequiredCredentials(['telegram_send_message', 'embed_text']);
       expect(result).toContain('telegram');
-      expect(result).toContain('github');
+      expect(result).toContain('openai');
       expect(result).toHaveLength(2);
     });
 
@@ -116,8 +116,8 @@ describe('credentialFilter', () => {
 
     it('returns false when worker has some but not all required credentials', () => {
       expect(isJobEligibleForWorker(
-        ['get_file_contents', 'telegram_send_message'],
-        new Set(['github']),
+        ['embed_text', 'telegram_send_message'],
+        new Set(['openai']),
       )).toBe(false);
     });
 
@@ -156,14 +156,14 @@ describe('credentialFilter', () => {
   });
 
   describe('probeCredentialBridge', () => {
-    it('returns empty when CREDENTIAL_BRIDGE_URL is not set', async () => {
+    it('returns empty when X402_GATEWAY_URL is not set', async () => {
       const result = await probeCredentialBridge();
       expect(result.isTrusted).toBe(false);
       expect(result.providers.size).toBe(0);
     });
 
     it('returns providers from bridge on success', async () => {
-      process.env.CREDENTIAL_BRIDGE_URL = 'http://localhost:3001';
+      process.env.X402_GATEWAY_URL = 'http://localhost:3001';
       const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ providers: ['github', 'telegram'] }), {
           status: 200,
@@ -182,7 +182,7 @@ describe('credentialFilter', () => {
     });
 
     it('returns empty when bridge returns non-200', async () => {
-      process.env.CREDENTIAL_BRIDGE_URL = 'http://localhost:3001';
+      process.env.X402_GATEWAY_URL = 'http://localhost:3001';
       vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response('Unauthorized', { status: 401 }),
       );
@@ -193,7 +193,7 @@ describe('credentialFilter', () => {
     });
 
     it('returns empty when fetch throws (network error)', async () => {
-      process.env.CREDENTIAL_BRIDGE_URL = 'http://localhost:3001';
+      process.env.X402_GATEWAY_URL = 'http://localhost:3001';
       vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
 
       const result = await probeCredentialBridge();
@@ -202,7 +202,7 @@ describe('credentialFilter', () => {
     });
 
     it('returns empty providers as not trusted', async () => {
-      process.env.CREDENTIAL_BRIDGE_URL = 'http://localhost:3001';
+      process.env.X402_GATEWAY_URL = 'http://localhost:3001';
       vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ providers: [] }), {
           status: 200,
@@ -216,7 +216,7 @@ describe('credentialFilter', () => {
     });
 
     it('strips trailing slash from bridge URL', async () => {
-      process.env.CREDENTIAL_BRIDGE_URL = 'http://localhost:3001/';
+      process.env.X402_GATEWAY_URL = 'http://localhost:3001/';
       const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ providers: ['github'] }), {
           status: 200,
@@ -233,7 +233,7 @@ describe('credentialFilter', () => {
 
   describe('getWorkerCredentialInfo (async caching)', () => {
     it('caches result across calls', async () => {
-      process.env.CREDENTIAL_BRIDGE_URL = 'http://localhost:3001';
+      process.env.X402_GATEWAY_URL = 'http://localhost:3001';
       const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response(JSON.stringify({ providers: ['github'] }), {
           status: 200,
@@ -250,7 +250,7 @@ describe('credentialFilter', () => {
     });
 
     it('resets with _resetCredentialInfoCache', async () => {
-      process.env.CREDENTIAL_BRIDGE_URL = 'http://localhost:3001';
+      process.env.X402_GATEWAY_URL = 'http://localhost:3001';
       const mockFetch = vi.spyOn(globalThis, 'fetch')
         .mockResolvedValueOnce(
           new Response(JSON.stringify({ providers: ['github'] }), {
