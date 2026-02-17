@@ -48,9 +48,8 @@ Both must be non-empty. If missing, `venture_query` will use a mock client and t
 
 ### 4. Run worker via Docker
 
-Wait a few seconds for Ponder to index the marketplace request. Clear telemetry and run in **single mode** (`--single`) so the worker exits after processing one job, leaving the child dispatch for Phase 4:
+Wait a few seconds for Ponder to index the marketplace request, then run in **single mode** (`--single`) so the worker exits after processing one job, leaving the child dispatch for Phase 4:
 ```bash
-rm -rf /tmp/jinn-telemetry
 yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --env SUPABASE_URL=$SUPABASE_URL \
@@ -63,7 +62,8 @@ yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
 The `--single` flag makes the worker exit after processing one request, preserving the child job for Phase 4's rotation test.
 The `--workstream` flag sets `WORKSTREAM_FILTER` to only process requests in this workstream.
 The `--env` flags pass Supabase credentials for `venture_query`, the credential bridge URL (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host), and Umami config for `blog_get_stats` (the agent needs `UMAMI_HOST` and `UMAMI_WEBSITE_ID`; the JWT is fetched via the credential bridge at runtime).
-`WORKER_MECH_FILTER_MODE=any` is set automatically (cross-mech job pickup).
+`WORKER_MECH_FILTER_MODE=any` and `GITHUB_TOKEN` are set automatically by the docker-run script.
+Stale telemetry files are cleaned automatically before the container starts.
 
 ### 5. Save telemetry location
 
@@ -111,7 +111,6 @@ After the worker completes, validate the credential bridge independently. From t
 
 ```bash
 CREDENTIAL_ACL_PATH=.env.e2e.acl.json \
-  GITHUB_TOKEN=ghp_test_dummy_for_e2e \
   npx tsx services/x402-gateway/credentials/test-e2e.ts
 ```
 

@@ -131,6 +131,11 @@ async function setupClone(branch: string) {
     X402_GATEWAY_URL: 'http://localhost:3001',
   };
 
+  // Forward GITHUB_TOKEN from host env if available (operator-level credential).
+  if (process.env.GITHUB_TOKEN) {
+    overrides.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+  }
+
   for (const [key, value] of Object.entries(overrides)) {
     // Replace existing key=value lines (including commented-out ones)
     const regex = new RegExp(`^#?\\s*${key}=.*$`, 'm');

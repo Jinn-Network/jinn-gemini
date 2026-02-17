@@ -59,6 +59,16 @@ echo "SERVICE_B_SAFE=<second-safe-address>" >> .env.e2e
 echo "AGENT_EOA_2=<second-agent-eoa>" >> .env.e2e
 ```
 
+### 5a. Re-seed the credential bridge ACL
+
+The second agent must be added to the ACL for credential bridge calls to work:
+
+```bash
+yarn test:e2e:vnet seed-acl "$CLONE_DIR"
+```
+
+Expected: `ACL seeded for 2 agent(s)` — both addresses listed.
+
 ## Expected Output
 
 - Dry run: preflight passes, shows what would be created, exits 0
@@ -79,3 +89,4 @@ echo "AGENT_EOA_2=<second-agent-eoa>" >> .env.e2e
 - [PASS|FAIL] `service:add --dry-run` completed preflight without error
 - [PASS|FAIL] `service:add` completed (2nd service deployed and staked)
 - [PASS|FAIL] `service:list` showed 2 services with distinct config IDs and safe addresses
+- [PASS|FAIL] ACL re-seeded — `cat .env.e2e.acl.json` shows 2 agent addresses under `grants`

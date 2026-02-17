@@ -107,6 +107,12 @@ dockerArgs.push('-e', 'WORKER_MECH_FILTER_MODE=any');
 // Without this, the worker runs in single-service mode and skips rotation.
 dockerArgs.push('-e', 'WORKER_MULTI_SERVICE=true');
 
+// Forward GITHUB_TOKEN from host env (operator-level credential, not bridge).
+// The clone .env may have a placeholder; -e flag takes precedence over --env-file.
+if (process.env.GITHUB_TOKEN) {
+  dockerArgs.push('-e', `GITHUB_TOKEN=${process.env.GITHUB_TOKEN}`);
+}
+
 // Workstream filter — restrict worker to requests in a specific workstream
 if (workstream) {
   dockerArgs.push('-e', `WORKSTREAM_FILTER=${workstream}`);
@@ -120,9 +126,11 @@ for (const pair of envPairs) {
 // Mounts
 dockerArgs.push('-v', `${resolvedCloneDir}/.operate:/home/jinn/.operate`);
 
-// Individual auth file mounts — avoids host extension symlinks crashing the CLI
+// Individual auth file mounts — avoids host extension symlinks crashing the CLI.
+// agent.ts copies these from ~/.gemini/ to GEMINI_CLI_HOME/.gemini/ before spawning CLI.
 const oauthCreds = join(home, '.gemini', 'oauth_creds.json');
 const googleAccounts = join(home, '.gemini', 'google_accounts.json');
+const settingsJson = join(home, '.gemini', 'settings.json');
 
 if (existsSync(oauthCreds)) {
   dockerArgs.push('-v', `${oauthCreds}:/home/jinn/.gemini/oauth_creds.json`);
@@ -130,10 +138,16 @@ if (existsSync(oauthCreds)) {
 if (existsSync(googleAccounts)) {
   dockerArgs.push('-v', `${googleAccounts}:/home/jinn/.gemini/google_accounts.json`);
 }
+if (existsSync(settingsJson)) {
+  dockerArgs.push('-v', `${settingsJson}:/home/jinn/.gemini/settings.json`);
+}
 
 // Mount telemetry subdirectory (not /tmp root!) so files survive container exit (--rm).
 // CRITICAL: mounting over /tmp would destroy /tmp/.gemini-worker/ which the Dockerfile
 // creates for GEMINI_CLI_HOME — breaking extension install and OAuth token refresh.
+try {
+  execSync('rm -f /tmp/jinn-telemetry/telemetry-*.json', { stdio: 'pipe' });
+} catch { /* directory may not exist yet */ }
 execSync('mkdir -p /tmp/jinn-telemetry');
 dockerArgs.push('-v', '/tmp/jinn-telemetry:/tmp/jinn-telemetry');
 dockerArgs.push('-e', 'TMPDIR=/tmp/jinn-telemetry');

@@ -9,54 +9,25 @@
 
 Ask the user which branch to test. List available branches:
 ```bash
-git ls-remote --heads git@github.com:Jinn-Network/jinn-node.git | sed 's|.*refs/heads/||'
+yarn test:e2e:clone --list-branches
 ```
 
 ### 2. Clone and install
 
 ```bash
-CLONE_DIR=$(mktemp -d)/jinn-node
 BRANCH=main  # or the branch the user chose
-git clone -b "$BRANCH" https://github.com/Jinn-Network/jinn-node.git "$CLONE_DIR"
-cd "$CLONE_DIR" && yarn install
-cp .env.example .env
+yarn test:e2e:clone --branch "$BRANCH"
 ```
 
-Save session state to `.env.e2e` (monorepo root):
+The clone script automatically:
+- Clones to a temp directory and installs dependencies
+- Configures `.env` with VNet RPC, passwords, and local stack URLs
+- Forwards `GITHUB_TOKEN` from the host env if available
+- Saves `CLONE_DIR` and `OPERATE_PASSWORD` to `.env.e2e`
+
+Read `CLONE_DIR` from `.env.e2e` for subsequent steps:
 ```bash
-echo "CLONE_DIR=$CLONE_DIR" >> .env.e2e
-echo "OPERATE_PASSWORD=e2e-test-password-2024" >> .env.e2e
-```
-
-### 2a. Ensure GITHUB_TOKEN for operator credential
-
-GitHub is an operator-level credential — the agent reads `GITHUB_TOKEN` directly from env (not via the credential bridge). A dummy token validates the env passthrough — the tool call matters, not GitHub API success.
-
-```bash
-grep GITHUB_TOKEN .env.test
-# If not present:
-echo "GITHUB_TOKEN=ghp_test_dummy_for_e2e" >> .env.test
-```
-
-**Restart the stack** so the gateway inherits the token:
-```bash
-# Ctrl+C the running stack, then:
-yarn test:e2e:stack
-```
-
-### 3. Configure .env
-
-Edit `$CLONE_DIR/.env` — read RPC_URL from `.env.e2e`:
-```
-RPC_URL=<from .env.e2e>
-CHAIN_ID=8453
-OPERATE_PASSWORD=e2e-test-password-2024
-PONDER_GRAPHQL_URL=http://localhost:42069/graphql
-CONTROL_API_URL=http://localhost:4001/graphql
-STAKING_CONTRACT=0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139
-WORKSTREAM_FILTER=0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac
-X402_GATEWAY_URL=https://x402-gateway-production-1b84.up.railway.app
-X402_GATEWAY_URL=http://localhost:3001
+CLONE_DIR=$(grep CLONE_DIR .env.e2e | cut -d= -f2-)
 ```
 
 ### 4. Run setup (iterative)
@@ -78,39 +49,10 @@ echo "SERVICE_A_SAFE=<service-safe-address>" >> .env.e2e
 
 ### 4a. Seed the credential bridge ACL
 
-Seed the gateway's ACL file with a `github` grant for the agent address. The gateway reads the ACL on every request (no restart needed).
+Seed the gateway's ACL file with umami grants for all agent addresses. The gateway reads the ACL on every request (no restart needed).
 
 ```bash
-AGENT_ADDR=$(node -e "
-const fs = require('fs');
-const keys = fs.readdirSync('$CLONE_DIR/.operate/keys');
-if (keys.length === 0) process.exit(1);
-const addr = keys[0].startsWith('0x') ? keys[0] : '0x' + keys[0];
-console.log(addr.toLowerCase());
-")
-echo "Agent address: $AGENT_ADDR"
-
-cat > .env.e2e.acl.json << ACLEOF
-{
-  "grants": {
-    "$AGENT_ADDR": {
-      "umami": {
-        "nangoConnectionId": "e2e-umami",
-        "pricePerAccess": "0",
-        "expiresAt": null,
-        "active": true
-      }
-    }
-  },
-  "connections": {
-    "e2e-umami": {
-      "provider": "umami",
-      "metadata": { "scope": "e2e-test" }
-    }
-  }
-}
-ACLEOF
-echo "ACL seeded for: $AGENT_ADDR"
+yarn test:e2e:vnet seed-acl "$CLONE_DIR"
 ```
 
 Verify:
@@ -118,7 +60,7 @@ Verify:
 cat .env.e2e.acl.json
 ```
 
-Expected: JSON with the agent address under `grants`.
+Expected: JSON with the agent address under `grants` with `umami` provider.
 
 ### 5. Build Docker image
 

@@ -11,6 +11,7 @@
  *   time-warp <seconds> Advance time + mine a block
  *   checkpoint          Call checkpoint() on staking contract (fund OLAS if needed)
  *   seed-activity       Set Safe nonce + marketplace request count for activity check
+ *   seed-acl <dir>      Seed credential bridge ACL with all agent addresses from .operate/keys/
  *   cleanup             Delete all stale e2e-test-* VNets
  *   status              Check VNet health + quota status
  *
@@ -361,6 +362,75 @@ async function cmdSeedActivity(positional: string[], flags: Record<string, strin
   }
 }
 
+async function cmdSeedAcl(positional: string[], flags: Record<string, string>) {
+  const cloneDir = positional[0] || flags['cwd'];
+  if (!cloneDir) {
+    throw new Error('Usage: seed-acl <clone-dir>  OR  seed-acl --cwd <clone-dir>');
+  }
+
+  const operateKeysDir = resolve(cloneDir, '.operate', 'keys');
+  const aclPath = resolve(MONOREPO_ROOT, '.env.e2e.acl.json');
+
+  // Discover agent addresses from .operate/keys/
+  let keyEntries: string[];
+  try {
+    const entries = await fs.readdir(operateKeysDir);
+    keyEntries = entries.filter(
+      name => /^(0x)?[a-fA-F0-9]{40}$/.test(name)
+    );
+  } catch {
+    throw new Error(`Cannot read ${operateKeysDir} — run "yarn setup" first.`);
+  }
+
+  if (keyEntries.length === 0) {
+    throw new Error(`No agent keys found in ${operateKeysDir}`);
+  }
+
+  // Normalize to lowercase 0x-prefixed
+  const addresses = keyEntries.map(k =>
+    (k.startsWith('0x') ? k : '0x' + k).toLowerCase()
+  );
+
+  // Load existing ACL or start fresh
+  let acl: { grants: Record<string, any>; connections: Record<string, any> };
+  try {
+    acl = JSON.parse(await fs.readFile(aclPath, 'utf-8'));
+  } catch {
+    acl = { grants: {}, connections: {} };
+  }
+
+  // Seed each agent with umami grant (idempotent)
+  for (const addr of addresses) {
+    if (!acl.grants[addr]) {
+      acl.grants[addr] = {};
+    }
+    if (!acl.grants[addr].umami) {
+      acl.grants[addr].umami = {
+        nangoConnectionId: 'e2e-umami',
+        pricePerAccess: '0',
+        expiresAt: null,
+        active: true,
+      };
+    }
+  }
+
+  // Ensure connection entry exists
+  if (!acl.connections['e2e-umami']) {
+    acl.connections['e2e-umami'] = {
+      provider: 'umami',
+      metadata: { scope: 'e2e-test' },
+    };
+  }
+
+  await fs.writeFile(aclPath, JSON.stringify(acl, null, 2) + '\n');
+
+  console.log(`ACL seeded for ${addresses.length} agent(s):`);
+  for (const addr of addresses) {
+    console.log(`  ${addr}`);
+  }
+  console.log(`File: ${aclPath}`);
+}
+
 async function cmdCleanup(flags: Record<string, string>) {
   const dryRun = flags['dry-run'] === 'true';
   const maxAgeHours = parseInt(flags['max-age-hours'] || '1', 10);
@@ -466,6 +536,8 @@ async function main() {
       return cmdCheckpoint(flags);
     case 'seed-activity':
       return cmdSeedActivity(positional, flags);
+    case 'seed-acl':
+      return cmdSeedAcl(positional, flags);
     case 'cleanup':
       return cmdCleanup(flags);
     case 'status':
@@ -473,7 +545,7 @@ async function main() {
     default:
       console.error(`Unknown command: ${command || '(none)'}`);
       console.error('\nUsage: e2e-harness.ts <command> [options]');
-      console.error('Commands: create, fund, mine, time-warp, checkpoint, seed-activity, cleanup, status');
+      console.error('Commands: create, fund, mine, time-warp, checkpoint, seed-activity, seed-acl, cleanup, status');
       process.exit(1);
   }
 }
