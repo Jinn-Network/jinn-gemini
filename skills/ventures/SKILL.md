@@ -197,9 +197,38 @@ yarn tsx scripts/ventures/update.ts \
   --status "paused"
 ```
 
+## Dispatch Schedule — Input & Output Validation
+
+When adding or updating schedule entries, **always check the template's `input_schema` and `output_spec`** in the `templates` table first. Schedule entry `input` fields must match the template's required inputs exactly — wrong field names or missing fields will cause silent failures at dispatch time.
+
+**Checklist before writing a schedule entry:**
+1. Query the template: `SELECT input_schema, output_spec FROM templates WHERE id = '<templateId>'`
+2. Map every `required` field from `input_schema` into the schedule entry's `input` object
+3. Use the exact field names from the schema (e.g., `telegramTopicId` not `telegramThreadId`)
+4. Set `timePeriod` to match the cron cadence (e.g., `"3 hours"` for a 3-hour cron)
+5. Check `output_spec` to understand what the template produces — useful for chaining templates or verifying results
+
+**Example — correct entry for `commit-summary-telegram`:**
+```json
+{
+  "id": "entry-commit-summary-telegram",
+  "templateId": "499ff31f-e38b-45f9-9a77-26525c260e9b",
+  "cron": "0 8,11,14,17,20 * * 1-5",
+  "label": "Commit Summary Telegram",
+  "enabled": true,
+  "input": {
+    "repoUrl": "Jinn-Network/jinn-cli-agents",
+    "timePeriod": "3 hours",
+    "telegramChatId": "-1003682777125",
+    "telegramTopicId": "555"
+  }
+}
+```
+
 ## Best Practices
 
 1. **Use soft delete by default** - Archive ventures rather than permanently deleting
 2. **Validate blueprints** - Ensure blueprint JSON has an `invariants` array
 3. **Use slugs for lookups** - Slugs are human-readable and unique
 4. **Link to workstreams** - Associate ventures with workstreams for automation
+5. **Always check template schema before writing schedule inputs** - See "Dispatch Schedule — Input & Output Validation" above
