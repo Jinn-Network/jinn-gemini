@@ -66,7 +66,7 @@ describe('JobDefinitionsTable', () => {
   });
 
   it('displays dash when lastInteraction is missing', () => {
-    render(<JobDefinitionsTable records={[createMockJobDefinition({ lastInteraction: null })]} />);
+    render(<JobDefinitionsTable records={[createMockJobDefinition({ lastInteraction: undefined })]} />);
 
     const table = screen.getByRole('table');
     const rows = table.querySelectorAll('tbody tr');
@@ -74,7 +74,7 @@ describe('JobDefinitionsTable', () => {
   });
 
   it('displays UNKNOWN when lastStatus is missing', () => {
-    render(<JobDefinitionsTable records={[createMockJobDefinition({ lastStatus: null })]} />);
+    render(<JobDefinitionsTable records={[createMockJobDefinition({ lastStatus: undefined })]} />);
     expect(screen.getByText('UNKNOWN')).toBeInTheDocument();
   });
 
@@ -107,4 +107,3 @@ describe('JobDefinitionsTable', () => {
     expect(screen.getByText('Job Three')).toBeInTheDocument();
   });
 });
-
