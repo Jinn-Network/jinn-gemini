@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-16
+last_verified: 2026-02-17
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -486,6 +486,14 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Root Cause:** The agent's job context includes `ventureId` but neither `dispatch_new_job.ts` nor `dispatch_existing_job.ts` passed it to `dispatchToMarketplace()`. Also `agent.ts` didn't set the `JINN_VENTURE_ID` environment variable for Gemini CLI subprocesses.
 **Solution:** (1) Set `envWithJob.JINN_VENTURE_ID = this.jobContext.ventureId` in `agent.ts`, (2) Pass `ventureId: context.ventureId` in `dispatch_new_job.ts`, (3) Add `ventureId` to `lineageContext` in `dispatch_existing_job.ts`. Commit: `9567ae14`.
 **Prevention:** When adding new metadata fields to the IPFS payload, check all dispatch paths (agent.ts, dispatch_new_job, dispatch_existing_job, redispatch-job.ts).
+
+---
+
+### 67. Cross-Operator Delivery in Staking Filter Mode
+**Issue:** Venture-test-worker (service 359) reverted with `GS013` on every Safe delivery. The generic "execution reverted" error hid the actual cause for days.
+**Root Cause:** The worker had `WORKER_STAKING_CONTRACT` set, which activates staking filter mode. This queries Ponder for all mechs staked in that contract — returning mechs for services [165, 375, 372]. Service 359's mech (`0x44C53e37...`) was NOT staked, so it was never in the filter. The worker claimed requests belonging to other operators' mechs and tried to deliver via its own Safe. The mech's `onlyOperator` modifier rejected the call (`msg.sender` was the wrong Safe), causing the inner call to fail. The Safe wrapped this as GS013 ("Safe transaction failed when gasPrice and safeTxGas were 0") — which is the Safe's way of saying "the inner CALL returned false".
+**Solution:** (1) Set `WORKER_MECH_FILTER_MODE=single` on venture-test-worker so it only fetches requests for its own mech (`JINN_SERVICE_MECH_ADDRESS`). (2) Added a mech address guard in `deliverViaSafeTransaction()` that compares `request.mech` against `getMechAddress()` and rejects mismatches with a clear error. (3) Added `decodeSafeRevertData()` and `simulateSafeDelivery()` preflight diagnostic to decode GS0XX error codes from raw revert data.
+**Prevention:** When deploying a new worker service: (a) verify the service's mech is actually staked before using staking filter mode, or use `WORKER_MECH_FILTER_MODE=single`; (b) the mech guard in `transaction.ts` now catches this at delivery time with a clear error message instead of a cryptic GS013.
 
 ---
 
