@@ -7,7 +7,7 @@ import {
   getRootRequest,
 } from '@/lib/ventures/service-queries';
 import { getVenture } from '@/lib/ventures-services';
-import { getVentureActivity, getVentureMeasurements, getVentureServiceOutputs, getScheduleDispatches } from '@/lib/ventures/venture-queries';
+import { getVentureActivity, getVentureMeasurements, getVentureServiceOutputs, getScheduleDispatches, getVentureWorkstreams } from '@/lib/ventures/venture-queries';
 import { fetchIpfsContent, type Artifact, type Request } from '@/lib/subgraph';
 import {
   parseInvariants,
@@ -126,10 +126,10 @@ export async function VentureDetail({ id, initialTab }: VentureDetailProps) {
 
   // If no root workstream yet, show minimal dashboard
   if (!workstreamId) {
-    // Parse invariants from Supabase blueprint directly
     const invariants = parseInvariants(venture.blueprint);
     const invariantsWithMeasurements = matchInvariantsWithMeasurements(invariants, []);
     const statusCounts = countByStatus(invariantsWithMeasurements.map(i => ({ status: i.status })));
+    const workstreams = await getVentureWorkstreams(venture.id);
 
     return (
       <div className="flex flex-col h-full gap-6">
@@ -145,9 +145,9 @@ export async function VentureDetail({ id, initialTab }: VentureDetailProps) {
           primaryOutput={null}
           fetchActivity={fetchVentureActivityAction}
           initialTab={initialTab}
-
           dispatches={dispatchMap}
-          tokenInfo={venture ? {
+          workstreams={workstreams}
+          tokenInfo={{
             token_address: venture.token_address,
             token_symbol: venture.token_symbol,
             token_name: venture.token_name,
@@ -155,19 +155,20 @@ export async function VentureDetail({ id, initialTab }: VentureDetailProps) {
             governance_address: venture.governance_address,
             pool_address: venture.pool_address,
             token_metadata: venture.token_metadata,
-          } : undefined}
+          }}
         />
       </div>
     );
   }
 
   // Fetch all data in parallel — use venture-scoped queries where possible
-  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts, activityData] = await Promise.all([
+  const [rootJobDef, rootRequest, measurementArtifacts, outputArtifacts, activityData, workstreams] = await Promise.all([
     getRootJobDefinition(workstreamId),
     getRootRequest(workstreamId),
     getVentureMeasurements(venture.id),
     getVentureServiceOutputs(venture.id),
     getVentureActivity(venture.id),
+    getVentureWorkstreams(venture.id),
   ]);
 
   // Parse service outputs from artifacts
@@ -233,6 +234,7 @@ export async function VentureDetail({ id, initialTab }: VentureDetailProps) {
         fetchActivity={fetchVentureActivityAction}
         initialTab={initialTab}
         dispatches={dispatchMap}
+        workstreams={workstreams}
         tokenInfo={{
           token_address: venture.token_address,
           token_symbol: venture.token_symbol,

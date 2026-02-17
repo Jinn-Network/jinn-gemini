@@ -5,6 +5,7 @@
  * belonging to a venture, rather than a single workstream.
  */
 
+import { request } from 'graphql-request';
 import {
   queryRequests,
   queryArtifacts,
@@ -12,7 +13,10 @@ import {
   type Request,
   type Artifact,
   type JobDefinition,
+  type Workstream,
 } from '@/lib/subgraph';
+
+const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
 
 /**
  * Get all requests belonging to a venture.
@@ -161,4 +165,69 @@ export async function getScheduleDispatches(
     latestRequest: response.items[0] || null,
     requests: response.items,
   };
+}
+
+/**
+ * Get all workstreams belonging to a venture.
+ */
+export async function getVentureWorkstreams(ventureId: string, limit = 50): Promise<Workstream[]> {
+  const query = `
+    query VentureWorkstreams($ventureId: String!, $limit: Int) {
+      workstreams(
+        where: { ventureId: $ventureId }
+        orderBy: "lastActivity"
+        orderDirection: "desc"
+        limit: $limit
+      ) {
+        items {
+          id
+          rootRequestId
+          jobName
+          blockTimestamp
+          lastActivity
+          childRequestCount
+          hasLauncherBriefing
+          delivered
+          mech
+          sender
+          ventureId
+          templateId
+        }
+      }
+    }
+  `;
+
+  type WorkstreamRaw = {
+    id: string
+    rootRequestId: string
+    jobName: string
+    blockTimestamp: string
+    lastActivity: string
+    childRequestCount: number
+    hasLauncherBriefing: boolean
+    delivered: boolean
+    mech: string
+    sender: string
+    ventureId: string | null
+    templateId: string | null
+  };
+
+  const data = await request<{ workstreams: { items: WorkstreamRaw[] } }>(SUBGRAPH_URL, query, {
+    ventureId,
+    limit,
+  });
+
+  return data.workstreams.items.map(ws => ({
+    id: ws.id,
+    jobName: ws.jobName,
+    blockTimestamp: ws.blockTimestamp,
+    mech: ws.mech,
+    sender: ws.sender,
+    childRequestCount: ws.childRequestCount,
+    hasLauncherBriefing: ws.hasLauncherBriefing,
+    delivered: ws.delivered,
+    lastActivity: ws.lastActivity,
+    ventureId: ws.ventureId,
+    templateId: ws.templateId,
+  }));
 }
