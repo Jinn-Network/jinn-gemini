@@ -131,9 +131,12 @@ if (existsSync(googleAccounts)) {
   dockerArgs.push('-v', `${googleAccounts}:/home/jinn/.gemini/google_accounts.json`);
 }
 
-// Always mount telemetry dir so files survive container exit (--rm).
+// Mount telemetry subdirectory (not /tmp root!) so files survive container exit (--rm).
+// CRITICAL: mounting over /tmp would destroy /tmp/.gemini-worker/ which the Dockerfile
+// creates for GEMINI_CLI_HOME — breaking extension install and OAuth token refresh.
 execSync('mkdir -p /tmp/jinn-telemetry');
-dockerArgs.push('-v', '/tmp/jinn-telemetry:/tmp');
+dockerArgs.push('-v', '/tmp/jinn-telemetry:/tmp/jinn-telemetry');
+dockerArgs.push('-e', 'TMPDIR=/tmp/jinn-telemetry');
 
 dockerArgs.push('--shm-size=2g');
 
