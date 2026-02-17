@@ -39,6 +39,14 @@ const typeDefs = /* GraphQL */ `
     claimed_by: String
   }
 
+  type VentureDispatchClaim {
+    venture_id: String!
+    template_id: String!
+    schedule_tick: String!
+    allowed: Boolean!
+    claimed_by: String
+  }
+
   type JobReport {
     id: String!
     request_id: String!
@@ -152,6 +160,7 @@ const typeDefs = /* GraphQL */ `
   type Mutation {
     claimRequest(requestId: String!): RequestClaim!
     claimParentDispatch(parentJobDefId: String!, childJobDefId: String!): DispatchClaim!
+    claimVentureDispatch(ventureId: String!, templateId: String!, scheduleTick: String!): VentureDispatchClaim!
     createJobReport(requestId: String!, reportData: JobReportInput!): JobReport!
     createArtifact(requestId: String!, artifactData: ArtifactInput!): Artifact!
     createMessage(requestId: String!, messageData: MessageInput!): Message!
@@ -472,6 +481,99 @@ const resolvers = {
       // Other error
       logger.error({ error: insertErr.message }, 'Error claiming parent dispatch');
       throw new Error(insertErr.message);
+    },
+
+    claimVentureDispatch: async (
+      _: any,
+      args: { ventureId: string; templateId: string; scheduleTick: string },
+      ctx: Context
+    ) => {
+      const worker = getWorkerAddress(ctx);
+      const now = new Date().toISOString();
+      const expirationDate = new Date();
+      expirationDate.setMinutes(expirationDate.getMinutes() + 10);
+      const expiresAt = expirationDate.toISOString();
+
+      // Step 0: Clean up expired claims for this venture+template
+      await ctx.supabase
+        .from('venture_dispatch_claims')
+        .delete()
+        .lt('expires_at', now)
+        .eq('venture_id', args.ventureId)
+        .eq('template_id', args.templateId);
+
+      // Step 1: Try INSERT (atomic claim via unique constraint)
+      const { data: inserted, error: insertErr } = await ctx.supabase
+        .from('venture_dispatch_claims')
+        .insert({
+          venture_id: args.ventureId,
+          template_id: args.templateId,
+          schedule_tick: args.scheduleTick,
+          worker_address: worker,
+          claimed_at: now,
+          expires_at: expiresAt,
+        })
+        .select('*');
+
+      // Success — we claimed it
+      if (!insertErr && inserted && inserted.length > 0) {
+        logger.info({
+          ventureId: args.ventureId,
+          templateId: args.templateId,
+          scheduleTick: args.scheduleTick,
+          worker,
+        }, 'Claimed venture dispatch');
+        return {
+          venture_id: args.ventureId,
+          template_id: args.templateId,
+          schedule_tick: args.scheduleTick,
+          allowed: true,
+          claimed_by: worker,
+        };
+      }
+
+      // Unique constraint violation — another worker claimed it
+      if (insertErr && insertErr.code === '23505') {
+        const { data: existing } = await ctx.supabase
+          .from('venture_dispatch_claims')
+          .select('worker_address')
+          .eq('venture_id', args.ventureId)
+          .eq('template_id', args.templateId)
+          .eq('schedule_tick', args.scheduleTick)
+          .single();
+
+        const owner = existing?.worker_address || 'unknown';
+
+        // If WE already claimed it (e.g. retry), allow it
+        if (owner === worker) {
+          return {
+            venture_id: args.ventureId,
+            template_id: args.templateId,
+            schedule_tick: args.scheduleTick,
+            allowed: true,
+            claimed_by: owner,
+          };
+        }
+
+        logger.info({
+          ventureId: args.ventureId,
+          templateId: args.templateId,
+          scheduleTick: args.scheduleTick,
+          existingOwner: owner,
+        }, 'Venture dispatch already claimed by another worker');
+
+        return {
+          venture_id: args.ventureId,
+          template_id: args.templateId,
+          schedule_tick: args.scheduleTick,
+          allowed: false,
+          claimed_by: owner,
+        };
+      }
+
+      // Other error
+      logger.error({ error: insertErr?.message }, 'Error claiming venture dispatch');
+      throw new Error(insertErr?.message || 'Unknown error claiming venture dispatch');
     },
 
     createJobReport: async (

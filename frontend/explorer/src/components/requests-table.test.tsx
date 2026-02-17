@@ -36,14 +36,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest1',
-          type: 'request',
           jobName: 'Test Job',
           jobDefinitionId: 'job-def-1',
           requestId: '0xRequest1',
           sender: '0xSender1',
           mech: '0xMech1',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: [],
         },
       ];
@@ -59,14 +60,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest2',
-          type: 'request',
           jobName: 'Test Job with Deps',
           jobDefinitionId: 'job-def-2',
           requestId: '0xRequest2',
           sender: '0xSender2',
           mech: '0xMech2',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: ['dep-1', 'dep-2', 'dep-3'],
         },
       ];
@@ -106,14 +108,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest3',
-          type: 'request',
           jobName: 'Test Job',
           jobDefinitionId: 'job-def-3',
           requestId: '0xRequest3',
           sender: '0xSender3',
           mech: '0xMech3',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: ['dep-1', 'dep-2', 'dep-3'],
         },
       ];
@@ -166,14 +169,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest4',
-          type: 'request',
           jobName: 'Test Job',
           jobDefinitionId: 'job-def-4',
           requestId: '0xRequest4',
           sender: '0xSender4',
           mech: '0xMech4',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: ['dep-1', 'dep-2', 'dep-3'],
         },
       ];
@@ -205,14 +209,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest5',
-          type: 'request',
           jobName: 'Test Job',
           jobDefinitionId: 'job-def-5',
           requestId: '0xRequest5',
           sender: '0xSender5',
           mech: '0xMech5',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: ['dep-1'],
         },
       ];
@@ -241,14 +246,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest6',
-          type: 'request',
           jobName: 'Test Job',
           jobDefinitionId: 'job-def-6',
           requestId: '0xRequest6',
           sender: '0xSender6',
           mech: '0xMech6',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: Array.from({ length: 7 }, (_, i) => `dep-${i + 1}`),
         },
       ];
@@ -285,14 +291,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest7',
-          type: 'request',
           jobName: 'Test Job',
           jobDefinitionId: 'job-def-7',
           requestId: '0xRequest7',
           sender: '0xSender7',
           mech: '0xMech7',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: ['dep-1'],
         },
       ];
@@ -321,14 +328,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest8',
-          type: 'request',
           jobName: 'Test Job',
           jobDefinitionId: 'job-def-8',
           requestId: '0xRequest8',
           sender: '0xSender8',
           mech: '0xMech8',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: ['dep-1'],
         },
       ];
@@ -357,14 +365,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest1',
-          type: 'request',
           jobName: 'Test Job',
           jobDefinitionId: 'job-def-1',
           requestId: '0xRequest1',
           sender: '0xSender1',
           mech: '0xMech1',
           delivered: false,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: [],
         },
       ];
@@ -382,14 +391,15 @@ describe('RequestsTable', () => {
       const records: SubgraphRecord[] = [
         {
           id: '0xRequest1',
-          type: 'request',
           jobName: 'My Test Job',
           jobDefinitionId: 'job-def-1',
           requestId: '0xRequest1',
           sender: '0xSender1',
           mech: '0xMech1',
           delivered: true,
-          blockTimestamp: 1000000,
+          blockTimestamp: '1000000',
+          blockNumber: '1',
+          enabledTools: [],
           dependencies: [],
         },
       ];

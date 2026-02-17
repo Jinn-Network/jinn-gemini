@@ -198,7 +198,7 @@ export function VentureDashboard({
                                 workstreamId={workstreamId}
                                 onNavigateToJob={(jobDefId) => {
                                     router.push(`/workstreams/${workstreamId}`);
-                                }
+                                }}
                             />
                         ) : (
                             <LiveOutputView url={liveOutputUrl!} telegramUrl={telegramUrl || undefined} />
