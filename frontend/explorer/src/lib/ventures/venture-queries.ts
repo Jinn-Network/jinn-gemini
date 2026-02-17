@@ -169,65 +169,137 @@ export async function getScheduleDispatches(
 
 /**
  * Get all workstreams belonging to a venture.
+ * Falls back to request-based lookup if the workstreams table
+ * doesn't have ventureId indexed yet (schema migration in progress).
  */
 export async function getVentureWorkstreams(ventureId: string, limit = 50): Promise<Workstream[]> {
-  const query = `
-    query VentureWorkstreams($ventureId: String!, $limit: Int) {
-      workstreams(
-        where: { ventureId: $ventureId }
-        orderBy: "lastActivity"
-        orderDirection: "desc"
-        limit: $limit
-      ) {
-        items {
-          id
-          rootRequestId
-          jobName
-          blockTimestamp
-          lastActivity
-          childRequestCount
-          hasLauncherBriefing
-          delivered
-          mech
-          sender
-          ventureId
-          templateId
+  // Try direct workstream query first (requires ventureId column on workstreams table)
+  try {
+    const query = `
+      query VentureWorkstreams($ventureId: String!, $limit: Int) {
+        workstreams(
+          where: { ventureId: $ventureId }
+          orderBy: "lastActivity"
+          orderDirection: "desc"
+          limit: $limit
+        ) {
+          items {
+            id
+            rootRequestId
+            jobName
+            blockTimestamp
+            lastActivity
+            childRequestCount
+            hasLauncherBriefing
+            delivered
+            mech
+            sender
+            ventureId
+            templateId
+          }
         }
       }
-    }
-  `;
+    `;
 
-  type WorkstreamRaw = {
-    id: string
-    rootRequestId: string
-    jobName: string
-    blockTimestamp: string
-    lastActivity: string
-    childRequestCount: number
-    hasLauncherBriefing: boolean
-    delivered: boolean
-    mech: string
-    sender: string
-    ventureId: string | null
-    templateId: string | null
-  };
+    type WorkstreamRaw = {
+      id: string
+      rootRequestId: string
+      jobName: string
+      blockTimestamp: string
+      lastActivity: string
+      childRequestCount: number
+      hasLauncherBriefing: boolean
+      delivered: boolean
+      mech: string
+      sender: string
+      ventureId: string | null
+      templateId: string | null
+    };
 
-  const data = await request<{ workstreams: { items: WorkstreamRaw[] } }>(SUBGRAPH_URL, query, {
-    ventureId,
-    limit,
-  });
+    const data = await request<{ workstreams: { items: WorkstreamRaw[] } }>(SUBGRAPH_URL, query, {
+      ventureId,
+      limit,
+    });
 
-  return data.workstreams.items.map(ws => ({
-    id: ws.id,
-    jobName: ws.jobName,
-    blockTimestamp: ws.blockTimestamp,
-    mech: ws.mech,
-    sender: ws.sender,
-    childRequestCount: ws.childRequestCount,
-    hasLauncherBriefing: ws.hasLauncherBriefing,
-    delivered: ws.delivered,
-    lastActivity: ws.lastActivity,
-    ventureId: ws.ventureId,
-    templateId: ws.templateId,
-  }));
+    return data.workstreams.items.map(ws => ({
+      id: ws.id,
+      jobName: ws.jobName,
+      blockTimestamp: ws.blockTimestamp,
+      mech: ws.mech,
+      sender: ws.sender,
+      childRequestCount: ws.childRequestCount,
+      hasLauncherBriefing: ws.hasLauncherBriefing,
+      delivered: ws.delivered,
+      lastActivity: ws.lastActivity,
+      ventureId: ws.ventureId,
+      templateId: ws.templateId,
+    }));
+  } catch {
+    // Fallback: workstreams table doesn't have ventureId yet (Ponder re-indexing).
+    // Find workstreams via requests table (which does have ventureId).
+    const ventureRequests = await getVentureRequests(ventureId, 200);
+    const workstreamIds = [...new Set(
+      ventureRequests
+        .map(r => r.workstreamId)
+        .filter((id): id is string => !!id)
+    )];
+
+    if (workstreamIds.length === 0) return [];
+
+    const fallbackQuery = `
+      query WorkstreamsByIds($ids: [String!]!, $limit: Int) {
+        workstreams(
+          where: { id_in: $ids }
+          orderBy: "lastActivity"
+          orderDirection: "desc"
+          limit: $limit
+        ) {
+          items {
+            id
+            rootRequestId
+            jobName
+            blockTimestamp
+            lastActivity
+            childRequestCount
+            hasLauncherBriefing
+            delivered
+            mech
+            sender
+          }
+        }
+      }
+    `;
+
+    type WorkstreamFallback = {
+      id: string
+      rootRequestId: string
+      jobName: string
+      blockTimestamp: string
+      lastActivity: string
+      childRequestCount: number
+      hasLauncherBriefing: boolean
+      delivered: boolean
+      mech: string
+      sender: string
+    };
+
+    const data = await request<{ workstreams: { items: WorkstreamFallback[] } }>(SUBGRAPH_URL, fallbackQuery, {
+      ids: workstreamIds,
+      limit,
+    });
+
+    return data.workstreams.items.map(ws => ({
+      id: ws.id,
+      jobName: ws.jobName,
+      blockTimestamp: ws.blockTimestamp,
+      mech: ws.mech,
+      sender: ws.sender,
+      childRequestCount: ws.childRequestCount,
+      hasLauncherBriefing: ws.hasLauncherBriefing,
+      delivered: ws.delivered,
+      lastActivity: ws.lastActivity,
+      ventureId: null,
+      templateId: null,
+    }));
+  }
 }
