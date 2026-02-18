@@ -491,6 +491,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Solution:** Pin `olas-operate-middleware` with an immutable commit SHA (`rev = "3e8d8f38549d20e18226dfa511b684781703b4f2"`) and refresh lockfiles/install. Add preflight verification that installed `operate.cli` includes strict `fund_service_single_chain()` deploy behavior and does not swallow funding errors.
 **Prevention:** For security/critical runtime behavior, never pin git dependencies by tag alone. Use commit SHAs and enforce expected behavior in preflight checks.
 
+### 81. Agent Auto-Funding Threshold Must Cover Real Dispatch Cost
+**Issue:** Freshly deployed services could still fail first marketplace dispatch with "insufficient funds" on agent EOAs even though middleware auto-funding ran.
+**Root Cause:** Service config default `fund_requirements` for agent ETH was too low (`0.005 ETH`), below practical dispatch spend in this flow (request payment + gas).
+**Solution:** Raise default agent funding requirement to `0.05 ETH` (`DEFAULT_AGENT_FUNDING_WEI = 50000000000000000`) so middleware-funded agents can dispatch without manual top-ups immediately after setup.
+**Prevention:** Keep agent `fund_requirements` aligned with real dispatch economics, not bare-minimum gas assumptions. Re-validate after marketplace pricing or gas profile changes.
+
 ---
 
 *Keep this file updated with new blood written rules as they're discovered.*
