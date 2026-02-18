@@ -23,6 +23,7 @@
  *   --blueprint-file <path>     Load blueprint from JSON file. Tools extracted automatically.
  *   --blueprint <json>          Blueprint JSON string (overrides --blueprint-file).
  *   --enabled-tools <csv>       Comma-separated tool names (overrides blueprint-extracted tools).
+ *   --input <path>              JSON input file used with blueprint inputSchema/envVar mappings.
  *
  * Default (no --blueprint or --blueprint-file):
  *   Loads blueprints/e2e-infrastructure-test.json which tests web search, artifacts,
@@ -37,12 +38,15 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { readFileSync } from 'fs';
 import { join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { buildIpfsPayload } from 'jinn-node/agent/shared/ipfs-payload-builder.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
+import { assertValidJinnJobEnvKey } from 'jinn-node/shared/job-env.js';
 import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
 
-const MONOREPO_ROOT = resolve(import.meta.dirname, '..', '..');
+const SCRIPT_DIR = resolve(fileURLToPath(new URL('.', import.meta.url)));
+const MONOREPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const E2E_ENV_FILE = resolve(MONOREPO_ROOT, '.env.e2e');
 const DEFAULT_BLUEPRINT_FILE = resolve(MONOREPO_ROOT, 'blueprints', 'e2e-infrastructure-test.json');
 
@@ -105,6 +109,64 @@ function loadBlueprintFile(filePath: string): { blueprintObj: any; blueprintPayl
   };
 }
 
+function loadInputFile(filePath: string): Record<string, unknown> {
+  const raw = readFileSync(filePath, 'utf-8');
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Input file must be a JSON object: ${filePath}`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function extractJobPayloadEnvFromBlueprint(
+  blueprintObj: any,
+  inputConfig: Record<string, unknown>,
+): Record<string, string> {
+  const schema = blueprintObj?.templateMeta?.inputSchema ?? blueprintObj?.inputSchema;
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return {};
+  }
+
+  const properties = schema.properties;
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
+    return {};
+  }
+
+  const required = new Set<string>(
+    Array.isArray(schema.required)
+      ? schema.required.filter((field: unknown): field is string => typeof field === 'string')
+      : [],
+  );
+
+  const extractedEnv: Record<string, string> = {};
+  for (const [field, spec] of Object.entries(properties as Record<string, any>)) {
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec)) continue;
+    if (typeof spec.envVar !== 'string' || spec.envVar.length === 0) continue;
+
+    assertValidJinnJobEnvKey(spec.envVar, `inputSchema.properties.${field}.envVar`);
+
+    let value: unknown;
+    if (Object.prototype.hasOwnProperty.call(inputConfig, field)) {
+      value = inputConfig[field];
+    } else if (spec.default !== undefined && spec.default !== '$provision') {
+      value = spec.default;
+    }
+
+    if (value === undefined || value === null || value === '') {
+      if (required.has(field)) {
+        throw new Error(
+          `Missing required input "${field}" for ${spec.envVar}. Provide --input with a value for "${field}".`,
+        );
+      }
+      continue;
+    }
+
+    extractedEnv[spec.envVar] = String(value);
+  }
+
+  return extractedEnv;
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -118,14 +180,17 @@ async function main() {
 
   const jobName = flags['job-name'] || 'e2e-test-job';
   const jobDefinitionId = flags['job-def-id'] || crypto.randomUUID();
+  const inputConfig = flags.input ? loadInputFile(resolve(flags.input)) : {};
 
   // Resolve blueprint and tools
   let blueprint: string;
   let enabledTools: string[];
+  let blueprintObj: any;
 
   if (flags.blueprint) {
     // Explicit JSON string — use as-is
     blueprint = flags.blueprint;
+    blueprintObj = JSON.parse(flags.blueprint);
     enabledTools = flags['enabled-tools']
       ? flags['enabled-tools'].split(',')
       : ['google_web_search', 'web_fetch', 'create_artifact'];
@@ -137,11 +202,14 @@ async function main() {
 
     console.log('Loading blueprint from:', blueprintFile);
     const loaded = loadBlueprintFile(blueprintFile);
+    blueprintObj = loaded.blueprintObj;
     blueprint = loaded.blueprintPayload;
     enabledTools = flags['enabled-tools']
       ? flags['enabled-tools'].split(',')
       : loaded.enabledTools;
   }
+
+  const additionalContextEnv = extractJobPayloadEnvFromBlueprint(blueprintObj, inputConfig);
 
   // Point operate-profile at the jinn-node clone so getMechAddress(),
   // getServicePrivateKey(), getMechChainConfig() read from the right .operate dir
@@ -155,6 +223,9 @@ async function main() {
   console.log('  jobDefinitionId:', jobDefinitionId);
   console.log('  workstreamId:', workstreamId);
   console.log('  enabledTools:', enabledTools.join(', '));
+  if (Object.keys(additionalContextEnv).length > 0) {
+    console.log('  payload env keys:', Object.keys(additionalContextEnv).join(', '));
+  }
 
   const { ipfsJsonContents } = await buildIpfsPayload({
     blueprint,
@@ -163,6 +234,9 @@ async function main() {
     enabledTools,
     skipBranch: true, // E2E: no git branch creation
     workstreamId,
+    additionalContextOverrides: Object.keys(additionalContextEnv).length > 0
+      ? { env: additionalContextEnv }
+      : undefined,
   });
 
   // 2. Dispatch via production marketplaceInteract (same as redispatch-job.ts)

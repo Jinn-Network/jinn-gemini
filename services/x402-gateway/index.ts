@@ -232,6 +232,32 @@ interface DispatchOptions {
   cyclic?: boolean;
 }
 
+const JINN_JOB_ENV_KEY_PATTERN = /^JINN_JOB_[A-Z0-9_]+$/;
+
+function assertValidJobPayloadEnvKey(key: string, source: string): void {
+  if (!JINN_JOB_ENV_KEY_PATTERN.test(key)) {
+    throw new Error(
+      `${source} contains invalid env key "${key}". Only JINN_JOB_* keys are allowed.`,
+    );
+  }
+}
+
+function assertValidJobPayloadEnvMap(rawEnv: unknown, source: string): Record<string, string> {
+  if (!rawEnv || typeof rawEnv !== 'object' || Array.isArray(rawEnv)) {
+    throw new Error(`${source} must be an object map of JINN_JOB_* keys to string values.`);
+  }
+
+  const validated: Record<string, string> = {};
+  for (const [key, value] of Object.entries(rawEnv as Record<string, unknown>)) {
+    assertValidJobPayloadEnvKey(key, source);
+    if (typeof value !== 'string') {
+      throw new Error(`${source} has non-string value for key "${key}".`);
+    }
+    validated[key] = value;
+  }
+  return validated;
+}
+
 async function dispatchAgent(
   agent: AgentTemplate,
   rawInput: Record<string, any>,
@@ -291,14 +317,18 @@ async function dispatchAgent(
     for (const [field, spec] of Object.entries(inputSchema.properties)) {
       const fieldSpec = spec as { envVar?: string };
       if (fieldSpec.envVar && enrichedInput[field] !== undefined) {
+        assertValidJobPayloadEnvKey(fieldSpec.envVar, `inputSchema.properties.${field}.envVar`);
         extractedEnv[fieldSpec.envVar] = String(enrichedInput[field]);
       }
     }
   }
-  if (Object.keys(extractedEnv).length > 0 || (enrichedInput.env && typeof enrichedInput.env === 'object')) {
+  const explicitEnv = enrichedInput.env !== undefined
+    ? assertValidJobPayloadEnvMap(enrichedInput.env, 'input.env')
+    : undefined;
+  if (Object.keys(extractedEnv).length > 0 || explicitEnv) {
     additionalContext.env = {
       ...extractedEnv,
-      ...(enrichedInput.env && typeof enrichedInput.env === 'object' ? enrichedInput.env : {}),
+      ...(explicitEnv || {}),
     };
   }
 
@@ -863,6 +893,17 @@ function formatPrice(weiString: string | number | bigint): string {
   return `${wei} wei`;
 }
 
+function getProviderStaticConfig(provider: string): Record<string, string> {
+  switch (provider) {
+    case 'supabase':
+      return env.SUPABASE_URL ? { SUPABASE_URL: env.SUPABASE_URL } : {};
+    case 'umami':
+      return env.UMAMI_HOST ? { UMAMI_HOST: env.UMAMI_HOST.replace(/\/$/, '') } : {};
+    default:
+      return {};
+  }
+}
+
 const summarizeOutputSpec = summarizeSpec;
 const buildBlueprintFromTemplate = sharedBuildBlueprint;
 
@@ -1284,6 +1325,7 @@ app.post("/credentials/:provider", async (c) => {
       access_token: token.access_token,
       expires_in: token.expires_in,
       provider,
+      config: getProviderStaticConfig(provider),
     };
     logAudit({
       address: requesterAddress,

@@ -31,13 +31,10 @@ Stale telemetry files are cleaned automatically before the container starts.
 ```bash
 yarn test:e2e:docker-run --cwd "$CLONE_DIR" \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
-  --env SUPABASE_URL=$SUPABASE_URL \
-  --env X402_GATEWAY_URL=http://host.docker.internal:3001 \
-  --env UMAMI_HOST=$UMAMI_HOST \
-  --env UMAMI_WEBSITE_ID=$UMAMI_WEBSITE_ID
+  --env X402_GATEWAY_URL=http://host.docker.internal:3001
 ```
 
-`WORKER_MECH_FILTER_MODE=any` is set automatically, allowing Service B to pick up the child job even though it was dispatched to Service A's mech. Supabase service role key and Umami JWT are fetched via the credential bridge at runtime — no secret env vars needed.
+`WORKER_MECH_FILTER_MODE=any` is set automatically, allowing Service B to pick up the child job even though it was dispatched to Service A's mech. Tool static config/secrets are fetched via the credential bridge at runtime; venture-scoped `JINN_JOB_*` config is already embedded in the dispatched payload.
 
 ### 3. Fallback: dispatch fresh job if no child
 
@@ -46,7 +43,8 @@ If Phase 3's `dispatch_new_job` failed (DELEGATE-001 was FAIL), the child won't 
 ```bash
 yarn test:e2e:dispatch \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
-  --cwd "$CLONE_DIR"
+  --cwd "$CLONE_DIR" \
+  --input /tmp/e2e-input.json
 ```
 
 Then re-run step 2.

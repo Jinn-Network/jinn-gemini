@@ -2,6 +2,19 @@
   "name": "E2E Infrastructure Test",
   "description": "Validates full agent infrastructure: web search, GitHub operator credential, credential bridge (Umami), artifacts, measurements, credential-dependent tools, and delegation.",
   "version": "1.2.0",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "umamiWebsiteId": {
+        "type": "string",
+        "description": "Umami website ID for blog analytics tool validation",
+        "envVar": "JINN_JOB_UMAMI_WEBSITE_ID"
+      }
+    },
+    "required": [
+      "umamiWebsiteId"
+    ]
+  },
   "enabledTools": [
     "google_web_search",
     "get_file_contents",

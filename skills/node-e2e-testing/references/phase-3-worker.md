@@ -7,13 +7,28 @@ Dispatch a full-infrastructure test job and run the worker via Docker. The bluep
 
 ## Steps
 
-### 1. Dispatch job
+### 1. Set venture-scoped Umami website ID
+
+`blog_get_stats` requires a venture-scoped payload env var. Build an input file for blueprint mapping before dispatch:
+```bash
+source .env
+source .env.test
+echo "UMAMI_WEBSITE_ID: $UMAMI_WEBSITE_ID"
+cat > /tmp/e2e-input.json <<EOF
+{"umamiWebsiteId":"$UMAMI_WEBSITE_ID"}
+EOF
+```
+
+`UMAMI_WEBSITE_ID` must be non-empty. The dispatch script maps `umamiWebsiteId` through blueprint `inputSchema.envVar` to `JINN_JOB_UMAMI_WEBSITE_ID` in payload metadata.
+
+### 2. Dispatch job
 
 From the monorepo root:
 ```bash
 yarn test:e2e:dispatch \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
-  --cwd "$CLONE_DIR"
+  --cwd "$CLONE_DIR" \
+  --input /tmp/e2e-input.json
 ```
 
 Default blueprint (`blueprints/e2e-infrastructure-test.json`): Eight invariants exercising 8 tools across 5 credential types:
@@ -21,13 +36,13 @@ Default blueprint (`blueprints/e2e-infrastructure-test.json`): Eight invariants 
 - `get_file_contents` — GitHub operator credential (GITHUB_TOKEN from env)
 - `create_artifact` — Agent private key (on-chain IPFS)
 - `create_measurement` — Internal measurement system
-- `venture_query` — Supabase credentials (env var)
+- `venture_query` — Credential bridge (Supabase service role + SUPABASE_URL)
 - `dispatch_new_job` — Agent private key + mech address (on-chain delegation)
-- `blog_get_stats` — Credential bridge (agent → signing proxy → ERC-8128 → gateway → Umami JWT)
+- `blog_get_stats` — Credential bridge (agent → signing proxy → ERC-8128 → gateway → Umami JWT + UMAMI_HOST) plus payload env `JINN_JOB_UMAMI_WEBSITE_ID`
 
 **CRITICAL**: The worker reads ONLY `metadata.blueprint` — there is no `prompt` field.
 
-### 2. Fund agent EOAs
+### 3. Fund agent EOAs
 
 Both agents need ETH for gas:
 ```bash
@@ -35,32 +50,18 @@ yarn test:e2e:vnet fund <agent-eoa-1> --eth 0.05
 yarn test:e2e:vnet fund <agent-eoa-2> --eth 0.05
 ```
 
-### 3. Read Supabase credentials
-
-The `venture_query` tool requires Supabase credentials. Read them from the monorepo's `.env`:
-```bash
-source .env
-echo "SUPABASE_URL: ${SUPABASE_URL:0:30}..."
-echo "SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:0:10}..."
-```
-
-Both must be non-empty. If missing, `venture_query` will use a mock client and the TOOL-REGISTRY invariant will fail (document this but continue).
-
 ### 4. Run worker via Docker
 
 Wait a few seconds for Ponder to index the marketplace request, then run in **single mode** (`--single`) so the worker exits after processing one job, leaving the child dispatch for Phase 4:
 ```bash
 yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
-  --env SUPABASE_URL=$SUPABASE_URL \
-  --env X402_GATEWAY_URL=http://host.docker.internal:3001 \
-  --env UMAMI_HOST=$UMAMI_HOST \
-  --env UMAMI_WEBSITE_ID=$UMAMI_WEBSITE_ID
+  --env X402_GATEWAY_URL=http://host.docker.internal:3001
 ```
 
 The `--single` flag makes the worker exit after processing one request, preserving the child job for Phase 4's rotation test.
 The `--workstream` flag sets `WORKSTREAM_FILTER` to only process requests in this workstream.
-The `--env` flags pass `SUPABASE_URL` (non-secret project URL), the credential bridge URL (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host), and Umami config for `blog_get_stats`. Supabase service role key and Umami JWT are fetched via the credential bridge at runtime — no secret env vars needed.
+The `--env` flag passes only `X402_GATEWAY_URL` (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host). Tool-specific static config and secrets are fetched through the credential bridge at runtime; venture-scoped config (`JINN_JOB_UMAMI_WEBSITE_ID`) came from dispatch payload in Step 2.
 `WORKER_MECH_FILTER_MODE=any` and `GITHUB_TOKEN` are set automatically by the docker-run script.
 Stale telemetry files are cleaned automatically before the container starts.
 
@@ -145,13 +146,13 @@ Expected results:
 - **Container crashes**: Capture Docker output. Run `docker logs jinn-e2e-worker`. Check if `.operate` mount is correct.
 - **Worker finds 0 requests**: Capture Ponder query output. Check `WORKSTREAM_FILTER` matches the dispatch `--workstream`. Check Ponder is indexing (background task output).
 - **Agent fails without tool calls**: Capture telemetry. Check `core_tools_enabled` in telemetry config event.
-- **venture_query fails with mock client**: Supabase credentials not reaching Docker container. Check `--env` flags in Docker command output. Verify `SUPABASE_URL` is set in host env.
+- **venture_query fails with bridge config error**: verify `X402_GATEWAY_URL` is passed to Docker and gateway has `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` configured.
 - **dispatch_new_job fails**: Capture error. Agent EOA may need more ETH for the child dispatch transaction.
 - **Delivery fails (non-quota)**: Capture error. Check agent private key format (encrypted vs hex). Check agent EOA has ETH.
 
 ## CHECKPOINT: Phase 3 — Worker Execution (Docker)
 
-- [PASS|FAIL] Job dispatched (request ID returned, 7 enabled tools listed)
+- [PASS|FAIL] Job dispatched (request ID returned, 8 enabled tools listed)
 - [PASS|FAIL] Docker container started without crash
 - [PASS|FAIL] Worker initialized multi-service rotation (logged "Multi-service rotation active")
 - [PASS|FAIL] Worker found and claimed the dispatched request

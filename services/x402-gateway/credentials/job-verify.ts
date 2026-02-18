@@ -72,7 +72,7 @@ function getControlApiSigner(): Erc8128Signer | null {
 /**
  * Verify that the requester holds an active claim for the given requestId.
  *
- * @param requestId - The on-chain request ID (JINN_REQUEST_ID)
+ * @param requestId - The on-chain request ID (JINN_CTX_REQUEST_ID)
  * @param requesterAddress - The credential request signer EOA (from ERC-8128 auth)
  * @returns Explicit result state: valid, invalid, or unavailable
  */

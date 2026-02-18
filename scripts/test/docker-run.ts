@@ -14,7 +14,7 @@
  *   yarn test:e2e:docker-run --cwd /path/to/clone --single
  *   yarn test:e2e:docker-run --cwd /path/to/clone --healthcheck
  *   yarn test:e2e:docker-run --cwd /path/to/clone --workstream 0x1234...
- *   yarn test:e2e:docker-run --cwd /path/to/clone --env SUPABASE_URL=... --env SUPABASE_SERVICE_ROLE_KEY=...
+ *   yarn test:e2e:docker-run --cwd /path/to/clone --env X402_GATEWAY_URL=http://host.docker.internal:3001
  *
  * Telemetry files are always mounted at /tmp/jinn-telemetry/ on the host.
  */
@@ -118,7 +118,7 @@ if (workstream) {
   dockerArgs.push('-e', `WORKSTREAM_FILTER=${workstream}`);
 }
 
-// Additional env vars from --env flags (e.g., Supabase credentials)
+// Additional env vars from --env flags (e.g., X402_GATEWAY_URL)
 for (const pair of envPairs) {
   dockerArgs.push('-e', pair);
 }

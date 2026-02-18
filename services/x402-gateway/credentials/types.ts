@@ -137,6 +137,7 @@ export interface CredentialResponse {
   access_token: string;
   expires_in: number;
   provider: string;
+  config: Record<string, string>;
 }
 
 /** Error response */

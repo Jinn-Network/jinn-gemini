@@ -30,6 +30,7 @@ import { getMechAddress, getMechChainConfig, getServicePrivateKey } from 'jinn-n
 import { deepSubstitute, loadInputConfig } from './shared/template-substitution.js';
 import { validateInvariantsStrict } from 'jinn-node/worker/prompt/invariant-validator.js';
 import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
+import { assertValidJinnJobEnvKey } from 'jinn-node/shared/job-env.js';
 
 const args = process.argv.slice(2);
 const jobIdIndex = args.indexOf('--jobId');
@@ -158,14 +159,8 @@ async function buildSubstitutedBlueprint(templatePath: string, inputConfigPath: 
     for (const [field, spec] of Object.entries(inputSchema.properties)) {
       const fieldSpec = spec as { envVar?: string };
       if (fieldSpec.envVar && inputConfig[field] !== undefined) {
+        assertValidJinnJobEnvKey(fieldSpec.envVar, `inputSchema.properties.${field}.envVar`);
         env[fieldSpec.envVar] = String(inputConfig[field]);
-      }
-    }
-    // Merge secrets from process.env for envVar fields not in inputConfig
-    const secretEnvVars = ['TELEGRAM_BOT_TOKEN', 'UMAMI_USERNAME', 'UMAMI_PASSWORD'];
-    for (const envKey of secretEnvVars) {
-      if (!env[envKey] && process.env[envKey]) {
-        env[envKey] = process.env[envKey]!;
       }
     }
     if (Object.keys(env).length > 0) {
