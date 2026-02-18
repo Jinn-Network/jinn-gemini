@@ -413,27 +413,36 @@ async function cmdSeedAcl(positional: string[], flags: Record<string, string>) {
     acl = { grants: {}, connections: {} };
   }
 
-  // Seed each agent with umami grant (idempotent)
+  // Seed each agent with credential grants (idempotent)
+  const providers = [
+    { name: 'umami', connectionId: 'e2e-umami' },
+    { name: 'supabase', connectionId: 'e2e-supabase' },
+  ];
+
   for (const addr of addresses) {
     if (!acl.grants[addr]) {
       acl.grants[addr] = {};
     }
-    if (!acl.grants[addr].umami) {
-      acl.grants[addr].umami = {
-        nangoConnectionId: 'e2e-umami',
-        pricePerAccess: '0',
-        expiresAt: null,
-        active: true,
-      };
+    for (const { name, connectionId } of providers) {
+      if (!acl.grants[addr][name]) {
+        acl.grants[addr][name] = {
+          nangoConnectionId: connectionId,
+          pricePerAccess: '0',
+          expiresAt: null,
+          active: true,
+        };
+      }
     }
   }
 
-  // Ensure connection entry exists
-  if (!acl.connections['e2e-umami']) {
-    acl.connections['e2e-umami'] = {
-      provider: 'umami',
-      metadata: { scope: 'e2e-test' },
-    };
+  // Ensure connection entries exist
+  for (const { name, connectionId } of providers) {
+    if (!acl.connections[connectionId]) {
+      acl.connections[connectionId] = {
+        provider: name,
+        metadata: { scope: 'e2e-test' },
+      };
+    }
   }
 
   await fs.writeFile(aclPath, JSON.stringify(acl, null, 2) + '\n');

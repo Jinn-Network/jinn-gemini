@@ -53,7 +53,6 @@ Wait a few seconds for Ponder to index the marketplace request, then run in **si
 yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --env SUPABASE_URL=$SUPABASE_URL \
-  --env SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY \
   --env X402_GATEWAY_URL=http://host.docker.internal:3001 \
   --env UMAMI_HOST=$UMAMI_HOST \
   --env UMAMI_WEBSITE_ID=$UMAMI_WEBSITE_ID
@@ -61,7 +60,7 @@ yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
 
 The `--single` flag makes the worker exit after processing one request, preserving the child job for Phase 4's rotation test.
 The `--workstream` flag sets `WORKSTREAM_FILTER` to only process requests in this workstream.
-The `--env` flags pass Supabase credentials for `venture_query`, the credential bridge URL (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host), and Umami config for `blog_get_stats` (the agent needs `UMAMI_HOST` and `UMAMI_WEBSITE_ID`; the JWT is fetched via the credential bridge at runtime).
+The `--env` flags pass `SUPABASE_URL` (non-secret project URL), the credential bridge URL (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host), and Umami config for `blog_get_stats`. Supabase service role key and Umami JWT are fetched via the credential bridge at runtime — no secret env vars needed.
 `WORKER_MECH_FILTER_MODE=any` and `GITHUB_TOKEN` are set automatically by the docker-run script.
 Stale telemetry files are cleaned automatically before the container starts.
 
