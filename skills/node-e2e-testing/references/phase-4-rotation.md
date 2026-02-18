@@ -11,6 +11,7 @@ Test forced rotation switching by picking up the child job dispatched in Phase 3
 
 **Do this BEFORE running the worker.** This makes the rotator pick Service B.
 
+From the monorepo root:
 ```bash
 yarn test:e2e:vnet seed-activity $SERVICE_A_SAFE \
   --staking 0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139 \
@@ -25,10 +26,10 @@ Expected: `Verified nonces: [ '1000', '1000' ]`
 
 The child job dispatched in Phase 3 is already on-chain. No new dispatch needed.
 
-Clear telemetry and run:
+Stale telemetry files are cleaned automatically before the container starts.
+
 ```bash
-rm -rf /tmp/jinn-telemetry
-yarn test:e2e:docker-run --cwd "$CLONE_DIR" --telemetry \
+yarn test:e2e:docker-run --cwd "$CLONE_DIR" \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --env SUPABASE_URL=$SUPABASE_URL \
   --env SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
@@ -38,7 +39,7 @@ yarn test:e2e:docker-run --cwd "$CLONE_DIR" --telemetry \
 
 ### 3. Fallback: dispatch fresh job if no child
 
-If Phase 3's `dispatch_new_job` failed (DELEGATE-001 was FAIL), the child won't be on-chain. In that case, dispatch a fresh job:
+If Phase 3's `dispatch_new_job` failed (DELEGATE-001 was FAIL), the child won't be on-chain. In that case, dispatch a fresh job from the monorepo root:
 
 ```bash
 yarn test:e2e:dispatch \
@@ -51,7 +52,8 @@ Then re-run step 2.
 ### 4. Save telemetry
 
 ```bash
-cp -r /tmp/jinn-telemetry /tmp/jinn-telemetry-rotation
+mkdir -p /tmp/jinn-telemetry-rotation
+cp /tmp/jinn-telemetry/telemetry-*.json /tmp/jinn-telemetry-rotation/
 echo "TELEMETRY_DIR_ROTATION=/tmp/jinn-telemetry-rotation" >> .env.e2e
 ```
 

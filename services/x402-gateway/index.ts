@@ -39,7 +39,7 @@ import {
   formatWei,
 } from "./pricing.js";
 import { deepSubstitute, buildBlueprintFromTemplate as sharedBuildBlueprint } from '../../scripts/shared/template-substitution.js';
-import { buildAnnotatedTools, parseAnnotatedTools } from 'jinn-node/shared/template-tools';
+import { buildAnnotatedTools, parseAnnotatedTools } from '../../jinn-node/dist/shared/template-tools.js';
 import { buildDiscoveryItems, buildWellKnownManifest } from './discovery.js';
 
 // Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
@@ -886,7 +886,7 @@ import { verifyJobClaim } from './credentials/job-verify.js';
 import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
 import { adminApp } from './credentials/admin-routes.js';
 import { checkVentureCredentialAccess, discoverVentureProviders } from './credentials/venture-resolver.js';
-import { verifyRequestWithErc8128 } from 'jinn-node/http/erc8128';
+import { verifyRequestWithErc8128 } from '../../jinn-node/dist/http/erc8128.js';
 
 const credentialNonceStore = getCredentialNonceStore();
 

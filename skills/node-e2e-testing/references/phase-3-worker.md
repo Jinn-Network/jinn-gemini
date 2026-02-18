@@ -68,9 +68,8 @@ Stale telemetry files are cleaned automatically before the container starts.
 ### 5. Save telemetry location
 
 ```bash
-echo "TELEMETRY_DIR_WORKER=/tmp/jinn-telemetry" >> .env.e2e
-# Copy telemetry to a named location before Phase 4 clears it
-cp -r /tmp/jinn-telemetry /tmp/jinn-telemetry-worker
+mkdir -p /tmp/jinn-telemetry-worker
+cp /tmp/jinn-telemetry/telemetry-*.json /tmp/jinn-telemetry-worker/
 echo "TELEMETRY_DIR_WORKER=/tmp/jinn-telemetry-worker" >> .env.e2e
 ```
 
@@ -159,13 +158,15 @@ Expected results:
 - [PASS|FAIL] Worker found and claimed the dispatched request
 - [PASS|FAIL] Credential bridge probed at startup — non-empty providers in worker logs (if FAIL, document reason and continue)
 - [PASS|FAIL] Agent executed (non-empty output)
-- [PASS|FAIL] `google_web_search` called (web search tool)
-- [PASS|FAIL] `get_file_contents` called (operator GITHUB_TOKEN from env; GitHub API error acceptable)
-- [PASS|FAIL] `create_artifact` called (IPFS artifact)
-- [PASS|FAIL] `create_measurement` called (measurement system)
-- [PASS|FAIL] `venture_query` called (credential-dependent tool)
-- [PASS|FAIL] `dispatch_new_job` called (delegation — child request ID visible)
-- [PASS|FAIL] `blog_get_stats` called (credential bridge → umami JWT → API response)
-- [PASS|FAIL] On-chain delivery attempted (success or quota error OK)
+- [PASS|FAIL] `google_web_search` succeeded (search results returned, not EXECUTION_ERROR)
+- [PASS|FAIL] `get_file_contents` succeeded (GitHub API response returned; 401/403 with dummy token is acceptable, EXECUTION_ERROR is not)
+- [PASS|FAIL] `create_artifact` succeeded (IPFS CID returned in output)
+- [PASS|FAIL] `create_measurement` succeeded (measurement recorded, not EXECUTION_ERROR)
+- [PASS|FAIL] `venture_query` succeeded (query result returned — empty list is OK, EXECUTION_ERROR is FAIL)
+- [PASS|FAIL] `dispatch_new_job` succeeded (child request ID visible in output — "Dispatched" confirmation, not error)
+- [PASS|FAIL] `blog_get_stats` succeeded (Umami stats returned via credential bridge — bridge error or EXECUTION_ERROR is FAIL)
+- [PASS|FAIL] On-chain delivery succeeded (IPFS upload + Safe tx confirmed; Safe GS013 or signature error is FAIL, Tenderly quota error is acceptable)
 - [PASS|FAIL] `service:status` showed epoch info and per-service activity
 - [PASS|FAIL] Gateway test suite (Step 8): ACL + static provider tests pass
+
+**Grading rule:** A tool returning EXECUTION_ERROR, a credential error, or a bridge failure is FAIL — not PASS. The tool being *called* is necessary but not sufficient. Only mark PASS if the tool returned a usable result.

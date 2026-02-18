@@ -142,15 +142,16 @@ if (existsSync(settingsJson)) {
   dockerArgs.push('-v', `${settingsJson}:/home/jinn/.gemini/settings.json`);
 }
 
-// Mount telemetry subdirectory (not /tmp root!) so files survive container exit (--rm).
-// CRITICAL: mounting over /tmp would destroy /tmp/.gemini-worker/ which the Dockerfile
-// creates for GEMINI_CLI_HOME — breaking extension install and OAuth token refresh.
+// Mount telemetry subdirectory so files survive container exit (--rm).
+// JINN_TELEMETRY_DIR tells agent.ts where to write telemetry files.
+// Do NOT set TMPDIR — that pollutes the temp directory with non-telemetry files
+// (Gemini CLI extensions, symlinks) which break cp -r on the host.
 try {
   execSync('rm -f /tmp/jinn-telemetry/telemetry-*.json', { stdio: 'pipe' });
 } catch { /* directory may not exist yet */ }
 execSync('mkdir -p /tmp/jinn-telemetry');
 dockerArgs.push('-v', '/tmp/jinn-telemetry:/tmp/jinn-telemetry');
-dockerArgs.push('-e', 'TMPDIR=/tmp/jinn-telemetry');
+dockerArgs.push('-e', 'JINN_TELEMETRY_DIR=/tmp/jinn-telemetry');
 
 dockerArgs.push('--shm-size=2g');
 

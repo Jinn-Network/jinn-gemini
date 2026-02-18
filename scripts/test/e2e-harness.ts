@@ -368,28 +368,42 @@ async function cmdSeedAcl(positional: string[], flags: Record<string, string>) {
     throw new Error('Usage: seed-acl <clone-dir>  OR  seed-acl --cwd <clone-dir>');
   }
 
-  const operateKeysDir = resolve(cloneDir, '.operate', 'keys');
+  const servicesDir = resolve(cloneDir, '.operate', 'services');
   const aclPath = resolve(MONOREPO_ROOT, '.env.e2e.acl.json');
 
-  // Discover agent addresses from .operate/keys/
-  let keyEntries: string[];
+  // Discover agent EOA addresses from service configs (authoritative source).
+  // Each service config has chain_configs[chain].chain_data.instances[0] = agent EOA.
+  // This matches how operate-profile.ts finds agent addresses.
+  const addresses: string[] = [];
+  let serviceDirs: string[];
   try {
-    const entries = await fs.readdir(operateKeysDir);
-    keyEntries = entries.filter(
-      name => /^(0x)?[a-fA-F0-9]{40}$/.test(name)
-    );
+    serviceDirs = (await fs.readdir(servicesDir, { withFileTypes: true }))
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
   } catch {
-    throw new Error(`Cannot read ${operateKeysDir} — run "yarn setup" first.`);
+    throw new Error(`Cannot read ${servicesDir} — run "yarn setup" first.`);
   }
 
-  if (keyEntries.length === 0) {
-    throw new Error(`No agent keys found in ${operateKeysDir}`);
+  for (const dir of serviceDirs) {
+    try {
+      const configPath = resolve(servicesDir, dir, 'config.json');
+      const config = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+      if (!config.chain_configs) continue;
+      for (const chainConfig of Object.values(config.chain_configs) as any[]) {
+        const instances = chainConfig?.chain_data?.instances;
+        if (instances && instances.length > 0) {
+          const addr = instances[0].toLowerCase();
+          if (!addresses.includes(addr)) {
+            addresses.push(addr.startsWith('0x') ? addr : '0x' + addr);
+          }
+        }
+      }
+    } catch { continue; }
   }
 
-  // Normalize to lowercase 0x-prefixed
-  const addresses = keyEntries.map(k =>
-    (k.startsWith('0x') ? k : '0x' + k).toLowerCase()
-  );
+  if (addresses.length === 0) {
+    throw new Error(`No agent instances found in ${servicesDir} — run "yarn setup" first.`);
+  }
 
   // Load existing ACL or start fresh
   let acl: { grants: Record<string, any>; connections: Record<string, any> };
