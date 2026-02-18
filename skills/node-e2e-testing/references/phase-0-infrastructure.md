@@ -1,52 +1,45 @@
-# Phase 0: Infrastructure
+# Phase 0: Infrastructure + Clone
 
 **Prerequisites**: None (first phase)
 **Abort on failure**: Abort entire run
 
 ## Steps
 
-### 1. Clean up stale VNets
+### 1. Run bootstrap
+
+Ask the user which branch to test, then:
 
 ```bash
-yarn test:e2e:vnet cleanup --max-age-hours=0
+yarn test:e2e:bootstrap --branch <branch>
 ```
 
-### 2. Create fresh VNet
+This single command:
+- Cleans up stale VNets
+- Creates a fresh Tenderly VNet (Base fork)
+- Starts local stack (Ponder, Control API, Gateway) as detached processes
+- Waits for all health checks
+- Clones jinn-node at the specified branch, installs deps, configures `.env`
 
+Read `CLONE_DIR` from `.env.e2e` for subsequent phases:
 ```bash
-yarn test:e2e:vnet create
+CLONE_DIR=$(grep CLONE_DIR .env.e2e | cut -d= -f2-)
 ```
-
-This creates a Base chain fork on Tenderly, writes RPC_URL and VNET_ID to `.env.e2e`.
-
-### 3. Start local stack
-
-```bash
-yarn test:e2e:stack
-```
-
-Leave running in background. The script automatically:
-- Kills existing processes on ports 42069, 4001, and 3001
-- Cleans stale `.ponder` cache
-- Sets `PONDER_START_BLOCK` near VNet head
-- Reads RPC_URL from `.env.e2e`
-
-Wait for `Local stack ready` message.
 
 ## Expected Output
 
-- VNet creation: JSON with `vnetId`, `adminRpcUrl`, `blockNumber`
-- Stack startup: `Ponder ready at :42069`, `Control API ready at :4001`, `Gateway ready at :3001`, `Local stack ready`
+- `Bootstrap Complete` banner with VNet ID, RPC URL, clone directory, and service PIDs
 
 ## On Failure
 
-- **VNet creation fails**: Capture Tenderly API error. Check `.env.test` has valid `TENDERLY_ACCESS_KEY`, `TENDERLY_ACCOUNT_SLUG`, `TENDERLY_PROJECT_SLUG`.
-- **Ponder fails to start**: Capture Ponder stderr. Check if port 42069 is in use. Check if `.ponder` cache was cleaned.
-- **Control API fails to start**: Capture stderr. Check `.env` has `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+- **VNet creation fails**: Check `.env.test` has valid `TENDERLY_ACCESS_KEY`, `TENDERLY_ACCOUNT_SLUG`, `TENDERLY_PROJECT_SLUG`.
+- **Ponder fails to start**: Check if port 42069 is in use. Check if `.ponder` cache was cleaned.
+- **Control API fails to start**: Check `.env` has `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+- **Clone fails**: Check branch name exists. Check HTTPS access to the repo.
 
-## CHECKPOINT: Phase 0 — Infrastructure
+## CHECKPOINT: Phase 0 — Infrastructure + Clone
 
-- [PASS|FAIL] VNet created (RPC_URL written to `.env.e2e`)
+- [PASS|FAIL] VNet created (RPC_URL in `.env.e2e`)
 - [PASS|FAIL] Ponder healthy (`http://localhost:42069/graphql` responds)
 - [PASS|FAIL] Control API healthy (`http://localhost:4001/graphql` responds)
-- [PASS|FAIL] Gateway healthy (`http://localhost:3001/health` responds) — non-fatal; if FAIL, credential bridge steps in Phase 3 will not work
+- [PASS|FAIL] Gateway healthy (`http://localhost:3001/health` responds) — non-fatal
+- [PASS|FAIL] Clone created and dependencies installed (`CLONE_DIR` in `.env.e2e`)

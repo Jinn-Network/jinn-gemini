@@ -116,12 +116,20 @@ async function cleanPonderCache(): Promise<void> {
   } catch { /* directory doesn't exist, nothing to clean */ }
 }
 
-// ─── Main ────────────────────────────────────────────────────────────────────
+// ─── Exported Library Function ───────────────────────────────────────────────
 
-async function main() {
-  const flags = parseArgs(process.argv.slice(2));
-  const rpcUrl = await getRpcUrl(flags);
+export interface StartStackResult {
+  pm: ProcessManager;
+  pids: Map<string, number>;
+}
 
+/**
+ * Start the E2E local stack (Ponder, Control API, Gateway) and wait for health checks.
+ * Returns the ProcessManager and PIDs — caller decides whether to keep-alive or proceed.
+ *
+ * Can be called directly from e2e-bootstrap.ts or via the CLI entrypoint below.
+ */
+export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   // Get current VNet block
   console.log('Querying VNet block number...');
   const blockHex = await rpcCall(rpcUrl, 'eth_blockNumber');
@@ -169,21 +177,6 @@ async function main() {
     onQuotaError: () => {
       console.error('\n[QUOTA] Tenderly quota exhausted — create a new VNet');
     },
-  });
-
-  // SIGINT (Ctrl+C): full cleanup — kill all children and exit
-  process.on('SIGINT', async () => {
-    console.log('\nShutting down (SIGINT)...');
-    await pm.killAll();
-    process.exit(0);
-  });
-
-  // SIGTERM (Bash tool cleanup, etc.): let detached children survive.
-  // Just exit the parent — children keep running on their ports.
-  // Next "yarn test:e2e:stack" start kills by port (killPort).
-  process.on('SIGTERM', () => {
-    console.log('\nParent exiting (SIGTERM) — services continue on their ports.');
-    process.exit(0);
   });
 
   // Start Ponder (uses yarn ponder:dev which handles predev + ponder dev)
@@ -240,7 +233,7 @@ async function main() {
   } catch (e: any) {
     console.error(`  Ponder failed to start: ${e.message}`);
     await pm.killAll();
-    process.exit(1);
+    throw e;
   }
 
   // Wait for Control API to be healthy
@@ -257,7 +250,7 @@ async function main() {
   } catch (e: any) {
     console.error(`  Control API failed to start: ${e.message}`);
     await pm.killAll();
-    process.exit(1);
+    throw e;
   }
 
   // Wait for Gateway to be healthy
@@ -302,13 +295,44 @@ async function main() {
   for (const [name, pid] of pids) {
     console.log(`  ${name} PID:  ${pid}`);
   }
+
+  return { pm, pids };
+}
+
+// ─── CLI Entrypoint ─────────────────────────────────────────────────────────
+
+async function main() {
+  const flags = parseArgs(process.argv.slice(2));
+  const rpcUrl = await getRpcUrl(flags);
+
+  const { pm } = await startStack(rpcUrl);
+
+  // SIGINT (Ctrl+C): full cleanup — kill all children and exit
+  process.on('SIGINT', async () => {
+    console.log('\nShutting down (SIGINT)...');
+    await pm.killAll();
+    process.exit(0);
+  });
+
+  // SIGTERM (Bash tool cleanup, etc.): let detached children survive.
+  // Just exit the parent — children keep running on their ports.
+  // Next "yarn test:e2e:stack" start kills by port (killPort).
+  process.on('SIGTERM', () => {
+    console.log('\nParent exiting (SIGTERM) — services continue on their ports.');
+    process.exit(0);
+  });
+
   console.log('\nPress Ctrl+C to stop.\n');
 
   // Keep alive
   await new Promise(() => {});
 }
 
-main().catch(e => {
-  console.error('FAILED:', e.message || e);
-  process.exit(1);
-});
+// Only run CLI when executed directly (not when imported as library)
+const isDirectRun = process.argv[1]?.includes('start-e2e-stack');
+if (isDirectRun) {
+  main().catch(e => {
+    console.error('FAILED:', e.message || e);
+    process.exit(1);
+  });
+}

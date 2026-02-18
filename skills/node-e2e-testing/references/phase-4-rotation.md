@@ -44,7 +44,7 @@ If Phase 3's `dispatch_new_job` failed (DELEGATE-001 was FAIL), the child won't 
 yarn test:e2e:dispatch \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --cwd "$CLONE_DIR" \
-  --input /tmp/e2e-input.json
+  --input "$INPUT_CONFIG"
 ```
 
 Then re-run step 2.

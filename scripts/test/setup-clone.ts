@@ -86,7 +86,7 @@ async function listBranches() {
   }
 }
 
-async function setupClone(branch: string) {
+export async function setupClone(branch: string): Promise<{ cloneDir: string }> {
   // 1. Read RPC_URL from .env.e2e
   const e2eVars = await readEnvE2e();
   const rpcUrl = e2eVars.RPC_URL;
@@ -162,6 +162,8 @@ async function setupClone(branch: string) {
   console.log(`  Branch:     ${branch}`);
   console.log(`  RPC URL:    ${rpcUrl}`);
   console.log(`\nNext: run "yarn --cwd '${cloneDir}' setup" (may need funding iterations)`);
+
+  return { cloneDir };
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -177,7 +179,11 @@ async function main() {
   await setupClone(branch);
 }
 
-main().catch(e => {
-  console.error('FAILED:', e.message || e);
-  process.exit(1);
-});
+// Only run CLI when executed directly (not when imported as library)
+const isDirectRun = process.argv[1]?.includes('setup-clone');
+if (isDirectRun) {
+  main().catch(e => {
+    console.error('FAILED:', e.message || e);
+    process.exit(1);
+  });
+}

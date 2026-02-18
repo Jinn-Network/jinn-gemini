@@ -57,10 +57,11 @@ Operator scripts are tested at the points where their output is most meaningful:
 
 1. **Tenderly creds in `.env.test`**: `TENDERLY_ACCESS_KEY`, `TENDERLY_ACCOUNT_SLUG`, `TENDERLY_PROJECT_SLUG`
 2. **Supabase creds in `.env`**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-3. **Umami creds in `.env.test`**: `UMAMI_HOST`, `UMAMI_USERNAME`, `UMAMI_PASSWORD`, `UMAMI_WEBSITE_ID` (venture-level — used to build dispatch input, then mapped by blueprint to `JINN_JOB_UMAMI_WEBSITE_ID`)
-4. **Runtime**: Node 22+, Python 3.10-3.11, Poetry, `yarn install` completed
-5. **Gemini CLI**: Authenticated (`~/.gemini/oauth_creds.json`)
-6. **Docker**: Running and accessible
+3. **Umami creds in `.env.test`**: `UMAMI_HOST`, `UMAMI_USERNAME`, `UMAMI_PASSWORD` (gateway login/JWT path)
+4. **Dispatch input config**: pass `--input <config.json>` containing `umamiWebsiteId` so blueprint maps it to `JINN_JOB_UMAMI_WEBSITE_ID`
+5. **Runtime**: Node 22+, Python 3.10-3.11, Poetry, `yarn install` completed
+6. **Gemini CLI**: Authenticated (`~/.gemini/oauth_creds.json`)
+7. **Docker**: Running and accessible
 
 **Env file priority**: `.env` -> `.env.test` override -> `.env.e2e` override
 

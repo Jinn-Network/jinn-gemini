@@ -41,6 +41,7 @@
     "test:e2e:vitest": "vitest run --project e2e",
     "test:e2e:dual-rail": "tsx scripts/dual-rail-e2e-test.ts",
     "test:e2e:zora": "tsx scripts/zora-dual-rail-e2e-test.ts",
+    "test:e2e:bootstrap": "sh -c 'tsx scripts/test/e2e-bootstrap.ts \"$@\"' --",
     "test:e2e:vnet": "sh -c 'tsx scripts/test/e2e-harness.ts \"$@\"' --",
     "test:e2e:dispatch": "sh -c 'tsx scripts/test/dispatch-workstream-job.ts \"$@\"' --",
     "test:e2e:clone": "sh -c 'tsx scripts/test/setup-clone.ts \"$@\"' --",

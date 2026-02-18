@@ -7,19 +7,16 @@ Dispatch a full-infrastructure test job and run the worker via Docker. The bluep
 
 ## Steps
 
-### 1. Set venture-scoped Umami website ID
+### 1. Select input config with venture-scoped Umami website ID
 
-`blog_get_stats` requires a venture-scoped payload env var. Build an input file for blueprint mapping before dispatch:
+`blog_get_stats` requires venture-scoped `umamiWebsiteId` from blueprint input.
+Use the same template input config style as real launches (no shell `source` step):
 ```bash
-source .env
-source .env.test
-echo "UMAMI_WEBSITE_ID: $UMAMI_WEBSITE_ID"
-cat > /tmp/e2e-input.json <<EOF
-{"umamiWebsiteId":"$UMAMI_WEBSITE_ID"}
-EOF
+export INPUT_CONFIG=configs/the-lamp.json
+node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.INPUT_CONFIG,'utf8'));if(!c.umamiWebsiteId)throw new Error('Missing umamiWebsiteId in '+process.env.INPUT_CONFIG);console.log('umamiWebsiteId:',c.umamiWebsiteId)"
 ```
 
-`UMAMI_WEBSITE_ID` must be non-empty. The dispatch script maps `umamiWebsiteId` through blueprint `inputSchema.envVar` to `JINN_JOB_UMAMI_WEBSITE_ID` in payload metadata.
+The dispatch script maps `umamiWebsiteId` through blueprint `inputSchema.envVar` to `JINN_JOB_UMAMI_WEBSITE_ID` in payload metadata.
 
 ### 2. Dispatch job
 
@@ -28,7 +25,7 @@ From the monorepo root:
 yarn test:e2e:dispatch \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --cwd "$CLONE_DIR" \
-  --input /tmp/e2e-input.json
+  --input "$INPUT_CONFIG"
 ```
 
 Default blueprint (`blueprints/e2e-infrastructure-test.json`): Eight invariants exercising 8 tools across 5 credential types:

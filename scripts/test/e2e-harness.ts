@@ -101,7 +101,7 @@ async function writeEnvE2e(vars: Record<string, string>): Promise<void> {
 
 // ─── Commands ────────────────────────────────────────────────────────────────
 
-async function cmdCreate(flags: Record<string, string>) {
+export async function cmdCreate(flags: Record<string, string>): Promise<{ rpcUrl: string; vnetId: string }> {
   const client = createTenderlyClient();
 
   // Cleanup old VNets first
@@ -134,6 +134,8 @@ async function cmdCreate(flags: Record<string, string>) {
   console.log('\nVNet created:');
   console.log(JSON.stringify(result, null, 2));
   console.log(`\nConfig written to ${E2E_ENV_FILE}`);
+
+  return { rpcUrl: vnet.adminRpcUrl, vnetId: vnet.id };
 }
 
 async function cmdFund(positional: string[], flags: Record<string, string>) {
@@ -454,7 +456,7 @@ async function cmdSeedAcl(positional: string[], flags: Record<string, string>) {
   console.log(`File: ${aclPath}`);
 }
 
-async function cmdCleanup(flags: Record<string, string>) {
+export async function cmdCleanup(flags: Record<string, string>): Promise<void> {
   const dryRun = flags['dry-run'] === 'true';
   const maxAgeHours = parseInt(flags['max-age-hours'] || '1', 10);
 
@@ -573,7 +575,11 @@ async function main() {
   }
 }
 
-main().catch(e => {
-  console.error('FAILED:', e.message || e);
-  process.exit(1);
-});
+// Only run CLI when executed directly (not when imported as library)
+const isDirectRun = process.argv[1]?.includes('e2e-harness');
+if (isDirectRun) {
+  main().catch(e => {
+    console.error('FAILED:', e.message || e);
+    process.exit(1);
+  });
+}
