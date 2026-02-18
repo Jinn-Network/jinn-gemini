@@ -141,6 +141,7 @@ async function main() {
     .option('input', { type: 'string', description: 'Path to JSON config file with template inputs for variable substitution' })
     .option('env', { type: 'array', description: 'Environment variables to inject (KEY=VALUE format, repeatable)' })
     .option('workspace-repo', { type: 'string', description: 'Repository URL to clone as workspace for the agent' })
+    .option('venture-id', { type: 'string', description: 'Venture UUID to associate with this workstream (required for VENTURE_FILTER workers)' })
     .demandCommand(1, 'Please provide a blueprint filename (e.g., x402-data-service)')
     .help()
     .parse();
@@ -503,6 +504,7 @@ async function main() {
       enabledTools,
       tools: blueprintObj?.templateMeta?.tools ?? blueprintObj?.tools,
       cyclic: !!argv.cyclic,
+      ventureId: argv.ventureId as string | undefined,
       additionalContextOverrides: Object.keys(additionalContextOverrides).length > 0
         ? additionalContextOverrides
         : undefined,
