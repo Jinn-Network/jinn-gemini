@@ -15,10 +15,10 @@ import {
 } from '../../../../jinn-node/src/worker/filters/credentialFilter.js';
 
 describe('TOOL_CREDENTIAL_MAP', () => {
-  it('maps GitHub tools to github provider', () => {
-    expect(TOOL_CREDENTIAL_MAP['get_file_contents']).toEqual(['github']);
-    expect(TOOL_CREDENTIAL_MAP['search_code']).toEqual(['github']);
-    expect(TOOL_CREDENTIAL_MAP['list_commits']).toEqual(['github']);
+  it('does not map GitHub tools (operator-level, not bridge-scoped)', () => {
+    expect(TOOL_CREDENTIAL_MAP['get_file_contents']).toBeUndefined();
+    expect(TOOL_CREDENTIAL_MAP['search_code']).toBeUndefined();
+    expect(TOOL_CREDENTIAL_MAP['list_commits']).toBeUndefined();
   });
 
   it('maps Telegram tools to telegram provider', () => {
@@ -26,7 +26,9 @@ describe('TOOL_CREDENTIAL_MAP', () => {
   });
 
   it('maps Twitter tools to twitter provider', () => {
-    expect(TOOL_CREDENTIAL_MAP['verify_trade_ideas']).toEqual(['twitter']);
+    expect(TOOL_CREDENTIAL_MAP['twitter_post_tweet']).toEqual(['twitter']);
+    expect(TOOL_CREDENTIAL_MAP['twitter_get_mentions']).toEqual(['twitter']);
+    expect(TOOL_CREDENTIAL_MAP['twitter_get_timeline']).toEqual(['twitter']);
   });
 
   it('maps Umami tools to umami provider', () => {
@@ -35,6 +37,7 @@ describe('TOOL_CREDENTIAL_MAP', () => {
 
   it('maps OpenAI tools to openai provider', () => {
     expect(TOOL_CREDENTIAL_MAP['embed_text']).toEqual(['openai']);
+    expect(TOOL_CREDENTIAL_MAP['search_similar_situations']).toEqual(['openai']);
   });
 
   it('maps meta-tools to correct providers', () => {
@@ -53,11 +56,11 @@ describe('getRequiredCredentials', () => {
     const result = getRequiredCredentials([
       'telegram_send_message',
       'telegram_send_photo',
-      'get_file_contents',
+      'twitter_post_tweet',
     ]);
     expect(result).toHaveLength(2);
     expect(result).toContain('telegram');
-    expect(result).toContain('github');
+    expect(result).toContain('twitter');
   });
 
   it('deduplicates providers from same-provider tools', () => {
@@ -86,21 +89,21 @@ describe('isJobEligibleForWorker', () => {
 
   it('returns true when worker has all required credentials', () => {
     expect(isJobEligibleForWorker(
-      ['get_file_contents', 'telegram_send_message'],
-      new Set(['github', 'telegram', 'openai']),
+      ['twitter_post_tweet', 'telegram_send_message'],
+      new Set(['twitter', 'telegram', 'openai']),
     )).toBe(true);
   });
 
   it('returns false when worker is missing a required credential', () => {
     expect(isJobEligibleForWorker(
-      ['get_file_contents', 'telegram_send_message'],
-      new Set(['github']), // missing telegram
+      ['twitter_post_tweet', 'telegram_send_message'],
+      new Set(['twitter']), // missing telegram
     )).toBe(false);
   });
 
   it('returns false when worker has no credentials but job requires some', () => {
     expect(isJobEligibleForWorker(
-      ['get_file_contents'],
+      ['telegram_send_message'],
       new Set(),
     )).toBe(false);
   });
@@ -117,7 +120,7 @@ describe('jobRequiresCredentials', () => {
   });
 
   it('returns true for tools that require credentials', () => {
-    expect(jobRequiresCredentials(['get_file_contents'])).toBe(true);
+    expect(jobRequiresCredentials(['twitter_post_tweet'])).toBe(true);
     expect(jobRequiresCredentials(['telegram_send_message'])).toBe(true);
   });
 });

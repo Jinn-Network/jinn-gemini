@@ -57,6 +57,11 @@ describe('credentialFilter', () => {
       expect(TOOL_CREDENTIAL_MAP['railway_deployment']).toEqual(['railway']);
     });
 
+    it('maps OpenAI-backed tools', () => {
+      expect(TOOL_CREDENTIAL_MAP['embed_text']).toEqual(['openai']);
+      expect(TOOL_CREDENTIAL_MAP['search_similar_situations']).toEqual(['openai']);
+    });
+
     it('does not include credential-free tools', () => {
       expect(TOOL_CREDENTIAL_MAP['dispatch_new_job']).toBeUndefined();
       expect(TOOL_CREDENTIAL_MAP['create_artifact']).toBeUndefined();
