@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { SiteHeader } from '@/components/site-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getBlueprint, getVenture, type Blueprint } from '@/lib/ventures-services';
+import { getVentureTemplate, getVenturesByTemplateId, type Venture } from '@/lib/ventures-services';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,10 +15,10 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const template = await getBlueprint(id);
+  const template = await getVentureTemplate(id);
   return {
-    title: template?.name || 'Workstream Template',
-    description: template?.description || 'Workstream template details',
+    title: template?.name || 'Venture Template',
+    description: template?.description || 'Venture template details',
   };
 }
 
@@ -27,6 +27,8 @@ function StatusBadge({ status }: { status: string }) {
     published: 'bg-green-500/10 text-green-500 border-green-500/20',
     draft: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
     archived: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
+    active: 'bg-green-500/10 text-green-500 border-green-500/20',
+    paused: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
   };
   return <Badge variant="outline" className={colors[status] || colors.archived}>{status}</Badge>;
 }
@@ -63,11 +65,37 @@ function JsonBlock({ data, label }: { data: object; label: string }) {
   );
 }
 
+function VenturesList({ ventures }: { ventures: Venture[] }) {
+  if (ventures.length === 0) return null;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Ventures ({ventures.length})</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {ventures.map((v) => (
+            <div key={v.id} className="flex items-center justify-between text-sm">
+              <Link href={`/ventures/${v.root_workstream_id || v.id}`} className="text-primary hover:underline font-medium">
+                {v.name}
+              </Link>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={v.status} />
+                <span className="text-muted-foreground text-xs">{formatDate(v.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 async function TemplateDetail({ id }: { id: string }) {
-  const template = await getBlueprint(id);
+  const template = await getVentureTemplate(id);
   if (!template) notFound();
 
-  const venture = template.venture_id ? await getVenture(template.venture_id) : null;
+  const ventures = await getVenturesByTemplateId(id);
 
   return (
     <div className="space-y-6">
@@ -93,7 +121,7 @@ async function TemplateDetail({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-      {/* Metadata */}
+      {/* Details */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Details</CardTitle>
@@ -105,26 +133,8 @@ async function TemplateDetail({ id }: { id: string }) {
               <span className="font-mono">{template.version}</span>
             </div>
             <div>
-              <span className="text-muted-foreground block text-xs mb-1">Cyclic</span>
-              <span>{template.default_cyclic ? 'Yes' : 'No'}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block text-xs mb-1">Price (USD)</span>
-              <span>{template.price_usd || '-'}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block text-xs mb-1">Price (Wei)</span>
-              <span className="font-mono">{template.price_wei || '-'}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block text-xs mb-1">Venture</span>
-              {venture ? (
-                <Link href={`/ventures/${venture.root_workstream_id || venture.id}`} className="text-primary hover:underline">
-                  {venture.name}
-                </Link>
-              ) : (
-                <span className="text-muted-foreground">-</span>
-              )}
+              <span className="text-muted-foreground block text-xs mb-1">Model</span>
+              <span className="font-mono">{template.model}</span>
             </div>
             {template.olas_agent_id && (
               <div>
@@ -144,31 +154,18 @@ async function TemplateDetail({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-      {/* Tags */}
-      {template.tags.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Tags</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {template.tags.map((tag) => (
-                <Badge key={tag} variant="secondary">{tag}</Badge>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Ventures deployed from this template */}
+      <VenturesList ventures={ventures} />
 
-      {/* Enabled Tools */}
+      {/* Tool Policy */}
       {template.enabled_tools.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Enabled Tools</CardTitle>
+            <CardTitle className="text-base">Tool Policy</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {template.enabled_tools.map((tool) => (
+              {(template.enabled_tools as string[]).map((tool) => (
                 <Badge key={tool} variant="outline" className="font-mono text-xs">{tool}</Badge>
               ))}
             </div>
@@ -212,7 +209,7 @@ function TemplateDetailSkeleton() {
   );
 }
 
-export default async function WorkstreamTemplatePage({ params }: PageProps) {
+export default async function VentureTemplatePage({ params }: PageProps) {
   const { id } = await params;
 
   return (
@@ -221,7 +218,7 @@ export default async function WorkstreamTemplatePage({ params }: PageProps) {
         breadcrumbs={[
           { label: 'Explorer', href: '/' },
           { label: 'Templates', href: '/templates' },
-          { label: 'Workstream Template' },
+          { label: 'Venture Template' },
         ]}
       />
       <main className="flex-1 py-6">

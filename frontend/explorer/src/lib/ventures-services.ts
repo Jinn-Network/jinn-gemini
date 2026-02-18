@@ -43,6 +43,7 @@ export interface Venture {
   token_metadata: Record<string, unknown> | null;
   governance_address: string | null;
   pool_address: string | null;
+  venture_template_id: string | null;
 }
 
 export interface Service {
@@ -130,7 +131,6 @@ export interface Blueprint {
   input_schema: object;
   output_spec: object;
   enabled_tools: string[];
-  tags: string[];
   price_wei: string | null;
   price_usd: string | null;
   safety_tier: 'public' | 'private' | 'restricted';
@@ -149,11 +149,14 @@ export interface VentureTemplate {
   description: string | null;
   version: string;
   blueprint: object;
+  input_schema: object;
+  output_spec: object;
   enabled_tools: string[];
-  tags: string[];
   model: string;
+  safety_tier: 'public' | 'private' | 'restricted';
   venture_id: string | null;
   status: 'draft' | 'published' | 'archived';
+  olas_agent_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -440,4 +443,12 @@ export async function getVentureTemplate(id: string): Promise<VentureTemplate | 
     limit: '1',
   });
   return results[0] || null;
+}
+
+export async function getVenturesByTemplateId(templateId: string): Promise<Venture[]> {
+  return supabaseQuery<Venture>('ventures', {
+    select: '*',
+    venture_template_id: `eq.${templateId}`,
+    order: 'created_at.desc',
+  });
 }

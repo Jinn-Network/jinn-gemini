@@ -77,61 +77,27 @@ function WorkstreamTable({
               <TableHead>Version</TableHead>
               <TableHead>Price</TableHead>
               <TableHead>Tier</TableHead>
-              <TableHead>Tags</TableHead>
-              <TableHead>Venture</TableHead>
               <TableHead>Created</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {templates.map((t) => (
               <TableRow key={t.id}>
-                <TableCell>
-                  <Link href={`/templates/workstream/${t.id}`} className="space-y-1 block">
-                    <div className="font-medium hover:text-primary hover:underline">{t.name}</div>
-                    <div className="text-xs text-muted-foreground font-mono">{t.slug}</div>
+                <TableCell className="whitespace-nowrap">
+                  <Link href={`/templates/workstreams/${t.id}`} className="font-medium hover:text-primary hover:underline">
+                    {t.name}
                   </Link>
                 </TableCell>
                 <TableCell className="max-w-[300px]">
-                  <p className="text-sm text-muted-foreground truncate">
-                    {t.description || '-'}
-                  </p>
+                  <p className="text-sm text-muted-foreground truncate">{t.description || '-'}</p>
                 </TableCell>
-                <TableCell>
-                  <StatusBadge status={t.status} />
-                </TableCell>
+                <TableCell><StatusBadge status={t.status} /></TableCell>
                 <TableCell className="text-sm font-mono">{t.version}</TableCell>
-                <TableCell>
-                  {t.price_usd ? (
-                    <span className="text-sm">{t.price_usd}</span>
-                  ) : t.price_wei ? (
-                    <span className="text-sm font-mono text-muted-foreground">{t.price_wei}</span>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">-</span>
-                  )}
+                <TableCell className="text-sm whitespace-nowrap">
+                  {t.price_usd ? t.price_usd : t.price_wei ? <span className="font-mono text-muted-foreground">{t.price_wei}</span> : <span className="text-muted-foreground">-</span>}
                 </TableCell>
-                <TableCell>
-                  <SafetyBadge tier={t.safety_tier} />
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {t.tags.slice(0, 3).map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-[10px]">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {t.tags.length > 3 && (
-                      <Badge variant="secondary" className="text-[10px]">
-                        +{t.tags.length - 3}
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {t.venture_id ? ventureMap[t.venture_id] || '-' : '-'}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                  {formatDate(t.created_at)}
-                </TableCell>
+                <TableCell><SafetyBadge tier={t.safety_tier} /></TableCell>
+                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDate(t.created_at)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -170,50 +136,26 @@ function VentureTable({
               <TableHead>Status</TableHead>
               <TableHead>Version</TableHead>
               <TableHead>Model</TableHead>
-              <TableHead>Tags</TableHead>
-              <TableHead>Venture</TableHead>
+              <TableHead>Tier</TableHead>
               <TableHead>Created</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {templates.map((t) => (
               <TableRow key={t.id}>
-                <TableCell>
-                  <Link href={`/templates/venture/${t.id}`} className="space-y-1 block">
-                    <div className="font-medium hover:text-primary hover:underline">{t.name}</div>
-                    <div className="text-xs text-muted-foreground font-mono">{t.slug}</div>
+                <TableCell className="whitespace-nowrap">
+                  <Link href={`/templates/ventures/${t.id}`} className="font-medium hover:text-primary hover:underline">
+                    {t.name}
                   </Link>
                 </TableCell>
                 <TableCell className="max-w-[300px]">
-                  <p className="text-sm text-muted-foreground truncate">
-                    {t.description || '-'}
-                  </p>
+                  <p className="text-sm text-muted-foreground truncate">{t.description || '-'}</p>
                 </TableCell>
-                <TableCell>
-                  <StatusBadge status={t.status} />
-                </TableCell>
+                <TableCell><StatusBadge status={t.status} /></TableCell>
                 <TableCell className="text-sm font-mono">{t.version}</TableCell>
-                <TableCell className="text-sm">{t.model}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {t.tags.slice(0, 3).map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-[10px]">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {t.tags.length > 3 && (
-                      <Badge variant="secondary" className="text-[10px]">
-                        +{t.tags.length - 3}
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {t.venture_id ? ventureMap[t.venture_id] || '-' : '-'}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                  {formatDate(t.created_at)}
-                </TableCell>
+                <TableCell className="text-sm whitespace-nowrap">{t.model}</TableCell>
+                <TableCell><SafetyBadge tier={t.safety_tier} /></TableCell>
+                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDate(t.created_at)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -233,20 +175,20 @@ export function TemplatesTabs({
   ventureMap: Record<string, string>;
 }) {
   return (
-    <Tabs defaultValue="workstream">
+    <Tabs defaultValue="ventures">
       <TabsList>
-        <TabsTrigger value="workstream">
-          Workstream ({workstreamTemplates.length})
+        <TabsTrigger value="ventures">
+          Ventures ({ventureTemplates.length})
         </TabsTrigger>
-        <TabsTrigger value="venture">
-          Venture ({ventureTemplates.length})
+        <TabsTrigger value="workstreams">
+          Workstreams ({workstreamTemplates.length})
         </TabsTrigger>
       </TabsList>
-      <TabsContent value="workstream">
-        <WorkstreamTable templates={workstreamTemplates} ventureMap={ventureMap} />
-      </TabsContent>
-      <TabsContent value="venture">
+      <TabsContent value="ventures">
         <VentureTable templates={ventureTemplates} ventureMap={ventureMap} />
+      </TabsContent>
+      <TabsContent value="workstreams">
+        <WorkstreamTable templates={workstreamTemplates} ventureMap={ventureMap} />
       </TabsContent>
     </Tabs>
   );
