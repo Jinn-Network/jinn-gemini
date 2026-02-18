@@ -7,21 +7,13 @@ Dispatch a full-infrastructure test job and run the worker via Docker. The bluep
 
 ## Steps
 
-### 1. Select input config with venture-scoped Umami website ID
+### 1. Dispatch job
 
-`blog_get_stats` requires venture-scoped `umamiWebsiteId` from blueprint input.
-Use the same template input config style as real launches (no shell `source` step):
-```bash
-export INPUT_CONFIG=configs/the-lamp.json
-node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync(process.env.INPUT_CONFIG,'utf8'));if(!c.umamiWebsiteId)throw new Error('Missing umamiWebsiteId in '+process.env.INPUT_CONFIG);console.log('umamiWebsiteId:',c.umamiWebsiteId)"
-```
-
-The dispatch script maps `umamiWebsiteId` through blueprint `inputSchema.envVar` to `JINN_JOB_UMAMI_WEBSITE_ID` in payload metadata.
-
-### 2. Dispatch job
+The input config (`configs/the-lamp.json`) provides venture-scoped fields like `umamiWebsiteId`. Blueprint validation at dispatch time will reject missing required fields — no separate pre-flight check is needed.
 
 From the monorepo root:
 ```bash
+export INPUT_CONFIG=configs/the-lamp.json
 yarn test:e2e:dispatch \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --cwd "$CLONE_DIR" \
@@ -39,7 +31,7 @@ Default blueprint (`blueprints/e2e-infrastructure-test.json`): Eight invariants 
 
 **CRITICAL**: The worker reads ONLY `metadata.blueprint` — there is no `prompt` field.
 
-### 3. Fund agent EOAs
+### 2. Fund agent EOAs
 
 Both agents need ETH for gas:
 ```bash
@@ -47,7 +39,7 @@ yarn test:e2e:vnet fund <agent-eoa-1> --eth 0.05
 yarn test:e2e:vnet fund <agent-eoa-2> --eth 0.05
 ```
 
-### 4. Run worker via Docker
+### 3. Run worker via Docker
 
 Wait a few seconds for Ponder to index the marketplace request, then run in **single mode** (`--single`) so the worker exits after processing one job, leaving the child dispatch for Phase 4:
 ```bash
@@ -58,11 +50,11 @@ yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
 
 The `--single` flag makes the worker exit after processing one request, preserving the child job for Phase 4's rotation test.
 The `--workstream` flag sets `WORKSTREAM_FILTER` to only process requests in this workstream.
-The `--env` flag passes only `X402_GATEWAY_URL` (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host). Tool-specific static config and secrets are fetched through the credential bridge at runtime; venture-scoped config (`JINN_JOB_UMAMI_WEBSITE_ID`) came from dispatch payload in Step 2.
+The `--env` flag passes only `X402_GATEWAY_URL` (using `host.docker.internal` because `localhost` inside Docker on macOS doesn't reach the host). Tool-specific static config and secrets are fetched through the credential bridge at runtime; venture-scoped config (`JINN_JOB_UMAMI_WEBSITE_ID`) came from dispatch payload in Step 1.
 `WORKER_MECH_FILTER_MODE=any` and `GITHUB_TOKEN` are set automatically by the docker-run script.
 Stale telemetry files are cleaned automatically before the container starts.
 
-### 5. Save telemetry location
+### 4. Save telemetry location
 
 ```bash
 mkdir -p /tmp/jinn-telemetry-worker
@@ -70,7 +62,7 @@ cp /tmp/jinn-telemetry/telemetry-*.json /tmp/jinn-telemetry-worker/
 echo "TELEMETRY_DIR_WORKER=/tmp/jinn-telemetry-worker" >> .env.e2e
 ```
 
-### 6. Verify: service:status
+### 5. Verify: service:status
 
 After the worker completes, run the status dashboard to verify it shows real activity data:
 
@@ -84,7 +76,7 @@ Expected:
 - Staking health (slots used, APY, deposit amount)
 - Wallet balances (non-zero for funded safes)
 
-### 7. Verify credential bridge probe
+### 6. Verify credential bridge probe
 
 In the Docker worker output, look for the credential bridge probe result logged at startup:
 
@@ -96,29 +88,10 @@ Or search for a non-empty providers list (e.g., `providers: ['umami']`).
 Note: GitHub is an operator-level credential — it won't appear in bridge capabilities.
 
 If you see `providers: []`, the probe failed — document and continue. Common causes:
-- `X402_GATEWAY_URL` not passed via `--env` to Docker (check Step 4 command)
+- `X402_GATEWAY_URL` not passed via `--env` to Docker (check Step 3 command)
 - Gateway not running on :3001 (check Phase 0 gateway checkpoint)
 - ACL not seeded with the correct agent address (check Phase 1 Step 4a)
 - `No service private key available` — the worker couldn't read the agent key; check `.operate` mount
-
-### 8. Run gateway test suite
-
-After the worker completes, validate the credential bridge independently. From the monorepo root:
-
-```bash
-CREDENTIAL_ACL_PATH=.env.e2e.acl.json \
-  npx tsx services/x402-gateway/credentials/test-e2e.ts
-```
-
-This script spawns its own isolated gateway instances (it does not connect to the running gateway on :3001). `CREDENTIAL_ACL_PATH` is needed because the test imports the ACL module directly.
-
-Expected results:
-- ACL tests: All pass (signature, unauthorized, expired, revoked, etc.)
-- Static provider test: Pass (venture tokens served from env)
-- Payment basic validation: Pass (amount, recipient, expiry, network checks)
-- CDP facilitator: `FACILITATOR_REJECTED` for test dummy signatures — this is correct production behavior, not a failure
-- Nango tests: Skip (no Nango running locally)
-- Rate limit / replay tests: Skip (no Redis running locally)
 
 ## Expected Output
 
@@ -164,6 +137,5 @@ Expected results:
 - [PASS|FAIL] `blog_get_stats` succeeded (Umami stats returned via credential bridge — bridge error or EXECUTION_ERROR is FAIL)
 - [PASS|FAIL] On-chain delivery succeeded (IPFS upload + Safe tx confirmed; Safe GS013 or signature error is FAIL, Tenderly quota error is acceptable)
 - [PASS|FAIL] `service:status` showed epoch info and per-service activity
-- [PASS|FAIL] Gateway test suite (Step 8): ACL + static provider tests pass
 
 **Grading rule:** A tool returning EXECUTION_ERROR, a credential error, or a bridge failure is FAIL — not PASS. The tool being *called* is necessary but not sufficient. Only mark PASS if the tool returned a usable result.

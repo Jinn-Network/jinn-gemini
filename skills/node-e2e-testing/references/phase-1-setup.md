@@ -23,20 +23,7 @@ echo "AGENT_EOA_1=<agent-eoa-address>" >> .env.e2e
 echo "SERVICE_A_SAFE=<service-safe-address>" >> .env.e2e
 ```
 
-### 2. Seed the credential bridge ACL
-
-```bash
-yarn test:e2e:vnet seed-acl "$CLONE_DIR"
-```
-
-Verify:
-```bash
-cat .env.e2e.acl.json
-```
-
-Expected: JSON with the agent address under `grants` with `umami` provider.
-
-### 3. Build Docker image
+### 2. Build Docker image
 
 ```bash
 docker build -f jinn-node/Dockerfile jinn-node/ -t jinn-node:e2e
@@ -52,5 +39,4 @@ If the build fails with `ECONNRESET`, retry — earlier layers are cached.
 ## CHECKPOINT: Phase 1 — Setup & Docker
 
 - [PASS|FAIL] `yarn setup` completed (service staked)
-- [PASS|FAIL] ACL seeded — `cat .env.e2e.acl.json` shows agent address under `grants` with `umami` provider
 - [PASS|FAIL] Docker image built (`jinn-node:e2e`)

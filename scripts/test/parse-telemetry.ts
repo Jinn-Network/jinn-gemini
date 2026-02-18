@@ -17,6 +17,7 @@
 
 import { promises as fs } from 'fs';
 import { glob } from 'glob';
+import { parseAnnotatedTools } from '../../jinn-node/src/shared/template-tools.js';
 
 // ─── Streaming JSON Parser ──────────────────────────────────────────────────
 // Extracted from jinn-node/src/agent/agent.ts parseTelemetryFromContent()
@@ -188,10 +189,21 @@ function printReport(report: TelemetryReport, requiredTools: string[]): boolean 
     console.log('\nRequired tool verification:');
     const calledTools = new Set(report.toolCalls.map(tc => tc.tool));
     for (const required of requiredTools) {
-      const found = calledTools.has(required);
-      const status = found ? 'PASS' : 'FAIL';
-      console.log(`  [${status}] ${required}`);
-      if (!found) allPassed = false;
+      // Expand meta-tools (e.g. ventures_registry -> venture_query, venture_update, ...)
+      // so verification reflects actual concrete function calls in telemetry.
+      const candidates = parseAnnotatedTools([required]).availableTools;
+      const matched = candidates.find(tool => calledTools.has(tool));
+      const found = Boolean(matched);
+      if (found) {
+        if (matched === required) {
+          console.log(`  [PASS] ${required}`);
+        } else {
+          console.log(`  [PASS] ${required} (via ${matched})`);
+        }
+      } else {
+        console.log(`  [FAIL] ${required}`);
+        allPassed = false;
+      }
     }
   }
 

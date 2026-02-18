@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-16
+last_verified: 2026-02-18
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -484,6 +484,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Root Cause:** Bridge job verification logic previously treated Control API errors as success ("fail open")
 **Solution:** Require ERC-8128 signed bridge->Control API `getRequestClaim` checks and return explicit `valid | invalid | unavailable` states; deny issuance on `invalid` and `unavailable` when `REQUIRE_JOB_CONTEXT=true`
 **Prevention:** Keep claim ownership source-of-truth in Control API, compare requester signer EOA to claim owner EOA, and never issue credentials on verification unavailability in job-bound mode
+
+### 80. Middleware Git Tags Can Drift; Pin by Commit SHA
+**Issue:** Setup/deploy behavior diverged from expected middleware fixes even though `pyproject.toml` referenced `tag = "v0.1.4"`.
+**Root Cause:** Git tags are mutable references in practice; existing `poetry.lock` resolved `v0.1.4` to an older commit (`a15aa3b2`) that still had non-fatal agent funding handling.
+**Solution:** Pin `olas-operate-middleware` with an immutable commit SHA (`rev = "3e8d8f38549d20e18226dfa511b684781703b4f2"`) and refresh lockfiles/install. Add preflight verification that installed `operate.cli` includes strict `fund_service_single_chain()` deploy behavior and does not swallow funding errors.
+**Prevention:** For security/critical runtime behavior, never pin git dependencies by tag alone. Use commit SHAs and enforce expected behavior in preflight checks.
 
 ---
 
