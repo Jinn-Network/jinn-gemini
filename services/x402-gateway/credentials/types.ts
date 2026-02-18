@@ -10,7 +10,7 @@
 // Trust & Identity
 // ============================================================
 
-/** Binary trust: operators are either trusted (admin-whitelisted) or untrusted (default) */
+/** Binary trust: operators are either trusted (admin-set via tierOverride) or untrusted (default) */
 export type TrustTier = 'untrusted' | 'trusted';
 
 /** Ordered trust tiers for comparison (higher index = more trust) */
@@ -32,9 +32,6 @@ export interface Operator {
   serviceId: number | null;
   trustTier: TrustTier;
   tierOverride: TrustTier | null;
-  whitelisted: boolean;
-  whitelistedBy: string | null;
-  whitelistedAt: string | null;
   registeredAt: string;
   updatedAt: string;
 }

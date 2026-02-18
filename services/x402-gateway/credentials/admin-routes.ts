@@ -164,7 +164,7 @@ adminApp.get('/operators', async (c) => {
 /**
  * PUT /admin/operators/:address — Whitelist or override tier (admin only)
  *
- * Body: { whitelisted?: boolean, tierOverride?: TrustTier | null }
+ * Body: { tierOverride?: TrustTier | null }
  */
 adminApp.put('/operators/:address', async (c) => {
   const auth = await authenticateAdmin(c.req.raw.clone());
@@ -172,7 +172,7 @@ adminApp.put('/operators/:address', async (c) => {
   const adminCheck = requireAdmin(auth);
   if (adminCheck) return c.json({ error: adminCheck.error }, adminCheck.status);
 
-  let body: { whitelisted?: boolean; tierOverride?: TrustTier | null };
+  let body: { tierOverride?: TrustTier | null };
   try {
     body = await c.req.json();
   } catch {
@@ -184,7 +184,6 @@ adminApp.put('/operators/:address', async (c) => {
   try {
     const result = await updateOperatorAdmin({
       address: targetAddress,
-      whitelisted: body.whitelisted,
       tierOverride: body.tierOverride,
       actorAddress: auth.address,
       ipAddress: getClientIp(c),
@@ -193,7 +192,6 @@ adminApp.put('/operators/:address', async (c) => {
     return c.json({
       address: result.operator.address,
       trustTier: result.operator.trustTier,
-      whitelisted: result.operator.whitelisted,
       tierOverride: result.operator.tierOverride,
       grantsAdded: result.grantsAdded,
       grantsRevoked: result.grantsRevoked,

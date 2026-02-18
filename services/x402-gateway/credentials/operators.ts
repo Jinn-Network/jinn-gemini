@@ -4,10 +4,7 @@
  * CRUD for registered operators with trust tier calculation and
  * transaction-wrapped auto-provisioning of credential grants.
  *
- * Trust tier precedence:
- * 1. Admin tier_override → use that
- * 2. whitelisted = true → 'trusted'
- * 3. Otherwise → 'untrusted'
+ * Trust tier: determined by tier_override (admin-set), defaults to 'untrusted'.
  */
 
 import pg from 'pg';
@@ -40,9 +37,6 @@ function rowToOperator(row: Record<string, unknown>): Operator {
     serviceId: row.service_id != null ? Number(row.service_id) : null,
     trustTier: row.trust_tier as TrustTier,
     tierOverride: (row.tier_override as TrustTier) ?? null,
-    whitelisted: row.whitelisted as boolean,
-    whitelistedBy: (row.whitelisted_by as string) ?? null,
-    whitelistedAt: row.whitelisted_at ? (row.whitelisted_at as Date).toISOString() : null,
     registeredAt: (row.registered_at as Date).toISOString(),
     updatedAt: (row.updated_at as Date).toISOString(),
   };
@@ -53,10 +47,8 @@ function rowToOperator(row: Record<string, unknown>): Operator {
  */
 export function calculateTrustTier(op: {
   tierOverride: TrustTier | null;
-  whitelisted: boolean;
 }): TrustTier {
   if (op.tierOverride && TRUST_TIER_ORDER.includes(op.tierOverride)) return op.tierOverride;
-  if (op.whitelisted) return 'trusted';
   return 'untrusted';
 }
 
@@ -137,7 +129,6 @@ export async function registerOperator(params: {
     const opRow = rows[0];
     const newTier = calculateTrustTier({
       tierOverride: opRow.tier_override,
-      whitelisted: opRow.whitelisted,
     });
 
     // Update tier if changed
@@ -175,12 +166,11 @@ export async function registerOperator(params: {
 }
 
 /**
- * Admin: whitelist or set tier override for an operator.
+ * Admin: set tier override for an operator.
  * Recalculates tier and auto-provisions/revokes grants in a transaction.
  */
 export async function updateOperatorAdmin(params: {
   address: string;
-  whitelisted?: boolean;
   tierOverride?: TrustTier | null;
   actorAddress: string;
   ipAddress?: string;
@@ -206,15 +196,6 @@ export async function updateOperatorAdmin(params: {
     const values: unknown[] = [];
     let idx = 1;
 
-    if (params.whitelisted !== undefined) {
-      updates.push(`whitelisted = $${idx++}`);
-      values.push(params.whitelisted);
-      updates.push(`whitelisted_by = $${idx++}`);
-      values.push(params.whitelisted ? normalizeAddress(params.actorAddress) : null);
-      updates.push(`whitelisted_at = $${idx++}`);
-      values.push(params.whitelisted ? new Date() : null);
-    }
-
     if (params.tierOverride !== undefined) {
       updates.push(`tier_override = $${idx++}`);
       values.push(params.tierOverride);
@@ -230,7 +211,6 @@ export async function updateOperatorAdmin(params: {
     const opRow = rows[0];
     const newTier = calculateTrustTier({
       tierOverride: opRow.tier_override,
-      whitelisted: opRow.whitelisted,
     });
 
     if (opRow.trust_tier !== newTier) {
