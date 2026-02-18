@@ -77,27 +77,31 @@ async function main() {
   console.log('\nStep 3: Starting local stack...');
   const { pm, pids } = await startStack(rpcUrl);
 
-  // ── Phase 1: Clone ──────────────────────────────────────────────────
-
-  console.log('\n── Phase 1: Clone ──\n');
-
-  // 5. Clone jinn-node
-  console.log(`Step 5: Cloning jinn-node (branch: ${branch})...`);
-  const { cloneDir } = await setupClone(branch);
-
-  // ── SIGINT handler: kill stack on Ctrl+C ─────────────────────────────
-
+  // Register signal handlers now — covers the clone step (longest operation)
   process.on('SIGINT', async () => {
     console.log('\nShutting down stack (SIGINT)...');
     await pm.killAll();
     process.exit(0);
   });
-
-  // SIGTERM: let detached children survive (matching start-e2e-stack behavior)
   process.on('SIGTERM', () => {
     console.log('\nParent exiting (SIGTERM) — stack services continue on their ports.');
     process.exit(0);
   });
+
+  // ── Phase 1: Clone ──────────────────────────────────────────────────
+
+  console.log('\n── Phase 1: Clone ──\n');
+
+  // 4. Clone jinn-node
+  console.log(`Step 4: Cloning jinn-node (branch: ${branch})...`);
+  let cloneDir: string;
+  try {
+    ({ cloneDir } = await setupClone(branch));
+  } catch (e) {
+    console.error('\nClone failed — killing stack...');
+    await pm.killAll();
+    throw e;
+  }
 
   // ── Summary ──────────────────────────────────────────────────────────
 
@@ -118,6 +122,10 @@ async function main() {
   console.log(`  yarn test:e2e:vnet seed-acl "${cloneDir}"`);
   console.log(`  docker build -f jinn-node/Dockerfile jinn-node/ -t jinn-node:e2e`);
   console.log('');
+
+  // Exit cleanly — stack services continue as detached processes on their ports.
+  // Without this, the child process pipes keep the Node event loop alive.
+  process.exit(0);
 }
 
 main().catch(e => {
