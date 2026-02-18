@@ -8,35 +8,77 @@ allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 
 Migrate a service NFT from one OLAS staking contract to another on Base.
 
-## Recommended: Use the Middleware HTTP API
+## Recommended: Direct Safe Transaction Approach
 
-The **olas-operate-middleware** daemon handles the full migration flow. This is how the
-official olas-operate-app does it. Two API calls:
+The middleware has known bugs with the autonomy library on Base (missing contract addresses,
+429 rate limits on default RPC). **Use direct ethers.js + Safe execTransaction instead.**
 
-```bash
-# 1. Start daemon
-cd olas-operate-middleware && poetry run operate daemon --port=8700
+### Prerequisites
+1. Master EOA private key (from `.operate/wallets/ethereum.txt`, decrypt with OPERATE_PASSWORD)
+2. Master Safe must be sole owner of the service Safe (threshold=1)
+3. Master Safe needs 2x min_staking_deposit OLAS + ~0.02 ETH for gas
 
-# 2. Login
-curl -X POST http://localhost:8700/api/account/login \
-  -H 'Content-Type: application/json' -d '{"password":"<OPERATE_PASSWORD>"}'
+### Full Migration Script (ethers.js)
 
-# 3. Update service config to point to new staking contract
-curl -X PATCH http://localhost:8700/api/v2/service/<service_config_id> \
-  -H 'Content-Type: application/json; charset=UTF-8' \
-  -d '{"configurations": {"base": {"staking_program_id": "<target_address>"}}}'
+```typescript
+const SAFE_ABI = [
+  'function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) returns (bool)',
+  'function nonce() view returns (uint256)',
+  'function getTransactionHash(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, uint256 _nonce) view returns (bytes32)',
+];
 
-# 4. Deploy (triggers full on-chain flow: terminate -> re-register -> activate -> register -> deploy -> stake)
-curl -X POST http://localhost:8700/api/v2/service/<service_config_id> \
-  -H 'Content-Type: application/json; charset=UTF-8'
+async function execSafeTx(signer, safe, to, data, value = 0n) {
+  const nonce = await safe.nonce();
+  const txHash = await safe.getTransactionHash(to, value, data, 0, 0, 0, 0, ethers.ZeroAddress, ethers.ZeroAddress, nonce);
+  const sig = signer.signingKey.sign(ethers.getBytes(txHash));
+  const signature = ethers.concat([sig.r, sig.s, ethers.toBeHex(sig.v, 1)]);
+  return safe.execTransaction(to, value, data, 0, 0, 0, 0, ethers.ZeroAddress, ethers.ZeroAddress, signature, {
+    gasLimit: 2_000_000, maxFeePerGas: ethers.parseUnits('0.15', 'gwei'),
+    maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
+  });
+}
+
+// Steps (all via execSafeTx from Master Safe):
+// 1. Approve OLAS to ServiceRegistryTokenUtility (bond * 3 for safety)
+// 2. activateRegistration on ServiceManagerToken (value: 1 wei)
+// 3. registerAgents on ServiceManagerToken (value: 1 wei)
+// 4. deploy on ServiceManagerToken (see Deploy section below)
+// 5. approve NFT on ServiceRegistry to staking contract
+// 6. stake on staking contract
 ```
 
-The middleware handles everything: unstaking, terminating, re-registering with new bond,
-activating, registering agents, deploying multisig, and staking in the new contract.
+### Deploy Step — Multisig Reuse vs Fresh
 
-**Note:** The POST endpoint also calls `deploy_service_locally` (Docker), which may fail
-if Docker is not running. The on-chain operations run first, so if Docker fails, the
-on-chain state will still be correct.
+**Reuse existing multisig (recommended when re-staking):**
+- Implementation: `recovery_module` = `0x359d53C326388D24037b3b1590d217fdb5EEE74c`
+- Payload: `0x` + serviceId.toString(16).padStart(64, '0')
+- Prerequisite: Service Safe must have Master Safe as sole owner
+
+**Fresh multisig (new service):**
+- Implementation: `safe_multisig_with_recovery_module` = `0x8c534420Db046d6801A1A8bE6fb602cC8F257453`
+- Payload: encoded Safe setup parameters (owners, threshold, recovery module)
+
+**CRITICAL**: Do NOT use `gnosis_safe_same_address_multisig` (`0xFbBEc0C8b13B38a9aC0499694A69a10204c5E2aB`) with empty data — it will revert.
+
+### Alternative: Middleware HTTP API (may fail)
+
+The middleware can handle the full flow but has bugs on Base:
+- `registry_contracts.service_registry_token_utility` has no address for Base (v0.14.0)
+- Default RPC `mainnet.base.org` gets 429 rate limited
+- Parent process death check kills daemon when parent shell exits
+
+If you still want to try the middleware:
+
+```bash
+# Must run from the directory containing the .operate profile
+cd <dir-with-.operate> && BASE_CHAIN_RPC=https://base.publicnode.com poetry run operate daemon --port=8700
+
+# Login, PATCH staking_program_id, POST to deploy (same as before)
+```
+
+The middleware will likely handle terminate/unbond/update but fail at the OLAS approval
+step. You can then complete the remaining steps (activate → register → deploy → stake)
+manually using the Safe transaction approach above.
 
 ## Key Concepts
 
@@ -71,17 +113,34 @@ on-chain state will still be correct.
 | ServiceManagerToken (CORRECT) | `0x1262136cac6a06A782DC94eb3a3dF0b4d09FF6A6` |
 | OLAS Token | `0x54330d28ca3357F294334BDC454a032e7f353416` |
 
-### Our Addresses
+### Our Services
 
+#### Service 165 (Oak's Worker)
 | Address | Value |
 |---------|-------|
 | Master EOA | `0xB1517bB7C0932f1154Fa4b17DeC2a6a4a3d02CC2` |
-| Master Safe (Operate) | `0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645` |
-| Venture Safe (AMP2) | `0x900Db2954a6c14C011dBeBE474e3397e58AE5421` |
+| Master Safe | `0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645` |
 | Agent Key | `0x62fb5FC6ab3206b3C817b503260B90075233f7dD` |
-| Service Safe (multisig) | `0xb8B7A89760A4430C3f69eeE7Ba5D2B985D593D92` |
-| Service ID | 165 |
+| Service Safe | `0xb8B7A89760A4430C3f69eeE7Ba5D2B985D593D92` |
 | Service Config ID | `sc-b3aaf73c-78fe-4b28-98ef-6cf8730d04a1` |
+| .operate profile | `olas-operate-middleware/.operate/` |
+
+#### Service 359 (Venture-Test-Worker)
+| Address | Value |
+|---------|-------|
+| Master EOA | `0x443ad8619a9aa37d08c5ef7846B3B0Cf66efffE7` |
+| Master Safe | `0xcea84077FF73cEAd64947cd02B813614E9Df3E0e` |
+| Agent Instance | `0xE0f75Fb9e33c3aa8aB127929d16403B10BC54148` |
+| Service Safe | `0xD2C24F6d9e7520e57FAEbf5d1C44100C4502710B` |
+| Mech | `0x44C53e3764188586Ddb1B1389A00F675867E3a9d` |
+| Service Config ID | `sc-ec7d10fd-fed8-4ad7-9f50-c5b788a5d3bd` |
+| .operate profile | `/Users/gcd/Repositories/main/jinn-node/.operate/` |
+| OPERATE_PASSWORD | `12345678` |
+
+#### Shared
+| Address | Value |
+|---------|-------|
+| Venture Safe (AMP2) | `0x900Db2954a6c14C011dBeBE474e3397e58AE5421` |
 
 ## Migration Flow (Middleware Internal)
 
@@ -305,6 +364,59 @@ At ~41 OLAS/day reward rate (Jinn), even 50 OLAS covers initial staking.
 
 **Detection:** Error selector `0xafb0be33` in the gas estimation failure revert data.
 
+### Middleware v0.14.0 fails at OLAS approval on Base
+
+**Issue:** `registry_contracts.service_registry_token_utility.get_agent_bond()` fails with
+"Please ensure that this contract instance has an address."
+
+**Root Cause:** The `autonomy` library's `registry_contracts` system only has contract
+interfaces for Ethereum, not Base. The `contract_interface` dict has key `'ethereum'` only.
+The `ContractConfigs` system (used by `_patch()`) is separate and DOES have Base addresses,
+but `registry_contracts` is a different object from `autonomy.chain.base`.
+
+**Solution:** Complete the remaining steps (activate, register, deploy, approve, stake)
+via direct Safe transactions using ethers.js. See "Direct Safe Transaction Approach" above.
+
+### Middleware daemon dies immediately (parent process check)
+
+**Issue:** The middleware daemon shuts down within seconds with "Parent process no longer alive."
+
+**Root Cause:** The daemon checks `psutil.Process(os.getpid()).parent()` every 3 seconds.
+When launched with `nohup &` or in a background shell, the parent process exits, triggering
+shutdown.
+
+**Solution:** Keep the parent shell alive throughout the API calls. Run daemon and curl in
+the same shell process, or use a persistent terminal session.
+
+### Deploy with wrong multisig implementation reverts (GS013)
+
+**Issue:** `ServiceManagerToken.deploy()` reverts with GS013 when using
+`gnosis_safe_same_address_multisig` with `0x` data.
+
+**Root Cause:** For reuse-with-recovery deployment, the correct contract is the
+`recovery_module` (`0x359d53C326388D24037b3b1590d217fdb5EEE74c`), NOT
+`gnosis_safe_same_address_multisig` or `safe_multisig_with_recovery_module`.
+
+**Mapping:**
+| Scenario | Contract | Address |
+|----------|----------|---------|
+| Reuse + recovery | `recovery_module` | `0x359d53C326388D24037b3b1590d217fdb5EEE74c` |
+| Reuse, no recovery | `gnosis_safe_same_address_multisig` | `0xFbBEc0C8b13B38a9aC0499694A69a10204c5E2aB` |
+| Fresh + recovery | `safe_multisig_with_recovery_module` | `0x8c534420Db046d6801A1A8bE6fb602cC8F257453` |
+| Fresh, no recovery | `gnosis_safe_proxy_factory` | `0x22bE6fDcd3e29851B29b512F714C328A00A96B83` |
+
+### 429 Too Many Requests from mainnet.base.org
+
+**Issue:** Middleware fails with 429 from `mainnet.base.org` even when service config uses
+a different RPC.
+
+**Root Cause:** The `autonomy` library's default Base chain RPC is `mainnet.base.org`.
+Some code paths (like `_get_current_staking_program`) use this default instead of the
+service config's RPC.
+
+**Solution:** Set `BASE_CHAIN_RPC=https://base.publicnode.com` env var before starting
+the middleware. Or use the direct Safe transaction approach.
+
 ### Master Safe vs Venture Safe
 
 - **Master Safe (Operate)**: `0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645` — returned by
@@ -344,10 +456,33 @@ At ~41 OLAS/day reward rate (Jinn), even 50 OLAS covers initial staking.
 - Service state: **4 (DEPLOYED)**, staked in Jinn
 - NFT owner: Jinn staking contract (`0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139`)
 - Staking state: **STAKED**
-- Jinn `getServiceIds()`: `[165]`
+- Jinn `getServiceIds()`: `[165, 372, 359]`
 - Security deposit: 5,000 OLAS (locked in ServiceRegistry)
 - Agent bond: 5,000 OLAS (locked in ServiceRegistry)
-- Staking rewards available: ~50 OLAS (~1.2 days at 41 OLAS/day)
+
+## Migration Log (Service 359: AgentsFun1 → Jinn)
+
+### Method: Hybrid (middleware partial + manual Safe tx)
+
+The middleware (v0.14.0) handled terminate/unbond/update but failed at OLAS approval
+due to missing `registry_contracts.service_registry_token_utility` address for Base.
+Remaining steps completed via direct ethers.js Safe transactions.
+
+### Steps
+1. **Middleware PATCH** — Updated staking_program_id to Jinn
+2. **Middleware POST** — Terminated, unbonded, swapped Safe owners, updated bond to 5000 OLAS
+3. **Manual: Approve OLAS** — TX: `0xe1c8d7e1...`
+4. **Manual: Activate registration** — TX: `0x6c6dde76...`
+5. **Manual: Register agents** — TX: `0xf69e03a3...`
+6. **Manual: Deploy (reuse with recovery)** — TX: `0x0a802fcd...`
+   - Implementation: `0x359d53C326388D24037b3b1590d217fdb5EEE74c` (recovery_module)
+   - Payload: `0x0000...0167` (serviceId=359)
+7. **Manual: Approve NFT** — TX: `0x52c3bafb...`
+8. **Manual: Stake in Jinn** — TX: `0xf02f2f7f...`
+
+### Final State (COMPLETE)
+- Staking state: **STAKED**
+- Jinn `getServiceIds()`: `[165, 372, 359]`
 
 ## Staking ABI (Key Functions)
 

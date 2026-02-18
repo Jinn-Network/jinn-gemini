@@ -18,6 +18,10 @@ when_to_read: "Use when setting up a new worker, configuring environment variabl
 
 # Mech Worker Setup Runbook
 
+> **Note:** For interactive setup, use the `/setup-worker` skill which provides guided verification with on-chain checks. This runbook is retained as a reference.
+>
+> **Feb 2026:** Service config (service ID, Safe address, staking contract, marketplace) is now auto-derived on-chain from the mech address at startup. See [On-Chain Derived section](../reference/environment-variables.md#on-chain-derived-auto-resolved). You can verify resolution with: `tsx jinn-node/src/worker/onchain/serviceResolver.ts`
+
 This runbook provides step-by-step instructions for setting up and running a Jinn mech worker. The worker polls Ponder for unclaimed on-chain mech requests, executes jobs via a Gemini agent, and delivers results on-chain via a Gnosis Safe.
 
 ## Overview

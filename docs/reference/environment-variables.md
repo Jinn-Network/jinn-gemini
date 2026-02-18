@@ -2,7 +2,7 @@
 title: Environment Variables Reference
 purpose: reference
 scope: [worker, gemini-agent, frontend, deployment]
-last_verified: 2026-02-07
+last_verified: 2026-02-18
 related_code:
   - config/index.ts
   - worker/mech_worker.ts
@@ -34,11 +34,26 @@ Priority: env var > `.operate/services/*/config.json`
 | `OPERATE_PROFILE_DIR` | path | Override `.operate` directory location |
 | `OPERATE_PASSWORD` | string | Middleware keystore password |
 
+## On-Chain Derived (Auto-Resolved)
+
+These variables are **automatically derived** from `JINN_SERVICE_MECH_ADDRESS` + `RPC_URL` at worker startup via `serviceResolver.ts`. They no longer need to be set manually. If set explicitly, the env var value takes priority as an override.
+
+| Variable | Derived From | Description |
+|----------|-------------|-------------|
+| `WORKER_SERVICE_ID` | `mech.tokenId()` | OLAS service ID |
+| `WORKER_STAKING_CONTRACT` | `ServiceRegistry.ownerOf(serviceId)` + `getStakingState()` | Staking contract (null if unstaked/evicted) |
+| `JINN_SERVICE_SAFE_ADDRESS` | `ServiceRegistry.getService(serviceId).multisig` | Gnosis Safe (fallback after env var and `.operate`) |
+| `MECH_MARKETPLACE_ADDRESS_BASE` | `mech.mechMarketplace()` | Marketplace contract on Base |
+
+**Derivation chain:** `mech address → tokenId → ServiceRegistry.getService() → multisig, state, owner → staking check`
+
+See `jinn-node/src/worker/onchain/serviceResolver.ts` for implementation.
+
 ## Mech Service
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `MECH_MARKETPLACE_ADDRESS_BASE` | address | - | Marketplace contract on Base |
+| `MECH_MARKETPLACE_ADDRESS_BASE` | address | auto-derived | Marketplace contract on Base (override only) |
 | `MECH_MODEL` | string | - | Default AI model |
 | `MECH_RECLAIM_AFTER_MINUTES` | number | - | Reclaim undelivered requests after N min |
 | `MECH_TARGET_REQUEST_ID` | string | - | Target specific request (testing) |
@@ -147,6 +162,7 @@ Set by worker during job execution. See [Worker Environment](../context/worker-e
 
 | Variable | Type | Description |
 |----------|------|-------------|
+| `VENTURE_FILTER` | string | Venture ID(s) to claim work for (comma-separated) |
 | `WORKSTREAM_FILTER` | string | Workstream IDs (comma/JSON array) |
 | `WORKER_MECH_FILTER_LIST` | string | Mech addresses ("any", comma-separated, or single) |
 

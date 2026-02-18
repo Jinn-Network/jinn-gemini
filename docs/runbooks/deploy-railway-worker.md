@@ -14,6 +14,10 @@ when_to_read: "When deploying or updating the Jinn worker service on Railway"
 
 # Deploying Jinn Worker to Railway
 
+> **Note:** For interactive deployment, use the `/deploy-worker` skill which provides step-by-step guidance with Railway MCP tools. This runbook is retained as a reference.
+>
+> **Feb 2026:** Most service config env vars are now auto-derived on-chain from `JINN_SERVICE_MECH_ADDRESS`. See [On-Chain Derived section](../reference/environment-variables.md#on-chain-derived-auto-resolved) for details. `WORKER_SERVICE_ID`, `WORKER_STAKING_CONTRACT`, and `MECH_MARKETPLACE_ADDRESS_BASE` no longer need to be set.
+
 This guide explains how to deploy the Jinn worker service to Railway.
 
 ## Overview
