@@ -29,7 +29,7 @@ The child job dispatched in Phase 3 is already on-chain. No new dispatch needed.
 Stale telemetry files are cleaned automatically before the container starts.
 
 ```bash
-yarn test:e2e:docker-run --cwd "$CLONE_DIR" \
+yarn test:e2e:docker-run --cwd "$CLONE_DIR" --single \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --env X402_GATEWAY_URL=http://host.docker.internal:3001
 ```
