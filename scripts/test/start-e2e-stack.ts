@@ -36,6 +36,7 @@ const PONDER_PORT = '42069';
 const CONTROL_PORT = '4001';
 const GATEWAY_PORT = '3001';
 const GATEWAY_ACL_PATH = resolve(MONOREPO_ROOT, '.env.e2e.acl.json');
+const E2E_LOG_DIR = '/tmp/jinn-e2e-logs';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,13 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   killPort(GATEWAY_PORT);
   await cleanPonderCache();
 
+  // Prepare log directory for crash diagnostics
+  try {
+    await fs.rm(E2E_LOG_DIR, { recursive: true, force: true });
+  } catch { /* doesn't exist */ }
+  await fs.mkdir(E2E_LOG_DIR, { recursive: true });
+  console.log(`  Log dir: ${E2E_LOG_DIR}`);
+
   // Ensure ACL file exists for the credential gateway (empty grants by default)
   if (!fsExistsSync(GATEWAY_ACL_PATH)) {
     writeFileSync(GATEWAY_ACL_PATH, JSON.stringify({ grants: {}, connections: {} }, null, 2) + '\n');
@@ -186,6 +194,7 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
     args: ['ponder:dev'],
     cwd: MONOREPO_ROOT,
     env: envOverrides,
+    logDir: E2E_LOG_DIR,
   });
 
   // Start Control API
@@ -198,6 +207,7 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
       ...envOverrides,
       PORT: CONTROL_PORT,
     },
+    logDir: E2E_LOG_DIR,
   });
 
   // Start x402 Gateway (credential bridge)
@@ -220,6 +230,7 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
       // They reach the gateway via ProcessManager's process.env inheritance,
       // which is the same path production uses. The E2E validates this works.
     },
+    logDir: E2E_LOG_DIR,
   });
 
   // Wait for Ponder to be healthy
@@ -280,7 +291,7 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   const gwPayAddr = process.env.GATEWAY_PAYMENT_ADDRESS || '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
   const hasCdp = Boolean(process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET);
 
-  // Write service PIDs to .env.e2e so cleanup can find orphaned processes
+  // Write service PIDs and log dir to .env.e2e so cleanup can find orphaned processes
   const pids = pm.getPids();
   const pidLines = Array.from(pids.entries())
     .map(([name, pid]) => `E2E_PID_${name.toUpperCase().replace(/-/g, '_')}=${pid}`)
@@ -288,6 +299,7 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   if (pidLines) {
     await fs.appendFile(E2E_ENV_FILE, pidLines + '\n');
   }
+  await fs.appendFile(E2E_ENV_FILE, `E2E_LOG_DIR=${E2E_LOG_DIR}\n`);
 
   console.log(`\nLocal stack ready.`);
   console.log(`  Ponder:      http://localhost:${PONDER_PORT}/graphql`);
@@ -295,6 +307,7 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   console.log(`  Gateway:     http://localhost:${GATEWAY_PORT} (credential bridge)`);
   console.log(`  ACL file:    ${GATEWAY_ACL_PATH}`);
   console.log(`  Payment:     ${gwPayAddr} (CDP: ${hasCdp ? 'enabled' : 'NOT configured — set CDP_API_KEY_ID/SECRET in .env'})`);
+  console.log(`  Logs:        ${E2E_LOG_DIR}/`);
   for (const [name, pid] of pids) {
     console.log(`  ${name} PID:  ${pid}`);
   }
