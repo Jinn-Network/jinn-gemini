@@ -432,7 +432,48 @@ async function run(): Promise<void> {
     }
   }
 
-  // 9) Replay rejection (only when Redis is configured)
+  // 9) Static umami provider returns JWT (when UMAMI_HOST set)
+  if (!process.env.UMAMI_HOST || !process.env.UMAMI_USERNAME || !process.env.UMAMI_PASSWORD) {
+    skip('Umami static provider test skipped (UMAMI_HOST/USERNAME/PASSWORD not set)');
+  } else {
+    const dir = await mkdtemp(join(tmpdir(), 'jinn-cred-e2e-'));
+    const aclPath = join(dir, 'acl.json');
+    const acl = {
+      connections: {
+        conn_umami: { provider: 'umami' },
+      },
+      grants: {
+        [TEST_ADDRESS]: {
+          umami: {
+            nangoConnectionId: 'conn_umami',
+            pricePerAccess: '0',
+            expiresAt: null,
+            active: true,
+          },
+        },
+      },
+    };
+    await writeFile(aclPath, JSON.stringify(acl, null, 2), 'utf8');
+
+    const gateway = await startGateway({
+      requireJobContext: false,
+      aclPath,
+      controlApiUrl: 'http://127.0.0.1:9/graphql',
+    });
+    try {
+      const res = await signedCredentialRequest(gateway.port, 'umami', {});
+      if (res.status === 200 && res.body?.access_token) {
+        pass('Static umami provider returns JWT');
+      } else {
+        fail(`Expected umami JWT, got ${res.status}: ${JSON.stringify(res.body)}`);
+      }
+    } finally {
+      await gateway.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  // 10) Replay rejection (only when Redis is configured)
   if (!process.env.REDIS_URL) {
     skip('Replay test skipped (REDIS_URL not set)');
   } else {

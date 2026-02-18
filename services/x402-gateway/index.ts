@@ -378,11 +378,21 @@ async function dispatchAgent(
 }
 
 // Health check
-app.get("/health", (c) => c.json({
-  status: "ok",
-  service: "x402-gateway",
-  timestamp: new Date().toISOString(),
-}));
+app.get("/health", (c) => {
+  const providers: Record<string, string> = {};
+  if (env.UMAMI_HOST && env.UMAMI_USERNAME && env.UMAMI_PASSWORD) providers.umami = 'static';
+  if (env.SUPABASE_SERVICE_ROLE_KEY) providers.supabase = 'static';
+  if (env.TELEGRAM_BOT_TOKEN) providers.telegram = 'static';
+  if (env.CIVITAI_API_TOKEN || env.CIVITAI_API_KEY) providers.civitai = 'static';
+  if (env.OPENAI_API_KEY) providers.openai = 'static';
+
+  return c.json({
+    status: "ok",
+    service: "x402-gateway",
+    timestamp: new Date().toISOString(),
+    providers,
+  });
+});
 
 // .well-known/x402 — Discovery endpoint (supports both x402scan and Bazaar formats)
 app.get("/.well-known/x402", async (c) => {
@@ -1318,9 +1328,17 @@ app.post("/credentials/:provider", async (c) => {
   }
 
   // Fetch token: check static providers first, then fall back to Nango
+  let tokenSource: 'static' | 'nango' = 'nango';
   try {
     const staticToken = await getStaticCredential(provider);
-    const token = staticToken || await getNangoAccessToken(grant.nangoConnectionId, provider);
+    let token: { access_token: string; expires_in: number };
+    if (staticToken) {
+      token = staticToken;
+      tokenSource = 'static';
+    } else {
+      token = await getNangoAccessToken(grant.nangoConnectionId, provider);
+      tokenSource = 'nango';
+    }
     const response: CredentialResponse = {
       access_token: token.access_token,
       expires_in: token.expires_in,
@@ -1336,7 +1354,7 @@ app.post("/credentials/:provider", async (c) => {
       requestId,
       verificationState,
       ...paymentAudit,
-      metadata: { source: staticToken ? 'static' : 'nango' },
+      metadata: { source: tokenSource },
     });
     // Overwrite "processing" marker with actual response (longer TTL)
     if (idempotencyCacheKey) {
@@ -1348,16 +1366,17 @@ app.post("/credentials/:provider", async (c) => {
     return c.json(response, { headers: getRateLimitHeaders(rateLimit) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const errorCode = tokenSource === 'static' ? 'STATIC_PROVIDER_ERROR' : 'NANGO_ERROR';
     logAudit({
       address: requesterAddress,
       provider,
-      action: 'nango_error',
+      action: tokenSource === 'static' ? 'static_provider_error' : 'nango_error',
       ip: clientIp,
       userAgent,
       requestId,
       verificationState,
       ...paymentAudit,
-      metadata: { error: message },
+      metadata: { error: message, source: tokenSource },
     });
     // Clear "processing" marker on failure so retries aren't blocked
     if (idempotencyCacheKey) {
@@ -1367,7 +1386,7 @@ app.post("/credentials/:provider", async (c) => {
       }
     }
     return c.json(
-      { error: `Credential fetch error: ${message}`, code: "NANGO_ERROR" } satisfies CredentialError,
+      { error: `Credential fetch error (${tokenSource}): ${message}`, code: errorCode } satisfies CredentialError,
       { status: 502, headers: getRateLimitHeaders(rateLimit) }
     );
   }

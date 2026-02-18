@@ -216,6 +216,9 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
       GATEWAY_PAYMENT_ADDRESS: process.env.GATEWAY_PAYMENT_ADDRESS || '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
       X402_NETWORK: 'base',
       // CDP_API_KEY_ID and CDP_API_KEY_SECRET inherited from process.env (.env file)
+      // NOTE: UMAMI_HOST/USERNAME/PASSWORD are intentionally NOT listed here.
+      // They reach the gateway via ProcessManager's process.env inheritance,
+      // which is the same path production uses. The E2E validates this works.
     },
   });
 

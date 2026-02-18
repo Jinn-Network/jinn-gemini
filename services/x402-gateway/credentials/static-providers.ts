@@ -63,7 +63,10 @@ async function getUmamiToken(): Promise<StaticCredentialResult | null> {
   const username = process.env.UMAMI_USERNAME;
   const password = process.env.UMAMI_PASSWORD;
 
-  if (!host || !username || !password) return null;
+  if (!host || !username || !password) {
+    console.log(`[static-providers] umami: env vars missing (UMAMI_HOST=${!!host}, UMAMI_USERNAME=${!!username}, UMAMI_PASSWORD=${!!password})`);
+    return null;
+  }
 
   // Return cached JWT if still valid (with 5-minute buffer)
   if (umamiJwtCache && umamiJwtCache.expiresAt > Date.now() + 5 * 60 * 1000) {
@@ -72,7 +75,9 @@ async function getUmamiToken(): Promise<StaticCredentialResult | null> {
   }
 
   // Login to Umami to get a fresh JWT
-  const response = await fetch(`${host.replace(/\/$/, '')}/api/auth/login`, {
+  const loginUrl = `${host.replace(/\/$/, '')}/api/auth/login`;
+  console.log(`[static-providers] umami: logging in to ${host.replace(/\/$/, '')}`);
+  const response = await fetch(loginUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -80,7 +85,7 @@ async function getUmamiToken(): Promise<StaticCredentialResult | null> {
   });
 
   if (!response.ok) {
-    throw new Error(`Umami login failed: ${response.status} ${response.statusText}`);
+    throw new Error(`Umami login failed: ${response.status} ${response.statusText} (${loginUrl})`);
   }
 
   const data = await response.json() as { token: string };
@@ -95,6 +100,7 @@ async function getUmamiToken(): Promise<StaticCredentialResult | null> {
     expiresAt: Date.now() + expiresIn * 1000,
   };
 
+  console.log(`[static-providers] umami: login successful, JWT cached for ${expiresIn}s`);
   return { access_token: data.token, expires_in: expiresIn };
 }
 
