@@ -279,8 +279,9 @@ function buildCidCandidatesFromDigest(digestHex: string): CidCandidate[] {
   ];
 }
 
-async function fetchRequestMetadata(cidBase32: string, timeoutMs = 3_000): Promise<any> {
-  const gateways = [IPFS_GATEWAY_BASE, ...IPFS_GATEWAY_FALLBACKS];
+async function fetchRequestMetadata(cidBase32: string, timeoutMs = 3_000, maxGateways = 0): Promise<any> {
+  const allGateways = [IPFS_GATEWAY_BASE, ...IPFS_GATEWAY_FALLBACKS];
+  const gateways = maxGateways > 0 ? allGateways.slice(0, maxGateways) : allGateways;
   let lastError: Error | null = null;
 
   for (const gateway of gateways) {
@@ -620,19 +621,25 @@ ponder.on(
           "Processing MarketplaceRequest - fetching IPFS metadata"
         );
 
-        // Fetch IPFS metadata FIRST to check networkId before any DB writes
-        // This ensures non-Jinn requests are filtered out without creating DB records
+        // Fetch IPFS metadata to extract jobName, blueprint, etc.
+        // Known Jinn mechs: quick attempt (500ms, primary gateway only), proceed without on failure
+        // Unknown mechs: full attempt needed to verify networkId
         let content: any = null;
         let selectedCandidate: CidCandidate | null = null;
         let lastIpfsError: any = null;
+        // Known Jinn mechs: 500ms timeout, primary gateway only, single CID candidate
+        // Unknown mechs: full 3s timeout, all gateways, all CID candidates
+        const ipfsTimeout = isKnownJinnMech ? 500 : undefined;
+        const ipfsMaxGateways = isKnownJinnMech ? 1 : 0;
         try {
           for (const candidate of cidCandidates) {
             try {
-              content = await fetchRequestMetadata(candidate.cidBase32);
+              content = await fetchRequestMetadata(candidate.cidBase32, ipfsTimeout, ipfsMaxGateways);
               selectedCandidate = candidate;
               break;
             } catch (candidateError: any) {
               lastIpfsError = candidateError;
+              if (isKnownJinnMech) break; // Don't try more CID candidates for known mechs
             }
           }
           if (!content || !selectedCandidate) {
