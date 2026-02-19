@@ -1026,6 +1026,7 @@ ponder.on(
             },
             update: {
               lastActivity: blockTimestamp,
+              ...(jobName ? { jobName } : {}),
               ...(contentVentureId ? { ventureId: contentVentureId } : {}),
               ...(contentTemplateId ? { templateId: contentTemplateId } : {}),
             },
@@ -1296,7 +1297,7 @@ ponder.on(
               ? res.data.jobInstanceStatusUpdate
               : undefined;
 
-            // Write lastStatus to workstream for root requests (deliveryStatus is now in scope)
+            // Write lastStatus (and backfill jobName if missing) to workstream for root requests
             if (requestWorkstreamId && !requestSourceRequestId) {
               try {
                 await workstreamRepo.upsert({
@@ -1304,9 +1305,10 @@ ponder.on(
                   update: {
                     lastStatus: deliveryStatus,
                     ...(jobInstanceStatusUpdate ? { latestStatusUpdate: jobInstanceStatusUpdate } : {}),
+                    ...(jobName ? { jobName } : {}),
                   },
                 });
-                logger.debug({ workstreamId: requestWorkstreamId, deliveryStatus }, "Updated workstream lastStatus");
+                logger.debug({ workstreamId: requestWorkstreamId, deliveryStatus, jobName }, "Updated workstream lastStatus");
               } catch (wsErr: any) {
                 logger.error({ workstreamId: requestWorkstreamId, error: serializeError(wsErr) }, "Failed to update workstream lastStatus");
               }
@@ -1374,7 +1376,7 @@ ponder.on(
                   jobInstanceStatusUpdate
                 }
               });
-              await requestRepo.upsert({ id: requestId, update: { jobDefinitionId: deliveryJobDefinitionId } });
+              await requestRepo.upsert({ id: requestId, update: { jobDefinitionId: deliveryJobDefinitionId, ...(jobName ? { jobName } : {}) } });
             } else {
               // Fallback: if request has a jobDefinitionId already, propagate it to delivery as sourceJobDefinitionId
               try {
