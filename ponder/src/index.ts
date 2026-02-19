@@ -591,7 +591,8 @@ ponder.on(
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
       // Fast-path: skip non-Jinn mechs entirely (avoids 6s+ IPFS timeout per request)
-      if (jinnMechAddresses && !jinnMechAddresses.has(mech)) {
+      const isKnownJinnMech = jinnMechAddresses?.has(mech) ?? false;
+      if (jinnMechAddresses && !isKnownJinnMech) {
         logger.debug({ mech, requestIds }, 'Skipping non-Jinn mech (not in staking allowlist)');
         return;
       }
@@ -652,20 +653,30 @@ ponder.on(
             "IPFS metadata fetched successfully"
           );
         } catch (ipfsError: any) {
-          // If IPFS fetch fails, skip this request entirely
-          // Without metadata, we can't verify networkId, so safer to skip
-          logger.error(
-            {
-              requestId: id,
-              cidCandidates: cidCandidates.map((candidate) => candidate.cidBase32),
-              error: serializeError(ipfsError || lastIpfsError),
-            },
-            "Failed to fetch IPFS metadata for request - skipping (cannot verify networkId)"
-          );
-          continue;
+          if (isKnownJinnMech) {
+            // Known Jinn mech — index even without metadata (it's definitely ours)
+            logger.debug(
+              { requestId: id },
+              "IPFS fetch failed for known Jinn mech — indexing without metadata"
+            );
+            // Fall through with content=null, selectedCandidate=null
+          } else {
+            // Unknown mech — can't verify networkId, skip
+            logger.error(
+              {
+                requestId: id,
+                cidCandidates: cidCandidates.map((candidate) => candidate.cidBase32),
+                error: serializeError(ipfsError || lastIpfsError),
+              },
+              "Failed to fetch IPFS metadata for request - skipping (cannot verify networkId)"
+            );
+            continue;
+          }
         }
 
-        if (!selectedCandidate) {
+        // Use selected CID candidate, or fall back to first candidate for known Jinn mechs
+        const resolvedCandidate = selectedCandidate || (isKnownJinnMech ? cidCandidates[0] : null);
+        if (!resolvedCandidate) {
           logger.error(
             { requestId: id, cidCandidates: cidCandidates.map((candidate) => candidate.cidBase32) },
             "No CID candidate selected after IPFS metadata fetch; skipping"
@@ -673,19 +684,21 @@ ponder.on(
           continue;
         }
 
-        const { cidHex: ipfsHash, cidBase32 } = selectedCandidate;
+        const { cidHex: ipfsHash, cidBase32 } = resolvedCandidate;
 
         // GLOBAL JINN EXPLORER: Only index requests with networkId === "jinn" (or missing for legacy)
-        // This filters out all non-Jinn Olas marketplace traffic
-        // NOTE: networkId comes from IPFS metadata, NOT from chain event args (which doesn't have this field)
-        const networkId: string | undefined = typeof content.networkId === "string" ? content.networkId : undefined;
-        if (networkId && networkId !== "jinn") {
-          logger.debug({ requestId: id, networkId, txHash }, "Skipping non-Jinn request (networkId filtering)");
-          continue;
+        // Known Jinn mechs bypass this check (they're definitely ours)
+        if (!isKnownJinnMech) {
+          const networkId: string | undefined = typeof content?.networkId === "string" ? content.networkId : undefined;
+          if (networkId && networkId !== "jinn") {
+            logger.debug({ requestId: id, networkId, txHash }, "Skipping non-Jinn request (networkId filtering)");
+            continue;
+          }
         }
 
         // Now that we've verified this is a Jinn request, insert into DB
-        logger.info({ requestId: id, networkId: networkId || 'undefined (legacy)' }, "Request passed networkId filter - creating DB record");
+        const networkId: string | undefined = typeof content?.networkId === "string" ? content.networkId : undefined;
+        logger.info({ requestId: id, networkId: networkId || 'undefined (legacy)', isKnownJinnMech }, "Request passed filter - creating DB record");
 
         try {
           await repo.upsert({
@@ -720,31 +733,31 @@ ponder.on(
         let messageContent: any = undefined;
         let codeMetadata: any = undefined;
         let dependencies: string[] | undefined;
-        jobName = typeof content.jobName === "string" ? content.jobName : undefined;
+        jobName = typeof content?.jobName === "string" ? content.jobName : undefined;
         // Extract tool names using shared utility (handles both string and {name, required} formats)
         // Filter out nulls from invalid entries
         // IMPORTANT: Prefer enabledTools (actual runtime tools) over tools (template definition)
         // This matches worker behavior and ensures UI shows what job actually has access to
-        enabledTools = Array.isArray(content.enabledTools)
+        enabledTools = Array.isArray(content?.enabledTools)
           ? content.enabledTools.map(extractToolName).filter((name: string | null): name is string => name !== null)
-          : Array.isArray(content.tools)
+          : Array.isArray(content?.tools)
             ? content.tools.map(extractToolName).filter((name: string | null): name is string => name !== null)
             : undefined;
-        jobDefinitionId = typeof content.jobDefinitionId === "string" ? content.jobDefinitionId : undefined;
+        jobDefinitionId = typeof content?.jobDefinitionId === "string" ? content.jobDefinitionId : undefined;
         // Support both blueprint (new) and prompt (legacy)
-        blueprint = typeof content.blueprint === "string"
+        blueprint = typeof content?.blueprint === "string"
           ? content.blueprint
-          : (typeof content.prompt === "string" ? content.prompt : undefined);
-        sourceRequestId = typeof content.sourceRequestId === "string" ? content.sourceRequestId : undefined;
+          : (typeof content?.prompt === "string" ? content.prompt : undefined);
+        sourceRequestId = typeof content?.sourceRequestId === "string" ? content.sourceRequestId : undefined;
         sourceJobDefinitionIdFromContent =
-          typeof (content as any).sourceJobDefinitionId === "string"
-            ? (content as any).sourceJobDefinitionId
+          typeof content?.sourceJobDefinitionId === "string"
+            ? content.sourceJobDefinitionId
             : undefined;
-        additionalContext = (content as any).additionalContext || undefined;
+        additionalContext = content?.additionalContext || undefined;
         if (additionalContext?.message) {
           messageContent = additionalContext.message;
         }
-        if (content.codeMetadata && typeof content.codeMetadata === "object") {
+        if (content?.codeMetadata && typeof content.codeMetadata === "object") {
           try {
             codeMetadata = safeJsonClone(content.codeMetadata);
           } catch {
@@ -752,25 +765,25 @@ ponder.on(
           }
         }
         // Extract template metadata for x402 templates
-        const templateOutputSpec = content.outputSpec && typeof content.outputSpec === 'object'
+        const templateOutputSpec = content?.outputSpec && typeof content.outputSpec === 'object'
           ? content.outputSpec
           : undefined;
-        const templatePriceWei = typeof content.priceWei === 'string' || typeof content.priceWei === 'number'
+        const templatePriceWei = typeof content?.priceWei === 'string' || typeof content?.priceWei === 'number'
           ? BigInt(content.priceWei)
           : undefined;
-        const templatePriceUsd = typeof content.priceUsd === 'string'
+        const templatePriceUsd = typeof content?.priceUsd === 'string'
           ? content.priceUsd
           : undefined;
-        const templateInputSchema = content.inputSchema && typeof content.inputSchema === 'object'
+        const templateInputSchema = content?.inputSchema && typeof content.inputSchema === 'object'
           ? content.inputSchema
           : undefined;
 
         // Extract venture and template IDs from content
-        const ventureId: string | undefined = typeof content.ventureId === 'string' ? content.ventureId : undefined;
-        const templateId: string | undefined = typeof content.templateId === 'string' ? content.templateId : undefined;
+        const ventureId: string | undefined = typeof content?.ventureId === 'string' ? content.ventureId : undefined;
+        const templateId: string | undefined = typeof content?.templateId === 'string' ? content.templateId : undefined;
 
         // Extract dependencies array from content
-        dependencies = Array.isArray(content.dependencies)
+        dependencies = Array.isArray(content?.dependencies)
           ? content.dependencies.map((dep: any) => String(dep))
           : undefined;
 
