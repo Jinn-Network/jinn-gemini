@@ -37,6 +37,14 @@ Also check the Docker worker stdout captured during Phases 3/4 for tool evidence
 - `blog_get_stats` — agent fetched analytics via credential bridge (umami JWT)
 - `web_fetch` — agent fetched a URL
 
+## Important: MCP Success vs Business Success
+
+Telemetry `success=true` reflects MCP transport success, not business-level success. A tool that returns `{"meta":{"ok":false,"code":"EXECUTION_ERROR"}}` will still show `success=true` in telemetry because the MCP call itself completed.
+
+The `parse-telemetry` script extracts `functionResponse` payloads from `request_text` attributes and cross-references them with tool calls. When it reports `[BIZ_FAIL:EXECUTION_ERROR]`, the tool was called but returned an error payload. This is a **FAIL** per Phase 3 grading rules — the tool being called is necessary but not sufficient.
+
+If you see `WARNING: No request_text found in telemetry`, business-level validation is unavailable and you must fall back to checking Docker output logs manually.
+
 ## Expected Output
 
 The parse-telemetry script outputs:
@@ -69,6 +77,7 @@ The parse-telemetry script outputs:
 - [PASS|FAIL] `dispatch_new_job` called at least once (delegation)
 - [PASS|FAIL] `blog_get_stats` called at least once (credential bridge → umami)
 - [PASS|FAIL] Token usage reported (input + output > 0)
+- [PASS|FAIL] No required tools show `[BIZ_FAIL]` (business-level failure = FAIL even if MCP success)
 
 ### Phase 4 (Child — Rotation Pickup)
 - [PASS|FAIL] Telemetry file(s) found and parseable

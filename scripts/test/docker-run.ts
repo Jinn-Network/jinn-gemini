@@ -19,8 +19,8 @@
  * Telemetry files are always mounted at /tmp/jinn-telemetry/ on the host.
  */
 
-import { execSync } from 'child_process';
-import { existsSync } from 'fs';
+import { execSync, spawnSync } from 'child_process';
+import { createWriteStream, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join, resolve } from 'path';
 
@@ -168,4 +168,37 @@ if (single) {
 // healthcheck and default: use image's CMD (worker_launcher.js)
 
 console.log(`Running: ${dockerArgs.join(' ')}`);
-execSync(dockerArgs.join(' '), { stdio: 'inherit', timeout: 10 * 60 * 1000 });
+
+// Persist Docker output to a log file for post-run analysis while also streaming to console.
+const logDir = process.env.E2E_LOG_DIR || '/tmp/jinn-e2e-logs';
+const logSuffix = flags['log-suffix'] || (healthcheck ? 'healthcheck' : 'worker');
+const logPath = join(logDir, `docker-${logSuffix}.log`);
+mkdirSync(logDir, { recursive: true });
+const logStream = createWriteStream(logPath);
+console.log(`Logging Docker output to: ${logPath}`);
+
+const result = spawnSync(dockerArgs[0], dockerArgs.slice(1), {
+  stdio: ['inherit', 'pipe', 'pipe'],
+  timeout: 10 * 60 * 1000,
+  maxBuffer: 50 * 1024 * 1024, // 50 MB
+});
+
+// Write output to both console and log file
+if (result.stdout?.length) {
+  process.stdout.write(result.stdout);
+  logStream.write(result.stdout);
+}
+if (result.stderr?.length) {
+  process.stderr.write(result.stderr);
+  logStream.write(result.stderr);
+}
+logStream.end();
+
+if (result.error) {
+  console.error(`Docker run error: ${result.error.message}`);
+  process.exit(1);
+}
+if (result.status !== 0) {
+  console.error(`Docker exited with code ${result.status}`);
+  process.exit(result.status || 1);
+}

@@ -54,6 +54,16 @@ The `--env` flag passes only `X402_GATEWAY_URL` (using `host.docker.internal` be
 `WORKER_MECH_FILTER_MODE=any` and `GITHUB_TOKEN` are set automatically by the docker-run script.
 Stale telemetry files are cleaned automatically before the container starts.
 
+### 3a. Verify tool business-level responses
+
+Telemetry `success=true` only means the MCP call completed — NOT that the tool returned usable data. After the worker completes, check Docker output for business-level failures:
+
+```bash
+grep -E 'EXECUTION_ERROR|CREDENTIAL_ERROR|STATIC_PROVIDER_ERROR' /tmp/jinn-e2e-logs/docker-worker.log
+```
+
+Any match near a required tool name means that tool FAILED at the business level — even though telemetry reports it as `success=true`. Mark it as FAIL in the checkpoint per the grading rule at the bottom of this file.
+
 ### 4. Save telemetry location
 
 ```bash
