@@ -106,7 +106,7 @@ const JINN_STAKING_CONTRACTS = [
   '0x2585e63df7BD9De8e058884D496658a030b5c6ce', // AgentsFun1
 ];
 const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
-const BASE_RPC_URL = process.env.BASE_RPC_URL || process.env.RPC_URL || 'https://mainnet.base.org';
+const BASE_RPC_URL = process.env.PONDER_RPC_URL || process.env.BASE_RPC_URL || process.env.RPC_URL || 'https://mainnet.base.org';
 
 // Set of known Jinn mech addresses (lowercase). Populated at startup.
 let jinnMechAddresses: Set<string> | null = null;
@@ -136,32 +136,29 @@ async function ethGetLogs(address: string, topics: string[], fromBlock: string, 
 async function buildJinnMechAllowlist(): Promise<Set<string>> {
   const mechs = new Set<string>();
   try {
-    // Step 1: Get all service IDs that have EVER been staked in Jinn contracts
-    // Fetch ServiceStaked events (covers current + evicted + unstaked services)
-    // ServiceStaked(uint256 indexed serviceId, address indexed owner, address indexed multisig, uint256[] nonces)
-    const SERVICE_STAKED_TOPIC = '0x5d43ac9b1b213902df90d405b0006308578486b6c62182c5df202ed572c844e4';
-    const serviceIds = new Set<bigint>();
+    // Step 1: Get currently staked service IDs via getServiceIds() view call
+    // selector: 0xf189e85a — returns ABI-encoded uint256[]
+    const serviceIds = new Set<string>();
     for (const stakingAddr of JINN_STAKING_CONTRACTS) {
       try {
-        const stakeLogs = await ethGetLogs(
-          stakingAddr,
-          [SERVICE_STAKED_TOPIC],
-          '0x' + (25_000_000).toString(16),
-          'latest'
-        );
-        for (const log of stakeLogs) {
-          // topics[1] = serviceId (indexed)
-          const serviceId = BigInt(log.topics[1]);
-          serviceIds.add(serviceId);
+        const result = await ethCall(stakingAddr, '0xf189e85a');
+        if (result && result.length > 2) {
+          const hex = result.slice(2);
+          const length = parseInt(hex.slice(64, 128), 16);
+          for (let i = 0; i < length; i++) {
+            const val = BigInt('0x' + hex.slice(128 + i * 64, 192 + i * 64));
+            serviceIds.add(val.toString());
+          }
         }
+        logger.info({ stakingAddr: stakingAddr.slice(0, 10), ids: [...serviceIds] }, 'getServiceIds result');
       } catch (e: any) {
-        logger.warn({ stakingAddr, error: e?.message }, 'Failed to fetch ServiceStaked events');
+        logger.warn({ stakingAddr, error: e?.message }, 'Failed to query getServiceIds');
       }
     }
-    logger.info({ serviceIdCount: serviceIds.size, serviceIds: [...serviceIds].map(String) }, 'Fetched all historically staked service IDs');
+    logger.info({ serviceIdCount: serviceIds.size, serviceIds: [...serviceIds] }, 'Fetched staked service IDs');
 
     // Step 2: Get all CreateMech events from marketplace to map serviceId → mech
-    // keccak256("CreateMech(address,uint256,address)")
+    // keccak256("CreateMech(address,uint256,address)") — all 3 params are indexed (in topics)
     const CREATE_MECH_TOPIC = '0x46e1ca45c09520471c43e2e88eca33bb51803011cfd456933629dcc645ecacd6';
     const logs = await ethGetLogs(
       MARKETPLACE_ADDRESS,
@@ -169,13 +166,12 @@ async function buildJinnMechAllowlist(): Promise<Set<string>> {
       '0x' + (25_000_000).toString(16),
       'latest'
     );
+    logger.info({ createMechCount: logs.length }, 'Fetched CreateMech events');
 
     for (const log of logs) {
-      // CreateMech(address indexed mech, uint256 serviceId, address indexed mechFactory)
-      // topics[0] = event sig, topics[1] = mech (indexed), topics[2] = mechFactory (indexed)
-      // data = serviceId (non-indexed)
+      // topics[1] = mech (indexed), topics[2] = serviceId (indexed), topics[3] = mechFactory (indexed)
       const mechAddr = '0x' + (log.topics[1] as string).slice(26).toLowerCase();
-      const serviceId = BigInt(log.data.slice(0, 66)); // first 32 bytes of data
+      const serviceId = BigInt(log.topics[2] as string).toString();
       if (serviceIds.has(serviceId)) {
         mechs.add(mechAddr);
       }
