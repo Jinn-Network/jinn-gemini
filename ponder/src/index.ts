@@ -1172,6 +1172,22 @@ ponder.on(
               ? res.data.jobInstanceStatusUpdate
               : undefined;
 
+            // Write lastStatus to workstream for root requests (deliveryStatus is now in scope)
+            if (requestWorkstreamId && !requestSourceRequestId) {
+              try {
+                await workstreamRepo.upsert({
+                  id: requestWorkstreamId,
+                  update: {
+                    lastStatus: deliveryStatus,
+                    ...(jobInstanceStatusUpdate ? { latestStatusUpdate: jobInstanceStatusUpdate } : {}),
+                  },
+                });
+                logger.debug({ workstreamId: requestWorkstreamId, deliveryStatus }, "Updated workstream lastStatus");
+              } catch (wsErr: any) {
+                logger.error({ workstreamId: requestWorkstreamId, error: serializeError(wsErr) }, "Failed to update workstream lastStatus");
+              }
+            }
+
             // Backfill job definition on delivery if available
             // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
             if (deliveryJobDefinitionId) {

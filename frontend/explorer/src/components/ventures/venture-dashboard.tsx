@@ -11,7 +11,7 @@ import { InvariantList, type InvariantWithMeasurement } from './invariant-list';
 import { ServiceOutputCard } from './service-output-card';
 import { TokenInfoCard } from './token-info-card';
 import { DispatchScheduleTab } from './dispatch-schedule';
-import { WorkstreamsList } from './workstreams-list';
+import { WorkstreamsTable } from '@/components/workstreams-table';
 import { transformToActivityItems } from '@/lib/ventures/activity-utils';
 import type { ServiceOutput } from '@/lib/ventures/service-types';
 import type { JobDefinition, Request, Workstream } from '@/lib/subgraph';
@@ -364,10 +364,7 @@ export function VentureDashboard({
 
             {/* Workstreams Tab */}
             <TabsContent value="workstreams" className="flex-1 min-h-0 mt-4 overflow-auto">
-                <WorkstreamsList
-                    workstreams={workstreams ?? []}
-                    ventureName={venture?.name ?? 'Venture'}
-                />
+                <WorkstreamsTable workstreams={workstreams ?? []} />
             </TabsContent>
         </Tabs>
     );

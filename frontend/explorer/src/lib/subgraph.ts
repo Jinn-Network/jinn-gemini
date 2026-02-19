@@ -101,6 +101,7 @@ export interface Workstream {
   childRequestCount?: number
   hasLauncherBriefing?: boolean
   delivered?: boolean
+  lastStatus?: string | null
   lastActivity?: string
   ventureId?: string | null
   templateId?: string | null
@@ -858,8 +859,6 @@ const queryWorkstreams = `
         delivered
         mech
         sender
-        ventureId
-        templateId
       }
       pageInfo {
         hasNextPage
@@ -886,8 +885,6 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
     delivered: boolean
     mech: string
     sender: string
-    ventureId: string | null
-    templateId: string | null
   }
 
   const data = await request<{ workstreams: { items: WorkstreamRaw[], pageInfo: PageInfo } }>(SUBGRAPH_URL, queryWorkstreams, {
@@ -911,8 +908,6 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
         hasLauncherBriefing: ws.hasLauncherBriefing,
         delivered: ws.delivered,
         lastActivity: ws.lastActivity,
-        ventureId: ws.ventureId,
-        templateId: ws.templateId,
       })),
       pageInfo: data.workstreams.pageInfo
     }
@@ -932,8 +927,6 @@ const queryWorkstreamById = `
       delivered
       mech
       sender
-      ventureId
-      templateId
     }
   }
 `
@@ -950,8 +943,6 @@ export async function getWorkstream(id: string): Promise<Workstream | null> {
     delivered: boolean
     mech: string
     sender: string
-    ventureId: string | null
-    templateId: string | null
   }
 
   try {
@@ -972,8 +963,6 @@ export async function getWorkstream(id: string): Promise<Workstream | null> {
       hasLauncherBriefing: ws.hasLauncherBriefing,
       delivered: ws.delivered,
       lastActivity: ws.lastActivity,
-      ventureId: ws.ventureId,
-      templateId: ws.templateId,
     }
   } catch (error) {
     console.error('Error fetching workstream:', error)
