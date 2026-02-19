@@ -877,7 +877,7 @@ ponder.on(
         //           2) Traverse sourceRequestId chain to find root (for child jobs)
         //           3) Use own request ID (for root jobs)
         let workstreamId: string;
-        const explicitWorkstreamId = typeof content.workstreamId === 'string' ? content.workstreamId : undefined;
+        const explicitWorkstreamId = typeof content?.workstreamId === 'string' ? content.workstreamId : undefined;
         if (explicitWorkstreamId) {
           // Parent re-dispatch preserving workstream
           workstreamId = explicitWorkstreamId;
@@ -1002,9 +1002,9 @@ ponder.on(
         const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
 
         // Extract ventureId and templateId from content if available
-        const contentVentureId = typeof content.ventureId === 'string' ? content.ventureId
+        const contentVentureId = typeof content?.ventureId === 'string' ? content.ventureId
           : (additionalContext && typeof additionalContext.ventureId === 'string' ? additionalContext.ventureId : undefined);
-        const contentTemplateId = typeof content.templateId === 'string' ? content.templateId
+        const contentTemplateId = typeof content?.templateId === 'string' ? content.templateId
           : (additionalContext && typeof additionalContext.templateId === 'string' ? additionalContext.templateId : undefined);
 
         // If this is a root request (sourceRequestId is null), create a workstream entry
