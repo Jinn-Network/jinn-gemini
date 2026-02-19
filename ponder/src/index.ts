@@ -97,9 +97,9 @@ const NODE_EMBEDDINGS_DB_URL =
 let vectorDbPool: Pool | null = null;
 const IPFS_GATEWAY_BASE = (process.env.IPFS_GATEWAY_URL || "https://gateway.autonolas.tech/ipfs/").replace(/\/+$/, "/");
 const IPFS_GATEWAY_FALLBACKS = [
-  "https://cloudflare-ipfs.com/ipfs/"
-  // Reduced fallbacks during historical sync to fail faster on unpinned/corrupt content
-  // Full list: ipfs.io, dweb.link (can re-enable if needed)
+  "https://ipfs.io/ipfs/"
+  // cloudflare-ipfs.com is dead (ENOTFOUND as of Feb 2026)
+  // dweb.link also unreliable — keep fallbacks minimal to fail fast on unpinned content
 ];
 
 function getVectorDbPool(): Pool | null {
@@ -181,7 +181,7 @@ function buildCidCandidatesFromDigest(digestHex: string): CidCandidate[] {
   ];
 }
 
-async function fetchRequestMetadata(cidBase32: string, timeoutMs = 5_000): Promise<any> {
+async function fetchRequestMetadata(cidBase32: string, timeoutMs = 3_000): Promise<any> {
   const gateways = [IPFS_GATEWAY_BASE, ...IPFS_GATEWAY_FALLBACKS];
   let lastError: Error | null = null;
 
@@ -1109,7 +1109,7 @@ ponder.on(
           // Prefer reconstructing directory CID (dag-pb) from digest and fetch the named file (requestId)
           // ipfsHash is 'f01551220' + 64-hex digest (raw codec). Extract digest and build CIDv1 dag-pb.
           const digestHex = String(ipfsHash).replace(/^f01551220/i, '');
-          let url = `https://gateway.autonolas.tech/ipfs/${ipfsHash}`; // fallback
+          let url = `${IPFS_GATEWAY_BASE}${ipfsHash}`; // fallback
           try {
             const digestBytes: number[] = [];
             for (let i = 0; i < digestHex.length; i += 2) {
@@ -1136,15 +1136,15 @@ ponder.on(
               out += base32Alphabet[idx];
             }
             const dirCid = 'b' + out;
-            url = `https://gateway.autonolas.tech/ipfs/${dirCid}/${requestId}`;
+            url = `${IPFS_GATEWAY_BASE}${dirCid}/${requestId}`;
           } catch { }
           let res: any = null;
-          for (let attempt = 0; attempt < 5; attempt++) {
+          for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              res = await axios.get(url, { timeout: 8000 });
+              res = await axios.get(url, { timeout: 5000 });
               if (res && res.status === 200 && res.data) break;
             } catch (e) {
-              if (attempt < 4) await new Promise(r => setTimeout(r, 1500));
+              if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
             }
           }
           if (res && res.status === 200 && res.data) {
