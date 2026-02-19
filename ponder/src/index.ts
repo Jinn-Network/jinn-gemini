@@ -95,6 +95,108 @@ const NODE_EMBEDDINGS_DB_URL =
   null;
 
 let vectorDbPool: Pool | null = null;
+
+// ============================================================================
+// Jinn mech allowlist — resolved at startup from staking contracts
+// Only mechs staked in Jinn contracts get IPFS metadata fetched.
+// Non-Jinn mechs are skipped instantly (0ms instead of 6s+ timeout).
+// ============================================================================
+const JINN_STAKING_CONTRACTS = [
+  '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking
+  '0x2585e63df7BD9De8e058884D496658a030b5c6ce', // AgentsFun1
+];
+const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
+const BASE_RPC_URL = process.env.BASE_RPC_URL || process.env.RPC_URL || 'https://mainnet.base.org';
+
+// Set of known Jinn mech addresses (lowercase). Populated at startup.
+let jinnMechAddresses: Set<string> | null = null;
+
+async function ethCall(to: string, data: string): Promise<string> {
+  const res = await fetch(BASE_RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }),
+  });
+  const json = await res.json() as any;
+  if (json.error) throw new Error(`RPC error: ${json.error.message}`);
+  return json.result;
+}
+
+async function ethGetLogs(address: string, topics: string[], fromBlock: string, toBlock: string): Promise<any[]> {
+  const res = await fetch(BASE_RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getLogs', params: [{ address, topics, fromBlock, toBlock }] }),
+  });
+  const json = await res.json() as any;
+  if (json.error) throw new Error(`RPC error: ${json.error.message}`);
+  return json.result || [];
+}
+
+async function buildJinnMechAllowlist(): Promise<Set<string>> {
+  const mechs = new Set<string>();
+  try {
+    // Step 1: Get all service IDs that have EVER been staked in Jinn contracts
+    // Fetch ServiceStaked events (covers current + evicted + unstaked services)
+    // ServiceStaked(uint256 indexed serviceId, address indexed owner, address indexed multisig, uint256[] nonces)
+    const SERVICE_STAKED_TOPIC = '0x5d43ac9b1b213902df90d405b0006308578486b6c62182c5df202ed572c844e4';
+    const serviceIds = new Set<bigint>();
+    for (const stakingAddr of JINN_STAKING_CONTRACTS) {
+      try {
+        const stakeLogs = await ethGetLogs(
+          stakingAddr,
+          [SERVICE_STAKED_TOPIC],
+          '0x' + (25_000_000).toString(16),
+          'latest'
+        );
+        for (const log of stakeLogs) {
+          // topics[1] = serviceId (indexed)
+          const serviceId = BigInt(log.topics[1]);
+          serviceIds.add(serviceId);
+        }
+      } catch (e: any) {
+        logger.warn({ stakingAddr, error: e?.message }, 'Failed to fetch ServiceStaked events');
+      }
+    }
+    logger.info({ serviceIdCount: serviceIds.size, serviceIds: [...serviceIds].map(String) }, 'Fetched all historically staked service IDs');
+
+    // Step 2: Get all CreateMech events from marketplace to map serviceId → mech
+    // keccak256("CreateMech(address,uint256,address)")
+    const CREATE_MECH_TOPIC = '0x46e1ca45c09520471c43e2e88eca33bb51803011cfd456933629dcc645ecacd6';
+    const logs = await ethGetLogs(
+      MARKETPLACE_ADDRESS,
+      [CREATE_MECH_TOPIC],
+      '0x' + (25_000_000).toString(16),
+      'latest'
+    );
+
+    for (const log of logs) {
+      // CreateMech(address indexed mech, uint256 serviceId, address indexed mechFactory)
+      // topics[0] = event sig, topics[1] = mech (indexed), topics[2] = mechFactory (indexed)
+      // data = serviceId (non-indexed)
+      const mechAddr = '0x' + (log.topics[1] as string).slice(26).toLowerCase();
+      const serviceId = BigInt(log.data.slice(0, 66)); // first 32 bytes of data
+      if (serviceIds.has(serviceId)) {
+        mechs.add(mechAddr);
+      }
+    }
+
+    logger.info({ mechCount: mechs.size, mechs: [...mechs] }, 'Built Jinn mech allowlist from staking contracts');
+  } catch (e: any) {
+    logger.error({ error: e?.message, stack: e?.stack }, 'Failed to build Jinn mech allowlist — will allow all mechs');
+    return null as any; // Return null to disable filtering (fail open)
+  }
+  return mechs;
+}
+
+// Initialize at module load time (top-level await is supported in Ponder's ESM context)
+buildJinnMechAllowlist().then(set => {
+  jinnMechAddresses = set;
+}).catch(e => {
+  logger.error({ error: e?.message }, 'Mech allowlist initialization failed — filtering disabled');
+  jinnMechAddresses = null;
+});
+
 const IPFS_GATEWAY_BASE = (process.env.IPFS_GATEWAY_URL || "https://gateway.autonolas.tech/ipfs/").replace(/\/+$/, "/");
 const IPFS_GATEWAY_FALLBACKS = [
   "https://ipfs.io/ipfs/"
@@ -491,6 +593,12 @@ ponder.on(
       const txHash: string = String(event.transaction.hash);
       const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
+
+      // Fast-path: skip non-Jinn mechs entirely (avoids 6s+ IPFS timeout per request)
+      if (jinnMechAddresses && !jinnMechAddresses.has(mech)) {
+        logger.debug({ mech, requestIds }, 'Skipping non-Jinn mech (not in staking allowlist)');
+        return;
+      }
 
       const repo: Repository = createRepository(db, request, "request");
       const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
