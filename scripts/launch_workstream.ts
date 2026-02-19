@@ -37,6 +37,7 @@ import { deepSubstitute, loadInputConfig } from './shared/template-substitution.
 import { resolveGitUrl } from './shared/git-url.js';
 import { validateInvariantsStrict } from 'jinn-node/worker/prompt/invariant-validator.js';
 import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
+import { getRandomStakedMech } from 'jinn-node/worker/filters/stakingFilter.js';
 
 interface GitHubRepoResponse {
   id: number;
@@ -511,9 +512,10 @@ async function main() {
     });
 
     // Dispatch via marketplaceInteract
+    const priorityMech = await getRandomStakedMech(profile.mechAddress);
     const result = await marketplaceInteract({
       prompts: [finalBlueprint],
-      priorityMech: profile.mechAddress,
+      priorityMech,
       tools: enabledTools,
       ipfsJsonContents,
       chainConfig: profile.chainConfig,

@@ -8,6 +8,7 @@ import * as fs from "fs";
 import * as crypto from "crypto";
 import { marketplaceInteract } from "@jinn-network/mech-client-ts/dist/marketplace_interact.js";
 import { getServiceProfile } from "jinn-node/env/operate-profile.js";
+import { getRandomStakedMech } from "jinn-node/worker/filters/stakingFilter.js";
 
 const template = JSON.parse(fs.readFileSync("blueprints/commit-summary-telegram.json", "utf8"));
 const input = JSON.parse(fs.readFileSync("blueprints/inputs/commit-summary-test.json", "utf8"));
@@ -47,9 +48,10 @@ console.log("Input:", JSON.stringify(input, null, 2));
 console.log("Tools:", tools);
 console.log("Current timestamp:", currentTimestamp);
 
+const priorityMech = await getRandomStakedMech(profile.mechAddress);
 const result = await marketplaceInteract({
   prompts: [blueprint],
-  priorityMech: profile.mechAddress,
+  priorityMech,
   tools,
   ipfsJsonContents: [ipfsContent],
   chainConfig: profile.chainConfig,

@@ -30,6 +30,7 @@ import { getMechAddress, getMechChainConfig, getServicePrivateKey } from 'jinn-n
 import { deepSubstitute, loadInputConfig } from './shared/template-substitution.js';
 import { validateInvariantsStrict } from 'jinn-node/worker/prompt/invariant-validator.js';
 import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
+import { getRandomStakedMech } from 'jinn-node/worker/filters/stakingFilter.js';
 
 const args = process.argv.slice(2);
 const jobIdIndex = args.indexOf('--jobId');
@@ -331,9 +332,10 @@ async function main() {
       throw new Error('Mech config missing (MECH address/private key).');
     }
 
+    const priorityMech = await getRandomStakedMech(mechAddress);
     const dispatchResult = await marketplaceInteract({
       prompts: [blueprint],
-      priorityMech: mechAddress,
+      priorityMech,
       tools: enabledTools,
       ipfsJsonContents,
       chainConfig,
