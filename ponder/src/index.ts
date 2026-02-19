@@ -279,7 +279,7 @@ function buildCidCandidatesFromDigest(digestHex: string): CidCandidate[] {
   ];
 }
 
-async function fetchRequestMetadata(cidBase32: string, timeoutMs = 3_000): Promise<any> {
+async function fetchRequestMetadata(cidBase32: string, timeoutMs = 1_500): Promise<any> {
   const gateways = [IPFS_GATEWAY_BASE, ...IPFS_GATEWAY_FALLBACKS];
   let lastError: Error | null = null;
 
