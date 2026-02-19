@@ -1,89 +1,51 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, Hash, CheckCircle2, Circle, Loader2 } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Calendar, Clock } from 'lucide-react';
+import { ScheduleTimeline } from './schedule-timeline';
+import { describeCron, buildTimelineEntries } from '@/lib/ventures/cron-utils';
 import type { ScheduleEntry } from '@/lib/ventures-services';
-import type { Request } from '@/lib/subgraph';
+import type { Workstream } from '@/lib/subgraph';
 
 interface DispatchScheduleTabProps {
   ventureId: string;
   schedule: ScheduleEntry[];
-  dispatches?: Record<string, { count: number; latestRequest: Request | null; requests: Request[] }>;
+  workstreams: Workstream[];
 }
 
-/**
- * Format a cron expression into a human-readable description.
- */
-function describeCron(cron: string): string {
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length < 5) return cron;
+export function DispatchScheduleTab({ ventureId, schedule, workstreams }: DispatchScheduleTabProps) {
+  const now = useMemo(() => new Date(), []);
 
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  const timelineEntries = useMemo(
+    () => buildTimelineEntries(schedule, workstreams, now),
+    [schedule, workstreams, now],
+  );
 
-  if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
-    if (minute !== '*' && hour !== '*') {
-      return `Daily at ${hour.padStart(2, '0')}:${minute.padStart(2, '0')} UTC`;
+  // Count recent successes (7 days) per templateId
+  const recentSuccessCounts = useMemo(() => {
+    const sevenDaysAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    const counts: Record<string, number> = {};
+    for (const ws of workstreams) {
+      if (!ws.templateId) continue;
+      const wsTime = Number(ws.blockTimestamp) * 1000;
+      if (wsTime < sevenDaysAgo) continue;
+      if (ws.delivered) {
+        counts[ws.templateId] = (counts[ws.templateId] || 0) + 1;
+      }
     }
-    if (hour !== '*') {
-      return `Daily at ${hour.padStart(2, '0')}:00 UTC`;
-    }
-    return 'Every day';
-  }
+    return counts;
+  }, [workstreams, now]);
 
-  if (dayOfMonth === '*' && month === '*' && dayOfWeek !== '*') {
-    const days: Record<string, string> = {
-      '0': 'Sunday', '1': 'Monday', '2': 'Tuesday', '3': 'Wednesday',
-      '4': 'Thursday', '5': 'Friday', '6': 'Saturday', '7': 'Sunday',
-    };
-    const dayName = days[dayOfWeek] || `day ${dayOfWeek}`;
-    if (minute !== '*' && hour !== '*') {
-      return `${dayName}s at ${hour.padStart(2, '0')}:${minute.padStart(2, '0')} UTC`;
-    }
-    return `Every ${dayName}`;
-  }
-
-  if (dayOfMonth !== '*' && month === '*' && dayOfWeek === '*') {
-    const suffix = dayOfMonth === '1' ? 'st' : dayOfMonth === '2' ? 'nd' : dayOfMonth === '3' ? 'rd' : 'th';
-    return `Monthly on the ${dayOfMonth}${suffix}`;
-  }
-
-  return cron;
-}
-
-function formatTimeAgo(timestamp: string): string {
-  const diff = Date.now() - new Date(timestamp).getTime();
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(hours / 24);
-
-  if (hours < 1) return 'just now';
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 30) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString();
-}
-
-/** Group requests by calendar day, returning day label + requests sorted newest first */
-function groupByDay(requests: Request[]): { dayLabel: string; runs: Request[] }[] {
-  const groups = new Map<string, Request[]>();
-  for (const req of requests) {
-    const d = new Date(Number(req.blockTimestamp) * 1000);
-    const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const existing = groups.get(key);
-    if (existing) {
-      existing.push(req);
-    } else {
-      groups.set(key, [req]);
-    }
-  }
-  return Array.from(groups.entries()).map(([dayLabel, runs]) => ({ dayLabel, runs }));
-}
-
-function formatTime(blockTimestamp: string): string {
-  const d = new Date(Number(blockTimestamp) * 1000);
-  return d.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-export function DispatchScheduleTab({ ventureId, schedule, dispatches }: DispatchScheduleTabProps) {
   if (!schedule || schedule.length === 0) {
     return (
       <Card>
@@ -95,169 +57,85 @@ export function DispatchScheduleTab({ ventureId, schedule, dispatches }: Dispatc
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Calendar className="h-5 w-5 text-muted-foreground" />
-        <h3 className="text-lg font-semibold">Dispatch Schedule</h3>
-        <Badge variant="outline" className="text-xs">
-          {schedule.length} {schedule.length === 1 ? 'entry' : 'entries'}
-        </Badge>
-      </div>
+    <div className="grid grid-cols-2 gap-6">
+      {/* Left: Timeline Overview */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            Timeline
+            <span className="text-xs font-normal text-muted-foreground">48h past — now — 48h future</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScheduleTimeline entries={timelineEntries} />
+        </CardContent>
+      </Card>
 
-      <div className="grid gap-4">
-        {schedule.map((entry) => (
-          <ScheduleEntryCard
-            key={entry.id}
-            entry={entry}
-            ventureId={ventureId}
-            dispatchData={dispatches?.[entry.templateId]}
-          />
-        ))}
-      </div>
+      {/* Right: Schedule Items Table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            Schedule Items
+            <Badge variant="outline" className="text-xs">
+              {schedule.length}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Schedule</TableHead>
+                  <TableHead className="text-right">Recent (7d)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {schedule.map((entry) => {
+                  const isEnabled = entry.enabled !== false;
+                  const successCount = recentSuccessCounts[entry.templateId] || 0;
+
+                  return (
+                    <TableRow key={entry.id} className={!isEnabled ? 'opacity-50' : undefined}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">
+                            {entry.label || entry.templateId.slice(0, 12)}
+                          </span>
+                          {!isEnabled && (
+                            <Badge variant="secondary" className="text-[10px]">Paused</Badge>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                          {entry.templateId.slice(0, 8)}...
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">{describeCron(entry.cron)}</div>
+                        <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                          {entry.cron}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-sm font-medium">
+                          {successCount > 0 ? (
+                            <span className="text-green-600">{successCount}</span>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
-  );
-}
-
-function StatusBadge({ delivered }: { delivered: boolean }) {
-  if (delivered) {
-    return (
-      <span className="inline-flex items-center gap-1 text-green-600">
-        <CheckCircle2 className="h-3 w-3" />
-        <span className="text-[11px]">Delivered</span>
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-yellow-500">
-      <Loader2 className="h-3 w-3" />
-      <span className="text-[11px]">Pending</span>
-    </span>
-  );
-}
-
-function ScheduleEntryCard({
-  entry,
-  ventureId,
-  dispatchData,
-}: {
-  entry: ScheduleEntry;
-  ventureId: string;
-  dispatchData?: { count: number; latestRequest: Request | null; requests: Request[] };
-}) {
-  const isEnabled = entry.enabled !== false;
-  const requests = dispatchData?.requests ?? [];
-  const deliveredCount = requests.filter(r => r.delivered).length;
-  const pendingCount = requests.length - deliveredCount;
-  const dayGroups = groupByDay(requests);
-
-  return (
-    <Card className={!isEnabled ? 'opacity-60' : undefined}>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-base">
-              {entry.label || entry.templateId}
-            </CardTitle>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-3.5 w-3.5" />
-              <span>{describeCron(entry.cron)}</span>
-            </div>
-          </div>
-          <Badge
-            variant={isEnabled ? 'default' : 'secondary'}
-            className="text-xs"
-          >
-            {isEnabled ? 'Active' : 'Paused'}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0 space-y-3">
-        {/* Template ID + cron */}
-        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Hash className="h-3 w-3" />
-            <span className="font-mono">{entry.templateId.slice(0, 8)}...</span>
-          </div>
-          {entry.cron && (
-            <div className="flex items-center gap-1">
-              <span className="font-mono text-[10px] bg-muted px-1.5 py-0.5 rounded">
-                {entry.cron}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Dispatch summary */}
-        {dispatchData && dispatchData.count > 0 && (
-          <div className="text-xs text-muted-foreground border-t pt-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-foreground">
-                {dispatchData.count} dispatch{dispatchData.count !== 1 ? 'es' : ''}
-              </span>
-              <span className="text-muted-foreground">(last 30d)</span>
-              {dispatchData.latestRequest && (
-                <>
-                  <span>·</span>
-                  <span>
-                    Latest {formatTimeAgo(
-                      new Date(Number(dispatchData.latestRequest.blockTimestamp) * 1000).toISOString()
-                    )}
-                  </span>
-                </>
-              )}
-              {deliveredCount > 0 && (
-                <>
-                  <span>·</span>
-                  <span className="text-green-600">{deliveredCount} delivered</span>
-                </>
-              )}
-              {pendingCount > 0 && (
-                <>
-                  <span>·</span>
-                  <span className="text-yellow-500">{pendingCount} pending</span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Runs grouped by day */}
-        {dayGroups.length > 0 && (
-          <div className="border-t pt-3">
-            <div className="text-xs font-medium text-muted-foreground mb-2">Recent Runs</div>
-            <div className="space-y-2">
-              {dayGroups.slice(0, 5).map(({ dayLabel, runs }) => (
-                <div key={dayLabel}>
-                  <div className="text-[11px] font-medium text-muted-foreground mb-1">{dayLabel}</div>
-                  <div className="space-y-0.5 pl-3 border-l-2 border-muted">
-                    {runs.map((req) => (
-                      <div
-                        key={req.id}
-                        className="flex items-center gap-3 text-xs py-0.5"
-                      >
-                        <span className="font-mono text-muted-foreground w-[48px] shrink-0">
-                          {formatTime(req.blockTimestamp)}
-                        </span>
-                        <StatusBadge delivered={req.delivered} />
-                        <span className="font-mono text-muted-foreground/60 text-[11px]">
-                          {req.id.slice(0, 6)}...{req.id.slice(-4)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Empty state */}
-        {dispatchData && dispatchData.count === 0 && (
-          <div className="text-xs text-muted-foreground border-t pt-3 italic">
-            No dispatches in the last 30 days
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }

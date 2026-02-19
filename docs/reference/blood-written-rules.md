@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-17
+last_verified: 2026-02-19
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -210,6 +210,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Issue:** Integration tests timeout waiting for Ponder to index `Deliver` events
 **Root Causes:** Factory pattern scanning from wrong block; child start block evaluated at module-load time
 **Solution:** Bypass factory pattern in test mode, use lazy evaluation of child start block
+
+### 34a. Production Ponder workstream Schema May Omit ventureId/templateId
+**Issue:** Workstreams page returns 500 — "Cannot query field 'ventureId' on type 'workstream'"
+**Root Cause:** Production Ponder GraphQL API (`ponder-production-6d16.up.railway.app`) exposes a `workstream` type that may not include `ventureId`/`templateId` (local Ponder schema can differ)
+**Solution:** Omit `ventureId` and `templateId` from workstream list/detail queries in `frontend/explorer/src/lib/subgraph.ts`; keep them optional on the `Workstream` interface
+**Prevention:** When adding fields to workstream queries, verify against production GraphQL schema
 
 ---
 

@@ -1,18 +1,18 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { SiteHeader } from '@/components/site-header';
-import { getVenture } from '@/lib/ventures-services';
+import { getServiceInstance } from '@/lib/ventures/service-queries';
 import { VentureDetail, VentureDetailSkeleton } from '../page';
 
-interface VentureWorkstreamsPageProps {
+interface VentureTreePageProps {
   params: Promise<{ id: string }>;
 }
 
-export default async function VentureWorkstreamsPage({ params }: VentureWorkstreamsPageProps) {
+export default async function VentureTreePage({ params }: VentureTreePageProps) {
   const { id } = await params;
-  const venture = await getVenture(id);
+  const instance = await getServiceInstance(id);
 
-  if (!venture) {
+  if (!instance) {
     notFound();
   }
 
@@ -22,14 +22,14 @@ export default async function VentureWorkstreamsPage({ params }: VentureWorkstre
         breadcrumbs={[
           { label: 'Explorer', href: '/' },
           { label: 'Ventures', href: '/ventures' },
-          { label: venture.name }
+          { label: instance.jobName }
         ]}
       />
 
       <main className="flex-1 py-6 flex flex-col min-h-0">
         <div className="flex-1 flex flex-col min-h-0 px-4">
           <Suspense fallback={<VentureDetailSkeleton />}>
-            <VentureDetail id={id} initialTab="workstreams" />
+            <VentureDetail id={id} initialTab="work-tree" />
           </Suspense>
         </div>
       </main>

@@ -148,6 +148,40 @@ yarn tsx scripts/templates/crud.ts archive --id <uuid>
 yarn tsx scripts/templates/crud.ts delete --id <uuid> --confirm
 ```
 
+## Testing & Validation Pipeline
+
+Before publishing, every template must pass the 4-phase testing pipeline:
+
+1. **Smoke Test** (2 runs) — end-to-end completion
+2. **Quality Calibration** (4 runs) — varied inputs, graded output
+3. **Robustness** (2 runs) — edge cases
+4. **Validation** (2 runs) — consistency check
+
+See [references/testing-pipeline.md](references/testing-pipeline.md) for the full pipeline.
+See [references/blueprint-quality-checklist.md](references/blueprint-quality-checklist.md) for pre-flight checks.
+
+### Quick Start: Test a Template
+
+```bash
+# 1. Create blueprint file
+vim blueprints/my-template.json
+
+# 2. Create test input
+vim blueprints/inputs/my-template-test.json
+
+# 3. Create dispatch script (copy from existing)
+cp scripts/dispatch-commit-data-gather.ts scripts/dispatch-my-template.ts
+
+# 4. Run smoke test
+yarn tsx scripts/dispatch-my-template.ts
+MECH_TARGET_REQUEST_ID=<id> yarn dev:mech --single
+yarn inspect-job-run <requestId>
+
+# 5. Iterate on invariants based on results
+# 6. After 10 passing runs, seed and publish
+yarn tsx scripts/templates/seed-from-blueprints.ts
+```
+
 ## Relationship to Other Tables
 
 - **templates** (this): Static, reusable template definitions in Supabase

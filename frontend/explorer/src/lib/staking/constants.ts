@@ -48,21 +48,14 @@ export const stakingAbi = [
   },
   {
     type: 'function',
-    name: 'getServiceInfo',
+    name: 'mapServiceInfo',
     inputs: [{ name: 'serviceId', type: 'uint256' }],
     outputs: [
-      {
-        name: 'serviceInfo',
-        type: 'tuple',
-        components: [
-          { name: 'multisig', type: 'address' },
-          { name: 'owner', type: 'address' },
-          { name: 'nonces', type: 'uint256[]' },
-          { name: 'tsStart', type: 'uint256' },
-          { name: 'reward', type: 'uint256' },
-          { name: 'inactivity', type: 'uint256' },
-        ],
-      },
+      { name: 'multisig', type: 'address' },
+      { name: 'owner', type: 'address' },
+      { name: 'tsStart', type: 'uint256' },
+      { name: 'reward', type: 'uint256' },
+      { name: 'nonces', type: 'uint256' },
     ],
     stateMutability: 'view',
   },

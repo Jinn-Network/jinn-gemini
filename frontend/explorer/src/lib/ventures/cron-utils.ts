@@ -11,6 +11,12 @@ export function describeCron(cron: string): string {
 
   const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
 
+  // Every N minutes
+  if (minute.startsWith('*/') && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    const interval = minute.slice(2);
+    return `Every ${interval} minutes`;
+  }
+
   if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
     if (minute !== '*' && hour !== '*') {
       return `Daily at ${hour.padStart(2, '0')}:${minute.padStart(2, '0')} UTC`;
@@ -41,23 +47,14 @@ export function describeCron(cron: string): string {
   return cron;
 }
 
-export type TimelineEntryStatus =
-  | 'pending'
-  | 'overdue'
-  | 'dispatched';
+export type TimelineEntryStatus = 'pending' | 'overdue' | 'dispatched';
 
 export interface TimelineEntry {
-  /** Scheduled tick time */
   time: Date;
-  /** Schedule entry label */
   label: string;
-  /** Template ID from the schedule entry */
   templateId: string;
-  /** Whether this tick is in the past */
   isPast: boolean;
-  /** Classification */
   status: TimelineEntryStatus;
-  /** Matched workstream (if dispatched) */
   workstream?: Workstream;
 }
 
@@ -77,7 +74,7 @@ export function getCronTicks(cron: string, from: Date, to: Date, maxTicks = 200)
         if (next.toDate() > to) break;
         ticks.push(next.toDate());
       } catch {
-        break; // StopIteration
+        break;
       }
     }
     return ticks;
@@ -104,7 +101,7 @@ export function getPastCronTicks(cron: string, from: Date, to: Date, maxTicks = 
         break;
       }
     }
-    return ticks.reverse(); // chronological order
+    return ticks.reverse();
   } catch {
     return [];
   }
@@ -130,19 +127,16 @@ export function buildTimelineEntries(
   for (const entry of schedule) {
     if (entry.enabled === false) continue;
 
-    // Get all ticks in the window
     const pastTicks = getPastCronTicks(entry.cron, windowStart, now);
     const futureTicks = getCronTicks(entry.cron, now, windowEnd);
     const allTicks = [...pastTicks, ...futureTicks];
 
-    // Filter workstreams matching this template
     const matchingWs = workstreams.filter(ws => ws.templateId === entry.templateId);
 
     for (const tick of allTicks) {
       const isPast = tick <= now;
       const tickMs = tick.getTime();
 
-      // Try to match a workstream by closest blockTimestamp within tolerance
       let matched: Workstream | undefined;
       let bestDiff = Infinity;
 
@@ -175,7 +169,6 @@ export function buildTimelineEntries(
     }
   }
 
-  // Sort chronologically
   entries.sort((a, b) => a.time.getTime() - b.time.getTime());
   return entries;
 }

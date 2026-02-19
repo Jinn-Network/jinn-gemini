@@ -61,38 +61,29 @@ export async function GET(request: NextRequest) {
       try {
         const client = getRpcClient()
 
-        // If we have a serviceId, use getServiceInfo to get the staking multisig
-        // and nonces baseline — the multisig param might differ from the staked one
-        let stakingMultisig = multisig
-        let serviceInfo: any = null
-
-        if (serviceId) {
-          serviceInfo = await rpcWithRetry(() =>
+        const [currentCount, serviceInfo] = await Promise.all([
+          rpcWithRetry(() =>
             client.readContract({
-              address: JINN_STAKING_CONTRACT,
-              abi: stakingAbi,
-              functionName: 'getServiceInfo',
-              args: [BigInt(serviceId)],
+              address: MECH_MARKETPLACE,
+              abi: marketplaceAbi,
+              functionName: 'mapRequestCounts',
+              args: [multisig as Address],
             })
-          )
-          // Use the on-chain multisig for mapRequestCounts (may differ from param)
-          if (serviceInfo?.multisig) {
-            stakingMultisig = serviceInfo.multisig
-          }
-        }
+          ),
+          serviceId
+            ? rpcWithRetry(() =>
+                client.readContract({
+                  address: JINN_STAKING_CONTRACT,
+                  abi: stakingAbi,
+                  functionName: 'mapServiceInfo',
+                  args: [BigInt(serviceId)],
+                })
+              )
+            : Promise.resolve(null),
+        ])
 
-        const currentCount = await rpcWithRetry(() =>
-          client.readContract({
-            address: MECH_MARKETPLACE,
-            abi: marketplaceAbi,
-            functionName: 'mapRequestCounts',
-            args: [stakingMultisig as Address],
-          })
-        )
-
-        if (serviceInfo?.nonces && Array.isArray(serviceInfo.nonces) && serviceInfo.nonces.length > 1) {
-          // nonces[1] is the request count baseline recorded at staking/checkpoint time
-          const baseline = Number(serviceInfo.nonces[1])
+        if (serviceId && serviceInfo) {
+          const baseline = Number((serviceInfo as readonly unknown[])[4])
           const delta = Number(currentCount) - baseline
           requestCount = delta >= 0 ? delta : Number(currentCount)
         } else {

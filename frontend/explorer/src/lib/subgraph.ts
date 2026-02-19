@@ -37,8 +37,6 @@ export interface Request {
   jobName?: string
   enabledTools: string[]
   additionalContext?: Record<string, unknown>
-  ventureId?: string
-  templateId?: string
   dependencies?: string[]
   // Marketplace delivery fields (global Jinn explorer)
   deliveryMech?: string
@@ -101,7 +99,6 @@ export interface Workstream {
   childRequestCount?: number
   hasLauncherBriefing?: boolean
   delivered?: boolean
-  lastStatus?: string | null
   lastActivity?: string
   ventureId?: string | null
   templateId?: string | null
@@ -273,8 +270,6 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Paginat
           jobName
           enabledTools
           additionalContext
-          ventureId
-          templateId
           dependencies
           deliveryMech
         }
@@ -887,29 +882,39 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
     sender: string
   }
 
-  const data = await request<{ workstreams: { items: WorkstreamRaw[], pageInfo: PageInfo } }>(SUBGRAPH_URL, queryWorkstreams, {
-    limit,
-    after,
-    before,
-    orderBy,
-    orderDirection
-  })
+  try {
+    const data = await request<{ workstreams: { items: WorkstreamRaw[], pageInfo: PageInfo } }>(SUBGRAPH_URL, queryWorkstreams, {
+      limit,
+      after,
+      before,
+      orderBy,
+      orderDirection
+    })
 
-  // Map workstream items to Workstream format
-  return {
-    requests: {
-      items: data.workstreams.items.map(ws => ({
-        id: ws.id,
-        jobName: ws.jobName,
-        blockTimestamp: ws.blockTimestamp,
-        mech: ws.mech,
-        sender: ws.sender,
-        childRequestCount: ws.childRequestCount,
-        hasLauncherBriefing: ws.hasLauncherBriefing,
-        delivered: ws.delivered,
-        lastActivity: ws.lastActivity,
-      })),
-      pageInfo: data.workstreams.pageInfo
+    // Map workstream items to Workstream format
+    return {
+      requests: {
+        items: data.workstreams.items.map(ws => ({
+          id: ws.id,
+          jobName: ws.jobName,
+          blockTimestamp: ws.blockTimestamp,
+          mech: ws.mech,
+          sender: ws.sender,
+          childRequestCount: ws.childRequestCount,
+          hasLauncherBriefing: ws.hasLauncherBriefing,
+          delivered: ws.delivered,
+          lastActivity: ws.lastActivity
+        })),
+        pageInfo: data.workstreams.pageInfo
+      }
+    }
+  } catch {
+    // Workstreams table may not exist in older Ponder schema versions
+    return {
+      requests: {
+        items: [],
+        pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: '', endCursor: '' }
+      }
     }
   }
 }
@@ -962,7 +967,7 @@ export async function getWorkstream(id: string): Promise<Workstream | null> {
       childRequestCount: ws.childRequestCount,
       hasLauncherBriefing: ws.hasLauncherBriefing,
       delivered: ws.delivered,
-      lastActivity: ws.lastActivity,
+      lastActivity: ws.lastActivity
     }
   } catch (error) {
     console.error('Error fetching workstream:', error)
@@ -999,14 +1004,19 @@ const queryWorkstreamRequests = `
 export async function getWorkstreamRequests(rootRequestId: string, limit: number = 10): Promise<RequestsResponse> {
   // Use workstreamId to efficiently fetch all descendants in a single query
   // The workstreamId is the root request ID, so we query for all requests with that workstreamId
-  const data = await request<RequestsResponse>(SUBGRAPH_URL, queryWorkstreamRequests, {
-    workstreamId: rootRequestId,
-    limit,
-    orderBy: 'blockTimestamp',
-    orderDirection: 'desc'
-  })
-  
-  return data
+  try {
+    const data = await request<RequestsResponse>(SUBGRAPH_URL, queryWorkstreamRequests, {
+      workstreamId: rootRequestId,
+      limit,
+      orderBy: 'blockTimestamp',
+      orderDirection: 'desc'
+    })
+
+    return data
+  } catch {
+    // workstreamId field may not exist in older Ponder schema versions
+    return { requests: { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: '', endCursor: '' } } }
+  }
 }
 
 const queryWorkstreamArtifacts = `
@@ -1036,12 +1046,17 @@ const queryWorkstreamArtifacts = `
 `
 
 export async function getWorkstreamArtifact(rootRequestId: string, topic: string = 'launcher_briefing'): Promise<Artifact | null> {
-  const data = await request<ArtifactsResponse>(SUBGRAPH_URL, queryWorkstreamArtifacts, {
-    rootRequestId,
-    topic
-  })
-  
-  return data.artifacts.items[0] || null
+  try {
+    const data = await request<ArtifactsResponse>(SUBGRAPH_URL, queryWorkstreamArtifacts, {
+      rootRequestId,
+      topic
+    })
+
+    return data.artifacts.items[0] || null
+  } catch {
+    // sourceRequestId field may not exist in older Ponder schema versions
+    return null
+  }
 }
 
 // Fetch dependency information for a list of job definition IDs
@@ -1115,19 +1130,24 @@ export async function getDependencyInfo(jobDefIds: string[]): Promise<Dependency
  * Returns all measurement artifacts from any job in the workstream.
  */
 export async function getWorkstreamMeasurements(workstreamId: string): Promise<Artifact[]> {
-  // Query artifacts with topic=MEASUREMENT where sourceRequestId matches the workstream
-  const response = await queryArtifacts({
-    where: {
-      AND: [
-        { sourceRequestId: workstreamId },
-        { topic: 'MEASUREMENT' }
-      ]
-    },
-    orderBy: 'blockTimestamp',
-    orderDirection: 'desc',
-    limit: 100
-  })
-  return response.items
+  try {
+    // Query artifacts with topic=MEASUREMENT where sourceRequestId matches the workstream
+    const response = await queryArtifacts({
+      where: {
+        AND: [
+          { sourceRequestId: workstreamId },
+          { topic: 'MEASUREMENT' }
+        ]
+      },
+      orderBy: 'blockTimestamp',
+      orderDirection: 'desc',
+      limit: 100
+    })
+    return response.items
+  } catch {
+    // sourceRequestId field may not exist in older Ponder schema versions
+    return []
+  }
 }
 
 // Find all requests that depend on a given request ID

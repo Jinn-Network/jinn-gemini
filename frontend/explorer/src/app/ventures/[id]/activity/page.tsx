@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { SiteHeader } from '@/components/site-header';
-import { getVenture } from '@/lib/ventures-services';
+import { getServiceInstance } from '@/lib/ventures/service-queries';
 import { VentureDetail, VentureDetailSkeleton } from '../page';
 
 interface VentureActivityPageProps {
@@ -10,9 +10,9 @@ interface VentureActivityPageProps {
 
 export default async function VentureActivityPage({ params }: VentureActivityPageProps) {
   const { id } = await params;
-  const venture = await getVenture(id);
+  const instance = await getServiceInstance(id);
 
-  if (!venture) {
+  if (!instance) {
     notFound();
   }
 
@@ -22,7 +22,7 @@ export default async function VentureActivityPage({ params }: VentureActivityPag
         breadcrumbs={[
           { label: 'Explorer', href: '/' },
           { label: 'Ventures', href: '/ventures' },
-          { label: venture.name }
+          { label: instance.jobName }
         ]}
       />
 

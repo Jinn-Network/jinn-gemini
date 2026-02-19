@@ -1,18 +1,18 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { SiteHeader } from '@/components/site-header';
-import { getVenture } from '@/lib/ventures-services';
-import { VentureDetail, VentureDetailSkeleton } from '../page';
+import { getServiceInstance } from '@/lib/ventures/service-queries';
+import { VentureDetail, VentureDetailSkeleton } from '../../page';
 
-interface VentureSchedulePageProps {
-  params: Promise<{ id: string }>;
+interface VentureTreePageProps {
+  params: Promise<{ id: string; jobId: string }>;
 }
 
-export default async function VentureSchedulePage({ params }: VentureSchedulePageProps) {
-  const { id } = await params;
-  const venture = await getVenture(id);
+export default async function VentureTreePage({ params }: VentureTreePageProps) {
+  const { id, jobId } = await params;
+  const instance = await getServiceInstance(id);
 
-  if (!venture) {
+  if (!instance) {
     notFound();
   }
 
@@ -22,14 +22,14 @@ export default async function VentureSchedulePage({ params }: VentureSchedulePag
         breadcrumbs={[
           { label: 'Explorer', href: '/' },
           { label: 'Ventures', href: '/ventures' },
-          { label: venture.name }
+          { label: instance.jobName }
         ]}
       />
 
       <main className="flex-1 py-6 flex flex-col min-h-0">
         <div className="flex-1 flex flex-col min-h-0 px-4">
           <Suspense fallback={<VentureDetailSkeleton />}>
-            <VentureDetail id={id} initialTab="schedule" />
+            <VentureDetail id={id} initialTab="work-tree" initialSelectedJobId={jobId} />
           </Suspense>
         </div>
       </main>

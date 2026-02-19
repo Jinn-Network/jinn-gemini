@@ -8,23 +8,8 @@ import type { TimelineEntry } from '@/lib/ventures/cron-utils';
 import type { Workstream } from '@/lib/subgraph';
 
 function getWorkstreamStatusDisplay(ws: Workstream): { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' } {
-  const status = ws.lastStatus;
-  if (status) {
-    switch (status.toUpperCase()) {
-      case 'COMPLETED':
-        return { label: 'Completed', variant: 'default' };
-      case 'FAILED':
-        return { label: 'Failed', variant: 'destructive' };
-      case 'DELEGATING':
-        return { label: 'Delegating', variant: 'secondary' };
-      case 'WAITING':
-        return { label: 'Waiting', variant: 'secondary' };
-      default:
-        return { label: status, variant: 'secondary' };
-    }
-  }
   if (ws.delivered) {
-    return { label: 'Delivered', variant: 'secondary' };
+    return { label: 'Delivered', variant: 'default' };
   }
   return { label: 'In Progress', variant: 'secondary' };
 }

@@ -34,7 +34,7 @@ export const navigationItems: NavigationItem[] = [
     subItems: [
       { label: 'Ventures', collection: 'ventures' },
       { label: 'Agents', collection: 'agents' },
-      { label: 'Templates', collection: 'templates' },
+      { label: 'Blueprints', collection: 'blueprints' },
       { label: 'Services', collection: 'services' },
     ]
   },
