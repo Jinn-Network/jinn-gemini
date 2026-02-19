@@ -17,4 +17,4 @@ cmds = ["rm -rf frontend packages && yarn install --frozen-lockfile"]
 cmds = ["echo 'Ponder build: no compilation needed'"]
 
 [start]
-cmd = "cd ponder && ponder start --port $PORT --schema ${PONDER_SCHEMA_VERSION:-jinn_gemini_v1} --views-schema jinn_gemini_public"
+cmd = "cd ponder && ponder start --port $PORT --schema ${PONDER_SCHEMA_VERSION:-jinn_gemini_v1} --views-schema ${PONDER_VIEWS_SCHEMA:-jinn_gemini_public}"
