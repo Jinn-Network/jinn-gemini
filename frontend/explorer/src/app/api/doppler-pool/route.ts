@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http, formatEther } from 'viem';
 import { base } from 'viem/chains';
+import { getRpcUrl } from '@/lib/staking/rpc';
 
 // Doppler contracts on Base
 const AIRLOCK_ADDRESS = '0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12' as const;
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const rpcUrl = process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+    const rpcUrl = getRpcUrl();
     const client = createPublicClient({
       chain: base,
       transport: http(rpcUrl),

@@ -32,7 +32,13 @@ export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
         throw new Error(body.error || `HTTP ${res.status}`)
       }
       const epochData: EpochData = await res.json()
-      setData(epochData)
+      // Preserve previous requestCount if RPC failed this cycle but succeeded before
+      setData(prev => {
+        if (epochData.requestCount == null && prev?.requestCount != null) {
+          return { ...epochData, requestCount: prev.requestCount }
+        }
+        return epochData
+      })
       setError(null)
       hasLoadedOnce.current = true
     } catch (e) {

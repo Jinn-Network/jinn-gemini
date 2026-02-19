@@ -1,25 +1,53 @@
 import { createPublicClient, http, type PublicClient } from 'viem'
 import { base } from 'viem/chains'
+import fs from 'fs'
+import path from 'path'
 
 /**
  * Module-level singleton RPC client with multicall batching.
  *
- * When multiple API routes call readContract() concurrently, viem automatically
- * batches them into a single eth_call via the Multicall3 contract. This reduces
- * 12 parallel RPC calls (3 services × 2 routes × 2 calls each) down to ~2-3
- * batched calls, avoiding rate limits on the public Base RPC.
+ * Loads RPC_URL from monorepo root .env directly — cannot rely on next.config.js
+ * loadEnvConfig because turbopack API route workers don't inherit those vars.
  *
  * RPC URL resolution order:
- *   1. RPC_URL (set in root .env — Tenderly paid RPC)
+ *   1. RPC_URL (set in root .env — Tenderly)
  *   2. BASE_RPC_URL (alias)
- *   3. https://mainnet.base.org (public, rate-limited — last resort)
+ *   Throws if neither is set. No public RPC fallback.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
+// Ensure monorepo root .env is loaded in this runtime context.
+// Walk up from cwd to find the monorepo root .env (contains RPC_URL).
+if (!process.env.RPC_URL && !process.env.BASE_RPC_URL) {
+  let dir = process.cwd()
+  for (let i = 0; i < 5; i++) {
+    const envPath = path.join(dir, '.env')
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf-8')
+      for (const line of content.split('\n')) {
+        const match = line.match(/^(RPC_URL|BASE_RPC_URL)=(.+)/)
+        if (match && !process.env[match[1]]) {
+          process.env[match[1]] = match[2].trim().replace(/^["']|["']$/g, '')
+        }
+      }
+      if (process.env.RPC_URL || process.env.BASE_RPC_URL) break
+    }
+    dir = path.dirname(dir)
+  }
+}
+
 let _client: PublicClient | null = null
 let _clientRpcUrl: string | null = null
 
+export function getRpcUrl(): string {
+  const rpcUrl = process.env.RPC_URL || process.env.BASE_RPC_URL
+  if (!rpcUrl) {
+    throw new Error('[staking/rpc] RPC_URL or BASE_RPC_URL must be set — do NOT use public RPCs')
+  }
+  return rpcUrl
+}
+
 export function getRpcClient(): PublicClient {
-  const rpcUrl = process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://mainnet.base.org'
+  const rpcUrl = getRpcUrl()
 
   // Recreate if RPC URL changed (e.g. env reload in dev)
   if (_client && _clientRpcUrl === rpcUrl) {
@@ -27,8 +55,7 @@ export function getRpcClient(): PublicClient {
   }
 
   if (!_clientRpcUrl) {
-    // Log once on first creation
-    const source = process.env.RPC_URL ? 'RPC_URL' : process.env.BASE_RPC_URL ? 'BASE_RPC_URL' : 'fallback (mainnet.base.org)'
+    const source = process.env.RPC_URL ? 'RPC_URL' : 'BASE_RPC_URL'
     console.log(`[staking/rpc] Creating client from ${source}: ${rpcUrl.replace(/\/[a-f0-9-]{20,}$/i, '/***')}`)
   }
 
