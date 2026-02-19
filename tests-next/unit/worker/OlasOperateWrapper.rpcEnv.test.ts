@@ -11,6 +11,7 @@ type WrapperLike = {
   };
   _buildRpcAliasEnv: () => Record<string, string>;
   _buildDefaultEnv: () => Record<string, string>;
+  _getRpcAliasLogKeys: (env: Record<string, string>) => string[];
 };
 
 function createWrapperLike(params: {
@@ -78,6 +79,35 @@ describe('OlasOperateWrapper RPC aliasing', () => {
     expect(env.GNOSIS_LEDGER_RPC).toBe('https://gnosis-rpc.example');
     expect(env.ARBITRUM_ONE_CHAIN_RPC).toBe('https://arb-rpc.example');
     expect(env.BASE_CHAIN_RPC).toBe('https://default-rpc.example');
+  });
+
+  it('preserves non-enumerated chain override keys', () => {
+    const wrapper = createWrapperLike({
+      rpcUrl: 'https://default-rpc.example',
+      chainLedgerRpc: {
+        avalanche: 'https://avax-rpc.example',
+      },
+    });
+
+    const env = wrapper._buildRpcAliasEnv();
+
+    expect(env.AVALANCHE_RPC).toBe('https://avax-rpc.example');
+    expect(env.AVALANCHE_LEDGER_RPC).toBe('https://avax-rpc.example');
+    expect(env.AVALANCHE_CHAIN_RPC).toBe('https://avax-rpc.example');
+  });
+
+  it('logs only alias key names and never RPC URL values', () => {
+    const wrapper = createWrapperLike({
+      rpcUrl: 'https://default-rpc.example/very/secret/path?token=abc123',
+    });
+    const env = wrapper._buildRpcAliasEnv();
+
+    const keys = wrapper._getRpcAliasLogKeys(env);
+
+    expect(keys).toContain('RPC_URL');
+    expect(keys).toContain('BASE_CHAIN_RPC');
+    expect(keys.some((k) => k.includes('abc123'))).toBe(false);
+    expect(keys.some((k) => k.includes('https://'))).toBe(false);
   });
 
   it('injects RPC aliases into default command env', () => {
