@@ -10,14 +10,25 @@ interface EpochData {
   livenessPeriod: number
   targetRequests: number
   requestCount?: number
+  inactivity?: number
+  maxInactivitySeconds?: number
 }
 
 interface EpochProgressProps {
   multisig: string
   serviceId?: string
+  lastDeliveryTimestamp?: string | null
 }
 
-export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
+function formatTimeAgo(timestamp: string): string {
+  const seconds = Math.floor(Date.now() / 1000) - Number(timestamp)
+  if (seconds < 60) return 'just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+  return `${Math.floor(seconds / 86400)}d ago`
+}
+
+export function EpochProgress({ multisig, serviceId, lastDeliveryTimestamp }: EpochProgressProps) {
   const [data, setData] = useState<EpochData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const hasLoadedOnce = useRef(false)
@@ -111,6 +122,20 @@ export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
     timeLabel = `Resets in ${hours}h ${minutes}m`
   }
 
+  // Eviction risk: inactivity / maxInactivitySeconds
+  let evictionRisk: { label: string; colorClass: string } | null = null
+  if (data.inactivity != null && data.maxInactivitySeconds != null && data.maxInactivitySeconds > 0) {
+    const ratio = data.inactivity / data.maxInactivitySeconds
+    if (ratio >= 1) {
+      evictionRisk = { label: 'Evicted', colorClass: 'text-red-500' }
+    } else if (ratio >= 0.75) {
+      evictionRisk = { label: `Eviction risk: ${Math.round(ratio * 100)}%`, colorClass: 'text-red-500' }
+    } else if (ratio >= 0.5) {
+      evictionRisk = { label: `Inactivity: ${Math.round(ratio * 100)}%`, colorClass: 'text-yellow-500' }
+    }
+    // Below 50% — don't show, it's healthy
+  }
+
   return (
     <div className="space-y-1.5">
       <Progress value={requestCountAvailable ? requestCount : 0} max={target} className={progressColor} />
@@ -125,6 +150,20 @@ export function EpochProgress({ multisig, serviceId }: EpochProgressProps) {
           {timeLabel}
         </span>
       </div>
+      {(evictionRisk || lastDeliveryTimestamp) && (
+        <div className="flex items-center justify-between text-xs">
+          {evictionRisk ? (
+            <span className={evictionRisk.colorClass}>{evictionRisk.label}</span>
+          ) : (
+            <span />
+          )}
+          {lastDeliveryTimestamp && (
+            <span className="text-muted-foreground">
+              Last delivery {formatTimeAgo(lastDeliveryTimestamp)}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
