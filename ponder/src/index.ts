@@ -97,9 +97,9 @@ const NODE_EMBEDDINGS_DB_URL =
 let vectorDbPool: Pool | null = null;
 
 // ============================================================================
-// Jinn mech allowlist — resolved at startup from staking contracts
-// Only mechs staked in Jinn contracts get IPFS metadata fetched.
-// Non-Jinn mechs are skipped instantly (0ms instead of 6s+ timeout).
+// Jinn mech allowlist — resolved at startup from staking contract events
+// Includes all mechs that were EVER staked in Jinn (not just currently active).
+// Non-Jinn mechs are skipped entirely (0ms instead of 6s+ IPFS timeout).
 // ============================================================================
 const JINN_STAKING_CONTRACTS = [
   '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking
@@ -142,26 +142,32 @@ async function ethGetLogs(address: string, topics: string[], fromBlock: string, 
 async function buildJinnMechAllowlist(): Promise<Set<string>> {
   const mechs = new Set<string>();
   try {
-    // Step 1: Get currently staked service IDs via getServiceIds() view call
-    // selector: 0xf189e85a — returns ABI-encoded uint256[]
+    // Step 1: Get ALL service IDs that were EVER staked via ServiceStaked events.
+    // Using getServiceIds() only returns currently active services — evicted services
+    // are excluded, causing their mechs (and all historical data) to be missed.
+    // ServiceStaked(uint256 epoch, uint256 indexed serviceId, address indexed owner, address indexed multisig, uint256[] nonces)
+    // keccak256("ServiceStaked(uint256,uint256,address,address,uint256[])")
+    const SERVICE_STAKED_TOPIC = '0xaa6b005b4958114a0c90492461c24af6525ae0178db7fbf44125ae9217c69ccb';
     const serviceIds = new Set<string>();
     for (const stakingAddr of JINN_STAKING_CONTRACTS) {
       try {
-        const result = await ethCall(stakingAddr, '0xf189e85a');
-        if (result && result.length > 2) {
-          const hex = result.slice(2);
-          const length = parseInt(hex.slice(64, 128), 16);
-          for (let i = 0; i < length; i++) {
-            const val = BigInt('0x' + hex.slice(128 + i * 64, 192 + i * 64));
-            serviceIds.add(val.toString());
-          }
+        const logs = await ethGetLogs(
+          stakingAddr,
+          [SERVICE_STAKED_TOPIC],
+          '0x' + (25_000_000).toString(16),
+          'latest'
+        );
+        for (const log of logs) {
+          // topics[1] = serviceId (indexed)
+          const serviceId = BigInt(log.topics[1] as string).toString();
+          serviceIds.add(serviceId);
         }
-        logger.info({ stakingAddr: stakingAddr.slice(0, 10), ids: [...serviceIds] }, 'getServiceIds result');
+        logger.info({ stakingAddr: stakingAddr.slice(0, 10), eventCount: logs.length, ids: [...serviceIds] }, 'ServiceStaked events result');
       } catch (e: any) {
-        logger.warn({ stakingAddr, error: e?.message }, 'Failed to query getServiceIds');
+        logger.warn({ stakingAddr, error: e?.message }, 'Failed to query ServiceStaked events');
       }
     }
-    logger.info({ serviceIdCount: serviceIds.size, serviceIds: [...serviceIds] }, 'Fetched staked service IDs');
+    logger.info({ serviceIdCount: serviceIds.size, serviceIds: [...serviceIds] }, 'Fetched historically staked service IDs');
 
     // Step 2: Get all CreateMech events from marketplace to map serviceId → mech
     // keccak256("CreateMech(address,uint256,address)") — all 3 params are indexed (in topics)
