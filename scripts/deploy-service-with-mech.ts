@@ -23,7 +23,7 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 // Use the marketplace address that middleware recognizes for Base
 const MECH_CONFIG = {
   MECH_TYPE: 'Native' as const,
-  MECH_REQUEST_PRICE: '10000000000000000', // 0.01 ETH
+  MECH_REQUEST_PRICE: '99', // Must match ecosystem standard (99 wei)
   MECH_MARKETPLACE_ADDRESS: '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020', // Base mainnet
   // Now using CLI instead of HTTP API which has a bug preventing service creation
   DEPLOY_MECH: true
