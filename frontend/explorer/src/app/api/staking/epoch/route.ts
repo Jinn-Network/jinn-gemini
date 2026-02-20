@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
                 client.readContract({
                   address: JINN_STAKING_CONTRACT,
                   abi: stakingAbi,
-                  functionName: 'mapServiceInfo',
+                  functionName: 'getServiceInfo',
                   args: [BigInt(serviceId)],
                 })
               )
@@ -83,7 +83,10 @@ export async function GET(request: NextRequest) {
         ])
 
         if (serviceId && serviceInfo) {
-          const baseline = Number((serviceInfo as readonly unknown[])[4])
+          // getServiceInfo returns a tuple: { multisig, owner, nonces, tsStart, reward, inactivity }
+          // nonces[1] is the request count baseline at the last checkpoint
+          const info = serviceInfo as { nonces: readonly bigint[] }
+          const baseline = Number(info.nonces[1])
           const delta = Number(currentCount) - baseline
           requestCount = delta >= 0 ? delta : Number(currentCount)
         } else {
