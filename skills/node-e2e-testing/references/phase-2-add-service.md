@@ -46,6 +46,16 @@ cd "$CLONE_DIR" && yarn service:list
 
 Expected: Shows **2 services** with distinct config IDs, service IDs, and safe addresses. Both should show on-chain activity status.
 
+### 4a. Assert mech delivery rates
+
+After the second service is fully deployed, assert that every deployed mech matches the ecosystem standard delivery rate:
+
+```bash
+cd "$CLONE_DIR" && yarn tsx scripts/mech/assert-delivery-rates.ts --expected 99
+```
+
+Expected: The command exits `0` and reports `PASS` for every service mech.
+
 ### 5. Record addresses
 
 After completion, get both service addresses:
@@ -89,4 +99,5 @@ Expected: `ACL seeded for 2 agent(s)` — both addresses listed.
 - [PASS|FAIL] `service:add --dry-run` completed preflight without error
 - [PASS|FAIL] `service:add` completed (2nd service deployed and staked)
 - [PASS|FAIL] `service:list` showed 2 services with distinct config IDs and safe addresses
+- [PASS|FAIL] All deployed mechs have `maxDeliveryRate = 99` (`assert-delivery-rates.ts --expected 99`)
 - [PASS|FAIL] ACL seeded — `cat .env.e2e.acl.json` shows 2 agent addresses under `grants`
