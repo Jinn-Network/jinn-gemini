@@ -1028,12 +1028,16 @@ app.post("/credentials/capabilities", async (c) => {
 
     // Venture-scoped providers (only when requestId provided)
     if (requestId) {
-      const ventureProviders = await discoverVentureProviders({
+      const { accessible, blockedFromGlobal } = await discoverVentureProviders({
         requestId,
         operatorAddress: authResult.address,
       });
-      for (const p of ventureProviders) {
+      for (const p of accessible) {
         globalProviders.add(p);
+      }
+      // venture_only providers that denied this operator must suppress global fallback
+      for (const p of blockedFromGlobal) {
+        globalProviders.delete(p);
       }
     }
 

@@ -155,26 +155,47 @@ export async function checkVentureCredentialAccess(params: {
   };
 }
 
+export interface VentureProviderDiscovery {
+  /** Providers the operator can access via this venture */
+  accessible: string[];
+  /** Providers where venture_only mode blocks global fallback for this operator */
+  blockedFromGlobal: string[];
+}
+
 /**
  * Discover venture-scoped credential providers for the capabilities probe.
  *
- * Given a requestId, resolves the venture and returns providers the operator
- * would have access to (based on whitelist/tier).
+ * Given a requestId, resolves the venture and returns:
+ * - accessible: providers the operator has venture-scoped access to
+ * - blockedFromGlobal: providers where venture_only mode denies the operator
+ *   and global fallback must be suppressed
  */
 export async function discoverVentureProviders(params: {
   requestId: string;
   operatorAddress: string;
-}): Promise<string[]> {
+}): Promise<VentureProviderDiscovery> {
+  const empty: VentureProviderDiscovery = { accessible: [], blockedFromGlobal: [] };
+
   const ventureCtx = await resolveVentureContext(params.requestId);
-  if (!ventureCtx) return [];
+  if (!ventureCtx) return empty;
 
   const credentials = await listVentureCredentials(ventureCtx.ventureId);
-  if (credentials.length === 0) return [];
+  if (credentials.length === 0) return empty;
 
   const operator = await getOperator(params.operatorAddress);
-  if (!operator) return []; // Unregistered operators see no venture providers
+  if (!operator) {
+    // Unregistered operators: no venture access, but venture_only providers block global fallback
+    const blockedFromGlobal: string[] = [];
+    for (const vc of credentials) {
+      if (vc.active && vc.accessMode === 'venture_only') {
+        blockedFromGlobal.push(vc.provider);
+      }
+    }
+    return { accessible: [], blockedFromGlobal };
+  }
 
   const accessible: string[] = [];
+  const blockedFromGlobal: string[] = [];
   for (const vc of credentials) {
     const access = await checkVentureAccess({
       ventureId: ventureCtx.ventureId,
@@ -184,8 +205,10 @@ export async function discoverVentureProviders(params: {
     });
     if (access.allowed) {
       accessible.push(vc.provider);
+    } else if (access.blockGlobalFallback) {
+      blockedFromGlobal.push(vc.provider);
     }
   }
 
-  return accessible;
+  return { accessible, blockedFromGlobal };
 }

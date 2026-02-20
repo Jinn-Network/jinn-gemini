@@ -54,7 +54,7 @@ vi.mock('../../../../services/x402-gateway/credentials/supabase.js', () => ({
 // Imports (AFTER vi.mock — vitest hoists mocks above imports)
 // ---------------------------------------------------------------------------
 import { checkVentureAccess } from '../../../../services/x402-gateway/credentials/venture-credentials.js';
-import { checkVentureCredentialAccess } from '../../../../services/x402-gateway/credentials/venture-resolver.js';
+import { checkVentureCredentialAccess, discoverVentureProviders } from '../../../../services/x402-gateway/credentials/venture-resolver.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -332,5 +332,129 @@ describe('checkVentureCredentialAccess', () => {
     expect(result.ventureAccessGranted).toBe(false);
     expect(result.reason).toBe('venture_no_credential');
     expect(result.blockGlobalFallback).toBe(false);
+  });
+});
+
+// ===== discoverVentureProviders (capabilities probe) =======================
+
+describe('discoverVentureProviders', () => {
+  const defaultParams = {
+    requestId: 'req-1',
+    operatorAddress: '0xOperator1',
+  };
+
+  /**
+   * Setup mockQuery for listVentureCredentials followed by
+   * checkVentureAccess for each credential.
+   *
+   * listVentureCredentials: 1 query (SELECT * FROM venture_credentials)
+   * checkVentureAccess per credential: up to 3 queries
+   *   1. getVentureCredential SELECT
+   *   2. blocklist SELECT
+   *   3. whitelist SELECT (if not blocked)
+   */
+  function setupListAndAccess(
+    credentials: VentureCredential[],
+    accessPerProvider: Array<{
+      blockedRows?: Record<string, unknown>[];
+      allowedRows?: Record<string, unknown>[];
+    }>,
+  ) {
+    // listVentureCredentials query
+    mockQuery.mockResolvedValueOnce({
+      rows: credentials.map(vcToRow),
+    });
+    // For each credential, setup checkVentureAccess queries
+    for (let i = 0; i < credentials.length; i++) {
+      const vc = credentials[i];
+      const access = accessPerProvider[i] ?? {};
+      // getVentureCredential
+      mockQuery.mockResolvedValueOnce({ rows: [vcToRow(vc)] });
+      if (vc.active) {
+        // blocklist check
+        mockQuery.mockResolvedValueOnce({ rows: access.blockedRows ?? [] });
+        // whitelist check (only if not blocked)
+        if (!access.blockedRows?.length) {
+          mockQuery.mockResolvedValueOnce({ rows: access.allowedRows ?? [] });
+        }
+      }
+    }
+  }
+
+  it('returns empty when no venture context', async () => {
+    setupNoVentureContext();
+    const result = await discoverVentureProviders(defaultParams);
+    expect(result.accessible).toEqual([]);
+    expect(result.blockedFromGlobal).toEqual([]);
+  });
+
+  it('venture_only + blocked → provider in blockedFromGlobal, not accessible', async () => {
+    setupVentureContext('0xSender1', { id: 'v-test', name: 'Test Venture' });
+    mockGetOperator.mockResolvedValue(makeOperator({ trustTier: 'trusted' }));
+
+    const vc = makeVC({ provider: 'supabase', accessMode: 'venture_only' });
+    setupListAndAccess(
+      [vc],
+      [{ blockedRows: [{ '?column?': 1 }] }],
+    );
+
+    const result = await discoverVentureProviders(defaultParams);
+    expect(result.accessible).toEqual([]);
+    expect(result.blockedFromGlobal).toEqual(['supabase']);
+  });
+
+  it('venture_only + allowed → provider in accessible, not blockedFromGlobal', async () => {
+    setupVentureContext('0xSender1', { id: 'v-test', name: 'Test Venture' });
+    mockGetOperator.mockResolvedValue(makeOperator({ trustTier: 'trusted' }));
+
+    const vc = makeVC({ provider: 'supabase', accessMode: 'venture_only', minTrustTier: 'untrusted' });
+    setupListAndAccess(
+      [vc],
+      [{}], // no blocklist/whitelist entries → tier_met
+    );
+
+    const result = await discoverVentureProviders(defaultParams);
+    expect(result.accessible).toEqual(['supabase']);
+    expect(result.blockedFromGlobal).toEqual([]);
+  });
+
+  it('union_with_global + blocked → provider in neither (global fallback allowed)', async () => {
+    setupVentureContext('0xSender1', { id: 'v-test', name: 'Test Venture' });
+    mockGetOperator.mockResolvedValue(makeOperator({ trustTier: 'trusted' }));
+
+    const vc = makeVC({ provider: 'github', accessMode: 'union_with_global' });
+    setupListAndAccess(
+      [vc],
+      [{ blockedRows: [{ '?column?': 1 }] }],
+    );
+
+    const result = await discoverVentureProviders(defaultParams);
+    expect(result.accessible).toEqual([]);
+    expect(result.blockedFromGlobal).toEqual([]); // union_with_global does NOT block global
+  });
+
+  it('unregistered operator + venture_only → provider in blockedFromGlobal', async () => {
+    setupVentureContext('0xSender1', { id: 'v-test', name: 'Test Venture' });
+    mockGetOperator.mockResolvedValue(null); // unregistered
+
+    const vc = makeVC({ provider: 'umami', accessMode: 'venture_only' });
+    // listVentureCredentials query only (no checkVentureAccess for unregistered)
+    mockQuery.mockResolvedValueOnce({ rows: [vcToRow(vc)] });
+
+    const result = await discoverVentureProviders(defaultParams);
+    expect(result.accessible).toEqual([]);
+    expect(result.blockedFromGlobal).toEqual(['umami']);
+  });
+
+  it('unregistered operator + union_with_global → provider in neither', async () => {
+    setupVentureContext('0xSender1', { id: 'v-test', name: 'Test Venture' });
+    mockGetOperator.mockResolvedValue(null); // unregistered
+
+    const vc = makeVC({ provider: 'github', accessMode: 'union_with_global' });
+    mockQuery.mockResolvedValueOnce({ rows: [vcToRow(vc)] });
+
+    const result = await discoverVentureProviders(defaultParams);
+    expect(result.accessible).toEqual([]);
+    expect(result.blockedFromGlobal).toEqual([]); // union_with_global does NOT block
   });
 });
