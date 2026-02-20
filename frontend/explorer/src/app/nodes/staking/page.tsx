@@ -5,7 +5,8 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StakedServiceCard } from '@/components/staking/staked-service-card'
 import { getStakedServices, getRecentDeliveries, getMechsForServiceIds } from '@/lib/staking/queries'
-import { JINN_STAKING_CONTRACT } from '@/lib/staking/constants'
+import { JINN_STAKING_CONTRACT, stakingAbi } from '@/lib/staking/constants'
+import { getRpcClient } from '@/lib/staking/rpc'
 
 export const metadata: Metadata = {
   title: 'Staking Dashboard',
@@ -29,13 +30,42 @@ async function StakedServicesList() {
     )
   }
 
+  // Get on-chain truth: which services are actually staked right now
+  let activeServiceIds: Set<string> | null = null
+  try {
+    const client = getRpcClient()
+    const ids = await client.readContract({
+      address: JINN_STAKING_CONTRACT,
+      abi: stakingAbi,
+      functionName: 'getServiceIds',
+    }) as bigint[]
+    activeServiceIds = new Set(ids.map(id => id.toString()))
+  } catch (err) {
+    console.warn('[staking] Failed to fetch on-chain service IDs, falling back to Ponder isStaked:', err)
+  }
+
+  // Override Ponder's isStaked with on-chain truth when available
+  const enrichedServices = services.map(s => ({
+    ...s,
+    isStaked: activeServiceIds ? activeServiceIds.has(s.serviceId) : s.isStaked,
+  }))
+
+  // Sort: actively staked first, then evicted
+  enrichedServices.sort((a, b) => {
+    if (a.isStaked !== b.isStaked) return a.isStaked ? -1 : 1
+    return 0
+  })
+
+  const stakedCount = enrichedServices.filter(s => s.isStaked).length
+  const evictedCount = enrichedServices.filter(s => !s.isStaked).length
+
   // Fetch mech mappings for all service IDs
-  const serviceIds = services.map((s) => s.serviceId)
+  const serviceIds = enrichedServices.map((s) => s.serviceId)
   const mechs = await getMechsForServiceIds(serviceIds)
   const mechByServiceId = new Map(mechs.map((m) => [m.serviceId, m]))
 
   // Fetch last delivery timestamp for each service
-  const deliveryPromises = services.map(async (service) => {
+  const deliveryPromises = enrichedServices.map(async (service) => {
     const deliveries = await getRecentDeliveries(service.multisig, 1)
     return {
       serviceId: service.serviceId,
@@ -59,11 +89,11 @@ async function StakedServicesList() {
           </a>
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {services.length} staked service{services.length !== 1 ? 's' : ''}
+          {stakedCount} staked{evictedCount > 0 && `, ${evictedCount} evicted`}
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {services.map((service) => (
+        {enrichedServices.map((service) => (
           <StakedServiceCard
             key={service.id}
             service={service}

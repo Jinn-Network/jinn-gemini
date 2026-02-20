@@ -47,9 +47,9 @@ export interface StakingRequest {
 
 export async function getStakedServices(): Promise<StakedService[]> {
   const query = `
-    query StakedServices($stakingContract: String!, $isStaked: Boolean!) {
+    query StakedServices($stakingContract: String!) {
       stakedServices(
-        where: { stakingContract: $stakingContract, isStaked: $isStaked }
+        where: { stakingContract: $stakingContract }
         orderBy: "stakedAt"
         orderDirection: "desc"
       ) {
@@ -71,9 +71,13 @@ export async function getStakedServices(): Promise<StakedService[]> {
     const response = await request<{ stakedServices: { items: StakedService[] } }>(
       SUBGRAPH_URL,
       query,
-      { stakingContract: JINN_STAKING_CONTRACT.toLowerCase(), isStaked: true }
+      { stakingContract: JINN_STAKING_CONTRACT.toLowerCase() }
     )
-    return response.stakedServices.items
+    // Sort: actively staked first, then evicted/unstaked
+    return response.stakedServices.items.sort((a, b) => {
+      if (a.isStaked !== b.isStaked) return a.isStaked ? -1 : 1
+      return 0
+    })
   } catch (error) {
     console.error('Error querying staked services:', error)
     return []

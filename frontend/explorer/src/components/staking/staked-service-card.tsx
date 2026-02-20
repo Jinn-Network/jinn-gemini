@@ -18,8 +18,9 @@ function truncateAddress(addr: string): string {
 }
 
 export function StakedServiceCard({ service, lastDeliveryTimestamp }: StakedServiceCardProps) {
+  const isEvicted = !service.isStaked
   return (
-    <Card className="hover:border-primary/50 transition-colors">
+    <Card className={`hover:border-primary/50 transition-colors ${isEvicted ? 'opacity-60' : ''}`}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between">
           <CardTitle className="text-lg">

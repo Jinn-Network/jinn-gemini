@@ -29,9 +29,28 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const isActivelyStaked = service.latestStakingContract?.toLowerCase() === JINN_STAKING_CONTRACT.toLowerCase()
+    // On-chain truth: getStakingState() is the only reliable source
+    // 0 = NotStaked, 1 = Staked, 2 = Evicted
+    let isActivelyStaked = false
+    let isEvicted = false
     const hasBeenStaked = BigInt(service.currentOlasStaked) > BigInt(0)
-    const isEvicted = hasBeenStaked && !isActivelyStaked
+
+    try {
+      const client = getRpcClient()
+      const stakingState = await client.readContract({
+        address: JINN_STAKING_CONTRACT,
+        abi: stakingAbi,
+        functionName: 'getStakingState',
+        args: [BigInt(serviceIdParam)],
+      }) as number
+      isActivelyStaked = Number(stakingState) === 1
+      isEvicted = Number(stakingState) === 2
+    } catch (err) {
+      // Fallback: subgraph-only (can't distinguish evicted from staked)
+      console.warn('getStakingState RPC failed, falling back to subgraph:', err)
+      isActivelyStaked = service.latestStakingContract?.toLowerCase() === JINN_STAKING_CONTRACT.toLowerCase()
+      isEvicted = hasBeenStaked && !isActivelyStaked
+    }
 
     // Subgraph rewards are in wei
     const earned = BigInt(service.olasRewardsEarned)

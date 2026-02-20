@@ -73,4 +73,11 @@ export const stakingAbi = [
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
   },
+  {
+    type: 'function',
+    name: 'getStakingState',
+    inputs: [{ name: 'serviceId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+  },
 ] as const
