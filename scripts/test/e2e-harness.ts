@@ -317,6 +317,23 @@ export async function runHardPreflightGate(options: HardPreflightOptions): Promi
   const cloneDir = resolve(cloneDirInput);
   await assertAclSeededForAgents(cloneDir);
 
+  // Soft check: Postgres for venture permission testing (advisory, not required)
+  const aclDbUrl = process.env.E2E_ACL_DATABASE_URL;
+  if (aclDbUrl) {
+    try {
+      const pg = await import('pg');
+      const pool = new pg.default.Pool({ connectionString: aclDbUrl, connectionTimeoutMillis: 5000 });
+      const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM credential_policies');
+      await pool.end();
+      console.log(`Postgres ACL check: OK (${rows[0].count} credential policies seeded)`);
+    } catch (err: any) {
+      console.warn(`Postgres ACL check: WARN — ${err.message}`);
+      console.warn('  Venture permission tests may fail. Restart stack: yarn test:e2e:stack');
+    }
+  } else {
+    console.log('Postgres ACL check: SKIP (E2E_ACL_DATABASE_URL not set — venture tests unavailable)');
+  }
+
   if (options.workstreamId && !options.allowStaleRequests) {
     const pending = await getUndeliveredRequestsForWorkstream(options.workstreamId);
     if (pending.length > 0) {

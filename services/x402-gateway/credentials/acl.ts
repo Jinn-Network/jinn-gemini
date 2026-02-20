@@ -19,6 +19,9 @@ const dbUrl = process.env.ACL_DATABASE_URL;
 if (aclPath) {
   backend = new JsonAclBackend(aclPath);
   console.log(`[ACL] JSON backend: ${aclPath}`);
+  if (dbUrl) {
+    console.log('[ACL] Postgres modules also active (operators, ventures, policies, audit)');
+  }
 } else if (dbUrl) {
   backend = new PostgresAclBackend(dbUrl);
   console.log('[ACL] Postgres backend');

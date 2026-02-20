@@ -121,6 +121,8 @@ async function main() {
   console.log(`  cd "${cloneDir}" && yarn setup`);
   console.log(`  yarn test:e2e:vnet seed-acl "${cloneDir}"`);
   console.log(`  docker build -f jinn-node/Dockerfile jinn-node/ -t jinn-node:e2e`);
+  console.log(`  # Test credential permissions (including venture matrix):`);
+  console.log(`  yarn test:e2e:permissions --cwd "${cloneDir}" --venture`);
   console.log('');
 
   // Exit cleanly — stack services continue as detached processes on their ports.

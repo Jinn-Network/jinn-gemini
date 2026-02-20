@@ -38,6 +38,17 @@ const GATEWAY_PORT = '3001';
 const GATEWAY_ACL_PATH = resolve(MONOREPO_ROOT, '.env.e2e.acl.json');
 const E2E_LOG_DIR = '/tmp/jinn-e2e-logs';
 
+// ─── Credential ACL Database (Docker Postgres) ──────────────────────────────
+const E2E_POSTGRES_PORT = '5555';
+const E2E_POSTGRES_DB = 'e2e_acl';
+const E2E_POSTGRES_PASSWORD = 'e2e';
+const E2E_POSTGRES_CONTAINER = 'jinn-e2e-postgres';
+const E2E_ACL_DATABASE_URL = `postgresql://postgres:${E2E_POSTGRES_PASSWORD}@localhost:${E2E_POSTGRES_PORT}/${E2E_POSTGRES_DB}`;
+// Hardhat account #1 — deterministic admin identity for E2E
+const E2E_ADMIN_ADDRESS = '0x70997970c51812dc3a010c7d01b50e0d17dc79c8';
+const E2E_ADMIN_PRIVATE_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
+const MIGRATIONS_DIR = resolve(MONOREPO_ROOT, 'services', 'x402-gateway', 'migrations');
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseArgs(args: string[]): Record<string, string> {
@@ -117,6 +128,116 @@ async function cleanPonderCache(): Promise<void> {
   } catch { /* directory doesn't exist, nothing to clean */ }
 }
 
+// ─── Credential ACL Postgres ─────────────────────────────────────────────────
+
+/**
+ * Start a Docker Postgres container for E2E credential management tables.
+ * Idempotent: reuses an existing healthy container if one is running.
+ */
+async function startPostgres(): Promise<void> {
+  // Verify Docker is available
+  try {
+    execSync('docker info 2>/dev/null', { stdio: 'pipe' });
+  } catch {
+    throw new Error(
+      'Docker is not running. Start Docker Desktop or the Docker daemon.\n' +
+      'Venture permission testing requires Postgres in Docker.',
+    );
+  }
+
+  // Check if container already running
+  try {
+    const result = execSync(
+      `docker inspect --format='{{.State.Running}}' ${E2E_POSTGRES_CONTAINER} 2>/dev/null`,
+      { encoding: 'utf-8' },
+    ).trim();
+    if (result === 'true' || result === "'true'") {
+      console.log(`  Postgres already running (${E2E_POSTGRES_CONTAINER})`);
+      return;
+    }
+  } catch { /* container doesn't exist */ }
+
+  // Remove any stopped container with same name
+  try {
+    execSync(`docker rm -f ${E2E_POSTGRES_CONTAINER} 2>/dev/null`, { stdio: 'pipe' });
+  } catch { /* no container to remove */ }
+
+  console.log(`  Starting Postgres container on :${E2E_POSTGRES_PORT}...`);
+  execSync(
+    `docker run -d --rm ` +
+    `--name ${E2E_POSTGRES_CONTAINER} ` +
+    `-p ${E2E_POSTGRES_PORT}:5432 ` +
+    `-e POSTGRES_PASSWORD=${E2E_POSTGRES_PASSWORD} ` +
+    `-e POSTGRES_DB=${E2E_POSTGRES_DB} ` +
+    `postgres:16-alpine`,
+    { stdio: 'pipe' },
+  );
+
+  // Wait for pg_isready
+  const pgStart = Date.now();
+  const PG_TIMEOUT_MS = 30_000;
+  while (Date.now() - pgStart < PG_TIMEOUT_MS) {
+    try {
+      execSync(
+        `docker exec ${E2E_POSTGRES_CONTAINER} pg_isready -U postgres 2>/dev/null`,
+        { stdio: 'pipe' },
+      );
+      console.log(`  Postgres ready at :${E2E_POSTGRES_PORT}`);
+      return;
+    } catch { /* not ready */ }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  throw new Error(`Postgres failed to become ready within ${PG_TIMEOUT_MS / 1000}s`);
+}
+
+/**
+ * Run all SQL migrations against the E2E Postgres in order.
+ * Uses psql via docker exec to avoid requiring a local psql client.
+ */
+async function runMigrations(): Promise<void> {
+  console.log('  Running credential ACL migrations...');
+
+  const migrationFiles = [
+    'create_credential_acl_tables.sql',
+    '002_create_audit_log.sql',
+    '003_add_audit_attribution_columns.sql',
+    '004_credential_management.sql',
+    '005_seed_credential_policies.sql',
+    '006_simplify_trust_tiers.sql',
+    '007_add_allowed_index.sql',
+    '008_remove_whitelisted_columns.sql',
+  ];
+
+  for (const file of migrationFiles) {
+    const filePath = resolve(MIGRATIONS_DIR, file);
+    const sql = await fs.readFile(filePath, 'utf-8');
+    try {
+      execSync(
+        `docker exec -i ${E2E_POSTGRES_CONTAINER} ` +
+        `psql -U postgres -d ${E2E_POSTGRES_DB} -v ON_ERROR_STOP=1`,
+        { input: sql, stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+    } catch (err: any) {
+      const stderr = err.stderr?.toString() || '';
+      // Don't fail on idempotent statements (IF NOT EXISTS, ON CONFLICT, etc.)
+      if (stderr.includes('ERROR') && !stderr.includes('already exists')) {
+        throw new Error(`Migration ${file} failed: ${stderr.slice(0, 500)}`);
+      }
+    }
+  }
+  console.log(`  ${migrationFiles.length} migrations applied`);
+}
+
+/**
+ * Stop and remove the E2E Postgres container.
+ */
+function stopPostgres(): void {
+  try {
+    execSync(`docker rm -f ${E2E_POSTGRES_CONTAINER} 2>/dev/null`, { stdio: 'pipe' });
+    console.log('  Postgres container stopped');
+  } catch { /* already gone */ }
+}
+
 // ─── Exported Library Function ───────────────────────────────────────────────
 
 export interface StartStackResult {
@@ -146,6 +267,7 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   killPort(PONDER_PORT);
   killPort(CONTROL_PORT);
   killPort(GATEWAY_PORT);
+  stopPostgres(); // Clean up any stale container from previous run
   await cleanPonderCache();
 
   // Prepare log directory for crash diagnostics
@@ -159,6 +281,18 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   if (!fsExistsSync(GATEWAY_ACL_PATH)) {
     writeFileSync(GATEWAY_ACL_PATH, JSON.stringify({ grants: {}, connections: {} }, null, 2) + '\n');
     console.log(`  Created empty ACL file: ${GATEWAY_ACL_PATH}`);
+  }
+
+  // Start Postgres for credential management tables (venture permissions, operators, etc.)
+  let postgresReady = false;
+  console.log('\nStarting credential ACL database...');
+  try {
+    await startPostgres();
+    await runMigrations();
+    postgresReady = true;
+  } catch (e: any) {
+    console.warn(`  Postgres setup failed: ${e.message}`);
+    console.warn('  Venture permission testing will not work (global ACL still available)');
   }
 
   // Build env overrides for Ponder + Control API
@@ -211,25 +345,33 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   });
 
   // Start x402 Gateway (credential bridge)
+  const gatewayEnv: Record<string, string | undefined> = {
+    ...envOverrides,
+    PORT: GATEWAY_PORT,
+    CREDENTIAL_ACL_PATH: GATEWAY_ACL_PATH,    // JSON backend for global grants
+    REQUIRE_JOB_CONTEXT: 'false',  // Skip job verification in E2E
+    PONDER_GRAPHQL_URL: ponderGraphqlUrl,
+    // x402 payment verification — production path via CDP facilitator
+    GATEWAY_PAYMENT_ADDRESS: process.env.GATEWAY_PAYMENT_ADDRESS || '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+    X402_NETWORK: 'base',
+    // CDP_API_KEY_ID and CDP_API_KEY_SECRET inherited from process.env (.env file)
+    // NOTE: UMAMI_HOST/USERNAME/PASSWORD are intentionally NOT listed here.
+    // They reach the gateway via ProcessManager's process.env inheritance,
+    // which is the same path production uses. The E2E validates this works.
+  };
+
+  // When Postgres is available, enable venture permission tables + admin endpoints
+  if (postgresReady) {
+    gatewayEnv.ACL_DATABASE_URL = E2E_ACL_DATABASE_URL;
+    gatewayEnv.ADMIN_ADDRESSES = E2E_ADMIN_ADDRESS;
+  }
+
   pm.startService({
     name: 'gateway',
     command: 'npx',
     args: ['tsx', 'services/x402-gateway/index.ts'],
     cwd: MONOREPO_ROOT,
-    env: {
-      ...envOverrides,
-      PORT: GATEWAY_PORT,
-      CREDENTIAL_ACL_PATH: GATEWAY_ACL_PATH,
-      REQUIRE_JOB_CONTEXT: 'false',  // Skip job verification in E2E
-      PONDER_GRAPHQL_URL: ponderGraphqlUrl,
-      // x402 payment verification — production path via CDP facilitator
-      GATEWAY_PAYMENT_ADDRESS: process.env.GATEWAY_PAYMENT_ADDRESS || '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-      X402_NETWORK: 'base',
-      // CDP_API_KEY_ID and CDP_API_KEY_SECRET inherited from process.env (.env file)
-      // NOTE: UMAMI_HOST/USERNAME/PASSWORD are intentionally NOT listed here.
-      // They reach the gateway via ProcessManager's process.env inheritance,
-      // which is the same path production uses. The E2E validates this works.
-    },
+    env: gatewayEnv,
     logDir: E2E_LOG_DIR,
   });
 
@@ -301,11 +443,22 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
   }
   await fs.appendFile(E2E_ENV_FILE, `E2E_LOG_DIR=${E2E_LOG_DIR}\n`);
 
+  // Write credential ACL DB + admin key so permission matrix test can auto-discover them
+  if (postgresReady) {
+    await fs.appendFile(E2E_ENV_FILE, `E2E_ACL_DATABASE_URL=${E2E_ACL_DATABASE_URL}\n`);
+    await fs.appendFile(E2E_ENV_FILE, `E2E_ADMIN_ADDRESS=${E2E_ADMIN_ADDRESS}\n`);
+    await fs.appendFile(E2E_ENV_FILE, `E2E_ADMIN_PRIVATE_KEY=${E2E_ADMIN_PRIVATE_KEY}\n`);
+  }
+
   console.log(`\nLocal stack ready.`);
   console.log(`  Ponder:      http://localhost:${PONDER_PORT}/graphql`);
   console.log(`  Control API: http://localhost:${CONTROL_PORT}/graphql`);
   console.log(`  Gateway:     http://localhost:${GATEWAY_PORT} (credential bridge)`);
   console.log(`  ACL file:    ${GATEWAY_ACL_PATH}`);
+  if (postgresReady) {
+    console.log(`  ACL DB:      ${E2E_ACL_DATABASE_URL}`);
+    console.log(`  Admin addr:  ${E2E_ADMIN_ADDRESS}`);
+  }
   console.log(`  Payment:     ${gwPayAddr} (CDP: ${hasCdp ? 'enabled' : 'NOT configured — set CDP_API_KEY_ID/SECRET in .env'})`);
   console.log(`  Logs:        ${E2E_LOG_DIR}/`);
   for (const [name, pid] of pids) {
@@ -327,6 +480,7 @@ async function main() {
   process.on('SIGINT', async () => {
     console.log('\nShutting down (SIGINT)...');
     await pm.killAll();
+    stopPostgres();
     process.exit(0);
   });
 
