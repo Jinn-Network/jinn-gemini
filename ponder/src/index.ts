@@ -108,6 +108,12 @@ const JINN_STAKING_CONTRACTS = [
 const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
 const BASE_RPC_URL = process.env.PONDER_RPC_URL || process.env.BASE_RPC_URL || process.env.RPC_URL || 'https://mainnet.base.org';
 
+// Hardcoded Jinn mechs that may not be currently staked but are still ours.
+// These are always included in the allowlist regardless of staking state.
+const HARDCODED_JINN_MECHS = [
+  '0x8c083dfe9bee719a05ba3c75a9b16be4ba52c299', // Service 165 — main Jinn mech
+];
+
 // Set of known Jinn mech addresses (lowercase). Populated at startup.
 let jinnMechAddresses: Set<string> | null = null;
 
@@ -175,6 +181,11 @@ async function buildJinnMechAllowlist(): Promise<Set<string>> {
       if (serviceIds.has(serviceId)) {
         mechs.add(mechAddr);
       }
+    }
+
+    // Always include hardcoded mechs (may be unstaked but still ours)
+    for (const addr of HARDCODED_JINN_MECHS) {
+      mechs.add(addr.toLowerCase());
     }
 
     logger.info({ mechCount: mechs.size, mechs: [...mechs] }, 'Built Jinn mech allowlist from staking contracts');
