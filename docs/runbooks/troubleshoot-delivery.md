@@ -137,7 +137,7 @@ If revoked: throws "Request was revoked by the Mech contract during delivery"
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `JINN_SERVICE_SAFE_ADDRESS` | Safe wallet address | Yes |
-| `JINN_SERVICE_PRIVATE_KEY` | Signer private key | Yes |
+| `OPERATE_PASSWORD` | Keystore decryption password | Yes |
 | `RPC_URL` | Ethereum RPC endpoint | Yes |
 | `PONDER_GRAPHQL_URL` | Ponder GraphQL endpoint | Fallback |
 

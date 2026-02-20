@@ -14,13 +14,13 @@ describe('substituteEnvVariables', () => {
 
   describe('args array substitution', () => {
     it('substitutes ${VAR} placeholders in args arrays', () => {
-      process.env.FIREFLIES_API_KEY = 'test-key-123';
+      process.env.API_KEY = 'test-key-123';
 
       const settings: GeminiSettings = {
         mcpServers: {
-          fireflies: {
+          testServer: {
             command: 'npx',
-            args: ['-y', 'mcp-remote', 'https://api.fireflies.ai/mcp', '--header', 'Authorization: Bearer ${FIREFLIES_API_KEY}'],
+            args: ['--header', 'Authorization: Bearer ${API_KEY}'],
             trust: true,
           },
         },
@@ -28,13 +28,29 @@ describe('substituteEnvVariables', () => {
 
       const result = substituteEnvVariables(settings);
 
-      expect(result.mcpServers!['fireflies'].args).toEqual([
-        '-y', 'mcp-remote', 'https://api.fireflies.ai/mcp', '--header', 'Authorization: Bearer test-key-123',
+      expect(result.mcpServers!['testServer'].args).toEqual([
+        '--header', 'Authorization: Bearer test-key-123',
       ]);
     });
 
     it('throws when referenced env var is not set', () => {
-      delete process.env.FIREFLIES_API_KEY;
+      delete process.env.UNSET_API_KEY;
+
+      const settings: GeminiSettings = {
+        mcpServers: {
+          testServer: {
+            command: 'npx',
+            args: ['--header', 'Authorization: Bearer ${UNSET_API_KEY}'],
+            trust: true,
+          },
+        },
+      };
+
+      expect(() => substituteEnvVariables(settings)).toThrow(/UNSET_API_KEY.*not set/);
+    });
+
+    it('throws when args reference bridge-managed secret placeholders', () => {
+      process.env.FIREFLIES_API_KEY = 'should-not-be-used';
 
       const settings: GeminiSettings = {
         mcpServers: {
@@ -46,7 +62,7 @@ describe('substituteEnvVariables', () => {
         },
       };
 
-      expect(() => substituteEnvVariables(settings)).toThrow(/FIREFLIES_API_KEY.*not set/);
+      expect(() => substituteEnvVariables(settings)).toThrow(/Forbidden bridge-managed secret placeholder/);
     });
 
     it('handles multiple placeholders in a single arg', () => {
@@ -104,26 +120,42 @@ describe('substituteEnvVariables', () => {
 
   describe('env block substitution (existing behavior)', () => {
     it('substitutes ${VAR} in env blocks', () => {
-      process.env.RAILWAY_API_TOKEN = 'railway-token-xyz';
+      process.env.API_TOKEN = 'api-token-xyz';
 
       const settings: GeminiSettings = {
         mcpServers: {
-          railway: {
+          testServer: {
             command: 'npx',
             args: ['-y', 'railway-mcp'],
             trust: true,
-            env: { RAILWAY_API_TOKEN: '${RAILWAY_API_TOKEN}' },
+            env: { API_TOKEN: '${API_TOKEN}' },
           },
         },
       };
 
       const result = substituteEnvVariables(settings);
 
-      expect(result.mcpServers!['railway'].env!['RAILWAY_API_TOKEN']).toBe('railway-token-xyz');
+      expect(result.mcpServers!['testServer'].env!['API_TOKEN']).toBe('api-token-xyz');
     });
 
     it('throws when env var in env block is not set', () => {
-      delete process.env.RAILWAY_API_TOKEN;
+      delete process.env.MISSING_TOKEN;
+
+      const settings: GeminiSettings = {
+        mcpServers: {
+          testServer: {
+            command: 'npx',
+            trust: true,
+            env: { API_TOKEN: '${MISSING_TOKEN}' },
+          },
+        },
+      };
+
+      expect(() => substituteEnvVariables(settings)).toThrow(/MISSING_TOKEN.*not set/);
+    });
+
+    it('throws when env block references bridge-managed secret placeholders', () => {
+      process.env.RAILWAY_API_TOKEN = 'should-not-be-used';
 
       const settings: GeminiSettings = {
         mcpServers: {
@@ -135,7 +167,7 @@ describe('substituteEnvVariables', () => {
         },
       };
 
-      expect(() => substituteEnvVariables(settings)).toThrow(/RAILWAY_API_TOKEN.*not set/);
+      expect(() => substituteEnvVariables(settings)).toThrow(/Forbidden bridge-managed secret placeholder/);
     });
   });
 

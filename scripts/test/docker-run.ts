@@ -14,13 +14,13 @@
  *   yarn test:e2e:docker-run --cwd /path/to/clone --single
  *   yarn test:e2e:docker-run --cwd /path/to/clone --healthcheck
  *   yarn test:e2e:docker-run --cwd /path/to/clone --workstream 0x1234...
- *   yarn test:e2e:docker-run --cwd /path/to/clone --env SUPABASE_URL=... --env SUPABASE_SERVICE_ROLE_KEY=...
+ *   yarn test:e2e:docker-run --cwd /path/to/clone --env X402_GATEWAY_URL=http://host.docker.internal:3001
  *
  * Telemetry files are always mounted at /tmp/jinn-telemetry/ on the host.
  */
 
-import { execSync } from 'child_process';
-import { existsSync } from 'fs';
+import { execSync, spawnSync } from 'child_process';
+import { createWriteStream, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join, resolve } from 'path';
 
@@ -65,6 +65,11 @@ const single = flags['single'] === 'true';
 const healthcheck = flags['healthcheck'] === 'true';
 const image = flags['image'] || 'jinn-node:e2e';
 const workstream = flags['workstream'];
+const explicitEnvKeys = new Set(
+  envPairs
+    .map(pair => pair.split('=')[0]?.trim())
+    .filter(Boolean),
+);
 
 // Detect macOS — use host.docker.internal instead of localhost
 const ponderUrl = isMac
@@ -107,12 +112,26 @@ dockerArgs.push('-e', 'WORKER_MECH_FILTER_MODE=any');
 // Without this, the worker runs in single-service mode and skips rotation.
 dockerArgs.push('-e', 'WORKER_MULTI_SERVICE=true');
 
+// Forward GITHUB_TOKEN from host env (operator-level credential, not bridge).
+// The clone .env may have a placeholder; -e flag takes precedence over --env-file.
+if (process.env.GITHUB_TOKEN) {
+  dockerArgs.push('-e', `GITHUB_TOKEN=${process.env.GITHUB_TOKEN}`);
+}
+
 // Workstream filter — restrict worker to requests in a specific workstream
 if (workstream) {
   dockerArgs.push('-e', `WORKSTREAM_FILTER=${workstream}`);
 }
 
-// Additional env vars from --env flags (e.g., Supabase credentials)
+// macOS footgun guard:
+// If caller did not explicitly pass X402_GATEWAY_URL, force host.docker.internal.
+// This avoids localhost resolution failures inside Docker on macOS.
+if (isMac && !explicitEnvKeys.has('X402_GATEWAY_URL')) {
+  dockerArgs.push('-e', 'X402_GATEWAY_URL=http://host.docker.internal:3001');
+  console.log('Auto-set X402_GATEWAY_URL for macOS: http://host.docker.internal:3001');
+}
+
+// Additional env vars from --env flags (e.g., X402_GATEWAY_URL)
 for (const pair of envPairs) {
   dockerArgs.push('-e', pair);
 }
@@ -120,9 +139,11 @@ for (const pair of envPairs) {
 // Mounts
 dockerArgs.push('-v', `${resolvedCloneDir}/.operate:/home/jinn/.operate`);
 
-// Individual auth file mounts — avoids host extension symlinks crashing the CLI
+// Individual auth file mounts — avoids host extension symlinks crashing the CLI.
+// agent.ts copies these from ~/.gemini/ to GEMINI_CLI_HOME/.gemini/ before spawning CLI.
 const oauthCreds = join(home, '.gemini', 'oauth_creds.json');
 const googleAccounts = join(home, '.gemini', 'google_accounts.json');
+const settingsJson = join(home, '.gemini', 'settings.json');
 
 if (existsSync(oauthCreds)) {
   dockerArgs.push('-v', `${oauthCreds}:/home/jinn/.gemini/oauth_creds.json`);
@@ -130,10 +151,20 @@ if (existsSync(oauthCreds)) {
 if (existsSync(googleAccounts)) {
   dockerArgs.push('-v', `${googleAccounts}:/home/jinn/.gemini/google_accounts.json`);
 }
+if (existsSync(settingsJson)) {
+  dockerArgs.push('-v', `${settingsJson}:/home/jinn/.gemini/settings.json`);
+}
 
-// Always mount telemetry dir so files survive container exit (--rm).
+// Mount telemetry subdirectory so files survive container exit (--rm).
+// JINN_TELEMETRY_DIR tells agent.ts where to write telemetry files.
+// Do NOT set TMPDIR — that pollutes the temp directory with non-telemetry files
+// (Gemini CLI extensions, symlinks) which break cp -r on the host.
+try {
+  execSync('rm -f /tmp/jinn-telemetry/telemetry-*.json', { stdio: 'pipe' });
+} catch { /* directory may not exist yet */ }
 execSync('mkdir -p /tmp/jinn-telemetry');
-dockerArgs.push('-v', '/tmp/jinn-telemetry:/tmp');
+dockerArgs.push('-v', '/tmp/jinn-telemetry:/tmp/jinn-telemetry');
+dockerArgs.push('-e', 'JINN_TELEMETRY_DIR=/tmp/jinn-telemetry');
 
 dockerArgs.push('--shm-size=2g');
 
@@ -150,4 +181,37 @@ if (single) {
 // healthcheck and default: use image's CMD (worker_launcher.js)
 
 console.log(`Running: ${dockerArgs.join(' ')}`);
-execSync(dockerArgs.join(' '), { stdio: 'inherit', timeout: 10 * 60 * 1000 });
+
+// Persist Docker output to a log file for post-run analysis while also streaming to console.
+const logDir = process.env.E2E_LOG_DIR || '/tmp/jinn-e2e-logs';
+const logSuffix = flags['log-suffix'] || (healthcheck ? 'healthcheck' : 'worker');
+const logPath = join(logDir, `docker-${logSuffix}.log`);
+mkdirSync(logDir, { recursive: true });
+const logStream = createWriteStream(logPath);
+console.log(`Logging Docker output to: ${logPath}`);
+
+const result = spawnSync(dockerArgs[0], dockerArgs.slice(1), {
+  stdio: ['inherit', 'pipe', 'pipe'],
+  timeout: 10 * 60 * 1000,
+  maxBuffer: 50 * 1024 * 1024, // 50 MB
+});
+
+// Write output to both console and log file
+if (result.stdout?.length) {
+  process.stdout.write(result.stdout);
+  logStream.write(result.stdout);
+}
+if (result.stderr?.length) {
+  process.stderr.write(result.stderr);
+  logStream.write(result.stderr);
+}
+logStream.end();
+
+if (result.error) {
+  console.error(`Docker run error: ${result.error.message}`);
+  process.exit(1);
+}
+if (result.status !== 0) {
+  console.error(`Docker exited with code ${result.status}`);
+  process.exit(result.status || 1);
+}

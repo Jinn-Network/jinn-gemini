@@ -46,6 +46,17 @@ cd "$CLONE_DIR" && yarn service:list
 
 Expected: Shows **2 services** with distinct config IDs, service IDs, and safe addresses. Both should show on-chain activity status.
 
+### 4a. Assert mech delivery rates
+
+After the second service is fully deployed, assert that every deployed mech matches the ecosystem standard delivery rate.
+This is a **blocking gate** for Phase 3:
+
+```bash
+cd "$CLONE_DIR" && yarn tsx scripts/mech/assert-delivery-rates.ts --expected 99
+```
+
+Expected: The command exits `0` and reports `PASS` for every service mech. Any mismatch blocks worker execution.
+
 ### 5. Record addresses
 
 After completion, get both service addresses:
@@ -58,6 +69,16 @@ Save to `.env.e2e`:
 echo "SERVICE_B_SAFE=<second-safe-address>" >> .env.e2e
 echo "AGENT_EOA_2=<second-agent-eoa>" >> .env.e2e
 ```
+
+### 5a. Seed the credential bridge ACL
+
+Both agents need ACL grants for the credential bridge. Seed once here after both services are deployed:
+
+```bash
+yarn test:e2e:vnet seed-acl "$CLONE_DIR"
+```
+
+Expected: `ACL seeded for 2 agent(s)` — both addresses listed.
 
 ## Expected Output
 
@@ -79,3 +100,5 @@ echo "AGENT_EOA_2=<second-agent-eoa>" >> .env.e2e
 - [PASS|FAIL] `service:add --dry-run` completed preflight without error
 - [PASS|FAIL] `service:add` completed (2nd service deployed and staked)
 - [PASS|FAIL] `service:list` showed 2 services with distinct config IDs and safe addresses
+- [PASS|FAIL] All deployed mechs have `maxDeliveryRate = 99` (`assert-delivery-rates.ts --expected 99`)
+- [PASS|FAIL] ACL seeded — `cat .env.e2e.acl.json` shows 2 agent addresses under `grants`

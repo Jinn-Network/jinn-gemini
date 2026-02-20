@@ -57,9 +57,11 @@ Operator scripts are tested at the points where their output is most meaningful:
 
 1. **Tenderly creds in `.env.test`**: `TENDERLY_ACCESS_KEY`, `TENDERLY_ACCOUNT_SLUG`, `TENDERLY_PROJECT_SLUG`
 2. **Supabase creds in `.env`**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-3. **Runtime**: Node 22+, Python 3.10-3.11, Poetry, `yarn install` completed
-4. **Gemini CLI**: Authenticated (`~/.gemini/oauth_creds.json`)
-5. **Docker**: Running and accessible
+3. **Umami creds in `.env.test`**: `UMAMI_HOST`, `UMAMI_USERNAME`, `UMAMI_PASSWORD` (gateway login/JWT path)
+4. **Dispatch input config**: pass `--input <config.json>` containing `umamiWebsiteId` so blueprint maps it to `JINN_JOB_UMAMI_WEBSITE_ID`
+5. **Runtime**: Node 22+, Python 3.10-3.11, Poetry, `yarn install` completed
+6. **Gemini CLI**: Authenticated (`~/.gemini/oauth_creds.json`)
+7. **Docker**: Running and accessible
 
 **Env file priority**: `.env` -> `.env.test` override -> `.env.e2e` override
 
@@ -72,8 +74,8 @@ Operator scripts are tested at the points where their output is most meaningful:
 | `yarn test:e2e:vnet time-warp <seconds>` | Advance VNet time |
 | `yarn test:e2e:vnet status` | Check VNet health + quota |
 | `yarn test:e2e:vnet cleanup --max-age-hours=0` | Delete all VNets |
-| `yarn test:e2e:dispatch --workstream <id> --cwd <path>` | Dispatch job |
-| `yarn test:e2e:stack` | Start local Ponder + Control API |
+| `yarn test:e2e:dispatch --workstream <id> --cwd <path> --input <json>` | Dispatch job |
+| `yarn test:e2e:stack` | Start local Ponder + Control API + Gateway |
 | `yarn test:e2e:docker-run --cwd <path> [--single] [--telemetry]` | Run worker in Docker |
 | `yarn test:e2e:parse-telemetry <file> [--required-tools t1,t2]` | Parse Gemini telemetry |
 
@@ -137,6 +139,7 @@ These are NOT failures — do not mark FAIL for these:
 - **AEA deployment failed during setup**: Expected CLI version mismatch
 - **Web search returns no results**: Tool was *called* — that's what matters
 - **Chromium sandbox warning in Docker**: Expected with `GEMINI_SANDBOX=false`
+- **Empty stats from `blog_get_stats`**: The Umami website may have no traffic data. An empty stats result is acceptable — the credential bridge flow (agent → signing proxy → ERC-8128 → bridge → ACL → Umami login → JWT → API call) is what's being validated.
 
 ## Cleanup
 
