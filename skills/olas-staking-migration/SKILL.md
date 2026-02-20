@@ -177,6 +177,12 @@ When the middleware's `_deploy_service_onchain_from_safe` detects `is_update=Tru
    - Approve NFT transfer to staking contract
    - Call stake(serviceId) on target
    - NFT transfers to staking contract
+
+8. Set maxDeliveryRate to 99
+   - Call changeMaxDeliveryRate(99) on mech via Safe execTransaction
+   - Without this, baseMech (service 112, threshold=100) delivers garbage to expired requests
+   - Run: `yarn tsx scripts/mech/set-max-delivery-rate.ts 99`
+   - Verify: `yarn mech:check-rate`
 ```
 
 ## OLAS Funding Requirements

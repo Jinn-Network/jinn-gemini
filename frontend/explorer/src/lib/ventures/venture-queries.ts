@@ -246,6 +246,14 @@ export async function getVentureWorkstreams(ventureId: string, limit = 50): Prom
 
     if (workstreamIds.length === 0) return [];
 
+    // Build workstreamId → templateId map from root requests
+    const templateByWorkstream = new Map<string, string>();
+    for (const req of ventureRequests) {
+      if (req.workstreamId && req.templateId && !templateByWorkstream.has(req.workstreamId)) {
+        templateByWorkstream.set(req.workstreamId, req.templateId);
+      }
+    }
+
     const fallbackQuery = `
       query WorkstreamsByIds($ids: [String!]!, $limit: Int) {
         workstreams(
@@ -298,8 +306,8 @@ export async function getVentureWorkstreams(ventureId: string, limit = 50): Prom
       hasLauncherBriefing: ws.hasLauncherBriefing,
       delivered: ws.delivered,
       lastActivity: ws.lastActivity,
-      ventureId: null,
-      templateId: null,
+      ventureId: ventureId,
+      templateId: templateByWorkstream.get(ws.id) ?? null,
     }));
   }
 }

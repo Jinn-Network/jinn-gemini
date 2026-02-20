@@ -134,6 +134,9 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
   const name = 'name' in record ? record.name : null
   const cid = 'cid' in record ? record.cid : null
   const requestId = 'requestId' in record ? record.requestId : null
+  const ventureId = 'ventureId' in record ? record.ventureId : null
+  const workstreamId = 'workstreamId' in record ? record.workstreamId : null
+  const templateId = 'templateId' in record ? record.templateId : null
   const blockTimestamp = 'blockTimestamp' in record ? record.blockTimestamp : null
   // const contentPreview = 'contentPreview' in record ? record.contentPreview : null
   
@@ -155,6 +158,9 @@ export function ArtifactDetailView({ record }: ArtifactDetailViewProps) {
     topic,
     cid,
     requestId,
+    ventureId,
+    workstreamId,
+    templateId,
     blockTimestamp,
     status,
     source_job_name,

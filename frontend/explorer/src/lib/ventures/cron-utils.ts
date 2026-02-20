@@ -107,10 +107,13 @@ export function getPastCronTicks(cron: string, from: Date, to: Date, maxTicks = 
   }
 }
 
-const MATCH_TOLERANCE_MS = 30 * 60 * 1000; // 30 minutes
-
 /**
  * Build timeline entries for all schedule entries, matching against actual workstreams.
+ *
+ * Matching strategy: each cron tick "owns" the window from that tick up to (but not
+ * including) the next tick. A workstream dispatched anywhere in that window counts as
+ * fulfilling the tick. This handles the common case where on-chain dispatch lands
+ * minutes or even hours after the scheduled time.
  */
 export function buildTimelineEntries(
   schedule: ScheduleEntry[],
@@ -131,22 +134,40 @@ export function buildTimelineEntries(
     const futureTicks = getCronTicks(entry.cron, now, windowEnd);
     const allTicks = [...pastTicks, ...futureTicks];
 
-    const matchingWs = workstreams.filter(ws => ws.templateId === entry.templateId);
+    const matchingWs = workstreams
+      .filter(ws => ws.templateId === entry.templateId)
+      .sort((a, b) => Number(a.blockTimestamp) - Number(b.blockTimestamp));
 
-    for (const tick of allTicks) {
+    // Track which workstreams have already been claimed by a tick
+    const usedWs = new Set<string>();
+
+    for (let i = 0; i < allTicks.length; i++) {
+      const tick = allTicks[i];
       const isPast = tick <= now;
       const tickMs = tick.getTime();
+      // Match window extends from tick to next tick (or +24h if last tick)
+      const nextTickMs = i + 1 < allTicks.length
+        ? allTicks[i + 1].getTime()
+        : tickMs + 24 * 60 * 60 * 1000;
 
       let matched: Workstream | undefined;
       let bestDiff = Infinity;
 
       for (const ws of matchingWs) {
+        if (usedWs.has(ws.id)) continue;
         const wsTime = Number(ws.blockTimestamp) * 1000;
-        const diff = Math.abs(wsTime - tickMs);
-        if (diff < MATCH_TOLERANCE_MS && diff < bestDiff) {
-          bestDiff = diff;
-          matched = ws;
+        // Workstream must be dispatched at or after the tick, before the next tick
+        if (wsTime >= tickMs && wsTime < nextTickMs) {
+          const diff = wsTime - tickMs;
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            matched = ws;
+          }
         }
+      }
+
+      if (matched) {
+        usedWs.add(matched.id);
       }
 
       let status: TimelineEntryStatus;

@@ -106,7 +106,7 @@ interface VenturePageProps {
 
 interface VentureDetailProps {
   id: string;
-  initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree';
+  initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree' | 'artifacts';
   initialSelectedJobId?: string | null;
 }
 
@@ -180,6 +180,7 @@ export async function VentureDetail({ id, initialTab, initialSelectedJobId }: Ve
         telegramUrl={telegramUrl}
         activityData={activityData}
         workstreamId={id}
+        ventureId={venture?.id}
         invariants={invariantsWithMeasurements}
         statusCounts={statusCounts}
         primaryOutput={primaryOutput}
@@ -220,7 +221,7 @@ async function VentureScheduleView({ ventureId }: { ventureId: string }) {
   const venture = await getVenture(ventureId);
   if (!venture) notFound();
 
-  const workstreams = await getVentureWorkstreams(ventureId).catch(() => []);
+  const workstreams = await getVentureWorkstreams(ventureId, 200).catch(() => []);
 
   return (
     <VentureScheduleDashboard

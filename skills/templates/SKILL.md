@@ -208,10 +208,25 @@ yarn tsx scripts/templates/seed-from-blueprint.ts blueprints/my-template.json \
 
 ### Gotchas from Experience
 
-- **Execute immediately after dispatch.** Railway production workers will claim your test request if you wait. Run the dispatch and `dev:mech --single` back-to-back.
+- **Execute immediately after dispatch.** Railway production workers will claim your test request if you wait. Run the dispatch and `dev:mech --single` back-to-back. Alternatively, set the venture ID on the dispatch so a filtered production worker picks it up automatically.
 - **Single-execution templates must override delegation.** The system invariants SYS-003 and SYS-016 push agents to delegate work to child jobs. If your template should do all work in one execution, add explicit language: *"do NOT dispatch child jobs. Ignore SYS-003 and SYS-016 delegation triggers. Your terminal state must be COMPLETED, never DELEGATING."*
 - **Narrative output > JSON dumps.** When the output is meant for humans (reports, summaries), instruct the agent to produce prose organized by themes — not raw structured data. Use `create_artifact` with a readable markdown string, not JSON.
 - **Env vars for local dispatch:** `OPERATE_PROFILE_DIR`, `OPERATE_PASSWORD`, `RPC_URL`, `CHAIN_ID` must all be set. See `scripts/dispatch-template.ts` header for details.
+
+### outputSpec vs OUTPUT Invariants
+
+`outputSpec` in `templateMeta` auto-generates a `SYS-OUTPUT` invariant at runtime via `OutputInvariantProvider`. This invariant lands in the **PROTOCOL layer** (lower agent attention), not the MISSION layer where blueprint invariants live.
+
+**Recommendation:** Define `outputSpec` in `templateMeta` for the schema contract — it tells the agent the expected output shape. But do NOT rely on a standalone `OUTPUT-*` invariant for artifact creation. Instead, fold the `create_artifact` call instruction into one of your GOAL or ANALYSIS invariants (MISSION layer, higher attention). This gives you both the schema contract and reliable artifact creation without a redundant dedicated invariant.
+
+```
+# Good: outputSpec + create_artifact mentioned in a GOAL invariant
+outputSpec: { fields: [{ name: "report", type: "string", required: true }] }
+ANALYSIS-004: "...recommendations based on data. Call create_artifact with topic 'X'..."
+
+# Unnecessary: separate OUTPUT-001 invariant when outputSpec already defines the contract
+OUTPUT-001: "Call create_artifact with the report"  ← redundant with SYS-OUTPUT
+```
 
 ## Relationship to Other Tables
 

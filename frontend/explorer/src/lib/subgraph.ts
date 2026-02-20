@@ -24,6 +24,8 @@ export interface Request {
   mech: string
   sender: string
   workstreamId?: string
+  ventureId?: string
+  templateId?: string
   jobDefinitionId?: string
   sourceRequestId?: string
   sourceJobDefinitionId?: string
@@ -72,6 +74,9 @@ export interface Artifact {
   requestId: string
   sourceRequestId?: string
   sourceJobDefinitionId?: string
+  ventureId?: string
+  workstreamId?: string
+  templateId?: string
   name: string
   cid: string
   topic: string
@@ -257,6 +262,8 @@ export async function queryRequests(options: QueryOptions = {}): Promise<Paginat
           mech
           sender
           workstreamId
+          ventureId
+          templateId
           jobDefinitionId
           sourceRequestId
           sourceJobDefinitionId
@@ -359,6 +366,77 @@ export async function queryDeliveries(options: QueryOptions = {}): Promise<Pagin
   }
 }
 
+// New fields added in ponder-sandbox schema — not yet on production
+const ARTIFACT_EXTENDED_FIELDS = ['ventureId', 'workstreamId', 'templateId']
+
+const ARTIFACTS_QUERY_EXTENDED = `
+  query Artifacts($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String, $where: artifactFilter) {
+    artifacts(
+      limit: $limit,
+      after: $after,
+      before: $before,
+      orderBy: $orderBy,
+      orderDirection: $orderDirection,
+      where: $where
+    ) {
+      items {
+        id
+        requestId
+        sourceRequestId
+        sourceJobDefinitionId
+        ventureId
+        workstreamId
+        templateId
+        name
+        cid
+        topic
+        contentPreview
+        blockTimestamp
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+    }
+  }
+`
+
+const ARTIFACTS_QUERY_LEGACY = `
+  query Artifacts($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String, $where: artifactFilter) {
+    artifacts(
+      limit: $limit,
+      after: $after,
+      before: $before,
+      orderBy: $orderBy,
+      orderDirection: $orderDirection,
+      where: $where
+    ) {
+      items {
+        id
+        requestId
+        sourceRequestId
+        sourceJobDefinitionId
+        name
+        cid
+        topic
+        contentPreview
+        blockTimestamp
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+    }
+  }
+`
+
+// Track whether extended fields are supported to avoid repeated failures
+let _artifactExtendedSupported: boolean | null = null
+
 export async function queryArtifacts(options: QueryOptions = {}): Promise<PaginatedResponse<Artifact>> {
   const {
     limit = 100,
@@ -369,49 +447,45 @@ export async function queryArtifacts(options: QueryOptions = {}): Promise<Pagina
     where
   } = options
 
-  const query = `
-    query Artifacts($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String, $where: artifactFilter) {
-      artifacts(
-        limit: $limit,
-        after: $after,
-        before: $before,
-        orderBy: $orderBy,
-        orderDirection: $orderDirection,
-        where: $where
-      ) {
-        items {
-          id
-          requestId
-          sourceRequestId
-          sourceJobDefinitionId
-          name
-          cid
-          topic
-          contentPreview
-          blockTimestamp
-        }
-        pageInfo {
-          hasNextPage
-          hasPreviousPage
-          startCursor
-          endCursor
-        }
+  const vars = { limit, after, before, orderBy, orderDirection, where }
+
+  // Try extended query first (unless we already know it's unsupported)
+  if (_artifactExtendedSupported !== false) {
+    try {
+      const response = await request<ArtifactsResponse>(SUBGRAPH_URL, ARTIFACTS_QUERY_EXTENDED, vars)
+      _artifactExtendedSupported = true
+      return response.artifacts
+    } catch (error) {
+      const msg = String(error)
+      if (msg.includes('GRAPHQL_VALIDATION_FAILED') || msg.includes('Cannot query field')) {
+        console.warn('[queryArtifacts] Extended fields not supported, falling back to legacy query')
+        _artifactExtendedSupported = false
+      } else {
+        console.error('Error querying artifacts:', error)
+        return { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false } }
       }
     }
-  `
+  }
+
+  // Fallback: legacy query without extended fields, strip them from where filter too
+  const legacyWhere = where
+    ? Object.fromEntries(Object.entries(where).filter(([k]) => !ARTIFACT_EXTENDED_FIELDS.includes(k)))
+    : where
+
+  // If the where filter only had extended fields, it's now empty — return empty results
+  if (where && Object.keys(legacyWhere || {}).length === 0 && Object.keys(where).length > 0) {
+    return { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false } }
+  }
 
   try {
-    const response = await request<ArtifactsResponse>(SUBGRAPH_URL, query, {
-      limit,
-      after,
-      before,
-      orderBy,
-      orderDirection,
-      where
-    })
+    const response = await request<ArtifactsResponse>(
+      SUBGRAPH_URL,
+      ARTIFACTS_QUERY_LEGACY,
+      { ...vars, where: legacyWhere }
+    )
     return response.artifacts
   } catch (error) {
-    console.error('Error querying artifacts:', error)
+    console.error('Error querying artifacts (legacy):', error)
     return { items: [], pageInfo: { hasNextPage: false, hasPreviousPage: false } }
   }
 }
@@ -521,6 +595,9 @@ export async function getArtifact(id: string): Promise<Artifact | null> {
         requestId
         sourceRequestId
         sourceJobDefinitionId
+        ventureId
+        workstreamId
+        templateId
         name
         cid
         topic
@@ -1035,6 +1112,11 @@ const queryWorkstreamArtifacts = `
       items {
         id
         requestId
+        sourceRequestId
+        sourceJobDefinitionId
+        ventureId
+        workstreamId
+        templateId
         name
         cid
         topic

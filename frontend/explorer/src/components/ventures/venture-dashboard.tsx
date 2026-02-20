@@ -1,6 +1,6 @@
 'use client';
 
-import { HeartPulse, Activity, ArrowRight, Bot, GitBranch } from 'lucide-react';
+import { HeartPulse, Activity, ArrowRight, Bot, GitBranch, FileText } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LiveOutputView } from './live-output-view';
@@ -53,11 +53,12 @@ interface VentureDashboardProps {
     telegramUrl: string | null;
     activityData: { jobDefinitions: JobDefinition[] };
     workstreamId: string;
+    ventureId?: string | null;
     invariants: InvariantWithMeasurement[];
     statusCounts: Record<HealthStatus, number>;
     primaryOutput: ServiceOutput | null;
     fetchActivity: (workstreamId: string) => Promise<{ jobDefinitions: JobDefinition[] }>;
-    initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree';
+    initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree' | 'artifacts';
     initialSelectedJobId?: string | null;
     tokenInfo?: TokenInfo | null;
 }
@@ -68,6 +69,7 @@ export function VentureDashboard({
     telegramUrl,
     activityData,
     workstreamId,
+    ventureId,
     invariants,
     statusCounts,
     primaryOutput,
@@ -142,6 +144,8 @@ export function VentureDashboard({
                     nextPath = `${basePath}/health`;
                 } else if (value === 'activity') {
                     nextPath = `${basePath}/activity`;
+                } else if (value === 'artifacts') {
+                    nextPath = `${basePath}/artifacts`;
                 } else if (value === 'work-tree') {
                     setSelectedJobIdOverride(null);
                     nextPath = `${basePath}/tree`;
@@ -172,6 +176,11 @@ export function VentureDashboard({
                     <GitBranch className="h-4 w-4" />
                     <span className="hidden sm:inline">Work Tree</span>
                     <span className="sm:hidden">Tree</span>
+                </TabsTrigger>
+                <TabsTrigger value="artifacts" className="gap-1 md:gap-2">
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">Artifacts</span>
+                    <span className="sm:hidden">Files</span>
                 </TabsTrigger>
             </TabsList>
 
@@ -359,6 +368,26 @@ export function VentureDashboard({
                         />
                     </CardContent>
                 </Card>
+            </TabsContent>
+
+            {/* Artifacts Tab */}
+            <TabsContent value="artifacts" className="flex-1 min-h-0 mt-4">
+                <div className="min-h-[500px]">
+                    <ArtifactsGallery
+                        ventureId={ventureId || undefined}
+                        workstreamId={!ventureId ? workstreamId : undefined}
+                        onNavigateToJob={(jobDefId) => {
+                            setSelectedJobIdOverride(jobDefId);
+                            setActiveTab('work-tree');
+                            const nextPath = `/ventures/${workstreamId}/tree/${jobDefId}`;
+                            if (typeof window !== 'undefined') {
+                                window.history.pushState({}, '', nextPath);
+                            } else {
+                                router.push(nextPath);
+                            }
+                        }}
+                    />
+                </div>
             </TabsContent>
         </Tabs>
     );

@@ -29,7 +29,8 @@ function formatTimeAgo(timestamp: string | number): string {
 }
 
 interface ArtifactsGalleryProps {
-  workstreamId: string;
+  workstreamId?: string;
+  ventureId?: string;
   onNavigateToJob?: (jobDefinitionId: string) => void;
 }
 
@@ -46,7 +47,7 @@ interface ArtifactWithJobName extends Artifact {
   jobName?: string;
 }
 
-export function ArtifactsGallery({ workstreamId, onNavigateToJob }: ArtifactsGalleryProps) {
+export function ArtifactsGallery({ workstreamId, ventureId, onNavigateToJob }: ArtifactsGalleryProps) {
   const isMobile = useIsMobile();
   const [artifacts, setArtifacts] = useState<ArtifactWithJobName[]>([]);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
@@ -61,28 +62,45 @@ export function ArtifactsGallery({ workstreamId, onNavigateToJob }: ArtifactsGal
 
   const fetchArtifacts = useCallback(async () => {
     try {
-      // First, get all requests in this workstream
-      const requestsResponse = await queryRequests({
-        where: { workstreamId },
-        limit: 200,
-      });
-
-      // Get unique request IDs (including the root workstream ID)
-      const requestIds = [workstreamId, ...requestsResponse.items.map(r => r.id)];
-
-      // Query artifacts for all requests in the workstream
-      // We need to fetch artifacts where requestId is in our list
       const allArtifacts: Artifact[] = [];
 
-      // Query in batches to avoid too-long queries
-      for (const requestId of requestIds) {
+      if (ventureId) {
+        // Query artifacts directly by ventureId (uses indexed field)
         const response = await queryArtifacts({
-          where: { requestId },
+          where: { ventureId },
           orderBy: 'blockTimestamp',
           orderDirection: 'desc',
-          limit: 50,
+          limit: 200,
         });
         allArtifacts.push(...response.items);
+      } else if (workstreamId) {
+        // Query artifacts by workstreamId field directly if available
+        const response = await queryArtifacts({
+          where: { workstreamId },
+          orderBy: 'blockTimestamp',
+          orderDirection: 'desc',
+          limit: 200,
+        });
+
+        if (response.items.length > 0) {
+          allArtifacts.push(...response.items);
+        } else {
+          // Fallback: iterate over requests (for Ponder versions without workstreamId on artifacts)
+          const requestsResponse = await queryRequests({
+            where: { workstreamId },
+            limit: 200,
+          });
+          const requestIds = [workstreamId, ...requestsResponse.items.map(r => r.id)];
+          for (const requestId of requestIds) {
+            const resp = await queryArtifacts({
+              where: { requestId },
+              orderBy: 'blockTimestamp',
+              orderDirection: 'desc',
+              limit: 50,
+            });
+            allArtifacts.push(...resp.items);
+          }
+        }
       }
 
       // Sort by blockTimestamp descending (newest first at top)
@@ -137,7 +155,7 @@ export function ArtifactsGallery({ workstreamId, onNavigateToJob }: ArtifactsGal
       console.error('Error fetching artifacts:', error);
       setLoading(false);
     }
-  }, [workstreamId]);
+  }, [workstreamId, ventureId]);
 
   // Initial fetch and polling
   useEffect(() => {

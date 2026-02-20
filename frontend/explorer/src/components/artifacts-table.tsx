@@ -34,6 +34,9 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
             <TableHead>Timestamp</TableHead>
             <TableHead>CID</TableHead>
             <TableHead>Topic</TableHead>
+            <TableHead>Venture</TableHead>
+            <TableHead>Workstream</TableHead>
+            <TableHead>Template</TableHead>
             <TableHead>Request</TableHead>
           </TableRow>
         </TableHeader>
@@ -59,8 +62,20 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
               ? record.topic 
               : '-'
             
-            const requestId = 'requestId' in record && record.requestId 
-              ? record.requestId 
+            const ventureId = 'ventureId' in record && record.ventureId
+              ? record.ventureId
+              : null
+
+            const workstreamId = 'workstreamId' in record && record.workstreamId
+              ? record.workstreamId
+              : null
+
+            const templateId = 'templateId' in record && record.templateId
+              ? record.templateId
+              : null
+
+            const requestId = 'requestId' in record && record.requestId
+              ? record.requestId
               : null
 
             return (
@@ -97,8 +112,35 @@ export function ArtifactsTable({ records }: ArtifactsTableProps) {
                   {topic}
                 </TableCell>
                 <TableCell>
+                  {ventureId ? (
+                    <TruncatedId
+                      value={ventureId}
+                      linkTo={`/ventures/${ventureId}`}
+                    />
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {workstreamId ? (
+                    <TruncatedId
+                      value={workstreamId}
+                      linkTo={`/workstreams/${workstreamId}`}
+                    />
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {templateId ? (
+                    <TruncatedId value={templateId} />
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+                <TableCell>
                   {requestId ? (
-                    <TruncatedId 
+                    <TruncatedId
                       value={requestId}
                       linkTo={`/requests/${requestId}`}
                     />

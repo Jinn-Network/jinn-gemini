@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, Rows3 } from 'lucide-react';
+import { Calendar, Rows3, FileText } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import { TruncatedId } from '@/components/truncated-id';
 import { DispatchScheduleTab } from './dispatch-schedule';
+import { ArtifactsGallery } from './artifacts-gallery';
 import type { ScheduleEntry } from '@/lib/ventures-services';
 import type { Workstream } from '@/lib/subgraph';
 
@@ -41,6 +42,10 @@ export function VentureScheduleDashboard({
         <TabsTrigger value="workstreams" className="gap-1 md:gap-2">
           <Rows3 className="h-4 w-4" />
           Workstreams ({workstreams.length})
+        </TabsTrigger>
+        <TabsTrigger value="artifacts" className="gap-1 md:gap-2">
+          <FileText className="h-4 w-4" />
+          Artifacts
         </TabsTrigger>
       </TabsList>
 
@@ -96,6 +101,12 @@ export function VentureScheduleDashboard({
             </Table>
           </div>
         )}
+      </TabsContent>
+
+      <TabsContent value="artifacts" className="flex-1 min-h-0 mt-4">
+        <div className="min-h-[500px]">
+          <ArtifactsGallery ventureId={ventureId} />
+        </div>
       </TabsContent>
     </Tabs>
   );
