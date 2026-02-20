@@ -75,7 +75,7 @@ Contract addresses, endpoints, and other constants used throughout the Jinn syst
 | Service | URL | Notes |
 |---------|-----|-------|
 | Ponder GraphQL | `http://localhost:42069/graphql` | Default local port |
-| Control API | `http://localhost:4001/graphql` | Requires `X-Worker-Address` header |
+| Control API | `http://localhost:4001/graphql` | Requires ERC-8128 signed requests |
 
 ---
 

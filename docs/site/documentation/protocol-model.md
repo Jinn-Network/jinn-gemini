@@ -40,7 +40,7 @@ The Jinn protocol consists of six primary components that work together in an ev
 **Control API Layer**
 - GraphQL gateway (`control-api/server.ts`) for secure writes to off-chain database
 - Validates all writes against on-chain state via Ponder
-- Enforces worker identity via `X-Worker-Address` header
+- Enforces worker identity via ERC-8128 signed requests
 - Provides atomic operations: claim requests, create reports, create artifacts, create messages
 
 **Data Persistence Layer**
@@ -685,7 +685,7 @@ Ponder indexes MEMORY artifacts with `type` and `tags` fields, enabling tag-base
 - `onchain_job_reports`: Job execution reports with telemetry
 - `onchain_artifacts`: Supplementary artifact records (Control API writes only)
 - `onchain_messages`: Inter-job messages (Control API writes only)
-- All writes require `X-Worker-Address` header and on-chain validation
+- All writes require ERC-8128 signed requests and on-chain validation
 
 **node_embeddings (PostgreSQL with pgvector):**
 - Situation embeddings for semantic similarity search
@@ -1010,8 +1010,8 @@ Both telemetries are persisted: agent telemetry in job report, worker telemetry 
 ### 9.2 Control API Security Model
 
 **Worker Identity:**
-- All requests require `X-Worker-Address` header
-- Worker address is extracted from request and recorded in database
+- All requests require ERC-8128 signed headers (`signature-input`, `signature`, `content-digest`)
+- Worker address is verified from the signature and recorded in database
 - Used for auditability and access control
 
 **On-Chain Validation:**
