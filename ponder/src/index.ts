@@ -296,6 +296,24 @@ function buildCidCandidatesFromDigest(digestHex: string): CidCandidate[] {
   ];
 }
 
+// Primary gateway only — used for known Jinn mechs to fail fast on unpinned content.
+// If the primary gateway doesn't have it, fallbacks won't either.
+async function fetchFromPrimaryGateway(cidBase32: string, timeoutMs = 1_500): Promise<any> {
+  const url = `${IPFS_GATEWAY_BASE}${cidBase32}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} from primary gateway`);
+    }
+    const text = await response.text();
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchRequestMetadata(cidBase32: string, timeoutMs = 1_500): Promise<any> {
   const gateways = [IPFS_GATEWAY_BASE, ...IPFS_GATEWAY_FALLBACKS];
   let lastError: Error | null = null;
@@ -638,15 +656,19 @@ ponder.on(
         );
 
         // Fetch IPFS metadata to extract jobName, blueprint, etc.
-        // Known Jinn mechs: proceed without metadata on failure (we know they're ours)
-        // Unknown mechs: must succeed to verify networkId
+        // Known Jinn mechs: try primary gateway + first codec only — if unavailable, skip fast
+        // Unknown mechs: try all gateways + all codecs (must succeed to verify networkId)
         let content: any = null;
         let selectedCandidate: CidCandidate | null = null;
         let lastIpfsError: any = null;
+        const candidates = isKnownJinnMech ? cidCandidates.slice(0, 1) : cidCandidates;
         try {
-          for (const candidate of cidCandidates) {
+          for (const candidate of candidates) {
             try {
-              content = await fetchRequestMetadata(candidate.cidBase32);
+              // Known Jinn mechs: skip fallback gateways (if primary doesn't have it, fallback won't either)
+              content = isKnownJinnMech
+                ? await fetchFromPrimaryGateway(candidate.cidBase32)
+                : await fetchRequestMetadata(candidate.cidBase32);
               selectedCandidate = candidate;
               break;
             } catch (candidateError: any) {
