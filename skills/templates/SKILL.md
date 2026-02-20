@@ -24,7 +24,6 @@ Create a new template definition. Templates start in `draft` status by default.
   "name": "SEO Audit",
   "description": "Comprehensive SEO audit for any domain",
   "blueprint": "{\"invariants\":[{\"id\":\"GOAL-001\",\"form\":\"constraint\",\"description\":\"Audit must cite ≥3 data sources\"}]}",
-  "tags": ["seo", "growth", "audit"],
   "priceWei": "50000000000000000",
   "priceUsd": "$0.05"
 }
@@ -46,8 +45,8 @@ Query templates with multiple modes:
 // List templates for a venture
 { "mode": "by_venture", "ventureId": "<uuid>" }
 
-// Search with tags
-{ "mode": "list", "search": "growth", "tags": ["seo"] }
+// Search
+{ "mode": "list", "search": "growth" }
 ```
 
 ### template_update
@@ -90,7 +89,6 @@ Archive (soft) or permanently delete (hard) a template.
 | input_schema | JSONB | JSON Schema for inputs |
 | output_spec | JSONB | Output contract for result extraction |
 | enabled_tools | JSONB | Tool policy array |
-| tags | text[] | Discovery tags |
 | price_wei | string | Price in wei (bigint as string) |
 | price_usd | string | Human-readable price |
 | safety_tier | string | public, private, or restricted |
@@ -119,21 +117,45 @@ Template invariants define WHAT the template must achieve. The network works out
 
 See [docs/guides/writing-invariants.md](../../docs/guides/writing-invariants.md) for invariant type reference (BOOLEAN, FLOOR, CEILING, RANGE).
 
-## Workflow: Creating a Template from a Tested Venture
+## Blueprint File Format
 
-1. Design blueprint with invariants, inputSchema, outputSpec
-2. Test by dispatching as a child job via `dispatch_new_job`
-3. On re-invocation, validate test results passed quality gate
-4. Register with `template_create` (status='draft')
-5. After review, publish with `template_update` (status='published')
+Blueprints live in `blueprints/<slug>.json`. Standard format:
+
+```json
+{
+  "templateMeta": {
+    "id": "my-template",
+    "name": "My Template",
+    "description": "What it does",
+    "priceWei": "0",
+    "inputSchema": { "type": "object", "properties": { ... }, "required": [...] },
+    "outputSpec": { "version": "1.0", "fields": [...] },
+    "tools": [
+      { "name": "tool_name", "required": true }
+    ]
+  },
+  "invariants": [
+    {
+      "id": "GOAL-001",
+      "type": "BOOLEAN",
+      "condition": "...",
+      "assessment": "...",
+      "examples": { "do": [...], "dont": [...] }
+    }
+  ]
+}
+```
+
+- `templateMeta.id` becomes the slug
+- `{{placeholders}}` in invariants are substituted from input at dispatch time
+- `{{currentTimestamp}}` is always available
 
 ## CLI Usage
 
 ```bash
-# Create a template
-yarn tsx scripts/templates/crud.ts create \
-  --name "My Template" \
-  --blueprint '{"invariants":[...]}'
+# Seed a template from a blueprint file (create or update)
+yarn tsx scripts/templates/seed-from-blueprint.ts blueprints/my-template.json \
+  --status published --venture-id <uuid>
 
 # List templates
 yarn tsx scripts/templates/crud.ts list --status published
@@ -150,12 +172,12 @@ yarn tsx scripts/templates/crud.ts delete --id <uuid> --confirm
 
 ## Testing & Validation Pipeline
 
-Before publishing, every template must pass the 4-phase testing pipeline:
+Before publishing, every template should pass the 4-phase testing pipeline (~10 runs):
 
-1. **Smoke Test** (2 runs) — end-to-end completion
-2. **Quality Calibration** (4 runs) — varied inputs, graded output
-3. **Robustness** (2 runs) — edge cases
-4. **Validation** (2 runs) — consistency check
+1. **Smoke Test** (2 runs) — end-to-end completion, correct tools called
+2. **Quality Calibration** (4 runs) — varied inputs, graded output quality
+3. **Robustness** (2 runs) — edge cases (zero results, huge volumes)
+4. **Validation** (2 runs) — identical runs, check consistency
 
 See [references/testing-pipeline.md](references/testing-pipeline.md) for the full pipeline.
 See [references/blueprint-quality-checklist.md](references/blueprint-quality-checklist.md) for pre-flight checks.
@@ -163,29 +185,37 @@ See [references/blueprint-quality-checklist.md](references/blueprint-quality-che
 ### Quick Start: Test a Template
 
 ```bash
-# 1. Create blueprint file
+# 1. Create blueprint + test input
 vim blueprints/my-template.json
-
-# 2. Create test input
 vim blueprints/inputs/my-template-test.json
 
-# 3. Create dispatch script (copy from existing)
-cp scripts/dispatch-commit-data-gather.ts scripts/dispatch-my-template.ts
+# 2. Dispatch a test run (generic — works for any template)
+yarn tsx scripts/dispatch-template.ts \
+  blueprints/my-template.json \
+  blueprints/inputs/my-template-test.json
 
-# 4. Run smoke test
-yarn tsx scripts/dispatch-my-template.ts
+# 3. Execute locally IMMEDIATELY (before Railway workers claim it)
 MECH_TARGET_REQUEST_ID=<id> yarn dev:mech --single
+
+# 4. Inspect results
 yarn inspect-job-run <requestId>
 
 # 5. Iterate on invariants based on results
-# 6. After 10 passing runs, seed and publish
-yarn tsx scripts/templates/seed-from-blueprints.ts
+# 6. After ~10 passing runs, seed and publish
+yarn tsx scripts/templates/seed-from-blueprint.ts blueprints/my-template.json \
+  --status published --venture-id <uuid>
 ```
+
+### Gotchas from Experience
+
+- **Execute immediately after dispatch.** Railway production workers will claim your test request if you wait. Run the dispatch and `dev:mech --single` back-to-back.
+- **Single-execution templates must override delegation.** The system invariants SYS-003 and SYS-016 push agents to delegate work to child jobs. If your template should do all work in one execution, add explicit language: *"do NOT dispatch child jobs. Ignore SYS-003 and SYS-016 delegation triggers. Your terminal state must be COMPLETED, never DELEGATING."*
+- **Narrative output > JSON dumps.** When the output is meant for humans (reports, summaries), instruct the agent to produce prose organized by themes — not raw structured data. Use `create_artifact` with a readable markdown string, not JSON.
+- **Env vars for local dispatch:** `OPERATE_PROFILE_DIR`, `OPERATE_PASSWORD`, `RPC_URL`, `CHAIN_ID` must all be set. See `scripts/dispatch-template.ts` header for details.
 
 ## Relationship to Other Tables
 
 - **templates** (this): Static, reusable template definitions in Supabase
 - **job_templates** (Ponder): On-chain execution metrics (run_count, success_count, etc.)
-- **job_templates** (x402-gateway): Legacy pricing table, migrated in follow-up
 
 Templates in this table are the source of truth for template metadata. Ponder's job_template tracks runtime metrics separately.

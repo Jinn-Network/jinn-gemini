@@ -8,7 +8,8 @@ import * as fs from "fs";
 import * as crypto from "crypto";
 import { marketplaceInteract } from "@jinn-network/mech-client-ts/dist/marketplace_interact.js";
 import { getServiceProfile } from "jinn-node/env/operate-profile.js";
-import { getRandomStakedMech } from "jinn-node/worker/filters/stakingFilter.js";
+// Use own mech for test dispatches to avoid mech address mismatch on delivery
+// Production dispatches (redispatch-job.ts, dispatch-core.ts) use getRandomStakedMech for fair distribution
 
 const template = JSON.parse(fs.readFileSync("blueprints/commit-data-gather.json", "utf8"));
 const input = JSON.parse(fs.readFileSync("blueprints/inputs/commit-data-gather-test.json", "utf8"));
@@ -52,7 +53,7 @@ console.log("Input:", JSON.stringify(input, null, 2));
 console.log("Tools:", tools);
 console.log("Current timestamp:", currentTimestamp);
 
-const priorityMech = await getRandomStakedMech(profile.mechAddress);
+const priorityMech = profile.mechAddress;
 const result = await marketplaceInteract({
   prompts: [blueprint],
   priorityMech,

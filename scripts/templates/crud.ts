@@ -116,14 +116,12 @@ export async function createTemplate(args: CreateTemplateArgs): Promise<Template
     input_schema: args.inputSchema || {},
     output_spec: args.outputSpec || {},
     enabled_tools: args.enabledTools || [],
-    tags: args.tags || [],
     price_wei: args.priceWei || null,
     price_usd: args.priceUsd || null,
     safety_tier: args.safetyTier || 'public',
     default_cyclic: args.defaultCyclic || false,
     venture_id: args.ventureId || null,
     status: args.status || 'draft',
-    type: args.type || 'agent',
   };
 
   const { data, error } = await supabase
@@ -221,14 +219,12 @@ export async function updateTemplate(args: UpdateTemplateArgs): Promise<Template
   if (updates.inputSchema !== undefined) record.input_schema = updates.inputSchema;
   if (updates.outputSpec !== undefined) record.output_spec = updates.outputSpec;
   if (updates.enabledTools !== undefined) record.enabled_tools = updates.enabledTools;
-  if (updates.tags !== undefined) record.tags = updates.tags;
   if (updates.priceWei !== undefined) record.price_wei = updates.priceWei;
   if (updates.priceUsd !== undefined) record.price_usd = updates.priceUsd;
   if (updates.safetyTier !== undefined) record.safety_tier = updates.safetyTier;
   if (updates.defaultCyclic !== undefined) record.default_cyclic = updates.defaultCyclic;
   if (updates.ventureId !== undefined) record.venture_id = updates.ventureId;
   if (updates.status !== undefined) record.status = updates.status;
-  if (updates.type !== undefined) record.type = updates.type;
   if (updates.olasAgentId !== undefined) record.olas_agent_id = updates.olasAgentId;
 
   if (updates.blueprint !== undefined) {
