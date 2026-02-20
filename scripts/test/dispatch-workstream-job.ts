@@ -24,6 +24,7 @@
  *   --blueprint <json>          Blueprint JSON string (overrides --blueprint-file).
  *   --enabled-tools <csv>       Comma-separated tool names (overrides blueprint-extracted tools).
  *   --input <path>              JSON input file used with blueprint inputSchema/envVar mappings.
+ *   --allow-stale               Allow dispatch even if workstream has undelivered stale requests.
  *
  * Default (no --blueprint or --blueprint-file):
  *   Loads blueprints/e2e-infrastructure-test.json which tests web search, artifacts,
@@ -44,11 +45,14 @@ import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketpla
 import { getMechAddress, getMechChainConfig, getServicePrivateKey } from 'jinn-node/env/operate-profile.js';
 import { assertValidJinnJobEnvKey } from 'jinn-node/shared/job-env.js';
 import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
+import { runHardPreflightGate } from './e2e-harness.js';
 
 const SCRIPT_DIR = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const MONOREPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const E2E_ENV_FILE = resolve(MONOREPO_ROOT, '.env.e2e');
 const DEFAULT_BLUEPRINT_FILE = resolve(MONOREPO_ROOT, 'blueprints', 'e2e-infrastructure-test.json');
+const E2E_LOCAL_PONDER_URL = 'http://localhost:42069/graphql';
+const E2E_LOCAL_CONTROL_URL = 'http://localhost:4001/graphql';
 
 // Load env files in priority order (later overrides earlier):
 // 1. .env — base monorepo creds
@@ -69,6 +73,8 @@ function parseArgs(args: string[]): Record<string, string> {
         flags[key.slice(2)] = val;
       } else if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
         flags[key.slice(2)] = args[++i];
+      } else {
+        flags[key.slice(2)] = 'true';
       }
     }
   }
@@ -177,6 +183,22 @@ async function main() {
 
   const clonePath = flags.cwd;
   if (!clonePath) throw new Error('--cwd <jinn-node-clone-path> is required');
+  const allowStaleRequests = flags['allow-stale'] === 'true';
+
+  // Hard-force local E2E APIs for all dispatch-side context calls.
+  // This prevents .env.test/.env bleed from accidentally pointing to non-local ports.
+  process.env.PONDER_GRAPHQL_URL = E2E_LOCAL_PONDER_URL;
+  process.env.CONTROL_API_URL = E2E_LOCAL_CONTROL_URL;
+  console.log('Using E2E local endpoints:');
+  console.log(`  PONDER_GRAPHQL_URL=${E2E_LOCAL_PONDER_URL}`);
+  console.log(`  CONTROL_API_URL=${E2E_LOCAL_CONTROL_URL}`);
+
+  // Hard preflight gate: block dispatch when environment/credentials are invalid.
+  await runHardPreflightGate({
+    cloneDir: clonePath,
+    workstreamId,
+    allowStaleRequests,
+  });
 
   const jobName = flags['job-name'] || 'e2e-test-job';
   const jobDefinitionId = flags['job-def-id'] || crypto.randomUUID();

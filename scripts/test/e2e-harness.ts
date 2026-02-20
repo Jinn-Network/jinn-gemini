@@ -12,6 +12,7 @@
  *   checkpoint          Call checkpoint() on staking contract (fund OLAS if needed)
  *   seed-activity       Set Safe nonce + marketplace request count for activity check
  *   seed-acl <dir>      Seed credential bridge ACL with all agent addresses from .operate/keys/
+ *   preflight           Hard E2E gate (Node22+nvm, local stack, GitHub token, ACL, stale requests)
  *   cleanup             Delete all stale e2e-test-* VNets
  *   status              Check VNet health + quota status
  *
@@ -31,6 +32,10 @@ import { createTenderlyClient, ethToWei } from '../lib/tenderly.js';
 
 const MONOREPO_ROOT = resolve(import.meta.dirname, '..', '..');
 const E2E_ENV_FILE = resolve(MONOREPO_ROOT, '.env.e2e');
+const E2E_ACL_FILE = resolve(MONOREPO_ROOT, '.env.e2e.acl.json');
+const LOCAL_PONDER_GRAPHQL_URL = 'http://localhost:42069/graphql';
+const LOCAL_CONTROL_GRAPHQL_URL = 'http://localhost:4001/graphql';
+const LOCAL_GATEWAY_HEALTH_URL = 'http://localhost:3001/health';
 
 // Load env files in priority order (later overrides earlier):
 // 1. .env — base monorepo creds (Supabase, etc.)
@@ -97,6 +102,233 @@ async function rpcCall(rpcUrl: string, method: string, params: unknown[] = []): 
 async function writeEnvE2e(vars: Record<string, string>): Promise<void> {
   const lines = Object.entries(vars).map(([k, v]) => `${k}=${v}`);
   await fs.writeFile(E2E_ENV_FILE, lines.join('\n') + '\n');
+}
+
+async function readEnvE2eVar(key: string): Promise<string | undefined> {
+  try {
+    const envContent = await fs.readFile(E2E_ENV_FILE, 'utf-8');
+    const match = envContent.match(new RegExp(`^${key}=(.+)$`, 'm'));
+    if (match) return match[1].trim();
+  } catch {
+    // Ignore if file doesn't exist.
+  }
+  return undefined;
+}
+
+function normalizeAddress(address: string): string {
+  const lower = address.toLowerCase();
+  return lower.startsWith('0x') ? lower : `0x${lower}`;
+}
+
+function assertNode22ViaNvm(): void {
+  const major = Number(process.versions.node.split('.')[0] || '0');
+  if (major !== 22) {
+    throw new Error(`Node 22 is required for E2E preflight. Current: ${process.version}`);
+  }
+  if (!process.env.NVM_BIN) {
+    throw new Error('nvm must be active (NVM_BIN is missing). Run: nvm use');
+  }
+  console.log(`Node runtime: ${process.version} (nvm active)`);
+}
+
+async function postGraphql(
+  url: string,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<any> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`${url} returned HTTP ${response.status}: ${body.slice(0, 240)}`);
+  }
+  const json = await response.json();
+  if (Array.isArray(json?.errors) && json.errors.length > 0) {
+    throw new Error(`${url} GraphQL errors: ${JSON.stringify(json.errors).slice(0, 240)}`);
+  }
+  return json;
+}
+
+async function assertGraphqlHealthy(name: string, url: string, query: string): Promise<void> {
+  const result = await postGraphql(url, query);
+  if (!result?.data) {
+    throw new Error(`${name} health check returned no data`);
+  }
+  console.log(`${name} health: OK (${url})`);
+}
+
+async function assertHttpHealthy(name: string, url: string): Promise<void> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`${name} health failed: HTTP ${response.status} ${body.slice(0, 240)}`);
+  }
+  console.log(`${name} health: OK (${url})`);
+}
+
+async function assertGithubTokenValid(): Promise<void> {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error('GITHUB_TOKEN is not set');
+  }
+  const response = await fetch('https://api.github.com/user', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'jinn-e2e-preflight',
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status !== 200) {
+    const body = await response.text();
+    throw new Error(`GITHUB_TOKEN validation failed: HTTP ${response.status} ${body.slice(0, 240)}`);
+  }
+  const json = await response.json();
+  const login = typeof json?.login === 'string' ? json.login : '(unknown)';
+  console.log(`GitHub token check: OK (user=${login})`);
+}
+
+async function discoverAgentEoas(cloneDir: string): Promise<string[]> {
+  const servicesDir = resolve(cloneDir, '.operate', 'services');
+  const addresses = new Set<string>();
+  let serviceDirs: string[];
+  try {
+    serviceDirs = (await fs.readdir(servicesDir, { withFileTypes: true }))
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+  } catch {
+    throw new Error(`Cannot read ${servicesDir} — run setup first.`);
+  }
+
+  for (const dir of serviceDirs) {
+    try {
+      const configPath = resolve(servicesDir, dir, 'config.json');
+      const config = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+      const chainConfigs = config?.chain_configs;
+      if (!chainConfigs || typeof chainConfigs !== 'object') continue;
+      for (const chainConfig of Object.values(chainConfigs) as any[]) {
+        const instances = chainConfig?.chain_data?.instances;
+        if (Array.isArray(instances) && instances.length > 0 && typeof instances[0] === 'string') {
+          addresses.add(normalizeAddress(instances[0]));
+        }
+      }
+    } catch {
+      // Skip malformed service configs.
+    }
+  }
+
+  const result = Array.from(addresses);
+  if (result.length === 0) {
+    throw new Error(`No agent EOAs discovered in ${servicesDir}`);
+  }
+  return result;
+}
+
+async function assertAclSeededForAgents(cloneDir: string): Promise<string[]> {
+  const agentEoas = await discoverAgentEoas(cloneDir);
+  let acl: { grants?: Record<string, any> };
+  try {
+    acl = JSON.parse(await fs.readFile(E2E_ACL_FILE, 'utf-8'));
+  } catch {
+    throw new Error(`ACL file missing or invalid: ${E2E_ACL_FILE}. Run: yarn test:e2e:vnet seed-acl "${cloneDir}"`);
+  }
+
+  const grants = acl.grants || {};
+  const grantsByAddress = new Map<string, any>();
+  for (const [address, value] of Object.entries(grants)) {
+    grantsByAddress.set(normalizeAddress(address), value);
+  }
+
+  const requiredProviders = ['umami', 'supabase'];
+  const missing: string[] = [];
+
+  for (const address of agentEoas) {
+    const grant = grantsByAddress.get(address);
+    if (!grant) {
+      missing.push(`${address} (missing grant entry)`);
+      continue;
+    }
+    for (const provider of requiredProviders) {
+      if (!grant[provider] || grant[provider].active === false) {
+        missing.push(`${address} (missing/inactive ${provider})`);
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      'ACL is not seeded for current agent EOAs:\n' +
+      missing.map(item => `  - ${item}`).join('\n') +
+      `\nRun: yarn test:e2e:vnet seed-acl "${cloneDir}"`
+    );
+  }
+
+  console.log(`ACL check: OK (${agentEoas.length} agent EOA(s) covered)`);
+  return agentEoas;
+}
+
+async function getUndeliveredRequestsForWorkstream(workstreamId: string): Promise<string[]> {
+  const query = `
+    query PendingRequests($workstreamId: String!, $limit: Int!) {
+      requests(
+        where: { workstreamId: $workstreamId, delivered: false }
+        orderBy: "blockTimestamp"
+        orderDirection: "asc"
+        limit: $limit
+      ) {
+        items { id }
+      }
+    }
+  `;
+  const json = await postGraphql(LOCAL_PONDER_GRAPHQL_URL, query, {
+    workstreamId,
+    limit: 25,
+  });
+  const items = Array.isArray(json?.data?.requests?.items) ? json.data.requests.items : [];
+  return items
+    .map((item: any) => String(item?.id || '').trim())
+    .filter((id: string) => id.length > 0);
+}
+
+export interface HardPreflightOptions {
+  cloneDir?: string;
+  workstreamId?: string;
+  allowStaleRequests?: boolean;
+}
+
+export async function runHardPreflightGate(options: HardPreflightOptions): Promise<void> {
+  console.log('Running E2E hard preflight gate...');
+  assertNode22ViaNvm();
+
+  await assertGraphqlHealthy('Ponder (:42069)', LOCAL_PONDER_GRAPHQL_URL, '{ _meta { status } }');
+  await assertGraphqlHealthy('Control API (:4001)', LOCAL_CONTROL_GRAPHQL_URL, '{ __typename }');
+  await assertHttpHealthy('Gateway (:3001)', LOCAL_GATEWAY_HEALTH_URL);
+  await assertGithubTokenValid();
+
+  const fromEnv = await readEnvE2eVar('CLONE_DIR');
+  const cloneDirInput = options.cloneDir || process.env.CLONE_DIR || fromEnv;
+  if (!cloneDirInput) {
+    throw new Error('Clone directory is required. Pass --cwd or set CLONE_DIR in .env.e2e');
+  }
+  const cloneDir = resolve(cloneDirInput);
+  await assertAclSeededForAgents(cloneDir);
+
+  if (options.workstreamId && !options.allowStaleRequests) {
+    const pending = await getUndeliveredRequestsForWorkstream(options.workstreamId);
+    if (pending.length > 0) {
+      throw new Error(
+        `Workstream ${options.workstreamId} has ${pending.length} undelivered request(s): ${pending.join(', ')}\n` +
+        'Use a fresh workstream, clear stale requests, or pass --allow-stale for explicit override.'
+      );
+    }
+    console.log(`Stale request guard: OK (no undelivered requests in ${options.workstreamId})`);
+  }
+
+  console.log('Hard preflight gate: PASS');
 }
 
 // ─── Commands ────────────────────────────────────────────────────────────────
@@ -370,42 +602,8 @@ async function cmdSeedAcl(positional: string[], flags: Record<string, string>) {
     throw new Error('Usage: seed-acl <clone-dir>  OR  seed-acl --cwd <clone-dir>');
   }
 
-  const servicesDir = resolve(cloneDir, '.operate', 'services');
-  const aclPath = resolve(MONOREPO_ROOT, '.env.e2e.acl.json');
-
-  // Discover agent EOA addresses from service configs (authoritative source).
-  // Each service config has chain_configs[chain].chain_data.instances[0] = agent EOA.
-  // This matches how operate-profile.ts finds agent addresses.
-  const addresses: string[] = [];
-  let serviceDirs: string[];
-  try {
-    serviceDirs = (await fs.readdir(servicesDir, { withFileTypes: true }))
-      .filter(d => d.isDirectory())
-      .map(d => d.name);
-  } catch {
-    throw new Error(`Cannot read ${servicesDir} — run "yarn setup" first.`);
-  }
-
-  for (const dir of serviceDirs) {
-    try {
-      const configPath = resolve(servicesDir, dir, 'config.json');
-      const config = JSON.parse(await fs.readFile(configPath, 'utf-8'));
-      if (!config.chain_configs) continue;
-      for (const chainConfig of Object.values(config.chain_configs) as any[]) {
-        const instances = chainConfig?.chain_data?.instances;
-        if (instances && instances.length > 0) {
-          const addr = instances[0].toLowerCase();
-          if (!addresses.includes(addr)) {
-            addresses.push(addr.startsWith('0x') ? addr : '0x' + addr);
-          }
-        }
-      }
-    } catch { continue; }
-  }
-
-  if (addresses.length === 0) {
-    throw new Error(`No agent instances found in ${servicesDir} — run "yarn setup" first.`);
-  }
+  const aclPath = E2E_ACL_FILE;
+  const addresses = await discoverAgentEoas(cloneDir);
 
   // Load existing ACL or start fresh
   let acl: { grants: Record<string, any>; connections: Record<string, any> };
@@ -454,6 +652,18 @@ async function cmdSeedAcl(positional: string[], flags: Record<string, string>) {
     console.log(`  ${addr}`);
   }
   console.log(`File: ${aclPath}`);
+}
+
+async function cmdPreflight(positional: string[], flags: Record<string, string>) {
+  const cloneDir = positional[0] || flags['cwd'] || process.env.CLONE_DIR || await readEnvE2eVar('CLONE_DIR');
+  const workstreamId = flags['workstream'] || positional[1];
+  const allowStaleRequests = flags['allow-stale'] === 'true';
+
+  await runHardPreflightGate({
+    cloneDir,
+    workstreamId,
+    allowStaleRequests,
+  });
 }
 
 export async function cmdCleanup(flags: Record<string, string>): Promise<void> {
@@ -563,6 +773,8 @@ async function main() {
       return cmdSeedActivity(positional, flags);
     case 'seed-acl':
       return cmdSeedAcl(positional, flags);
+    case 'preflight':
+      return cmdPreflight(positional, flags);
     case 'cleanup':
       return cmdCleanup(flags);
     case 'status':
@@ -570,7 +782,7 @@ async function main() {
     default:
       console.error(`Unknown command: ${command || '(none)'}`);
       console.error('\nUsage: e2e-harness.ts <command> [options]');
-      console.error('Commands: create, fund, mine, time-warp, checkpoint, seed-activity, seed-acl, cleanup, status');
+      console.error('Commands: create, fund, mine, time-warp, checkpoint, seed-activity, seed-acl, preflight, cleanup, status');
       process.exit(1);
   }
 }

@@ -65,6 +65,11 @@ const single = flags['single'] === 'true';
 const healthcheck = flags['healthcheck'] === 'true';
 const image = flags['image'] || 'jinn-node:e2e';
 const workstream = flags['workstream'];
+const explicitEnvKeys = new Set(
+  envPairs
+    .map(pair => pair.split('=')[0]?.trim())
+    .filter(Boolean),
+);
 
 // Detect macOS — use host.docker.internal instead of localhost
 const ponderUrl = isMac
@@ -116,6 +121,14 @@ if (process.env.GITHUB_TOKEN) {
 // Workstream filter — restrict worker to requests in a specific workstream
 if (workstream) {
   dockerArgs.push('-e', `WORKSTREAM_FILTER=${workstream}`);
+}
+
+// macOS footgun guard:
+// If caller did not explicitly pass X402_GATEWAY_URL, force host.docker.internal.
+// This avoids localhost resolution failures inside Docker on macOS.
+if (isMac && !explicitEnvKeys.has('X402_GATEWAY_URL')) {
+  dockerArgs.push('-e', 'X402_GATEWAY_URL=http://host.docker.internal:3001');
+  console.log('Auto-set X402_GATEWAY_URL for macOS: http://host.docker.internal:3001');
 }
 
 // Additional env vars from --env flags (e.g., X402_GATEWAY_URL)

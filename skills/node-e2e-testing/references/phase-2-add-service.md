@@ -48,13 +48,14 @@ Expected: Shows **2 services** with distinct config IDs, service IDs, and safe a
 
 ### 4a. Assert mech delivery rates
 
-After the second service is fully deployed, assert that every deployed mech matches the ecosystem standard delivery rate:
+After the second service is fully deployed, assert that every deployed mech matches the ecosystem standard delivery rate.
+This is a **blocking gate** for Phase 3:
 
 ```bash
 cd "$CLONE_DIR" && yarn tsx scripts/mech/assert-delivery-rates.ts --expected 99
 ```
 
-Expected: The command exits `0` and reports `PASS` for every service mech.
+Expected: The command exits `0` and reports `PASS` for every service mech. Any mismatch blocks worker execution.
 
 ### 5. Record addresses
 

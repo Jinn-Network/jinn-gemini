@@ -139,7 +139,6 @@ These are NOT failures — do not mark FAIL for these:
 - **AEA deployment failed during setup**: Expected CLI version mismatch
 - **Web search returns no results**: Tool was *called* — that's what matters
 - **Chromium sandbox warning in Docker**: Expected with `GEMINI_SANDBOX=false`
-- **GitHub API 401 in `get_file_contents`**: Expected with dummy `GITHUB_TOKEN`. The tool call itself validates the operator credential passthrough — the downstream GitHub API response is not.
 - **Empty stats from `blog_get_stats`**: The Umami website may have no traffic data. An empty stats result is acceptable — the credential bridge flow (agent → signing proxy → ERC-8128 → bridge → ACL → Umami login → JWT → API call) is what's being validated.
 
 ## Cleanup

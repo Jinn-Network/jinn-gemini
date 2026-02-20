@@ -29,7 +29,7 @@ yarn test:e2e:parse-telemetry '/tmp/jinn-telemetry-rotation/telemetry-*.json' \
 
 Also check the Docker worker stdout captured during Phases 3/4 for tool evidence:
 - `google_web_search` — agent searched the web
-- `get_file_contents` — agent fetched from GitHub via operator GITHUB_TOKEN (GitHub API error acceptable)
+- `get_file_contents` — agent fetched from GitHub via operator GITHUB_TOKEN (401/403 is FAIL)
 - `create_artifact` — agent created an artifact with results
 - `create_measurement` — agent measured GOAL-001 invariant
 - `venture_query` — agent queried venture registry (Supabase credentials worked)
@@ -62,6 +62,7 @@ The parse-telemetry script outputs:
 - **Required tools not called**: Agent may have answered from memory without using tools. This is a genuine test failure — the blueprint invariants require tool use.
 - **venture_query not called**: Supabase credentials may not have reached the Docker container. Check the `--env` flags in the Phase 3 Docker command. If Supabase was unconfigured, `venture_query` uses a mock client and may have errored silently.
 - **dispatch_new_job not called**: Agent may have decided not to delegate. Check the blueprint invariant DELEGATE-001 — it should mandate delegation.
+- **`get_file_contents` shows 401/403**: FAIL. This indicates invalid GitHub operator credential; rerun preflight and verify token scope.
 - **Parse errors**: The telemetry file format is concatenated JSON objects. The parser handles this, but if the file is truncated (container killed mid-write), some events may be lost.
 
 ## CHECKPOINT: Phase 5 — Telemetry Verification
@@ -70,7 +71,7 @@ The parse-telemetry script outputs:
 - [PASS|FAIL] Telemetry file(s) found and parseable
 - [PASS|FAIL] `core_tools_enabled` is non-empty
 - [PASS|FAIL] `google_web_search` called at least once
-- [PASS|FAIL] `get_file_contents` called at least once (operator GITHUB_TOKEN)
+- [PASS|FAIL] `get_file_contents` called at least once and did not return 401/403/CREDENTIAL_ERROR
 - [PASS|FAIL] `create_artifact` called at least once
 - [PASS|FAIL] `create_measurement` called at least once
 - [PASS|FAIL] `venture_query` called at least once (credential-dependent)

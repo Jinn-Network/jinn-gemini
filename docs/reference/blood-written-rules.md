@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-18
+last_verified: 2026-02-20
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -490,6 +490,18 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Root Cause:** Git tags are mutable references in practice; existing `poetry.lock` resolved `v0.1.4` to an older commit (`a15aa3b2`) that still had non-fatal agent funding handling.
 **Solution:** Pin `olas-operate-middleware` with an immutable commit SHA (`rev = "3e8d8f38549d20e18226dfa511b684781703b4f2"`) and refresh lockfiles/install. Add preflight verification that installed `operate.cli` includes strict `fund_service_single_chain()` deploy behavior and does not swallow funding errors.
 **Prevention:** For security/critical runtime behavior, never pin git dependencies by tag alone. Use commit SHAs and enforce expected behavior in preflight checks.
+
+### 81. Docker E2E Telemetry Is Overwritten Between Runs
+**Issue:** Phase 5 parser fails to find expected telemetry from a prior worker run.
+**Root Cause:** `yarn test:e2e:docker-run` clears `/tmp/jinn-telemetry/telemetry-*.json` before each container start.
+**Solution:** Copy telemetry immediately after each run into phase-specific folders (for example `/tmp/jinn-telemetry-worker-<session>` and `/tmp/jinn-telemetry-rotation-<session>`) before starting the next docker run.
+**Prevention:** Never point Phase 5 at the shared `/tmp/jinn-telemetry` path after multiple runs; always parse from preserved phase-specific copies.
+
+### 82. E2E Dispatch Must Force Local Ponder/Control Endpoints
+**Issue:** E2E dispatch or context checks hit the wrong local port (for example `:42070`) and produce false failures.
+**Root Cause:** Env layering (`.env` + `.env.test` + `.env.e2e`) can leak non-E2E endpoint values into dispatch scripts.
+**Solution:** In E2E dispatch scripts, force `PONDER_GRAPHQL_URL=http://localhost:42069/graphql` and `CONTROL_API_URL=http://localhost:4001/graphql` before dispatch logic runs.
+**Prevention:** Add a hard preflight gate before dispatch and stale-request guard on the target workstream so each run validates the intended local stack and clean request state.
 
 ---
 

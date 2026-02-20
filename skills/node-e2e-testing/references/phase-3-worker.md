@@ -7,6 +7,21 @@ Dispatch a full-infrastructure test job and run the worker via Docker. The bluep
 
 ## Steps
 
+### 0. Hard preflight gate (blocking)
+
+Before dispatch, run the hard gate. It fails the phase immediately if any check fails:
+- Node 22 with `nvm`
+- Local stack health on `:42069`, `:4001`, `:3001`
+- `GITHUB_TOKEN` validity (`GET https://api.github.com/user` returns `200`)
+- ACL seeded for current agent EOAs
+- No pre-existing undelivered requests in the target workstream (unless `--allow-stale`)
+
+```bash
+yarn test:e2e:vnet preflight \
+  --cwd "$CLONE_DIR" \
+  --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac
+```
+
 ### 1. Dispatch job
 
 The input config (`configs/the-lamp.json`) provides venture-scoped fields like `umamiWebsiteId`. Blueprint validation at dispatch time will reject missing required fields — no separate pre-flight check is needed.
@@ -19,6 +34,8 @@ yarn test:e2e:dispatch \
   --cwd "$CLONE_DIR" \
   --input "$INPUT_CONFIG"
 ```
+
+`dispatch-workstream-job.ts` force-sets `PONDER_GRAPHQL_URL=http://localhost:42069/graphql` and `CONTROL_API_URL=http://localhost:4001/graphql` for E2E, so `.env.test` cannot redirect dispatch lookups to a non-local endpoint.
 
 Default blueprint (`blueprints/e2e-infrastructure-test.json`): Eight invariants exercising 8 tools across 5 credential types:
 - `google_web_search` — Gemini CLI OAuth (file mount)
@@ -110,7 +127,7 @@ If you see `providers: []`, the probe failed — document and continue. Common c
 - Look for: `Multi-service rotation active` with `activeService` and `reason`
 - Agent executes: tool calls visible in output:
   - `google_web_search` — agent searched the web
-  - `get_file_contents` — agent fetched from GitHub via operator GITHUB_TOKEN (API 401 with dummy token is acceptable)
+  - `get_file_contents` — agent fetched from GitHub via operator GITHUB_TOKEN (401/403 is FAIL)
   - `create_artifact` — agent created an artifact with results
   - `create_measurement` — agent measured GOAL-001 invariant
   - `venture_query` — agent queried the venture registry (may return empty list — that's OK, the tool call is what matters)
@@ -123,6 +140,7 @@ If you see `providers: []`, the probe failed — document and continue. Common c
 ## On Failure
 
 - **Dispatch fails**: Capture error. Check `OPERATE_PASSWORD`, mech address, RPC quota. Run `yarn test:e2e:vnet status`.
+- **Preflight stale-request guard fails**: Use a fresh workstream, clear pending requests, or rerun dispatch with explicit `--allow-stale`.
 - **Container crashes**: Capture Docker output. Run `docker logs jinn-e2e-worker`. Check if `.operate` mount is correct.
 - **Worker finds 0 requests**: Capture Ponder query output. Check `WORKSTREAM_FILTER` matches the dispatch `--workstream`. Check Ponder is indexing (background task output).
 - **Agent fails without tool calls**: Capture telemetry. Check `core_tools_enabled` in telemetry config event.
@@ -139,7 +157,7 @@ If you see `providers: []`, the probe failed — document and continue. Common c
 - [PASS|FAIL] Credential bridge probed at startup — non-empty providers in worker logs (if FAIL, document reason and continue)
 - [PASS|FAIL] Agent executed (non-empty output)
 - [PASS|FAIL] `google_web_search` succeeded (search results returned, not EXECUTION_ERROR)
-- [PASS|FAIL] `get_file_contents` succeeded (GitHub API response returned; 401/403 with dummy token is acceptable, EXECUTION_ERROR is not)
+- [PASS|FAIL] `get_file_contents` succeeded (usable GitHub API response; 401/403/EXECUTION_ERROR is FAIL)
 - [PASS|FAIL] `create_artifact` succeeded (IPFS CID returned in output)
 - [PASS|FAIL] `create_measurement` succeeded (measurement recorded, not EXECUTION_ERROR)
 - [PASS|FAIL] `venture_query` succeeded (query result returned — empty list is OK, EXECUTION_ERROR is FAIL)
