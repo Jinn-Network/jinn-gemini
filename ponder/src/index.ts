@@ -638,16 +638,15 @@ ponder.on(
         );
 
         // Fetch IPFS metadata to extract jobName, blueprint, etc.
-        // Known Jinn mechs: use short timeout (500ms) — we'll index without metadata on failure
-        // Unknown mechs: use full timeout — must succeed to verify networkId
-        const ipfsTimeout = isKnownJinnMech ? 500 : 1_500;
+        // Known Jinn mechs: proceed without metadata on failure (we know they're ours)
+        // Unknown mechs: must succeed to verify networkId
         let content: any = null;
         let selectedCandidate: CidCandidate | null = null;
         let lastIpfsError: any = null;
         try {
           for (const candidate of cidCandidates) {
             try {
-              content = await fetchRequestMetadata(candidate.cidBase32, ipfsTimeout);
+              content = await fetchRequestMetadata(candidate.cidBase32);
               selectedCandidate = candidate;
               break;
             } catch (candidateError: any) {
