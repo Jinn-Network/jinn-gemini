@@ -1407,12 +1407,18 @@ ponder.on(
             }
 
             if (Array.isArray(res.data.artifacts) && artifactsRepo) {
-              // Fetch the request to get its sourceRequestId for proper workstream attribution
+              // Fetch the request to get its sourceRequestId and venture/workstream/template IDs for proper attribution
               let requestSourceRequestId: string | undefined = undefined;
+              let requestVentureId: string | undefined = undefined;
+              let requestWorkstreamId: string | undefined = undefined;
+              let requestTemplateId: string | undefined = undefined;
               try {
                 const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
                 const maybeReq = (req as any) || {};
                 requestSourceRequestId = maybeReq && typeof maybeReq.sourceRequestId === 'string' ? maybeReq.sourceRequestId : undefined;
+                requestVentureId = maybeReq && typeof maybeReq.ventureId === 'string' ? maybeReq.ventureId : undefined;
+                requestWorkstreamId = maybeReq && typeof maybeReq.workstreamId === 'string' ? maybeReq.workstreamId : undefined;
+                requestTemplateId = maybeReq && typeof maybeReq.templateId === 'string' ? maybeReq.templateId : undefined;
               } catch { }
 
               for (let idx = 0; idx < res.data.artifacts.length; idx++) {
@@ -1427,7 +1433,16 @@ ponder.on(
                 if (!cid || !topic) continue;
                 // Use the request's sourceRequestId if it exists (for child jobs), otherwise use requestId itself (for root jobs)
                 const artifactSourceRequestId = requestSourceRequestId || requestId;
-                const artifactPayload: any = { requestId, name, cid, topic, contentPreview, type, tags, sourceRequestId: artifactSourceRequestId, blockTimestamp: event.block.timestamp };
+                // Derive workstreamId: use request's workstreamId if available, otherwise the sourceRequestId (root request = workstream)
+                const artifactWorkstreamId = requestWorkstreamId || artifactSourceRequestId;
+                const artifactPayload: any = {
+                  requestId, name, cid, topic, contentPreview, type, tags,
+                  sourceRequestId: artifactSourceRequestId,
+                  ventureId: requestVentureId,
+                  workstreamId: artifactWorkstreamId,
+                  templateId: requestTemplateId,
+                  blockTimestamp: event.block.timestamp,
+                };
                 // Prefer delivery sourceJobDefinitionId; fallback to request.sourceJobDefinitionId if not present
                 if (deliveryJobDefinitionId) {
                   artifactPayload.sourceJobDefinitionId = deliveryJobDefinitionId;
