@@ -349,7 +349,7 @@ export async function startStack(rpcUrl: string): Promise<StartStackResult> {
     ...envOverrides,
     PORT: GATEWAY_PORT,
     CREDENTIAL_ACL_PATH: GATEWAY_ACL_PATH,    // JSON backend for global grants
-    REQUIRE_JOB_CONTEXT: 'false',  // Skip job verification in E2E
+    CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY: E2E_ADMIN_PRIVATE_KEY,  // Signs claim-verification requests to Control API
     PONDER_GRAPHQL_URL: ponderGraphqlUrl,
     // x402 payment verification — production path via CDP facilitator
     GATEWAY_PAYMENT_ADDRESS: process.env.GATEWAY_PAYMENT_ADDRESS || '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
