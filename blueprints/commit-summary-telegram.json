@@ -18,12 +18,12 @@
                 "telegramChatId": {
                     "type": "string",
                     "description": "Telegram chat ID (e.g., '-1003682777125')",
-                    "envVar": "TELEGRAM_CHAT_ID"
+                    "envVar": "JINN_JOB_TELEGRAM_CHAT_ID"
                 },
                 "telegramTopicId": {
                     "type": "string",
                     "description": "Telegram topic/thread ID for supergroups",
-                    "envVar": "TELEGRAM_TOPIC_ID"
+                    "envVar": "JINN_JOB_TELEGRAM_TOPIC_ID"
                 }
             },
             "required": ["repoUrl", "timePeriod", "telegramChatId", "telegramTopicId"]
@@ -110,14 +110,14 @@
             "id": "GOAL-003",
             "type": "BOOLEAN",
             "condition": "You post the highlights to Telegram using telegram_send_message, including a link back to the workstream on explorer",
-            "assessment": "telegram_send_message was called. Message includes: project name, time period summary, key highlights formatted for readability, and a footer link to the workstream on explorer (use JINN_REQUEST_ID env var for the workstream ID)",
+            "assessment": "telegram_send_message was called. Message includes: project name, time period summary, key highlights formatted for readability, and a footer link to the workstream on explorer (use JINN_CTX_REQUEST_ID env var for the workstream ID)",
             "examples": {
                 "do": [
                     "Use HTML parse_mode for formatting: <b>bold</b>, <i>italic</i>",
                     "Include repo link for context",
                     "Keep message under 4096 chars",
                     "Structure with clear sections: header, highlights, footer",
-                    "Read JINN_REQUEST_ID from environment and include footer: '🔗 <a href=\"https://explorer.jinn.network/workstreams/{JINN_REQUEST_ID}\">View workstream</a>'"
+                    "Read JINN_CTX_REQUEST_ID from environment and include footer: '🔗 <a href=\"https://explorer.jinn.network/workstreams/{JINN_CTX_REQUEST_ID}\">View workstream</a>'"
                 ],
                 "dont": [
                     "Post unformatted text walls",

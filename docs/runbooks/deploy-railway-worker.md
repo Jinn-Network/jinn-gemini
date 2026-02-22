@@ -149,7 +149,7 @@ Set these in Railway Dashboard (Settings → Variables) or via CLI:
 
 ```bash
 # Service credentials
-railway variables set JINN_SERVICE_PRIVATE_KEY="0x..."
+railway variables set OPERATE_PASSWORD="your_keystore_password"
 railway variables set JINN_SERVICE_SAFE_ADDRESS="0x..."
 railway variables set JINN_SERVICE_MECH_ADDRESS="0x..."
 

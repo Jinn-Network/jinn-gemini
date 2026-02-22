@@ -11,7 +11,7 @@ Parse telemetry files from Phases 3 and/or 4 to verify the agent used the requir
 
 ```bash
 yarn test:e2e:parse-telemetry '/tmp/jinn-telemetry-worker/telemetry-*.json' \
-  --required-tools google_web_search,create_artifact,create_measurement,venture_query,dispatch_new_job
+  --required-tools google_web_search,get_file_contents,create_artifact,create_measurement,venture_query,dispatch_new_job,blog_get_stats
 ```
 
 The script exits 0 if all required tools were called, 1 otherwise.
@@ -29,11 +29,21 @@ yarn test:e2e:parse-telemetry '/tmp/jinn-telemetry-rotation/telemetry-*.json' \
 
 Also check the Docker worker stdout captured during Phases 3/4 for tool evidence:
 - `google_web_search` — agent searched the web
+- `get_file_contents` — agent fetched from GitHub via operator GITHUB_TOKEN (401/403 is FAIL)
 - `create_artifact` — agent created an artifact with results
 - `create_measurement` — agent measured GOAL-001 invariant
 - `venture_query` — agent queried venture registry (Supabase credentials worked)
 - `dispatch_new_job` — agent dispatched a child job (delegation worked)
+- `blog_get_stats` — agent fetched analytics via credential bridge (umami JWT)
 - `web_fetch` — agent fetched a URL
+
+## Important: MCP Success vs Business Success
+
+Telemetry `success=true` reflects MCP transport success, not business-level success. A tool that returns `{"meta":{"ok":false,"code":"EXECUTION_ERROR"}}` will still show `success=true` in telemetry because the MCP call itself completed.
+
+The `parse-telemetry` script extracts `functionResponse` payloads from `request_text` attributes and cross-references them with tool calls. When it reports `[BIZ_FAIL:EXECUTION_ERROR]`, the tool was called but returned an error payload. This is a **FAIL** per Phase 3 grading rules — the tool being called is necessary but not sufficient.
+
+If you see `WARNING: No request_text found in telemetry`, business-level validation is unavailable and you must fall back to checking Docker output logs manually.
 
 ## Expected Output
 
@@ -52,6 +62,7 @@ The parse-telemetry script outputs:
 - **Required tools not called**: Agent may have answered from memory without using tools. This is a genuine test failure — the blueprint invariants require tool use.
 - **venture_query not called**: Supabase credentials may not have reached the Docker container. Check the `--env` flags in the Phase 3 Docker command. If Supabase was unconfigured, `venture_query` uses a mock client and may have errored silently.
 - **dispatch_new_job not called**: Agent may have decided not to delegate. Check the blueprint invariant DELEGATE-001 — it should mandate delegation.
+- **`get_file_contents` shows 401/403**: FAIL. This indicates invalid GitHub operator credential; rerun preflight and verify token scope.
 - **Parse errors**: The telemetry file format is concatenated JSON objects. The parser handles this, but if the file is truncated (container killed mid-write), some events may be lost.
 
 ## CHECKPOINT: Phase 5 — Telemetry Verification
@@ -60,11 +71,14 @@ The parse-telemetry script outputs:
 - [PASS|FAIL] Telemetry file(s) found and parseable
 - [PASS|FAIL] `core_tools_enabled` is non-empty
 - [PASS|FAIL] `google_web_search` called at least once
+- [PASS|FAIL] `get_file_contents` called at least once and did not return 401/403/CREDENTIAL_ERROR
 - [PASS|FAIL] `create_artifact` called at least once
 - [PASS|FAIL] `create_measurement` called at least once
 - [PASS|FAIL] `venture_query` called at least once (credential-dependent)
 - [PASS|FAIL] `dispatch_new_job` called at least once (delegation)
+- [PASS|FAIL] `blog_get_stats` called at least once (credential bridge → umami)
 - [PASS|FAIL] Token usage reported (input + output > 0)
+- [PASS|FAIL] No required tools show `[BIZ_FAIL]` (business-level failure = FAIL even if MCP success)
 
 ### Phase 4 (Child — Rotation Pickup)
 - [PASS|FAIL] Telemetry file(s) found and parseable

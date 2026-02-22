@@ -38,6 +38,7 @@ import { resolveGitUrl } from './shared/git-url.js';
 import { validateInvariantsStrict } from 'jinn-node/worker/prompt/invariant-validator.js';
 import { extractToolPolicyFromBlueprint } from 'jinn-node/shared/template-tools.js';
 import { getRandomStakedMech } from 'jinn-node/worker/filters/stakingFilter.js';
+import { assertValidJinnJobEnvKey } from 'jinn-node/shared/job-env.js';
 
 interface GitHubRepoResponse {
   id: number;
@@ -405,10 +406,12 @@ async function main() {
       additionalContextOverrides.env = {};
       for (const pair of argv.env as string[]) {
         const [key, ...rest] = String(pair).split('=');
-        if (key && rest.length > 0) {
-          additionalContextOverrides.env[key] = rest.join('=');
-          scriptLogger.debug({ key }, 'Parsed environment variable from --env flag');
+        if (!key || rest.length === 0) {
+          throw new Error(`Invalid --env value "${pair}". Expected format: JINN_JOB_KEY=value`);
         }
+        assertValidJinnJobEnvKey(key, '--env');
+        additionalContextOverrides.env[key] = rest.join('=');
+        scriptLogger.debug({ key }, 'Parsed environment variable from --env flag');
       }
     }
 
@@ -426,18 +429,9 @@ async function main() {
       for (const [field, spec] of Object.entries(inputSchema.properties)) {
         const fieldSpec = spec as { envVar?: string };
         if (fieldSpec.envVar && inputConfig[field] !== undefined) {
+          assertValidJinnJobEnvKey(fieldSpec.envVar, `inputSchema.properties.${field}.envVar`);
           extractedEnv[fieldSpec.envVar] = String(inputConfig[field]);
           scriptLogger.debug({ field, envVar: fieldSpec.envVar }, 'Extracted env var from inputConfig');
-        }
-      }
-      // Merge secrets from process.env for envVar fields not provided in inputConfig.
-      // This keeps secrets (tokens, passwords) out of config files while still
-      // passing them through to the agent environment.
-      const secretEnvVars = ['TELEGRAM_BOT_TOKEN', 'UMAMI_USERNAME', 'UMAMI_PASSWORD'];
-      for (const envKey of secretEnvVars) {
-        if (!extractedEnv[envKey] && process.env[envKey]) {
-          extractedEnv[envKey] = process.env[envKey]!;
-          scriptLogger.debug({ envVar: envKey }, 'Merged secret from process.env');
         }
       }
 
@@ -548,5 +542,4 @@ async function main() {
 }
 
 main();
-
 

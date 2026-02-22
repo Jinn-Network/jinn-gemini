@@ -4,6 +4,7 @@
 // Deployed: venture watcher claim gate support
 // Deploy trigger: 2026-02-15T10:32
 import { createYoga, createSchema } from 'graphql-yoga';
+import { GraphQLError } from 'graphql';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'cross-fetch';
 import dotenv from 'dotenv';
@@ -24,7 +25,7 @@ type Context = {
   supabase: ReturnType<typeof createClient>;
   ponderUrl: string;
   req: Request;
-  verifiedAddress: string;
+  verifiedAddress: string | undefined;
 };
 
 const typeDefs = /* GraphQL */ `
@@ -235,6 +236,7 @@ const typeDefs = /* GraphQL */ `
     _health: String!
     jobTemplates(status: String, safety_tier: String, limit: Int): [JobTemplate!]!
     jobTemplate(id: String!): JobTemplate
+    getRequestClaim(requestId: String!): RequestClaim
 
     # Wishlist Queries
     wishes(status: String, category: String, orderBy: String, limit: Int, offset: Int): [Wish!]!
@@ -298,6 +300,11 @@ async function assertRequestExists(ctx: Context, requestId: string) {
 }
 
 function getWorkerAddress(ctx: Context): string {
+  if (!ctx.verifiedAddress) {
+    throw new GraphQLError('Authentication required: no verified worker address', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
   return ctx.verifiedAddress;
 }
 
@@ -357,6 +364,19 @@ const resolvers = {
         output_spec: JSON.stringify(data.output_spec || {}),
         x402_price: String(data.x402_price || 0),
       };
+    },
+
+    getRequestClaim: async (_: any, args: { requestId: string }, ctx: Context) => {
+      const { data, error } = await ctx.supabase
+        .from('onchain_request_claims')
+        .select('*')
+        .eq('request_id', args.requestId)
+        .order('claimed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      return data; // Returns null if not found
     },
 
     // Wishlist Queries
@@ -1486,24 +1506,19 @@ const yoga = createYoga<Context>({
       };
     }
 
-    // Legacy fallback: accept X-Worker-Address header
+    // Legacy fallback removed — bare X-Worker-Address is no longer accepted.
+    // Mutations that call getWorkerAddress() will throw UNAUTHENTICATED if verifiedAddress is undefined.
     const workerAddress = request.headers.get('x-worker-address');
     if (workerAddress) {
-      logger.debug({ workerAddress }, 'Legacy auth: using X-Worker-Address header');
-      return {
-        supabase,
-        ponderUrl: PONDER_GRAPHQL_URL,
-        req: request,
-        verifiedAddress: workerAddress,
-      };
+      logger.warn({ workerAddress }, 'Rejected legacy auth: bare X-Worker-Address without ERC-8128 signature');
     }
 
-    // No auth at all — allow introspection/health queries with no verified address
+    // No auth — only introspection/health queries work without a verified address
     return {
       supabase,
       ponderUrl: PONDER_GRAPHQL_URL,
       req: request,
-      verifiedAddress: undefined as any,
+      verifiedAddress: undefined,
     };
   },
   graphqlEndpoint: '/graphql',
@@ -1575,4 +1590,3 @@ server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`Jinn Control API running on http://localhost:${PORT}/graphql`);
 });
-

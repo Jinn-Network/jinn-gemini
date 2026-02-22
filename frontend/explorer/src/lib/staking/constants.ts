@@ -86,4 +86,11 @@ export const stakingAbi = [
     outputs: [{ name: '', type: 'uint8' }],
     stateMutability: 'view',
   },
+  {
+    type: 'function',
+    name: 'maxNumInactivityPeriods',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
 ] as const

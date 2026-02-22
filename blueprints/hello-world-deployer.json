@@ -19,7 +19,7 @@
                 "railwayProjectId": {
                     "type": "string",
                     "description": "Railway project ID where the service will be created",
-                    "envVar": "BLOG_RAILWAY_PROJECT_ID"
+                    "envVar": "JINN_JOB_BLOG_RAILWAY_PROJECT_ID"
                 }
             },
             "required": [

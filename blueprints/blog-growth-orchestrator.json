@@ -5,7 +5,7 @@
       "umamiWebsiteId": {
         "type": "string",
         "description": "Umami analytics website ID",
-        "envVar": "UMAMI_WEBSITE_ID"
+        "envVar": "JINN_JOB_UMAMI_WEBSITE_ID"
       }
     }
   },

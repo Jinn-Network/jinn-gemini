@@ -8,8 +8,8 @@ async function testAllMCPWriteTools() {
   console.log('Testing all MCP write tools with Control API integration...');
   
   // Set up context
-  process.env.JINN_REQUEST_ID = '0x273609f62f0510689d41f373426fb08c76b4b9242efe44bc1815e6e5eef54c80';
-  process.env.JINN_MECH_ADDRESS = '0x1234567890123456789012345678901234567890';
+  process.env.JINN_CTX_REQUEST_ID = '0x273609f62f0510689d41f373426fb08c76b4b9242efe44bc1815e6e5eef54c80';
+  process.env.JINN_CTX_MECH_ADDRESS = '0x1234567890123456789012345678901234567890';
   
   console.log('\n=== Test 1: create_record for onchain_job_reports ===');
   const result1 = await createRecord({

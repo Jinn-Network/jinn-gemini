@@ -39,7 +39,7 @@ import {
   formatWei,
 } from "./pricing.js";
 import { deepSubstitute, buildBlueprintFromTemplate as sharedBuildBlueprint } from '../../scripts/shared/template-substitution.js';
-import { buildAnnotatedTools, parseAnnotatedTools } from '../../jinn-node/src/shared/template-tools.js';
+import { buildAnnotatedTools, parseAnnotatedTools } from '../../jinn-node/dist/shared/template-tools.js';
 import { buildDiscoveryItems, buildWellKnownManifest } from './discovery.js';
 
 // Inlined from gemini-agent/shared/code_metadata.ts (Railway deploys this service standalone)
@@ -232,6 +232,32 @@ interface DispatchOptions {
   cyclic?: boolean;
 }
 
+const JINN_JOB_ENV_KEY_PATTERN = /^JINN_JOB_[A-Z0-9_]+$/;
+
+function assertValidJobPayloadEnvKey(key: string, source: string): void {
+  if (!JINN_JOB_ENV_KEY_PATTERN.test(key)) {
+    throw new Error(
+      `${source} contains invalid env key "${key}". Only JINN_JOB_* keys are allowed.`,
+    );
+  }
+}
+
+function assertValidJobPayloadEnvMap(rawEnv: unknown, source: string): Record<string, string> {
+  if (!rawEnv || typeof rawEnv !== 'object' || Array.isArray(rawEnv)) {
+    throw new Error(`${source} must be an object map of JINN_JOB_* keys to string values.`);
+  }
+
+  const validated: Record<string, string> = {};
+  for (const [key, value] of Object.entries(rawEnv as Record<string, unknown>)) {
+    assertValidJobPayloadEnvKey(key, source);
+    if (typeof value !== 'string') {
+      throw new Error(`${source} has non-string value for key "${key}".`);
+    }
+    validated[key] = value;
+  }
+  return validated;
+}
+
 async function dispatchAgent(
   agent: AgentTemplate,
   rawInput: Record<string, any>,
@@ -291,14 +317,18 @@ async function dispatchAgent(
     for (const [field, spec] of Object.entries(inputSchema.properties)) {
       const fieldSpec = spec as { envVar?: string };
       if (fieldSpec.envVar && enrichedInput[field] !== undefined) {
+        assertValidJobPayloadEnvKey(fieldSpec.envVar, `inputSchema.properties.${field}.envVar`);
         extractedEnv[fieldSpec.envVar] = String(enrichedInput[field]);
       }
     }
   }
-  if (Object.keys(extractedEnv).length > 0 || (enrichedInput.env && typeof enrichedInput.env === 'object')) {
+  const explicitEnv = enrichedInput.env !== undefined
+    ? assertValidJobPayloadEnvMap(enrichedInput.env, 'input.env')
+    : undefined;
+  if (Object.keys(extractedEnv).length > 0 || explicitEnv) {
     additionalContext.env = {
       ...extractedEnv,
-      ...(enrichedInput.env && typeof enrichedInput.env === 'object' ? enrichedInput.env : {}),
+      ...(explicitEnv || {}),
     };
   }
 
@@ -348,11 +378,21 @@ async function dispatchAgent(
 }
 
 // Health check
-app.get("/health", (c) => c.json({
-  status: "ok",
-  service: "x402-gateway",
-  timestamp: new Date().toISOString(),
-}));
+app.get("/health", (c) => {
+  const providers: Record<string, string> = {};
+  if (env.UMAMI_HOST && env.UMAMI_USERNAME && env.UMAMI_PASSWORD) providers.umami = 'static';
+  if (env.SUPABASE_SERVICE_ROLE_KEY) providers.supabase = 'static';
+  if (env.TELEGRAM_BOT_TOKEN) providers.telegram = 'static';
+  if (env.CIVITAI_API_TOKEN || env.CIVITAI_API_KEY) providers.civitai = 'static';
+  if (env.OPENAI_API_KEY) providers.openai = 'static';
+
+  return c.json({
+    status: "ok",
+    service: "x402-gateway",
+    timestamp: new Date().toISOString(),
+    providers,
+  });
+});
 
 // .well-known/x402 — Discovery endpoint (supports both x402scan and Bazaar formats)
 app.get("/.well-known/x402", async (c) => {
@@ -863,8 +903,498 @@ function formatPrice(weiString: string | number | bigint): string {
   return `${wei} wei`;
 }
 
+function getProviderStaticConfig(provider: string): Record<string, string> {
+  switch (provider) {
+    case 'supabase':
+      return env.SUPABASE_URL ? { SUPABASE_URL: env.SUPABASE_URL } : {};
+    case 'umami':
+      return env.UMAMI_HOST ? { UMAMI_HOST: env.UMAMI_HOST.replace(/\/$/, '') } : {};
+    default:
+      return {};
+  }
+}
+
 const summarizeOutputSpec = summarizeSpec;
 const buildBlueprintFromTemplate = sharedBuildBlueprint;
+
+// ============================================================
+// Admin Routes: Operator Management, Policies, Venture Credentials
+// ============================================================
+app.route('/admin', adminApp);
+
+// ============================================================
+// Credential Bridge: Crypto Identity → Web2 OAuth
+// ============================================================
+
+import { getGrant, listGrants } from './credentials/acl.js';
+import { getNangoAccessToken } from './credentials/nango-client.js';
+import { getStaticCredential } from './credentials/static-providers.js';
+import { getCredentialNonceStore, getRedis } from './credentials/redis.js';
+import { verifyPayment, type PaymentErrorCode } from './credentials/x402-verify.js';
+import { checkRateLimit, getRateLimitHeaders } from './credentials/rate-limit.js';
+import { logAudit, getClientIp, getUserAgent } from './credentials/audit.js';
+import { verifyJobClaim } from './credentials/job-verify.js';
+import type { CredentialRequest, CredentialResponse, CredentialError } from './credentials/types.js';
+import { adminApp } from './credentials/admin-routes.js';
+import { checkVentureCredentialAccess, discoverVentureProviders } from './credentials/venture-resolver.js';
+import { verifyRequestWithErc8128 } from '../../jinn-node/dist/http/erc8128.js';
+
+const credentialNonceStore = getCredentialNonceStore();
+
+async function parseCredentialBody(request: Request): Promise<CredentialRequest> {
+  const raw = await request.text();
+  if (!raw.trim()) {
+    return {};
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('invalid_json');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('invalid_json');
+  }
+
+  return parsed as CredentialRequest;
+}
+
+async function authenticateCredentialRequest(request: Request): Promise<
+  | { ok: true; address: string }
+  | { ok: false; reason: string; detail?: string }
+> {
+  const verifyResult = await verifyRequestWithErc8128({
+    request,
+    nonceStore: credentialNonceStore,
+    policy: {
+      clockSkewSec: 5,
+      maxValiditySec: 300,
+    },
+  });
+
+  if (!verifyResult.ok) {
+    return {
+      ok: false,
+      reason: verifyResult.reason,
+      detail: verifyResult.detail,
+    };
+  }
+
+  return {
+    ok: true,
+    address: verifyResult.address.toLowerCase(),
+  };
+}
+
+/**
+ * POST /credentials/capabilities
+ *
+ * Lightweight endpoint for workers to discover which credential providers
+ * they have ACL grants for. Uses the same signature scheme as /credentials/:provider
+ * but skips rate limiting, job context, and payment checks.
+ *
+ * Body: { requestId?: string }
+ *   - If requestId provided: returns union of global grants + venture-scoped providers
+ *     (requires active claim for the requestId)
+ *   - If no requestId: returns global grants only (startup probe)
+ *
+ * Returns { providers: ["github", "telegram", ...] }
+ */
+app.post("/credentials/capabilities", async (c) => {
+  const authResult = await authenticateCredentialRequest(c.req.raw.clone());
+  if (!authResult.ok) {
+    return c.json({
+      error: "Invalid ERC-8128 signature",
+      reason: authResult.reason,
+      detail: authResult.detail,
+    }, 401);
+  }
+
+  // Parse optional requestId from body
+  let requestId: string | undefined;
+  try {
+    const body = await parseCredentialBody(c.req.raw);
+    requestId = body.requestId;
+  } catch {
+    // Empty body is fine — treated as startup probe (no requestId)
+  }
+
+  try {
+    // Global grants (always returned)
+    const grants = await listGrants(authResult.address);
+    const globalProviders = new Set(Object.keys(grants));
+
+    // Venture-scoped providers (only when requestId provided)
+    if (requestId) {
+      const { accessible, blockedFromGlobal } = await discoverVentureProviders({
+        requestId,
+        operatorAddress: authResult.address,
+      });
+      for (const p of accessible) {
+        globalProviders.add(p);
+      }
+      // venture_only providers that denied this operator must suppress global fallback
+      for (const p of blockedFromGlobal) {
+        globalProviders.delete(p);
+      }
+    }
+
+    return c.json({ providers: [...globalProviders] });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[capabilities] ACL query failed for ${authResult.address}: ${message}`);
+    return c.json({ error: "Failed to query capabilities" }, 500);
+  }
+});
+
+/**
+ * POST /credentials/:provider
+ *
+ * Requester signs the HTTP request with ERC-8128.
+ * Gateway verifies signer EOA, enforces optional job claim ownership
+ * against Control API, checks ACL, optionally verifies x402 payment,
+ * then returns a fresh OAuth token from Nango.
+ */
+app.post("/credentials/:provider", async (c) => {
+  const provider = c.req.param("provider");
+
+  // Extract audit context early
+  const clientIp = getClientIp(c);
+  const userAgent = getUserAgent(c);
+  const authResult = await authenticateCredentialRequest(c.req.raw.clone());
+
+  if (!authResult.ok) {
+    logAudit({
+      address: 'unknown',
+      provider,
+      action: 'auth_failed',
+      ip: clientIp,
+      userAgent,
+      metadata: {
+        reason: 'erc8128_invalid',
+        verifyReason: authResult.reason,
+        verifyDetail: authResult.detail,
+      },
+    });
+    return c.json(
+      { error: "Invalid ERC-8128 signature", code: "INVALID_SIGNATURE" } satisfies CredentialError,
+      401,
+    );
+  }
+  const requesterAddress = authResult.address;
+
+  // Parse request body
+  let body: CredentialRequest;
+  try {
+    body = await parseCredentialBody(c.req.raw);
+  } catch {
+    logAudit({ address: requesterAddress, provider, action: 'auth_failed', ip: clientIp, userAgent, metadata: { reason: 'invalid_json' } });
+    return c.json({ error: "Invalid JSON body", code: "INVALID_SIGNATURE" } satisfies CredentialError, 400);
+  }
+  const requestId = body.requestId;
+
+  // Rate limit check (before ACL/payment to fail fast)
+  const rateLimit = await checkRateLimit(requesterAddress, provider);
+  if (!rateLimit.allowed) {
+    logAudit({ address: requesterAddress, provider, action: 'rate_limited', ip: clientIp, userAgent, requestId });
+    return c.json(
+      { error: 'Rate limit exceeded. Try again later.', code: 'RATE_LIMITED' } satisfies CredentialError,
+      { status: 429, headers: getRateLimitHeaders(rateLimit) }
+    );
+  }
+
+  // Read and validate idempotency key early, but enforce AFTER auth/payment (see below)
+  const rawIdempotencyKey = c.req.header('Idempotency-Key');
+  let idempotencyKey: string | undefined;
+  if (rawIdempotencyKey) {
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(rawIdempotencyKey)) {
+      logAudit({ address: requesterAddress, provider, action: 'invalid_idempotency_key', ip: clientIp, userAgent, requestId });
+      return c.json(
+        { error: 'Invalid Idempotency-Key format. Must be 1-64 alphanumeric, hyphen, or underscore characters.', code: 'INVALID_REQUEST' } satisfies CredentialError,
+        { status: 400, headers: getRateLimitHeaders(rateLimit) }
+      );
+    }
+    idempotencyKey = rawIdempotencyKey;
+  }
+
+  // Job context verification (optional based on REQUIRE_JOB_CONTEXT env)
+  const requireJobContext = process.env.REQUIRE_JOB_CONTEXT !== 'false';
+  if (requireJobContext) {
+    if (!body.requestId) {
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'auth_failed',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState: 'invalid',
+        verificationError: 'Job context (requestId) required',
+        metadata: { reason: 'missing_job_context' },
+      });
+      return c.json(
+        { error: 'Job context (requestId) required', code: 'JOB_NOT_ACTIVE' } satisfies CredentialError,
+        { status: 403, headers: getRateLimitHeaders(rateLimit) }
+      );
+    }
+
+    const jobValid = await verifyJobClaim(body.requestId, requesterAddress);
+    if (jobValid.state !== 'valid') {
+      const denyStatus = jobValid.state === 'unavailable' ? 503 : 403;
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'auth_failed',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState: jobValid.state,
+        verificationError: jobValid.error,
+        verificationDetail: jobValid.detail,
+        metadata: {
+          reason: jobValid.state === 'unavailable' ? 'job_verification_unavailable' : 'job_not_active',
+          requestId: body.requestId,
+          detail: jobValid.error,
+          verifyDetail: jobValid.detail,
+        },
+      });
+      const errorCode = jobValid.state === 'unavailable' ? 'JOB_VERIFICATION_UNAVAILABLE' : 'JOB_CLAIM_MISMATCH';
+      return c.json(
+        { error: jobValid.error || 'Job verification failed', code: errorCode } satisfies CredentialError,
+        { status: denyStatus, headers: getRateLimitHeaders(rateLimit) }
+      );
+    }
+  }
+  const verificationState = requireJobContext ? 'valid' : 'not_required';
+
+  // Venture-scoped credential check (if requestId available)
+  // This runs before global ACL to respect venture owner sovereignty.
+  let ventureNangoConnectionId: string | null = null;
+  if (requestId) {
+    const ventureAccess = await checkVentureCredentialAccess({
+      requestId,
+      provider,
+      operatorAddress: requesterAddress,
+    });
+
+    if (ventureAccess.ventureAccessGranted && ventureAccess.ventureCredential?.nangoConnectionId) {
+      // Venture-scoped access granted — use venture's Nango connection
+      ventureNangoConnectionId = ventureAccess.ventureCredential.nangoConnectionId;
+    } else if (ventureAccess.blockGlobalFallback && !ventureAccess.ventureAccessGranted) {
+      // Venture has this provider registered with venture_only mode but denied access
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'not_authorized',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState,
+        metadata: { reason: `venture_denied:${ventureAccess.reason}` },
+      });
+      return c.json({ error: `Not authorized for ${provider} in this venture`, code: "NOT_AUTHORIZED" } satisfies CredentialError, 403);
+    }
+    // Otherwise: no venture credential for this provider, or union_with_global — fall through to global ACL
+  }
+
+  // Check global ACL (skipped if venture-scoped access was already granted)
+  const grant = ventureNangoConnectionId
+    ? { nangoConnectionId: ventureNangoConnectionId, pricePerAccess: '0', expiresAt: null, active: true }
+    : await getGrant(requesterAddress, provider);
+
+  if (!grant) {
+    logAudit({
+      address: requesterAddress,
+      provider,
+      action: 'not_authorized',
+      ip: clientIp,
+      userAgent,
+      requestId,
+      verificationState,
+    });
+    return c.json({ error: `No active grant for ${provider}`, code: "NOT_AUTHORIZED" } satisfies CredentialError, 403);
+  }
+  const paymentAudit: {
+    paymentRequiredAmount?: string;
+    paymentPaidAmount?: string;
+    paymentPayer?: string;
+    paymentNetwork?: string;
+  } = {};
+
+  // Check payment if required
+  const price = BigInt(grant.pricePerAccess || '0');
+  if (price > 0n) {
+    const paymentHeader = c.req.header("X-Payment") || c.req.header("X-402-Payment");
+    const gatewayAddress = process.env.GATEWAY_PAYMENT_ADDRESS as `0x${string}`;
+    const x402Network = process.env.X402_NETWORK || 'base';
+    paymentAudit.paymentRequiredAmount = grant.pricePerAccess;
+    paymentAudit.paymentNetwork = x402Network;
+
+    if (!gatewayAddress) {
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'payment_required',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState,
+        ...paymentAudit,
+        metadata: { reason: 'server_misconfigured' },
+      });
+      return c.json({ error: "Server misconfigured: GATEWAY_PAYMENT_ADDRESS not set", code: "PAYMENT_REQUIRED" } satisfies CredentialError, 500);
+    }
+
+    if (!paymentHeader) {
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'payment_required',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState,
+        ...paymentAudit,
+        metadata: { amount: grant.pricePerAccess },
+      });
+      return c.json({
+        error: `Payment required: ${grant.pricePerAccess} (USDC atomic units)`,
+        code: "PAYMENT_REQUIRED"
+      } satisfies CredentialError, 402);
+    }
+
+    const result = await verifyPayment({
+      paymentHeader,
+      requiredAmount: grant.pricePerAccess,
+      resource: `/credentials/${provider}`,
+      payTo: gatewayAddress,
+      network: x402Network,
+    });
+
+    if (!result.valid) {
+      const status = result.error?.code === 'FACILITATOR_UNAVAILABLE' ? 503 : 402;
+      logAudit({
+        address: requesterAddress,
+        provider,
+        action: 'payment_invalid',
+        ip: clientIp,
+        userAgent,
+        requestId,
+        verificationState,
+        ...paymentAudit,
+        paymentErrorCode: result.error?.code,
+        paymentErrorMessage: result.error?.message,
+        metadata: { errorCode: result.error?.code, errorMessage: result.error?.message },
+      });
+      return c.json({
+        error: result.error?.message || 'Payment verification failed',
+        code: "PAYMENT_INVALID",
+        paymentError: result.error?.code,
+      } satisfies CredentialError & { paymentError?: PaymentErrorCode }, status);
+    }
+
+    paymentAudit.paymentPaidAmount = grant.pricePerAccess;
+    paymentAudit.paymentPayer = result.payer;
+    console.log(`[x402] Payment verified: ${result.payer} → ${provider}`);
+  }
+
+  // Idempotency — AFTER auth/payment so cached responses can't bypass security.
+  // Key scoped to (address, provider, clientKey) to prevent cross-caller and cross-provider leakage.
+  // Atomic SET NX prevents concurrent double-issuance.
+  const idempotencyCacheKey = idempotencyKey
+    ? `idempotency:${requesterAddress.toLowerCase()}:${provider}:${idempotencyKey}`
+    : null;
+
+  if (idempotencyCacheKey) {
+    const redis = getRedis();
+    if (redis) {
+      // Atomically claim this key. Returns 'OK' if we got the lock, null if already taken.
+      // Lock TTL (60s) exceeds Nango fetch timeout (15s) + overhead, preventing expiry during processing
+      const claimed = await redis.set(idempotencyCacheKey, 'processing', 'EX', 60, 'NX');
+      if (claimed !== 'OK') {
+        // Key exists — either another request is processing or a result is cached
+        const cached = await redis.get(idempotencyCacheKey);
+        if (cached && cached !== 'processing') {
+          try {
+            const { status, body: cachedBody } = JSON.parse(cached);
+            return c.json(cachedBody, { status, headers: getRateLimitHeaders(rateLimit) });
+          } catch { /* corrupted entry — fall through to 409 */ }
+        }
+        // Another request is in-flight with this key — reject to prevent double-issuance
+        return c.json(
+          { error: 'Duplicate request in progress', code: 'DUPLICATE_REQUEST' } satisfies CredentialError,
+          { status: 409, headers: getRateLimitHeaders(rateLimit) }
+        );
+      }
+    }
+  }
+
+  // Fetch token: check static providers first, then fall back to Nango
+  let tokenSource: 'static' | 'nango' = 'nango';
+  try {
+    const staticToken = await getStaticCredential(provider);
+    let token: { access_token: string; expires_in: number };
+    if (staticToken) {
+      token = staticToken;
+      tokenSource = 'static';
+    } else {
+      token = await getNangoAccessToken(grant.nangoConnectionId, provider);
+      tokenSource = 'nango';
+    }
+    const response: CredentialResponse = {
+      access_token: token.access_token,
+      expires_in: token.expires_in,
+      provider,
+      config: getProviderStaticConfig(provider),
+    };
+    logAudit({
+      address: requesterAddress,
+      provider,
+      action: 'token_issued',
+      ip: clientIp,
+      userAgent,
+      requestId,
+      verificationState,
+      ...paymentAudit,
+      metadata: { source: tokenSource },
+    });
+    // Overwrite "processing" marker with actual response (longer TTL)
+    if (idempotencyCacheKey) {
+      const redis = getRedis();
+      if (redis) {
+        redis.set(idempotencyCacheKey, JSON.stringify({ status: 200, body: response }), 'EX', 300).catch(() => {});
+      }
+    }
+    return c.json(response, { headers: getRateLimitHeaders(rateLimit) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const errorCode = tokenSource === 'static' ? 'STATIC_PROVIDER_ERROR' : 'NANGO_ERROR';
+    logAudit({
+      address: requesterAddress,
+      provider,
+      action: tokenSource === 'static' ? 'static_provider_error' : 'nango_error',
+      ip: clientIp,
+      userAgent,
+      requestId,
+      verificationState,
+      ...paymentAudit,
+      metadata: { error: message, source: tokenSource },
+    });
+    // Clear "processing" marker on failure so retries aren't blocked
+    if (idempotencyCacheKey) {
+      const redis = getRedis();
+      if (redis) {
+        redis.del(idempotencyCacheKey).catch(() => {});
+      }
+    }
+    return c.json(
+      { error: `Credential fetch error (${tokenSource}): ${message}`, code: errorCode } satisfies CredentialError,
+      { status: 502, headers: getRateLimitHeaders(rateLimit) }
+    );
+  }
+});
 
 // Start server
 const port = parseInt(env.PORT || "3001", 10);

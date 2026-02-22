@@ -2,7 +2,7 @@
 title: Blood Written Rules
 purpose: reference
 scope: [worker, gemini-agent, deployment]
-last_verified: 2026-02-19
+last_verified: 2026-02-20
 related_code:
   - worker/mech_worker.ts
   - gemini-agent/agent.ts
@@ -478,6 +478,36 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Root Cause:** The staking page renders 3 service cards, each making 2 API calls (epoch + service-status), each creating a **fresh** `createPublicClient` instance making 2 RPC calls each. That's 12 parallel RPC calls to the rate-limited public `mainnet.base.org` endpoint, which throttles after ~4-6 calls. The subgraph data (epoch timing, staking state) loaded fine, but the RPC calls for `mapRequestCounts` and `calculateStakingReward` failed silently, falling through to the "unavailable" state.
 **Solution:** (1) Created a singleton RPC client module (`lib/staking/rpc.ts`) with viem's `batch: { multicall: true }` — this batches concurrent `readContract` calls into a single `eth_call` via Multicall3. (2) Used `loadEnvConfig()` in `next.config.js` to load the root `.env` which contains the Tenderly paid RPC URL. (3) Subgraph-primary architecture means RPC failures are non-fatal — page still renders with subgraph data.
 **Prevention:** Never use the public `mainnet.base.org` endpoint for production frontend reads. Always use the paid Tenderly RPC (`RPC_URL` in root `.env`). For new frontend apps in the monorepo, add `loadEnvConfig()` to `next.config.js` to inherit root env vars.
+
+### 78. Keystore IV Too Short — Invalid Initialization Vector
+**Issue:** `decryptKeystoreV3` throws `Invalid initialization vector` when decrypting agent keystores
+**Root Cause:** Some Python AEA-generated keystores produce IVs shorter than 16 bytes (e.g., 15 bytes / 30 hex chars). Node.js `createDecipheriv('aes-128-ctr', ...)` requires exactly 16 bytes.
+**Solution:** Left-pad the IV hex string to 32 characters before creating the Buffer: `iv.padStart(32, '0')`
+**Prevention:** Always normalize IV length in `keystore-decrypt.ts` before passing to `createDecipheriv`
+
+### 79. Credential Bridge Job Verification Must Fail Closed
+**Issue:** Credential requests could be accepted when Control API verification failed, allowing unbound credential access during outages
+**Root Cause:** Bridge job verification logic previously treated Control API errors as success ("fail open")
+**Solution:** Require ERC-8128 signed bridge->Control API `getRequestClaim` checks and return explicit `valid | invalid | unavailable` states; deny issuance on `invalid` and `unavailable` when `REQUIRE_JOB_CONTEXT=true`
+**Prevention:** Keep claim ownership source-of-truth in Control API, compare requester signer EOA to claim owner EOA, and never issue credentials on verification unavailability in job-bound mode
+
+### 80. Middleware Git Tags Can Drift; Pin by Commit SHA
+**Issue:** Setup/deploy behavior diverged from expected middleware fixes even though `pyproject.toml` referenced `tag = "v0.1.4"`.
+**Root Cause:** Git tags are mutable references in practice; existing `poetry.lock` resolved `v0.1.4` to an older commit (`a15aa3b2`) that still had non-fatal agent funding handling.
+**Solution:** Pin `olas-operate-middleware` with an immutable commit SHA (`rev = "3e8d8f38549d20e18226dfa511b684781703b4f2"`) and refresh lockfiles/install. Add preflight verification that installed `operate.cli` includes strict `fund_service_single_chain()` deploy behavior and does not swallow funding errors.
+**Prevention:** For security/critical runtime behavior, never pin git dependencies by tag alone. Use commit SHAs and enforce expected behavior in preflight checks.
+
+### 81. Docker E2E Telemetry Is Overwritten Between Runs
+**Issue:** Phase 5 parser fails to find expected telemetry from a prior worker run.
+**Root Cause:** `yarn test:e2e:docker-run` clears `/tmp/jinn-telemetry/telemetry-*.json` before each container start.
+**Solution:** Copy telemetry immediately after each run into phase-specific folders (for example `/tmp/jinn-telemetry-worker-<session>` and `/tmp/jinn-telemetry-rotation-<session>`) before starting the next docker run.
+**Prevention:** Never point Phase 5 at the shared `/tmp/jinn-telemetry` path after multiple runs; always parse from preserved phase-specific copies.
+
+### 82. E2E Dispatch Must Force Local Ponder/Control Endpoints
+**Issue:** E2E dispatch or context checks hit the wrong local port (for example `:42070`) and produce false failures.
+**Root Cause:** Env layering (`.env` + `.env.test` + `.env.e2e`) can leak non-E2E endpoint values into dispatch scripts.
+**Solution:** In E2E dispatch scripts, force `PONDER_GRAPHQL_URL=http://localhost:42069/graphql` and `CONTROL_API_URL=http://localhost:4001/graphql` before dispatch logic runs.
+**Prevention:** Add a hard preflight gate before dispatch and stale-request guard on the target workstream so each run validates the intended local stack and clean request state.
 
 ---
 

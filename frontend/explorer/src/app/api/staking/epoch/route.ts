@@ -53,15 +53,17 @@ export async function GET(request: NextRequest) {
     const epoch = await getSubgraphEpochData()
     const nextCheckpoint = epoch.checkpointTimestamp + epoch.livenessPeriod
 
-    // RPC: request count (essential real-time data, with retry + graceful fallback)
+    // RPC: request count + inactivity (essential real-time data, with retry + graceful fallback)
     // Uses shared singleton client with multicall batching — concurrent calls from
     // multiple service cards get batched into fewer actual RPC requests.
     let requestCount: number | undefined
+    let inactivity: number | undefined
+    let maxInactivityPeriods: number | undefined
     if (multisig) {
       try {
         const client = getRpcClient()
 
-        const [currentCount, serviceInfo] = await Promise.all([
+        const [currentCount, serviceInfo, maxInactivity] = await Promise.all([
           rpcWithRetry(() =>
             client.readContract({
               address: MECH_MARKETPLACE,
@@ -80,15 +82,25 @@ export async function GET(request: NextRequest) {
                 })
               )
             : Promise.resolve(null),
+          rpcWithRetry(() =>
+            client.readContract({
+              address: JINN_STAKING_CONTRACT,
+              abi: stakingAbi,
+              functionName: 'maxNumInactivityPeriods',
+            })
+          ),
         ])
+
+        maxInactivityPeriods = Number(maxInactivity)
 
         if (serviceId && serviceInfo) {
           // getServiceInfo returns a tuple: { multisig, owner, nonces, tsStart, reward, inactivity }
           // nonces[1] is the request count baseline at the last checkpoint
-          const info = serviceInfo as { nonces: readonly bigint[] }
+          const info = serviceInfo as { nonces: readonly bigint[]; inactivity: bigint }
           const baseline = Number(info.nonces[1])
           const delta = Number(currentCount) - baseline
           requestCount = delta >= 0 ? delta : Number(currentCount)
+          inactivity = Number(info.inactivity)
         } else {
           requestCount = Number(currentCount)
         }
@@ -97,12 +109,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // maxInactivityPeriods is in units of livenessPeriod (seconds)
+    // inactivity is cumulative seconds of missed epochs
+    const maxInactivitySeconds = maxInactivityPeriods != null
+      ? maxInactivityPeriods * epoch.livenessPeriod
+      : undefined
+
     return NextResponse.json({
       checkpoint: epoch.checkpointTimestamp,
       nextCheckpoint,
       livenessPeriod: epoch.livenessPeriod,
       targetRequests: TARGET_REQUESTS_PER_EPOCH,
       requestCount,
+      inactivity,
+      maxInactivitySeconds,
     })
   } catch (error) {
     console.error('Error fetching staking epoch:', error)

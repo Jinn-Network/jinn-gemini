@@ -34,7 +34,7 @@
                     "type": "string",
                     "description": "Umami analytics website ID",
                     "default": "$provision",
-                    "envVar": "UMAMI_WEBSITE_ID"
+                    "envVar": "JINN_JOB_UMAMI_WEBSITE_ID"
                 },
                 "repoUrl": {
                     "type": "string",
@@ -50,43 +50,23 @@
                     "type": "string",
                     "description": "Blog domain",
                     "default": "$provision",
-                    "envVar": "BLOG_DOMAIN"
+                    "envVar": "JINN_JOB_BLOG_DOMAIN"
                 },
                 "railwayProjectId": {
                     "type": "string",
                     "description": "Railway project ID for deployment operations",
                     "default": "$provision",
-                    "envVar": "BLOG_RAILWAY_PROJECT_ID"
+                    "envVar": "JINN_JOB_BLOG_RAILWAY_PROJECT_ID"
                 },
                 "telegramChatId": {
                     "type": "string",
                     "description": "Telegram chat ID for distribution (e.g., -100123456789)",
-                    "envVar": "TELEGRAM_CHAT_ID"
+                    "envVar": "JINN_JOB_TELEGRAM_CHAT_ID"
                 },
                 "telegramTopicId": {
                     "type": "string",
                     "description": "Telegram topic/thread ID (optional, for forum groups)",
-                    "envVar": "TELEGRAM_TOPIC_ID"
-                },
-                "telegramBotToken": {
-                    "type": "string",
-                    "description": "Telegram Bot API token",
-                    "envVar": "TELEGRAM_BOT_TOKEN"
-                },
-                "umamiHost": {
-                    "type": "string",
-                    "description": "Umami analytics host URL",
-                    "envVar": "UMAMI_HOST"
-                },
-                "umamiUsername": {
-                    "type": "string",
-                    "description": "Umami login username",
-                    "envVar": "UMAMI_USERNAME"
-                },
-                "umamiPassword": {
-                    "type": "string",
-                    "description": "Umami login password",
-                    "envVar": "UMAMI_PASSWORD"
+                    "envVar": "JINN_JOB_TELEGRAM_TOPIC_ID"
                 }
             },
             "required": [

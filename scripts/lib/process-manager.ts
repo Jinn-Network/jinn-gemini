@@ -6,11 +6,13 @@
  * - Stream output with prefixes
  * - Detect crashes and quota errors
  * - Graceful shutdown
+ * - Persist output to log files (survives parent exit for detached processes)
  */
 
 import { execa, type ResultPromise } from 'execa';
 import fetch from 'cross-fetch';
 import { scriptLogger } from 'jinn-node/logging/index.js';
+import { join } from 'path';
 
 export interface ServiceConfig {
   name: string;
@@ -18,6 +20,7 @@ export interface ServiceConfig {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  logDir?: string;
 }
 
 export interface HealthCheckConfig {
@@ -30,6 +33,7 @@ export interface HealthCheckConfig {
 
 export class ProcessManager {
   private processes = new Map<string, ResultPromise>();
+  private logPaths = new Map<string, string>();
   private onCrash?: (serviceName: string, code: number) => void;
   private onQuotaError?: () => void;
   private isShuttingDown = false;
@@ -43,57 +47,64 @@ export class ProcessManager {
   }
 
   /**
-   * Start a service with output streaming
+   * Start a service with output streaming.
+   *
+   * When `logDir` is set, stdout/stderr are written directly to a log file via
+   * inherited file descriptors. This survives parent exit — crash output is
+   * captured even after the bootstrap process exits.
    */
   startService(config: ServiceConfig): ResultPromise {
-    const proc = execa(config.command, config.args, {
-      cwd: config.cwd,
-      env: { ...process.env, ...config.env },
-      stdio: 'pipe',
-    });
+    let proc: ResultPromise;
 
-    // Stream stdout with prefix and detect quota errors
-    if (proc.stdout) {
-      proc.stdout.on('data', (data: Buffer) => {
-        const msg = data.toString();
-        const lines = msg.split('\n');
+    if (config.logDir) {
+      const logPath = join(config.logDir, `${config.name}.log`);
+      this.logPaths.set(config.name, logPath);
 
-        lines.forEach(line => {
-          if (line.trim()) {
-            console.log(`[${config.name}] ${line}`);
+      // Write stdout+stderr directly to a log file via execa's { file } option.
+      // The child inherits the file descriptor, so output survives parent exit —
+      // crash stack traces and errors are captured for post-mortem diagnosis.
+      proc = execa(config.command, config.args, {
+        cwd: config.cwd,
+        env: { ...process.env, ...config.env },
+        stdin: 'ignore',
+        stdout: { file: logPath },
+        stderr: { file: logPath },
+        detached: true,
+      });
 
-            // Detect quota exhaustion (can appear in stdout from worker errors)
-            if (this.onQuotaError &&
-                (line.includes('429') ||
-                 line.includes('quota limit') ||
-                 line.includes('rate limit'))) {
-              this.onQuotaError();
+      console.log(`[${config.name}] Logging to ${logPath}`);
+    } else {
+      // No log dir — use pipes directly (original behavior)
+      proc = execa(config.command, config.args, {
+        cwd: config.cwd,
+        env: { ...process.env, ...config.env },
+        stdio: 'pipe',
+        detached: true,
+      });
+
+      if (proc.stdout) {
+        proc.stdout.on('data', (data: Buffer) => {
+          const lines = data.toString().split('\n');
+          for (const line of lines) {
+            if (line.trim()) {
+              console.log(`[${config.name}] ${line}`);
+              this.checkQuota(line);
             }
           }
         });
-      });
-    }
+      }
 
-    // Stream stderr with prefix and detect quota errors
-    if (proc.stderr) {
-      proc.stderr.on('data', (data: Buffer) => {
-        const msg = data.toString();
-        const lines = msg.split('\n');
-
-        lines.forEach(line => {
-          if (line.trim()) {
-            console.error(`[${config.name}] ${line}`);
-
-            // Detect quota exhaustion
-            if (this.onQuotaError &&
-                (line.includes('429') ||
-                 line.includes('quota') ||
-                 line.includes('rate limit'))) {
-              this.onQuotaError();
+      if (proc.stderr) {
+        proc.stderr.on('data', (data: Buffer) => {
+          const lines = data.toString().split('\n');
+          for (const line of lines) {
+            if (line.trim()) {
+              console.error(`[${config.name}] ${line}`);
+              this.checkQuota(line);
             }
           }
         });
-      });
+      }
     }
 
     // Monitor crashes (but ignore exit events during shutdown)
@@ -107,9 +118,17 @@ export class ProcessManager {
     return proc;
   }
 
+  private checkQuota(line: string): void {
+    if (this.onQuotaError &&
+        (line.includes('429') ||
+         line.includes('quota limit') ||
+         line.includes('rate limit'))) {
+      this.onQuotaError();
+    }
+  }
+
   /**
    * Wait for GraphQL endpoint to be healthy
-   * Pattern from E2E test (lines 84-102)
    */
   async waitForGraphql(config: HealthCheckConfig): Promise<void> {
     const start = Date.now();
@@ -155,11 +174,21 @@ export class ProcessManager {
       killPromises.push(
         new Promise<void>((resolve) => {
           try {
-            proc.kill('SIGTERM');
+            // Kill the process group (negative PID) so grandchildren die too.
+            // Detached processes run in their own group with pgid === pid.
+            if (proc.pid) {
+              process.kill(-proc.pid, 'SIGTERM');
+            } else {
+              proc.kill('SIGTERM');
+            }
             // Force kill after timeout
             setTimeout(() => {
               try {
-                proc.kill('SIGKILL');
+                if (proc.pid) {
+                  process.kill(-proc.pid, 'SIGKILL');
+                } else {
+                  proc.kill('SIGKILL');
+                }
               } catch (e) {
                 // Already dead
               }
@@ -194,5 +223,12 @@ export class ProcessManager {
       }
     });
     return pids;
+  }
+
+  /**
+   * Get log file paths for all services started with logDir
+   */
+  getLogPaths(): Map<string, string> {
+    return new Map(this.logPaths);
   }
 }

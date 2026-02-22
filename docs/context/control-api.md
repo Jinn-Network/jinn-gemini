@@ -142,8 +142,8 @@ The `control_api_client.ts` provides typed functions with automatic retry:
 | `createArtifact(requestId, data)` | Store job outputs |
 | `createMessage(requestId, data)` | Store job messages |
 
-All requests include:
-- `X-Worker-Address` header (mech address)
+All mutation requests include:
+- ERC-8128 signed headers (`signature-input`, `signature`, `content-digest`)
 - `Idempotency-Key` header (`{requestId}:{phase}`)
 - Exponential backoff retry (up to 3 attempts)
 
