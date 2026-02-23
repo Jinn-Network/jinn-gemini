@@ -365,9 +365,9 @@ async function main(): Promise<void> {
       }
     });
 
-    // Venture owner_address must match the on-chain request sender.
-    // canary-dispatch uses marketplaceInteract with keyConfig: { source: 'value' },
-    // so the on-chain sender (Ponder request.sender) is the operator EOA, not the Safe.
+    // Venture owner_address must match the on-chain request sender (operator EOA).
+    // Both canary and production dispatch via marketplaceInteract with the service key,
+    // making the on-chain sender the operator EOA. The Safe is only used for delivery.
     const venturePayload = {
       id: crypto.randomUUID(),
       name: `Canary Matrix ${Date.now()}`,

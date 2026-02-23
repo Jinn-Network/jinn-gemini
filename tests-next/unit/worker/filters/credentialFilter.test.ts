@@ -34,13 +34,13 @@ import {
   probeOperatorCapabilities,
   getWorkerCredentialInfo,
   getWorkerOperatorCapabilityInfo,
-  _resetCredentialInfoCache,
+  resetCredentialInfoCache,
   _resetOperatorCapabilityInfoCache,
 } from 'jinn-node/worker/filters/credentialFilter.js';
 
 describe('credentialFilter', () => {
   afterEach(() => {
-    _resetCredentialInfoCache();
+    resetCredentialInfoCache();
     _resetOperatorCapabilityInfoCache();
     delete process.env.X402_GATEWAY_URL;
     delete process.env.GITHUB_TOKEN;
@@ -372,7 +372,7 @@ describe('credentialFilter', () => {
       expect(mockFetch).toHaveBeenCalledOnce();
     });
 
-    it('resets with _resetCredentialInfoCache', async () => {
+    it('resets with resetCredentialInfoCache', async () => {
       process.env.X402_GATEWAY_URL = 'http://localhost:3001';
       const mockFetch = vi.spyOn(globalThis, 'fetch')
         .mockResolvedValueOnce(
@@ -391,7 +391,7 @@ describe('credentialFilter', () => {
       const first = await getWorkerCredentialInfo();
       expect(first.providers.size).toBe(1);
 
-      _resetCredentialInfoCache();
+      resetCredentialInfoCache();
       const second = await getWorkerCredentialInfo();
       expect(second.providers.size).toBe(2);
       expect(mockFetch).toHaveBeenCalledTimes(2);

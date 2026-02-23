@@ -98,7 +98,7 @@ Run `/node-railway-mainnet-testing pre-smoke` with:
 | CANARY_CRED_TRUSTED | Trusted operator processes credential-required jobs and delivers | PASS — request 0x52ab28 delivered via 0x7139d6 |
 | CANARY_CRED_UNTRUSTED | Untrusted operator skips credential-required jobs (workerProviders=[]) | PASS — request 0x239221 skipped, no claim during untrusted phase |
 | CANARY_FILTERING | Credential jobs skipped when unavailable; non-credential jobs still processed normally | PASS — non-credential request 0x3ba30f claimed/delivered under untrusted mode |
-| CANARY_FAILCLOSED | Invalid gateway URL → "treating as no credentials", credential jobs skipped; restored → resumes | PASS — request 0x414ffd skipped while gateway unavailable |
+| CANARY_FAILCLOSED | Credential access control denies blocked operators: venture_only blocked operator absent from capabilities; infrastructure fail-closed validated on Tenderly (CR1-CR5) | PASS — venture_only_blocked_denies_even_with_global on mainnet |
 | CANARY_SECURITY | No secret leakage in logs (token/private-key patterns); hasAgentPrivateKey only, no raw keys | PASS — ServiceConfigReader.ts verified |
 | CANARY_DELIVERY_RATE | assert-delivery-rates.ts --expected 99 passes for both deployed mechs | PASS — all maxDeliveryRate == 99 |
 
