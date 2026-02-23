@@ -44,7 +44,7 @@ The user takes the E2E report and passes it to their implementation session for 
 | 1 | Clone & Setup | [phase-1-setup.md](references/phase-1-setup.md) | Abort run |
 | 2 | Add Second Service | [phase-2-add-service.md](references/phase-2-add-service.md) | Skip 3/4 |
 | 3 | Worker Execution (Docker) | [phase-3-worker.md](references/phase-3-worker.md) | Skip 4/5 |
-| 4 | Rotation Worker (Docker) | [phase-4-rotation.md](references/phase-4-rotation.md) | Continue |
+| 4 | Rotation + Credential Validation (Docker) | [phase-4-rotation.md](references/phase-4-rotation.md) | Continue |
 | 5 | Telemetry Verification | [phase-5-telemetry.md](references/phase-5-telemetry.md) | Continue |
 
 Execute phases sequentially. Read each phase's reference file and follow its instructions. Report CHECKPOINT at the end of each phase before moving to the next.
@@ -92,6 +92,7 @@ Shell state does not persist between bash calls. Persist values in `.env.e2e`:
 | `AGENT_EOA_2` | Phase 2 | Phase 3 |
 | `TELEMETRY_DIR_WORKER` | Phase 3 | Phase 5 |
 | `TELEMETRY_DIR_ROTATION` | Phase 4 | Phase 5 |
+| `TELEMETRY_DIR_ROTATION_CRED` | Phase 4 | Phase 5 |
 
 ## Checkpoint Format
 
@@ -119,7 +120,7 @@ Date: <timestamp>
 | 1     | Clone & Setup              | PASS   |
 | 2     | Add Second Service         | PASS   |
 | 3     | Worker Execution (Docker)  | PASS   |
-| 4     | Rotation Worker (Docker)   | PASS   |
+| 4     | Rotation + Credential Val  | PASS   |
 | 5     | Telemetry Verification     | PASS   |
 
 Overall: N/6 PASS
@@ -129,6 +130,7 @@ Overall: N/6 PASS
 - VNet config: .env.e2e
 - Telemetry (worker): $TELEMETRY_DIR_WORKER
 - Telemetry (rotation): $TELEMETRY_DIR_ROTATION
+- Telemetry (rotation-cred): $TELEMETRY_DIR_ROTATION_CRED
 - Ponder logs: <background task output>
 ```
 

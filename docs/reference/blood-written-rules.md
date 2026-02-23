@@ -509,6 +509,12 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 **Solution:** In E2E dispatch scripts, force `PONDER_GRAPHQL_URL=http://localhost:42069/graphql` and `CONTROL_API_URL=http://localhost:4001/graphql` before dispatch logic runs.
 **Prevention:** Add a hard preflight gate before dispatch and stale-request guard on the target workstream so each run validates the intended local stack and clean request state.
 
+### 83. Stale Signer Identity After Service Rotation
+**Issue:** Credential tools fail with `401 Invalid ERC-8128 signature` / `bad_signature` after multi-service rotation, even though claim/deliver succeeds.
+**Root Cause:** Module-level caches (`cachedAddress` in signing-proxy.ts, `cachedControlApiSigner` in control_api_client.ts) survive across jobs. After rotation the ERC-8128 `keyid` contains the OLD address while the signature is produced by the NEW key — gateway recovers a different address than claimed.
+**Solution:** Reset `cachedAddress = null` inside `startSigningProxy()` and call `resetControlApiSigner()` after every `setActiveService()` in the rotation hook.
+**Prevention:** Any module-level signer/address cache must have a corresponding `reset*()` export wired into the rotation path. Regression test: `tests/unit/rotation/signer-rotation.test.ts`.
+
 ---
 
 ### 65. Parent Dispatch Cascade Under API Rate Limits
