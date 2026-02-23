@@ -40,7 +40,7 @@ function usage(exitCode: number = 1): never {
       '  --gateway-env <name>              Default: production',
       '  --gateway-service <name>          Default: x402-gateway-canary',
       '  --request-ids <id1,id2,...>       Optional request ids expected in logs',
-      '  --lines <n>                       Default: 1200 (pre-smoke) / 400 (smoke polls)',
+      '  --lines <n>                       Default: 1200 (all modes)',
       '  --duration-minutes <n>            Smoke only, default: 30',
       '  --poll-seconds <n>                Smoke only, default: 60',
       '  --artifact <path>                 Optional JSON report output',
@@ -374,7 +374,7 @@ async function main(): Promise<void> {
     service: flags['gateway-service'] || 'x402-gateway-canary',
   };
 
-  const lines = Math.max(50, asInt(flags.lines, mode === 'smoke' ? 400 : 1200));
+  const lines = Math.max(50, asInt(flags.lines, 1200));
   const requestIds = parseCsv(flags['request-ids']);
   const durationMinutes = Math.max(1, asInt(flags['duration-minutes'], 30));
   const pollSeconds = Math.max(10, asInt(flags['poll-seconds'], 60));
