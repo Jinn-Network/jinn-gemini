@@ -59,6 +59,8 @@ ADW is a **companion to ERC-8004**, not a competitor. ERC-8004 is the trust laye
 
 ## Specification
 
+Read the plain-language intro: **[intro.md](intro.md)**
+
 Read the full spec: **[spec.md](spec.md)**
 
 ## Status

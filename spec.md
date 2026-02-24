@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Date:** 2026-02-24
-**Authors:** Jinn Network
+**Authors:** Oaksprout the Tan, Ritsu Kai and Claude Opus 4.6
 
 ---
 
