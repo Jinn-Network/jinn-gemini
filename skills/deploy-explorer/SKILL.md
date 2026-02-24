@@ -127,14 +127,27 @@ RPC_URL=https://virtual.base.rpc.tenderly.co/...  # Tenderly Base RPC
 
 ### Staking page shows wrong status / "Request count unavailable"
 
-**Cause:** `RPC_URL` is missing or set to a public RPC.
+**Cause:** `RPC_URL` is missing, set to a public RPC, or has trailing characters.
 
 **Fix:**
 ```bash
-npx vercel env add RPC_URL production
-# Enter the Tenderly Base RPC URL
-npx vercel --prod  # Redeploy to pick up the new env var
+# CRITICAL: Use heredoc (<<<) to avoid trailing newline/chars in the value.
+# Do NOT pipe via echo or printf — they add trailing characters that corrupt the URL.
+npx vercel env add RPC_URL production <<< 'https://base.gateway.tenderly.co/YOUR_KEY'
+
+# Redeploy to pick up the new env var
+npx vercel redeploy https://explorer.jinn.network
 ```
+
+**Gotcha:** `echo "$VAR" | npx vercel env add` appends a newline to the value. `printf '%s' "$VAR" | npx vercel env add` can append an `n` character (from `\n` being interpreted). Always use `<<<` heredoc syntax. If unsure, check the debug endpoint or Vercel function logs for `Failed to parse URL` or `Status: 401` errors.
+
+### CLI deploys fail with path doubling
+
+**Cause:** The Vercel project has `rootDirectory: frontend/explorer` set. Running `npx vercel --prod` from the monorepo root doubles the path to `frontend/explorer/frontend/explorer`.
+
+**Fix:** Don't use `vercel --prod` from the monorepo root. Instead:
+- Push to git and let Vercel auto-deploy, OR
+- Use `npx vercel redeploy https://explorer.jinn.network` to redeploy the latest production deployment with fresh env vars
 
 ### GraphQL queries return empty data or errors
 
