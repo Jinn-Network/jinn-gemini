@@ -34,7 +34,6 @@ export async function GET(request: NextRequest) {
     let isActivelyStaked = false
     let isEvicted = false
     let stakingStateUnknown = false
-    let _rpcDebug: string | undefined
 
     try {
       const client = getRpcClient()
@@ -48,8 +47,6 @@ export async function GET(request: NextRequest) {
       isEvicted = Number(stakingState) === 2
     } catch (err) {
       // RPC failed — don't lie about the state, surface "unknown"
-      const rpcUrl = process.env.RPC_URL || process.env.BASE_RPC_URL || '(not set)'
-      _rpcDebug = `len=${rpcUrl.length},starts=${rpcUrl.slice(0, 20)},err=${err instanceof Error ? err.message.slice(0, 100) : String(err).slice(0, 100)}`
       console.warn('getStakingState RPC failed — marking state as unknown:', err)
       stakingStateUnknown = true
     }
@@ -124,7 +121,6 @@ export async function GET(request: NextRequest) {
       totalEpochsParticipated: service.totalEpochsParticipated,
       olasStaked: formatEther(BigInt(service.currentOlasStaked)),
       restakeEligibleAt,
-      ...(_rpcDebug ? { _rpcDebug } : {}),
     })
   } catch (error) {
     console.error('Error fetching service staking status:', error)
