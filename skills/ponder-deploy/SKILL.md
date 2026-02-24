@@ -58,7 +58,7 @@ Do NOT use `railway up` -- the monorepo is too large. Use GitHub branch deploy t
 # Get the trigger ID first
 railway triggers list -s ponder
 
-# Then set branch via GraphQL (see Section 8)
+# Then set branch via GraphQL (see Section 9)
 ```
 
 ### Step 4: Deploy and Wait for Backfill
@@ -107,11 +107,68 @@ Update the frontend's `PONDER_GRAPHQL_URL` (or equivalent) to point at the sandb
 - Two Ponder instances must NEVER share the same `PONDER_VIEWS_SCHEMA` -- they will overwrite each other's views.
 - Env var changes (like `PONDER_START_BLOCK`) also change the build_id via config hash.
 
-**Current production:** `jinn_shared_v7`
+**Current production:** `jinn_shared_v17`
+
+### Pre-Deploy: Detect Next Available Schema Version
+
+**ALWAYS run this before setting `PONDER_SCHEMA_VERSION`**. Existing schemas cannot be reused — Ponder crashes with `MigrationError: Schema "..." was previously used by a different Ponder app`.
+
+```bash
+# Query the Railway Postgres for existing jinn_shared_v* schemas
+node -e "
+const { Client } = require('pg');
+const c = new Client('postgresql://postgres:REDACTED_DB_PASSWORD@shortline.proxy.rlwy.net:27666/railway');
+c.connect()
+  .then(() => c.query(\"SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'jinn_shared_v%' AND schema_name NOT LIKE '%public%' ORDER BY schema_name\"))
+  .then(r => {
+    const versions = r.rows.map(x => parseInt(x.schema_name.replace('jinn_shared_v','')));
+    const max = Math.max(...versions);
+    console.log('Existing versions:', versions.sort((a,b)=>a-b).join(', '));
+    console.log('Next available: jinn_shared_v' + (max + 1));
+    c.end();
+  }).catch(e => { console.error(e.message); c.end(); });
+"
+```
+
+If the DB public URL has changed, get it from `railway variables -s ponder-db --kv | grep DATABASE_PUBLIC_URL`.
 
 ---
 
-## 3. Environment Variable Reference
+## 3. Zero-Downtime Deployment (healthcheckPath=/ready)
+
+As of Feb 2026, `deploy/ponder/railway.toml` includes:
+
+```toml
+[deploy]
+healthcheckPath = "/ready"
+healthcheckTimeout = 3600
+```
+
+**How it works:**
+1. New deployment starts, begins backfilling into the new private schema (e.g., `jinn_shared_v17`)
+2. Railway polls `/ready` — Ponder returns **503** during backfill
+3. The **old deployment stays alive** and serves traffic the entire time
+4. When backfill completes, Ponder atomically swaps SQL VIEWs in the views-schema (e.g., `jinn_staging_v7_public`) to point at the new private schema tables
+5. `/ready` returns **200** → Railway routes traffic to the new instance and kills the old one
+
+**Key implications:**
+- No downtime during re-index — old data stays served until new data is ready
+- The 3600s (1 hour) timeout covers typical backfill duration. If backfill takes longer, Railway will mark the deployment as failed
+- Both old and new instances write to the **same Postgres cluster** but different schemas
+- The `PONDER_VIEWS_SCHEMA` is the traffic cutover point — it must be the same for both old and new so the view swap is seamless
+
+**Backfill duration depends heavily on IPFS gateway availability.** Both `gateway.autonolas.tech` and `ipfs.io` frequently timeout during backfill, causing each Jinn request to wait through the full retry chain before falling back to "indexing without metadata." This is expected — IPFS metadata fetching is essential for populating `jobName`, `ventureId`, `templateId`, and artifact data. Without it, indexed requests lack context and the explorer shows empty fields.
+
+**Typical backfill times:**
+- With healthy IPFS gateways: ~30-60 minutes from block 36M
+- With degraded IPFS (timeouts): 2-3+ hours
+- Current `healthcheckTimeout` is set to **10800s (3 hours)** in `railway.toml`
+
+**If backfill exceeds the timeout:** Railway marks the deployment as failed and the old deployment stays active (safe, no data loss). Increase `healthcheckTimeout` in `deploy/ponder/railway.toml`, push, and redeploy. Do NOT raise `PONDER_START_BLOCK` to skip IPFS — that skips real data.
+
+---
+
+## 4. Environment Variable Reference
 
 | Variable | Description | Example |
 |----------|-------------|---------|
@@ -128,7 +185,7 @@ Update the frontend's `PONDER_GRAPHQL_URL` (or equivalent) to point at the sandb
 
 ---
 
-## 4. Monitoring Checklist
+## 5. Monitoring Checklist
 
 **During backfill:**
 - [ ] `/ready` endpoint returns 200 when backfill complete (503 during backfill)
@@ -146,7 +203,7 @@ Update the frontend's `PONDER_GRAPHQL_URL` (or equivalent) to point at the sandb
 
 ---
 
-## 5. Rollback Procedure
+## 6. Rollback Procedure
 
 **If sandbox fails verification:**
 1. Frontend stays pointed at old production -- no action needed
@@ -162,7 +219,7 @@ Update the frontend's `PONDER_GRAPHQL_URL` (or equivalent) to point at the sandb
 
 ---
 
-## 6. Gotchas
+## 7. Gotchas
 
 - **build_id = full re-index**: ANY change to config, schema, or indexing code means the entire index rebuilds from scratch. There is no incremental migration. You cannot `ALTER TABLE` to avoid it.
 - **cloudflare-ipfs.com is DEAD**: Returns ENOTFOUND. Use `ipfs.io` for IPFS gateway. This was causing 5-10s delays per request during backfill.
@@ -171,12 +228,13 @@ Update the frontend's `PONDER_GRAPHQL_URL` (or equivalent) to point at the sandb
 - **Views-schema collision**: If two Ponder instances share the same `PONDER_VIEWS_SCHEMA`, they overwrite each other's views. Always use distinct values.
 - **Orphaned schemas accumulate**: Without `PONDER_SCHEMA_VERSION`, each deploy creates a new schema with a generated name. These pile up in Postgres and waste storage.
 - **Ponder filter syntax is flat**: Use `where: { field: $var, field_gte: $val }`, NOT nested `{ field: { equals: $var } }`. Ponder is not standard GraphQL filter syntax.
+- **Schema name collision crashes Ponder**: If `PONDER_SCHEMA_VERSION` is set to a schema that was previously used by a different build_id, Ponder crashes with `MigrationError`. Always query the DB first to find the next available version (see Section 2).
 - **Build optimization**: `rm -rf frontend packages` before `yarn install` in the build phase to skip workspace deps unused by Ponder. Cuts build from 16min to ~97s. Configured in `deploy/ponder/nixpacks.toml`.
 - **Old schemas cleanup**: Run periodic cleanup of orphaned schemas. 190 were cleaned in Feb 2026.
 
 ---
 
-## 7. Railway Commands Reference
+## 8. Railway Commands Reference
 
 ```bash
 # Create project
@@ -200,7 +258,7 @@ railway triggers list -s ponder
 
 ---
 
-## 8. Deploy Trigger Configuration
+## 9. Deploy Trigger Configuration
 
 Use the Railway GraphQL API to set the deploy trigger to a specific branch and config file:
 
