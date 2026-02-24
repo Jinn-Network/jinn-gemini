@@ -109,9 +109,20 @@ Update the frontend's `PONDER_GRAPHQL_URL` (or equivalent) to point at the sandb
 
 **Current production:** `jinn_shared_v17`
 
-### Pre-Deploy: Detect Next Available Schema Version
+### Pre-Deploy Script (Automatic)
 
-**ALWAYS run this before setting `PONDER_SCHEMA_VERSION`**. Existing schemas cannot be reused — Ponder crashes with `MigrationError: Schema "..." was previously used by a different Ponder app`.
+A `preDeployCommand` in `railway.toml` runs `ponder/scripts/pre-deploy.mjs` before every deploy. It handles:
+
+1. **Locked schema from crashed deploy** (`is_locked=1, is_ready=0`): Drops the incomplete schema so Ponder recreates it fresh.
+2. **Stale incomplete schema** (`is_locked=0, is_ready=0`): Same — drops and recreates.
+3. **Completed schema** (`is_ready=1`): Left intact. Ponder reuses it (hot start) if the build_id matches, or fails with a clear mismatch error if code changed.
+4. **No schema yet**: Nothing to do — fresh deploy.
+
+This means you can safely **reuse the same `PONDER_SCHEMA_VERSION`** across failed/retried deploys. Only bump the version when you want a fresh schema alongside the old one (e.g., for A/B comparison).
+
+### Manual: Detect Next Available Schema Version
+
+If you need to pick a new schema version (code changed, or want to keep old data):
 
 ```bash
 # Query the Railway Postgres for existing jinn_shared_v* schemas
@@ -228,7 +239,7 @@ healthcheckTimeout = 3600
 - **Views-schema collision**: If two Ponder instances share the same `PONDER_VIEWS_SCHEMA`, they overwrite each other's views. Always use distinct values.
 - **Orphaned schemas accumulate**: Without `PONDER_SCHEMA_VERSION`, each deploy creates a new schema with a generated name. These pile up in Postgres and waste storage.
 - **Ponder filter syntax is flat**: Use `where: { field: $var, field_gte: $val }`, NOT nested `{ field: { equals: $var } }`. Ponder is not standard GraphQL filter syntax.
-- **Schema name collision crashes Ponder**: If `PONDER_SCHEMA_VERSION` is set to a schema that was previously used by a different build_id, Ponder crashes with `MigrationError`. Always query the DB first to find the next available version (see Section 2).
+- **Schema locking/collision (auto-handled)**: The `preDeployCommand` (`ponder/scripts/pre-deploy.mjs`) automatically drops incomplete schemas from crashed deploys. You only need to bump `PONDER_SCHEMA_VERSION` when the code changes AND you want to keep the old schema's data. Redeploying with the same version after a failure is safe.
 - **Build optimization**: `rm -rf frontend packages` before `yarn install` in the build phase to skip workspace deps unused by Ponder. Cuts build from 16min to ~97s. Configured in `deploy/ponder/nixpacks.toml`.
 - **Old schemas cleanup**: Run periodic cleanup of orphaned schemas. 190 were cleaned in Feb 2026.
 
