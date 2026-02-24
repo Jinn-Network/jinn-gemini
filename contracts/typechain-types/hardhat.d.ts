@@ -14,6 +14,18 @@ import * as Contracts from ".";
 declare module "hardhat/types/runtime" {
   interface HardhatEthersHelpers extends HardhatEthersHelpersBase {
     getContractFactory(
+      name: "DeliveryActivityChecker",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.DeliveryActivityChecker__factory>;
+    getContractFactory(
+      name: "IMechMarketplace",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IMechMarketplace__factory>;
+    getContractFactory(
+      name: "IMultisig",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IMultisig__factory>;
+    getContractFactory(
       name: "IWhitelistManager",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IWhitelistManager__factory>;
@@ -31,6 +43,21 @@ declare module "hardhat/types/runtime" {
     ): Promise<Contracts.WhitelistedRequesterActivityChecker__factory>;
 
     getContractAt(
+      name: "DeliveryActivityChecker",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.DeliveryActivityChecker>;
+    getContractAt(
+      name: "IMechMarketplace",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IMechMarketplace>;
+    getContractAt(
+      name: "IMultisig",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IMultisig>;
+    getContractAt(
       name: "IWhitelistManager",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -52,6 +79,18 @@ declare module "hardhat/types/runtime" {
     ): Promise<Contracts.WhitelistedRequesterActivityChecker>;
 
     deployContract(
+      name: "DeliveryActivityChecker",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.DeliveryActivityChecker>;
+    deployContract(
+      name: "IMechMarketplace",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IMechMarketplace>;
+    deployContract(
+      name: "IMultisig",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IMultisig>;
+    deployContract(
       name: "IWhitelistManager",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IWhitelistManager>;
@@ -68,6 +107,21 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.WhitelistedRequesterActivityChecker>;
 
+    deployContract(
+      name: "DeliveryActivityChecker",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.DeliveryActivityChecker>;
+    deployContract(
+      name: "IMechMarketplace",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IMechMarketplace>;
+    deployContract(
+      name: "IMultisig",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IMultisig>;
     deployContract(
       name: "IWhitelistManager",
       args: any[],

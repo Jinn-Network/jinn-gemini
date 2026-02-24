@@ -125,7 +125,8 @@ import json
 with open('${keystorePath}') as f:
     keystore = json.load(f)
 private_key = Account.decrypt(keystore, '${password}')
-print('0x' + private_key.hex())
+h = private_key.hex()
+print(h if h.startswith('0x') else '0x' + h)
 "`,
       { encoding: 'utf8', cwd: process.cwd() }
     ).trim();

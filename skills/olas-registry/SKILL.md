@@ -106,6 +106,7 @@ Additional custom fields are allowed and ignored by the marketplace.
 | 100 | competitive-landscape | `QmYSm6LobuYRqz5NyzXsh2CYmVnpRyGPRkDToDuatPLwMZ` |
 | 101 | code-repository-audit | `QmQr3WT5k2AuzSbs5wBtHrsChBWy3pKTupy3et453AbPm7` |
 | 102 | content-campaign | `QmWmxAbHVDutCFzXSDTedgZViQB46wziPoCyrvRz2onzF4` |
+| TBD | jinn-node (worker) | TBD — run `tsx scripts/register-jinn-node-agent.ts` |
 
 ### Services (Base) — Individual per Agent
 | ID | Agent ID | Name | IPFS CID |
@@ -133,6 +134,13 @@ npx tsx scripts/register-olas-component.ts [--dry-run]
 OPERATE_PROFILE_DIR=".../olas-operate-middleware/.operate" \
 ETH_RPC_URL="https://ethereum-rpc.publicnode.com" \
 npx tsx scripts/mint-olas-agent.ts --all --componentId 315 [--dry-run]
+```
+
+### jinn-node Worker Agent
+```bash
+OPERATE_PROFILE_DIR=".../olas-operate-middleware/.operate" \
+ETH_RPC_URL="https://ethereum-rpc.publicnode.com" \
+npx tsx scripts/register-jinn-node-agent.ts [--dry-run]
 ```
 
 ### Services (individual per agent)

@@ -1,22 +1,22 @@
 {
   "network": "base",
   "chainId": 8453,
-  "timestamp": "2026-01-12T13:12:52.163Z",
+  "timestamp": "2026-02-24T15:00:40.335Z",
   "contracts": {
-    "activityChecker": "0x1dF0be586a7273a24C7b991e37FE4C0b1C622A9B",
-    "stakingContract": "0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139"
+    "activityChecker": "0xe575393b921C98288a842217AFBeDBA8197496D5",
+    "stakingContract": "0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488"
   },
   "config": {
-    "whitelistAddress1": "0xb55fadf1f0bb1de99c13301397c7b67fde44f6b1",
-    "whitelistAddress2": "0x8c083dfe9bee719a05ba3c75a9b16be4ba52c299",
-    "activityCheckerOwner": "0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645",
     "livenessRatio": "694444444444444",
     "stakingParams": {
-      "maxNumServices": 10,
+      "maxNumServices": 100,
       "rewardsPerSecond": "475646879756468",
       "minStakingDeposit": "5000000000000000000000",
       "livenessPeriod": 86400,
-      "timeForEmissions": 2592000
+      "timeForEmissions": 2592000,
+      "agentIds": [
+        103
+      ]
     }
   },
   "addresses": {
