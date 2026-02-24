@@ -15,11 +15,51 @@ interface ServiceStatus {
   stakedSince: string | null
   totalEpochsParticipated?: number
   olasStaked?: string
+  restakeEligibleAt?: number | null
 }
 
 interface ServiceStakingStatusProps {
   serviceId: string
   variant?: 'badge' | 'full'
+}
+
+function RestakeCountdown({ eligibleAt }: { eligibleAt: number }) {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
+
+  useEffect(() => {
+    if (now >= eligibleAt) return
+    const interval = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000)
+    return () => clearInterval(interval)
+  }, [now, eligibleAt])
+
+  if (now >= eligibleAt) {
+    return (
+      <p className="mt-2 font-medium text-green-500">
+        Ready to restake now
+      </p>
+    )
+  }
+
+  const remaining = eligibleAt - now
+  const hours = Math.floor(remaining / 3600)
+  const minutes = Math.floor((remaining % 3600) / 60)
+  const seconds = remaining % 60
+
+  const eligibleDate = new Date(eligibleAt * 1000)
+
+  return (
+    <div className="mt-2 space-y-1">
+      <p className="text-muted-foreground">
+        Restake available in{' '}
+        <span className="font-mono font-medium text-orange-500">
+          {hours}h {minutes}m {seconds}s
+        </span>
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Eligible at {eligibleDate.toLocaleString()}
+      </p>
+    </div>
+  )
 }
 
 function StakingBadge({ status }: { status: ServiceStatus | null }) {
@@ -131,11 +171,10 @@ export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceSt
           <p className="font-medium text-orange-500">Service Evicted</p>
           <p className="text-muted-foreground mt-1">
             This service was removed from active staking due to insufficient activity.
-            To restake, run:
           </p>
-          <code className="block text-xs bg-muted px-2 py-1.5 rounded mt-2 break-all">
-            tsx scripts/migrate-staking-contract.ts --service-id={serviceId} --source=jinn --target=jinn
-          </code>
+          {status.restakeEligibleAt && (
+            <RestakeCountdown eligibleAt={status.restakeEligibleAt} />
+          )}
         </div>
       )}
 

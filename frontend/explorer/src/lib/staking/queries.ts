@@ -1,7 +1,7 @@
 import { request } from 'graphql-request'
 import { JINN_STAKING_CONTRACT } from './constants'
 
-const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://ponder-production-6d16.up.railway.app/graphql'
+const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://indexer.jinn.network/graphql'
 
 export interface StakedService {
   id: string

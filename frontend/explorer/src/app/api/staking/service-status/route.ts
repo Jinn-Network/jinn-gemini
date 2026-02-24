@@ -57,6 +57,30 @@ export async function GET(request: NextRequest) {
     const claimed = BigInt(service.olasRewardsClaimed)
     const unclaimed = earned > claimed ? earned - claimed : BigInt(0)
 
+    // For evicted services: calculate when restaking becomes possible
+    let restakeEligibleAt: number | null = null
+    if (isEvicted) {
+      try {
+        const client = getRpcClient()
+        const [serviceInfo, minDuration] = await Promise.all([
+          client.readContract({
+            address: JINN_STAKING_CONTRACT,
+            abi: stakingAbi,
+            functionName: 'getServiceInfo',
+            args: [BigInt(serviceIdParam)],
+          }) as Promise<{ tsStart: bigint }>,
+          client.readContract({
+            address: JINN_STAKING_CONTRACT,
+            abi: stakingAbi,
+            functionName: 'minStakingDuration',
+          }) as Promise<bigint>,
+        ])
+        restakeEligibleAt = Number(serviceInfo.tsStart + minDuration)
+      } catch (err) {
+        console.warn('Failed to fetch restake eligibility (non-fatal):', err)
+      }
+    }
+
     // Optional RPC: pending reward for current epoch (non-fatal if it fails)
     // Uses shared singleton client with multicall batching.
     let pendingReward = '0'
@@ -96,6 +120,7 @@ export async function GET(request: NextRequest) {
       stakedSince: null, // subgraph doesn't expose tsStart; use totalEpochsParticipated instead
       totalEpochsParticipated: service.totalEpochsParticipated,
       olasStaked: formatEther(BigInt(service.currentOlasStaked)),
+      restakeEligibleAt,
     })
   } catch (error) {
     console.error('Error fetching service staking status:', error)
