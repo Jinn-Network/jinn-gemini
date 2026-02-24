@@ -39,7 +39,7 @@ let _client: PublicClient | null = null
 let _clientRpcUrl: string | null = null
 
 export function getRpcUrl(): string {
-  const rpcUrl = process.env.RPC_URL || process.env.BASE_RPC_URL
+  const rpcUrl = (process.env.RPC_URL || process.env.BASE_RPC_URL || '').trim()
   if (!rpcUrl) {
     throw new Error('[staking/rpc] RPC_URL or BASE_RPC_URL must be set — do NOT use public RPCs')
   }

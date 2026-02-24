@@ -7,6 +7,7 @@ interface ServiceStatus {
   serviceId: string
   isActivelyStaked: boolean
   isEvicted: boolean
+  stakingStateUnknown?: boolean
   accumulatedReward: string
   pendingReward: string
   totalClaimable: string
@@ -67,6 +68,14 @@ function StakingBadge({ status }: { status: ServiceStatus | null }) {
     return (
       <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-muted animate-pulse">
         loading
+      </Badge>
+    )
+  }
+
+  if (status.stakingStateUnknown) {
+    return (
+      <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+        unknown
       </Badge>
     )
   }
@@ -165,6 +174,15 @@ export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceSt
         <span className="text-sm text-muted-foreground">On-chain Status</span>
         <StakingBadge status={status} />
       </div>
+
+      {status.stakingStateUnknown && (
+        <div className="rounded-md border border-yellow-500/20 bg-yellow-500/5 p-3 text-sm">
+          <p className="font-medium text-yellow-500">Staking state unavailable</p>
+          <p className="text-muted-foreground mt-1">
+            On-chain RPC is not responding. The actual staking state could not be verified.
+          </p>
+        </div>
+      )}
 
       {status.isEvicted && (
         <div className="rounded-md border border-orange-500/20 bg-orange-500/5 p-3 text-sm">

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     // 0 = NotStaked, 1 = Staked, 2 = Evicted
     let isActivelyStaked = false
     let isEvicted = false
-    const hasBeenStaked = BigInt(service.currentOlasStaked) > BigInt(0)
+    let stakingStateUnknown = false
 
     try {
       const client = getRpcClient()
@@ -46,10 +46,9 @@ export async function GET(request: NextRequest) {
       isActivelyStaked = Number(stakingState) === 1
       isEvicted = Number(stakingState) === 2
     } catch (err) {
-      // Fallback: subgraph-only (can't distinguish evicted from staked)
-      console.warn('getStakingState RPC failed, falling back to subgraph:', err)
-      isActivelyStaked = service.latestStakingContract?.toLowerCase() === JINN_STAKING_CONTRACT.toLowerCase()
-      isEvicted = hasBeenStaked && !isActivelyStaked
+      // RPC failed — don't lie about the state, surface "unknown"
+      console.warn('getStakingState RPC failed — marking state as unknown:', err)
+      stakingStateUnknown = true
     }
 
     // Subgraph rewards are in wei
@@ -112,6 +111,7 @@ export async function GET(request: NextRequest) {
       serviceId: serviceIdParam,
       isActivelyStaked,
       isEvicted,
+      stakingStateUnknown,
       accumulatedReward: formatEther(earned),
       pendingReward,
       totalClaimable: formatEther(unclaimed),
