@@ -21,5 +21,5 @@ const query = `
   }
 `;
 
-const result = await graphQLRequest(query, { id: workstreamId }, 'https://ponder-production-6d16.up.railway.app/graphql');
+const result = await graphQLRequest(query, { id: workstreamId }, 'https://indexer.jinn.network/graphql');
 console.log(JSON.stringify(result, null, 2));

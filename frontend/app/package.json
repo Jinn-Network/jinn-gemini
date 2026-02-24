@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NEXT_PUBLIC_SUBGRAPH_URL=https://ponder-production-6d16.up.railway.app/graphql next dev --turbopack --port 3001",
+    "dev": "NEXT_PUBLIC_SUBGRAPH_URL=https://indexer.jinn.network/graphql next dev --turbopack --port 3001",
     "dev:local": "NEXT_PUBLIC_SUBGRAPH_URL=http://localhost:42069/graphql next dev --turbopack --port 3001",
     "build": "next build",
     "start": "next start",

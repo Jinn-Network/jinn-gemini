@@ -337,18 +337,66 @@ async function main() {
   });
   console.log('   ✅ Safe SDK initialized');
 
-  // Helper: encode calldata and execute via Safe
+  // Direct ethers.js Safe execTransaction — bypasses Safe SDK gas estimation
+  // which fails with GS013 for certain calls (approve, stake)
+  const SAFE_ABI = [
+    'function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) returns (bool)',
+    'function nonce() view returns (uint256)',
+    'function getTransactionHash(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, uint256 _nonce) view returns (bytes32)',
+  ];
+
+  async function execSafeTxDirect(to: string, data: string, label: string) {
+    console.log(`\n🔄 ${label} (direct ethers.js)...`);
+    const publicProvider = new ethers.JsonRpcProvider('https://base.publicnode.com');
+    const signer = new ethers.Wallet(masterPrivateKey, provider);
+    const safe = new ethers.Contract(masterSafe!, SAFE_ABI, publicProvider);
+
+    const nonce = await safe.nonce();
+    const txHash = await safe.getTransactionHash(
+      to, 0n, data, 0, 0, 0, 0,
+      ethers.ZeroAddress, ethers.ZeroAddress, nonce,
+    );
+
+    const signature = await signer.signMessage(ethers.getBytes(txHash));
+    const sigBytes = ethers.getBytes(signature);
+    const r = ethers.hexlify(sigBytes.slice(0, 32));
+    const s = ethers.hexlify(sigBytes.slice(32, 64));
+    const v = sigBytes[64] + 4; // eth_sign format for Safe
+    const adjustedSig = ethers.concat([r, s, new Uint8Array([v])]);
+
+    const safeWithSigner = new ethers.Contract(masterSafe!, SAFE_ABI, signer);
+    const tx = await safeWithSigner.execTransaction(
+      to, 0n, data, 0, 0, 0, 0,
+      ethers.ZeroAddress, ethers.ZeroAddress, adjustedSig,
+      { gasLimit: 2_000_000 },
+    );
+    console.log(`   TX: ${tx.hash}`);
+    const receipt = await tx.wait();
+    console.log(`   ✅ Done`);
+    return { hash: tx.hash, receipt };
+  }
+
+  // Helper: encode calldata and execute via Safe SDK, falling back to direct ethers.js on GS013
   async function executeSafeTx(to: string, data: string, label: string) {
     console.log(`\n🔄 ${label}...`);
-    const safeTx = await protocolKit.createTransaction({
-      transactions: [{ to, value: '0', data }],
-    });
-    const signedTx = await protocolKit.signTransaction(safeTx);
-    const result = await protocolKit.executeTransaction(signedTx);
-    console.log(`   TX: ${result.hash}`);
-    await result.transactionResponse?.wait();
-    console.log(`   ✅ Done`);
-    return result;
+    try {
+      const safeTx = await protocolKit.createTransaction({
+        transactions: [{ to, value: '0', data }],
+      });
+      const signedTx = await protocolKit.signTransaction(safeTx);
+      const result = await protocolKit.executeTransaction(signedTx);
+      console.log(`   TX: ${result.hash}`);
+      await result.transactionResponse?.wait();
+      console.log(`   ✅ Done`);
+      return result;
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes('GS013')) {
+        console.log(`   ⚠️  Safe SDK GS013 — retrying with direct ethers.js...`);
+        return execSafeTxDirect(to, data, label);
+      }
+      throw err;
+    }
   }
 
   const stakingIface = new ethers.Interface(STAKING_ABI);

@@ -1067,7 +1067,9 @@ ponder.on(
   });
 
 // MarketplaceDelivery handler: marketplace-level delivery event that fires for ALL deliveries
-// regardless of which mech delivers. This complements OlasMech:Deliver for complete coverage.
+// regardless of which mech delivers. This is the authoritative delivery signal — it sets
+// delivered:true for cross-mech deliveries that OlasMech:Deliver may miss (non-Jinn mechs,
+// mechs created before factory start block, different Deliver event signatures, etc.)
 ponder.on(
   "MechMarketplace:MarketplaceDelivery",
   async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
@@ -1078,50 +1080,80 @@ ponder.on(
         return;
       }
 
-      const requestId: string = String(event.args.requestId);
-      const deliveryMech: string = String(event.args.mech).toLowerCase();
+      // MarketplaceDelivery is a batch event: requestIds[] and deliveredRequests[] are arrays
+      const requestIds: string[] = (event.args.requestIds as any[]).map((id: any) => String(id));
+      const deliveredRequests: boolean[] = event.args.deliveredRequests as boolean[];
+      const deliveryMech: string = String(event.args.deliveryMech).toLowerCase();
       const txHash: string = String(event.transaction.hash);
       const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
       const requestRepo: Repository = createRepository(db, request, "request");
       const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
+      const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
 
-      // Check if this request exists and is a Jinn request
-      // If the request doesn't exist, it means it was filtered out by networkId != "jinn"
-      let existingRequest: any = null;
-      try {
-        existingRequest = await requestRepo.findUnique({ id: requestId });
-        if (!existingRequest) {
-          logger.debug(
-            { requestId, deliveryMech, txHash },
-            'MarketplaceDelivery event for non-Jinn request (filtered by networkId). Skipping.'
-          );
-          return;
+      let indexedCount = 0;
+
+      for (let i = 0; i < requestIds.length; i++) {
+        const requestId = requestIds[i];
+        const wasDelivered = deliveredRequests?.[i] ?? true; // default true if array missing
+
+        // Check if this request exists and is a Jinn request
+        let existingRequest: any = null;
+        try {
+          existingRequest = await requestRepo.findUnique({ id: requestId });
+          if (!existingRequest) {
+            logger.debug(
+              { requestId, deliveryMech, txHash },
+              'MarketplaceDelivery for non-Jinn request (not in DB). Skipping.'
+            );
+            continue;
+          }
+        } catch (e: any) {
+          logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before MarketplaceDelivery');
+          continue;
         }
-      } catch (e: any) {
-        logger.error({ requestId, error: serializeError(e) }, 'Failed to check request existence before MarketplaceDelivery');
-        throw e;
+
+        // Update delivery record with marketplace-level delivery mech
+        await deliveryRepo.upsert({
+          id: requestId,
+          update: {
+            deliveryMech: deliveryMech,
+          },
+        });
+
+        // Update request: set delivered:true if the marketplace confirms delivery
+        await requestRepo.upsert({
+          id: requestId,
+          update: {
+            deliveryMech: deliveryMech,
+            ...(wasDelivered ? { delivered: true } : {}),
+          },
+        });
+
+        // If delivered and this is a root request, mark workstream as delivered
+        if (wasDelivered && existingRequest.workstreamId && !existingRequest.sourceRequestId) {
+          await workstreamRepo.upsert({
+            id: existingRequest.workstreamId,
+            update: {
+              delivered: true,
+              lastActivity: blockTimestamp,
+            },
+          });
+          logger.debug({ workstreamId: existingRequest.workstreamId, requestId }, "Marked workstream as delivered via MarketplaceDelivery");
+        } else if (wasDelivered && existingRequest.workstreamId) {
+          await workstreamRepo.upsert({
+            id: existingRequest.workstreamId,
+            update: {
+              lastActivity: blockTimestamp,
+            },
+          });
+        }
+
+        indexedCount++;
       }
 
-      // Update delivery record with marketplace-level delivery mech
-      // This tracks which mech actually delivered, even if different from priorityMech
-      await deliveryRepo.upsert({
-        id: requestId,
-        update: {
-          deliveryMech: deliveryMech,
-        },
-      });
-
-      // Update request with marketplace delivery metadata
-      await requestRepo.upsert({
-        id: requestId,
-        update: {
-          deliveryMech: deliveryMech,
-        },
-      });
-
-      logger.info({ requestId, deliveryMech, txHash }, "Indexed MarketplaceDelivery (marketplace-level delivery tracking)");
+      logger.info({ requestIds: requestIds.length, indexedCount, deliveryMech, txHash }, "Indexed MarketplaceDelivery batch");
     } catch (e: any) {
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index MarketplaceDelivery");
     }

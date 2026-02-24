@@ -18,7 +18,7 @@ interface JobTemplate {
   lastUsedAt: string | null
 }
 
-const PONDER_URL = process.env.NEXT_PUBLIC_PONDER_URL || 'https://ponder-production-6d16.up.railway.app/graphql'
+const PONDER_URL = process.env.NEXT_PUBLIC_PONDER_URL || 'https://indexer.jinn.network/graphql'
 
 function formatLastRun(timestamp: string): string {
   const date = new Date(parseInt(timestamp) * 1000) // Convert Unix timestamp

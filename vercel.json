@@ -5,7 +5,7 @@
   "installCommand": "yarn install",
   "framework": "nextjs",
   "env": {
-    "NEXT_PUBLIC_SUBGRAPH_URL": "https://ponder-production-6d16.up.railway.app/graphql",
+    "NEXT_PUBLIC_SUBGRAPH_URL": "https://indexer.jinn.network/graphql",
     "NEXT_PUBLIC_X402_GATEWAY_URL": "https://x402-gateway-production.up.railway.app"
   }
 }

@@ -213,7 +213,7 @@ when_to_read: "When encountering unexpected behavior or debugging issues"
 
 ### 34a. Production Ponder workstream Schema May Omit ventureId/templateId
 **Issue:** Workstreams page returns 500 — "Cannot query field 'ventureId' on type 'workstream'"
-**Root Cause:** Production Ponder GraphQL API (`ponder-production-6d16.up.railway.app`) exposes a `workstream` type that may not include `ventureId`/`templateId` (local Ponder schema can differ)
+**Root Cause:** Production Ponder GraphQL API (`indexer.jinn.network`) exposes a `workstream` type that may not include `ventureId`/`templateId` (local Ponder schema can differ)
 **Solution:** Omit `ventureId` and `templateId` from workstream list/detail queries in `frontend/explorer/src/lib/subgraph.ts`; keep them optional on the `Workstream` interface
 **Prevention:** When adding fields to workstream queries, verify against production GraphQL schema
 

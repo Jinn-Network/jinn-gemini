@@ -92,7 +92,7 @@ async function find() {
 
   // Let's also check the Ponder endpoint if available
   try {
-    const ponderUrl = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
+    const ponderUrl = process.env.PONDER_GRAPHQL_URL || 'https://indexer.jinn.network/graphql';
     console.log('\n--- Checking Ponder for staked services ---');
     const query = `{
       stakedServices(where: { isStaked: true }) {

@@ -202,6 +202,9 @@ olas-operate-middleware/.operate/services/
 olas-operate-middleware/.operate/*.json
 olas-operate-middleware/.operate/*.txt
 
+# Root .operate profile (service 359 keys, wallets)
+.operate/
+
 # Test-generated operate data (ephemeral test artifacts)
 .operate-test/
 

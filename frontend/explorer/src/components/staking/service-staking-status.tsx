@@ -7,6 +7,7 @@ interface ServiceStatus {
   serviceId: string
   isActivelyStaked: boolean
   isEvicted: boolean
+  stakingStateUnknown?: boolean
   accumulatedReward: string
   pendingReward: string
   totalClaimable: string
@@ -15,6 +16,7 @@ interface ServiceStatus {
   stakedSince: string | null
   totalEpochsParticipated?: number
   olasStaked?: string
+  restakeEligibleAt?: number | null
 }
 
 interface ServiceStakingStatusProps {
@@ -22,11 +24,58 @@ interface ServiceStakingStatusProps {
   variant?: 'badge' | 'full'
 }
 
+function RestakeCountdown({ eligibleAt }: { eligibleAt: number }) {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
+
+  useEffect(() => {
+    if (now >= eligibleAt) return
+    const interval = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000)
+    return () => clearInterval(interval)
+  }, [now, eligibleAt])
+
+  if (now >= eligibleAt) {
+    return (
+      <p className="mt-2 font-medium text-green-500">
+        Ready to restake now
+      </p>
+    )
+  }
+
+  const remaining = eligibleAt - now
+  const hours = Math.floor(remaining / 3600)
+  const minutes = Math.floor((remaining % 3600) / 60)
+  const seconds = remaining % 60
+
+  const eligibleDate = new Date(eligibleAt * 1000)
+
+  return (
+    <div className="mt-2 space-y-1">
+      <p className="text-muted-foreground">
+        Restake available in{' '}
+        <span className="font-mono font-medium text-orange-500">
+          {hours}h {minutes}m {seconds}s
+        </span>
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Eligible at {eligibleDate.toLocaleString()}
+      </p>
+    </div>
+  )
+}
+
 function StakingBadge({ status }: { status: ServiceStatus | null }) {
   if (!status) {
     return (
       <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-muted animate-pulse">
         loading
+      </Badge>
+    )
+  }
+
+  if (status.stakingStateUnknown) {
+    return (
+      <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+        unknown
       </Badge>
     )
   }
@@ -126,16 +175,24 @@ export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceSt
         <StakingBadge status={status} />
       </div>
 
+      {status.stakingStateUnknown && (
+        <div className="rounded-md border border-yellow-500/20 bg-yellow-500/5 p-3 text-sm">
+          <p className="font-medium text-yellow-500">Staking state unavailable</p>
+          <p className="text-muted-foreground mt-1">
+            On-chain RPC is not responding. The actual staking state could not be verified.
+          </p>
+        </div>
+      )}
+
       {status.isEvicted && (
         <div className="rounded-md border border-orange-500/20 bg-orange-500/5 p-3 text-sm">
           <p className="font-medium text-orange-500">Service Evicted</p>
           <p className="text-muted-foreground mt-1">
             This service was removed from active staking due to insufficient activity.
-            To restake, run:
           </p>
-          <code className="block text-xs bg-muted px-2 py-1.5 rounded mt-2 break-all">
-            tsx scripts/migrate-staking-contract.ts --service-id={serviceId} --source=jinn --target=jinn
-          </code>
+          {status.restakeEligibleAt && (
+            <RestakeCountdown eligibleAt={status.restakeEligibleAt} />
+          )}
         </div>
       )}
 

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     // 0 = NotStaked, 1 = Staked, 2 = Evicted
     let isActivelyStaked = false
     let isEvicted = false
-    const hasBeenStaked = BigInt(service.currentOlasStaked) > BigInt(0)
+    let stakingStateUnknown = false
 
     try {
       const client = getRpcClient()
@@ -46,16 +46,39 @@ export async function GET(request: NextRequest) {
       isActivelyStaked = Number(stakingState) === 1
       isEvicted = Number(stakingState) === 2
     } catch (err) {
-      // Fallback: subgraph-only (can't distinguish evicted from staked)
-      console.warn('getStakingState RPC failed, falling back to subgraph:', err)
-      isActivelyStaked = service.latestStakingContract?.toLowerCase() === JINN_STAKING_CONTRACT.toLowerCase()
-      isEvicted = hasBeenStaked && !isActivelyStaked
+      // RPC failed — don't lie about the state, surface "unknown"
+      console.warn('getStakingState RPC failed — marking state as unknown:', err)
+      stakingStateUnknown = true
     }
 
     // Subgraph rewards are in wei
     const earned = BigInt(service.olasRewardsEarned)
     const claimed = BigInt(service.olasRewardsClaimed)
     const unclaimed = earned > claimed ? earned - claimed : BigInt(0)
+
+    // For evicted services: calculate when restaking becomes possible
+    let restakeEligibleAt: number | null = null
+    if (isEvicted) {
+      try {
+        const client = getRpcClient()
+        const [serviceInfo, minDuration] = await Promise.all([
+          client.readContract({
+            address: JINN_STAKING_CONTRACT,
+            abi: stakingAbi,
+            functionName: 'getServiceInfo',
+            args: [BigInt(serviceIdParam)],
+          }) as Promise<{ tsStart: bigint }>,
+          client.readContract({
+            address: JINN_STAKING_CONTRACT,
+            abi: stakingAbi,
+            functionName: 'minStakingDuration',
+          }) as Promise<bigint>,
+        ])
+        restakeEligibleAt = Number(serviceInfo.tsStart + minDuration)
+      } catch (err) {
+        console.warn('Failed to fetch restake eligibility (non-fatal):', err)
+      }
+    }
 
     // Optional RPC: pending reward for current epoch (non-fatal if it fails)
     // Uses shared singleton client with multicall batching.
@@ -88,6 +111,7 @@ export async function GET(request: NextRequest) {
       serviceId: serviceIdParam,
       isActivelyStaked,
       isEvicted,
+      stakingStateUnknown,
       accumulatedReward: formatEther(earned),
       pendingReward,
       totalClaimable: formatEther(unclaimed),
@@ -96,6 +120,7 @@ export async function GET(request: NextRequest) {
       stakedSince: null, // subgraph doesn't expose tsStart; use totalEpochsParticipated instead
       totalEpochsParticipated: service.totalEpochsParticipated,
       olasStaked: formatEther(BigInt(service.currentOlasStaked)),
+      restakeEligibleAt,
     })
   } catch (error) {
     console.error('Error fetching service staking status:', error)

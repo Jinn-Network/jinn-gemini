@@ -87,7 +87,7 @@ const network = (env.X402_NETWORK || "base") as Network;
 const mechAddress = env.MECH_ADDRESS;
 const privateKey = env.PRIVATE_KEY;
 // Ponder GraphQL endpoint — used only for /runs/ endpoints (on-chain delivery status)
-const ponderUrl = env.PONDER_GRAPHQL_URL || "https://ponder-production-6d16.up.railway.app/graphql";
+const ponderUrl = env.PONDER_GRAPHQL_URL || "https://indexer.jinn.network/graphql";
 const chainConfig = env.CHAIN_CONFIG || "base";
 
 // Supabase client — source of truth for agent templates
