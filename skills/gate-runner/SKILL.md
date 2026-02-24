@@ -201,15 +201,83 @@ When a gate fails:
 1. Log FAIL in session-log.md (error output, root cause, files to check)
 2. Read failureHints from gate registry: tests/pipeline/gate-registry.ts
 3. Read the failing source files
-4. Diagnose root cause
-5. Fix the PRODUCTION CODE (never weaken a gate assertion — Rule 2)
-6. Commit the fix to the branch
-7. Push to branch
-8. If jinn-node/ changed: yarn subtree:push
-9. Log FIX in session-log.md (file, change, commit SHA, subtree pushed?)
-10. Re-run ONLY the failed gate
-11. Max 3 retries per gate — then STOP and ask human
+4. Diagnose: Is this a CODE issue or a PIPELINE issue? (see below)
+5. Apply the appropriate fix:
+   - CODE issue → fix production code, commit, log as FIX
+   - PIPELINE issue → fix the check, commit with "fix(pipeline): ...", log as PIPELINE_FIX
+6. Push to branch
+7. If jinn-node/ changed: yarn subtree:push
+8. Re-run ONLY the failed gate
+9. After a CODE fix: consider adding a new inspect gate (see Evolving the Pipeline)
+10. Max 3 retries per gate — then STOP and ask human
 ```
+
+---
+
+## Evolving the Pipeline
+
+The gate registry and inspect checks evolve during runs. This keeps the pipeline accurate and grows coverage over time.
+
+### Diagnosing Code vs Pipeline Issues
+
+When a gate fails, determine whether the **production code** is wrong or the **check itself** is wrong:
+
+| Symptom | Diagnosis | Action |
+|---------|-----------|--------|
+| File not found, but the feature exists at a different path | Stale path in check | PIPELINE_FIX |
+| Pattern doesn't match, but the feature works correctly | Outdated regex/pattern | PIPELINE_FIX |
+| Count assertion fails, but the actual count is correct and expected | Wrong threshold | PIPELINE_FIX |
+| Code genuinely doesn't do what the gate asserts | Production bug | CODE FIX (existing loop) |
+
+**PIPELINE_FIX log entry:**
+```markdown
+## [HH:MM:SS] PIPELINE_FIX: <gate-id>
+- File: `tests/pipeline/gate-registry.ts` or `scripts/test/pipeline/inspect-gates.ts`
+- Old: <old path/pattern/threshold>
+- New: <new path/pattern/threshold>
+- Commit: `<SHA>`
+```
+
+Pipeline fixes are committed with the prefix `fix(pipeline): ...` to distinguish them from production code fixes in git history.
+
+### Auto-Adding Inspect Gates
+
+After every CODE fix, ask: **"Would a new inspect gate catch this earlier in future runs?"**
+
+If the fix involves a pattern verifiable by reading files (grep, exists, count), add a new inspect gate:
+
+1. Add the gate to `tests/pipeline/gate-registry.ts` with `addedAt` and `addedReason`
+2. Add the check to `scripts/test/pipeline/inspect-gates.ts`
+3. Log as `NEW_GATE` entry in session-log.md
+4. Commit alongside the code fix or as a separate `feat(pipeline): ...` commit
+5. Run the new gate to verify it passes
+
+Only auto-add **inspect-tier** gates. These are cheap and deterministic.
+
+### Proposing Higher-Tier Gates
+
+If a fix reveals something that needs runtime validation (Tenderly fork, canary deploy, live RPC), do NOT auto-add it. Instead log a proposal:
+
+```markdown
+## [HH:MM:SS] GATE_PROPOSAL: <proposed-id>
+- Tier: tenderly|canary
+- Name: <description>
+- Rationale: <why existing gates didn't catch this>
+- Suggested check: <what to validate>
+- Files: <relevant paths>
+```
+
+Proposals appear in the session log for human review during the post-run retrospective.
+
+### Retiring Gates
+
+If a gate is permanently irrelevant (feature removed, superseded by another gate):
+
+1. Set `retired: true` on the gate in `tests/pipeline/gate-registry.ts` (don't delete — history matters)
+2. Remove or comment out the check in `inspect-gates.ts`
+3. Log as `GATE_RETIRED` entry in session-log.md
+
+Retired gates are automatically skipped by `gatesForTier()` and `gateIdsForProfile()`.
 
 ---
 
@@ -270,7 +338,12 @@ Status: IN_PROGRESS | Current tier: <tier> | Gates: X/Y PASS, Z FAIL, W PENDING
 | Gate fails | `Gate <id> — FAIL` with error, root cause, files |
 | Applying a fix | `FIX: <id>` with file, change, commit, subtree |
 | Retrying a gate | `RETRY: <id> (attempt N)` |
+| Fixing a stale check | `PIPELINE_FIX: <gate-id>` with old → new path/pattern |
+| Adding a new inspect gate | `NEW_GATE: <id>` with name, tier, rationale |
+| Proposing a higher-tier gate | `GATE_PROPOSAL: <id>` with tier, rationale, suggested check |
+| Retiring a gate | `GATE_RETIRED: <id>` with reason |
 | Run complete | `COMPLETE` or `STOPPED` with summary |
+| Post-run review | `RETROSPECTIVE` with fix counts, proposals, coverage delta |
 
 ### State Updates
 
@@ -285,7 +358,7 @@ After every gate result:
 ## Rules
 
 1. **Never finish with failing gates.** Either fix them or stop and escalate.
-2. **Fix code, not tests.** Never weaken a gate assertion to make it pass.
+2. **Fix code, not tests.** Never weaken a gate assertion to make it pass. Exception: if a check itself is wrong (stale file path, outdated pattern, wrong directory), fix the check and log it as a `PIPELINE_FIX`. Code fixes change production code; pipeline fixes change `tests/pipeline/` or `scripts/test/pipeline/`.
 3. **Update state.json** after every gate result change.
 4. **Log every action** in session-log.md (START, PASS, FAIL, FIX, RETRY).
 5. **Update session-log.md header** after every state change.
@@ -334,6 +407,27 @@ When all gates pass:
 
 ```bash
 yarn test:pipeline:canary:cleanup --max-age-hours 2
+```
+
+### Post-Run Retrospective
+
+Before declaring complete, review the session:
+
+1. Count `PIPELINE_FIX` entries — are there patterns? (e.g., many stale paths suggest code moved)
+2. Count `FIX` entries — for each, check if a `NEW_GATE` was added
+3. Review any `GATE_PROPOSAL` entries — summarize them for the user
+4. If 3+ pipeline fixes in one run, note: "Consider refactoring inspect checks to be more resilient to file moves"
+
+Append a `RETROSPECTIVE` entry to session-log.md:
+
+```markdown
+## [HH:MM:SS] RETROSPECTIVE
+- Code fixes: N (M had new gates added)
+- Pipeline fixes: N
+- Gate proposals: (list or "none")
+- New gates added: (list or "none")
+- Gates retired: N
+- Coverage delta: was X gates, now Y gates
 ```
 
 The session-log.md + state.json together are the review artifact. Share them for post-session audit.

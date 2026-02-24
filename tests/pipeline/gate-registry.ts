@@ -27,6 +27,12 @@ export interface Gate {
   phase?: number;
   /** Description of what this gate proves */
   description: string;
+  /** Gate has been retired — skip during runs */
+  retired?: boolean;
+  /** When this gate was added (ISO date string) */
+  addedAt?: string;
+  /** What prompted adding this gate */
+  addedReason?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -542,9 +548,9 @@ export const gateTiers: Record<string, Tier> = Object.fromEntries(
   gates.map((g) => [g.id, g.tier]),
 );
 
-/** Get all gates for a given tier */
+/** Get all active (non-retired) gates for a given tier */
 export function gatesForTier(tier: Tier): Gate[] {
-  return gates.filter((g) => g.tier === tier);
+  return gates.filter((g) => g.tier === tier && !g.retired);
 }
 
 /** Get a gate by ID */
@@ -552,12 +558,12 @@ export function getGate(id: string): Gate | undefined {
   return gates.find((g) => g.id === id);
 }
 
-/** Get all gate IDs */
+/** Get all active gate IDs (excludes retired) */
 export function allGateIds(): string[] {
-  return gates.map((g) => g.id);
+  return gates.filter((g) => !g.retired).map((g) => g.id);
 }
 
-/** Get gate IDs for tiers included in a profile */
+/** Get active gate IDs for tiers included in a profile (excludes retired) */
 export function gateIdsForProfile(profile: 'quick' | 'standard' | 'full'): string[] {
   const tiers: Record<string, Tier[]> = {
     quick: ['unit', 'inspect'],
@@ -565,5 +571,5 @@ export function gateIdsForProfile(profile: 'quick' | 'standard' | 'full'): strin
     full: ['unit', 'inspect', 'tenderly', 'canary', 'smoke'],
   };
   const activeTiers = new Set(tiers[profile]);
-  return gates.filter((g) => activeTiers.has(g.tier)).map((g) => g.id);
+  return gates.filter((g) => activeTiers.has(g.tier) && !g.retired).map((g) => g.id);
 }

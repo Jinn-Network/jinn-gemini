@@ -275,3 +275,44 @@ export async function logFix(gateId: string, fix: { file: string; change: string
 export async function logRetry(gateId: string, attempt: number, runDir?: string): Promise<void> {
   await appendLog(`RETRY: ${gateId} (attempt ${attempt})`, runDir);
 }
+
+// Pipeline evolution log helpers
+
+export async function logPipelineFix(gateId: string, fix: { file: string; oldPattern: string; newPattern: string; commit: string }, runDir?: string): Promise<void> {
+  await appendLog(
+    `PIPELINE_FIX: ${gateId}\n- File: \`${fix.file}\`\n- Old: ${fix.oldPattern}\n- New: ${fix.newPattern}\n- Commit: \`${fix.commit}\``,
+    runDir,
+  );
+}
+
+export async function logNewGate(gate: { id: string; name: string; tier: string; rationale: string }, runDir?: string): Promise<void> {
+  await appendLog(
+    `NEW_GATE: ${gate.id}\n- Name: ${gate.name}\n- Tier: ${gate.tier}\n- Rationale: ${gate.rationale}`,
+    runDir,
+  );
+}
+
+export async function logGateProposal(proposal: { id: string; tier: string; name: string; rationale: string; suggestedCheck: string; files: string[] }, runDir?: string): Promise<void> {
+  const files = proposal.files.map((f) => `- ${f}`).join('\n');
+  await appendLog(
+    `GATE_PROPOSAL: ${proposal.id}\n- Tier: ${proposal.tier}\n- Name: ${proposal.name}\n- Rationale: ${proposal.rationale}\n- Suggested check: ${proposal.suggestedCheck}\n**Files**:\n${files}`,
+    runDir,
+  );
+}
+
+export async function logGateRetired(gateId: string, reason: string, runDir?: string): Promise<void> {
+  await appendLog(`GATE_RETIRED: ${gateId}\n- Reason: ${reason}`, runDir);
+}
+
+export async function logRetrospective(summary: { codeFixes: number; codeFixesWithGates: number; pipelineFixes: number; gateProposals: string[]; newGates: string[]; gatesRetired: number; totalBefore: number; totalAfter: number }, runDir?: string): Promise<void> {
+  const proposals = summary.gateProposals.length > 0
+    ? summary.gateProposals.map((p) => `  - ${p}`).join('\n')
+    : '  (none)';
+  const newGates = summary.newGates.length > 0
+    ? summary.newGates.map((g) => `  - ${g}`).join('\n')
+    : '  (none)';
+  await appendLog(
+    `RETROSPECTIVE\n- Code fixes: ${summary.codeFixes} (${summary.codeFixesWithGates} had new gates added)\n- Pipeline fixes: ${summary.pipelineFixes}\n- Gate proposals:\n${proposals}\n- New gates added:\n${newGates}\n- Gates retired: ${summary.gatesRetired}\n- Coverage delta: was ${summary.totalBefore} gates, now ${summary.totalAfter} gates`,
+    runDir,
+  );
+}
