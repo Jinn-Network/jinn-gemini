@@ -346,6 +346,24 @@ Common causes: wrong contract address, insufficient OLAS, wrong service state, a
 
 `stake()` reverts with `NoRewardsAvailable()` (selector `0xafb0be33`) if `availableRewards == 0`. Deposit OLAS rewards first (permissionless `deposit(uint256)` function).
 
+### 60 requests can still be ineligible (Jinn checker uses +1 margin)
+
+Current Jinn staking liveness on Base is:
+- `livenessPeriod = 86400`
+- `livenessRatio = 694444444444444`
+- `required = ceil(effectivePeriod * livenessRatio / 1e18) + 1`
+
+With `effectivePeriod = 86400`, this is **61 requests**, so stopping at 60 can leave `pending rewards = 0`.
+
+Worker logic should align with the same formula for gating/heartbeat:
+- `effectivePeriod = max(livenessPeriod, now - tsCheckpoint [+ optional delay buffer])`
+- `target = ceil(effectivePeriod * livenessRatio / 1e18) + safetyMargin`
+
+Operator knobs:
+- `WORKER_STAKING_TARGET` — hard override
+- `WORKER_STAKING_SAFETY_MARGIN` — additive request margin (default `1`)
+- `WORKER_STAKING_CHECKPOINT_DELAY_SEC` — optional delay buffer (default `0`)
+
 ### Direct EOA signing fails — must use Safe
 
 Staking operations must be executed FROM the Safe (msg.sender check). Route through Safe `execTransaction`.
