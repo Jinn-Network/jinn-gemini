@@ -21,7 +21,7 @@ import {
 } from '@/lib/subgraph';
 import type { Service, ServiceInstance } from './service-types';
 
-const PONDER_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
+const PONDER_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://indexer.jinn.network/graphql';
 
 /** Fetch a job definition with latestStatusUpdate fields (not in shared-ui's query) */
 async function getJobDefinitionWithStatus(id: string): Promise<JobDefinition | null> {

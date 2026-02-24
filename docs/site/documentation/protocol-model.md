@@ -913,7 +913,7 @@ const serviceInfo = await serviceManager.deployAndStakeService(undefined, {
 As specified in `requirements.md`, the protocol maintains three levels of observability:
 
 **Human (Frontends):**
-- Explorer UI at `https://ponder-production-6d16.up.railway.app/`
+- Explorer UI at `https://indexer.jinn.network/`
 - Request detail pages with full job history, artifacts, telemetry
 - Memory visualization showing SITUATION details and similar jobs
 - Job hierarchy graphs showing parent/child relationships

@@ -21,7 +21,7 @@ import { config } from 'dotenv';
 
 config();
 
-const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
+const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://indexer.jinn.network/graphql';
 const client = new GraphQLClient(PONDER_URL);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

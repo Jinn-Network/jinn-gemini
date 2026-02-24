@@ -48,4 +48,4 @@ const result = await marketplaceInteract({
 
 console.log("Request ID:", result.request_ids?.[0]);
 console.log("\nNew template will be created in Ponder after indexing.");
-console.log("Check: curl -s -X POST 'https://ponder-production-6d16.up.railway.app/graphql' -H 'Content-Type: application/json' -d '{\"query\":\"{ jobTemplates(where: { name_contains: \\\"v2\\\" }, limit: 5) { items { id name blueprint } } }\"}' | jq");
+console.log("Check: curl -s -X POST 'https://indexer.jinn.network/graphql' -H 'Content-Type: application/json' -d '{\"query\":\"{ jobTemplates(where: { name_contains: \\\"v2\\\" }, limit: 5) { items { id name blueprint } } }\"}' | jq");

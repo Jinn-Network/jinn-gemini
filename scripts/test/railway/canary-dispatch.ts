@@ -54,7 +54,7 @@ function usage(exitCode: number = 1): never {
       '  --instruction <text>                           Override GOAL-001 directive',
       '  --job-name <name>                              Optional custom job name',
       '  --env <K=V,K2=V2>                              Additional payload env map',
-      '  --ponder-url <url>                             Default: https://ponder-production-6d16.up.railway.app/graphql',
+      '  --ponder-url <url>                             Default: https://indexer.jinn.network/graphql',
       '  --poll-seconds <n>                             Default: 20',
       '  --timeout-seconds <n>                          Default: 900',
       '  --expect-delivered true|false                  Default: true',
@@ -270,7 +270,7 @@ async function main(): Promise<void> {
   const timeoutSeconds = Math.max(30, asInt(flags['timeout-seconds'], 900));
   const logLines = Math.max(200, asInt(flags['log-lines'], 1500));
 
-  const ponderUrl = (flags['ponder-url'] || process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql').trim();
+  const ponderUrl = (flags['ponder-url'] || process.env.PONDER_GRAPHQL_URL || 'https://indexer.jinn.network/graphql').trim();
   const artifactPath = flags.artifact ? resolve(flags.artifact) : undefined;
 
   process.env.OPERATE_PROFILE_DIR = operateDir;

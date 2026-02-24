@@ -26,7 +26,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const PONDER_URL = 'https://ponder-production-6d16.up.railway.app/graphql';
+const PONDER_URL = 'https://indexer.jinn.network/graphql';
 
 // Default staking contract (shared Jinn staking)
 const DEFAULT_STAKING_CONTRACT = '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139' as const;

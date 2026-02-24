@@ -42,7 +42,7 @@ import {
   type TokenMetrics,
 } from './shared/workstream-utils.js';
 
-const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
+const PONDER_GRAPHQL_URL = process.env.PONDER_GRAPHQL_URL || 'https://indexer.jinn.network/graphql';
 const IPFS_GATEWAY_URL = process.env.IPFS_GATEWAY_URL || 'https://gateway.autonolas.tech/ipfs/';
 
 interface Request {

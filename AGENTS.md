@@ -190,7 +190,7 @@ Guide: [Writing Invariants](docs/guides/writing-invariants.md)
 
 | API | URL | Purpose |
 |-----|-----|---------|
-| Ponder (reads) | `https://ponder-production-6d16.up.railway.app/graphql` | On-chain data queries |
+| Ponder (reads) | `https://indexer.jinn.network/graphql` | On-chain data queries |
 | Control API (writes) | `http://localhost:4001/graphql` | Off-chain data writes |
 
 Control API requires **ERC-8128 signed authentication** (`signature` + `signature-input` + `content-digest` headers). Bare `X-Worker-Address` is no longer accepted.

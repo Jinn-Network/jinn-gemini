@@ -117,7 +117,7 @@ CONTROL_API_URL=http://localhost:4001/graphql   # local dev
 # or
 CONTROL_API_URL=https://control-api-production-c1f5.up.railway.app  # production
 
-PONDER_GRAPHQL_URL=https://ponder-production-6d16.up.railway.app/graphql  # production default
+PONDER_GRAPHQL_URL=https://indexer.jinn.network/graphql  # production default
 
 SUPABASE_URL=https://clnwgxgvmnrkwqdblqgf.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<key>
@@ -219,7 +219,7 @@ JINN_SERVICE_MECH_ADDRESS  = 0x<mech>
 JINN_SERVICE_PRIVATE_KEY   = 0x<key>
 VENTURE_FILTER             = <venture-uuid>
 CONTROL_API_URL            = https://control-api-production-c1f5.up.railway.app
-PONDER_GRAPHQL_URL         = https://ponder-production-6d16.up.railway.app/graphql
+PONDER_GRAPHQL_URL         = https://indexer.jinn.network/graphql
 SUPABASE_URL               = https://clnwgxgvmnrkwqdblqgf.supabase.co
 SUPABASE_SERVICE_ROLE_KEY  = <key>
 ```
