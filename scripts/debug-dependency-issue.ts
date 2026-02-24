@@ -8,7 +8,7 @@ import 'dotenv/config';
 import { graphQLRequest } from 'jinn-node/http/client.js';
 import { createClient } from '@supabase/supabase-js';
 
-const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
+const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://indexer.jinn.network/graphql';
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 

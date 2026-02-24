@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NEXT_PUBLIC_SUBGRAPH_URL=https://ponder-production-6d16.up.railway.app/graphql next dev --turbopack --port 3001",
+    "dev": "NEXT_PUBLIC_SUBGRAPH_URL=https://indexer.jinn.network/graphql next dev --turbopack --port 3001",
     "dev:local": "NEXT_PUBLIC_SUBGRAPH_URL=http://localhost:42069/graphql next dev --turbopack --port 3001",
     "build": "next build",
     "start": "next start",
@@ -21,6 +21,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@stepperize/react": "^6.1.0",
     "@tanstack/react-query": "^5.62.0",
     "@whetstone-research/doppler-sdk": "^0.0.17",
     "class-variance-authority": "^0.7.1",

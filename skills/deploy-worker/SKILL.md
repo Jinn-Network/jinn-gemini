@@ -18,7 +18,7 @@ Workers connect to two shared infrastructure services (already running in the `j
 
 | Shared Service | URL | Set as |
 |---------------|-----|--------|
-| Ponder | `https://ponder-production-6d16.up.railway.app/graphql` | `PONDER_GRAPHQL_URL` |
+| Ponder | `https://indexer.jinn.network/graphql` | `PONDER_GRAPHQL_URL` |
 | Control API | `https://control-api-production-c1f5.up.railway.app` | `CONTROL_API_URL` |
 
 Each worker is its own Railway project (or service within one), linked to the `jinn-cli-agents` repo and configured to build from `deploy/worker-default/railway.toml`.
@@ -151,7 +151,7 @@ railway variables set JINN_SERVICE_PRIVATE_KEY="0x..."
 railway variables set VENTURE_FILTER="<venture-uuid>"
 
 # Shared infrastructure (use production URLs from jinn-shared project)
-railway variables set PONDER_GRAPHQL_URL="https://ponder-production-6d16.up.railway.app/graphql"
+railway variables set PONDER_GRAPHQL_URL="https://indexer.jinn.network/graphql"
 railway variables set CONTROL_API_URL="https://control-api-production-c1f5.up.railway.app"
 
 # GitHub

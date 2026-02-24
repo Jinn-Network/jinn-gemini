@@ -103,7 +103,7 @@ The Ponder indexer URL has been migrated to a stable domain. Old Railway URLs ar
 | Status | URL |
 |--------|-----|
 | **Current** | `https://indexer.jinn.network/graphql` |
-| Dead | `https://ponder-production-6d16.up.railway.app/graphql` |
+| Dead | `https://indexer.jinn.network/graphql` |
 | Dead | `https://ponder-production-2e9e.up.railway.app/graphql` |
 
 `NEXT_PUBLIC_SUBGRAPH_URL` must match in three places:

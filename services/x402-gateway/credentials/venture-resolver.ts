@@ -12,7 +12,7 @@ import { checkVentureAccess, listVentureCredentials, getVentureCredential } from
 import { getSupabaseClient } from './supabase.js';
 import type { TrustTier, VentureCredential } from './types.js';
 
-const ponderUrl = process.env.PONDER_GRAPHQL_URL || 'https://ponder-production-6d16.up.railway.app/graphql';
+const ponderUrl = process.env.PONDER_GRAPHQL_URL || 'https://indexer.jinn.network/graphql';
 
 export interface VentureContext {
   ventureId: string;
