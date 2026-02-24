@@ -1,0 +1,144 @@
+{
+    "templateMeta": {
+        "id": "content-template",
+        "name": "Content Template",
+        "description": "Generalized content artifact producer. Takes any combination of sources (URLs, text, references), a lookback period, and a content brief — produces a labeled content artifact. Sources are researched in parallel and synthesized into original content.",
+        "priceWei": "0",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Human label for this content run (e.g., 'Weekly AI Digest', 'Market Brief')"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Things to check for content — URLs, text, references. The agent decides how to use each."
+                },
+                "lookbackPeriod": {
+                    "type": "string",
+                    "description": "How far back to look for content (e.g., '7 days', '24 hours', '30 days')"
+                },
+                "outputTopic": {
+                    "type": "string",
+                    "description": "Artifact topic label (e.g., 'WEEKLY_AI_DIGEST', 'MARKET_BRIEF')"
+                },
+                "contentBrief": {
+                    "type": "string",
+                    "description": "What angle or purpose the content should serve — the substance guidance",
+                    "default": "Summarize notable developments."
+                },
+                "formatBrief": {
+                    "type": "string",
+                    "description": "Style and formatting guidance — tone (formal/casual), structure (e.g., '3 paragraphs'), length preferences, voice",
+                    "default": "Clear, professional prose. Organize thematically."
+                },
+                "outputFormat": {
+                    "type": "string",
+                    "enum": ["markdown", "structured-json"],
+                    "description": "Output format for the artifact",
+                    "default": "markdown"
+                }
+            },
+            "required": ["name", "sources", "lookbackPeriod", "outputTopic"]
+        },
+        "outputSpec": {
+            "version": "1.0",
+            "fields": [
+                {
+                    "name": "contentBody",
+                    "path": "$.result.contentBody",
+                    "type": "string",
+                    "required": true,
+                    "description": "The produced content"
+                },
+                {
+                    "name": "sourcesChecked",
+                    "path": "$.result.sourcesChecked",
+                    "type": "number",
+                    "required": true,
+                    "description": "Number of sources that were checked for content"
+                },
+                {
+                    "name": "sourcesCited",
+                    "path": "$.result.sourcesCited",
+                    "type": "number",
+                    "required": true,
+                    "description": "Number of sources actually cited in the output"
+                }
+            ]
+        },
+        "tools": [
+            { "name": "web_fetch", "required": true },
+            { "name": "google_web_search", "required": true },
+            { "name": "create_artifact", "required": true }
+        ]
+    },
+    "invariants": [
+        {
+            "id": "GOAL-001",
+            "type": "BOOLEAN",
+            "condition": "You research every source in {{sources}} for content relevant to the brief, considering only material from within {{lookbackPeriod}} relative to {{currentTimestamp}}. Each source should be thoroughly investigated — follow leads, check related material, and build a picture of what's happened.",
+            "assessment": "Every source in the input array was checked. Research artifacts exist with findings and citations. Material outside the lookback window is excluded unless it provides essential context.",
+            "examples": {
+                "do": [
+                    "Fetch a URL source and scan for recent developments within the lookback period",
+                    "Use a text source as context to guide web research on the topic",
+                    "Follow leads discovered during research — a source mentions a report, go find that report",
+                    "Create structured findings artifacts so synthesis has material to work with"
+                ],
+                "dont": [
+                    "Ignore sources from the input array",
+                    "Include stale content from well outside the lookback period without justification",
+                    "Skim a source superficially when deeper investigation would yield better material"
+                ]
+            }
+        },
+        {
+            "id": "GOAL-002",
+            "type": "BOOLEAN",
+            "condition": "You synthesize research findings into content following the brief: {{contentBrief}}. Content must be original synthesis — group related findings thematically, cite specific sources, and produce something more valuable than any individual source alone.",
+            "assessment": "The output content addresses the brief's angle/purpose. Findings are synthesized into a coherent narrative, not concatenated. Specific sources are cited. The content adds value beyond what the sources individually provide.",
+            "examples": {
+                "do": [
+                    "Connect findings across sources to surface patterns or insights",
+                    "Cite specific sources when making claims",
+                    "Organize content by theme, not by source",
+                    "Produce original framing that helps the reader understand the landscape"
+                ],
+                "dont": [
+                    "Copy-paste from sources",
+                    "List findings source-by-source without synthesis",
+                    "Make unsourced claims",
+                    "Ignore the content brief's stated angle or purpose"
+                ]
+            }
+        },
+        {
+            "id": "STYLE-001",
+            "type": "BOOLEAN",
+            "condition": "You follow the style and formatting guidance: {{formatBrief}}. The tone, structure, and presentation of the content match what was requested.",
+            "assessment": "The output content matches the requested tone (formal/casual/technical), follows the requested structure (paragraph count, section layout), and respects any length or voice preferences specified in the format brief.",
+            "examples": {
+                "do": [
+                    "If formatBrief says 'casual tone, 3 short paragraphs' — write exactly that",
+                    "If formatBrief says 'formal research report with executive summary' — structure accordingly",
+                    "Match the voice consistently throughout the piece"
+                ],
+                "dont": [
+                    "Ignore formatting instructions and default to a generic style",
+                    "Mix tones inconsistently within the same piece",
+                    "Produce a 2000-word essay when the brief asks for a concise summary"
+                ]
+            }
+        },
+        {
+            "id": "QUALITY-001",
+            "type": "FLOOR",
+            "metric": "content_quality_score",
+            "min": 60,
+            "assessment": "Rate the output 0–100: Relevance to brief (25%) — does the content address the stated purpose? Source coverage (25%) — were the provided sources meaningfully used? Synthesis quality (25%) — is this more than the sum of its parts? Readability (25%) — is it clear, well-structured, and appropriate for the audience?"
+        }
+    ]
+}
