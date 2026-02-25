@@ -71,6 +71,23 @@ if [ -n "$JINN_WORKSPACE_DIR" ]; then
 fi
 
 # =============================================================================
+# Gemini CLI Upgrade
+# =============================================================================
+# Upgrade Gemini CLI at runtime if GEMINI_CLI_VERSION is set.
+# This avoids needing a full Docker rebuild for CLI version changes.
+
+if [ -n "$GEMINI_CLI_VERSION" ]; then
+  CURRENT_VERSION=$(npx @google/gemini-cli --version 2>/dev/null || echo "unknown")
+  if [ "$CURRENT_VERSION" != "$GEMINI_CLI_VERSION" ]; then
+    npm install -g "@google/gemini-cli@${GEMINI_CLI_VERSION}" 2>/dev/null && \
+      echo "[init] Upgraded Gemini CLI to v${GEMINI_CLI_VERSION} (was ${CURRENT_VERSION})" || \
+      echo "[init] WARNING: Failed to upgrade Gemini CLI to v${GEMINI_CLI_VERSION}"
+  else
+    echo "[init] Gemini CLI already at v${GEMINI_CLI_VERSION}"
+  fi
+fi
+
+# =============================================================================
 # Gemini CLI Directory
 # =============================================================================
 # Ensure ~/.gemini exists for OAuth credential storage
