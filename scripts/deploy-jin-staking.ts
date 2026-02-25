@@ -17,12 +17,11 @@
  * Environment Variables:
  *   OPERATE_PASSWORD - Password to decrypt the master wallet keystore
  *   BASE_RPC_URL - Base mainnet RPC URL (default: https://mainnet.base.org)
- *   WHITELIST_ADDRESS_1 - First whitelisted MEC address (required)
- *   WHITELIST_ADDRESS_2 - Second whitelisted MEC address (optional)
- * 
+ *
  * Usage:
  *   yarn tsx scripts/deploy-jin-staking.ts
  *   yarn tsx scripts/deploy-jin-staking.ts --dry-run
+ *   yarn tsx scripts/deploy-jin-staking.ts --agent-id=103
  */
 
 import { ethers } from 'ethers';
@@ -141,7 +140,7 @@ const STAKING_PARAMS = {
   metadataHash: '' as string, // Set by uploadMetadataToIPFS() during deployment
   
   // Maximum number of services that can stake
-  maxNumServices: 10,
+  maxNumServices: 100,
   
   // Rewards per second (in OLAS wei)
   // 300% APY with 5000 OLAS min stake:
@@ -168,8 +167,8 @@ const STAKING_PARAMS = {
   // Number of agent instances per service
   numAgentInstances: 1,
   
-  // Required agent IDs - Agent ID 43 is the Mech/agents.fun agent
-  agentIds: [43],
+  // Required agent IDs - set via --agent-id=N CLI param (default: 43 for backward compat)
+  agentIds: [43] as number[],
   
   // Optional: required threshold (0 = any threshold)
   threshold: 0,
@@ -200,18 +199,11 @@ const STAKING_TOKEN_ABI = [
   'function initialize((bytes32 metadataHash, uint256 maxNumServices, uint256 rewardsPerSecond, uint256 minStakingDeposit, uint256 minNumStakingPeriods, uint256 maxNumInactivityPeriods, uint256 livenessPeriod, uint256 timeForEmissions, uint256 numAgentInstances, uint256[] agentIds, uint256 threshold, bytes32 configHash, bytes32 proxyHash, address serviceRegistry, address activityChecker) stakingParams, address serviceRegistryTokenUtility, address stakingToken)',
 ];
 
-// WhitelistedRequesterActivityChecker ABI (our custom contract)
+// DeliveryActivityChecker ABI (permissionless — no whitelist)
 const ACTIVITY_CHECKER_ABI = [
-  'constructor(address _mechMarketplace, uint256 _livenessRatio, address _initialWhitelist1, address _initialWhitelist2, address _owner)',
-  'function isWhitelisted(address account) view returns (bool)',
-  'function addToWhitelist(address account)',
-  'function removeFromWhitelist(address account)',
-  'function transferOwnership(address newOwner)',
-  'function owner() view returns (address)',
+  'constructor(address _mechMarketplace, uint256 _livenessRatio)',
   'function livenessRatio() view returns (uint256)',
   'function mechMarketplace() view returns (address)',
-  'function initialWhitelist1() view returns (address)',
-  'function initialWhitelist2() view returns (address)',
 ];
 
 // ============================================================================
@@ -221,9 +213,6 @@ const ACTIVITY_CHECKER_ABI = [
 interface DeploymentConfig {
   rpcUrl: string;
   deployerPrivateKey: string;
-  whitelistAddress1: string;
-  whitelistAddress2: string;
-  activityCheckerOwner: string; // Master Safe on Base
   masterEOA: string;
   masterSafe: string;
   dryRun: boolean;
@@ -264,7 +253,8 @@ import json
 with open('${keystorePath}') as f:
     keystore = json.load(f)
 private_key = Account.decrypt(keystore, '${password}')
-print('0x' + private_key.hex())
+h = private_key.hex()
+print(h if h.startswith('0x') else '0x' + h)
 "`,
       { encoding: 'utf8', cwd: process.cwd() }
     ).trim();
@@ -293,23 +283,19 @@ async function getDeploymentConfig(): Promise<DeploymentConfig> {
   console.log(`Master EOA: ${masterEOA}`);
   console.log(`Master Safe (Base): ${masterSafe}`);
 
-  // Get whitelist addresses from environment
-  const whitelistAddress1 = process.env.WHITELIST_ADDRESS_1;
-  if (!whitelistAddress1 || !ethers.isAddress(whitelistAddress1)) {
-    throw new Error('WHITELIST_ADDRESS_1 must be a valid Ethereum address');
-  }
-
-  // Second whitelist address is optional - use zero address if not provided
-  let whitelistAddress2 = process.env.WHITELIST_ADDRESS_2 || ethers.ZeroAddress;
-  if (whitelistAddress2 && !ethers.isAddress(whitelistAddress2)) {
-    throw new Error('WHITELIST_ADDRESS_2 must be a valid Ethereum address or empty');
-  }
-
-  // Activity checker owner is the Master Safe on Base
-  const activityCheckerOwner = masterSafe;
-
   const dryRun = process.argv.includes('--dry-run');
-  
+
+  // Parse --agent-id=N from CLI args
+  const agentIdArg = process.argv.find(a => a.startsWith('--agent-id='));
+  if (agentIdArg) {
+    const parsedId = parseInt(agentIdArg.split('=')[1], 10);
+    if (isNaN(parsedId) || parsedId <= 0) {
+      throw new Error(`Invalid --agent-id value: ${agentIdArg}`);
+    }
+    STAKING_PARAMS.agentIds = [parsedId];
+    console.log(`Agent ID override: ${parsedId}`);
+  }
+
   // Allow reusing an existing activity checker
   const existingActivityChecker = process.env.ACTIVITY_CHECKER_ADDRESS;
   if (existingActivityChecker && !ethers.isAddress(existingActivityChecker)) {
@@ -325,9 +311,6 @@ async function getDeploymentConfig(): Promise<DeploymentConfig> {
   return {
     rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
     deployerPrivateKey,
-    whitelistAddress1,
-    whitelistAddress2,
-    activityCheckerOwner,
     masterEOA,
     masterSafe,
     dryRun,
@@ -339,14 +322,21 @@ async function deployActivityChecker(
   wallet: ethers.Wallet,
   config: DeploymentConfig
 ): Promise<string> {
-  console.log('\n📋 Step 2: Deploy WhitelistedRequesterActivityChecker');
+  console.log('\n📋 Step 2: Deploy DeliveryActivityChecker');
   console.log('═'.repeat(60));
-  
+
   // Load the compiled contract bytecode
-  const artifactPath = path.resolve(
+  // Try DeliveryActivityChecker first, fall back to WhitelistedRequesterActivityChecker
+  let artifactPath = path.resolve(
     process.cwd(),
-    'contracts/staking/artifacts/staking/WhitelistedRequesterActivityChecker.sol/WhitelistedRequesterActivityChecker.json'
+    'contracts/staking/artifacts/staking/DeliveryActivityChecker.sol/DeliveryActivityChecker.json'
   );
+  if (!fs.existsSync(artifactPath)) {
+    artifactPath = path.resolve(
+      process.cwd(),
+      'contracts/staking/artifacts/staking/WhitelistedRequesterActivityChecker.sol/WhitelistedRequesterActivityChecker.json'
+    );
+  }
   
   if (!fs.existsSync(artifactPath)) {
     throw new Error(
@@ -361,28 +351,22 @@ async function deployActivityChecker(
   console.log('Constructor arguments:');
   console.log(`  mechMarketplace: ${BASE_ADDRESSES.MechMarketplace}`);
   console.log(`  livenessRatio: ${LIVENESS_RATIO}`);
-  console.log(`  initialWhitelist1: ${config.whitelistAddress1}`);
-  console.log(`  initialWhitelist2: ${config.whitelistAddress2}`);
-  console.log(`  owner: ${config.activityCheckerOwner}`);
-  
+
   if (config.dryRun) {
     console.log('\n⚠️  DRY RUN - Skipping deployment');
     return '0x0000000000000000000000000000000000000000';
   }
-  
+
   const factory = new ethers.ContractFactory(
     artifact.abi,
     artifact.bytecode,
     wallet
   );
-  
+
   console.log('\nDeploying...');
   const contract = await factory.deploy(
     BASE_ADDRESSES.MechMarketplace,
-    LIVENESS_RATIO,
-    config.whitelistAddress1,
-    config.whitelistAddress2,
-    config.activityCheckerOwner
+    LIVENESS_RATIO
   );
   
   await contract.waitForDeployment();
@@ -513,9 +497,6 @@ async function main() {
     console.log(`   Dry Run: ${config.dryRun}`);
     console.log(`   Master EOA: ${config.masterEOA}`);
     console.log(`   Master Safe (Base): ${config.masterSafe}`);
-    console.log(`   Whitelist Address 1: ${config.whitelistAddress1}`);
-    console.log(`   Whitelist Address 2: ${config.whitelistAddress2}`);
-    console.log(`   Activity Checker Owner: ${config.activityCheckerOwner} (Master Safe)`);
     
     // Setup provider and wallet
     const provider = new ethers.JsonRpcProvider(config.rpcUrl);
@@ -568,8 +549,10 @@ async function main() {
     console.log('✅ DEPLOYMENT COMPLETE');
     console.log('═'.repeat(60));
     console.log('\n📊 Deployed Contracts:');
-    console.log(`   WhitelistedRequesterActivityChecker: ${activityCheckerAddress}`);
+    console.log(`   ActivityChecker: ${activityCheckerAddress}`);
     console.log(`   JIN Staking Contract: ${stakingContractAddress}`);
+    console.log(`   Agent IDs: [${STAKING_PARAMS.agentIds.join(', ')}]`);
+    console.log(`   Max Services: ${STAKING_PARAMS.maxNumServices}`);
     
     console.log('\n📋 Next Steps:');
     console.log('   1. Verify contracts on BaseScan');
@@ -587,9 +570,6 @@ async function main() {
         stakingContract: stakingContractAddress,
       },
       config: {
-        whitelistAddress1: config.whitelistAddress1,
-        whitelistAddress2: config.whitelistAddress2,
-        activityCheckerOwner: config.activityCheckerOwner,
         livenessRatio: LIVENESS_RATIO.toString(),
         stakingParams: {
           maxNumServices: STAKING_PARAMS.maxNumServices,
@@ -597,6 +577,7 @@ async function main() {
           minStakingDeposit: STAKING_PARAMS.minStakingDeposit.toString(),
           livenessPeriod: STAKING_PARAMS.livenessPeriod,
           timeForEmissions: STAKING_PARAMS.timeForEmissions,
+          agentIds: STAKING_PARAMS.agentIds,
         },
       },
       addresses: BASE_ADDRESSES,

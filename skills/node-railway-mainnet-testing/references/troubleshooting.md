@@ -25,5 +25,5 @@
 
 ## Secret leak gate fails
 - Search log lines for keys/tokens and remove direct value logging.
+- If `SERVICE-CONFIG-READER` logs include `agentPrivateKey`, ensure service config logs are emitted through `redactServiceInfoForLog` in `/Users/adrianobradley/jinn-gemini-2/jinn-node/src/worker/ServiceConfigReader.ts`.
 - Re-run pre-smoke only after leakage source is fixed.
-
