@@ -14,6 +14,9 @@ export function VotePageContent() {
     userAllocatedPower,
     nomineeWeight,
     weightsSum,
+    existingV2Power,
+    existingV1Power,
+    maxAvailableBps,
   } = useVoteData()
 
   return (
@@ -37,6 +40,9 @@ export function VotePageContent() {
         isConnected={isConnected}
         veOlasBalance={veOlasBalance}
         userAllocatedPower={userAllocatedPower}
+        existingV2Power={existingV2Power}
+        existingV1Power={existingV1Power}
+        maxAvailableBps={maxAvailableBps}
         onVoteSuccess={refetch}
       />
 

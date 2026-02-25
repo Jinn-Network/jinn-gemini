@@ -1,13 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { formatUnits } from 'viem'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { MAX_WEIGHT_BPS } from '@/lib/vote/constants'
 import { useVoteSubmit } from '@/hooks/use-vote-submit'
 
 function formatVeOlas(value: bigint): string {
@@ -25,7 +24,9 @@ function parseVoteError(error: Error): string {
   if (msg.includes('NoVotingPower') || msg.includes('zero voting power')) {
     return 'You have no veOLAS voting power. Lock OLAS tokens to get veOLAS.'
   }
-  // Truncate long revert messages
+  if (msg.includes('Overflow') || msg.includes('Used too much power')) {
+    return 'Vote weight exceeds available power. Reduce the weight or remove votes from other nominees first.'
+  }
   if (msg.length > 200) return msg.slice(0, 200) + '...'
   return msg
 }
@@ -34,21 +35,48 @@ export function UserVotePanel({
   isConnected,
   veOlasBalance,
   userAllocatedPower,
+  existingV2Power,
+  existingV1Power,
+  maxAvailableBps,
   onVoteSuccess,
 }: {
   isConnected: boolean
   veOlasBalance: bigint | undefined
   userAllocatedPower: bigint | undefined
+  existingV2Power: bigint | undefined
+  existingV1Power: bigint | undefined
+  maxAvailableBps: number
   onVoteSuccess: () => void
 }) {
-  const [weightPercent, setWeightPercent] = useState(100)
-  const { vote, txHash, isSubmitting, isConfirming, isConfirmed, error, reset } =
+  const maxPercent = Math.floor(maxAvailableBps / 100)
+  const { vote, migrateVote, removeV1Vote, txHash, isSubmitting, isConfirming, isConfirmed, error, reset } =
     useVoteSubmit()
 
   const allocatedPercent = userAllocatedPower
     ? Number(userAllocatedPower) / 100
     : 0
-  const remainingPercent = 100 - allocatedPercent
+  const v1Percent = existingV1Power ? Number(existingV1Power) / 100 : 0
+  const v2Percent = existingV2Power ? Number(existingV2Power) / 100 : 0
+  const hasV1Vote = v1Percent > 0
+
+  // When migrating from v1, the effective max is: available + what we free from v1
+  const migrateMaxPercent = hasV1Vote
+    ? Math.min(100, maxPercent + Math.floor(v1Percent))
+    : maxPercent
+
+  // Default to the best available option
+  const [weightPercent, setWeightPercent] = useState(
+    hasV1Vote ? migrateMaxPercent : maxPercent
+  )
+
+  // Update default weight when data loads
+  useEffect(() => {
+    if (hasV1Vote) {
+      setWeightPercent(migrateMaxPercent)
+    } else {
+      setWeightPercent(maxPercent)
+    }
+  }, [maxPercent, migrateMaxPercent, hasV1Vote])
 
   if (!isConnected) {
     return (
@@ -71,8 +99,22 @@ export function UserVotePanel({
     vote(bps)
   }
 
+  function handleMigrateVote() {
+    reset()
+    const bps = BigInt(Math.round(weightPercent * 100))
+    migrateVote(bps)
+  }
+
+  function handleRemoveV1Only() {
+    reset()
+    removeV1Vote()
+  }
+
   const hasVeOlas = veOlasBalance !== undefined && veOlasBalance > BigInt(0)
   const isBusy = isSubmitting || isConfirming
+
+  // Determine if the chosen weight requires freeing v1 power
+  const willUseMigrate = hasV1Vote && weightPercent > maxPercent
 
   return (
     <Card>
@@ -93,10 +135,18 @@ export function UserVotePanel({
             <div className="text-xs text-muted-foreground">Power Used</div>
           </div>
           <div>
-            <div className="font-bold tabular-nums">{remainingPercent.toFixed(1)}%</div>
+            <div className="font-bold tabular-nums">{maxPercent}%</div>
             <div className="text-xs text-muted-foreground">Available</div>
           </div>
         </div>
+
+        {/* Existing vote info */}
+        {v2Percent > 0 && (
+          <p className="text-sm text-muted-foreground">
+            You currently have <strong>{v2Percent}%</strong> allocated to Jinn v2.
+            A new vote will replace it.
+          </p>
+        )}
 
         {!hasVeOlas && (
           <p className="text-sm text-yellow-500">
@@ -112,16 +162,45 @@ export function UserVotePanel({
           </p>
         )}
 
+        {/* v1 migration banner */}
+        {hasV1Vote && (
+          <div className="rounded-md bg-yellow-500/10 border border-yellow-500/30 p-3 text-sm space-y-3">
+            <p>
+              You have <strong>{v1Percent}%</strong> voting power on the old Jinn v1 contract.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRemoveV1Only}
+                disabled={!hasVeOlas || isBusy}
+              >
+                {isBusy ? 'Confirming...' : 'Remove v1 vote only'}
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setWeightPercent(migrateMaxPercent)
+                  handleMigrateVote()
+                }}
+                disabled={!hasVeOlas || isBusy}
+              >
+                {isBusy ? 'Confirming...' : `Migrate ${migrateMaxPercent}% to v2`}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Weight input */}
         <div className="space-y-3">
           <Label htmlFor="vote-weight">
-            Vote weight for Jinn (% of your total power)
+            Vote weight for Jinn v2 (% of your total power)
           </Label>
           <div className="flex items-center gap-3">
             <input
               type="range"
               min={0}
-              max={100}
+              max={hasV1Vote ? migrateMaxPercent : maxPercent}
               step={1}
               value={weightPercent}
               onChange={(e) => setWeightPercent(Number(e.target.value))}
@@ -133,11 +212,12 @@ export function UserVotePanel({
                 id="vote-weight"
                 type="number"
                 min={0}
-                max={100}
+                max={hasV1Vote ? migrateMaxPercent : maxPercent}
                 step={1}
                 value={weightPercent}
                 onChange={(e) => {
-                  const v = Math.min(100, Math.max(0, Number(e.target.value)))
+                  const limit = hasV1Vote ? migrateMaxPercent : maxPercent
+                  const v = Math.min(limit, Math.max(0, Number(e.target.value)))
                   setWeightPercent(v)
                 }}
                 disabled={isBusy}
@@ -147,13 +227,17 @@ export function UserVotePanel({
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            This replaces any existing vote for Jinn. Set to 0% to remove your vote.
+            {willUseMigrate
+              ? `Will remove your v1 vote (${v1Percent}%) and allocate ${weightPercent}% to v2 in one transaction.`
+              : maxPercent < 100 && !hasV1Vote
+                ? `Capped at ${maxPercent}% — you have ${allocatedPercent.toFixed(0)}% allocated to other nominees.`
+                : 'Set to 0% to remove your vote.'}
           </p>
         </div>
 
         {/* Vote button */}
         <Button
-          onClick={handleVote}
+          onClick={willUseMigrate ? handleMigrateVote : handleVote}
           disabled={!hasVeOlas || isBusy}
           className="w-full"
           size="lg"
@@ -162,7 +246,9 @@ export function UserVotePanel({
             ? 'Confirm in wallet...'
             : isConfirming
               ? 'Confirming...'
-              : `Vote ${weightPercent}% for Jinn`}
+              : willUseMigrate
+                ? `Migrate: remove v1 + vote ${weightPercent}% for v2`
+                : `Vote ${weightPercent}% for Jinn`}
         </Button>
 
         {/* Transaction status */}
