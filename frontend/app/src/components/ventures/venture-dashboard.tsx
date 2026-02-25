@@ -1,6 +1,6 @@
 'use client';
 
-import { HeartPulse, Activity, ArrowRight, Bot, ExternalLink } from 'lucide-react';
+import { HeartPulse, Activity, ArrowRight, Bot, GitBranch, FileText, ExternalLink } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,15 +10,14 @@ import { ActivityFeed } from './activity-feed';
 import { HealthSummary } from './health-summary';
 import { InvariantList, type InvariantWithMeasurement } from './invariant-list';
 import { ServiceOutputCard } from './service-output-card';
-import { TokenInfoCard } from './token-info-card';
 import { transformToActivityItems } from '@/lib/ventures/activity-utils';
 import type { ServiceOutput } from '@/lib/ventures/service-types';
 import type { JobDefinition } from '@/lib/subgraph';
 import type { ArtifactWithJobName } from '@/app/actions';
 import { type HealthStatus } from '@jinn/shared-ui';
-import { formatDate } from '@/lib/utils';
+import { useEffect, useState } from 'react';
 
-// Format timestamp in social media style (e.g., "2 mins ago", "3 hours ago")
+// Format timestamp in social media style
 function formatTimeAgo(timestamp: number): string {
     const now = Date.now();
     const diff = now - timestamp;
@@ -36,18 +35,6 @@ function formatTimeAgo(timestamp: number): string {
     if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`;
     return `${years} year${years !== 1 ? 's' : ''} ago`;
 }
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-
-interface TokenInfo {
-    token_address: string | null;
-    token_symbol: string | null;
-    token_name: string | null;
-    token_launch_platform: string | null;
-    governance_address: string | null;
-    pool_address: string | null;
-    token_metadata: Record<string, unknown> | null;
-}
 
 interface VentureDashboardProps {
     liveOutputUrl: string | null;
@@ -59,9 +46,8 @@ interface VentureDashboardProps {
     primaryOutput: ServiceOutput | null;
     fetchActivity: (workstreamId: string) => Promise<{ jobDefinitions: JobDefinition[] }>;
     fetchArtifacts: (workstreamId: string) => Promise<ArtifactWithJobName[]>;
-    initialTab?: 'dashboard' | 'health' | 'activity';
+    initialTab?: 'dashboard' | 'health' | 'activity' | 'work-tree' | 'artifacts';
     initialSelectedJobId?: string | null;
-    tokenInfo?: TokenInfo | null;
 }
 
 
@@ -77,13 +63,9 @@ export function VentureDashboard({
     fetchArtifacts,
     initialTab,
     initialSelectedJobId,
-    tokenInfo,
 }: VentureDashboardProps) {
-    // Determine if we should show the Artifacts Gallery instead of Live Output
-    // Show gallery when neither liveOutputUrl nor telegramUrl is configured
     const showArtifactsGallery = !liveOutputUrl && !telegramUrl;
     const defaultTab = initialTab ?? 'dashboard';
-    const router = useRouter();
     const [activeTab, setActiveTab] = useState(defaultTab);
 
     useEffect(() => {
@@ -123,7 +105,6 @@ export function VentureDashboard({
         return () => clearInterval(interval);
     }, [workstreamId, fetchActivity]);
 
-    // Get latest 10 activity items for preview
     const activityItems = transformToActivityItems(activityPreviewData.jobDefinitions).slice(0, 10);
 
     const total = statusCounts.healthy + statusCounts.warning + statusCounts.critical + statusCounts.unknown;
@@ -133,21 +114,7 @@ export function VentureDashboard({
     return (
         <Tabs
             value={activeTab}
-            onValueChange={(value) => {
-                setActiveTab(value as typeof activeTab);
-                const basePath = `/ventures/${workstreamId}`;
-                let nextPath = basePath;
-                if (value === 'health') {
-                    nextPath = `${basePath}/health`;
-                } else if (value === 'activity') {
-                    nextPath = `${basePath}/activity`;
-                }
-                if (typeof window !== 'undefined') {
-                    window.history.pushState({}, '', nextPath);
-                } else {
-                    router.push(nextPath);
-                }
-            }}
+            onValueChange={(value) => setActiveTab(value as typeof activeTab)}
             className="flex-1 flex flex-col min-h-0"
         >
             <TabsList className="w-full md:w-fit">
@@ -163,6 +130,16 @@ export function VentureDashboard({
                 <TabsTrigger value="activity" className="gap-1 md:gap-2">
                     <Activity className="h-4 w-4" />
                     <span className="hidden sm:inline">Activity</span>
+                </TabsTrigger>
+                <TabsTrigger value="work-tree" className="gap-1 md:gap-2">
+                    <GitBranch className="h-4 w-4" />
+                    <span className="hidden sm:inline">Work Tree</span>
+                    <span className="sm:hidden">Tree</span>
+                </TabsTrigger>
+                <TabsTrigger value="artifacts" className="gap-1 md:gap-2">
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">Artifacts</span>
+                    <span className="sm:hidden">Files</span>
                 </TabsTrigger>
             </TabsList>
 
@@ -183,11 +160,6 @@ export function VentureDashboard({
 
                     {/* Right Column: Health + Activity (1/3) */}
                     <div className="lg:col-span-1 flex flex-col gap-4">
-                        {/* Token Info Card */}
-                        {tokenInfo?.token_address && (
-                            <TokenInfoCard tokenInfo={tokenInfo} />
-                        )}
-
                         {/* Health Summary Card */}
                         <Card>
                             <CardHeader className="pb-2">
@@ -280,19 +252,6 @@ export function VentureDashboard({
                                 )}
                             </CardContent>
                         </Card>
-
-                        {/* View Work Tree on Explorer */}
-                        <Button variant="outline" asChild className="w-full gap-2">
-                            <a
-                                href={`https://explorer.jinn.network/ventures/${workstreamId}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <ExternalLink className="h-4 w-4" />
-                                View Work Tree on Explorer
-                            </a>
-                        </Button>
-
                     </div>
                 </div>
             </TabsContent>
@@ -300,17 +259,12 @@ export function VentureDashboard({
             {/* Health Tab */}
             <TabsContent value="health" className="flex-1 min-h-0 mt-4 overflow-auto">
                 <div className="space-y-6">
-                    {/* Service Output Card */}
                     {primaryOutput && (
                         <ServiceOutputCard output={primaryOutput} />
                     )}
-
-                    {/* Health Summary */}
                     {invariants.length > 0 && (
                         <HealthSummary counts={statusCounts} />
                     )}
-
-                    {/* Invariants List */}
                     {invariants.length > 0 ? (
                         <InvariantList invariants={invariants} />
                     ) : (
@@ -330,6 +284,30 @@ export function VentureDashboard({
                         initialData={activityData}
                         workstreamId={workstreamId}
                         fetchActivity={fetchActivity}
+                    />
+                </div>
+            </TabsContent>
+
+            {/* Work Tree Tab */}
+            <TabsContent value="work-tree" className="flex-1 min-h-0 mt-4">
+                <Card>
+                    <CardContent className="py-0 px-0">
+                        <iframe
+                            src={`https://explorer.jinn.network/ventures/${workstreamId}/tree`}
+                            className="w-full border-0 rounded-lg"
+                            style={{ height: '700px' }}
+                            title="Work Tree"
+                        />
+                    </CardContent>
+                </Card>
+            </TabsContent>
+
+            {/* Artifacts Tab */}
+            <TabsContent value="artifacts" className="flex-1 min-h-0 mt-4">
+                <div className="min-h-[500px]">
+                    <ArtifactsGallery
+                        workstreamId={workstreamId}
+                        fetchArtifacts={fetchArtifacts}
                     />
                 </div>
             </TabsContent>

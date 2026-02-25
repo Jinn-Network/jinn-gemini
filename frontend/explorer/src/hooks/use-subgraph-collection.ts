@@ -8,17 +8,19 @@ import {
   queryDeliveries,
   queryArtifacts,
   queryMessages,
+  queryWorkstreamsCollection,
   JobDefinition,
   Request,
   Delivery,
   Artifact,
   Message,
+  Workstream,
   QueryOptions
 } from '@/lib/subgraph'
 import { toast } from 'sonner'
 import { useRealtimeData, type ConnectionStatus } from './use-realtime-data'
 
-export type SubgraphRecord = JobDefinition | Request | Delivery | Artifact | Message
+export type SubgraphRecord = JobDefinition | Request | Delivery | Artifact | Message | Workstream
 
 interface UseSubgraphCollectionOptions {
   collectionName: CollectionName
@@ -126,6 +128,8 @@ export function useSubgraphCollection({
         return queryArtifacts
       case 'messages':
         return queryMessages
+      case 'workstreams':
+        return queryWorkstreamsCollection
       default:
         throw new Error(`Unknown collection: ${collectionName}`)
     }
@@ -145,6 +149,8 @@ export function useSubgraphCollection({
         return 'blockTimestamp'
       case 'artifacts':
         return 'requestId'
+      case 'workstreams':
+        return 'lastActivity'
       default:
         return 'id'
     }

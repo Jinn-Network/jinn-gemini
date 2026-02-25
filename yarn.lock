@@ -7492,6 +7492,18 @@
   resolved "https://registry.npmjs.org/@standard-schema/spec/-/spec-1.1.0.tgz"
   integrity sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==
 
+"@stepperize/core@2.1.0":
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/@stepperize/core/-/core-2.1.0.tgz#7d28d8d35780b065458214ba8f4c1d7424fc8f42"
+  integrity sha512-edzIlkAUDrqan3G7XhY32PvciyQoJtyX3Fz8G1LBgSHIg2rMTBsZk8oz39NxT7XFxqibRXf2rvsH81iwg+Dd6w==
+
+"@stepperize/react@^6.1.0":
+  version "6.1.0"
+  resolved "https://registry.yarnpkg.com/@stepperize/react/-/react-6.1.0.tgz#f2183fd559329da72937c4c10badff08818972ee"
+  integrity sha512-ywTt0OQDoBKcdzeBK9V1hTsMAQ+zAoIF/au9fcATspdGWfYr/z+mDGZm2cA2rzMJF79J+fUbjZPb+7Js4PtKBA==
+  dependencies:
+    "@stepperize/core" "2.1.0"
+
 "@storybook/builder-webpack5@10.1.11":
   version "10.1.11"
   resolved "https://registry.npmjs.org/@storybook/builder-webpack5/-/builder-webpack5-10.1.11.tgz"
@@ -18455,10 +18467,15 @@ nan@^2.17.0:
   resolved "https://registry.npmjs.org/nan/-/nan-2.23.0.tgz"
   integrity sha512-1UxuyYGdoQHcGg87Lkqm3FzefucTa0NAiOcuRsDmysep3c1LVCRK2krrUDafMWtjSG04htvAmvg96+SDknOmgQ==
 
-nanoid@^3.1.20, nanoid@^3.3.11, nanoid@^3.3.6, nanoid@^3.3.7, nanoid@^4.0.0, nanoid@^5.0.9:
-  version "5.1.6"
-  resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-5.1.6.tgz#30363f664797e7d40429f6c16946d6bd7a3f26c9"
-  integrity sha512-c7+7RQ+dMB5dPwwCp4ee1/iV/q2P6aK1mTZcfr1BTuVlyW9hJYiMPybJCcnBlQtuSmTIWNeazm/zqNoZSSElBg==
+nanoid@^3.1.20, nanoid@^3.3.11, nanoid@^3.3.6, nanoid@^3.3.7:
+  version "3.3.11"
+  resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-3.3.11.tgz#4f4f112cefbe303202f2199838128936266d185b"
+  integrity sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==
+
+nanoid@^4.0.0:
+  version "4.0.2"
+  resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-4.0.2.tgz#140b3c5003959adbebf521c170f282c5e7f9fb9e"
+  integrity sha512-7ZtY5KTCNheRGfEFxnedV5zFiORN1+Y1N6zvPTnHQd8ENUvfaDBeuJDZb2bN/oXwXxu3qkTXDzy57W5vAmDTBw==
 
 napi-build-utils@^2.0.0:
   version "2.0.0"
@@ -19225,10 +19242,10 @@ parse-asn1@^5.0.0, parse-asn1@^5.1.9:
     pbkdf2 "^3.1.5"
     safe-buffer "^5.2.1"
 
-parse-duration@^1.0.0, parse-duration@^2.1.3:
-  version "2.1.5"
-  resolved "https://registry.yarnpkg.com/parse-duration/-/parse-duration-2.1.5.tgz#968d15cce6931051568cb40445389299ecf00133"
-  integrity sha512-/IX1KRw6zHDOOJrgIz++gvFASbFl7nc8GEXaLdD7d1t1x/GnrK6hh5Fgk8G3RLpkIEi4tsGj9pupGLWNg0EiJA==
+parse-duration@^1.0.0:
+  version "1.1.2"
+  resolved "https://registry.yarnpkg.com/parse-duration/-/parse-duration-1.1.2.tgz#20008e6c507814761864669bb936e3f4a9a80758"
+  integrity sha512-p8EIONG8L0u7f8GFgfVlL4n8rnChTt8O5FSxgxMz2tjc9FMP199wxVKVB6IbKx11uTbKHACSvaLVIKNnoeNR/A==
 
 parse-entities@^4.0.0:
   version "4.0.2"

@@ -49,6 +49,8 @@ type jobDefinition {
   enabledTools: [String!]
   blueprint: String
   workstreamId: String
+  ventureId: String
+  templateId: String
   sourceJobDefinitionId: String
   sourceRequestId: String
   codeMetadata: JSON
@@ -113,6 +115,26 @@ input jobDefinitionFilter {
   workstreamId_ends_with: String
   workstreamId_not_starts_with: String
   workstreamId_not_ends_with: String
+  ventureId: String
+  ventureId_not: String
+  ventureId_in: [String]
+  ventureId_not_in: [String]
+  ventureId_contains: String
+  ventureId_not_contains: String
+  ventureId_starts_with: String
+  ventureId_ends_with: String
+  ventureId_not_starts_with: String
+  ventureId_not_ends_with: String
+  templateId: String
+  templateId_not: String
+  templateId_in: [String]
+  templateId_not_in: [String]
+  templateId_contains: String
+  templateId_not_contains: String
+  templateId_starts_with: String
+  templateId_ends_with: String
+  templateId_not_starts_with: String
+  templateId_not_ends_with: String
   sourceJobDefinitionId: String
   sourceJobDefinitionId_not: String
   sourceJobDefinitionId_in: [String]
@@ -188,6 +210,8 @@ type request {
   mech: String!
   sender: String!
   workstreamId: String
+  ventureId: String
+  templateId: String
   jobDefinitionId: String
   sourceRequestId: String
   sourceJobDefinitionId: String
@@ -254,6 +278,26 @@ input requestFilter {
   workstreamId_ends_with: String
   workstreamId_not_starts_with: String
   workstreamId_not_ends_with: String
+  ventureId: String
+  ventureId_not: String
+  ventureId_in: [String]
+  ventureId_not_in: [String]
+  ventureId_contains: String
+  ventureId_not_contains: String
+  ventureId_starts_with: String
+  ventureId_ends_with: String
+  ventureId_not_starts_with: String
+  ventureId_not_ends_with: String
+  templateId: String
+  templateId_not: String
+  templateId_in: [String]
+  templateId_not_in: [String]
+  templateId_contains: String
+  templateId_not_contains: String
+  templateId_starts_with: String
+  templateId_ends_with: String
+  templateId_not_starts_with: String
+  templateId_not_ends_with: String
   jobDefinitionId: String
   jobDefinitionId_not: String
   jobDefinitionId_in: [String]
@@ -530,6 +574,9 @@ type artifact {
   requestId: String!
   sourceRequestId: String
   sourceJobDefinitionId: String
+  ventureId: String
+  workstreamId: String
+  templateId: String
   name: String!
   cid: String!
   topic: String!
@@ -590,6 +637,36 @@ input artifactFilter {
   sourceJobDefinitionId_ends_with: String
   sourceJobDefinitionId_not_starts_with: String
   sourceJobDefinitionId_not_ends_with: String
+  ventureId: String
+  ventureId_not: String
+  ventureId_in: [String]
+  ventureId_not_in: [String]
+  ventureId_contains: String
+  ventureId_not_contains: String
+  ventureId_starts_with: String
+  ventureId_ends_with: String
+  ventureId_not_starts_with: String
+  ventureId_not_ends_with: String
+  workstreamId: String
+  workstreamId_not: String
+  workstreamId_in: [String]
+  workstreamId_not_in: [String]
+  workstreamId_contains: String
+  workstreamId_not_contains: String
+  workstreamId_starts_with: String
+  workstreamId_ends_with: String
+  workstreamId_not_starts_with: String
+  workstreamId_not_ends_with: String
+  templateId: String
+  templateId_not: String
+  templateId_in: [String]
+  templateId_not_in: [String]
+  templateId_contains: String
+  templateId_not_contains: String
+  templateId_starts_with: String
+  templateId_ends_with: String
+  templateId_not_starts_with: String
+  templateId_not_ends_with: String
   name: String
   name_not: String
   name_in: [String]
@@ -770,6 +847,10 @@ type workstream {
   childRequestCount: Int!
   hasLauncherBriefing: Boolean!
   delivered: Boolean!
+  lastStatus: String
+  latestStatusUpdate: String
+  ventureId: String
+  templateId: String
 }
 
 type workstreamPage {
@@ -863,6 +944,46 @@ input workstreamFilter {
   delivered_not: Boolean
   delivered_in: [Boolean]
   delivered_not_in: [Boolean]
+  lastStatus: String
+  lastStatus_not: String
+  lastStatus_in: [String]
+  lastStatus_not_in: [String]
+  lastStatus_contains: String
+  lastStatus_not_contains: String
+  lastStatus_starts_with: String
+  lastStatus_ends_with: String
+  lastStatus_not_starts_with: String
+  lastStatus_not_ends_with: String
+  latestStatusUpdate: String
+  latestStatusUpdate_not: String
+  latestStatusUpdate_in: [String]
+  latestStatusUpdate_not_in: [String]
+  latestStatusUpdate_contains: String
+  latestStatusUpdate_not_contains: String
+  latestStatusUpdate_starts_with: String
+  latestStatusUpdate_ends_with: String
+  latestStatusUpdate_not_starts_with: String
+  latestStatusUpdate_not_ends_with: String
+  ventureId: String
+  ventureId_not: String
+  ventureId_in: [String]
+  ventureId_not_in: [String]
+  ventureId_contains: String
+  ventureId_not_contains: String
+  ventureId_starts_with: String
+  ventureId_ends_with: String
+  ventureId_not_starts_with: String
+  ventureId_not_ends_with: String
+  templateId: String
+  templateId_not: String
+  templateId_in: [String]
+  templateId_not_in: [String]
+  templateId_contains: String
+  templateId_not_contains: String
+  templateId_starts_with: String
+  templateId_ends_with: String
+  templateId_not_starts_with: String
+  templateId_not_ends_with: String
 }
 
 type mechServiceMapping {

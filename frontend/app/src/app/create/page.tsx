@@ -31,7 +31,7 @@ export default function CreatePage() {
   if (!authenticated) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <ConnectPrompt message="Sign in to post an idea." />
+        <ConnectPrompt message="Sign in to create a content agent." />
       </div>
     );
   }

@@ -122,6 +122,9 @@ export async function supabaseMutate<T>(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Supabase ${method} failed:`, response.status, errorText);
+      if (response.status === 409) {
+        return { error: 'A record with this name already exists. Please choose a different name.' };
+      }
       return { error: `Database error: ${response.status}` };
     }
 
@@ -130,7 +133,14 @@ export async function supabaseMutate<T>(
     }
 
     const result = await response.json();
-    return { data: Array.isArray(result) ? result[0] : result };
+    const row = Array.isArray(result) ? result[0] : result;
+
+    if (method === 'POST' && !row) {
+      console.error(`Supabase POST to ${table} returned empty result — likely RLS policy blocking insert`);
+      return { error: 'Insert was blocked. Check database permissions.' };
+    }
+
+    return { data: row };
   } catch (e) {
     console.error(`Supabase ${method} error:`, e);
     return { error: 'Network error' };

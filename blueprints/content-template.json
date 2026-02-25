@@ -2,7 +2,7 @@
     "templateMeta": {
         "id": "content-template",
         "name": "Content Template",
-        "description": "Generalized content artifact producer. Takes any combination of sources (URLs, text, references), a lookback period, and a content brief — produces a labeled content artifact. Sources are researched in parallel and synthesized into original content.",
+        "description": "Generalized content artifact producer. Takes any combination of sources (URLs, text, references), a lookback period, and a content brief, then produces a labeled content artifact. Delegation is encouraged for parallel source coverage as long as all delegated branches converge.",
         "priceWei": "0",
         "inputSchema": {
             "type": "object",
@@ -33,6 +33,37 @@
                     "type": "string",
                     "description": "Style and formatting guidance — tone (formal/casual), structure (e.g., '3 paragraphs'), length preferences, voice",
                     "default": "Clear, professional prose. Organize thematically."
+                },
+                "formatRules": {
+                    "type": "object",
+                    "description": "Machine-checkable formatting constraints. Applied in addition to formatBrief when provided.",
+                    "properties": {
+                        "minWords": {
+                            "type": "number",
+                            "minimum": 0
+                        },
+                        "maxWords": {
+                            "type": "number",
+                            "minimum": 50
+                        },
+                        "primaryStructure": {
+                            "type": "string",
+                            "enum": ["prose", "bullets", "mixed"]
+                        },
+                        "requiredSections": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        },
+                        "executiveSummarySentences": {
+                            "type": "number",
+                            "minimum": 1,
+                            "maximum": 5
+                        },
+                        "requiredCitations": {
+                            "type": "number",
+                            "minimum": 0
+                        }
+                    }
                 },
                 "outputFormat": {
                     "type": "string",
@@ -66,70 +97,68 @@
                     "type": "number",
                     "required": true,
                     "description": "Number of sources actually cited in the output"
+                },
+                {
+                    "name": "sourceEvidence",
+                    "path": "$.result.sourceEvidence",
+                    "type": "array",
+                    "required": true,
+                    "description": "Per-source evidence entries: source, method, artifactCid, citationsUsed, status"
+                },
+                {
+                    "name": "formatCompliance",
+                    "path": "$.result.formatCompliance",
+                    "type": "object",
+                    "required": true,
+                    "description": "Formatting compliance details: wordCount, structure, requiredSectionsPresent, constraintsMet"
                 }
             ]
         },
         "tools": [
             { "name": "web_fetch", "required": true },
             { "name": "google_web_search", "required": true },
-            { "name": "create_artifact", "required": true }
+            { "name": "create_artifact", "required": true },
+            { "name": "dispatch_new_job", "required": false }
         ]
     },
     "invariants": [
         {
             "id": "GOAL-001",
             "type": "BOOLEAN",
-            "condition": "You research every source in {{sources}} for content relevant to the brief, considering only material from within {{lookbackPeriod}} relative to {{currentTimestamp}}. Each source should be thoroughly investigated — follow leads, check related material, and build a picture of what's happened.",
-            "assessment": "Every source in the input array was checked. Research artifacts exist with findings and citations. Material outside the lookback window is excluded unless it provides essential context.",
+            "condition": "You achieve complete source coverage across {{sources}} within {{lookbackPeriod}} relative to {{currentTimestamp}}. Delegation is desirable when it improves quality or speed. If you delegate, each child job must have a clear source scope, and all delegated branches must converge to terminal completion before final synthesis. For each source, produce evidence with source, method used (web_fetch/google_web_search/child), artifactCid, citationsUsed, and status.",
+            "assessment": "Every source is covered and represented in sourceEvidence. Coverage can be direct or delegated, but no source is dropped. If child jobs are used, they converge and produce usable artifacts. sourcesChecked equals the number of input sources.",
             "examples": {
                 "do": [
-                    "Fetch a URL source and scan for recent developments within the lookback period",
-                    "Use a text source as context to guide web research on the topic",
-                    "Follow leads discovered during research — a source mentions a report, go find that report",
-                    "Create structured findings artifacts so synthesis has material to work with"
+                    "Delegate URL-heavy sources to child jobs and keep topic synthesis in the parent",
+                    "Research directly when delegation overhead is unnecessary",
+                    "Return a sourceEvidence entry for every source with artifact CID and status"
                 ],
                 "dont": [
-                    "Ignore sources from the input array",
-                    "Include stale content from well outside the lookback period without justification",
-                    "Skim a source superficially when deeper investigation would yield better material"
+                    "Leave some sources without evidence",
+                    "Dispatch child jobs without clear source ownership",
+                    "Finalize output while delegated branches are still unresolved"
                 ]
             }
         },
         {
             "id": "GOAL-002",
             "type": "BOOLEAN",
-            "condition": "You synthesize research findings into content following the brief: {{contentBrief}}. Content must be original synthesis — group related findings thematically, cite specific sources, and produce something more valuable than any individual source alone.",
-            "assessment": "The output content addresses the brief's angle/purpose. Findings are synthesized into a coherent narrative, not concatenated. Specific sources are cited. The content adds value beyond what the sources individually provide.",
+            "condition": "You synthesize findings into one coherent content artifact following {{contentBrief}} and {{formatBrief}}. If formatRules are provided, treat them as strict constraints (minWords/maxWords/primaryStructure/requiredSections/executiveSummarySentences/requiredCitations). You must return structured result fields for contentBody, sourcesChecked, sourcesCited, sourceEvidence, and formatCompliance.",
+            "assessment": "The output is original synthesis organized by theme, cites sources, and matches requested structure/tone. formatCompliance reports wordCount, structure, required section coverage, and constraintsMet. sourcesCited satisfies citation targets when specified.",
             "examples": {
                 "do": [
                     "Connect findings across sources to surface patterns or insights",
                     "Cite specific sources when making claims",
                     "Organize content by theme, not by source",
-                    "Produce original framing that helps the reader understand the landscape"
+                    "If formatRules.maxWords is set, keep content within that limit",
+                    "If formatRules.requiredSections is set, include each named section"
                 ],
                 "dont": [
                     "Copy-paste from sources",
                     "List findings source-by-source without synthesis",
-                    "Make unsourced claims",
-                    "Ignore the content brief's stated angle or purpose"
-                ]
-            }
-        },
-        {
-            "id": "STYLE-001",
-            "type": "BOOLEAN",
-            "condition": "You follow the style and formatting guidance: {{formatBrief}}. The tone, structure, and presentation of the content match what was requested.",
-            "assessment": "The output content matches the requested tone (formal/casual/technical), follows the requested structure (paragraph count, section layout), and respects any length or voice preferences specified in the format brief.",
-            "examples": {
-                "do": [
-                    "If formatBrief says 'casual tone, 3 short paragraphs' — write exactly that",
-                    "If formatBrief says 'formal research report with executive summary' — structure accordingly",
-                    "Match the voice consistently throughout the piece"
-                ],
-                "dont": [
-                    "Ignore formatting instructions and default to a generic style",
-                    "Mix tones inconsistently within the same piece",
-                    "Produce a 2000-word essay when the brief asks for a concise summary"
+                    "Ignore formatRules when present",
+                    "Return prose when primaryStructure requires bullets",
+                    "Omit required structured result fields"
                 ]
             }
         },

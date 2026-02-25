@@ -19,7 +19,7 @@ Before starting the pipeline:
 
 Dispatch + execute locally. Pass criteria:
 
-- Completes without error (terminal state = `COMPLETED`, not `DELEGATING` or timeout)
+- Reaches a successful terminal state within SLA (allow interim `DELEGATING` while children run)
 - All `outputSpec` fields present in the artifact
 - Correct tools called (check against `tools` list in blueprint)
 - No references to removed systems (e.g., Telegram in a data-only template)
@@ -68,6 +68,7 @@ Two identical runs with production inputs. Pass criteria:
 - Key metrics match between runs (e.g., commit counts, section structure)
 - Highlights/themes overlap >=60%
 - Output format is consistent
+- If delegation occurs, both runs converge within SLA and preserve source coverage evidence
 
 ---
 
@@ -84,11 +85,15 @@ MECH_TARGET_REQUEST_ID=<id> yarn dev:mech --single
 
 # Inspect results
 yarn inspect-job-run <requestId>
+
+# Check invariant conformance (content-template specific)
+yarn tsx scripts/validation/check-content-template-conformance.ts <requestId>
 ```
 
 ## Invariant Iteration Tips
 
 - **Agent doesn't delegate when it should** → Delegation is how the network achieves depth. If the agent does all work sequentially in one execution, check that invariants describe outcomes that benefit from parallel investigation, and that `dispatch_new_job` is in the tools list. Anti-delegation overrides are only appropriate for infrastructure test blueprints.
+- **Agent stays in DELEGATING too long** → treat this as convergence/SLA failure, not a delegation failure. Ensure child scopes are explicit, dependencies are acyclic, and parent waits for terminal child outcomes before synthesis.
 - **Poor categorization** → strengthen `examples.do`/`examples.dont` with specific cases from failed runs
 - **Inconsistent output** → add structural constraints (e.g., "exactly 3-5 highlights", "include a summary section at the top")
 - **Output is raw data, not readable** → rewrite invariants to request narrative prose organized by themes, not JSON or bullet lists

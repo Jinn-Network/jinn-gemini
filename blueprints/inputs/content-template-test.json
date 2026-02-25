@@ -9,5 +9,12 @@
     "outputTopic": "WEEKLY_AI_DIGEST",
     "contentBrief": "Summarize the most notable developments in AI agents and autonomous coding tools. Focus on what practitioners should pay attention to — new frameworks, capability breakthroughs, and emerging patterns.",
     "formatBrief": "Professional but accessible tone. Start with a 2-sentence executive summary, then 3-4 thematic sections. Use subheadings. Keep it under 1500 words.",
+    "formatRules": {
+        "maxWords": 1500,
+        "primaryStructure": "prose",
+        "requiredSections": ["Executive Summary"],
+        "executiveSummarySentences": 2,
+        "requiredCitations": 3
+    },
     "outputFormat": "markdown"
 }
