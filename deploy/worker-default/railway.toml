@@ -1,9 +1,7 @@
 [build]
-builder = "NIXPACKS"
-# Prevent Railway from auto-detecting jinn-node/Dockerfile (standalone repo's Docker config)
-dockerfilePath = "deploy/worker-default/Dockerfile.none"
-nixpacksConfigPath = "deploy/worker-default/nixpacks.toml"
-watchPatterns = ["/jinn-node/**", "/package.json", "/blueprints/**", "/deploy/**"]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+watchPatterns = ["/**"]
 
 [deploy]
 # Uses worker_launcher.js which provides:
@@ -16,7 +14,7 @@ watchPatterns = ["/jinn-node/**", "/package.json", "/blueprints/**", "/deploy/**
 # - Git identity from GIT_AUTHOR_* env vars
 # - SSH known_hosts for GitHub
 # - Required directories
-startCommand = "export NODE_OPTIONS='--disable-warning=DEP0040' && bash deploy/worker-default/init.sh && node jinn-node/dist/worker/worker_launcher.js"
+startCommand = "export NODE_OPTIONS='--disable-warning=DEP0040' && bash scripts/init.sh && node dist/worker/worker_launcher.js"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 

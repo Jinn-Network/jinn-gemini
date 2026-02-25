@@ -21,7 +21,7 @@ Workers connect to two shared infrastructure services (already running in the `j
 | Ponder | `https://indexer.jinn.network/graphql` | `PONDER_GRAPHQL_URL` |
 | Control API | `https://control-api-production-c1f5.up.railway.app` | `CONTROL_API_URL` |
 
-Each worker is its own Railway project (or service within one), linked to the `jinn-cli-agents` repo and configured to build from `deploy/worker-default/railway.toml`.
+Each worker is its own Railway project (or service within one), linked to the `jinn-cli-agents` repo and configured to build from `deploy/worker-default/railway.toml`. The build uses Docker (`jinn-node/Dockerfile`) with Railway's root directory set to `jinn-node/`.
 
 ## Minimal Environment Variables
 
@@ -124,18 +124,17 @@ PRIVATE_KEY=$(cat "olas-operate-middleware/.operate/keys/$AGENT_ADDR" \
 mcp__Railway__create-project-and-link
 ```
 
-### Step 3: Configure railway.toml Path
+### Step 3: Configure Railway Service Settings
 
-In the Railway service settings, set the config file path to:
-```
-deploy/worker-default/railway.toml
-```
+**Config file path:** `deploy/worker-default/railway.toml`
 
-This file sets the builder (NIXPACKS), nixpacks config path, watch patterns, start command, and restart policy. Do NOT change it to RAILPACK — Railway may try to auto-migrate; fix with `serviceInstanceUpdate` GraphQL mutation if needed.
+**Root directory:** `jinn-node/` — set via Railway service settings (or GraphQL `serviceInstanceUpdate` with `rootDirectory: "jinn-node/"`). This scopes the Docker build context to `jinn-node/`, so the Dockerfile's relative paths resolve correctly.
 
-The start command in `railway.toml`:
+The build uses Docker (`jinn-node/Dockerfile`). **ALWAYS use Docker builds. Do NOT switch to NIXPACKS or RAILPACK.**
+
+The start command in `railway.toml` (paths relative to root directory):
 ```bash
-export NODE_OPTIONS='--disable-warning=DEP0040' && bash deploy/worker-default/init.sh && node jinn-node/dist/worker/worker_launcher.js
+export NODE_OPTIONS='--disable-warning=DEP0040' && bash scripts/init.sh && node dist/worker/worker_launcher.js
 ```
 
 ### Step 4: Set Environment Variables
@@ -257,9 +256,9 @@ Full reference: [docs/reference/environment-variables.md](../../docs/reference/e
 
 | File | Purpose |
 |------|---------|
-| `deploy/worker-default/railway.toml` | Railway service config (builder, start command, watch patterns) |
-| `deploy/worker-default/nixpacks.toml` | Build config (Node 22, Python, Gemini CLI install, ABI copy) |
-| `deploy/worker-default/init.sh` | Startup script: git identity, SSH known_hosts, credentials, gemini dir |
+| `deploy/worker-default/railway.toml` | Railway service config (Docker builder, start command, watch patterns) |
+| `jinn-node/Dockerfile` | Docker multi-stage build (Node 22, Python, Gemini CLI, worker build) |
+| `jinn-node/scripts/init.sh` | Startup script: git identity, SSH known_hosts, credentials, gemini dir |
 
 ## Troubleshooting
 
@@ -285,12 +284,12 @@ fatal: unable to auto-detect email address
 - Volume at `/root` must be mounted — without it, `~/.gitconfig` is lost on restart
 - Confirm logs show `[init] Set git user.name` on startup
 
-### RAILPACK auto-migration breaks the build
+### Builder must be DOCKERFILE
 
-Railway may silently migrate the service builder from NIXPACKS to RAILPACK. Fix via GraphQL API:
+The worker uses Docker builds via `jinn-node/Dockerfile`. If Railway auto-migrates to NIXPACKS or RAILPACK, fix via GraphQL API:
 ```bash
-# Use serviceInstanceUpdate mutation to force builder back to NIXPACKS
-# (See Railway GraphQL API — serviceInstanceUpdate with builder: NIXPACKS)
+# Use serviceInstanceUpdate mutation to force builder back to DOCKERFILE
+# (See Railway GraphQL API — serviceInstanceUpdate with builder: DOCKERFILE)
 ```
 
 ### Gemini quota exhausted
@@ -331,5 +330,5 @@ When Railway MCP tools are available, use them for operations instead of the CLI
 
 - **`railway up` timeouts**: The monorepo is too large to upload directly. Always use a GitHub branch deploy trigger. Set it via `deploymentTriggerUpdate` GraphQL mutation if the UI doesn't cooperate.
 - **Auto-relink after deploy**: After `railway up`, the CLI may relink to a different service. Always verify which service is linked before deploying.
-- **RAILPACK migration**: Railway silently migrates services to RAILPACK. Detect by checking build logs — RAILPACK builds look different and will fail on this monorepo. Fix with `serviceInstanceUpdate` mutation.
+- **Builder migration**: Railway may silently migrate services away from DOCKERFILE. Detect by checking build logs. Fix with `serviceInstanceUpdate` mutation setting `builder: DOCKERFILE`.
 - **Worker count**: Set `WORKER_COUNT` env var to run multiple parallel workers in one service. Each gets a prefixed log output.
