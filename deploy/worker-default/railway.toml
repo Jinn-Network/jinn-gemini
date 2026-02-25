@@ -1,6 +1,8 @@
 [build]
 builder = "NIXPACKS"
-# Prevent Railway from auto-detecting jinn-node/Dockerfile (standalone repo's Docker config)
+# Prevent Railway from auto-detecting jinn-node/Dockerfile (standalone repo's Docker config).
+# NOTE: This must be removed for `railway up` uploads (which don't support builder override).
+# For git-trigger deploys, the builder = "NIXPACKS" setting takes priority.
 dockerfilePath = "deploy/worker-default/Dockerfile.none"
 nixpacksConfigPath = "deploy/worker-default/nixpacks.toml"
 watchPatterns = ["/jinn-node/**", "/package.json", "/blueprints/**", "/deploy/**"]
