@@ -1,6 +1,6 @@
 'use client'
 
-import { useAccount, useReadContract, useReadContracts } from 'wagmi'
+import { useAccount, useReadContracts } from 'wagmi'
 import {
   VOTE_WEIGHTING_ADDRESS,
   VE_OLAS_ADDRESS,
@@ -36,10 +36,34 @@ const voteUserSlopesAbi = [
 export function useVoteData() {
   const { address, isConnected } = useAccount()
 
-  const { data, isLoading, refetch } = useReadContracts({
+  // Public reads — always enabled, no wallet required
+  const { data: publicData, isLoading: publicLoading, refetch: refetchPublic } = useReadContracts({
+    contracts: [
+      // 0: Jinn v2 nominee absolute weight
+      {
+        chainId: 1,
+        address: VOTE_WEIGHTING_ADDRESS,
+        abi: voteWeightingAbi,
+        functionName: 'getNomineeWeight',
+        args: [JINN_NOMINEE_BYTES32, NOMINEE_CHAIN_ID],
+      },
+      // 1: total weight sum across all nominees
+      {
+        chainId: 1,
+        address: VOTE_WEIGHTING_ADDRESS,
+        abi: voteWeightingAbi,
+        functionName: 'getWeightsSum',
+      },
+    ],
+    query: { refetchInterval: 30_000 },
+  })
+
+  // Wallet reads — only when connected
+  const { data: userData, isLoading: userLoading, refetch: refetchUser } = useReadContracts({
     contracts: [
       // 0: veOLAS balance
       {
+        chainId: 1,
         address: VE_OLAS_ADDRESS,
         abi: veOlasAbi,
         functionName: 'balanceOf',
@@ -47,33 +71,23 @@ export function useVoteData() {
       },
       // 1: total allocated vote power (0-10000 bps)
       {
+        chainId: 1,
         address: VOTE_WEIGHTING_ADDRESS,
         abi: voteWeightingAbi,
         functionName: 'voteUserPower',
         args: [address!],
       },
-      // 2: Jinn v2 nominee absolute weight
+      // 2: user's existing vote for Jinn v2 nominee (power field = bps allocated)
       {
-        address: VOTE_WEIGHTING_ADDRESS,
-        abi: voteWeightingAbi,
-        functionName: 'getNomineeWeight',
-        args: [JINN_NOMINEE_BYTES32, NOMINEE_CHAIN_ID],
-      },
-      // 3: total weight sum across all nominees
-      {
-        address: VOTE_WEIGHTING_ADDRESS,
-        abi: voteWeightingAbi,
-        functionName: 'getWeightsSum',
-      },
-      // 4: user's existing vote for Jinn v2 nominee (power field = bps allocated)
-      {
+        chainId: 1,
         address: VOTE_WEIGHTING_ADDRESS,
         abi: voteUserSlopesAbi,
         functionName: 'voteUserSlopes',
         args: [address!, JINN_V2_NOMINEE_HASH],
       },
-      // 5: user's existing vote for Jinn v1 nominee (to show migration option)
+      // 3: user's existing vote for Jinn v1 nominee (to show migration option)
       {
+        chainId: 1,
         address: VOTE_WEIGHTING_ADDRESS,
         abi: voteUserSlopesAbi,
         functionName: 'voteUserSlopes',
@@ -86,8 +100,8 @@ export function useVoteData() {
     },
   })
 
-  const [veOlasBalance, userPower, nomineeWeight, weightsSum, v2Slope, v1Slope] =
-    data ?? []
+  const [nomineeWeight, weightsSum] = publicData ?? []
+  const [veOlasBalance, userPower, v2Slope, v1Slope] = userData ?? []
 
   const userAllocatedPower = userPower?.result as bigint | undefined
   // power field from VotedSlope = bps the user allocated to this specific nominee
@@ -102,9 +116,14 @@ export function useVoteData() {
       ? MAX_WEIGHT_BPS - Number(userAllocatedPower) + Number(existingV2Power ?? BigInt(0))
       : MAX_WEIGHT_BPS
 
+  function refetch() {
+    refetchPublic()
+    refetchUser()
+  }
+
   return {
     isConnected,
-    isLoading,
+    isLoading: publicLoading || userLoading,
     refetch,
     veOlasBalance: veOlasBalance?.result as bigint | undefined,
     userAllocatedPower,
