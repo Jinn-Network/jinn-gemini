@@ -126,15 +126,15 @@ mcp__Railway__create-project-and-link
 
 ### Step 3: Configure Railway Service Settings
 
-**Config file path:** `deploy/worker-default/railway.toml`
-
 **Root directory:** `jinn-node/` — set via Railway service settings (or GraphQL `serviceInstanceUpdate` with `rootDirectory: "jinn-node/"`). This scopes the Docker build context to `jinn-node/`, so the Dockerfile's relative paths resolve correctly.
+
+**Config file:** Railway auto-detects `jinn-node/railway.toml` (relative to root directory). This file sets the Docker builder, start command, healthcheck, and restart policy.
 
 The build uses Docker (`jinn-node/Dockerfile`). **ALWAYS use Docker builds. Do NOT switch to NIXPACKS or RAILPACK.**
 
 The start command in `railway.toml` (paths relative to root directory):
 ```bash
-export NODE_OPTIONS='--disable-warning=DEP0040' && bash scripts/init.sh && node dist/worker/worker_launcher.js
+sh -c 'bash scripts/init.sh && node dist/worker/worker_launcher.js'
 ```
 
 ### Step 4: Set Environment Variables
@@ -256,7 +256,7 @@ Full reference: [docs/reference/environment-variables.md](../../docs/reference/e
 
 | File | Purpose |
 |------|---------|
-| `deploy/worker-default/railway.toml` | Railway service config (Docker builder, start command, watch patterns) |
+| `jinn-node/railway.toml` | Railway service config (Docker builder, start command, healthcheck) |
 | `jinn-node/Dockerfile` | Docker multi-stage build (Node 22, Python, Gemini CLI, worker build) |
 | `jinn-node/scripts/init.sh` | Startup script: git identity, SSH known_hosts, credentials, gemini dir |
 
