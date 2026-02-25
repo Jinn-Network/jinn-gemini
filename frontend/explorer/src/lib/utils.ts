@@ -43,6 +43,7 @@ export const navigationItems: NavigationItem[] = [
     collection: 'nodes',
     subItems: [
       { label: 'Staking', collection: 'nodes/staking' },
+      { label: 'Vote', collection: 'vote' },
     ]
   },
   {
