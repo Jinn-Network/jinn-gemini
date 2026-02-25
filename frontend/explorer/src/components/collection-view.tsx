@@ -12,7 +12,13 @@ import { Pagination } from '@/components/pagination'
 import { RecordListSkeleton, RequestsTableSkeleton, ArtifactsTableSkeleton, JobDefinitionsTableSkeleton } from '@/components/loading-skeleton'
 import { getCollectionLabel } from '@/lib/utils'
 import { useSubgraphCollection } from '@/hooks/use-subgraph-collection'
-import { getRequest, Request } from '@/lib/subgraph'
+import {
+  getRequest,
+  queryJobDefinitionsByName,
+  queryJobTemplateIdsByName,
+  queryWorkstreamIdsByName,
+  Request,
+} from '@/lib/subgraph'
 import { SiteHeader } from '@/components/site-header'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -25,9 +31,7 @@ interface CollectionViewProps {
   collectionName: CollectionName
 }
 
-// Helper function to determine the best sorting strategy for each collection
 function getSortingConfig(collectionName: CollectionName): { column: string; ascending: boolean } {
-  // Collection-specific sorting configurations for subgraph entities
   const sortingConfigs: Record<CollectionName, { column: string; ascending: boolean }> = {
     jobDefinitions: { column: 'lastInteraction', ascending: false },
     requests: { column: 'blockTimestamp', ascending: false },
@@ -35,14 +39,20 @@ function getSortingConfig(collectionName: CollectionName): { column: string; asc
     artifacts: { column: 'blockTimestamp', ascending: false },
     messages: { column: 'blockTimestamp', ascending: false },
     templates: { column: 'id', ascending: false },
+    workstreams: { column: 'lastActivity', ascending: false },
   }
-  
+
   return sortingConfigs[collectionName] || { column: 'id', ascending: false }
 }
 
-
-
-type FilterType = 'id' | 'workstreamId'
+type FilterType =
+  | 'jobRunId'
+  | 'workstreamId'
+  | 'workstreamName'
+  | 'jobInstanceId'
+  | 'jobInstanceName'
+  | 'templateId'
+  | 'templateName'
 
 interface ActiveFilter {
   type: FilterType
@@ -50,139 +60,351 @@ interface ActiveFilter {
   label: string
 }
 
+interface FilterOption {
+  value: FilterType
+  label: string
+}
+
+interface CollectionFilterConfig {
+  defaultType: FilterType
+  options: FilterOption[]
+  urlParamMap: Record<FilterType, string>
+}
+
+const REQUEST_FILTER_OPTIONS: FilterOption[] = [
+  { value: 'workstreamId', label: 'Workstream ID' },
+  { value: 'workstreamName', label: 'Workstream Name' },
+  { value: 'jobInstanceId', label: 'Job Instance ID' },
+  { value: 'jobInstanceName', label: 'Job Instance Name' },
+  { value: 'templateId', label: 'Template ID' },
+  { value: 'templateName', label: 'Template Name' },
+  { value: 'jobRunId', label: 'Job Run ID' },
+]
+
+const JOB_DEFINITION_FILTER_OPTIONS: FilterOption[] = [
+  { value: 'jobInstanceId', label: 'Job Instance ID' },
+  { value: 'jobInstanceName', label: 'Job Instance Name' },
+  { value: 'workstreamId', label: 'Workstream ID' },
+  { value: 'workstreamName', label: 'Workstream Name' },
+  { value: 'templateId', label: 'Template ID' },
+  { value: 'templateName', label: 'Template Name' },
+]
+
+const FILTER_CONFIGS: Partial<Record<CollectionName, CollectionFilterConfig>> = {
+  requests: {
+    defaultType: 'workstreamId',
+    options: REQUEST_FILTER_OPTIONS,
+    urlParamMap: {
+      jobRunId: 'id',
+      workstreamId: 'workstream',
+      workstreamName: 'workstreamName',
+      jobInstanceId: 'jobInstanceId',
+      jobInstanceName: 'jobInstanceName',
+      templateId: 'templateId',
+      templateName: 'templateName',
+    },
+  },
+  jobDefinitions: {
+    defaultType: 'jobInstanceId',
+    options: JOB_DEFINITION_FILTER_OPTIONS,
+    urlParamMap: {
+      jobRunId: 'id',
+      workstreamId: 'workstream',
+      workstreamName: 'workstreamName',
+      jobInstanceId: 'jobInstanceId',
+      jobInstanceName: 'jobInstanceName',
+      templateId: 'templateId',
+      templateName: 'templateName',
+    },
+  },
+}
+
+const FILTER_LABELS: Record<FilterType, string> = {
+  jobRunId: 'Job Run ID',
+  workstreamId: 'Workstream ID',
+  workstreamName: 'Workstream Name',
+  jobInstanceId: 'Job Instance ID',
+  jobInstanceName: 'Job Instance Name',
+  templateId: 'Template ID',
+  templateName: 'Template Name',
+}
+
+const ID_FILTER_TYPES = new Set<FilterType>(['jobRunId', 'workstreamId', 'jobInstanceId', 'templateId'])
+const NO_MATCH_FILTER = '__no_match__'
+const HEX_32_BYTE_REGEX = /^0x[a-fA-F0-9]{64}$/
+
+function makeFilterLabel(type: FilterType, value: string): string {
+  const display = ID_FILTER_TYPES.has(type) && value.length > 16
+    ? `${value.slice(0, 16)}…`
+    : value
+  return `${FILTER_LABELS[type]}: ${display}`
+}
+
+function getFilterConfig(collectionName: CollectionName): CollectionFilterConfig | null {
+  return FILTER_CONFIGS[collectionName] ?? null
+}
+
 export function CollectionView({ collectionName }: CollectionViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  
-  const workstreamFilter = searchParams.get('workstream')
+
+  const filterConfig = getFilterConfig(collectionName)
   const [rootRequest, setRootRequest] = useState<Request | null>(null)
+  const [whereFilter, setWhereFilter] = useState<Record<string, unknown> | undefined>()
+  const [isResolvingFilters, setIsResolvingFilters] = useState(false)
   const pageSize = 100
-  
-  // Filter management state
+
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([])
-  const [filterType, setFilterType] = useState<FilterType>('id')
+  const [filterType, setFilterType] = useState<FilterType>(filterConfig?.defaultType ?? 'jobRunId')
   const [filterValue, setFilterValue] = useState('')
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
 
-  // Initialize filters from URL parameters on mount
   useEffect(() => {
-    if (collectionName === 'requests' && !isInitialized) {
-      const filters: ActiveFilter[] = []
-      
-      const idParam = searchParams.get('id')
-      if (idParam) {
-        filters.push({
-          type: 'id',
-          value: idParam,
-          label: `Job Run ID: ${idParam.substring(0, 16)}...`
-        })
-      }
-      
-      const workstreamParam = searchParams.get('workstream')
-      if (workstreamParam) {
-        filters.push({
-          type: 'workstreamId',
-          value: workstreamParam,
-          label: `Workstream: ${workstreamParam.substring(0, 16)}...`
-        })
-      }
-      
-      if (filters.length > 0) {
-        setActiveFilters(filters)
-      }
+    if (!filterConfig) {
       setIsInitialized(true)
+      return
     }
-  }, [collectionName, searchParams, isInitialized])
-  
-  // Sync filters to URL whenever they change
-  // Note: Using a ref to track the last synced filters to prevent infinite loops
-  const lastSyncedFiltersRef = useRef<string>('')
-  
+
+    if (!filterConfig.options.some(option => option.value === filterType)) {
+      setFilterType(filterConfig.defaultType)
+    }
+  }, [filterConfig, filterType])
+
   useEffect(() => {
-    if (!isInitialized) return
-    
-    // Create a stable representation of current filters
+    if (isInitialized) return
+
+    if (!filterConfig) {
+      setIsInitialized(true)
+      return
+    }
+
+    const filters: ActiveFilter[] = []
+
+    for (const option of filterConfig.options) {
+      const param = filterConfig.urlParamMap[option.value]
+      const value = param ? searchParams.get(param) : null
+      if (value) {
+        filters.push({
+          type: option.value,
+          value,
+          label: makeFilterLabel(option.value, value),
+        })
+      }
+    }
+
+    if (filters.length > 0) {
+      setActiveFilters(filters)
+    }
+
+    setIsInitialized(true)
+  }, [filterConfig, searchParams, isInitialized])
+
+  const lastSyncedFiltersRef = useRef<string>('')
+
+  useEffect(() => {
+    if (!isInitialized || !filterConfig) return
+
     const filterKey = JSON.stringify(activeFilters)
-    
-    // Skip if filters haven't actually changed
     if (filterKey === lastSyncedFiltersRef.current) return
     lastSyncedFiltersRef.current = filterKey
-    
+
     const params = new URLSearchParams(searchParams.toString())
-    
-    // Clear existing filter params
-    params.delete('id')
-    params.delete('workstream')
-    
-    // Add current filters to URL
+
+    for (const param of Object.values(filterConfig.urlParamMap)) {
+      params.delete(param)
+    }
+
     activeFilters.forEach(filter => {
-      if (filter.type === 'id') {
-        params.set('id', filter.value)
-      } else if (filter.type === 'workstreamId') {
-        params.set('workstream', filter.value)
+      const param = filterConfig.urlParamMap[filter.type]
+      if (param) {
+        params.set(param, filter.value)
       }
     })
-    
-    // Update URL without causing a page reload
+
     const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname
     router.replace(newUrl, { scroll: false })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilters, isInitialized])
+  }, [activeFilters, isInitialized, filterConfig])
 
-  // Fetch root request when filtering by workstream
-  useEffect(() => {
-    if (collectionName === 'requests' && workstreamFilter) {
-      getRequest(workstreamFilter).then(setRootRequest).catch(console.error)
-    } else {
-      setRootRequest(null)
-    }
-  }, [collectionName, workstreamFilter])
+  const exactWorkstreamId = useMemo(() => {
+    if (collectionName !== 'requests') return null
 
-  // Build where filter from active filters - memoized to prevent infinite rerenders
-  const whereFilter = useMemo(() => {
-    if (collectionName === 'requests' && activeFilters.length > 0) {
-      const filter: Record<string, unknown> = {}
-      
-      activeFilters.forEach(f => {
-        if (f.type === 'id') {
-          filter.id_contains = f.value
-        } else if (f.type === 'workstreamId') {
-          filter.workstreamId_contains = f.value
-        }
-      })
-      
-      return Object.keys(filter).length > 0 ? filter : undefined
-    }
-    return undefined
+    const candidate = activeFilters.find(filter => filter.type === 'workstreamId')?.value.trim()
+    if (!candidate || !HEX_32_BYTE_REGEX.test(candidate)) return null
+
+    return candidate
   }, [collectionName, activeFilters])
-  
-  // Handle adding a new filter
+
+  useEffect(() => {
+    if (collectionName !== 'requests' || !exactWorkstreamId) {
+      setRootRequest(null)
+      return
+    }
+
+    getRequest(exactWorkstreamId).then(setRootRequest).catch(() => setRootRequest(null))
+  }, [collectionName, exactWorkstreamId])
+
+  useEffect(() => {
+    let isCancelled = false
+
+    async function buildWhereFilter() {
+      if (!filterConfig || activeFilters.length === 0) {
+        if (!isCancelled) {
+          setWhereFilter(undefined)
+          setIsResolvingFilters(false)
+        }
+        return
+      }
+
+      const nextFilter: Record<string, unknown> = {}
+      const filterMap = new Map(activeFilters.map(filter => [filter.type, filter.value.trim()]))
+
+      if (collectionName === 'requests') {
+        const jobRunId = filterMap.get('jobRunId')
+        const workstreamId = filterMap.get('workstreamId')
+        const jobInstanceId = filterMap.get('jobInstanceId')
+        const templateId = filterMap.get('templateId')
+
+        if (jobRunId) nextFilter.id_contains = jobRunId
+        if (workstreamId) nextFilter.workstreamId_contains = workstreamId
+        if (jobInstanceId) nextFilter.jobDefinitionId_contains = jobInstanceId
+        if (templateId) nextFilter.templateId_contains = templateId
+
+        const pendingLookups: Array<Promise<void>> = []
+        let noMatches = false
+
+        const workstreamName = filterMap.get('workstreamName')
+        if (workstreamName) {
+          pendingLookups.push((async () => {
+            const ids = await queryWorkstreamIdsByName(workstreamName)
+            if (ids.length === 0) {
+              noMatches = true
+              return
+            }
+            nextFilter.workstreamId_in = ids
+          })())
+        }
+
+        const jobInstanceName = filterMap.get('jobInstanceName')
+        if (jobInstanceName) {
+          pendingLookups.push((async () => {
+            const defs = await queryJobDefinitionsByName(jobInstanceName)
+            const ids = defs.map(def => def.id)
+            if (ids.length === 0) {
+              noMatches = true
+              return
+            }
+            nextFilter.jobDefinitionId_in = ids
+          })())
+        }
+
+        const templateName = filterMap.get('templateName')
+        if (templateName) {
+          pendingLookups.push((async () => {
+            const ids = await queryJobTemplateIdsByName(templateName)
+            if (ids.length === 0) {
+              noMatches = true
+              return
+            }
+            nextFilter.templateId_in = ids
+          })())
+        }
+
+        setIsResolvingFilters(pendingLookups.length > 0)
+        await Promise.all(pendingLookups)
+
+        if (noMatches) {
+          nextFilter.id = NO_MATCH_FILTER
+        }
+      }
+
+      if (collectionName === 'jobDefinitions') {
+        const jobInstanceId = filterMap.get('jobInstanceId')
+        const jobInstanceName = filterMap.get('jobInstanceName')
+        const workstreamId = filterMap.get('workstreamId')
+        const templateId = filterMap.get('templateId')
+
+        if (jobInstanceId) nextFilter.id_contains = jobInstanceId
+        if (jobInstanceName) nextFilter.name_contains = jobInstanceName
+        if (workstreamId) nextFilter.workstreamId_contains = workstreamId
+        if (templateId) nextFilter.templateId_contains = templateId
+
+        const pendingLookups: Array<Promise<void>> = []
+        let noMatches = false
+
+        const workstreamName = filterMap.get('workstreamName')
+        if (workstreamName) {
+          pendingLookups.push((async () => {
+            const ids = await queryWorkstreamIdsByName(workstreamName)
+            if (ids.length === 0) {
+              noMatches = true
+              return
+            }
+            nextFilter.workstreamId_in = ids
+          })())
+        }
+
+        const templateName = filterMap.get('templateName')
+        if (templateName) {
+          pendingLookups.push((async () => {
+            const ids = await queryJobTemplateIdsByName(templateName)
+            if (ids.length === 0) {
+              noMatches = true
+              return
+            }
+            nextFilter.templateId_in = ids
+          })())
+        }
+
+        setIsResolvingFilters(pendingLookups.length > 0)
+        await Promise.all(pendingLookups)
+
+        if (noMatches) {
+          nextFilter.id = NO_MATCH_FILTER
+        }
+      }
+
+      if (!isCancelled) {
+        setWhereFilter(Object.keys(nextFilter).length > 0 ? nextFilter : undefined)
+        setIsResolvingFilters(false)
+      }
+    }
+
+    buildWhereFilter().catch(() => {
+      if (!isCancelled) {
+        setWhereFilter({ id: NO_MATCH_FILTER })
+        setIsResolvingFilters(false)
+      }
+    })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [collectionName, activeFilters, filterConfig])
+
   const handleAddFilter = () => {
-    if (!filterValue.trim()) return
-    
-    const label = filterType === 'id' 
-      ? `Job Run ID: ${filterValue.substring(0, 16)}...`
-      : `Workstream: ${filterValue.substring(0, 16)}...`
-    
-    // Remove any existing filter of the same type
-    setActiveFilters(prev => [...prev.filter(f => f.type !== filterType), {
-      type: filterType,
-      value: filterValue.trim(),
-      label
-    }])
-    
+    if (!filterConfig || !filterValue.trim()) return
+
+    const value = filterValue.trim()
+
+    setActiveFilters(prev => [
+      ...prev.filter(filter => filter.type !== filterType),
+      {
+        type: filterType,
+        value,
+        label: makeFilterLabel(filterType, value),
+      },
+    ])
+
     setFilterValue('')
     setPopoverOpen(false)
   }
-  
-  // Handle removing a filter
+
   const handleRemoveFilter = (filterToRemove: ActiveFilter) => {
-    setActiveFilters(prev => prev.filter(f => f !== filterToRemove))
-    // URL will be updated automatically by the useEffect above
+    setActiveFilters(prev => prev.filter(filter => filter !== filterToRemove))
   }
 
-  // Use the subgraph collection hook
   const sortConfig = getSortingConfig(collectionName)
   const {
     records,
@@ -195,12 +417,12 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     hasPreviousPage,
     setSorting,
     sortColumn,
-    sortAscending
+    sortAscending,
   } = useSubgraphCollection({
     collectionName,
     pageSize,
     enablePolling: true,
-    pollingInterval: 10000, // 10 seconds
+    pollingInterval: 10000,
     sortColumn: sortConfig.column,
     sortAscending: sortConfig.ascending,
     whereFilter,
@@ -210,17 +432,16 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     setSorting(column, direction === 'asc')
   }
 
-  // When filtering by workstream, prepend the root request to the list
   const displayRecords = useMemo(() => {
-    if (rootRequest && collectionName === 'requests' && workstreamFilter) {
-      return [rootRequest, ...records]
+    if (rootRequest && collectionName === 'requests' && exactWorkstreamId) {
+      const withoutRoot = records.filter(record => record.id !== rootRequest.id)
+      return [rootRequest, ...withoutRoot]
     }
     return records
-  }, [rootRequest, records, collectionName, workstreamFilter])
+  }, [rootRequest, records, collectionName, exactWorkstreamId])
 
-  const breadcrumbs = [
-    { label: getCollectionLabel(collectionName) }
-  ]
+  const currentFilterLabel = filterConfig?.options.find(option => option.value === filterType)?.label
+  const breadcrumbs = [{ label: getCollectionLabel(collectionName) }]
 
   if (loading) {
     const getSkeletonForCollection = () => {
@@ -235,7 +456,7 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
           return <RecordListSkeleton />
       }
     }
-    
+
     return (
       <>
         <SiteHeader breadcrumbs={breadcrumbs} />
@@ -263,116 +484,123 @@ export function CollectionView({ collectionName }: CollectionViewProps) {
     <>
       <SiteHeader breadcrumbs={breadcrumbs} />
       <div className="p-4 md:p-6">
-      
-      {/* Filter bar for Job Runs */}
-      {collectionName === 'requests' && (
-        <div className="mb-4 flex items-center gap-2 flex-wrap">
-          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Filter className="h-4 w-4" />
-                Filter
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent 
-              className="w-80" 
-              align="start"
-              onEscapeKeyDown={() => setPopoverOpen(false)}
-            >
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="filter-type">Filter Type</Label>
-                  <Select value={filterType} onValueChange={(value) => setFilterType(value as FilterType)}>
-                    <SelectTrigger id="filter-type" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="id">Job Run ID</SelectItem>
-                      <SelectItem value="workstreamId">Workstream ID</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="filter-value">Value</Label>
-                  <Input
-                    id="filter-value"
-                    placeholder={`Enter ${filterType === 'id' ? 'Job Run ID' : 'Workstream ID'}...`}
-                    value={filterValue}
-                    onChange={(e) => setFilterValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleAddFilter()
-                      } else if (e.key === 'Escape') {
-                        setPopoverOpen(false)
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setPopoverOpen(false)} 
-                    className="flex-1" 
-                    size="sm"
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleAddFilter} 
-                    className="flex-1" 
-                    size="sm"
-                  >
-                    Add Filter
-                  </Button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-          
-          {/* Active filters */}
-          {activeFilters.map((filter, index) => (
-            <Badge
-              key={index}
-              variant="outline"
-              className="gap-1.5 bg-primary/10 border-primary/30 text-primary"
-            >
-              <span>{filter.label}</span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-3 w-3 p-0 hover:bg-transparent"
-                onClick={() => handleRemoveFilter(filter)}
+        {filterConfig && (
+          <div className="mb-4 flex items-center gap-2 flex-wrap">
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Filter className="h-4 w-4" aria-hidden="true" />
+                  Filter
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-80"
+                align="start"
+                onEscapeKeyDown={() => setPopoverOpen(false)}
               >
-                <X className="h-3 w-3" />
-              </Button>
-            </Badge>
-          ))}
-        </div>
-      )}
-      
-      {collectionName === 'requests' ? (
-        <RequestsTable records={displayRecords} />
-      ) : collectionName === 'artifacts' ? (
-        <ArtifactsTable records={displayRecords} />
-      ) : collectionName === 'jobDefinitions' ? (
-        <JobDefinitionsTable 
-          records={displayRecords} 
-          onSort={handleSort}
-          sortColumn={sortColumn}
-          sortAscending={sortAscending}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="filter-type">Filter Type</Label>
+                    <Select value={filterType} onValueChange={(value) => setFilterType(value as FilterType)}>
+                      <SelectTrigger id="filter-type" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filterConfig.options.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="filter-value">Value</Label>
+                    <Input
+                      id="filter-value"
+                      name="filter-value"
+                      autoComplete="off"
+                      placeholder={`Enter ${currentFilterLabel ?? 'value'}…`}
+                      value={filterValue}
+                      onChange={(event) => setFilterValue(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          handleAddFilter()
+                        } else if (event.key === 'Escape') {
+                          setPopoverOpen(false)
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setPopoverOpen(false)}
+                      className="flex-1"
+                      size="sm"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleAddFilter}
+                      className="flex-1"
+                      size="sm"
+                    >
+                      Add Filter
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {activeFilters.map((filter, index) => (
+              <Badge
+                key={index}
+                variant="outline"
+                className="gap-1.5 bg-primary/10 border-primary/30 text-primary"
+              >
+                <span>{filter.label}</span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove filter: ${filter.label}`}
+                  className="hover:bg-transparent"
+                  onClick={() => handleRemoveFilter(filter)}
+                >
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </Button>
+              </Badge>
+            ))}
+
+            {isResolvingFilters && (
+              <span aria-live="polite" className="text-sm text-muted-foreground">Applying filters…</span>
+            )}
+          </div>
+        )}
+
+        {collectionName === 'requests' ? (
+          <RequestsTable records={displayRecords} />
+        ) : collectionName === 'artifacts' ? (
+          <ArtifactsTable records={displayRecords} />
+        ) : collectionName === 'jobDefinitions' ? (
+          <JobDefinitionsTable
+            records={displayRecords}
+            onSort={handleSort}
+            sortColumn={sortColumn}
+            sortAscending={sortAscending}
+          />
+        ) : (
+          <RecordList records={displayRecords} collectionName={collectionName} />
+        )}
+
+        <Pagination
+          currentPage={currentPage}
+          totalRecords={totalRecords}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          hasNextPage={hasNextPage}
+          hasPreviousPage={hasPreviousPage}
         />
-      ) : (
-        <RecordList records={displayRecords} collectionName={collectionName} />
-      )}
-      
-      <Pagination
-        currentPage={currentPage}
-        totalRecords={totalRecords}
-        pageSize={pageSize}
-        onPageChange={setCurrentPage}
-        hasNextPage={hasNextPage}
-        hasPreviousPage={hasPreviousPage}
-      />
       </div>
     </>
   )

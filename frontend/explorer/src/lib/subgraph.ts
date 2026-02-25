@@ -105,6 +105,7 @@ export interface Workstream {
   hasLauncherBriefing?: boolean
   delivered?: boolean
   lastActivity?: string
+  lastStatus?: string
   ventureId?: string | null
   templateId?: string | null
 }
@@ -911,14 +912,15 @@ export async function fetchIpfsContent(
 }
 
 // Workstream queries
-const queryWorkstreams = `
-  query Workstreams($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String) {
+const queryWorkstreamsGql = `
+  query Workstreams($limit: Int, $after: String, $before: String, $orderBy: String, $orderDirection: String, $where: workstreamFilter) {
     workstreams(
       orderBy: $orderBy
       orderDirection: $orderDirection
       limit: $limit
       after: $after
       before: $before
+      where: $where
     ) {
       items {
         id
@@ -929,8 +931,11 @@ const queryWorkstreams = `
         childRequestCount
         hasLauncherBriefing
         delivered
+        lastStatus
         mech
         sender
+        ventureId
+        templateId
       }
       pageInfo {
         hasNextPage
@@ -942,25 +947,43 @@ const queryWorkstreams = `
   }
 `
 
+type WorkstreamRaw = {
+  id: string
+  rootRequestId: string
+  jobName: string
+  blockTimestamp: string
+  lastActivity: string
+  childRequestCount: number
+  hasLauncherBriefing: boolean
+  delivered: boolean
+  lastStatus?: string
+  mech: string
+  sender: string
+  ventureId?: string
+  templateId?: string
+}
+
+function mapWorkstreamRaw(ws: WorkstreamRaw): Workstream {
+  return {
+    id: ws.id,
+    jobName: ws.jobName,
+    blockTimestamp: ws.blockTimestamp,
+    mech: ws.mech,
+    sender: ws.sender,
+    childRequestCount: ws.childRequestCount,
+    hasLauncherBriefing: ws.hasLauncherBriefing,
+    delivered: ws.delivered,
+    lastActivity: ws.lastActivity,
+    ventureId: ws.ventureId,
+    templateId: ws.templateId,
+  }
+}
+
 export async function getWorkstreams(options: QueryOptions = {}): Promise<WorkstreamsResponse> {
   const { limit = 50, after, before, orderBy = 'blockTimestamp', orderDirection = 'desc' } = options
 
-  // Define the raw response shape from the workstreams table
-  type WorkstreamRaw = {
-    id: string
-    rootRequestId: string
-    jobName: string
-    blockTimestamp: string
-    lastActivity: string
-    childRequestCount: number
-    hasLauncherBriefing: boolean
-    delivered: boolean
-    mech: string
-    sender: string
-  }
-
   try {
-    const data = await request<{ workstreams: { items: WorkstreamRaw[], pageInfo: PageInfo } }>(SUBGRAPH_URL, queryWorkstreams, {
+    const data = await request<{ workstreams: { items: WorkstreamRaw[], pageInfo: PageInfo } }>(SUBGRAPH_URL, queryWorkstreamsGql, {
       limit,
       after,
       before,
@@ -968,20 +991,9 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
       orderDirection
     })
 
-    // Map workstream items to Workstream format
     return {
       requests: {
-        items: data.workstreams.items.map(ws => ({
-          id: ws.id,
-          jobName: ws.jobName,
-          blockTimestamp: ws.blockTimestamp,
-          mech: ws.mech,
-          sender: ws.sender,
-          childRequestCount: ws.childRequestCount,
-          hasLauncherBriefing: ws.hasLauncherBriefing,
-          delivered: ws.delivered,
-          lastActivity: ws.lastActivity
-        })),
+        items: data.workstreams.items.map(mapWorkstreamRaw),
         pageInfo: data.workstreams.pageInfo
       }
     }
@@ -993,6 +1005,104 @@ export async function getWorkstreams(options: QueryOptions = {}): Promise<Workst
         pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: '', endCursor: '' }
       }
     }
+  }
+}
+
+export async function queryWorkstreamsCollection(options: QueryOptions = {}): Promise<PaginatedResponse<Workstream>> {
+  const {
+    limit = 100,
+    after,
+    before,
+    orderBy = 'lastActivity',
+    orderDirection = 'desc',
+    where
+  } = options
+
+  try {
+    const data = await request<{ workstreams: { items: WorkstreamRaw[], pageInfo: PageInfo } }>(SUBGRAPH_URL, queryWorkstreamsGql, {
+      limit,
+      after,
+      before,
+      orderBy,
+      orderDirection,
+      where
+    })
+
+    return {
+      items: data.workstreams.items.map(mapWorkstreamRaw),
+      pageInfo: data.workstreams.pageInfo
+    }
+  } catch {
+    return {
+      items: [],
+      pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: '', endCursor: '' }
+    }
+  }
+}
+
+export async function queryJobTemplateIdsByName(name: string, limit: number = 100): Promise<string[]> {
+  if (!name.trim()) return []
+
+  const query = `
+    query JobTemplateIdsByName($name: String!, $limit: Int) {
+      jobTemplates(where: { name_contains: $name }, limit: $limit) {
+        items {
+          id
+        }
+      }
+    }
+  `
+
+  try {
+    const response = await request<{ jobTemplates: { items: Array<{ id: string }> } }>(SUBGRAPH_URL, query, {
+      name,
+      limit,
+    })
+    return response.jobTemplates.items.map(item => item.id)
+  } catch (error) {
+    console.error('Error querying template IDs by name:', error)
+    return []
+  }
+}
+
+export async function queryWorkstreamIdsByName(name: string, limit: number = 200): Promise<string[]> {
+  if (!name.trim()) return []
+
+  try {
+    const response = await request<{ workstreams: { items: Array<{ id: string }> } }>(SUBGRAPH_URL, queryWorkstreamsGql, {
+      where: { jobName_contains: name },
+      limit,
+      orderBy: 'lastActivity',
+      orderDirection: 'desc',
+    })
+    return response.workstreams.items.map(item => item.id)
+  } catch (error) {
+    console.error('Error querying workstream IDs by name:', error)
+    return []
+  }
+}
+
+export async function queryJobDefinitionsByName(
+  name: string,
+  limit: number = 200
+): Promise<Array<{ id: string; workstreamId?: string }>> {
+  if (!name.trim()) return []
+
+  try {
+    const response = await queryJobDefinitions({
+      where: { name_contains: name },
+      limit,
+      orderBy: 'lastInteraction',
+      orderDirection: 'desc',
+    })
+
+    return response.items.map(item => ({
+      id: item.id,
+      workstreamId: item.workstreamId,
+    }))
+  } catch (error) {
+    console.error('Error querying job definitions by name:', error)
+    return []
   }
 }
 

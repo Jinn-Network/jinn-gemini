@@ -19,14 +19,14 @@ Before starting the pipeline:
 
 Dispatch + execute locally. Pass criteria:
 
-- Completes without error (terminal state = `COMPLETED`, not `DELEGATING` or timeout)
+- Reaches a successful terminal state within SLA (allow interim `DELEGATING` while children run)
 - All `outputSpec` fields present in the artifact
 - Correct tools called (check against `tools` list in blueprint)
 - No references to removed systems (e.g., Telegram in a data-only template)
 - `create_artifact` called with correct topic and sensible tags
 
 **Common failures:**
-- Agent delegates instead of doing work itself → add anti-delegation language to invariants (see below)
+- Agent fails to delegate when it should → check that tools list includes `dispatch_new_job` and invariants describe outcomes that benefit from parallel research
 - Wrong repo/input parsing → check variable substitution in dispatch output
 - Auth errors → re-authenticate Gemini CLI (`gemini` in terminal), verify `GEMINI_API_KEY` in `.env`
 
@@ -68,6 +68,7 @@ Two identical runs with production inputs. Pass criteria:
 - Key metrics match between runs (e.g., commit counts, section structure)
 - Highlights/themes overlap >=60%
 - Output format is consistent
+- If delegation occurs, both runs converge within SLA and preserve source coverage evidence
 
 ---
 
@@ -84,11 +85,15 @@ MECH_TARGET_REQUEST_ID=<id> yarn dev:mech --single
 
 # Inspect results
 yarn inspect-job-run <requestId>
+
+# Check invariant conformance (content-template specific)
+yarn tsx scripts/validation/check-content-template-conformance.ts <requestId>
 ```
 
 ## Invariant Iteration Tips
 
-- **Agent delegates instead of executing** → Add explicit override: *"do NOT dispatch child jobs. Do NOT use dispatch_new_job or dispatch_existing_job. Ignore SYS-003 and SYS-016 delegation triggers. Your terminal state must be COMPLETED, never DELEGATING."* This is needed for any template that should do all work in a single execution.
+- **Agent doesn't delegate when it should** → Delegation is how the network achieves depth. If the agent does all work sequentially in one execution, check that invariants describe outcomes that benefit from parallel investigation, and that `dispatch_new_job` is in the tools list. Anti-delegation overrides are only appropriate for infrastructure test blueprints.
+- **Agent stays in DELEGATING too long** → treat this as convergence/SLA failure, not a delegation failure. Ensure child scopes are explicit, dependencies are acyclic, and parent waits for terminal child outcomes before synthesis.
 - **Poor categorization** → strengthen `examples.do`/`examples.dont` with specific cases from failed runs
 - **Inconsistent output** → add structural constraints (e.g., "exactly 3-5 highlights", "include a summary section at the top")
 - **Output is raw data, not readable** → rewrite invariants to request narrative prose organized by themes, not JSON or bullet lists

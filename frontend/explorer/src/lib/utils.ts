@@ -15,6 +15,7 @@ export function getCollectionLabel(collectionName: CollectionName): string {
     artifacts: 'Artifacts',
     messages: 'Messages',
     templates: 'Templates',
+    workstreams: 'Workstreams',
   };
 
   return labelMap[collectionName] || collectionName;

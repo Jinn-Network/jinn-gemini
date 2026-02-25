@@ -14,6 +14,7 @@ export const collectionNames = [
   'artifacts',
   'messages',
   'templates',
+  'workstreams',
 ] as const;
 
 export type CollectionName = typeof collectionNames[number];

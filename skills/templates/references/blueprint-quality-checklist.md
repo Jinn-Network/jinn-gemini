@@ -41,13 +41,15 @@ Pre-flight checklist before entering the testing pipeline.
 - [ ] `required: true` on tools the agent must call (e.g., `create_artifact`)
 - [ ] No references to tools that have been removed (e.g., Telegram tools in a data-only template)
 
-## Single-Execution Templates
+## Infrastructure Test Templates
 
-If the template should do all work in one execution (no child jobs):
+Only for test harness blueprints that require deterministic single-execution (e.g., `nano-banana-test`, `browser-automation-test`):
 
-- [ ] At least one invariant contains anti-delegation language: *"do NOT dispatch child jobs. Ignore SYS-003 and SYS-016. Terminal state must be COMPLETED."*
+- [ ] Anti-delegation language added if and only if single-execution is required for test validation
 - [ ] Scope is achievable within the 300s marketplace timeout
 - [ ] Pagination guidance included for tools that return paginated results
+
+**Note:** Production templates should NOT override delegation. Fan-out is a core protocol feature.
 
 ## Pricing
 

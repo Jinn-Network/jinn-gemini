@@ -8,31 +8,93 @@ import type { JobDefinition } from '@/lib/subgraph';
 interface CreateVentureInput {
   name: string;
   slug: string;
-  description: string;
-  category: string;
-  problem: string;
   owner_address: string;
+  template: {
+    sources: string[];
+    lookbackPeriod: string;
+    outputTopic: string;
+    contentBrief: string;
+    formatBrief: string;
+    outputFormat: string;
+    dispatchCron?: string;
+  };
 }
 
+const CONTENT_VENTURE_TEMPLATE_ID = '2942d6f6-2d03-4ae1-8189-5f78fd60cee3';
+const CONTENT_TEMPLATE_SLUG = 'content-template';
+const CONTENT_TEMPLATE_UUID = '26fcfe77-7281-4556-9a3d-7b05cf4f6b0b';
+
 export async function createVenture(input: CreateVentureInput) {
-  const result = await supabaseMutate<{ id: string; slug: string }>('ventures', 'POST', {
+  const dispatchCron = input.template.dispatchCron?.trim();
+  const dispatchSchedule = dispatchCron ? [{
+    id: crypto.randomUUID(),
+    templateId: CONTENT_TEMPLATE_UUID,
+    cron: dispatchCron,
+    input: {
+      name: input.name,
+      sources: input.template.sources,
+      lookbackPeriod: input.template.lookbackPeriod,
+      outputTopic: input.template.outputTopic,
+      contentBrief: input.template.contentBrief,
+      formatBrief: input.template.formatBrief,
+      outputFormat: input.template.outputFormat,
+    },
+    label: 'Content cadence',
+    enabled: true,
+  }] : [];
+
+  // Deduplicate slug: check if it exists, append suffix if needed
+  let slug = input.slug;
+  const existing = await supabaseAdminQuery<{ id: string }>('ventures', {
+    select: 'id',
+    slug: `eq.${slug}`,
+    limit: '1',
+  });
+  if (existing.length > 0) {
+    slug = `${slug}-${Date.now().toString(36)}`;
+  }
+
+  const payload = {
     name: input.name,
-    slug: input.slug,
-    description: input.description,
+    slug,
+    description: `Content agent: ${input.template.contentBrief}`,
     owner_address: input.owner_address,
     status: 'proposed',
     creator_type: 'human',
+    venture_template_id: CONTENT_VENTURE_TEMPLATE_ID,
+    dispatch_schedule: dispatchSchedule,
     blueprint: {
-      category: input.category,
-      problem: input.problem,
-      invariants: [],
+      category: 'Content',
+      templateId: CONTENT_TEMPLATE_SLUG,
+      templateConfig: {
+        name: input.name,
+        sources: input.template.sources,
+        lookbackPeriod: input.template.lookbackPeriod,
+        outputTopic: input.template.outputTopic,
+        contentBrief: input.template.contentBrief,
+        formatBrief: input.template.formatBrief,
+        outputFormat: input.template.outputFormat,
+      },
     },
-  });
+  };
 
-  if (result.data) {
-    revalidatePath('/');
-    revalidatePath(`/ventures/${result.data.slug}`);
+  console.log('[createVenture] Creating venture:', slug);
+
+  const result = await supabaseMutate<{ id: string; slug: string }>('ventures', 'POST', payload);
+
+  if (result.error) {
+    console.error('[createVenture] Failed:', result.error);
+    return result;
   }
+
+  if (!result.data?.id) {
+    console.error('[createVenture] No data returned after insert');
+    return { error: 'Venture creation failed — no data returned.' };
+  }
+
+  console.log('[createVenture] Success:', result.data.id, result.data.slug);
+  revalidatePath('/');
+  revalidatePath(`/ventures/${result.data.slug}`);
 
   return result;
 }
@@ -197,6 +259,20 @@ export async function fetchWorkstreamArtifactsAction(workstreamId: string): Prom
   } catch (error) {
     console.error('Failed to fetch workstream artifacts:', error);
     return [];
+  }
+}
+
+export async function fetchArtifactByCidAction(cid: string): Promise<ArtifactWithJobName | null> {
+  try {
+    const result = await queryArtifacts({ where: { cid }, limit: 1 });
+    const artifact = result.items[0];
+    if (!artifact) return null;
+    const jobName = artifact.sourceJobDefinitionId
+      ? await getJobName(artifact.sourceJobDefinitionId).catch(() => null)
+      : null;
+    return { ...artifact, jobName: jobName || undefined };
+  } catch {
+    return null;
   }
 }
 

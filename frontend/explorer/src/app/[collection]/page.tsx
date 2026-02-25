@@ -12,6 +12,7 @@ const collectionDescriptions: Record<CollectionName, string> = {
   artifacts: 'Browse all artifacts - files, documents, and data produced by jobs',
   messages: 'Browse all messages - communication records between jobs',
   templates: 'Browse job templates - callable workflows via x402 payments',
+  workstreams: 'Browse all workstreams - top-level job executions and their downstream graphs',
 }
 
 export async function generateMetadata({ params }: CollectionPageProps): Promise<Metadata> {

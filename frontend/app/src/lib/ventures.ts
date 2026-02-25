@@ -1,5 +1,14 @@
 import { supabaseQuery, supabaseAdminQuery } from '@/lib/supabase';
 
+export interface ScheduleEntry {
+  id: string;
+  templateId: string;
+  cron: string;
+  input?: Record<string, unknown>;
+  label?: string;
+  enabled?: boolean;
+}
+
 export interface Venture {
   id: string;
   name: string;
@@ -9,6 +18,7 @@ export interface Venture {
   blueprint: Record<string, unknown> | null;
   root_workstream_id: string | null;
   root_job_instance_id: string | null;
+  dispatch_schedule: ScheduleEntry[];
   status: 'proposed' | 'bonding' | 'active' | 'paused' | 'archived';
   creator_type: 'human' | 'delegate';
   created_at: string;
@@ -21,6 +31,7 @@ export interface Venture {
   token_metadata: Record<string, unknown> | null;
   governance_address: string | null;
   pool_address: string | null;
+  venture_template_id: string | null;
   likes?: { count: number }[];
   comments?: { count: number }[];
   likes_count?: number;

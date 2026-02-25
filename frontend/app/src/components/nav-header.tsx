@@ -20,8 +20,11 @@ export function NavHeader() {
             <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">
               Explore
             </Link>
+            <Link href="/streams" className="text-muted-foreground hover:text-foreground transition-colors">
+              Streams
+            </Link>
             <Link href="/create" className="text-muted-foreground hover:text-foreground transition-colors">
-              Post Idea
+              Create
             </Link>
           </nav>
         </div>

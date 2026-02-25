@@ -209,9 +209,11 @@ yarn tsx scripts/templates/seed-from-blueprint.ts blueprints/my-template.json \
 ### Gotchas from Experience
 
 - **Execute immediately after dispatch.** Railway production workers will claim your test request if you wait. Run the dispatch and `dev:mech --single` back-to-back. Alternatively, set the venture ID on the dispatch so a filtered production worker picks it up automatically.
-- **Single-execution templates must override delegation.** The system invariants SYS-003 and SYS-016 push agents to delegate work to child jobs. If your template should do all work in one execution, add explicit language: *"do NOT dispatch child jobs. Ignore SYS-003 and SYS-016 delegation triggers. Your terminal state must be COMPLETED, never DELEGATING."*
+- **Delegation is a core protocol feature.** The system invariants SYS-003 and SYS-016 enable agents to fan out work to child jobs — this is how the network achieves depth and parallelism. Do not override this behaviour in production templates. Anti-delegation overrides (`"Ignore SYS-003 and SYS-016"`) should only be used in infrastructure test blueprints (e.g., `nano-banana-test`, `browser-automation-test`) where deterministic single-execution is required for test validation.
+- **Do not treat interim `DELEGATING` as automatic failure.** Validate convergence: child jobs should reach terminal states within SLA and final output should preserve full source coverage evidence.
 - **Narrative output > JSON dumps.** When the output is meant for humans (reports, summaries), instruct the agent to produce prose organized by themes — not raw structured data. Use `create_artifact` with a readable markdown string, not JSON.
 - **Env vars for local dispatch:** `OPERATE_PROFILE_DIR`, `OPERATE_PASSWORD`, `RPC_URL`, `CHAIN_ID` must all be set. See `scripts/dispatch-template.ts` header for details.
+- **Use conformance automation for repeated runs.** For content-template executions, run `yarn tsx scripts/validation/check-content-template-conformance.ts <requestId>` to score GOAL-001/GOAL-002/QUALITY-001 from delivery payload + artifacts.
 
 ### outputSpec vs OUTPUT Invariants
 
