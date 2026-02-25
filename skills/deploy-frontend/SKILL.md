@@ -76,6 +76,7 @@ Non-secret values baked into the client bundle at build time:
 | `NEXT_PUBLIC_X402_GATEWAY_URL` | `https://x402-gateway-production.up.railway.app` | x402 payment gateway |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://clnwgxgvmnrkwqdblqgf.supabase.co` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | (in vercel.json) | Supabase anon key (safe to expose) |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | (in vercel.json) | WalletConnect/Reown project ID for vote page wallet connection |
 
 #### Secret Variables (via `vercel env`)
 

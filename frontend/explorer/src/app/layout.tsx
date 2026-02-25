@@ -5,6 +5,7 @@ import "./globals.css";
 import { ClientLayout } from "@/components/client-layout";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Web3Provider } from "@/components/web3-provider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -47,8 +48,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <ClientLayout>{children}</ClientLayout>
-          <Toaster />
+          <Web3Provider>
+            <ClientLayout>{children}</ClientLayout>
+            <Toaster />
+          </Web3Provider>
         </ThemeProvider>
       </body>
     </html>
