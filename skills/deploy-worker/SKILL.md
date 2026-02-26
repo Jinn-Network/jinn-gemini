@@ -326,9 +326,73 @@ When Railway MCP tools are available, use them for operations instead of the CLI
 | List deployments | `mcp__Railway__list-deployments` |
 | Generate domain | `mcp__Railway__generate-domain` |
 
+## Multi-Service Deployment
+
+When running multiple staked services from a single Railway worker, enable the `ServiceRotator` which automatically cycles through services based on activity needs.
+
+### Required Environment Variables
+
+```bash
+WORKER_MULTI_SERVICE=true          # Enable ServiceRotator
+WORKER_COUNT=3                     # Parallel workers (see capacity below)
+WORKER_ACTIVITY_POLL_MS=60000      # Activity poll interval
+WORKER_ACTIVITY_CACHE_TTL_MS=60000 # Cache TTL
+```
+
+### Credential Import (Volume-Based — NOT Environment Variables)
+
+**CRITICAL:** Multi-service credentials are stored on the **Railway persistent volume** at `/home/jinn/.operate/`, NOT as environment variables. The worker discovers services by scanning `.operate/services/sc-*/` on the volume.
+
+**DO NOT** set `OPERATE_SERVICE_sc_*_CONFIG` or `OPERATE_SERVICE_sc_*_KEYS` environment variables. This is incorrect and leads to stale/orphaned env vars that don't do anything useful. The worker reads from the volume, not env vars.
+
+After provisioning new services (see `skills/fleet-management/SKILL.md`), deploy to Railway:
+
+```bash
+# Import .operate/ + .gemini/ to volume via SSH (tar + base64 over railway ssh)
+yarn deploy:railway -- --project <project-name>
+
+# Code-only redeploy (credentials already on volume, unchanged)
+yarn deploy:railway -- --project <project-name> --skip-import
+```
+
+**How it works:** The deploy script tars `.operate/` (excluding `services/*/deployment` venvs), base64-encodes it, and sends via `railway ssh` to extract at `/home/jinn/.operate/` on the persistent volume. The `ServiceConfigReader` automatically discovers all `sc-*/config.json` directories on startup.
+
+**Prerequisite:** `.operate` must be accessible from `jinn-node/`. Verify the symlink exists:
+```bash
+ls -la jinn-node/.operate  # should point to ../olas-operate-middleware/.operate
+```
+
+### Worker Count Tuning
+
+Each service needs ~61 deliveries/day (liveness ratio). Average job execution is ~4 minutes.
+
+| WORKER_COUNT | Jobs/Day | Max Services |
+|--------------|----------|-------------|
+| 1 | ~360 | ~5 |
+| 2 | ~720 | ~11 |
+| 3 | ~1,080 | ~17 |
+
+Choose `WORKER_COUNT` based on your total staked services. Over-provisioning wastes compute; under-provisioning risks eviction.
+
+### Fleet Monitoring
+
+```bash
+# Check fleet health from the provisioning machine
+yarn service:fleet
+
+# JSON output for automation
+yarn service:fleet --json
+```
+
+The `/health` endpoint (port 8080) includes fleet state when multi-service is enabled — see `skills/fleet-management/SKILL.md` for details.
+
+---
+
 ## Known Railway Deployment Patterns
 
 - **`railway up` timeouts**: The monorepo is too large to upload directly. Always use a GitHub branch deploy trigger. Set it via `deploymentTriggerUpdate` GraphQL mutation if the UI doesn't cooperate.
 - **Auto-relink after deploy**: After `railway up`, the CLI may relink to a different service. Always verify which service is linked before deploying.
 - **Builder migration**: Railway may silently migrate services away from DOCKERFILE. Detect by checking build logs. Fix with `serviceInstanceUpdate` mutation setting `builder: DOCKERFILE`.
 - **Worker count**: Set `WORKER_COUNT` env var to run multiple parallel workers in one service. Each gets a prefixed log output.
+- **Symlink gotcha**: `jinn-node/.operate` is a symlink to `../olas-operate-middleware/.operate`. When tarring for SSH import, use `tar -h` (follow symlinks) or the tar will upload the symlink itself, not the actual data. The deploy script handles this correctly, but manual imports must use `-h`.
+- **Volume mount path**: The deploy script expects the volume at `/home/jinn`. If the Railway volume is mounted at a different path (e.g., `/root`), the `ensure_volume` step will fail. Check with `railway volume list` and ensure `MIDDLEWARE_PATH` env var matches the volume mount location.
