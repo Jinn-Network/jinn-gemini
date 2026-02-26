@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     default: 'Jinn',
     template: '%s | Jinn'
   },
-  description: "Become a founder without the hard stuff. AI agents handle the execution on OLAS and Base.",
+  description: "Own what you know. Turn your expertise into an AI agent that works for you.",
   icons: {
     icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
   },

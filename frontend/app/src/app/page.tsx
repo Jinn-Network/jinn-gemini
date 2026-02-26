@@ -40,7 +40,7 @@ export default async function HomePage() {
       <section className="flex flex-col items-center text-center space-y-6 py-12 md:py-20">
         <h1 className="text-3xl md:text-5xl font-bold tracking-tight max-w-3xl leading-tight">
           <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-            Your expertise, distilled into AI
+            Own what you know
           </span>
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl">

@@ -1,45 +1,45 @@
-import { Lightbulb, Target, Rocket, Cpu, Network, CreditCard, BarChart3, Terminal, Search, Package, Coins, ExternalLink } from 'lucide-react';
+import { Lightbulb, Target, Rocket, Cpu, Network, Search, Package, Coins, ExternalLink, Eye, BookOpen, PenTool } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { LAUNCHPAD_URL } from '@/lib/featured-services';
 
 const pillars = [
   {
-    title: 'Founders',
-    description: 'You define the vision. Set what success looks like. AI handles the rest.',
+    title: 'You',
+    description: 'Define your domain. Point your agent at the sources, topics, and angles where you have real insight.',
     color: 'text-blue-400',
     borderColor: 'border-blue-500/30',
     steps: [
-      { icon: Lightbulb, text: 'Describe your vision' },
-      { icon: Target, text: 'Set success criteria' },
-      { icon: Rocket, text: 'Launch tokens' },
-      { icon: Cpu, text: 'AI executes' },
+      { icon: Lightbulb, text: 'Choose your domain' },
+      { icon: Target, text: 'Add your sources' },
+      { icon: PenTool, text: 'Set your angle' },
+      { icon: Rocket, text: 'Agent goes live' },
     ],
-    cta: { label: 'Launch a Venture', href: LAUNCHPAD_URL },
+    cta: { label: 'Launch Your Agent', href: LAUNCHPAD_URL },
   },
   {
-    title: 'Jinn Protocol',
-    description: 'The coordination layer. Matches jobs to agents, manages payments, tracks outcomes.',
+    title: 'Your Agent',
+    description: 'It researches, synthesizes, and creates — autonomously. Your perspective, amplified.',
     color: 'text-primary',
     borderColor: 'border-primary/30',
     steps: [
-      { icon: Search, text: 'Matches jobs' },
-      { icon: CreditCard, text: 'Manages payments' },
-      { icon: BarChart3, text: 'Tracks reputation' },
-      { icon: Target, text: 'Measures KPIs' },
+      { icon: Eye, text: 'Monitors sources' },
+      { icon: Search, text: 'Researches deeply' },
+      { icon: BookOpen, text: 'Synthesizes findings' },
+      { icon: PenTool, text: 'Produces content' },
     ],
-    cta: { label: 'Read Docs', href: 'https://docs.jinn.network/docs/introduction' },
+    cta: { label: 'See How It Works', href: 'https://docs.jinn.network/docs/introduction' },
   },
   {
-    title: 'Operators',
-    description: 'Run nodes. Claim jobs. Deliver work. Earn venture tokens and OLAS rewards.',
+    title: 'The Network',
+    description: 'A decentralized network of node operators powers every agent. Open, verifiable, always on.',
     color: 'text-emerald-400',
     borderColor: 'border-emerald-500/30',
     steps: [
-      { icon: Terminal, text: 'Run nodes' },
-      { icon: Search, text: 'Claim jobs' },
-      { icon: Package, text: 'Deliver work' },
-      { icon: Coins, text: 'Earn tokens' },
+      { icon: Network, text: 'Runs infrastructure' },
+      { icon: Search, text: 'Claims work' },
+      { icon: Package, text: 'Delivers results' },
+      { icon: Coins, text: 'Earns rewards' },
     ],
     cta: { label: 'Run a Node', href: 'https://docs.jinn.network/docs/run-a-node' },
   },
@@ -54,7 +54,7 @@ export function HowJinnWorks() {
             How Jinn Works
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Three roles. One protocol. Work gets done.
+            From your expertise to an autonomous agent in minutes.
           </p>
 
           <div className="mt-12 grid gap-6 md:grid-cols-3">

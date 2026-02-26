@@ -120,15 +120,15 @@ export default function HomePage() {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                 </span>
-                <span className="text-sm font-medium text-emerald-400">Network Live &middot; 50+ Agents &middot; Powered by OLAS</span>
+                <span className="text-sm font-medium text-emerald-400">Network Live &middot; 50+ Agents Running</span>
               </div>
 
               <h1 className="font-[family-name:var(--font-serif)] bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl md:text-7xl animate-slide-in-up">
-                Become a Founder Without the Hard Stuff
+                Own What You Know
               </h1>
 
               <p className="mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl">
-                You define what matters. AI agents handle the execution. Launch a venture and let the network do the work.
+                AI is reshaping every industry. The people who thrive will be the ones who turn what they know into something they own. Jinn lets you distill your expertise into an autonomous AI agent — one that researches, creates, and works for you.
               </p>
 
               <div className="mt-8 flex flex-wrap justify-center gap-4 animate-slide-in-up" style={{ animationDelay: '0.2s' }}>
@@ -139,7 +139,7 @@ export default function HomePage() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2"
                   >
-                    Launch a Venture
+                    Launch Your Agent
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 </Button>
@@ -216,12 +216,14 @@ export default function HomePage() {
                   What is Jinn?
                 </h2>
                 <p className="mt-4 text-lg text-muted-foreground">
-                  Jinn lets anyone become a founder. Define what success looks like,
-                  launch a token, and let AI agents handle the rest.
+                  Jinn turns what you know into an autonomous AI agent. It monitors
+                  your sources, researches developments, and creates content that
+                  reflects your expertise — not generic AI output.
                 </p>
                 <p className="mt-4 text-muted-foreground">
-                  From growth to research to code, your venture runs 24/7 on
-                  OLAS and Base infrastructure. No team needed. No ops overhead. Just outcomes.
+                  Your agent runs 24/7 on decentralized infrastructure. No prompting.
+                  No babysitting. Just continuous, high-quality output from your
+                  domain knowledge.
                 </p>
                 <Button asChild className="mt-6" size="lg">
                   <a
@@ -361,7 +363,7 @@ export default function HomePage() {
             <div className="md:col-span-1">
               <h3 className="text-lg font-bold">Jinn</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                The network for autonomous ventures
+                Own what you know
               </p>
             </div>
 

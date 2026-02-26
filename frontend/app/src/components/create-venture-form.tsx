@@ -66,6 +66,14 @@ export function CreateVentureForm() {
   const [dispatchCron, setDispatchCron] = useState('0 9 * * *');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Format rules (advanced)
+  const [showFormatRules, setShowFormatRules] = useState(false);
+  const [minWords, setMinWords] = useState<string>('');
+  const [maxWords, setMaxWords] = useState<string>('');
+  const [requiredSections, setRequiredSections] = useState<string[]>([]);
+  const [requiredCitations, setRequiredCitations] = useState<string>('');
+  const [newSection, setNewSection] = useState('');
+
   const steps = stepper.lookup.getAll();
   const currentStepIndex = stepper.state.current.index;
   const totalSteps = steps.length;
@@ -107,6 +115,13 @@ export function CreateVentureForm() {
     setIsSaving(true);
     try {
       const slug = slugify(name);
+      // Build formatRules if any are set
+      const formatRules: Record<string, unknown> = {};
+      if (minWords) formatRules.minWords = parseInt(minWords, 10);
+      if (maxWords) formatRules.maxWords = parseInt(maxWords, 10);
+      if (requiredCitations) formatRules.requiredCitations = parseInt(requiredCitations, 10);
+      if (requiredSections.length > 0) formatRules.requiredSections = requiredSections;
+
       const result = await createVenture({
         name: name.trim(),
         slug,
@@ -119,6 +134,7 @@ export function CreateVentureForm() {
           formatBrief: formatBrief.trim() || 'Clear, professional prose. Organize thematically.',
           outputFormat,
           dispatchCron: dispatchCron.trim() || '0 9 * * *',
+          ...(Object.keys(formatRules).length > 0 ? { formatRules } : {}),
         },
       });
 
@@ -142,7 +158,7 @@ export function CreateVentureForm() {
       <CardHeader>
         <CardTitle>Create a Content Agent</CardTitle>
         <CardDescription>
-          Configure an AI agent to research and produce content from your chosen sources.
+          Set up an agent that turns your knowledge into continuous, high-quality content.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -172,10 +188,10 @@ export function CreateVentureForm() {
         {stepper.state.current.data.id === 'name' && (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">What should we call your content agent?</Label>
+              <Label htmlFor="name">What should we call your agent?</Label>
               <Input
                 id="name"
-                placeholder="e.g. Weekly AI Digest, Crypto Market Brief"
+                placeholder="e.g. Chess Opening Theory, Rare Disease Research, AI Engineering Digest"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoFocus
@@ -193,7 +209,7 @@ export function CreateVentureForm() {
             <div className="space-y-2">
               <Label>What sources should your agent monitor?</Label>
               <p className="text-xs text-muted-foreground">
-                Add URLs, topics, or references. The agent will figure out how to use each one.
+                Add the URLs, communities, and references you follow. Your agent monitors them for you.
               </p>
             </div>
             <div className="space-y-3">
@@ -243,16 +259,16 @@ export function CreateVentureForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="brief">What angle should the content take?</Label>
+              <Label htmlFor="brief">What&apos;s your perspective?</Label>
               <Textarea
                 id="brief"
-                placeholder="e.g. Summarize key developments in AI agents and their real-world applications."
+                placeholder="e.g. Focus on practical applications over theory. I believe the London System is underrated for club players."
                 value={contentBrief}
                 onChange={(e) => setContentBrief(e.target.value)}
                 rows={3}
               />
               <p className="text-xs text-muted-foreground">
-                Optional. Guides what the agent focuses on.
+                Optional. This is what makes your agent&apos;s output uniquely yours — your take, your editorial angle.
               </p>
             </div>
 
@@ -295,6 +311,102 @@ export function CreateVentureForm() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setShowFormatRules(!showFormatRules)}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+              >
+                <span className={`transition-transform ${showFormatRules ? 'rotate-90' : ''}`}>&#9656;</span>
+                Output rules (optional)
+              </button>
+              <p className="text-xs text-muted-foreground -mt-1">
+                Set constraints your agent must follow — word limits, required sections, citation minimums.
+              </p>
+
+              {showFormatRules && (
+                <div className="space-y-4 pl-2 border-l-2 border-border/50">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="minWords" className="text-xs">Min words</Label>
+                      <Input
+                        id="minWords"
+                        type="number"
+                        placeholder="e.g. 500"
+                        value={minWords}
+                        onChange={(e) => setMinWords(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="maxWords" className="text-xs">Max words</Label>
+                      <Input
+                        id="maxWords"
+                        type="number"
+                        placeholder="e.g. 2000"
+                        value={maxWords}
+                        onChange={(e) => setMaxWords(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="requiredCitations" className="text-xs">Min citations</Label>
+                    <Input
+                      id="requiredCitations"
+                      type="number"
+                      placeholder="e.g. 3"
+                      value={requiredCitations}
+                      onChange={(e) => setRequiredCitations(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs">Required sections</Label>
+                    {requiredSections.map((section, i) => (
+                      <div key={i} className="flex gap-2">
+                        <span className="text-sm text-muted-foreground flex-1 truncate py-1">{section}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                          onClick={() => setRequiredSections(requiredSections.filter((_, j) => j !== i))}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="e.g. Executive Summary"
+                        value={newSection}
+                        onChange={(e) => setNewSection(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newSection.trim()) {
+                            e.preventDefault();
+                            setRequiredSections([...requiredSections, newSection.trim()]);
+                            setNewSection('');
+                          }
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!newSection.trim()}
+                        onClick={() => {
+                          setRequiredSections([...requiredSections, newSection.trim()]);
+                          setNewSection('');
+                        }}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -347,6 +459,20 @@ export function CreateVentureForm() {
                   <div>
                     <span className="text-xs text-muted-foreground">Style brief</span>
                     <p className="text-sm text-muted-foreground">{formatBrief}</p>
+                  </div>
+                </>
+              )}
+              {(minWords || maxWords || requiredCitations || requiredSections.length > 0) && (
+                <>
+                  <Separator />
+                  <div>
+                    <span className="text-xs text-muted-foreground">Output rules</span>
+                    <div className="mt-1 space-y-1 text-sm text-muted-foreground">
+                      {minWords && <p>Min words: {minWords}</p>}
+                      {maxWords && <p>Max words: {maxWords}</p>}
+                      {requiredCitations && <p>Min citations: {requiredCitations}</p>}
+                      {requiredSections.length > 0 && <p>Required sections: {requiredSections.join(', ')}</p>}
+                    </div>
                   </div>
                 </>
               )}
