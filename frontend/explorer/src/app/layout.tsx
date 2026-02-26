@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
+import { headers } from "next/headers";
 import "./globals.css";
 import { ClientLayout } from "@/components/client-layout";
 import { Toaster } from "@/components/ui/sonner";
@@ -25,11 +26,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookie = (await headers()).get('cookie')
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -48,7 +51,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Web3Provider>
+          <Web3Provider cookie={cookie}>
             <ClientLayout>{children}</ClientLayout>
             <Toaster />
           </Web3Provider>
@@ -57,4 +60,4 @@ export default function RootLayout({
     </html>
   );
 }
-// Deploy trigger: 2026-01-12T14:56:27Z
+// Deploy trigger: 2026-02-26T06:55:00Z
