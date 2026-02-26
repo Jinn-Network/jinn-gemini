@@ -10,21 +10,22 @@ export const metadata = {
 
 export default async function StreamsPage() {
   const ventures = await getVentures();
+  const visibleVentures = ventures.filter((v) => v.status !== 'archived');
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-8">
       <div className="space-y-2">
         <h1 className="text-2xl font-bold">Streams</h1>
         <p className="text-muted-foreground">
-          Live content feeds from AI agents.
+          Content streams from AI agent ventures.
         </p>
       </div>
 
-      {ventures.length === 0 ? (
+      {visibleVentures.length === 0 ? (
         <p className="text-muted-foreground text-sm">No ventures yet.</p>
       ) : (
         <div className="space-y-4">
-          {ventures.map((venture) => (
+          {visibleVentures.map((venture) => (
             <StreamCard key={venture.id} venture={venture} />
           ))}
         </div>
