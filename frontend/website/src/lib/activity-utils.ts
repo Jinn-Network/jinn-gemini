@@ -14,20 +14,26 @@ export interface ActivityItem {
     explorerUrl: string;
 }
 
-// Cache for workstream -> venture slug mapping
-let ventureSlugCache: Map<string, string> | null = null;
+interface VentureMetadata {
+    ventureId: string;
+    slug: string | null;
+    name: string | null;
+}
+
+// Cache for workstream -> venture metadata mapping
+let ventureMetadataCache: Map<string, VentureMetadata> | null = null;
 let cacheTimestamp: number = 0;
 const CACHE_TTL = 60000; // 1 minute
 
 /**
- * Fetch all ventures and build a workstream -> slug mapping
+ * Fetch all ventures and build a workstream -> venture metadata mapping
  */
-async function getVentureSlugMapping(): Promise<Map<string, string>> {
+async function getVentureMetadataMapping(): Promise<Map<string, VentureMetadata>> {
     const now = Date.now();
     
     // Return cached mapping if still valid
-    if (ventureSlugCache && (now - cacheTimestamp < CACHE_TTL)) {
-        return ventureSlugCache;
+    if (ventureMetadataCache && (now - cacheTimestamp < CACHE_TTL)) {
+        return ventureMetadataCache;
     }
 
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -38,7 +44,7 @@ async function getVentureSlugMapping(): Promise<Map<string, string>> {
     }
 
     try {
-        const url = `${SUPABASE_URL}/rest/v1/ventures?select=root_workstream_id,slug,name`;
+        const url = `${SUPABASE_URL}/rest/v1/ventures?select=id,root_workstream_id,slug,name`;
         const response = await fetch(url, {
             headers: {
                 'apikey': SUPABASE_ANON_KEY,
@@ -48,15 +54,19 @@ async function getVentureSlugMapping(): Promise<Map<string, string>> {
 
         if (response.ok) {
             const ventures = await response.json();
-            const mapping = new Map<string, string>();
+            const mapping = new Map<string, VentureMetadata>();
             
             for (const v of ventures) {
-                if (v.root_workstream_id && v.slug) {
-                    mapping.set(v.root_workstream_id, v.slug);
+                if (v.root_workstream_id && v.id) {
+                    mapping.set(v.root_workstream_id, {
+                        ventureId: v.id,
+                        slug: v.slug ?? null,
+                        name: v.name ?? null,
+                    });
                 }
             }
             
-            ventureSlugCache = mapping;
+            ventureMetadataCache = mapping;
             cacheTimestamp = now;
             return mapping;
         }
@@ -71,7 +81,12 @@ async function getVentureSlugMapping(): Promise<Map<string, string>> {
  * Get the venture name for a workstream ID
  * Falls back to a truncated ID if not a known venture
  */
-function getVentureName(workstreamId: string): string {
+function getVentureName(workstreamId: string, mapping: Map<string, VentureMetadata>): string {
+    const venture = mapping.get(workstreamId);
+    if (venture?.name) {
+        return venture.name;
+    }
+
     const featured = FEATURED_INSTANCES.find(f => f.id === workstreamId);
     if (featured) {
         return featured.name;
@@ -81,19 +96,23 @@ function getVentureName(workstreamId: string): string {
 }
 
 /**
- * Get the appropriate URL for a workstream - launchpad if venture exists, explorer otherwise
+ * Get the appropriate URL for a workstream:
+ * 1) Launchpad venture page when slug exists
+ * 2) Explorer venture page when venture ID exists
+ * 3) Explorer workstream page as fallback
  */
-async function getVentureUrl(workstreamId: string): Promise<string> {
-    const slugMapping = await getVentureSlugMapping();
-    const slug = slugMapping.get(workstreamId);
-    
-    if (slug) {
-        // Link to launchpad venture page
-        return `${LAUNCHPAD_URL}/ventures/${slug}`;
+function getVentureUrl(workstreamId: string, mapping: Map<string, VentureMetadata>): string {
+    const venture = mapping.get(workstreamId);
+
+    if (venture?.slug) {
+        return `${LAUNCHPAD_URL}/ventures/${venture.slug}`;
     }
-    
-    // Fallback to explorer
-    return getExplorerUrl('venture', workstreamId);
+
+    if (venture?.ventureId) {
+        return getExplorerUrl('venture', venture.ventureId);
+    }
+
+    return getExplorerUrl('workstream', workstreamId);
 }
 
 /**
@@ -103,17 +122,8 @@ async function getVentureUrl(workstreamId: string): Promise<string> {
 export async function transformToActivityItems(requests: Request[], deliveries: Delivery[]): Promise<ActivityItem[]> {
     const items: ActivityItem[] = [];
 
-    // Pre-fetch the venture URL mapping once
-    const slugMapping = await getVentureSlugMapping();
-
-    // Helper to get URL for a workstream
-    const getUrl = (workstreamId: string): string => {
-        const slug = slugMapping.get(workstreamId);
-        if (slug) {
-            return `${LAUNCHPAD_URL}/ventures/${slug}`;
-        }
-        return getExplorerUrl('venture', workstreamId);
-    };
+    // Pre-fetch venture metadata once
+    const ventureMapping = await getVentureMetadataMapping();
 
     // Started events from requests
     requests.forEach(req => {
@@ -127,8 +137,8 @@ export async function transformToActivityItems(requests: Request[], deliveries: 
             message: `Started ${jobName}`,
             timestamp: Number(req.blockTimestamp) * 1000,
             workstreamId,
-            ventureName: getVentureName(workstreamId),
-            explorerUrl: getUrl(workstreamId)
+            ventureName: getVentureName(workstreamId, ventureMapping),
+            explorerUrl: getVentureUrl(workstreamId, ventureMapping)
         });
     });
 
@@ -146,8 +156,8 @@ export async function transformToActivityItems(requests: Request[], deliveries: 
                 message: del.jobInstanceStatusUpdate,
                 timestamp: Number(del.blockTimestamp) * 1000,
                 workstreamId,
-                ventureName: getVentureName(workstreamId),
-                explorerUrl: getUrl(workstreamId)
+                ventureName: getVentureName(workstreamId, ventureMapping),
+                explorerUrl: getVentureUrl(workstreamId, ventureMapping)
             });
         }
 
@@ -158,8 +168,8 @@ export async function transformToActivityItems(requests: Request[], deliveries: 
             message: `Completed ${jobName}`,
             timestamp: Number(del.blockTimestamp) * 1000 + 100,
             workstreamId,
-            ventureName: getVentureName(workstreamId),
-            explorerUrl: getUrl(workstreamId)
+            ventureName: getVentureName(workstreamId, ventureMapping),
+            explorerUrl: getVentureUrl(workstreamId, ventureMapping)
         });
     });
 
