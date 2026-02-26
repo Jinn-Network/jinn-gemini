@@ -196,7 +196,7 @@ See [AGENTS.md](../../AGENTS.md) for testing context.
 
 ### "Operation failed after multiple attempts"
 
-The middleware HTTP API can be flaky. Use the CLI-based flow (already default in JINN-202).
+Use the CLI-based flow (already default in JINN-202): `yarn service:add --unattended`.
 
 ### "Insufficient OLAS balance"
 
