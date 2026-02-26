@@ -30,7 +30,7 @@ Manage OLAS service staking on Base: restaking, migration, status checks, and wh
 | Service | Master EOA | Master Safe | Service Safe | .operate profile |
 |---------|-----------|-------------|-------------|-----------------|
 | 165 (Oak) | `0xB1517bB...02CC2` | `0x15aDF0E...4645` | `0xb8B7A897...D92` | `olas-operate-middleware/.operate/` |
-| 359 (Venture-Test) | `0x443ad86...ffE7` | `0xcea8407...E0e` | `0xD2C24F6...10B` | `/Users/gcd/.../jinn-node/.operate/` |
+| 359 (Venture-Test) | `0x443ad86...ffE7` | `0xcea8407...E0e` | `0xD2C24F6...10B` | `/Users/gcd/Repositories/main/jinn-node/.operate/` |
 
 Venture Safe (AMP2): `0x900Db2954a6c14C011dBeBE474e3397e58AE5421`
 
@@ -55,6 +55,11 @@ When a service is evicted (staking state = 2), it needs to be unstaked (reclaim 
 source .env && OPERATE_PROFILE_DIR=olas-operate-middleware/.operate \
   npx tsx scripts/migrate-staking-contract.ts \
   --service-id=165 --source=jinn --target=jinn
+
+# Service 359 uses a DIFFERENT .operate profile (absolute path required)
+source .env && OPERATE_PROFILE_DIR=/Users/gcd/Repositories/main/jinn-node/.operate \
+  npx tsx scripts/migrate-staking-contract.ts \
+  --service-id=359 --source=jinn --target=jinn
 ```
 
 ### IMPORTANT: Use direct ethers.js for stake(), not Safe SDK
@@ -402,9 +407,17 @@ Operator knobs:
 
 Staking operations must be executed FROM the Safe (msg.sender check). Route through Safe `execTransaction`.
 
-### Tenderly nonce staleness
+### Tenderly RPC staleness (nonce AND tx sending)
 
 Always read nonce from public RPC (`base.publicnode.com`), not Tenderly. Tenderly can return stale values causing signature/nonce mismatch.
+
+**TX sending**: Tenderly RPC can also hang indefinitely when sending transactions. If a TX is submitted but never mines or returns, switch to public RPC for sending too. The `execSafeTx` helper and migration script both default to Tenderly via `RPC_URL` — override by using `base.publicnode.com` as the signer provider.
+
+### OPERATE_PROFILE_DIR path resolution gotcha
+
+`OPERATE_PROFILE_DIR` is resolved relative to `jinn-node/` internally, so setting it to `jinn-node/.operate` results in `jinn-node/jinn-node/.operate` (doubled path). For service 359, use the **absolute path**: `OPERATE_PROFILE_DIR=/Users/gcd/Repositories/main/jinn-node/.operate`. For service 165, the relative path `olas-operate-middleware/.operate` works because it is inside the monorepo root.
+
+**CRITICAL**: Each service has its own `.operate` profile with different master keys. Using the wrong profile will cause Safe `execTransaction` to revert silently (GS013 or status=0 with no logs) because the signature comes from the wrong EOA.
 
 ### Deploy with wrong multisig implementation
 
@@ -464,3 +477,16 @@ Hybrid approach: middleware handled terminate/unbond/update, manual ethers.js fo
 5. Manual: Deploy (recovery_module) — TX: `0x0a802fcd...`
 6. Manual: Approve NFT — TX: `0x52c3bafb...`
 7. Manual: Stake — TX: `0xf02f2f7f...`
+
+### Service 359: Restake after eviction (COMPLETE, Feb 2026)
+
+1. Unstake (evicted) — TX: `0x24b68165...` (via Safe SDK fallback to direct ethers.js)
+2. Approve NFT — TX: `0xa189d16f...` (via Safe SDK, worked)
+3. Stake in Jinn — TX: `0x6fae7b86...` (manual script, public RPC — Tenderly hung on send)
+
+Gotchas encountered:
+- Wrong `.operate` profile used initially (service 165's keys instead of 359's) — caused silent revert
+- `OPERATE_PROFILE_DIR=jinn-node/.operate` doubled to `jinn-node/jinn-node/.operate` — use absolute path
+- Tenderly RPC hung on TX send — switched to `base.publicnode.com` for both read and write
+
+Final: `getServiceIds()` includes 359, staking state = 1 (Staked)
