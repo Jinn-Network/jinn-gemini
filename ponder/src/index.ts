@@ -1115,8 +1115,19 @@ ponder.on(
         }
 
         // Update delivery record with marketplace-level delivery mech
+        // Include create payload for when OlasMech:Deliver hasn't fired yet
         await deliveryRepo.upsert({
           id: requestId,
+          create: {
+            requestId,
+            mech: existingRequest.mech || '0x0000000000000000000000000000000000000000',
+            mechServiceMultisig: '0x0000000000000000000000000000000000000000',
+            deliveryMech: deliveryMech,
+            deliveryRate: 0n,
+            transactionHash: txHash,
+            blockNumber,
+            blockTimestamp,
+          },
           update: {
             deliveryMech: deliveryMech,
           },
@@ -1135,6 +1146,17 @@ ponder.on(
         if (wasDelivered && existingRequest.workstreamId && !existingRequest.sourceRequestId) {
           await workstreamRepo.upsert({
             id: existingRequest.workstreamId,
+            create: {
+              rootRequestId: requestId,
+              jobName: existingRequest.jobName || null,
+              mech: existingRequest.mech,
+              sender: existingRequest.sender,
+              blockTimestamp,
+              lastActivity: blockTimestamp,
+              childRequestCount: 0,
+              hasLauncherBriefing: false,
+              delivered: true,
+            },
             update: {
               delivered: true,
               lastActivity: blockTimestamp,
@@ -1144,6 +1166,17 @@ ponder.on(
         } else if (wasDelivered && existingRequest.workstreamId) {
           await workstreamRepo.upsert({
             id: existingRequest.workstreamId,
+            create: {
+              rootRequestId: existingRequest.workstreamId,
+              jobName: existingRequest.jobName || null,
+              mech: existingRequest.mech,
+              sender: existingRequest.sender,
+              blockTimestamp,
+              lastActivity: blockTimestamp,
+              childRequestCount: 0,
+              hasLauncherBriefing: false,
+              delivered: false,
+            },
             update: {
               lastActivity: blockTimestamp,
             },
@@ -1255,6 +1288,17 @@ ponder.on(
         // This is a root request, mark workstream as delivered
         await workstreamRepo.upsert({
           id: requestWorkstreamId,
+          create: {
+            rootRequestId: requestId,
+            jobName: existingRequest.jobName || null,
+            mech: existingRequest.mech,
+            sender: existingRequest.sender,
+            blockTimestamp,
+            lastActivity: blockTimestamp,
+            childRequestCount: 0,
+            hasLauncherBriefing: false,
+            delivered: true,
+          },
           update: {
             delivered: true,
             lastActivity: blockTimestamp,
@@ -1265,6 +1309,17 @@ ponder.on(
         // Child request delivered, update lastActivity
         await workstreamRepo.upsert({
           id: requestWorkstreamId,
+          create: {
+            rootRequestId: requestWorkstreamId,
+            jobName: existingRequest.jobName || null,
+            mech: existingRequest.mech,
+            sender: existingRequest.sender,
+            blockTimestamp,
+            lastActivity: blockTimestamp,
+            childRequestCount: 0,
+            hasLauncherBriefing: false,
+            delivered: false,
+          },
           update: {
             lastActivity: blockTimestamp,
           },
