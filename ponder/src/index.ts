@@ -1461,6 +1461,8 @@ ponder.on(
                 const topic = String(a.topic || '');
                 const contentPreview = typeof a.contentPreview === 'string' ? a.contentPreview : undefined;
                 const type = typeof a.type === 'string' ? a.type : undefined;
+                const contentCid = typeof a.contentCid === 'string' ? a.contentCid : undefined;
+                const documentType = typeof a.documentType === 'string' ? a.documentType : undefined;
                 const tags = Array.isArray(a.tags) ? a.tags.map((t: any) => String(t)) : undefined;
                 if (!cid || !topic) continue;
                 // Use the request's sourceRequestId if it exists (for child jobs), otherwise use requestId itself (for root jobs)
@@ -1468,7 +1470,7 @@ ponder.on(
                 // Derive workstreamId: use request's workstreamId if available, otherwise the sourceRequestId (root request = workstream)
                 const artifactWorkstreamId = requestWorkstreamId || artifactSourceRequestId;
                 const artifactPayload: any = {
-                  requestId, name, cid, topic, contentPreview, type, tags,
+                  requestId, name, cid, contentCid, topic, contentPreview, type, documentType, tags,
                   sourceRequestId: artifactSourceRequestId,
                   ventureId: requestVentureId,
                   workstreamId: artifactWorkstreamId,

@@ -37,6 +37,7 @@ export const navigationItems: NavigationItem[] = [
       { label: 'Agents', collection: 'agents' },
       { label: 'Templates', collection: 'templates' },
       { label: 'Services', collection: 'services' },
+      { label: 'ADW Documents', collection: 'adw' },
     ]
   },
   {

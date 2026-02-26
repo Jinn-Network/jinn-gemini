@@ -1,0 +1,23 @@
+{
+  "network": "8453",
+  "timestamp": "2026-02-26T14:44:02.435Z",
+  "deployer": "0x8E0A63Ffa538EeF4D5e5b0FbE3EFC0CB92A66b4b",
+  "contracts": {
+    "documentRegistry": "0x40Eac2B201D12b13b442c330eED0A2aB04b06DeE",
+    "reputationRegistry": "0x6dF7f8d643DD140fCE38C5bf346A11DA4a4B0330",
+    "validationRegistry": "0xC552bd9f22f8BB9CFa898A11f12B8D676D8155F6"
+  },
+  "constructorArgs": {
+    "documentRegistry": [
+      "ADW Document Registry",
+      "ADW-DOC",
+      "0x8E0A63Ffa538EeF4D5e5b0FbE3EFC0CB92A66b4b"
+    ],
+    "reputationRegistry": [
+      "0x40Eac2B201D12b13b442c330eED0A2aB04b06DeE"
+    ],
+    "validationRegistry": [
+      "0x40Eac2B201D12b13b442c330eED0A2aB04b06DeE"
+    ]
+  }
+}
