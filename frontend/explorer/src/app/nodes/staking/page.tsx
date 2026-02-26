@@ -1,21 +1,30 @@
 import { Metadata } from 'next'
 import { Suspense } from 'react'
+import Link from 'next/link'
 import { SiteHeader } from '@/components/site-header'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { StakedServiceCard } from '@/components/staking/staked-service-card'
 import { getStakedServices, getRecentDeliveries, getMechsForServiceIds } from '@/lib/staking/queries'
 import {
-  ETH_FUNDING_TARGET_WEI,
-  ETH_FUNDING_WARNING_WEI,
   JINN_STAKING_CONTRACT,
   stakingAbi,
 } from '@/lib/staking/constants'
 import {
   formatEthBalance,
+  formatOlasBalance,
   getAddressBalances,
-  getEthFundingLevel,
 } from '@/lib/staking/balances'
+import { formatDate } from '@/lib/utils'
 import { getRpcClient } from '@/lib/staking/rpc'
 
 export const metadata: Metadata = {
@@ -25,11 +34,62 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic'
 
+interface PageProps {
+  searchParams: Promise<{ view?: string }>
+}
+
+type ViewMode = 'table' | 'cards'
+type RiskLevel = 'low' | 'medium' | 'high' | 'evicted'
+
 function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
 }
 
-async function StakedServicesList() {
+function ViewToggle({ viewMode }: { viewMode: ViewMode }) {
+  const tabClass = (active: boolean) =>
+    `rounded-md px-3 py-1.5 text-sm transition-colors ${active
+      ? 'bg-background shadow-sm border text-foreground'
+      : 'text-muted-foreground hover:text-foreground'
+    }`
+
+  return (
+    <div className="inline-flex items-center rounded-lg border bg-muted/30 p-1">
+      <Link href="/nodes/staking" className={tabClass(viewMode === 'table')}>
+        Table
+      </Link>
+      <Link href="/nodes/staking?view=cards" className={tabClass(viewMode === 'cards')}>
+        Cards
+      </Link>
+    </div>
+  )
+}
+
+function getEvictionRisk(isStaked: boolean, lastDeliveryTimestamp: string | null): RiskLevel {
+  if (!isStaked) return 'evicted'
+  if (!lastDeliveryTimestamp) return 'high'
+
+  const ageMs = Date.now() - new Date(lastDeliveryTimestamp).getTime()
+  const ageHours = ageMs / (1000 * 60 * 60)
+
+  if (ageHours >= 24) return 'high'
+  if (ageHours >= 12) return 'medium'
+  return 'low'
+}
+
+function RiskBadge({ risk }: { risk: RiskLevel }) {
+  if (risk === 'evicted') {
+    return <Badge variant="outline" className="bg-orange-500/10 text-orange-500 border-orange-500/20">Evicted</Badge>
+  }
+  if (risk === 'high') {
+    return <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">High Risk</Badge>
+  }
+  if (risk === 'medium') {
+    return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">Medium Risk</Badge>
+  }
+  return <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">Low Risk</Badge>
+}
+
+async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
   const services = await getStakedServices()
 
   if (services.length === 0) {
@@ -67,38 +127,8 @@ async function StakedServicesList() {
   })
 
   const safeBalances = await getAddressBalances(enrichedServices.map((s) => s.multisig))
-
   const stakedCount = enrichedServices.filter(s => s.isStaked).length
   const evictedCount = enrichedServices.filter(s => !s.isStaked).length
-  const fundingHealth = {
-    healthy: 0,
-    warning: 0,
-    critical: 0,
-    unknown: 0,
-  }
-  let fleetSafeEthWei = BigInt(0)
-
-  for (const service of enrichedServices) {
-    const safeBalance = safeBalances.get(service.multisig.toLowerCase())
-    if (!safeBalance) {
-      fundingHealth.unknown += 1
-      continue
-    }
-
-    fleetSafeEthWei += safeBalance.ethWei
-    const level = getEthFundingLevel(safeBalance.ethWei)
-    fundingHealth[level] += 1
-  }
-
-  const knownFundingCount = fundingHealth.healthy + fundingHealth.warning + fundingHealth.critical
-  const healthyWidth = knownFundingCount === 0 ? 0 : (fundingHealth.healthy / knownFundingCount) * 100
-  const warningWidth = knownFundingCount === 0 ? 0 : (fundingHealth.warning / knownFundingCount) * 100
-  const criticalWidth = knownFundingCount === 0 ? 0 : (fundingHealth.critical / knownFundingCount) * 100
-
-  // Fetch mech mappings for all service IDs
-  const serviceIds = enrichedServices.map((s) => s.serviceId)
-  const mechs = await getMechsForServiceIds(serviceIds)
-  const mechByServiceId = new Map(mechs.map((m) => [m.serviceId, m]))
 
   // Fetch last delivery timestamp for each service
   const deliveryPromises = enrichedServices.map(async (service) => {
@@ -128,58 +158,113 @@ async function StakedServicesList() {
           {stakedCount} staked{evictedCount > 0 && `, ${evictedCount} evicted`}
         </span>
       </div>
-      <Card>
-        <CardContent className="pt-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-medium">Fleet Funding Health</span>
-            <span className="text-xs text-muted-foreground">
-              Target {formatEthBalance(ETH_FUNDING_TARGET_WEI)} ETH · Warning below {formatEthBalance(ETH_FUNDING_WARNING_WEI)} ETH
-            </span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted flex">
-            <div style={{ width: `${healthyWidth}%` }} className="h-full bg-green-500/80" />
-            <div style={{ width: `${warningWidth}%` }} className="h-full bg-yellow-500/80" />
-            <div style={{ width: `${criticalWidth}%` }} className="h-full bg-red-500/80" />
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-            <div className="rounded border px-2 py-1.5">
-              <div className="text-muted-foreground">Healthy</div>
-              <div className="font-medium text-green-500">{fundingHealth.healthy}</div>
-            </div>
-            <div className="rounded border px-2 py-1.5">
-              <div className="text-muted-foreground">Warning</div>
-              <div className="font-medium text-yellow-500">{fundingHealth.warning}</div>
-            </div>
-            <div className="rounded border px-2 py-1.5">
-              <div className="text-muted-foreground">Low</div>
-              <div className="font-medium text-red-500">{fundingHealth.critical}</div>
-            </div>
-            <div className="rounded border px-2 py-1.5">
-              <div className="text-muted-foreground">Unknown</div>
-              <div className="font-medium">{fundingHealth.unknown}</div>
-            </div>
-            <div className="rounded border px-2 py-1.5">
-              <div className="text-muted-foreground">Fleet Safe ETH</div>
-              <div className="font-medium">{formatEthBalance(fleetSafeEthWei)}</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {enrichedServices.map((service) => {
-          const balance = safeBalances.get(service.multisig.toLowerCase())
-          return (
-            <StakedServiceCard
-              key={service.id}
-              service={service}
-              mechAddress={mechByServiceId.get(service.serviceId)?.mech}
-              lastDeliveryTimestamp={lastDeliveryMap.get(service.serviceId)}
-              safeEthWei={balance?.ethWei}
-              safeOlasWei={balance?.olasWei}
-            />
-          )
-        })}
-      </div>
+      {viewMode === 'cards' ? (
+        <CardsView
+          services={enrichedServices}
+          safeBalances={safeBalances}
+          lastDeliveryMap={lastDeliveryMap}
+        />
+      ) : (
+        <div className="rounded-md border overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Service ID</TableHead>
+                <TableHead>Status / Risk</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>ETH + OLAS</TableHead>
+                <TableHead>Last Delivery</TableHead>
+                <TableHead className="text-right">Details</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {enrichedServices.map((service) => {
+                const balance = safeBalances.get(service.multisig.toLowerCase())
+                const lastDeliveryTimestamp = lastDeliveryMap.get(service.serviceId) || null
+                const risk = getEvictionRisk(service.isStaked, lastDeliveryTimestamp)
+                return (
+                  <TableRow key={service.id}>
+                    <TableCell className="font-mono text-xs">
+                      <Link href={`/nodes/staking/${service.serviceId}`} className="text-primary hover:underline">
+                        {service.serviceId}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1.5">
+                        <Badge
+                          variant="outline"
+                          className={service.isStaked
+                            ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                            : 'bg-orange-500/10 text-orange-500 border-orange-500/20'}
+                        >
+                          {service.isStaked ? 'Staked' : 'Evicted'}
+                        </Badge>
+                        <RiskBadge risk={risk} />
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      <a
+                        href={`https://basescan.org/address/${service.owner}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        {truncateAddress(service.owner)}
+                      </a>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div className="space-y-0.5 font-mono">
+                        <div>{formatEthBalance(balance?.ethWei)} ETH</div>
+                        <div>{formatOlasBalance(balance?.olasWei)} OLAS</div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {lastDeliveryTimestamp ? formatDate(lastDeliveryTimestamp) : 'No delivery yet'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/nodes/staking/${service.serviceId}`}>View Details</Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+async function CardsView({
+  services,
+  safeBalances,
+  lastDeliveryMap,
+}: {
+  services: Awaited<ReturnType<typeof getStakedServices>>
+  safeBalances: Awaited<ReturnType<typeof getAddressBalances>>
+  lastDeliveryMap: Map<string, string | null>
+}) {
+  const serviceIds = services.map((s) => s.serviceId)
+  const mechs = await getMechsForServiceIds(serviceIds)
+  const mechByServiceId = new Map(mechs.map((m) => [m.serviceId, m]))
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {services.map((service) => {
+        const balance = safeBalances.get(service.multisig.toLowerCase())
+        return (
+          <StakedServiceCard
+            key={service.id}
+            service={service}
+            mechAddress={mechByServiceId.get(service.serviceId)?.mech}
+            lastDeliveryTimestamp={lastDeliveryMap.get(service.serviceId)}
+            safeEthWei={balance?.ethWei}
+            safeOlasWei={balance?.olasWei}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -207,7 +292,10 @@ function StakedServicesListSkeleton() {
   )
 }
 
-export default function StakingPage() {
+export default async function StakingPage({ searchParams }: PageProps) {
+  const params = await searchParams
+  const viewMode: ViewMode = params.view === 'cards' ? 'cards' : 'table'
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader
@@ -219,9 +307,10 @@ export default function StakingPage() {
       />
 
       <main className="flex-1 py-6">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-4 space-y-4">
+          <ViewToggle viewMode={viewMode} />
           <Suspense fallback={<StakedServicesListSkeleton />}>
-            <StakedServicesList />
+            <StakedServicesList viewMode={viewMode} />
           </Suspense>
         </div>
       </main>
