@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { WagmiProvider, State } from 'wagmi'
+import { WagmiProvider } from 'wagmi'
+import { cookieToInitialState } from 'wagmi'
 import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { wagmiConfig } from '@/lib/vote/wagmi-config'
@@ -10,11 +11,12 @@ import '@rainbow-me/rainbowkit/styles.css'
 
 export function Web3Provider({
   children,
-  initialState,
+  cookie,
 }: {
   children: React.ReactNode
-  initialState?: State
+  cookie?: string | null
 }) {
+  const initialState = cookieToInitialState(wagmiConfig, cookie)
   const [queryClient] = useState(() => new QueryClient())
   const { resolvedTheme } = useTheme()
 

@@ -2,13 +2,11 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
 import { headers } from "next/headers";
-import { cookieToInitialState } from "wagmi";
 import "./globals.css";
 import { ClientLayout } from "@/components/client-layout";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Web3Provider } from "@/components/web3-provider";
-import { wagmiConfig } from "@/lib/vote/wagmi-config";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -33,10 +31,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const initialState = cookieToInitialState(
-    wagmiConfig,
-    (await headers()).get('cookie')
-  )
+  const cookie = (await headers()).get('cookie')
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -56,7 +51,7 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Web3Provider initialState={initialState}>
+          <Web3Provider cookie={cookie}>
             <ClientLayout>{children}</ClientLayout>
             <Toaster />
           </Web3Provider>
