@@ -26,7 +26,7 @@ export function NavHeader() {
           <nav className="hidden md:flex items-center gap-2">
             <Button asChild variant="ghost">
               <a href="#adventures" onClick={(e) => scrollToSection(e, 'adventures')}>
-                Ventures
+                Agents
               </a>
             </Button>
             <Button asChild variant="ghost">

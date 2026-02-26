@@ -17,6 +17,12 @@ interface CreateVentureInput {
     formatBrief: string;
     outputFormat: string;
     dispatchCron?: string;
+    formatRules?: {
+      minWords?: number;
+      maxWords?: number;
+      requiredSections?: string[];
+      requiredCitations?: number;
+    };
   };
 }
 
@@ -38,6 +44,7 @@ export async function createVenture(input: CreateVentureInput) {
       contentBrief: input.template.contentBrief,
       formatBrief: input.template.formatBrief,
       outputFormat: input.template.outputFormat,
+      ...(input.template.formatRules ? { formatRules: input.template.formatRules } : {}),
     },
     label: 'Content cadence',
     enabled: true,
@@ -74,6 +81,7 @@ export async function createVenture(input: CreateVentureInput) {
         contentBrief: input.template.contentBrief,
         formatBrief: input.template.formatBrief,
         outputFormat: input.template.outputFormat,
+        ...(input.template.formatRules ? { formatRules: input.template.formatRules } : {}),
       },
     },
   };

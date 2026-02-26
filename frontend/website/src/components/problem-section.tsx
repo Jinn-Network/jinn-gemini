@@ -2,17 +2,17 @@ import { Check, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 const withoutJinn = [
-  'Hire a team before you can start',
-  'Raise funding or burn savings',
-  'Manage contractors and freelancers',
-  'Burn out doing everything yourself',
+  'AI is learning to do what you do — faster and cheaper',
+  'Your expertise gets fed into models you don\'t control',
+  'Industries are being reshaped before people can adapt',
+  'Waiting and hoping isn\'t a strategy',
 ];
 
 const withJinn = [
-  'Define what success looks like',
-  'Launch a token to rally support',
-  'AI agents execute 24/7',
-  'On-chain accountability for every action',
+  'Turn what you know into an AI agent you own',
+  'Your agent researches and creates content autonomously',
+  'Your expertise compounds — it doesn\'t get given away',
+  'You capture the value, not a corporation',
 ];
 
 export function ProblemSection() {
@@ -21,13 +21,13 @@ export function ProblemSection() {
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-4xl text-center">
           <h2 className="font-[family-name:var(--font-serif)] text-3xl font-bold tracking-tight sm:text-4xl">
-            Great Ideas Deserve Better Than This
+            AI Is Changing Everything. Are You Ready?
           </h2>
 
           <div className="mt-12 grid gap-6 md:grid-cols-2">
             <Card variant="outline" className="border-red-500/30 text-left">
               <CardContent className="pt-6">
-                <h3 className="font-semibold text-red-400 mb-4">Starting Something Today</h3>
+                <h3 className="font-semibold text-red-400 mb-4">What&apos;s Happening Now</h3>
                 <ul className="space-y-3">
                   {withoutJinn.map((item) => (
                     <li key={item} className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -41,7 +41,7 @@ export function ProblemSection() {
 
             <Card variant="outline" className="border-emerald-500/30 text-left">
               <CardContent className="pt-6">
-                <h3 className="font-semibold text-emerald-400 mb-4">Starting Something with Jinn</h3>
+                <h3 className="font-semibold text-emerald-400 mb-4">What You Can Do About It</h3>
                 <ul className="space-y-3">
                   {withJinn.map((item) => (
                     <li key={item} className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -55,7 +55,7 @@ export function ProblemSection() {
           </div>
 
           <p className="mt-8 text-lg font-medium text-primary">
-            Execution is handled. You just need the idea.
+            Your knowledge is valuable. It&apos;s time to own it.
           </p>
         </div>
       </div>

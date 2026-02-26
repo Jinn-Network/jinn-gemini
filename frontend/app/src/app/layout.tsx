@@ -15,15 +15,15 @@ const isDev = process.env.VERCEL_ENV !== 'production';
 export const metadata: Metadata = {
   metadataBase: new URL('https://app.jinn.network'),
   title: {
-    default: 'Jinn Launchpad',
-    template: '%s | Jinn Launchpad',
+    default: 'Jinn',
+    template: '%s | Jinn',
   },
-  description: 'Rally around ideas. Launch ventures on Base.',
+  description: 'Turn what you know into an AI agent that works for you.',
   icons: {
     icon: isDev ? '/favicon-dev.svg' : '/favicon-prod.png',
   },
   openGraph: {
-    siteName: 'Jinn Launchpad',
+    siteName: 'Jinn',
     images: [{ url: '/og-default.png', width: 1200, height: 630 }],
   },
   twitter: {
