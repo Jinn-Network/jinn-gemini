@@ -45,8 +45,8 @@ export async function supabaseAdminQuery<T>(
   params: Record<string, string> = {}
 ): Promise<T[]> {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn('Supabase Admin not configured');
-    return [];
+    console.warn('Supabase Admin not configured, falling back to anon query');
+    return supabaseQuery<T>(table, params);
   }
 
   const searchParams = new URLSearchParams(params);
@@ -65,6 +65,10 @@ export async function supabaseAdminQuery<T>(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Supabase Admin query failed: ${response.status}`, errorText);
+      if (response.status === 401 || response.status === 403) {
+        console.warn('Supabase Admin query unauthorized, falling back to anon query');
+        return supabaseQuery<T>(table, params);
+      }
       return [];
     }
 

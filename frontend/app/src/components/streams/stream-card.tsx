@@ -10,8 +10,12 @@ interface StreamCardProps {
 }
 
 export function StreamCard({ venture }: StreamCardProps) {
+  const hasLiveStream = Boolean(venture.root_workstream_id);
+  const href = hasLiveStream ? `/streams/${venture.slug}` : `/ventures/${venture.slug}`;
+  const cta = hasLiveStream ? 'Read stream' : 'View venture';
+
   return (
-    <Link href={`/streams/${venture.slug}`} className="block group">
+    <Link href={href} className="block group">
       <Card className="hover:border-primary/30 transition-colors">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
@@ -27,7 +31,7 @@ export function StreamCard({ venture }: StreamCardProps) {
           )}
           <div className="flex justify-end">
             <span className="inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:underline">
-              Read stream <ArrowRight className="h-3 w-3" />
+              {cta} <ArrowRight className="h-3 w-3" />
             </span>
           </div>
         </CardContent>

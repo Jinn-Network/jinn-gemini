@@ -10,7 +10,6 @@ export const metadata = {
 
 export default async function StreamsPage() {
   const ventures = await getVentures();
-  const activeStreams = ventures.filter((v) => v.root_workstream_id);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-8">
@@ -21,11 +20,11 @@ export default async function StreamsPage() {
         </p>
       </div>
 
-      {activeStreams.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No active streams yet.</p>
+      {ventures.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No ventures yet.</p>
       ) : (
         <div className="space-y-4">
-          {activeStreams.map((venture) => (
+          {ventures.map((venture) => (
             <StreamCard key={venture.id} venture={venture} />
           ))}
         </div>
