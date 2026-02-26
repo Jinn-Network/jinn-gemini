@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { WagmiProvider } from 'wagmi'
 import { cookieToInitialState } from 'wagmi'
 import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit'
@@ -16,15 +16,18 @@ export function Web3Provider({
   children: React.ReactNode
   cookie?: string | null
 }) {
-  const initialState = cookieToInitialState(wagmiConfig, cookie)
+  const initialState = useMemo(() => cookieToInitialState(wagmiConfig, cookie), [cookie])
   const [queryClient] = useState(() => new QueryClient())
   const { resolvedTheme } = useTheme()
+  // Avoid SSR/client theme mismatch: only apply resolved theme after mount
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   return (
     <WagmiProvider config={wagmiConfig} initialState={initialState}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider
-          theme={resolvedTheme === 'dark' ? darkTheme() : lightTheme()}
+          theme={mounted ? (resolvedTheme === 'dark' ? darkTheme() : lightTheme()) : undefined}
         >
           {children}
         </RainbowKitProvider>
