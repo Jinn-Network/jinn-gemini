@@ -4,7 +4,7 @@ import { NavHeader } from '@/components/nav-header';
 import { FeaturedVentureCard, FeaturedVentureCardSkeleton } from '@/components/featured-venture-card';
 import { OlasLogo } from '@/components/olas-logo';
 import { EXPLORER_URL, LAUNCHPAD_URL } from '@/lib/featured-services';
-import { getTokenizedVentures, getSeedVentures } from '@/lib/ventures-queries';
+import { getFeaturedVentures } from '@/lib/ventures-queries';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
 import './animations.css';
@@ -16,15 +16,11 @@ import { LaunchVentureSection } from '@/components/launch-venture-section';
 import { StandardsSection } from '@/components/standards-section';
 
 async function FeaturedVentures() {
-  const [ventures, seedVentures] = await Promise.all([
-    getTokenizedVentures(4),
-    getSeedVentures(4),
-  ]);
+  const ventures = await getFeaturedVentures(6);
 
   const hasVentures = ventures.length > 0;
-  const hasSeeds = seedVentures.length > 0;
 
-  if (!hasVentures && !hasSeeds) {
+  if (!hasVentures) {
     const supabaseConfigured = !!(
       process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -41,57 +37,15 @@ async function FeaturedVentures() {
   }
 
   return (
-    <div className="space-y-10">
-      {/* Launched ventures */}
-      {hasVentures && (
-        <div>
-          <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-4">Launched</h3>
-          <div className={`grid gap-6 md:grid-cols-2 ${ventures.length === 1 ? 'md:grid-cols-1 md:justify-items-center' : ''}`}>
-            {ventures.map((venture) => (
-              <div key={venture.id} className={ventures.length === 1 ? 'w-full max-w-2xl' : ''}>
-                <FeaturedVentureCard venture={venture} />
-              </div>
-            ))}
+    <div>
+      <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-4">Launched</h3>
+      <div className={`grid gap-6 md:grid-cols-2 ${ventures.length === 1 ? 'md:grid-cols-1 md:justify-items-center' : ''}`}>
+        {ventures.map((venture) => (
+          <div key={venture.id} className={ventures.length === 1 ? 'w-full max-w-2xl' : ''}>
+            <FeaturedVentureCard venture={venture} />
           </div>
-        </div>
-      )}
-
-      {/* Seed ideas from launchpad */}
-      {hasSeeds && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Seed Ideas</h3>
-            <a
-              href={LAUNCHPAD_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-            >
-              View all on Launchpad
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-            {seedVentures.map((venture) => (
-              <a
-                key={venture.id}
-                href={`${LAUNCHPAD_URL}/ventures/${venture.slug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-2xl border ring-1 ring-border/50 p-4 hover:bg-muted/30 transition-colors"
-              >
-                <h4 className="font-medium text-sm">{venture.name}</h4>
-                {venture.description && (
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{venture.description}</p>
-                )}
-                <span className="inline-block mt-2 text-[10px] font-mono uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-                  proposed
-                </span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
@@ -165,7 +119,7 @@ export default function HomePage() {
         {/* How Jinn Works */}
         <HowJinnWorks />
 
-        {/* Active Ventures + Seed Ideas */}
+        {/* Active Ventures */}
         <section id="adventures" className="border-t py-20">
           <div className="container mx-auto px-4">
             <div className="mb-12 text-center animate-slide-in-up">

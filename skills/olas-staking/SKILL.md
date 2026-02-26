@@ -201,7 +201,7 @@ Always verify the service's multisig is whitelisted. The multisig address is in 
 
 ## 5. Direct Safe Transaction Approach
 
-The middleware has known bugs on Base. **Use direct ethers.js + Safe execTransaction instead.**
+For staking operations that need to bypass the middleware (e.g., scripted migrations, custom flows), use direct ethers.js + Safe execTransaction.
 
 ### Prerequisites
 
@@ -260,14 +260,48 @@ async function execSafeTx(
 - Add 3s delay after TX before verification reads
 - `gasLimit: 2_000_000` explicit — do NOT rely on gas estimation (it fails for some calls)
 
-### Alternative: Middleware HTTP API (may fail)
+### Alternative: Middleware (`yarn service:add`)
 
 ```bash
-cd <dir-with-.operate> && BASE_CHAIN_RPC=https://base.publicnode.com \
-  poetry run operate daemon --port=8700
+# Preferred for staking operations — uses OlasOperateWrapper
+OPERATE_PASSWORD=<pwd> RPC_URL=<rpc> yarn service:add --staking-contract <address>
 ```
 
-Known issues: missing `service_registry_token_utility` address for Base (v0.14.0), 429 rate limits, parent process death check.
+---
+
+## 6. Batch Service Provisioning
+
+Create multiple services at once for fleet scaling. See `skills/fleet-management/SKILL.md` for the full workflow.
+
+### Budget Planning
+
+| Resource | Per Service | Formula |
+|----------|-----------|---------|
+| OLAS | 10,000 (5k deposit + 5k bond) | `available_olas / 10,000 = max_services` |
+| ETH | ~0.01 (Safe + agent + gas) | From Master Safe |
+| Staking slots | 1 | Max 100 in v2 contract |
+
+All OLAS is returned when a service is terminated and unbonded.
+
+### Script
+
+```bash
+# Dry run — check balances and slot availability
+yarn service:add --count=7 --dry-run
+
+# Provision 7 services end-to-end (unattended)
+OPERATE_PASSWORD=<pwd> RPC_URL=<rpc> yarn service:add --count=7 --unattended
+```
+
+Each service goes through: create config → activate registration (5k OLAS) → register agents (5k OLAS) → deploy Safe → stake → whitelist mech. The middleware funds the Safe from the Master Safe automatically.
+
+### Post-Provisioning Checklist
+
+- [ ] New services appear in `yarn service:list`
+- [ ] Mechs whitelisted (`tsx scripts/activity-checker-whitelist.ts list`)
+- [ ] First deliveries recorded within 1-2 hours
+- [ ] Re-deploy Railway worker (`yarn deploy:railway -- --project jinn-multi-v2 --skip-import`)
+- [ ] Worker restarted with updated `WORKER_COUNT` if needed
 
 ---
 
@@ -376,13 +410,9 @@ Always read nonce from public RPC (`base.publicnode.com`), not Tenderly. Tenderl
 
 For reuse-with-recovery: use `recovery_module` (`0x359d53C...`). NOT `gnosis_safe_same_address_multisig`.
 
-### Middleware v0.14.0 bugs on Base
+### Middleware not available / scripted flow needed
 
-- `registry_contracts.service_registry_token_utility` has no address for Base
-- Default RPC gets 429 rate limited
-- Parent process death check kills daemon
-
-Use direct ethers.js Safe transactions as fallback.
+Use the direct ethers.js Safe transaction approach (Section 5) when running automated scripts outside of the normal `yarn service:add` workflow.
 
 ### is_update=True infinite loop
 

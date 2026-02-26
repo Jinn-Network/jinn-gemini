@@ -79,8 +79,12 @@ export interface Artifact {
   templateId?: string
   name: string
   cid: string
+  contentCid?: string
   topic: string
   contentPreview?: string
+  type?: string
+  documentType?: string
+  tags?: string[]
   blockTimestamp?: string
 }
 
@@ -390,8 +394,12 @@ const ARTIFACTS_QUERY_EXTENDED = `
         templateId
         name
         cid
+        contentCid
         topic
         contentPreview
+        type
+        documentType
+        tags
         blockTimestamp
       }
       pageInfo {
@@ -601,8 +609,12 @@ export async function getArtifact(id: string): Promise<Artifact | null> {
         templateId
         name
         cid
+        contentCid
         topic
         contentPreview
+        type
+        documentType
+        tags
         blockTimestamp
       }
     }

@@ -34,6 +34,8 @@ export interface Venture {
   pool_address: string | null;
 }
 
+const EXCLUDED_VENTURE_SLUGS = new Set(['amp2']);
+
 // Supabase REST API helper
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -104,6 +106,53 @@ export async function getTokenizedVentures(limit: number = 10): Promise<Venture[
   const results = await supabaseQuery<Venture>('ventures', params);
 
   return results;
+}
+
+/**
+ * Fetch active ventures (same base list used by Explorer > Ventures).
+ */
+export async function getActiveVentures(limit: number = 0): Promise<Venture[]> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.warn('Supabase not configured - NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set');
+    return [];
+  }
+
+  const params: Record<string, string> = {
+    select: '*',
+    status: 'eq.active',
+    order: 'created_at.desc',
+  };
+
+  if (limit > 0) {
+    params.limit = limit.toString();
+  }
+
+  return supabaseQuery<Venture>('ventures', params);
+}
+
+/**
+ * Fetch website featured ventures:
+ * - uses Explorer's active ventures list
+ * - applies Explorer's current exclusions
+ * - returns a random sample (up to `limit`)
+ */
+export async function getFeaturedVentures(limit: number = 6): Promise<Venture[]> {
+  const ventures = await getActiveVentures();
+  const filtered = ventures.filter(
+    (venture) => !EXCLUDED_VENTURE_SLUGS.has(venture.slug.toLowerCase())
+  );
+
+  if (limit <= 0 || filtered.length <= limit) {
+    return filtered;
+  }
+
+  const randomized = [...filtered];
+  for (let i = randomized.length - 1; i > 0; i -= 1) {
+    const randomIndex = Math.floor(Math.random() * (i + 1));
+    [randomized[i], randomized[randomIndex]] = [randomized[randomIndex], randomized[i]];
+  }
+
+  return randomized.slice(0, limit);
 }
 
 /**

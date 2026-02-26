@@ -3,7 +3,10 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { getVentureBySlug } from '@/lib/ventures';
-import { fetchArtifactByCidAction, fetchArtifactContentAction } from '@/app/actions';
+import {
+  fetchWorkstreamRootArtifactByCidAction,
+  fetchArtifactContentAction,
+} from '@/app/actions';
 import { MarkdownField } from '@/components/markdown-field';
 import { Badge } from '@/components/ui/badge';
 
@@ -15,10 +18,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string; cid: string }>;
 }): Promise<Metadata> {
   const { slug, cid } = await params;
-  const [venture, artifact] = await Promise.all([
-    getVentureBySlug(slug),
-    fetchArtifactByCidAction(cid),
-  ]);
+  const venture = await getVentureBySlug(slug);
+  const artifact = venture?.root_workstream_id
+    ? await fetchWorkstreamRootArtifactByCidAction(venture.root_workstream_id, cid)
+    : null;
 
   const title = artifact?.name || 'Article';
   const streamName = venture?.name || 'Stream';
@@ -52,13 +55,17 @@ export default async function ArticlePage({
 }) {
   const { slug, cid } = await params;
 
-  const [venture, artifact, contentResult] = await Promise.all([
-    getVentureBySlug(slug),
-    fetchArtifactByCidAction(cid),
+  const venture = await getVentureBySlug(slug);
+  if (!venture || !venture.root_workstream_id) {
+    notFound();
+  }
+
+  const [artifact, contentResult] = await Promise.all([
+    fetchWorkstreamRootArtifactByCidAction(venture.root_workstream_id, cid),
     fetchArtifactContentAction(cid),
   ]);
 
-  if (!venture || !artifact) {
+  if (!artifact) {
     notFound();
   }
 
