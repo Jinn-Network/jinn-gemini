@@ -88,5 +88,7 @@ Keep this tight — 3-4 sentences max per paragraph.]
 
 ## Output
 
-Write the digest to `digests/YYYY-MM-DD.md` (create the `digests/` directory if needed).
-Also output the full digest text to the conversation so the user can copy it.
+Write the digest to `digests/YYYY-MM-DD.md` (create the `digests/` directory if it doesn't exist).
+This file is the canonical copy — ready to paste into Telegram, Twitter, or wherever.
+
+Also output the full digest text to the conversation so the user can review it inline.
