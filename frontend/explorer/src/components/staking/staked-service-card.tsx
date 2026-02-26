@@ -7,14 +7,14 @@ import { formatDate } from '@/lib/utils'
 import { EpochProgress } from './epoch-progress'
 import { ServiceStakingStatus } from './service-staking-status'
 import type { StakedService } from '@/lib/staking/queries'
-import { formatEthBalance, formatOlasBalance, getEthFundingLevel } from '@/lib/staking/balances'
+import { formatEthBalance, getEthFundingLevel } from '@/lib/staking/balances'
 
 interface StakedServiceCardProps {
   service: StakedService
   mechAddress?: string
   lastDeliveryTimestamp?: string | null
-  safeEthWei?: bigint | null
-  safeOlasWei?: bigint | null
+  primaryEthWei?: bigint | null
+  primaryEthLabel?: string
 }
 
 function truncateAddress(addr: string): string {
@@ -32,7 +32,7 @@ function FundingBadge({ ethWei }: { ethWei: bigint }) {
   return <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">Low</Badge>
 }
 
-export function StakedServiceCard({ service, lastDeliveryTimestamp, safeEthWei, safeOlasWei }: StakedServiceCardProps) {
+export function StakedServiceCard({ service, lastDeliveryTimestamp, primaryEthWei, primaryEthLabel }: StakedServiceCardProps) {
   const isEvicted = !service.isStaked
   return (
     <Card className={`hover:border-primary/50 transition-colors ${isEvicted ? 'opacity-60' : ''}`}>
@@ -53,21 +53,15 @@ export function StakedServiceCard({ service, lastDeliveryTimestamp, safeEthWei, 
         <EpochProgress multisig={service.multisig} serviceId={service.serviceId} />
         <div className="rounded-md border bg-muted/20 px-3 py-2 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Safe ETH</span>
-            {safeEthWei != null ? (
+            <span className="text-xs text-muted-foreground">{primaryEthLabel ?? 'Agent EOA ETH'}</span>
+            {primaryEthWei != null ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono">{formatEthBalance(safeEthWei)} ETH</span>
-                <FundingBadge ethWei={safeEthWei} />
+                <span className="text-xs font-mono">{formatEthBalance(primaryEthWei)} ETH</span>
+                <FundingBadge ethWei={primaryEthWei} />
               </div>
             ) : (
               <span className="text-xs text-muted-foreground">Unavailable</span>
             )}
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Safe OLAS</span>
-            <span className="text-xs font-mono">
-              {safeOlasWei != null ? `${formatOlasBalance(safeOlasWei)} OLAS` : 'Unavailable'}
-            </span>
           </div>
         </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">

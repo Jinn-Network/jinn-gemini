@@ -23,6 +23,7 @@ import {
   formatEthBalance,
   formatOlasBalance,
   getAddressBalances,
+  getAgentEoaAddress,
 } from '@/lib/staking/balances'
 import { formatDate } from '@/lib/utils'
 import { getRpcClient } from '@/lib/staking/rpc'
@@ -126,7 +127,15 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
     return 0
   })
 
-  const safeBalances = await getAddressBalances(enrichedServices.map((s) => s.multisig))
+  const agentEntries = await Promise.all(
+    enrichedServices.map(async (service) => [service.serviceId, await getAgentEoaAddress(service.serviceId)] as const)
+  )
+  const agentEoaByServiceId = new Map(agentEntries)
+
+  const balances = await getAddressBalances([
+    ...enrichedServices.map((s) => s.multisig),
+    ...agentEntries.flatMap(([, agentEoa]) => (agentEoa ? [agentEoa] : [])),
+  ])
   const stakedCount = enrichedServices.filter(s => s.isStaked).length
   const evictedCount = enrichedServices.filter(s => !s.isStaked).length
 
@@ -161,7 +170,8 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
       {viewMode === 'cards' ? (
         <CardsView
           services={enrichedServices}
-          safeBalances={safeBalances}
+          balances={balances}
+          agentEoaByServiceId={agentEoaByServiceId}
           lastDeliveryMap={lastDeliveryMap}
         />
       ) : (
@@ -179,7 +189,10 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
             </TableHeader>
             <TableBody>
               {enrichedServices.map((service) => {
-                const balance = safeBalances.get(service.multisig.toLowerCase())
+                const safeBalance = balances.get(service.multisig.toLowerCase())
+                const agentEoa = agentEoaByServiceId.get(service.serviceId)
+                const agentBalance = agentEoa ? balances.get(agentEoa.toLowerCase()) : null
+                const primaryEthWei = agentBalance?.ethWei ?? safeBalance?.ethWei
                 const lastDeliveryTimestamp = lastDeliveryMap.get(service.serviceId) || null
                 const risk = getEvictionRisk(service.isStaked, lastDeliveryTimestamp)
                 return (
@@ -214,8 +227,8 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
                     </TableCell>
                     <TableCell className="text-xs">
                       <div className="space-y-0.5 font-mono">
-                        <div>{formatEthBalance(balance?.ethWei)} ETH</div>
-                        <div>{formatOlasBalance(balance?.olasWei)} OLAS</div>
+                        <div>{formatEthBalance(primaryEthWei)} ETH</div>
+                        <div>{formatOlasBalance(safeBalance?.olasWei)} OLAS</div>
                       </div>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
@@ -239,11 +252,13 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
 
 async function CardsView({
   services,
-  safeBalances,
+  balances,
+  agentEoaByServiceId,
   lastDeliveryMap,
 }: {
   services: Awaited<ReturnType<typeof getStakedServices>>
-  safeBalances: Awaited<ReturnType<typeof getAddressBalances>>
+  balances: Awaited<ReturnType<typeof getAddressBalances>>
+  agentEoaByServiceId: Map<string, string | null>
   lastDeliveryMap: Map<string, string | null>
 }) {
   const serviceIds = services.map((s) => s.serviceId)
@@ -253,15 +268,18 @@ async function CardsView({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {services.map((service) => {
-        const balance = safeBalances.get(service.multisig.toLowerCase())
+        const safeBalance = balances.get(service.multisig.toLowerCase())
+        const agentEoa = agentEoaByServiceId.get(service.serviceId)
+        const agentBalance = agentEoa ? balances.get(agentEoa.toLowerCase()) : null
+        const primaryEthWei = agentBalance?.ethWei ?? safeBalance?.ethWei
         return (
           <StakedServiceCard
             key={service.id}
             service={service}
             mechAddress={mechByServiceId.get(service.serviceId)?.mech}
             lastDeliveryTimestamp={lastDeliveryMap.get(service.serviceId)}
-            safeEthWei={balance?.ethWei}
-            safeOlasWei={balance?.olasWei}
+            primaryEthWei={primaryEthWei}
+            primaryEthLabel={agentBalance?.ethWei != null ? 'Agent EOA ETH' : 'Service Safe ETH'}
           />
         )
       })}
