@@ -44,6 +44,24 @@ Vercel projects have `rootDirectory` set (e.g., `frontend/explorer`). Running `n
 - Push to git and let Vercel auto-deploy, OR
 - Use `npx vercel redeploy <production-url>` to redeploy with fresh env vars
 
+### Project link drift (`explorer` vs `jinn-explorer`)
+
+There are multiple similarly named Vercel projects. If local linking points to `explorer` instead of `jinn-explorer`, builds fail with workspace package errors (for example `@jinn/shared-ui: Not found`).
+
+**Check current link:**
+```bash
+cat frontend/explorer/.vercel/project.json
+```
+
+Expected:
+- `projectName` should be `jinn-explorer`
+
+Fix:
+```bash
+cd frontend/explorer
+npx vercel link --project jinn-explorer --yes
+```
+
 ### Workspace dependencies
 
 All frontends depend on `@jinn/shared-ui` from the monorepo workspace. Vercel must install from the monorepo root. Each app's `vercel.json` sets `installCommand: "yarn install"` to handle this. If builds fail with unresolved workspace packages, verify the Vercel project root directory is set to the app subdirectory (not the monorepo root).
