@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { type ActivityItem, transformToActivityItems } from "@/lib/activity-utils";
-import { fetchGlobalActivityAction } from "@/app/actions";
 import { Terminal, Brain, Rocket, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "./ui/badge";
@@ -10,21 +9,36 @@ import { Badge } from "./ui/badge";
 export function GlobalActivityFeed() {
     const [activities, setActivities] = useState<ActivityItem[]>([]);
 
-    async function fetchData() {
-        const { requests, deliveries } = await fetchGlobalActivityAction();
-        const items = await transformToActivityItems(requests, deliveries);
-        setActivities(items);
-    }
-
-    // Initial fetch
     useEffect(() => {
+        let isMounted = true;
+
+        async function fetchData() {
+            try {
+                const response = await fetch("/api/global-activity", {
+                    cache: "no-store",
+                });
+
+                if (!response.ok) {
+                    return;
+                }
+
+                const data = await response.json();
+                const items = await transformToActivityItems(data.requests, data.deliveries);
+                if (isMounted) {
+                    setActivities(items);
+                }
+            } catch (error) {
+                console.error("Failed to fetch global activity:", error);
+            }
+        }
+
         fetchData();
-    }, []);
-
-    // Polling
-    useEffect(() => {
         const interval = setInterval(fetchData, 4000); // Poll every 4 seconds
-        return () => clearInterval(interval);
+
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
     }, []);
 
     return (
