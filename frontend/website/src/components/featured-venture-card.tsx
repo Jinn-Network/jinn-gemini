@@ -2,7 +2,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Sparkles } from 'lucide-react';
-import { getExplorerUrl } from '@/lib/featured-services';
+import { LAUNCHPAD_URL } from '@/lib/featured-services';
 import type { Venture } from '@/lib/ventures-queries';
 
 interface FeaturedVentureCardProps {
@@ -10,9 +10,7 @@ interface FeaturedVentureCardProps {
 }
 
 export function FeaturedVentureCard({ venture }: FeaturedVentureCardProps) {
-    const explorerHref = venture.root_workstream_id
-        ? getExplorerUrl('workstream', venture.root_workstream_id)
-        : getExplorerUrl('venture', venture.id);
+    const ventureHref = `${LAUNCHPAD_URL}/ventures/${venture.slug}`;
 
     return (
         <Card className="relative overflow-hidden border-primary/50 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
@@ -42,12 +40,12 @@ export function FeaturedVentureCard({ venture }: FeaturedVentureCardProps) {
             <CardFooter className="relative">
                 <Button asChild variant="default" className="w-full">
                     <a
-                        href={explorerHref}
+                        href={ventureHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2"
                     >
-                        View in Explorer
+                        View Venture
                         <ExternalLink className="h-4 w-4" />
                     </a>
                 </Button>
