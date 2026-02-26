@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = 'force-dynamic';
+const EXCLUDED_VENTURE_SLUGS = new Set(['amp2']);
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -33,6 +34,15 @@ function VentureCard({ venture }: { venture: Venture }) {
   const href = venture.root_workstream_id
     ? `/ventures/${venture.root_workstream_id}`
     : `/ventures/${venture.id}`;
+  const hasTokenInfo = Boolean(
+    venture.token_symbol
+    || venture.token_name
+    || venture.token_address
+    || venture.token_launch_platform
+  );
+  const tokenAddress = venture.token_address
+    ? `${venture.token_address.slice(0, 6)}...${venture.token_address.slice(-4)}`
+    : null;
 
   return (
     <Card className="hover:border-primary/50 transition-colors">
@@ -56,11 +66,38 @@ function VentureCard({ venture }: { venture: Venture }) {
           <StatusBadge status={venture.status} />
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
         {venture.description && (
           <p className="text-sm text-muted-foreground">
             {venture.description}
           </p>
+        )}
+        {hasTokenInfo && (
+          <div className="rounded-md border border-primary/15 bg-primary/5 p-3 space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-primary/90">
+              Token Info
+            </p>
+            {venture.token_name && (
+              <p className="text-xs text-muted-foreground">
+                Name: <span className="text-foreground">{venture.token_name}</span>
+              </p>
+            )}
+            {venture.token_symbol && (
+              <p className="text-xs text-muted-foreground">
+                Symbol: <span className="font-mono text-foreground">${venture.token_symbol}</span>
+              </p>
+            )}
+            {venture.token_launch_platform && (
+              <p className="text-xs text-muted-foreground">
+                Platform: <span className="capitalize text-foreground">{venture.token_launch_platform}</span>
+              </p>
+            )}
+            {tokenAddress && (
+              <p className="text-xs text-muted-foreground">
+                Contract: <span className="font-mono text-foreground">{tokenAddress}</span>
+              </p>
+            )}
+          </div>
         )}
       </CardContent>
       <CardFooter className="pt-0">
@@ -76,11 +113,11 @@ function VentureCard({ venture }: { venture: Venture }) {
 
 async function VenturesList() {
   const allVentures = await getActiveVentures();
+  const activeVentures = allVentures.filter(
+    (venture) => !EXCLUDED_VENTURE_SLUGS.has(venture.slug.toLowerCase())
+  );
 
-  const venturesWithTokens = allVentures.filter(v => v.token_symbol !== null);
-  const venturesWithoutTokens = allVentures.filter(v => v.token_symbol === null);
-
-  if (allVentures.length === 0) {
+  if (activeVentures.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
         No ventures found
@@ -89,30 +126,10 @@ async function VenturesList() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Ventures With Tokens */}
-      {venturesWithTokens.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold">Ventures With Tokens</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {venturesWithTokens.map((venture) => (
-              <VentureCard key={venture.id} venture={venture} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Ventures Without Tokens */}
-      {venturesWithoutTokens.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold">Ventures Without Tokens</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {venturesWithoutTokens.map((venture) => (
-              <VentureCard key={venture.id} venture={venture} />
-            ))}
-          </div>
-        </div>
-      )}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {activeVentures.map((venture) => (
+        <VentureCard key={venture.id} venture={venture} />
+      ))}
     </div>
   );
 }
