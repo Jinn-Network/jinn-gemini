@@ -5,7 +5,17 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StakedServiceCard } from '@/components/staking/staked-service-card'
 import { getStakedServices, getRecentDeliveries, getMechsForServiceIds } from '@/lib/staking/queries'
-import { JINN_STAKING_CONTRACT, stakingAbi } from '@/lib/staking/constants'
+import {
+  ETH_FUNDING_TARGET_WEI,
+  ETH_FUNDING_WARNING_WEI,
+  JINN_STAKING_CONTRACT,
+  stakingAbi,
+} from '@/lib/staking/constants'
+import {
+  formatEthBalance,
+  getAddressBalances,
+  getEthFundingLevel,
+} from '@/lib/staking/balances'
 import { getRpcClient } from '@/lib/staking/rpc'
 
 export const metadata: Metadata = {
@@ -56,8 +66,34 @@ async function StakedServicesList() {
     return 0
   })
 
+  const safeBalances = await getAddressBalances(enrichedServices.map((s) => s.multisig))
+
   const stakedCount = enrichedServices.filter(s => s.isStaked).length
   const evictedCount = enrichedServices.filter(s => !s.isStaked).length
+  const fundingHealth = {
+    healthy: 0,
+    warning: 0,
+    critical: 0,
+    unknown: 0,
+  }
+  let fleetSafeEthWei = BigInt(0)
+
+  for (const service of enrichedServices) {
+    const safeBalance = safeBalances.get(service.multisig.toLowerCase())
+    if (!safeBalance) {
+      fundingHealth.unknown += 1
+      continue
+    }
+
+    fleetSafeEthWei += safeBalance.ethWei
+    const level = getEthFundingLevel(safeBalance.ethWei)
+    fundingHealth[level] += 1
+  }
+
+  const knownFundingCount = fundingHealth.healthy + fundingHealth.warning + fundingHealth.critical
+  const healthyWidth = knownFundingCount === 0 ? 0 : (fundingHealth.healthy / knownFundingCount) * 100
+  const warningWidth = knownFundingCount === 0 ? 0 : (fundingHealth.warning / knownFundingCount) * 100
+  const criticalWidth = knownFundingCount === 0 ? 0 : (fundingHealth.critical / knownFundingCount) * 100
 
   // Fetch mech mappings for all service IDs
   const serviceIds = enrichedServices.map((s) => s.serviceId)
@@ -92,15 +128,57 @@ async function StakedServicesList() {
           {stakedCount} staked{evictedCount > 0 && `, ${evictedCount} evicted`}
         </span>
       </div>
+      <Card>
+        <CardContent className="pt-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-medium">Fleet Funding Health</span>
+            <span className="text-xs text-muted-foreground">
+              Target {formatEthBalance(ETH_FUNDING_TARGET_WEI)} ETH · Warning below {formatEthBalance(ETH_FUNDING_WARNING_WEI)} ETH
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted flex">
+            <div style={{ width: `${healthyWidth}%` }} className="h-full bg-green-500/80" />
+            <div style={{ width: `${warningWidth}%` }} className="h-full bg-yellow-500/80" />
+            <div style={{ width: `${criticalWidth}%` }} className="h-full bg-red-500/80" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+            <div className="rounded border px-2 py-1.5">
+              <div className="text-muted-foreground">Healthy</div>
+              <div className="font-medium text-green-500">{fundingHealth.healthy}</div>
+            </div>
+            <div className="rounded border px-2 py-1.5">
+              <div className="text-muted-foreground">Warning</div>
+              <div className="font-medium text-yellow-500">{fundingHealth.warning}</div>
+            </div>
+            <div className="rounded border px-2 py-1.5">
+              <div className="text-muted-foreground">Low</div>
+              <div className="font-medium text-red-500">{fundingHealth.critical}</div>
+            </div>
+            <div className="rounded border px-2 py-1.5">
+              <div className="text-muted-foreground">Unknown</div>
+              <div className="font-medium">{fundingHealth.unknown}</div>
+            </div>
+            <div className="rounded border px-2 py-1.5">
+              <div className="text-muted-foreground">Fleet Safe ETH</div>
+              <div className="font-medium">{formatEthBalance(fleetSafeEthWei)}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {enrichedServices.map((service) => (
-          <StakedServiceCard
-            key={service.id}
-            service={service}
-            mechAddress={mechByServiceId.get(service.serviceId)?.mech}
-            lastDeliveryTimestamp={lastDeliveryMap.get(service.serviceId)}
-          />
-        ))}
+        {enrichedServices.map((service) => {
+          const balance = safeBalances.get(service.multisig.toLowerCase())
+          return (
+            <StakedServiceCard
+              key={service.id}
+              service={service}
+              mechAddress={mechByServiceId.get(service.serviceId)?.mech}
+              lastDeliveryTimestamp={lastDeliveryMap.get(service.serviceId)}
+              safeEthWei={balance?.ethWei}
+              safeOlasWei={balance?.olasWei}
+            />
+          )
+        })}
       </div>
     </div>
   )
