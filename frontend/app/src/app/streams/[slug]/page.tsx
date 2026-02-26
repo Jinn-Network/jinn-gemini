@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { getVentureBySlug } from '@/lib/ventures';
-import { fetchWorkstreamArtifactsAction } from '@/app/actions';
+import { fetchWorkstreamRootArtifactsAction } from '@/app/actions';
 import { formatTimeAgo } from '@/lib/artifact-utils';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -82,7 +82,7 @@ export default async function StreamDetailPage({
     notFound();
   }
 
-  const artifacts = await fetchWorkstreamArtifactsAction(
+  const artifacts = await fetchWorkstreamRootArtifactsAction(
     venture.root_workstream_id
   );
 

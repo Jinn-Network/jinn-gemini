@@ -210,6 +210,40 @@ export interface ArtifactWithJobName extends Artifact {
   jobName?: string;
 }
 
+function isOperationalTopic(topic: string): boolean {
+  return OPERATIONAL_TOPICS.includes(topic.toLowerCase());
+}
+
+function sortArtifactsNewestFirst(artifacts: Artifact[]): Artifact[] {
+  return [...artifacts].sort((a, b) => Number(b.blockTimestamp || 0) - Number(a.blockTimestamp || 0));
+}
+
+async function attachJobNames(artifacts: Artifact[]): Promise<ArtifactWithJobName[]> {
+  const jobDefIds = [...new Set(
+    artifacts
+      .map(a => a.sourceJobDefinitionId)
+      .filter((id): id is string => !!id)
+  )];
+
+  const jobNameMap = new Map<string, string>();
+  const nameResults = await Promise.all(
+    jobDefIds.map(async id => {
+      const name = await getJobName(id).catch(() => null);
+      return [id, name] as const;
+    })
+  );
+  for (const [id, name] of nameResults) {
+    if (name) jobNameMap.set(id, name);
+  }
+
+  return artifacts.map(artifact => ({
+    ...artifact,
+    jobName: artifact.sourceJobDefinitionId
+      ? jobNameMap.get(artifact.sourceJobDefinitionId) || undefined
+      : undefined,
+  }));
+}
+
 export async function fetchWorkstreamArtifactsAction(workstreamId: string): Promise<ArtifactWithJobName[]> {
   try {
     const requestsResponse = await queryRequests({ where: { workstreamId }, limit: 200 });
@@ -233,39 +267,33 @@ export async function fetchWorkstreamArtifactsAction(workstreamId: string): Prom
       for (const r of results) allArtifacts.push(...r.items);
     }
 
-    // Sort newest first
-    allArtifacts.sort((a, b) => Number(b.blockTimestamp || 0) - Number(a.blockTimestamp || 0));
-
-    // Filter out operational topics
-    const contentArtifacts = allArtifacts.filter(
-      (a) => !OPERATIONAL_TOPICS.includes(a.topic.toLowerCase())
+    const contentArtifacts = sortArtifactsNewestFirst(
+      allArtifacts.filter((a) => !isOperationalTopic(a.topic))
     );
 
-    // Resolve job names in parallel (deduplicate IDs first)
-    const jobDefIds = [...new Set(
-      contentArtifacts
-        .map(a => a.sourceJobDefinitionId)
-        .filter((id): id is string => !!id)
-    )];
-    const jobNameMap = new Map<string, string>();
-    const nameResults = await Promise.all(
-      jobDefIds.map(async id => {
-        const name = await getJobName(id).catch(() => null);
-        return [id, name] as const;
-      })
-    );
-    for (const [id, name] of nameResults) {
-      if (name) jobNameMap.set(id, name);
-    }
-
-    return contentArtifacts.map(artifact => ({
-      ...artifact,
-      jobName: artifact.sourceJobDefinitionId
-        ? jobNameMap.get(artifact.sourceJobDefinitionId) || undefined
-        : undefined,
-    }));
+    return attachJobNames(contentArtifacts);
   } catch (error) {
     console.error('Failed to fetch workstream artifacts:', error);
+    return [];
+  }
+}
+
+export async function fetchWorkstreamRootArtifactsAction(workstreamId: string): Promise<ArtifactWithJobName[]> {
+  try {
+    const response = await queryArtifacts({
+      where: { requestId: workstreamId },
+      orderBy: 'blockTimestamp',
+      orderDirection: 'desc',
+      limit: 200,
+    });
+
+    const contentArtifacts = sortArtifactsNewestFirst(
+      response.items.filter((artifact) => !isOperationalTopic(artifact.topic))
+    );
+
+    return attachJobNames(contentArtifacts);
+  } catch (error) {
+    console.error('Failed to fetch root workstream artifacts:', error);
     return [];
   }
 }
@@ -278,6 +306,28 @@ export async function fetchArtifactByCidAction(cid: string): Promise<ArtifactWit
     const jobName = artifact.sourceJobDefinitionId
       ? await getJobName(artifact.sourceJobDefinitionId).catch(() => null)
       : null;
+    return { ...artifact, jobName: jobName || undefined };
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchWorkstreamRootArtifactByCidAction(
+  workstreamId: string,
+  cid: string
+): Promise<ArtifactWithJobName | null> {
+  try {
+    const result = await queryArtifacts({
+      where: { cid, requestId: workstreamId },
+      limit: 1,
+    });
+    const artifact = result.items[0];
+    if (!artifact || isOperationalTopic(artifact.topic)) return null;
+
+    const jobName = artifact.sourceJobDefinitionId
+      ? await getJobName(artifact.sourceJobDefinitionId).catch(() => null)
+      : null;
+
     return { ...artifact, jobName: jobName || undefined };
   } catch {
     return null;
