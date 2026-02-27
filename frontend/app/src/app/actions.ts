@@ -350,23 +350,57 @@ const STREAM_FEED_ARTIFACTS_QUERY = `
   }
 `;
 
+const DEFAULT_SUBGRAPH_URL = 'https://indexer.jinn.network/graphql';
+
+async function fetchStreamFeedArtifacts(limit: number): Promise<StreamFeedArtifact[]> {
+  const configuredUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL;
+  const candidateUrls = [...new Set([configuredUrl, DEFAULT_SUBGRAPH_URL].filter(Boolean) as string[])];
+
+  for (const subgraphUrl of candidateUrls) {
+    try {
+      const response = await gqlRequest<{ artifacts: { items: StreamFeedArtifact[] } }>(
+        subgraphUrl,
+        STREAM_FEED_ARTIFACTS_QUERY,
+        { limit }
+      );
+      if (response.artifacts.items.length > 0) {
+        return response.artifacts.items;
+      }
+    } catch (error) {
+      console.error(`[streams] Failed feed query against ${subgraphUrl}:`, error);
+    }
+  }
+
+  // Fallback: still return recent artifacts even if extended schema fields are unavailable.
+  const fallback = await queryArtifacts({
+    orderBy: 'blockTimestamp',
+    orderDirection: 'desc',
+    limit,
+  });
+  return fallback.items.map((artifact) => ({
+    ...artifact,
+    ventureId: null,
+    workstreamId: null,
+  }));
+}
+
 export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
   try {
-    const { getVentures } = await import('@/lib/ventures');
-    const ventures = await getVentures(500);
-    const ventureById = new Map(
-      ventures.map((venture) => [venture.id, { name: venture.name, slug: venture.slug }] as const)
-    );
+    let ventureById = new Map<string, { name: string; slug: string }>();
+    try {
+      const { getVentures } = await import('@/lib/ventures');
+      const ventures = await getVentures(500);
+      ventureById = new Map(
+        ventures.map((venture) => [venture.id, { name: venture.name, slug: venture.slug }] as const)
+      );
+    } catch (error) {
+      console.error('[streams] Failed to load ventures; continuing without venture name mapping:', error);
+    }
 
-    const subgraphUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://indexer.jinn.network/graphql';
-    const response = await gqlRequest<{ artifacts: { items: StreamFeedArtifact[] } }>(
-      subgraphUrl,
-      STREAM_FEED_ARTIFACTS_QUERY,
-      { limit: 500 }
-    );
+    const artifacts = await fetchStreamFeedArtifacts(800);
 
     const dedupedSorted = [...new Map(
-      response.artifacts.items
+      artifacts
         .filter((artifact) => !isOperationalTopic(artifact.topic))
         .map((artifact) => {
           const venture = artifact.ventureId ? ventureById.get(artifact.ventureId) : undefined;
