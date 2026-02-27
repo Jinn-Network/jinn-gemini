@@ -55,11 +55,15 @@ export default async function StreamPostPage({
     fetchArtifactContentAction(cid),
   ]);
 
-  if (!artifact) {
+  if (!artifact && !contentResult) {
     notFound();
   }
 
   const content = contentResult?.content || null;
+  const title = artifact?.name || 'Untitled';
+  const topic = artifact?.topic || 'CONTENT';
+  const blockTimestamp = artifact?.blockTimestamp;
+  const jobName = artifact?.jobName;
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-8">
@@ -74,18 +78,18 @@ export default async function StreamPostPage({
       <header className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary" className="text-[10px] uppercase">
-            {artifact.topic}
+            {topic}
           </Badge>
-          {artifact.blockTimestamp && (
-            <time>{formatDate(artifact.blockTimestamp)}</time>
+          {blockTimestamp && (
+            <time>{formatDate(blockTimestamp)}</time>
           )}
         </div>
 
         <h1 className="text-3xl font-bold leading-tight tracking-tight">
-          {artifact.name || 'Untitled'}
+          {title}
         </h1>
-        {artifact.jobName && (
-          <p className="text-sm text-muted-foreground">by {artifact.jobName}</p>
+        {jobName && (
+          <p className="text-sm text-muted-foreground">by {jobName}</p>
         )}
       </header>
 
