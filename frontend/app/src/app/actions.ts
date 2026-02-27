@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { request as gqlRequest } from 'graphql-request';
 import { supabaseMutate, supabaseAdminQuery } from '@/lib/supabase';
 import { getWorkstreamActivity } from '@/lib/ventures/service-queries';
 import type { JobDefinition } from '@/lib/subgraph';
@@ -319,47 +320,65 @@ export interface StreamFeedItem extends ArtifactWithJobName {
   ventureSlug?: string;
 }
 
+interface StreamFeedArtifact extends Artifact {
+  ventureId?: string | null;
+  workstreamId?: string | null;
+}
+
+const STREAM_FEED_ARTIFACTS_QUERY = `
+  query StreamFeedArtifacts($limit: Int!) {
+    artifacts(
+      limit: $limit
+      orderBy: "blockTimestamp"
+      orderDirection: "desc"
+      where: { ventureId_not: null }
+    ) {
+      items {
+        id
+        requestId
+        sourceRequestId
+        sourceJobDefinitionId
+        ventureId
+        workstreamId
+        name
+        cid
+        topic
+        contentPreview
+        blockTimestamp
+      }
+    }
+  }
+`;
+
 export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
   try {
     const { getVentures } = await import('@/lib/ventures');
-    const ventures = await getVentures(250);
-    const activeVentures = ventures.filter(
-      (venture) => venture.status !== 'archived' && venture.root_workstream_id
+    const ventures = await getVentures(500);
+    const ventureById = new Map(
+      ventures.map((venture) => [venture.id, { name: venture.name, slug: venture.slug }] as const)
     );
 
-    const perVentureResults = await Promise.all(
-      activeVentures.map(async (venture) => {
-        try {
-          const response = await queryArtifacts({
-            where: { workstreamId: venture.root_workstream_id! },
-            orderBy: 'blockTimestamp',
-            orderDirection: 'desc',
-            limit: 25,
-          });
-
-          return response.items
-            .filter((artifact) => !isOperationalTopic(artifact.topic))
-            .map((artifact) => ({
-              ...artifact,
-              ventureName: venture.name,
-              ventureSlug: venture.slug,
-            }));
-        } catch (error) {
-          console.error(
-            `Failed to fetch artifacts for venture ${venture.slug}:`,
-            error
-          );
-          return [] as StreamFeedItem[];
-        }
-      })
+    const subgraphUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://indexer.jinn.network/graphql';
+    const response = await gqlRequest<{ artifacts: { items: StreamFeedArtifact[] } }>(
+      subgraphUrl,
+      STREAM_FEED_ARTIFACTS_QUERY,
+      { limit: 500 }
     );
 
     const dedupedSorted = [...new Map(
-      perVentureResults
-        .flat()
-        .sort((a, b) => Number(b.blockTimestamp || 0) - Number(a.blockTimestamp || 0))
-        .map((artifact) => [artifact.id, artifact])
-    ).values()].slice(0, 150);
+      response.artifacts.items
+        .filter((artifact) => !isOperationalTopic(artifact.topic))
+        .map((artifact) => {
+          const venture = artifact.ventureId ? ventureById.get(artifact.ventureId) : undefined;
+          return [artifact.id, {
+            ...artifact,
+            ventureName: venture?.name,
+            ventureSlug: venture?.slug,
+          } satisfies StreamFeedItem] as const;
+        })
+    ).values()]
+      .sort((a, b) => Number(b.blockTimestamp || 0) - Number(a.blockTimestamp || 0))
+      .slice(0, 150);
 
     const ventureMetaByArtifactId = new Map(
       dedupedSorted.map((artifact) => [
@@ -371,7 +390,7 @@ export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
       ])
     );
 
-    const withJobNames = await attachJobNames(dedupedSorted);
+    const withJobNames = await attachJobNames(dedupedSorted as Artifact[]);
     return withJobNames.map((artifact) => {
       const ventureMeta = ventureMetaByArtifactId.get(artifact.id);
       return {
