@@ -3,7 +3,7 @@ import { FileText, Plus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { getDocumentRegisteredEvents } from '@/lib/adw/events'
+import { getADWDocuments } from '@/lib/adw/ponder'
 import { formatDate } from '@/lib/utils'
 
 export const metadata = { title: 'Document Registry — ADW Explorer' }
@@ -14,7 +14,7 @@ function truncate(s: string, n = 12) {
 }
 
 export default async function DocumentsPage() {
-  const events = await getDocumentRegisteredEvents()
+  const documents = await getADWDocuments()
 
   return (
     <div className="p-6 space-y-6">
@@ -25,7 +25,7 @@ export default async function DocumentsPage() {
             Document Registry
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {events.length} document{events.length !== 1 ? 's' : ''} registered on-chain
+            {documents.length} ADW document{documents.length !== 1 ? 's' : ''} indexed
           </p>
         </div>
         <Button asChild>
@@ -36,64 +36,61 @@ export default async function DocumentsPage() {
         </Button>
       </div>
 
-      {events.length === 0 ? (
+      {documents.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p className="text-lg font-medium">No documents registered yet</p>
-          <p className="text-sm mt-1">Be the first to register a document.</p>
-          <Button asChild className="mt-4" variant="outline">
-            <Link href="/documents/register">Register a Document</Link>
-          </Button>
+          <p className="text-lg font-medium">No ADW documents found yet</p>
+          <p className="text-sm mt-1">Documents will appear here as workers produce ADW-wrapped artifacts.</p>
         </div>
       ) : (
         <div className="grid gap-4">
-          {[...events].reverse().map((log) => {
-            const id = log.args.documentId?.toString() ?? '?'
-            const creator = log.args.creator ?? ''
-            const docType = log.args.documentType ?? ''
-            const docURI = log.args.documentURI ?? ''
-            const contentHash = log.args.contentHash ?? ''
-            const timestamp = log.args.timestamp
-
-            return (
-              <Link key={`${id}-${log.transactionHash}`} href={`/documents/${id}`}>
-                <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base">Document #{id}</CardTitle>
-                      {docType && (
-                        <Badge variant="secondary" className="shrink-0 text-xs">
-                          {docType}
+          {documents.map((doc) => (
+            <Link key={doc.id} href={`/documents/${encodeURIComponent(doc.cid)}`}>
+              <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-base">{doc.topic}</CardTitle>
+                    <div className="flex gap-1 shrink-0">
+                      {doc.documentType && (
+                        <Badge variant="secondary" className="text-xs">
+                          {doc.documentType.replace('adw:', '')}
+                        </Badge>
+                      )}
+                      {doc.type && doc.type !== doc.documentType && (
+                        <Badge variant="outline" className="text-xs">
+                          {doc.type}
                         </Badge>
                       )}
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-1 text-sm text-muted-foreground">
-                    {docURI && (
-                      <p className="truncate" title={docURI}>
-                        <span className="font-medium text-foreground">URI:</span> {truncate(docURI, 30)}
-                      </p>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-1 text-sm text-muted-foreground">
+                  {doc.contentPreview && (
+                    <p className="line-clamp-2">{doc.contentPreview}</p>
+                  )}
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="font-mono">{truncate(doc.cid, 10)}</span>
+                    {doc.contentCid && (
+                      <span title="Content CID">
+                        <span className="font-medium text-foreground">Content:</span>{' '}
+                        <span className="font-mono">{truncate(doc.contentCid, 8)}</span>
+                      </span>
                     )}
-                    {creator && (
-                      <p>
-                        <span className="font-medium text-foreground">Creator:</span>{' '}
-                        <span className="font-mono">{truncate(creator, 8)}</span>
-                      </p>
-                    )}
-                    {contentHash && contentHash !== '0x0000000000000000000000000000000000000000000000000000000000000000' && (
-                      <p>
-                        <span className="font-medium text-foreground">Hash:</span>{' '}
-                        <span className="font-mono text-xs">{truncate(contentHash, 10)}</span>
-                      </p>
-                    )}
-                    {timestamp != null && (
-                      <p className="text-xs">{formatDate(Number(timestamp))}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </Link>
-            )
-          })}
+                    <span>{formatDate(doc.blockTimestamp)}</span>
+                  </div>
+                  {doc.tags && doc.tags.length > 0 && (
+                    <div className="flex gap-1 flex-wrap pt-1">
+                      {doc.tags.slice(0, 5).map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs font-normal">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
         </div>
       )}
     </div>

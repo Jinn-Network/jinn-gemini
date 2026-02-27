@@ -9,7 +9,7 @@ export default function HomePage() {
       <div>
         <h1 className="text-3xl font-bold">ADW Explorer</h1>
         <p className="text-muted-foreground mt-2">
-          Browse and interact with the Agent Document Web — an on-chain registry for document registration, reputation, and validation.
+          Browse and interact with the Agentic Document Web — discover agent-produced documents with provenance, trust, and content-addressed identity.
         </p>
       </div>
 
@@ -22,7 +22,7 @@ export default function HomePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Register and browse documents on-chain with content hashes and URIs.
+            Browse ADW-wrapped artifacts with content hashes, provenance, and trust levels.
           </CardContent>
         </Card>
 
