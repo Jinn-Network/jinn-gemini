@@ -204,14 +204,30 @@ export async function fetchWorkstreamActivityAction(workstreamId: string): Promi
 import { queryRequests, queryArtifacts, getJobName, type Artifact } from '@jinn/shared-ui';
 
 // Operational topics to exclude — internal system artifacts
-const OPERATIONAL_TOPICS = ['situation', 'measurement', 'git_branch', 'git/branch', 'service_output'];
+const OPERATIONAL_TOPICS = [
+  'situation',
+  'measurement',
+  'git_branch',
+  'git/branch',
+  'service_output',
+  'memory',
+  'venture_ooda_situation',
+  'debug',
+  'heartbeat',
+  'heartbeat-check',
+];
 
 export interface ArtifactWithJobName extends Artifact {
   jobName?: string;
 }
 
 function isOperationalTopic(topic: string): boolean {
-  return OPERATIONAL_TOPICS.includes(topic.toLowerCase());
+  const normalized = topic.toLowerCase();
+  return (
+    OPERATIONAL_TOPICS.includes(normalized) ||
+    normalized.startsWith('heartbeat') ||
+    normalized.startsWith('debug')
+  );
 }
 
 function sortArtifactsNewestFirst(artifacts: Artifact[]): Artifact[] {
@@ -294,6 +310,78 @@ export async function fetchWorkstreamRootArtifactsAction(workstreamId: string): 
     return attachJobNames(contentArtifacts);
   } catch (error) {
     console.error('Failed to fetch root workstream artifacts:', error);
+    return [];
+  }
+}
+
+export interface StreamFeedItem extends ArtifactWithJobName {
+  ventureName?: string;
+  ventureSlug?: string;
+}
+
+export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
+  try {
+    const { getVentures } = await import('@/lib/ventures');
+    const ventures = await getVentures(250);
+    const activeVentures = ventures.filter(
+      (venture) => venture.status !== 'archived' && venture.root_workstream_id
+    );
+
+    const perVentureResults = await Promise.all(
+      activeVentures.map(async (venture) => {
+        try {
+          const response = await queryArtifacts({
+            where: { workstreamId: venture.root_workstream_id! },
+            orderBy: 'blockTimestamp',
+            orderDirection: 'desc',
+            limit: 25,
+          });
+
+          return response.items
+            .filter((artifact) => !isOperationalTopic(artifact.topic))
+            .map((artifact) => ({
+              ...artifact,
+              ventureName: venture.name,
+              ventureSlug: venture.slug,
+            }));
+        } catch (error) {
+          console.error(
+            `Failed to fetch artifacts for venture ${venture.slug}:`,
+            error
+          );
+          return [] as StreamFeedItem[];
+        }
+      })
+    );
+
+    const dedupedSorted = [...new Map(
+      perVentureResults
+        .flat()
+        .sort((a, b) => Number(b.blockTimestamp || 0) - Number(a.blockTimestamp || 0))
+        .map((artifact) => [artifact.id, artifact])
+    ).values()].slice(0, 150);
+
+    const ventureMetaByArtifactId = new Map(
+      dedupedSorted.map((artifact) => [
+        artifact.id,
+        {
+          ventureName: artifact.ventureName,
+          ventureSlug: artifact.ventureSlug,
+        },
+      ])
+    );
+
+    const withJobNames = await attachJobNames(dedupedSorted);
+    return withJobNames.map((artifact) => {
+      const ventureMeta = ventureMetaByArtifactId.get(artifact.id);
+      return {
+        ...artifact,
+        ventureName: ventureMeta?.ventureName,
+        ventureSlug: ventureMeta?.ventureSlug,
+      };
+    });
+  } catch (error) {
+    console.error('Failed to fetch stream feed:', error);
     return [];
   }
 }
