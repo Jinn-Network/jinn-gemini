@@ -1362,12 +1362,12 @@ ponder.on(
             url = `${IPFS_GATEWAY_BASE}${dirCid}/${requestId}`;
           } catch { }
           let res: any = null;
-          for (let attempt = 0; attempt < 3; attempt++) {
+          for (let attempt = 0; attempt < 2; attempt++) {
             try {
-              res = await axios.get(url, { timeout: 5000 });
+              res = await axios.get(url, { timeout: 2000 });
               if (res && res.status === 200 && res.data) break;
             } catch (e) {
-              if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+              if (attempt < 1) await new Promise(r => setTimeout(r, 500));
             }
           }
           if (res && res.status === 200 && res.data) {
@@ -1572,7 +1572,7 @@ ponder.on(
 
                   try {
                     const situationUrl = `${IPFS_GATEWAY_BASE}${cid}`;
-                    const situationRes = await axios.get(situationUrl, { timeout: 8000 });
+                    const situationRes = await axios.get(situationUrl, { timeout: 3000 });
                     let situationData = situationRes?.data || {};
 
                     // IPFS artifact may be wrapped with metadata (name, topic, content fields)
