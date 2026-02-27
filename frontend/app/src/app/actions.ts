@@ -342,6 +342,8 @@ export interface StreamFeedItem extends ArtifactWithJobName {
   ventureSlug?: string;
 }
 
+const STREAM_ALLOWED_VENTURE_OR_TEMPLATE_ID = '2942d6f6-2d03-4ae1-8189-5f78fd60cee3';
+
 interface StreamFeedArtifact extends Artifact {
   ventureId?: string | null;
   workstreamId?: string | null;
@@ -425,12 +427,19 @@ async function fetchStreamFeedArtifacts(limit: number): Promise<StreamFeedArtifa
 
 export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
   try {
-    let ventureById = new Map<string, { name: string; slug: string }>();
+    let ventureById = new Map<string, { name: string; slug: string; ventureTemplateId: string | null }>();
     try {
       const { getVentures } = await import('@/lib/ventures');
       const ventures = await getVentures(500);
       ventureById = new Map(
-        ventures.map((venture) => [venture.id, { name: venture.name, slug: venture.slug }] as const)
+        ventures.map((venture) => [
+          venture.id,
+          {
+            name: venture.name,
+            slug: venture.slug,
+            ventureTemplateId: venture.venture_template_id,
+          },
+        ] as const)
       );
     } catch (error) {
       console.error('[streams] Failed to load ventures; continuing without venture name mapping:', error);
@@ -442,6 +451,13 @@ export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
       artifacts
         .filter((artifact) => !isOperationalTopic(artifact.topic))
         .filter((artifact) => !isStructuredOutputArtifact(artifact))
+        .filter((artifact) => {
+          if (!artifact.ventureId) return false;
+          if (artifact.ventureId === STREAM_ALLOWED_VENTURE_OR_TEMPLATE_ID) return true;
+
+          const venture = ventureById.get(artifact.ventureId);
+          return venture?.ventureTemplateId === STREAM_ALLOWED_VENTURE_OR_TEMPLATE_ID;
+        })
         .map((artifact) => {
           const venture = artifact.ventureId ? ventureById.get(artifact.ventureId) : undefined;
           return [artifact.id, {
