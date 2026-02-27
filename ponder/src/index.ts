@@ -901,19 +901,38 @@ ponder.on(
           workstreamId = id;
         }
 
+        // Inherit ventureId/templateId from workstream if not in IPFS payload (child requests)
+        let resolvedVentureId = ventureId;
+        let resolvedTemplateId = templateId;
+        if ((!resolvedVentureId || !resolvedTemplateId) && sourceRequestId) {
+          try {
+            const wsRepo: Repository = createRepository(db, workstream, "workstream");
+            const ws = await wsRepo.findUnique({ id: workstreamId });
+            if (ws) {
+              if (!resolvedVentureId && typeof (ws as any).ventureId === 'string') {
+                resolvedVentureId = (ws as any).ventureId;
+                logger.debug({ requestId: id, workstreamId, ventureId: resolvedVentureId }, 'Inherited ventureId from workstream');
+              }
+              if (!resolvedTemplateId && typeof (ws as any).templateId === 'string') {
+                resolvedTemplateId = (ws as any).templateId;
+              }
+            }
+          } catch { /* non-fatal — workstream may not exist yet */ }
+        }
+
         // Update the pre-seeded request row with enriched metadata
         // The create path should never execute here since we pre-seeded above,
         // but include it as a safety fallback
         try {
-          logger.info({ requestId: id, jobName, jobDefinitionId, workstreamId, ventureId, templateId }, "Updating request row with enriched metadata");
+          logger.info({ requestId: id, jobName, jobDefinitionId, workstreamId, ventureId: resolvedVentureId, templateId: resolvedTemplateId }, "Updating request row with enriched metadata");
           await repo.upsert({
             id,
             create: {
               mech,
               sender,
               workstreamId,
-              ventureId,
-              templateId,
+              ventureId: resolvedVentureId,
+              templateId: resolvedTemplateId,
               jobDefinitionId: jobDefinitionId,
               sourceRequestId: sourceRequestId,
               sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
@@ -931,8 +950,8 @@ ponder.on(
             update: {
               // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
               workstreamId,
-              ventureId,
-              templateId,
+              ventureId: resolvedVentureId,
+              templateId: resolvedTemplateId,
               jobDefinitionId: jobDefinitionId,
               sourceRequestId: sourceRequestId,
               sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
