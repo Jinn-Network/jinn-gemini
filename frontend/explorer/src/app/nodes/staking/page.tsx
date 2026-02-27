@@ -2,7 +2,6 @@ import { Metadata } from 'next'
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { SiteHeader } from '@/components/site-header'
-import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,17 +12,26 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { StakedServiceCard } from '@/components/staking/staked-service-card'
+import { StakingToolbar } from '@/components/staking/staking-toolbar'
+import { EpochProgressCompact } from '@/components/staking/epoch-progress-compact'
 import { getStakedServices, getRecentDeliveries, getMechsForServiceIds } from '@/lib/staking/queries'
 import {
   JINN_STAKING_CONTRACT,
+  LIVENESS_PERIOD,
   stakingAbi,
 } from '@/lib/staking/constants'
 import {
   formatEthBalance,
   formatOlasBalance,
   getAddressBalances,
-  getAgentEoaAddress,
+  getEthFundingLevel,
 } from '@/lib/staking/balances'
 import { formatDate } from '@/lib/utils'
 import { getRpcClient } from '@/lib/staking/rpc'
@@ -36,61 +44,103 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-  searchParams: Promise<{ view?: string }>
+  searchParams: Promise<{ view?: string; owner?: string }>
 }
 
 type ViewMode = 'table' | 'cards'
-type RiskLevel = 'low' | 'medium' | 'high' | 'evicted'
 
 function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
 }
 
-function ViewToggle({ viewMode }: { viewMode: ViewMode }) {
-  const tabClass = (active: boolean) =>
-    `rounded-md px-3 py-1.5 text-sm transition-colors ${active
-      ? 'bg-background shadow-sm border text-foreground'
-      : 'text-muted-foreground hover:text-foreground'
-    }`
+function getEvictionRiskInfo(isStaked: boolean, lastDeliveryTimestamp: string | null): {
+  level: 'safe' | 'warning' | 'critical' | 'evicted'
+  label: string
+  description: string
+} {
+  if (!isStaked) {
+    return {
+      level: 'evicted',
+      label: 'Evicted',
+      description: 'Service was evicted from staking. Must restake to resume earning rewards.',
+    }
+  }
 
-  return (
-    <div className="inline-flex items-center rounded-lg border bg-muted/30 p-1">
-      <Link href="/nodes/staking" className={tabClass(viewMode === 'table')}>
-        Table
-      </Link>
-      <Link href="/nodes/staking?view=cards" className={tabClass(viewMode === 'cards')}>
-        Cards
-      </Link>
-    </div>
-  )
-}
-
-function getEvictionRisk(isStaked: boolean, lastDeliveryTimestamp: string | null): RiskLevel {
-  if (!isStaked) return 'evicted'
-  if (!lastDeliveryTimestamp) return 'high'
+  if (!lastDeliveryTimestamp) {
+    return {
+      level: 'critical',
+      label: 'No deliveries',
+      description: 'No deliveries recorded. Will be evicted at the next epoch checkpoint.',
+    }
+  }
 
   const ageMs = Date.now() - new Date(lastDeliveryTimestamp).getTime()
   const ageHours = ageMs / (1000 * 60 * 60)
+  const hoursRemaining = Math.max(0, (LIVENESS_PERIOD / 3600) - ageHours)
 
-  if (ageHours >= 24) return 'high'
-  if (ageHours >= 12) return 'medium'
-  return 'low'
+  if (ageHours >= 24) {
+    return {
+      level: 'critical',
+      label: 'Eviction imminent',
+      description: `Last delivery was ${Math.floor(ageHours)}h ago. Will be evicted at the next epoch checkpoint unless a delivery lands.`,
+    }
+  }
+  if (ageHours >= 12) {
+    return {
+      level: 'warning',
+      label: `${Math.floor(hoursRemaining)}h until eviction`,
+      description: `Last delivery was ${Math.floor(ageHours)}h ago. Must deliver within ${Math.floor(hoursRemaining)}h or service will be evicted.`,
+    }
+  }
+  return {
+    level: 'safe',
+    label: 'On track',
+    description: `Last delivery ${Math.floor(ageHours)}h ago. ${Math.floor(hoursRemaining)}h remaining in liveness window.`,
+  }
 }
 
-function RiskBadge({ risk }: { risk: RiskLevel }) {
-  if (risk === 'evicted') {
-    return <Badge variant="outline" className="bg-orange-500/10 text-orange-500 border-orange-500/20">Evicted</Badge>
+function EvictionRiskBadge({ isStaked, lastDeliveryTimestamp }: { isStaked: boolean; lastDeliveryTimestamp: string | null }) {
+  const risk = getEvictionRiskInfo(isStaked, lastDeliveryTimestamp)
+  const styles = {
+    safe: 'bg-green-500/10 text-green-700 border-green-500/20 dark:text-green-400',
+    warning: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:text-yellow-400',
+    critical: 'bg-red-500/10 text-red-700 border-red-500/20 dark:text-red-400',
+    evicted: 'bg-muted text-muted-foreground',
   }
-  if (risk === 'high') {
-    return <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">High Risk</Badge>
-  }
-  if (risk === 'medium') {
-    return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">Medium Risk</Badge>
-  }
-  return <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">Low Risk</Badge>
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className={styles[risk.level]}>
+            {risk.label}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-xs">
+          <p>{risk.description}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
 }
 
-async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
+function EthBadge({ wei }: { wei: bigint | undefined | null }) {
+  if (wei == null) return <span className="text-muted-foreground">N/A</span>
+  const level = getEthFundingLevel(wei)
+  const dot = {
+    healthy: 'bg-green-500',
+    warning: 'bg-yellow-500',
+    critical: 'bg-red-500',
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono">
+      <span className={`inline-block h-2 w-2 rounded-full ${dot[level]}`} />
+      {formatEthBalance(wei)} ETH
+    </span>
+  )
+}
+
+async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMode; ownerFilter: string | null }) {
   const services = await getStakedServices()
 
   if (services.length === 0) {
@@ -115,32 +165,39 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
     console.warn('[staking] Failed to fetch on-chain service IDs, falling back to Ponder isStaked:', err)
   }
 
-  // Override Ponder's isStaked with on-chain truth when available
   const enrichedServices = services.map(s => ({
     ...s,
     isStaked: activeServiceIds ? activeServiceIds.has(s.serviceId) : s.isStaked,
   }))
 
-  // Sort: actively staked first, then evicted
   enrichedServices.sort((a, b) => {
     if (a.isStaked !== b.isStaked) return a.isStaked ? -1 : 1
     return 0
   })
 
-  const agentEntries = await Promise.all(
-    enrichedServices.map(async (service) => [service.serviceId, await getAgentEoaAddress(service.serviceId)] as const)
-  )
-  const agentEoaByServiceId = new Map(agentEntries)
+  // Build unique owners list for the filter dropdown
+  const ownerSet = new Map<string, string>()
+  for (const s of enrichedServices) {
+    const key = s.owner.toLowerCase()
+    if (!ownerSet.has(key)) {
+      ownerSet.set(key, s.owner)
+    }
+  }
+  const owners = Array.from(ownerSet.entries()).map(([key, address]) => ({
+    address: key,
+    label: truncateAddress(address),
+  }))
 
-  const balances = await getAddressBalances([
-    ...enrichedServices.map((s) => s.multisig),
-    ...agentEntries.flatMap(([, agentEoa]) => (agentEoa ? [agentEoa] : [])),
-  ])
+  // Apply owner filter
+  const filtered = ownerFilter
+    ? enrichedServices.filter(s => s.owner.toLowerCase() === ownerFilter.toLowerCase())
+    : enrichedServices
+
+  const safeBalances = await getAddressBalances(filtered.map((s) => s.multisig))
   const stakedCount = enrichedServices.filter(s => s.isStaked).length
   const evictedCount = enrichedServices.filter(s => !s.isStaked).length
 
-  // Fetch last delivery timestamp for each service
-  const deliveryPromises = enrichedServices.map(async (service) => {
+  const deliveryPromises = filtered.map(async (service) => {
     const deliveries = await getRecentDeliveries(service.multisig, 1)
     return {
       serviceId: service.serviceId,
@@ -151,9 +208,11 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
   const lastDeliveryMap = new Map(deliveryResults.map((d) => [d.serviceId, d.lastDeliveryTimestamp]))
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      <StakingToolbar viewMode={viewMode} owners={owners} selectedOwner={ownerFilter} />
+
       <div className="flex items-center gap-3">
-        <Badge variant="outline" className="font-mono text-xs">
+        <Badge variant="outline" className="font-mono">
           <a
             href={`https://basescan.org/address/${JINN_STAKING_CONTRACT}`}
             target="_blank"
@@ -165,57 +224,60 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
         </Badge>
         <span className="text-sm text-muted-foreground">
           {stakedCount} staked{evictedCount > 0 && `, ${evictedCount} evicted`}
+          {ownerFilter && ` (filtered)`}
         </span>
       </div>
+
       {viewMode === 'cards' ? (
         <CardsView
-          services={enrichedServices}
-          balances={balances}
-          agentEoaByServiceId={agentEoaByServiceId}
+          services={filtered}
+          safeBalances={safeBalances}
           lastDeliveryMap={lastDeliveryMap}
         />
       ) : (
-        <div className="rounded-md border overflow-x-auto">
+        <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Service ID</TableHead>
-                <TableHead>Status / Risk</TableHead>
+                <TableHead className="w-24">Service</TableHead>
+                <TableHead className="w-28">Staking</TableHead>
+                <TableHead className="w-40">Eviction Risk</TableHead>
+                <TableHead>Epoch Requests</TableHead>
                 <TableHead>Owner</TableHead>
-                <TableHead>ETH + OLAS</TableHead>
+                <TableHead>Agent EOA ETH</TableHead>
+                <TableHead>Safe OLAS</TableHead>
                 <TableHead>Last Delivery</TableHead>
-                <TableHead className="text-right">Details</TableHead>
+                <TableHead className="w-16" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {enrichedServices.map((service) => {
-                const safeBalance = balances.get(service.multisig.toLowerCase())
-                const agentEoa = agentEoaByServiceId.get(service.serviceId)
-                const agentBalance = agentEoa ? balances.get(agentEoa.toLowerCase()) : null
-                const primaryEthWei = agentBalance?.ethWei ?? safeBalance?.ethWei
+              {filtered.map((service) => {
+                const balance = safeBalances.get(service.multisig.toLowerCase())
                 const lastDeliveryTimestamp = lastDeliveryMap.get(service.serviceId) || null
-                const risk = getEvictionRisk(service.isStaked, lastDeliveryTimestamp)
                 return (
                   <TableRow key={service.id}>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="font-mono">
                       <Link href={`/nodes/staking/${service.serviceId}`} className="text-primary hover:underline">
-                        {service.serviceId}
+                        #{service.serviceId}
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1.5">
-                        <Badge
-                          variant="outline"
-                          className={service.isStaked
-                            ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                            : 'bg-orange-500/10 text-orange-500 border-orange-500/20'}
-                        >
-                          {service.isStaked ? 'Staked' : 'Evicted'}
-                        </Badge>
-                        <RiskBadge risk={risk} />
-                      </div>
+                      <Badge
+                        variant="outline"
+                        className={service.isStaked
+                          ? 'bg-green-500/10 text-green-700 border-green-500/20 dark:text-green-400'
+                          : 'bg-muted text-muted-foreground'}
+                      >
+                        {service.isStaked ? 'Staked' : 'Evicted'}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell>
+                      <EvictionRiskBadge isStaked={service.isStaked} lastDeliveryTimestamp={lastDeliveryTimestamp} />
+                    </TableCell>
+                    <TableCell>
+                      <EpochProgressCompact multisig={service.multisig} serviceId={service.serviceId} />
+                    </TableCell>
+                    <TableCell className="font-mono">
                       <a
                         href={`https://basescan.org/address/${service.owner}`}
                         target="_blank"
@@ -225,18 +287,18 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
                         {truncateAddress(service.owner)}
                       </a>
                     </TableCell>
-                    <TableCell className="text-xs">
-                      <div className="space-y-0.5 font-mono">
-                        <div>{formatEthBalance(primaryEthWei)} ETH</div>
-                        <div>{formatOlasBalance(safeBalance?.olasWei)} OLAS</div>
-                      </div>
+                    <TableCell>
+                      <EthBadge wei={balance?.ethWei} />
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {lastDeliveryTimestamp ? formatDate(lastDeliveryTimestamp) : 'No delivery yet'}
+                    <TableCell className="font-mono">
+                      {formatOlasBalance(balance?.olasWei)} OLAS
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild variant="outline" size="sm">
-                        <Link href={`/nodes/staking/${service.serviceId}`}>View Details</Link>
+                    <TableCell className="text-muted-foreground">
+                      {lastDeliveryTimestamp ? formatDate(lastDeliveryTimestamp) : 'None'}
+                    </TableCell>
+                    <TableCell>
+                      <Button asChild variant="ghost" size="sm">
+                        <Link href={`/nodes/staking/${service.serviceId}`}>View</Link>
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -252,13 +314,11 @@ async function StakedServicesList({ viewMode }: { viewMode: ViewMode }) {
 
 async function CardsView({
   services,
-  balances,
-  agentEoaByServiceId,
+  safeBalances,
   lastDeliveryMap,
 }: {
   services: Awaited<ReturnType<typeof getStakedServices>>
-  balances: Awaited<ReturnType<typeof getAddressBalances>>
-  agentEoaByServiceId: Map<string, string | null>
+  safeBalances: Awaited<ReturnType<typeof getAddressBalances>>
   lastDeliveryMap: Map<string, string | null>
 }) {
   const serviceIds = services.map((s) => s.serviceId)
@@ -268,18 +328,15 @@ async function CardsView({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {services.map((service) => {
-        const safeBalance = balances.get(service.multisig.toLowerCase())
-        const agentEoa = agentEoaByServiceId.get(service.serviceId)
-        const agentBalance = agentEoa ? balances.get(agentEoa.toLowerCase()) : null
-        const primaryEthWei = agentBalance?.ethWei ?? safeBalance?.ethWei
+        const balance = safeBalances.get(service.multisig.toLowerCase())
         return (
           <StakedServiceCard
             key={service.id}
             service={service}
             mechAddress={mechByServiceId.get(service.serviceId)?.mech}
             lastDeliveryTimestamp={lastDeliveryMap.get(service.serviceId)}
-            primaryEthWei={primaryEthWei}
-            primaryEthLabel={agentBalance?.ethWei != null ? 'Agent EOA ETH' : 'Service Safe ETH'}
+            safeEthWei={balance?.ethWei}
+            safeOlasWei={balance?.olasWei}
           />
         )
       })}
@@ -289,22 +346,15 @@ async function CardsView({
 
 function StakedServicesListSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      <div className="h-9 w-48 bg-muted animate-pulse rounded" />
       <div className="h-5 w-48 bg-muted animate-pulse rounded" />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[1, 2, 3].map((i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <div className="h-5 w-3/4 bg-muted animate-pulse rounded" />
-              <div className="h-3 w-1/2 bg-muted animate-pulse rounded mt-2" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="h-2 w-full bg-muted animate-pulse rounded-full" />
-              <div className="h-3 w-24 bg-muted animate-pulse rounded" />
-              <div className="h-4 w-full bg-muted animate-pulse rounded" />
-            </CardContent>
-          </Card>
-        ))}
+      <div className="rounded-md border">
+        <div className="p-4 space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-10 w-full bg-muted animate-pulse rounded" />
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -313,6 +363,7 @@ function StakedServicesListSkeleton() {
 export default async function StakingPage({ searchParams }: PageProps) {
   const params = await searchParams
   const viewMode: ViewMode = params.view === 'cards' ? 'cards' : 'table'
+  const ownerFilter = params.owner ?? null
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -326,9 +377,8 @@ export default async function StakingPage({ searchParams }: PageProps) {
 
       <main className="flex-1 py-6">
         <div className="container mx-auto px-4 space-y-4">
-          <ViewToggle viewMode={viewMode} />
           <Suspense fallback={<StakedServicesListSkeleton />}>
-            <StakedServicesList viewMode={viewMode} />
+            <StakedServicesList viewMode={viewMode} ownerFilter={ownerFilter} />
           </Suspense>
         </div>
       </main>
