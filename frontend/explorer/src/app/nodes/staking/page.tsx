@@ -31,10 +31,13 @@ import {
   formatEthBalance,
   formatOlasBalance,
   getAddressBalances,
+  getAgentEoaAddress,
   getEthFundingLevel,
 } from '@/lib/staking/balances'
 import { formatDate } from '@/lib/utils'
 import { getRpcClient } from '@/lib/staking/rpc'
+import { getLatestCheckpoint, getStakingContract } from '@/lib/staking/subgraph'
+import { EpochCountdown } from '@/components/staking/epoch-countdown'
 
 export const metadata: Metadata = {
   title: 'Staking Dashboard',
@@ -194,6 +197,18 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
     : enrichedServices
 
   const safeBalances = await getAddressBalances(filtered.map((s) => s.multisig))
+
+  // Resolve agent EOA addresses and fetch their ETH balances
+  const agentAddresses = await Promise.all(
+    filtered.map(async (s) => ({
+      serviceId: s.serviceId,
+      agentAddress: await getAgentEoaAddress(s.serviceId),
+    }))
+  )
+  const agentAddressMap = new Map(agentAddresses.map((a) => [a.serviceId, a.agentAddress]))
+  const agentAddressList = agentAddresses.map((a) => a.agentAddress).filter((a): a is string => a != null)
+  const agentBalances = await getAddressBalances(agentAddressList)
+
   const stakedCount = enrichedServices.filter(s => s.isStaked).length
   const evictedCount = enrichedServices.filter(s => !s.isStaked).length
 
@@ -207,9 +222,29 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
   const deliveryResults = await Promise.all(deliveryPromises)
   const lastDeliveryMap = new Map(deliveryResults.map((d) => [d.serviceId, d.lastDeliveryTimestamp]))
 
+  // Compute epoch checkpoint timing
+  let epochInfo: { nextCheckpoint: number; livenessPeriod: number; epochNumber: number } | null = null
+  try {
+    const [contract, checkpoint] = await Promise.all([
+      getStakingContract(JINN_STAKING_CONTRACT),
+      getLatestCheckpoint(JINN_STAKING_CONTRACT),
+    ])
+    if (contract && checkpoint) {
+      const livenessPeriod = Number(contract.livenessPeriod)
+      const checkpointTs = Number(checkpoint.blockTimestamp)
+      epochInfo = {
+        nextCheckpoint: checkpointTs + livenessPeriod,
+        livenessPeriod,
+        epochNumber: Number(checkpoint.epochLength),
+      }
+    }
+  } catch {}
+
   return (
     <div className="space-y-4">
       <StakingToolbar viewMode={viewMode} owners={owners} selectedOwner={ownerFilter} />
+
+      {epochInfo && <EpochCountdown nextCheckpoint={epochInfo.nextCheckpoint} epochNumber={epochInfo.epochNumber} />}
 
       <div className="flex items-center gap-3">
         <Badge variant="outline" className="font-mono">
@@ -252,7 +287,9 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
             </TableHeader>
             <TableBody>
               {filtered.map((service) => {
-                const balance = safeBalances.get(service.multisig.toLowerCase())
+                const safeBalance = safeBalances.get(service.multisig.toLowerCase())
+                const agentAddr = agentAddressMap.get(service.serviceId)
+                const agentBalance = agentAddr ? agentBalances.get(agentAddr.toLowerCase()) : undefined
                 const lastDeliveryTimestamp = lastDeliveryMap.get(service.serviceId) || null
                 return (
                   <TableRow key={service.id}>
@@ -288,10 +325,10 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
                       </a>
                     </TableCell>
                     <TableCell>
-                      <EthBadge wei={balance?.ethWei} />
+                      <EthBadge wei={agentBalance?.ethWei} />
                     </TableCell>
                     <TableCell className="font-mono">
-                      {formatOlasBalance(balance?.olasWei)} OLAS
+                      {formatOlasBalance(safeBalance?.olasWei)} OLAS
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {lastDeliveryTimestamp ? formatDate(lastDeliveryTimestamp) : 'None'}
