@@ -59,9 +59,31 @@ Proposals should be structured as:
 
 ---
 
-## Output: Daily Digest
+## Output: Daily Digests
 
-A concise, community-friendly update ready to paste into Telegram, Twitter, or wherever.
+Three separate digests, each targeting a different audience. All written to a single file `digests/YYYY-MM-DD.md` separated by `---` dividers. Also output inline for review.
+
+### Audiences and network actors
+
+| Audience | Who they are | What they care about |
+|----------|-------------|---------------------|
+| **Jinn community** | Operators, Launchers, Consumers, Governors | Product updates, how to participate, what's coming |
+| **OLAS community** | veOLAS holders, OLAS operators, ecosystem watchers | Ecosystem activity, staking opportunities, governance |
+| **Contributors** | Developers, protocol researchers, go-to-market collaborators | Codebase changes, architecture decisions, open questions |
+
+### Network actors
+
+Know who each item is relevant to, and weave it into the language naturally — never use bracket tags like `[Operators]`. Instead, mention the actor in the sentence itself (e.g. "no more manual top-ups for node operators" not "no more manual top-ups [Operators]").
+
+- **Operators** — run nodes, stake services, earn rewards
+- **Launchers** — create ventures, design templates. The consumer-to-launcher pipeline is key: if a consumer wishes a content stream existed, the answer is "create it" — always link to the create page.
+- **Consumers** — read/use venture outputs (content streams, research, data). Consumers are one step from becoming launchers.
+- **Governors** — veOLAS voters, resource allocation, protocol decisions
+- **Contributors** — code, protocol design, go-to-market
+
+### Terminology autocorrect
+
+- **stOLAS** — always spell as "stOLAS" (not "STOL-less", "STOLless", "stol-less", etc.). This is the name for staking without holding OLAS.
 
 ### Gathering links
 
@@ -79,49 +101,112 @@ For anything mentioned in the transcript, find **publicly accessible** links:
 - Look for on-chain transactions or contract addresses referenced
 - **Only link to things the public can actually visit.** No private repos, no Linear, no internal dashboards.
 
-### Digest format
+---
+
+### Digest 1: Jinn Daily
+
+Short community update. Hyper-prioritise — only the most impactful items make the cut.
+
+**Length**: Max 5 single-sentence bullet points total across all sections. Readable in 20 seconds.
 
 ```markdown
 # Jinn Daily — [Date]
 
-> [One-sentence hook summarizing the most interesting thing from the call]
+> [One-sentence hook]
 
-## What we shipped
+- [Most important thing, with actor woven into the sentence naturally]. [Link if available]
+- [Second most important].
+- [Third].
+- [Fourth if warranted].
+- [Fifth max].
 
-- [Concrete thing] — [half-sentence]. [Public link if available]
-- [Max 4-5 bullets, one line each]
+Get involved: [One sentence with the single highest-value CTA and link]
+```
 
-## What we're thinking about
+**Prioritisation**: Ship > What's next > Thinking. If only 2 things shipped, that's fine — 2 bullets. Never pad.
 
-[1-2 SHORT paragraphs. Plain language. No jargon. Focus on the "why".
-Keep this tight — 3-4 sentences max per paragraph.]
+---
+
+### Digest 2: OLAS Community Update
+
+Same brevity as Jinn Daily. OLAS community cares about staking, governance, and ecosystem activity.
+
+**Length**: Max 5 single-sentence bullet points. Readable in 20 seconds.
+
+```markdown
+# OLAS Community Update — [Date]
+
+> [One-sentence hook — most relevant thing for OLAS holders]
+
+- [Bullet 1 — staking/services/governance]
+- [Bullet 2]
+- [Bullet 3 if warranted]
+
+Might interest you: [One sentence CTA — run a node, vote, read streams]
+```
+
+---
+
+### Digest 3: Contributors Update
+
+Technical and strategic. For people who care about the codebase and protocol direction.
+
+**Length**: Can be the most detailed on technical matters. OK to reference issue IDs (but still no Linear links).
+
+```markdown
+# Contributors Update — [Date]
+
+> [One-sentence hook — most interesting technical/strategic development]
+
+## What changed
+
+- [Code changes, bug fixes, deploys — with commit/PR links where available]
+
+## Architecture decisions
+
+- [Decisions made, rationale, tradeoffs]
 
 ## What's next
 
-- [Thing 1 we're building next]
-- [Thing 2]
-- [Max 3-4 bullets, no names, just what's happening]
+- [Technical work in progress, what's blocked]
 
-## How you can help
+## Open questions
 
-- [Concrete action 1 — what someone could do RIGHT NOW]
-- [Concrete action 2]
-- [Include a way to get in touch — e.g. DM, Telegram, etc.]
+- [Things that need input, unresolved design questions]
 ```
 
-### Style guidelines
+---
 
-- **Brevity above all.** Readable in under 60 seconds. Cut ruthlessly.
-- **Simple language.** Write like a tweet thread, not a blog post. No jargon.
+### Content sensitivity
+
+Digests are public-facing. Before publishing, filter out:
+
+- Disparaging or critical comments about other projects, protocols, or competitors
+- Strategic plans that would be disadvantageous if revealed (e.g. competitive positioning)
+- Internal frustrations or complaints about external parties
+- Anything that reads as internal-only context not meant for public consumption
+
+When in doubt, leave it out. Reframe internal context into positive, forward-looking language.
+
+### Founders
+
+- **Oaksprout the Tan** — [@tannedoaksprout](https://x.com/tannedoaksprout)
+- **Ritsu Kai** — no public Twitter
+
+In digest body, use "we" voice — no individual attribution. Do NOT include "DM us" or personal contact handles in digests.
+
+### Shared style guidelines
+
+- **Lead with the benefit.** Say what it means for people first, then what it is. Bad: "ADW contracts live on Base — every artifact now gets on-chain provenance." Good: "ADW — the protocol we're building to give ventures better distribution and cognition — is now live on-chain and integrated with Jinn!"
+- **Simple language.** Write like a tweet thread, not a blog post. Minimize jargon.
 - **Concrete.** Link where possible, but ONLY to publicly accessible URLs.
-- **Honest.** "Debugging X" is fine.
+- **Honest.** "Debugging X" is fine. Don't oversell.
 - **No emojis** unless the user asks for them.
 - **"We" voice.** Not "Oak did X" or "Ritsu built Y". Just "we".
-- **"How you can help" is essential.** Every digest should end with concrete actions for readers. Make it feel inviting, not demanding.
+- **"Get involved" not "How you can help"** — frame it as things people might find interesting, not asks.
+- Internal-only topics (middleware replacement, env var cleanup) go in **Contributors**, not Jinn Daily — unless they have direct user impact.
 
 ### Digest output
 
-Write the digest to `digests/YYYY-MM-DD.md` (create the `digests/` directory if it doesn't exist).
-This file is the canonical copy — ready to paste into Telegram, Twitter, or wherever.
-
-Also output the full digest text to the conversation so the user can review it inline.
+Write all three digests to `digests/YYYY-MM-DD.md` separated by `---` dividers.
+Also output the full text inline so the user can review before publishing.
