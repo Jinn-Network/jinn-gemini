@@ -1,0 +1,103 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { MarkdownField } from '@/components/markdown-field';
+import {
+  fetchArtifactByCidAction,
+  fetchArtifactContentAction,
+} from '@/app/actions';
+
+export const revalidate = 60;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ cid: string }>;
+}): Promise<Metadata> {
+  const { cid: rawCid } = await params;
+  const cid = decodeURIComponent(rawCid);
+  const artifact = await fetchArtifactByCidAction(cid);
+  const title = artifact?.name || 'Article';
+
+  return {
+    title: `${title} | Streams | Jinn`,
+    description: `Read ${title} on Jinn Streams`,
+    openGraph: {
+      title,
+      description: `Read ${title} on Jinn Streams`,
+    },
+  };
+}
+
+function formatDate(timestamp?: string): string {
+  if (!timestamp) return '';
+  const date = new Date(Number(timestamp) * 1000);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+export default async function StreamPostPage({
+  params,
+}: {
+  params: Promise<{ cid: string }>;
+}) {
+  const { cid: rawCid } = await params;
+  const cid = decodeURIComponent(rawCid);
+
+  const [artifact, contentResult] = await Promise.all([
+    fetchArtifactByCidAction(cid),
+    fetchArtifactContentAction(cid),
+  ]);
+
+  if (!artifact) {
+    notFound();
+  }
+
+  const content = contentResult?.content || null;
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-8 px-4 py-8">
+      <Link
+        href="/streams"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-3 w-3" />
+        Streams
+      </Link>
+
+      <header className="space-y-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="secondary" className="text-[10px] uppercase">
+            {artifact.topic}
+          </Badge>
+          {artifact.blockTimestamp && (
+            <time>{formatDate(artifact.blockTimestamp)}</time>
+          )}
+        </div>
+
+        <h1 className="text-3xl font-bold leading-tight tracking-tight">
+          {artifact.name || 'Untitled'}
+        </h1>
+        {artifact.jobName && (
+          <p className="text-sm text-muted-foreground">by {artifact.jobName}</p>
+        )}
+      </header>
+
+      <article className="prose-sm">
+        {content ? (
+          <MarkdownField content={content} showRawToggle={false} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Content could not be loaded.
+          </p>
+        )}
+      </article>
+    </div>
+  );
+}

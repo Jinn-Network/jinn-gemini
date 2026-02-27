@@ -231,6 +231,28 @@ function isOperationalTopic(topic: string): boolean {
   );
 }
 
+function isStructuredOutputArtifact(
+  artifact: Pick<Artifact, 'name' | 'topic' | 'contentPreview'>
+): boolean {
+  const name = artifact.name.toLowerCase();
+  const topic = artifact.topic.toLowerCase();
+  const preview = (artifact.contentPreview || '').trim().toLowerCase();
+
+  if (name.includes('structured output') || name.includes('(structured)')) {
+    return true;
+  }
+  if (topic.includes('structured output')) {
+    return true;
+  }
+
+  // Many machine-form structured outputs currently expose a JSON wrapper with contentBody.
+  if (preview.startsWith('{') && /"contentbody"\s*:/.test(preview)) {
+    return true;
+  }
+
+  return false;
+}
+
 function sortArtifactsNewestFirst(artifacts: Artifact[]): Artifact[] {
   return [...artifacts].sort((a, b) => Number(b.blockTimestamp || 0) - Number(a.blockTimestamp || 0));
 }
@@ -402,6 +424,7 @@ export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
     const dedupedSorted = [...new Map(
       artifacts
         .filter((artifact) => !isOperationalTopic(artifact.topic))
+        .filter((artifact) => !isStructuredOutputArtifact(artifact))
         .map((artifact) => {
           const venture = artifact.ventureId ? ventureById.get(artifact.ventureId) : undefined;
           return [artifact.id, {

@@ -18,7 +18,19 @@ function getExcerpt(
   const raw = artifact.contentPreview || '';
   if (!raw) return '';
 
-  const plain = raw
+  let text = raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.contentBody === 'string') {
+      text = parsed.contentBody;
+    } else if (typeof parsed.content === 'string') {
+      text = parsed.content;
+    }
+  } catch {
+    // Keep raw text when preview isn't JSON.
+  }
+
+  const plain = text
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
@@ -30,17 +42,26 @@ function getExcerpt(
 }
 
 function StreamItem({ item }: { item: StreamFeedItem }) {
-  const href = item.ventureSlug && item.cid
-    ? `/streams/${item.ventureSlug}/${item.cid}`
+  const postHref = item.cid
+    ? `/streams/post/${encodeURIComponent(item.cid)}`
+    : null;
+  const ventureHref = item.ventureSlug
+    ? `/ventures/${item.ventureSlug}`
     : null;
   const excerpt = getExcerpt(item);
 
-  const content = (
+  return (
     <article className="border-b border-border/40 py-5 transition-colors hover:bg-secondary/20">
       <div className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground">
         {item.ventureName && (
           <>
-            <span className="font-medium text-foreground/80">{item.ventureName}</span>
+            {ventureHref ? (
+              <Link href={ventureHref} className="font-medium text-foreground/80 hover:underline">
+                {item.ventureName}
+              </Link>
+            ) : (
+              <span className="font-medium text-foreground/80">{item.ventureName}</span>
+            )}
             <span className="text-muted-foreground/40">&middot;</span>
           </>
         )}
@@ -53,24 +74,30 @@ function StreamItem({ item }: { item: StreamFeedItem }) {
         </Badge>
       </div>
 
-      <h2 className="mb-1 text-base font-semibold leading-snug transition-colors group-hover:text-primary">
-        {item.name || 'Untitled'}
-      </h2>
-
-      {excerpt && (
-        <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-          {excerpt}
-        </p>
+      {postHref ? (
+        <Link href={postHref} className="group block">
+          <h2 className="mb-1 text-base font-semibold leading-snug transition-colors group-hover:text-primary">
+            {item.name || 'Untitled'}
+          </h2>
+          {excerpt && (
+            <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+              {excerpt}
+            </p>
+          )}
+        </Link>
+      ) : (
+        <>
+          <h2 className="mb-1 text-base font-semibold leading-snug">
+            {item.name || 'Untitled'}
+          </h2>
+          {excerpt && (
+            <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+              {excerpt}
+            </p>
+          )}
+        </>
       )}
     </article>
-  );
-
-  if (!href) return content;
-
-  return (
-    <Link href={href} className="group block">
-      {content}
-    </Link>
   );
 }
 
