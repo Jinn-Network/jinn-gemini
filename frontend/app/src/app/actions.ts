@@ -373,6 +373,23 @@ const STREAM_FEED_ARTIFACTS_QUERY = `
 `;
 
 const DEFAULT_SUBGRAPH_URL = 'https://indexer.jinn.network/graphql';
+const ARTIFACT_BY_CID_QUERY = `
+  query ArtifactByCid($cid: String!) {
+    artifacts(where: { cid: $cid }, limit: 1) {
+      items {
+        id
+        requestId
+        sourceRequestId
+        sourceJobDefinitionId
+        name
+        cid
+        topic
+        contentPreview
+        blockTimestamp
+      }
+    }
+  }
+`;
 
 async function fetchStreamFeedArtifacts(limit: number): Promise<StreamFeedArtifact[]> {
   const configuredUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL;
@@ -463,6 +480,29 @@ export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
 }
 
 export async function fetchArtifactByCidAction(cid: string): Promise<ArtifactWithJobName | null> {
+  const configuredUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL;
+  const candidateUrls = [...new Set([configuredUrl, DEFAULT_SUBGRAPH_URL].filter(Boolean) as string[])];
+
+  for (const subgraphUrl of candidateUrls) {
+    try {
+      const response = await gqlRequest<{ artifacts: { items: Artifact[] } }>(
+        subgraphUrl,
+        ARTIFACT_BY_CID_QUERY,
+        { cid }
+      );
+      const artifact = response.artifacts.items[0];
+      if (!artifact) continue;
+
+      const jobName = artifact.sourceJobDefinitionId
+        ? await getJobName(artifact.sourceJobDefinitionId).catch(() => null)
+        : null;
+
+      return { ...artifact, jobName: jobName || undefined };
+    } catch (error) {
+      console.error(`[streams] Failed artifact-by-cid query against ${subgraphUrl}:`, error);
+    }
+  }
+
   try {
     const result = await queryArtifacts({ where: { cid }, limit: 1 });
     const artifact = result.items[0];
