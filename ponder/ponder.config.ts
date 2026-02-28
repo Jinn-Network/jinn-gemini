@@ -65,8 +65,10 @@ function getRpcUrl(): string {
 }
 
 // Build an array of RPC URLs for Ponder's native failover (rpc: string[])
-// Primary configured URL first, then paid fallback, then free public RPCs
+// Proxy first (if token set), then primary configured URL, then paid fallback, then free public RPCs
 function getRpcUrls(): string[] {
+  const proxyToken = process.env.RPC_PROXY_TOKEN;
+  const proxy = proxyToken ? `https://rpc.jinn.network?token=${proxyToken}` : undefined;
   const primary = process.env.BASE_RPC_URL || process.env.RPC_URL;
   const fallbacks = (process.env.BASE_RPC_FALLBACK_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
   const defaults = [
@@ -74,7 +76,7 @@ function getRpcUrls(): string[] {
     'https://base.llamarpc.com',
     'https://base-rpc.publicnode.com',
   ];
-  return [...new Set([primary, ...fallbacks, ...defaults].filter(Boolean) as string[])];
+  return [...new Set([proxy, primary, ...fallbacks, ...defaults].filter(Boolean) as string[])];
 }
 
 // Determine finality block count based on RPC URL

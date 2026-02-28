@@ -59,9 +59,14 @@ export function getRpcClient(): PublicClient {
     console.log(`[staking/rpc] Creating client from ${source}: ${rpcUrl.replace(/\/[a-f0-9-]{20,}$/i, '/***')}`)
   }
 
+  const proxyToken = process.env.RPC_PROXY_TOKEN
+  const transportOptions = proxyToken
+    ? { fetchOptions: { headers: { Authorization: `Bearer ${proxyToken}` } } }
+    : {}
+
   _client = createPublicClient({
     chain: base,
-    transport: http(rpcUrl),
+    transport: http(rpcUrl, transportOptions),
     batch: {
       multicall: true,
     },
