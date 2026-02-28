@@ -78,9 +78,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const rpcUrl = getRpcUrl();
+    const proxyToken = process.env.RPC_PROXY_TOKEN;
+    const transportOptions = proxyToken
+      ? { fetchOptions: { headers: { Authorization: `Bearer ${proxyToken}` } } }
+      : {};
     const client = createPublicClient({
       chain: base,
-      transport: http(rpcUrl),
+      transport: http(rpcUrl, transportOptions),
     });
 
     // Get asset data from Airlock (for numTokensToSell and migrationPool)
