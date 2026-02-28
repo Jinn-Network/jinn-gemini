@@ -37,9 +37,10 @@ generated/
 *.tsbuildinfo
 jinn-node/dist/
 
-# Services — only include x402-gateway
+# Services — only include deployed services
 services/*
 !services/x402-gateway
+!services/rpc-proxy
 
 # Scripts — only include shared utils + ponder patch
 scripts/*
