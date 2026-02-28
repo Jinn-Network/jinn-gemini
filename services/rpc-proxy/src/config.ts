@@ -1,14 +1,19 @@
+const DEFAULT_UPSTREAMS = [
+  'https://mainnet.base.org',
+  'https://base.llamarpc.com',
+  'https://base-rpc.publicnode.com',
+];
+
 export interface ProxyConfig {
   port: number;
-  bearerToken: string;
+  bearerToken: string | null;
   upstreamUrls: string[];
   healthCheckIntervalMs: number;
   requestTimeoutMs: number;
 }
 
 export function loadConfig(): ProxyConfig {
-  const token = process.env.RPC_PROXY_BEARER_TOKEN;
-  if (!token) throw new Error('RPC_PROXY_BEARER_TOKEN is required');
+  const token = process.env.RPC_PROXY_BEARER_TOKEN || null;
 
   const raw = process.env.RPC_UPSTREAM_URLS || '';
   const upstreamUrls = raw
@@ -16,8 +21,13 @@ export function loadConfig(): ProxyConfig {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  // Fall back to free public RPCs if no upstreams configured
   if (upstreamUrls.length === 0) {
-    throw new Error('RPC_UPSTREAM_URLS must contain at least one URL');
+    upstreamUrls.push(...DEFAULT_UPSTREAMS);
+  }
+
+  if (!token) {
+    console.warn('[rpc-proxy] RPC_PROXY_BEARER_TOKEN not set — running without auth');
   }
 
   return {

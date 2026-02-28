@@ -23,8 +23,10 @@ app.get('/health', (c) =>
   }),
 );
 
-// All POST traffic — auth required
-app.use('/*', createAuthMiddleware(config.bearerToken));
+// All POST traffic — auth required when token is configured
+if (config.bearerToken) {
+  app.use('/*', createAuthMiddleware(config.bearerToken));
+}
 app.post('/', createProxyHandler(pool));
 
 // Background health check
