@@ -105,9 +105,14 @@ export async function getDopplerPoolState(
   rpcUrl?: string
 ): Promise<DopplerPoolState | null> {
   try {
+    const resolvedUrl = rpcUrl || process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+    const proxyToken = process.env.RPC_PROXY_TOKEN;
+    const transportOptions = proxyToken
+      ? { fetchOptions: { headers: { Authorization: `Bearer ${proxyToken}` } } }
+      : {};
     const client = createPublicClient({
       chain: base,
-      transport: http(rpcUrl || 'https://mainnet.base.org'),
+      transport: http(resolvedUrl, transportOptions),
     });
 
     // Get asset data from Airlock

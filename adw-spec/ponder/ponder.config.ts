@@ -13,13 +13,17 @@ const VALIDATION_REGISTRY = "0xC552bd9f22f8BB9CFa898A11f12B8D676D8155F6" as cons
 // Contracts deployed ~Feb 26, 2026. Block 42500000 is safely before that.
 const START_BLOCK = Number(process.env.ADW_START_BLOCK || 42500000);
 
-const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
+function getRpcUrl(): string {
+  const proxyToken = process.env.RPC_PROXY_TOKEN;
+  if (proxyToken) return `https://rpc.jinn.network?token=${proxyToken}`;
+  return process.env.RPC_URL || "https://mainnet.base.org";
+}
 
 export default createConfig({
   networks: {
     base: {
       chainId: 8453,
-      transport: http(rpcUrl),
+      transport: http(getRpcUrl()),
     },
   },
   contracts: {

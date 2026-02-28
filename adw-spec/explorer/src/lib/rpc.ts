@@ -33,9 +33,14 @@ export function getRpcClient(): PublicClient {
 
   const isLocal = rpcUrl.includes('127.0.0.1') || rpcUrl.includes('localhost')
 
+  const proxyToken = process.env.RPC_PROXY_TOKEN
+  const transportOptions = proxyToken
+    ? { fetchOptions: { headers: { Authorization: `Bearer ${proxyToken}` } } }
+    : {}
+
   _client = createPublicClient({
     chain: isLocal ? localHardhat : base,
-    transport: http(rpcUrl),
+    transport: http(rpcUrl, transportOptions),
     batch: { multicall: true },
   }) as PublicClient
   _clientRpcUrl = rpcUrl

@@ -118,9 +118,12 @@ const HARDCODED_JINN_MECHS = [
 let jinnMechAddresses: Set<string> | null = null;
 
 async function ethCall(to: string, data: string): Promise<string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const proxyToken = process.env.RPC_PROXY_TOKEN;
+  if (proxyToken) headers['Authorization'] = `Bearer ${proxyToken}`;
   const res = await fetch(BASE_RPC_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }),
   });
   const json = await res.json() as any;

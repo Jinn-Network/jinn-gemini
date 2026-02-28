@@ -71,10 +71,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const rpcUrl = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+    const rpcUrl = process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+    const proxyToken = process.env.RPC_PROXY_TOKEN;
+    const transportOptions = proxyToken
+      ? { fetchOptions: { headers: { Authorization: `Bearer ${proxyToken}` } } }
+      : {};
     const client = createPublicClient({
       chain: base,
-      transport: http(rpcUrl),
+      transport: http(rpcUrl, transportOptions),
     });
 
     const assetData = await client.readContract({
