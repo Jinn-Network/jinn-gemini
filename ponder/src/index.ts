@@ -901,23 +901,22 @@ ponder.on(
           workstreamId = id;
         }
 
-        // Inherit ventureId/templateId from workstream if not in IPFS payload (child requests)
+        // Inherit ventureId/templateId from parent request if not in IPFS payload (child requests)
         let resolvedVentureId = ventureId;
         let resolvedTemplateId = templateId;
         if ((!resolvedVentureId || !resolvedTemplateId) && sourceRequestId) {
           try {
-            const wsRepo: Repository = createRepository(db, workstream, "workstream");
-            const ws = await wsRepo.findUnique({ id: workstreamId });
-            if (ws) {
-              if (!resolvedVentureId && typeof (ws as any).ventureId === 'string') {
-                resolvedVentureId = (ws as any).ventureId;
-                logger.debug({ requestId: id, workstreamId, ventureId: resolvedVentureId }, 'Inherited ventureId from workstream');
+            const parentReq = await repo.findUnique({ id: sourceRequestId });
+            if (parentReq) {
+              if (!resolvedVentureId && typeof parentReq.ventureId === 'string') {
+                resolvedVentureId = parentReq.ventureId;
+                logger.debug({ requestId: id, sourceRequestId, ventureId: resolvedVentureId }, 'Inherited ventureId from parent request');
               }
-              if (!resolvedTemplateId && typeof (ws as any).templateId === 'string') {
-                resolvedTemplateId = (ws as any).templateId;
+              if (!resolvedTemplateId && typeof parentReq.templateId === 'string') {
+                resolvedTemplateId = parentReq.templateId;
               }
             }
-          } catch { /* non-fatal — workstream may not exist yet */ }
+          } catch { /* non-fatal — parent may not be indexed yet */ }
         }
 
         // Update the pre-seeded request row with enriched metadata
