@@ -64,6 +64,19 @@ function getRpcUrl(): string {
   return rpcUrl;
 }
 
+// Build an array of RPC URLs for Ponder's native failover (rpc: string[])
+// Primary configured URL first, then paid fallback, then free public RPCs
+function getRpcUrls(): string[] {
+  const primary = process.env.BASE_RPC_URL || process.env.RPC_URL;
+  const fallbacks = (process.env.BASE_RPC_FALLBACK_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
+  const defaults = [
+    'https://mainnet.base.org',
+    'https://base.llamarpc.com',
+    'https://base-rpc.publicnode.com',
+  ];
+  return [...new Set([primary, ...fallbacks, ...defaults].filter(Boolean) as string[])];
+}
+
 // Determine finality block count based on RPC URL
 function getFinalityBlockCount(): number {
   const rpcUrl = getRpcUrl();
@@ -97,6 +110,7 @@ const configInfo = [
   `RPC_URL: ${process.env.RPC_URL || 'not set'}`,
   `BASE_RPC_URL: ${process.env.BASE_RPC_URL || 'not set'}`,
   `Resolved RPC URL: ${rpcUrl}`,
+  `RPC Fallback URLs: ${getRpcUrls().join(', ')}`,
   `Is Tenderly VNet: ${isTenderly}`,
   `Finality Block Count: ${getFinalityBlockCount()}`,
   `Factory Start Block: ${FACTORY_START_BLOCK}`,
@@ -149,7 +163,7 @@ export default createConfig({
   chains: {
     base: {
       id: 8453,
-      rpc: getRpcUrl(), // Call function to get RPC URL at runtime
+      rpc: getRpcUrls(), // Array of URLs — Ponder fails over automatically
       pollingInterval: 6_000,
       maxRequestsPerSecond: 2,
       finalityBlockCount: getFinalityBlockCount(), // Call function to get finality count at runtime
