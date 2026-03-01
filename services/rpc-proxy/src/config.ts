@@ -1,6 +1,5 @@
 const DEFAULT_UPSTREAMS = [
   'https://mainnet.base.org',
-  'https://base.llamarpc.com',
   'https://base-rpc.publicnode.com',
 ];
 
