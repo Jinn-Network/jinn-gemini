@@ -1,4 +1,5 @@
 import { onchainTable, index } from "ponder";
+// build_id bust: v30 — force re-index after staking handler fix
 
 export const jobDefinition = onchainTable(
   "job_definition",
