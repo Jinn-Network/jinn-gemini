@@ -168,7 +168,7 @@ export default createConfig({
       id: 8453,
       rpc: getRpcUrl(), // Call function to get RPC URL at runtime
       pollingInterval: 6_000,
-      maxRequestsPerSecond: 2,
+      maxRequestsPerSecond: 25,
       finalityBlockCount: getFinalityBlockCount(), // Call function to get finality count at runtime
     },
   },
