@@ -10,6 +10,7 @@
   ],
   "main": "dist/worker.js",
   "scripts": {
+    "start": "cd jinn-node && bash scripts/init.sh && node dist/worker/worker_launcher.js",
     "build": "cd jinn-node && yarn build",
     "dev:mech": "cd jinn-node && yarn run worker",
     "dev:mech:parallel": "tsx scripts/dev-mech-parallel.ts",
