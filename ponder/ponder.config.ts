@@ -25,7 +25,7 @@ const suppressLogs = runtimeMode !== 'default';
 // Known deployment blocks for each contract (with small safety margin)
 const CONTRACT_DEPLOY_BLOCKS = {
   MechMarketplace: 26_600_000,    // ~mid-2024, marketplace contract
-  JinnStaking:     40_710_000,    // ~Jan 2026, 5000 OLAS min staking (v1)
+  JinnStaking:     40_709_999,    // ~Jan 2026, 5000 OLAS min staking (v1)
   JinnStakingV2:   42_550_000,    // ~Feb 2026, 5000 OLAS min staking (v2)
 } as const;
 
