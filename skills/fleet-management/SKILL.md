@@ -231,7 +231,32 @@ The `/health` endpoint (port 8080) includes fleet state when multi-service is en
 
 ---
 
-## 6. Troubleshooting
+## 6. RPC Configuration
+
+### Jinn RPC Proxy (Recommended)
+
+Use `rpc.jinn.network` with Bearer token authentication:
+
+```bash
+RPC_URL=https://rpc.jinn.network
+RPC_PROXY_TOKEN=<40-char-hex-token>
+```
+
+All ethers.js provider creation routes through `createRpcProvider()` in `src/config/index.ts`, which attaches the `Authorization: Bearer <token>` header when `RPC_PROXY_TOKEN` is set. This applies to:
+- All `src/worker/` modules (heartbeat, checkpoint, restake, funding, etc.)
+- All `scripts/` (service:status, wallet:info, etc.)
+- Safe SDK initialization in `FundDistributor.ts`
+
+**Quick connectivity test:**
+```bash
+RPC_URL=https://rpc.jinn.network RPC_PROXY_TOKEN=<token> yarn service:status
+```
+
+**If you get 401 Unauthorized:** Verify `RPC_PROXY_TOKEN` is exactly 40 hex characters. The proxy also accepts `?token=<token>` query param but the ethers.js helper uses the Authorization header.
+
+---
+
+## 7. Troubleshooting
 
 ### Service Not Making Deliveries
 1. Check mech is whitelisted: `tsx scripts/activity-checker-whitelist.ts check <mech>`
@@ -265,7 +290,7 @@ yarn wallet:recover --to <address>
 
 ---
 
-## 7. Key Scripts Reference
+## 8. Key Scripts Reference
 
 | Command | Script | Purpose |
 |---------|--------|---------|
@@ -283,7 +308,7 @@ yarn wallet:recover --to <address>
 | `tsx scripts/activity-checker-whitelist.ts` | — | Mech whitelist management |
 | `tsx scripts/migrate-staking-contract.ts` | — | Restake / migrate contracts |
 
-## 8. Key Contracts
+## 9. Key Contracts
 
 | Contract | Address (Base) |
 |----------|---------------|
