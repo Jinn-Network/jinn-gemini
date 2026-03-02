@@ -1701,9 +1701,8 @@ ponder.on(
 // ============================================================================
 // ServiceStaked handler: Track when services are staked in staking contracts
 // ============================================================================
-ponder.on(
-  "StakingContracts:ServiceStaked",
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+// Handler function shared by both staking contracts
+const handleServiceStaked = async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
     try {
       const db = (context as any).db;
       if (!db) {
@@ -1761,14 +1760,15 @@ ponder.on(
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index ServiceStaked");
     }
   }
-);
+};
+ponder.on("JinnStaking:ServiceStaked", handleServiceStaked);
+ponder.on("AgentsFun1Staking:ServiceStaked", handleServiceStaked);
 
 // ============================================================================
 // ServiceUnstaked handler: Track when services are unstaked from staking contracts
 // ============================================================================
-ponder.on(
-  "StakingContracts:ServiceUnstaked",
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+// Handler function shared by both staking contracts
+const handleServiceUnstaked = async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
     try {
       const db = (context as any).db;
       if (!db) {
@@ -1817,4 +1817,6 @@ ponder.on(
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index ServiceUnstaked");
     }
   }
-);
+};
+ponder.on("JinnStaking:ServiceUnstaked", handleServiceUnstaked);
+ponder.on("AgentsFun1Staking:ServiceUnstaked", handleServiceUnstaked);

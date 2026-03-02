@@ -10,20 +10,31 @@ import fetch from 'cross-fetch';
 const runtimeMode = process.env.RUNTIME_ENVIRONMENT || 'default';
 const suppressLogs = runtimeMode !== 'default';
 
-// Factory/child split:
-// - Factory scan: discover ALL mechs ever created
-// - Child scan: index high-volume Deliver events only from recent window
-// Base mainnet genesis: ~June 2023 (block 0)
-// Jinn marketplace activity: Mid-2024 onwards
-// Using Jan 1, 2024 as safe start (well before any Jinn activity)
-// 
+// Contract deployment blocks (verified on-chain via eth_getCode binary search):
+// - MechMarketplace: deployed between blocks 26,600,000-26,650,000
+// - AgentsFun1 staking: deployed between blocks 26,850,000-26,900,000
+// - Jinn Staking: deployed between blocks 40,710,000-40,720,000
+//
+// Each contract scans from its actual deployment block to avoid wasting RPC calls
+// on millions of empty blocks. The child start block (for high-volume Deliver events)
+// uses a separate, more recent window.
+//
 // For test environments (Tenderly VNets), use block 0 to scan the entire fork history
-// since VNets don't contain mainnet blocks before the fork point
+// since VNets don't contain mainnet blocks before the fork point.
+
+// Known deployment blocks for each contract (with small safety margin)
+const CONTRACT_DEPLOY_BLOCKS = {
+  MechMarketplace: 26_600_000,    // ~mid-2024, marketplace contract
+  AgentsFun1:      26_850_000,    // ~mid-2024, 50 OLAS min staking
+  JinnStaking:     40_710_000,    // ~Jan 2026, 5000 OLAS min staking
+} as const;
+
+// Factory start block: use env var override (for tests) or earliest contract deployment
 function getFactoryStartBlock(): number {
   if (process.env.PONDER_FACTORY_START_BLOCK) {
     return Number(process.env.PONDER_FACTORY_START_BLOCK);
   }
-  return 25_000_000; // ~Jan 2024, covers all Jinn marketplace history on mainnet
+  return CONTRACT_DEPLOY_BLOCKS.MechMarketplace;
 }
 
 const FACTORY_START_BLOCK = getFactoryStartBlock();
@@ -35,6 +46,12 @@ function getChildStartBlock(): number {
     return Number(process.env.PONDER_START_BLOCK);
   }
   return CHILD_START_BLOCK_DEFAULT;
+}
+
+// Get per-contract start block, respecting test mode (FACTORY_START_BLOCK=0)
+function getStakingStartBlock(contract: keyof typeof CONTRACT_DEPLOY_BLOCKS): number {
+  if (FACTORY_START_BLOCK === 0) return 0; // test mode: scan everything
+  return CONTRACT_DEPLOY_BLOCKS[contract];
 }
 
 // Review mode configuration
@@ -204,15 +221,20 @@ export default createConfig({
       endBlock,
     },
     // OLAS Staking Contracts - track which services are staked in which contracts
-    // This enables dynamic mech filtering based on staking contract membership
-    StakingContracts: {
+    // Split into separate entries so each scans from its actual deployment block,
+    // avoiding millions of wasted RPC calls scanning empty blocks.
+    JinnStaking: {
       chain: "base",
       abi: StakingTokenAbi,
-      address: [
-        '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking (5,000 OLAS min)
-        '0x2585e63df7BD9De8e058884D496658a030b5c6ce', // AgentsFun1 (50 OLAS min)
-      ],
-      startBlock: FACTORY_START_BLOCK,
+      address: '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking (5,000 OLAS min)
+      startBlock: getStakingStartBlock('JinnStaking'),
+      endBlock,
+    },
+    AgentsFun1Staking: {
+      chain: "base",
+      abi: StakingTokenAbi,
+      address: '0x2585e63df7BD9De8e058884D496658a030b5c6ce', // AgentsFun1 (50 OLAS min)
+      startBlock: getStakingStartBlock('AgentsFun1'),
       endBlock,
     },
   },
