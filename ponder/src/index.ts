@@ -1759,7 +1759,6 @@ const handleServiceStaked = async ({ event, context }: { event: PonderEventShape
     } catch (e: any) {
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index ServiceStaked");
     }
-  }
 };
 ponder.on("JinnStaking:ServiceStaked", handleServiceStaked);
 ponder.on("JinnStakingV2:ServiceStaked", handleServiceStaked);
@@ -1816,7 +1815,6 @@ const handleServiceUnstaked = async ({ event, context }: { event: PonderEventSha
     } catch (e: any) {
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index ServiceUnstaked");
     }
-  }
 };
 ponder.on("JinnStaking:ServiceUnstaked", handleServiceUnstaked);
 ponder.on("JinnStakingV2:ServiceUnstaked", handleServiceUnstaked);
