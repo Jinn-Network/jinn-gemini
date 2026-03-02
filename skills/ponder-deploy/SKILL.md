@@ -316,3 +316,33 @@ curl -X POST https://backboard.railway.com/graphql/v2 \
 | `ponder/ponder.config.ts` | Config: contracts, start blocks, RPC (changes trigger re-index) |
 | `deploy/ponder/nixpacks.toml` | Build configuration for Railway |
 | `deploy/ponder/railway.toml` | Railway service configuration |
+
+## 10. Local Testing Before Deploy
+
+**Always verify Ponder starts locally before pushing to Railway.** This catches syntax errors, missing exports, and config issues before wasting a build cycle.
+
+```bash
+# From repo ROOT (not ponder/ subdirectory!)
+PONDER_START_BLOCK=<recent_block> PONDER_END_BLOCK=<recent_block+10> \
+  npx ponder start --root ponder --port 42070 --schema test_local_v1
+```
+
+**Critical: run from repo root, not `cd ponder/`.** The `ponder/` directory may contain stale `node_modules/` with an old `@ponder/core` version (0.6.x) that conflicts with the root-level `ponder@0.15.x`. Running `npx ponder` from `ponder/` resolves the wrong binary.
+
+**What to check:**
+- Config loads without errors (look for `Connected to database` and `Started backfill`)
+- No `ESBuildTransformError` (syntax errors in index.ts)
+- No `TypeError` in `executeSchema` (schema export issues)
+
+**Kill quickly** — don't leave local Ponder running as it consumes RPC credits.
+
+**Per-contract start blocks:** When adding new contracts (e.g., staking V2), verify the deployment block on-chain first:
+```bash
+# Binary search for contract deployment via eth_getCode
+for BLOCK in 40000000 41000000 42000000; do
+  HEX=$(printf '0x%x' $BLOCK)
+  curl -s <RPC_URL> -H 'Content-Type: application/json' \
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getCode\",\"params\":[\"<CONTRACT>\",\"$HEX\"],\"id\":1}"
+done
+```
+Set each contract's `startBlock` to just before its deployment — don't scan millions of empty blocks.
