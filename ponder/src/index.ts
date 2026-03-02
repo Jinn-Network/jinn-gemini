@@ -1701,8 +1701,11 @@ ponder.on(
 // ============================================================================
 // ServiceStaked handler: Track when services are staked in staking contracts
 // ============================================================================
-// Handler function shared by both staking contracts
-const handleServiceStaked = async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+// Factory creates a handler bound to a specific staking contract address.
+// Ponder 0.15.x event objects don't expose event.log.address — only
+// event.args, event.block, event.transaction — so we pass address explicitly.
+const createServiceStakedHandler = (contractAddress: string) =>
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
     try {
       const db = (context as any).db;
       if (!db) {
@@ -1714,15 +1717,7 @@ const handleServiceStaked = async ({ event, context }: { event: PonderEventShape
       const owner: string = String(event.args.owner).toLowerCase();
       const multisig: string = String(event.args.multisig).toLowerCase();
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
-
-      // Get the staking contract address from the event log
-      // In Ponder, event.log.address contains the contract that emitted the event
-      const stakingContract: string = String((event as any).log?.address || "").toLowerCase();
-
-      if (!stakingContract || stakingContract === "") {
-        logger.warn({ serviceId: serviceId.toString() }, "ServiceStaked event missing contract address");
-        return;
-      }
+      const stakingContract: string = contractAddress.toLowerCase();
 
       const id = `${serviceId.toString()}:${stakingContract}`;
 
@@ -1741,7 +1736,6 @@ const handleServiceStaked = async ({ event, context }: { event: PonderEventShape
           isStaked: true,
         },
         update: {
-          // Re-staking: update staked status and timestamp
           owner: owner as `0x${string}`,
           multisig: multisig as `0x${string}`,
           stakedAt: blockTimestamp,
@@ -1759,15 +1753,15 @@ const handleServiceStaked = async ({ event, context }: { event: PonderEventShape
     } catch (e: any) {
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index ServiceStaked");
     }
-};
-ponder.on("JinnStaking:ServiceStaked", handleServiceStaked);
-ponder.on("JinnStakingV2:ServiceStaked", handleServiceStaked);
+  };
+ponder.on("JinnStaking:ServiceStaked", createServiceStakedHandler('0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139'));
+ponder.on("JinnStakingV2:ServiceStaked", createServiceStakedHandler('0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488'));
 
 // ============================================================================
 // ServiceUnstaked handler: Track when services are unstaked from staking contracts
 // ============================================================================
-// Handler function shared by both staking contracts
-const handleServiceUnstaked = async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+const createServiceUnstakedHandler = (contractAddress: string) =>
+  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
     try {
       const db = (context as any).db;
       if (!db) {
@@ -1777,14 +1771,7 @@ const handleServiceUnstaked = async ({ event, context }: { event: PonderEventSha
 
       const serviceId: bigint = BigInt(toBigIntCoercible(event.args.serviceId));
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
-
-      // Get the staking contract address from the event log
-      const stakingContract: string = String((event as any).log?.address || "").toLowerCase();
-
-      if (!stakingContract || stakingContract === "") {
-        logger.warn({ serviceId: serviceId.toString() }, "ServiceUnstaked event missing contract address");
-        return;
-      }
+      const stakingContract: string = contractAddress.toLowerCase();
 
       const id = `${serviceId.toString()}:${stakingContract}`;
 
@@ -1815,6 +1802,6 @@ const handleServiceUnstaked = async ({ event, context }: { event: PonderEventSha
     } catch (e: any) {
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index ServiceUnstaked");
     }
-};
-ponder.on("JinnStaking:ServiceUnstaked", handleServiceUnstaked);
-ponder.on("JinnStakingV2:ServiceUnstaked", handleServiceUnstaked);
+  };
+ponder.on("JinnStaking:ServiceUnstaked", createServiceUnstakedHandler('0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139'));
+ponder.on("JinnStakingV2:ServiceUnstaked", createServiceUnstakedHandler('0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488'));
