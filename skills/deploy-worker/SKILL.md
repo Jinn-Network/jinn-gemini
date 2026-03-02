@@ -31,7 +31,8 @@ Only 5 variables are strictly required to run a worker. Everything else is auto-
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `RPC_URL` | Base mainnet RPC endpoint | `https://mainnet.base.org` |
+| `RPC_URL` | Base mainnet RPC endpoint | `https://rpc.jinn.network` |
+| `RPC_PROXY_TOKEN` | Auth token for `rpc.jinn.network` proxy (optional if using public RPC) | `<40-char hex>` |
 | `CHAIN_ID` | Network ID | `8453` |
 | `JINN_SERVICE_MECH_ADDRESS` | Mech contract for this service | `0x...` |
 | `JINN_SERVICE_PRIVATE_KEY` | Agent EOA private key (hex) | `0x...` |
@@ -284,13 +285,33 @@ fatal: unable to auto-detect email address
 - Volume at `/root` must be mounted — without it, `~/.gitconfig` is lost on restart
 - Confirm logs show `[init] Set git user.name` on startup
 
-### Builder must be DOCKERFILE
+### Builder: DOCKERFILE vs Railpack
 
-The worker uses Docker builds via `jinn-node/Dockerfile`. If Railway auto-migrates to NIXPACKS or RAILPACK, fix via GraphQL API:
+The worker is designed for Docker builds via `jinn-node/Dockerfile` (installs git, chromium, Gemini CLI, creates non-root user). Railway may auto-migrate to RAILPACK, which causes issues:
+
+**How to detect:** Check build logs — DOCKERFILE shows `docker build` steps; Railpack shows `railpack-plan.json` and `[railpack]` lines.
+
+**Key differences between DOCKERFILE and Railpack builds:**
+
+| | DOCKERFILE | Railpack |
+|---|-----------|----------|
+| Start command | `railway.toml` `startCommand` or Dockerfile `CMD` | `package.json` `start` script or `main` field |
+| System packages | Installed via `apt-get` (git, chromium, ssh) | Minimal — no git, no chromium, no ssh |
+| Working directory | `/app` (Dockerfile WORKDIR) | `/app` (auto) |
+| Config file | `jinn-node/railway.toml` respected | `railway.toml` builder setting IGNORED |
+| Volume path | `/home/jinn` (non-root user) | `/home/jinn` (same mount, but runs as root) |
+
+**`railway up` always uses Railpack** regardless of `railway.toml` `builder = "DOCKERFILE"`. It also uploads from the **git root** (monorepo), not the current directory. The monorepo root `package.json` has a `start` script that routes to the correct entry point.
+
+**If Railpack is acceptable** (no git/chromium needed): Ensure `OPERATE_PROFILE_DIR=/home/jinn/.operate` is set as an env var (Dockerfile sets this via ENV, but Railpack doesn't).
+
+**To force DOCKERFILE builds:** Use GitHub branch deploy triggers instead of `railway up`, or fix via GraphQL API:
 ```bash
 # Use serviceInstanceUpdate mutation to force builder back to DOCKERFILE
 # (See Railway GraphQL API — serviceInstanceUpdate with builder: DOCKERFILE)
 ```
+
+**init.sh compatibility:** The `scripts/init.sh` startup script guards git/ssh commands behind `command -v git` so it works in both DOCKERFILE and Railpack environments.
 
 ### Gemini quota exhausted
 
@@ -390,9 +411,10 @@ The `/health` endpoint (port 8080) includes fleet state when multi-service is en
 
 ## Known Railway Deployment Patterns
 
-- **`railway up` timeouts**: The monorepo is too large to upload directly. Always use a GitHub branch deploy trigger. Set it via `deploymentTriggerUpdate` GraphQL mutation if the UI doesn't cooperate.
+- **`railway up` uses Railpack**: `railway up` always uses the Railpack builder, ignoring `railway.toml` `builder = "DOCKERFILE"`. It also uploads from the git root (monorepo), not `jinn-node/`. The monorepo root `package.json` `start` script routes to the correct entry point. For DOCKERFILE builds, use GitHub branch deploy triggers instead.
+- **`railway up` needs `OPERATE_PROFILE_DIR`**: Railpack images don't set `OPERATE_PROFILE_DIR` (the Dockerfile does via `ENV`). Set it as a Railway env var: `OPERATE_PROFILE_DIR=/home/jinn/.operate`.
 - **Auto-relink after deploy**: After `railway up`, the CLI may relink to a different service. Always verify which service is linked before deploying.
-- **Builder migration**: Railway may silently migrate services away from DOCKERFILE. Detect by checking build logs. Fix with `serviceInstanceUpdate` mutation setting `builder: DOCKERFILE`.
+- **Builder migration**: Railway may silently migrate services away from DOCKERFILE. Detect by checking build logs (`railpack-plan.json` = Railpack, `docker build` = DOCKERFILE). Fix with `serviceInstanceUpdate` mutation setting `builder: DOCKERFILE`.
 - **Worker count**: Set `WORKER_COUNT` env var to run multiple parallel workers in one service. Each gets a prefixed log output.
 - **Symlink gotcha**: `jinn-node/.operate` is a symlink to `../olas-operate-middleware/.operate`. When tarring for SSH import, use `tar -h` (follow symlinks) or the tar will upload the symlink itself, not the actual data. The deploy script handles this correctly, but manual imports must use `-h`.
 - **Volume mount path**: The deploy script expects the volume at `/home/jinn`. If the Railway volume is mounted at a different path (e.g., `/root`), the `ensure_volume` step will fail. Check with `railway volume list` and ensure `MIDDLEWARE_PATH` env var matches the volume mount location.

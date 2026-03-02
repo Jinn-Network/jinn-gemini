@@ -82,7 +82,8 @@ The profile is auto-loaded. Only add these to `.env`:
 
 ```bash
 OPERATE_PASSWORD=<password>    # Required — decrypts agent keystore
-RPC_URL=https://mainnet.base.org
+RPC_URL=https://rpc.jinn.network   # Jinn RPC proxy (recommended)
+RPC_PROXY_TOKEN=<40-char-hex>      # Auth token for rpc.jinn.network
 ```
 
 ### Option B: Explicit Env Vars (Railway / no `.operate`)
@@ -90,7 +91,8 @@ RPC_URL=https://mainnet.base.org
 ```bash
 JINN_SERVICE_MECH_ADDRESS=0x<mech>      # Mech contract address
 JINN_SERVICE_PRIVATE_KEY=0x<hex>        # Agent EOA private key (raw hex, 66 chars)
-RPC_URL=https://mainnet.base.org        # Base mainnet RPC
+RPC_URL=https://rpc.jinn.network        # Jinn RPC proxy (or any Base RPC)
+RPC_PROXY_TOKEN=<40-char-hex>           # Auth token (only for rpc.jinn.network)
 CHAIN_ID=8453
 ```
 
@@ -128,15 +130,21 @@ SUPABASE_SERVICE_ROLE_KEY=<key>
 ## Step 3: Verify RPC Connectivity
 
 ```bash
-# Quick check — should return a recent block number
+# Public RPC (no auth)
 curl -s -X POST https://mainnet.base.org \
   -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | python3 -m json.tool
+
+# Jinn RPC proxy (requires Bearer token)
+curl -s -X POST https://rpc.jinn.network \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <RPC_PROXY_TOKEN>' \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | python3 -m json.tool
 ```
 
 Expected: `{"result": "0x..."}` with a recent hex block number.
 
-If using a custom RPC, substitute your `RPC_URL` value.
+**RPC Proxy (`rpc.jinn.network`):** Requires `Authorization: Bearer <token>` header. The `createRpcProvider()` helper in `src/config/index.ts` attaches this automatically when `RPC_PROXY_TOKEN` is set. All ethers.js provider creation in `src/` and `scripts/` uses this helper. If you get `401 Unauthorized`, check that `RPC_PROXY_TOKEN` is set and correct (40-char hex string).
 
 ---
 
@@ -213,7 +221,8 @@ yarn dev:mech --workstream=0x<workstream>
 Required Railway environment variables (set in Railway dashboard):
 
 ```
-RPC_URL                    = https://mainnet.base.org (or your RPC)
+RPC_URL                    = https://rpc.jinn.network
+RPC_PROXY_TOKEN            = <40-char-hex-token>
 CHAIN_ID                   = 8453
 JINN_SERVICE_MECH_ADDRESS  = 0x<mech>
 JINN_SERVICE_PRIVATE_KEY   = 0x<key>
