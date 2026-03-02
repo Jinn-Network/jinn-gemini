@@ -12,8 +12,8 @@ const suppressLogs = runtimeMode !== 'default';
 
 // Contract deployment blocks (verified on-chain via eth_getCode binary search):
 // - MechMarketplace: deployed between blocks 26,600,000-26,650,000
-// - AgentsFun1 staking: deployed between blocks 26,850,000-26,900,000
-// - Jinn Staking: deployed between blocks 40,710,000-40,720,000
+// - Jinn Staking V1: deployed between blocks 40,710,000-40,720,000
+// - Jinn Staking V2: deployed between blocks 42,550,000-42,600,000
 //
 // Each contract scans from its actual deployment block to avoid wasting RPC calls
 // on millions of empty blocks. The child start block (for high-volume Deliver events)
@@ -25,8 +25,8 @@ const suppressLogs = runtimeMode !== 'default';
 // Known deployment blocks for each contract (with small safety margin)
 const CONTRACT_DEPLOY_BLOCKS = {
   MechMarketplace: 26_600_000,    // ~mid-2024, marketplace contract
-  AgentsFun1:      26_850_000,    // ~mid-2024, 50 OLAS min staking
-  JinnStaking:     40_710_000,    // ~Jan 2026, 5000 OLAS min staking
+  JinnStaking:     40_710_000,    // ~Jan 2026, 5000 OLAS min staking (v1)
+  JinnStakingV2:   42_550_000,    // ~Feb 2026, 5000 OLAS min staking (v2)
 } as const;
 
 // Factory start block: use env var override (for tests) or earliest contract deployment
@@ -226,15 +226,15 @@ export default createConfig({
     JinnStaking: {
       chain: "base",
       abi: StakingTokenAbi,
-      address: '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking (5,000 OLAS min)
+      address: '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking V1 (5,000 OLAS min)
       startBlock: getStakingStartBlock('JinnStaking'),
       endBlock,
     },
-    AgentsFun1Staking: {
+    JinnStakingV2: {
       chain: "base",
       abi: StakingTokenAbi,
-      address: '0x2585e63df7BD9De8e058884D496658a030b5c6ce', // AgentsFun1 (50 OLAS min)
-      startBlock: getStakingStartBlock('AgentsFun1'),
+      address: '0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488', // Jinn Staking V2 (5,000 OLAS min)
+      startBlock: getStakingStartBlock('JinnStakingV2'),
       endBlock,
     },
   },

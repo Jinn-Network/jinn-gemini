@@ -102,8 +102,8 @@ let vectorDbPool: Pool | null = null;
 // Non-Jinn mechs are skipped entirely (0ms instead of 6s+ IPFS timeout).
 // ============================================================================
 const JINN_STAKING_CONTRACTS = [
-  '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking
-  '0x2585e63df7BD9De8e058884D496658a030b5c6ce', // AgentsFun1
+  '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking V1
+  '0x66a92cda5b319dcccac6c1cecbb690ca3fb59488', // Jinn Staking V2
 ];
 const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
 const BASE_RPC_URL = process.env.PONDER_RPC_URL || process.env.BASE_RPC_URL || process.env.RPC_URL || 'https://mainnet.base.org';
@@ -1762,7 +1762,7 @@ const handleServiceStaked = async ({ event, context }: { event: PonderEventShape
   }
 };
 ponder.on("JinnStaking:ServiceStaked", handleServiceStaked);
-ponder.on("AgentsFun1Staking:ServiceStaked", handleServiceStaked);
+ponder.on("JinnStakingV2:ServiceStaked", handleServiceStaked);
 
 // ============================================================================
 // ServiceUnstaked handler: Track when services are unstaked from staking contracts
@@ -1819,4 +1819,4 @@ const handleServiceUnstaked = async ({ event, context }: { event: PonderEventSha
   }
 };
 ponder.on("JinnStaking:ServiceUnstaked", handleServiceUnstaked);
-ponder.on("AgentsFun1Staking:ServiceUnstaked", handleServiceUnstaked);
+ponder.on("JinnStakingV2:ServiceUnstaked", handleServiceUnstaked);
