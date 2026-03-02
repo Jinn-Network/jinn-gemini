@@ -574,12 +574,17 @@ type artifact {
   requestId: String!
   sourceRequestId: String
   sourceJobDefinitionId: String
+  ventureId: String
+  workstreamId: String
+  templateId: String
   name: String!
   cid: String!
+  contentCid: String
   topic: String!
   contentPreview: String
   blockTimestamp: BigInt!
   type: String
+  documentType: String
   tags: [String!]
   utilityScore: Int
   accessCount: Int
@@ -634,6 +639,36 @@ input artifactFilter {
   sourceJobDefinitionId_ends_with: String
   sourceJobDefinitionId_not_starts_with: String
   sourceJobDefinitionId_not_ends_with: String
+  ventureId: String
+  ventureId_not: String
+  ventureId_in: [String]
+  ventureId_not_in: [String]
+  ventureId_contains: String
+  ventureId_not_contains: String
+  ventureId_starts_with: String
+  ventureId_ends_with: String
+  ventureId_not_starts_with: String
+  ventureId_not_ends_with: String
+  workstreamId: String
+  workstreamId_not: String
+  workstreamId_in: [String]
+  workstreamId_not_in: [String]
+  workstreamId_contains: String
+  workstreamId_not_contains: String
+  workstreamId_starts_with: String
+  workstreamId_ends_with: String
+  workstreamId_not_starts_with: String
+  workstreamId_not_ends_with: String
+  templateId: String
+  templateId_not: String
+  templateId_in: [String]
+  templateId_not_in: [String]
+  templateId_contains: String
+  templateId_not_contains: String
+  templateId_starts_with: String
+  templateId_ends_with: String
+  templateId_not_starts_with: String
+  templateId_not_ends_with: String
   name: String
   name_not: String
   name_in: [String]
@@ -654,6 +689,16 @@ input artifactFilter {
   cid_ends_with: String
   cid_not_starts_with: String
   cid_not_ends_with: String
+  contentCid: String
+  contentCid_not: String
+  contentCid_in: [String]
+  contentCid_not_in: [String]
+  contentCid_contains: String
+  contentCid_not_contains: String
+  contentCid_starts_with: String
+  contentCid_ends_with: String
+  contentCid_not_starts_with: String
+  contentCid_not_ends_with: String
   topic: String
   topic_not: String
   topic_in: [String]
@@ -692,6 +737,16 @@ input artifactFilter {
   type_ends_with: String
   type_not_starts_with: String
   type_not_ends_with: String
+  documentType: String
+  documentType_not: String
+  documentType_in: [String]
+  documentType_not_in: [String]
+  documentType_contains: String
+  documentType_not_contains: String
+  documentType_starts_with: String
+  documentType_ends_with: String
+  documentType_not_starts_with: String
+  documentType_not_ends_with: String
   tags: [String]
   tags_not: [String]
   tags_has: String
