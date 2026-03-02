@@ -1,6 +1,6 @@
 const DEFAULT_UPSTREAMS = [
   'https://mainnet.base.org',
-  'https://base-rpc.publicnode.com',
+  'https://lb.drpc.live/base/AqIPPjb6i02njkMtTVCNr_73pTBmFIsR8ZsZtuZZzRRv',
 ];
 
 export interface ProxyConfig {
