@@ -46,7 +46,7 @@ Pre-flight checklist before entering the testing pipeline.
 Only for test harness blueprints that require deterministic single-execution (e.g., `nano-banana-test`, `browser-automation-test`):
 
 - [ ] Anti-delegation language added if and only if single-execution is required for test validation
-- [ ] Scope is achievable within the 300s marketplace timeout
+- [ ] Scope is achievable within the marketplace response timeout (configurable per-request, queried on-chain)
 - [ ] Pagination guidance included for tools that return paginated results
 
 **Note:** Production templates should NOT override delegation. Fan-out is a core protocol feature.

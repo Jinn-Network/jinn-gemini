@@ -1,5 +1,5 @@
 import { onchainTable, index } from "ponder";
-// build_id bust: v30 — force re-index after staking handler fix
+// build_id bust: v35 — ventureId/templateId inheritance from workstream root + root request fallback
 
 export const jobDefinition = onchainTable(
   "job_definition",

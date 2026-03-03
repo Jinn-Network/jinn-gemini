@@ -826,8 +826,8 @@ ponder.on(
           : undefined;
 
         // Extract venture and template IDs from content
-        const ventureId: string | undefined = typeof content?.ventureId === 'string' ? content.ventureId : undefined;
-        const templateId: string | undefined = typeof content?.templateId === 'string' ? content.templateId : undefined;
+        let ventureId: string | undefined = typeof content?.ventureId === 'string' ? content.ventureId : undefined;
+        let templateId: string | undefined = typeof content?.templateId === 'string' ? content.templateId : undefined;
 
         // Extract dependencies array from content
         dependencies = Array.isArray(content?.dependencies)
@@ -924,6 +924,45 @@ ponder.on(
         } else {
           // This is a root job, its workstream ID is its own ID
           workstreamId = id;
+        }
+
+        // --- INHERIT VENTURE/TEMPLATE ID FROM WORKSTREAM ROOT ---
+        // If this is a child request without ventureId/templateId in its IPFS content,
+        // inherit from the workstream root. Try two sources:
+        // 1. Workstream record (created when root is indexed)
+        // 2. Root request row directly (fallback for same-batch processing where workstream
+        //    record may not be committed yet)
+        if ((!ventureId || !templateId) && sourceRequestId) {
+          try {
+            // Try workstream record first
+            const ws = await db.find(workstream, { id: workstreamId });
+            if (ws) {
+              if (!ventureId && ws.ventureId) {
+                ventureId = ws.ventureId;
+                logger.info({ requestId: id, workstreamId, ventureId }, 'Inherited ventureId from workstream record');
+              }
+              if (!templateId && ws.templateId) {
+                templateId = ws.templateId;
+                logger.info({ requestId: id, workstreamId, templateId }, 'Inherited templateId from workstream record');
+              }
+            }
+            // Fallback: read directly from the root request row
+            if (!ventureId || !templateId) {
+              const rootReq = await db.find(request, { id: workstreamId });
+              if (rootReq) {
+                if (!ventureId && rootReq.ventureId) {
+                  ventureId = rootReq.ventureId;
+                  logger.info({ requestId: id, workstreamId, ventureId }, 'Inherited ventureId from root request');
+                }
+                if (!templateId && rootReq.templateId) {
+                  templateId = rootReq.templateId;
+                  logger.info({ requestId: id, workstreamId, templateId }, 'Inherited templateId from root request');
+                }
+              }
+            }
+          } catch (e: any) {
+            logger.warn({ requestId: id, workstreamId, error: e?.message }, 'Failed to inherit venture/template from workstream');
+          }
         }
 
         // Update the pre-seeded request row with enriched metadata

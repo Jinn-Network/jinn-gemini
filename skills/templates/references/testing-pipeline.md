@@ -48,7 +48,7 @@ Vary inputs to stress different scenarios. Example for a time-based template:
 - [ ] **Quality**: output is useful and well-organized (not raw data dumps)
 - [ ] **Consistency**: counts/totals are internally consistent
 - [ ] **Tags**: artifact tags are useful for `search_artifacts` discovery
-- [ ] **Time compliance**: completes within 300s marketplace timeout
+- [ ] **Time compliance**: completes within the configured marketplace response timeout
 
 **Between runs**: iterate on invariant wording based on inspection findings.
 

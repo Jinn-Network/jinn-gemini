@@ -214,7 +214,7 @@ dispatch_new_job({
 | `message` | - | Additional context for the job |
 | `dependencies` | `[]` | Job definition UUIDs to wait for |
 | `skipBranch` | `false` | Skip git branch creation |
-| `responseTimeout` | `300` | Marketplace timeout (max 300s) |
+| `responseTimeout` | `61` | Priority mech exclusivity window in seconds (min/max queried from on-chain marketplace contract) |
 
 ## Step 2: Verify Dispatch Success
 

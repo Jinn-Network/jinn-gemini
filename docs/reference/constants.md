@@ -94,7 +94,7 @@ Contract addresses, endpoints, and other constants used throughout the Jinn syst
 
 | Limit | Value | Description |
 |-------|-------|-------------|
-| Marketplace response timeout | 300 seconds | Hard on-chain limit |
+| Marketplace response timeout | Configurable (default 61s) | Min/max queried from on-chain marketplace contract |
 | Control API stale claim threshold | 5 minutes | After which re-claiming allowed |
 | Tool calls per job | ~10-15 | ~5-30s each |
 | QuickNode free tier | 15 req/sec | Add 70ms delay between calls |

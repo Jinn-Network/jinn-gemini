@@ -209,18 +209,17 @@ Full reference: [Environment Variables](docs/reference/environment-variables.md)
 
 ---
 
-## Critical Blood Written Rules (Top 10)
+## Critical Blood Written Rules (Top 9)
 
-1. **Marketplace Timeout**: 300 seconds hard limit. Break complex jobs into sub-jobs.
-2. **Agent Polling**: FINALIZE IMMEDIATELY after dispatch_new_job. System auto-redispatches.
-3. **Circular Dependencies**: Child cannot depend on parent. Dependencies are for sibling ordering.
-4. **Branch Auto-Detection**: Skip branch creation when CODE_METADATA_REPO_ROOT unset.
-5. **Stale Hierarchy**: Never trust metadata.hierarchy for completion - query Ponder live.
-6. **Double Execution**: Control API tracks claim staleness (5-minute threshold).
-7. **Recognition Mimicry**: Learnings describe what PAST jobs did, not what CURRENT should do.
-8. **IPFS Upload**: Use wrap-with-directory:true. Test `{dir-CID}/{requestId}` not raw digest.
-9. **Workers Are Network Nodes**: Workers are deployed on Railway (or run locally for dev). Use `redispatch-job.ts` to inject updated blueprints/configs into live workstreams.
-10. **SSH Aliases**: Normalize to `git@github.com:` at dispatch time.
+1. **Agent Polling**: FINALIZE IMMEDIATELY after dispatch_new_job. System auto-redispatches.
+2. **Circular Dependencies**: Child cannot depend on parent. Dependencies are for sibling ordering.
+3. **Branch Auto-Detection**: Skip branch creation when CODE_METADATA_REPO_ROOT unset.
+4. **Stale Hierarchy**: Never trust metadata.hierarchy for completion - query Ponder live.
+5. **Double Execution**: Control API tracks claim staleness (5-minute threshold).
+6. **Recognition Mimicry**: Learnings describe what PAST jobs did, not what CURRENT should do.
+7. **IPFS Upload**: Use wrap-with-directory:true. Test `{dir-CID}/{requestId}` not raw digest.
+8. **Workers Are Network Nodes**: Workers are deployed on Railway (or run locally for dev). Use `redispatch-job.ts` to inject updated blueprints/configs into live workstreams.
+9. **SSH Aliases**: Normalize to `git@github.com:` at dispatch time.
 
 Full list: [Blood Written Rules](docs/reference/blood-written-rules.md) (~74 rules)
 
