@@ -22,6 +22,7 @@ Extracts workstreams, decisions, and action items from conversation transcripts.
    - **Linear proposals** — create/update/close proposals for review, then execute on approval
    - **Daily digest** — community-facing summary written to `digests/YYYY-MM-DD.md`
    - **Both** — do Linear sync first (for context gathering), then write the digest
+5. **Compress key language** — before finalizing digests, apply the JPEG pass (see below)
 
 ## Available References
 
@@ -205,6 +206,31 @@ In digest body, use "we" voice — no individual attribution. Do NOT include "DM
 - **"We" voice.** Not "Oak did X" or "Ritsu built Y". Just "we".
 - **"Get involved" not "How you can help"** — frame it as things people might find interesting, not asks.
 - Internal-only topics (middleware replacement, env var cleanup) go in **Contributors**, not Jinn Daily — unless they have direct user impact.
+
+### JPEG pass — compress before publishing
+
+After drafting the digests, apply the `jpeg-your-ideas` skill principles to sharpen the language. This is a **subtle** editorial pass, not full sloganeering. Target:
+
+1. **Hooks** (the `>` lines) — these are the highest-leverage compression targets. Each hook should survive three hops of retransmission. Apply: brevity, metaphor, contrast, rhythm.
+2. **CTA lines** — the "Get involved" / "Might interest you" closers. Should feel like an invitation, not a press release.
+3. **Any phrase that names a concept** — if the transcript contains a memorable framing (e.g. "strategically muddle along"), preserve or sharpen it rather than flattening into generic language.
+
+**Process:**
+- Draft the digests first with straightforward language
+- Identify 2-4 phrases across all three digests that would benefit from compression
+- For each, generate 2-3 candidate formulations varying the rhetorical device (metaphor, contrast, alliteration, etc.)
+- Present the candidates inline to the user for approval — format as:
+  ```
+  **JPEG candidates:**
+  1. Hook (Jinn Daily): "Original draft" →
+     - a) "Compressed option A" (device: metaphor)
+     - b) "Compressed option B" (device: contrast)
+  2. CTA: "Original" →
+     - a) ...
+  ```
+- User picks or tweaks, then finalize the digest file
+
+**Restraint:** Don't compress everything. Most bullet points should stay clear and direct. Only compress where a phrase will be retransmitted (hooks, CTAs, concept names). The goal is 2-4 sharper phrases per digest set, not wall-to-wall rhetoric.
 
 ### Digest output
 
