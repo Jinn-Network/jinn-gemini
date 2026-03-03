@@ -107,6 +107,24 @@ async function ethGetLogs(address: string, topics: string[], fromBlock: string, 
   return json.result || [];
 }
 
+async function lookupMechForService(serviceId: bigint): Promise<{ mech: string; mechFactory: string } | null> {
+  const CREATE_MECH_TOPIC = '0x46e1ca45c09520471c43e2e88eca33bb51803011cfd456933629dcc645ecacd6';
+  const serviceIdTopic = '0x' + serviceId.toString(16).padStart(64, '0');
+  const logs = await ethGetLogs(
+    MARKETPLACE_ADDRESS,
+    [CREATE_MECH_TOPIC, null, serviceIdTopic],
+    '0x' + (25_000_000).toString(16),
+    'latest'
+  );
+  if (logs.length === 0) return null;
+  // Use the last CreateMech event (most recent mech for this service)
+  const last = logs[logs.length - 1];
+  return {
+    mech: '0x' + (last.topics[1] as string).slice(26).toLowerCase(),
+    mechFactory: '0x' + (last.topics[3] as string).slice(26).toLowerCase(),
+  };
+}
+
 async function buildJinnMechAllowlist(): Promise<Set<string>> {
   const mechs = new Set<string>();
   try {
@@ -137,23 +155,15 @@ async function buildJinnMechAllowlist(): Promise<Set<string>> {
     }
     logger.info({ serviceIdCount: serviceIds.size, serviceIds: [...serviceIds] }, 'Fetched historically staked service IDs');
 
-    // Step 2: Get all CreateMech events from marketplace to map serviceId → mech
-    // keccak256("CreateMech(address,uint256,address)") — all 3 params are indexed (in topics)
-    const CREATE_MECH_TOPIC = '0x46e1ca45c09520471c43e2e88eca33bb51803011cfd456933629dcc645ecacd6';
-    const logs = await ethGetLogs(
-      MARKETPLACE_ADDRESS,
-      [CREATE_MECH_TOPIC],
-      '0x' + (25_000_000).toString(16),
-      'latest'
-    );
-    logger.info({ createMechCount: logs.length }, 'Fetched CreateMech events');
-
-    for (const log of logs) {
-      // topics[1] = mech (indexed), topics[2] = serviceId (indexed), topics[3] = mechFactory (indexed)
-      const mechAddr = '0x' + (log.topics[1] as string).slice(26).toLowerCase();
-      const serviceId = BigInt(log.topics[2] as string).toString();
-      if (serviceIds.has(serviceId)) {
-        mechs.add(mechAddr);
+    // Step 2: For each staked service, look up its mech via CreateMech events
+    for (const sid of serviceIds) {
+      try {
+        const mechInfo = await lookupMechForService(BigInt(sid));
+        if (mechInfo) {
+          mechs.add(mechInfo.mech);
+        }
+      } catch (e: any) {
+        logger.warn({ serviceId: sid, error: e?.message }, 'Failed to lookup mech for service');
       }
     }
 
@@ -1613,6 +1623,32 @@ const createServiceStakedHandler = (contractAddress: string) =>
         unstakedAt: null,
         isStaked: true,
       });
+
+      // Populate mechServiceMappings eagerly from CreateMech log lookup
+      // so the worker's staking filter can resolve serviceId → mech immediately,
+      // without waiting for the full factory backfill from block 26.6M.
+      try {
+        const mechInfo = await lookupMechForService(serviceId);
+        if (mechInfo) {
+          const mechServiceMappingRepo = createRepository(db, mechServiceMapping, "mechServiceMapping");
+          await mechServiceMappingRepo.upsert({
+            id: mechInfo.mech,
+            create: {
+              id: mechInfo.mech,
+              mech: mechInfo.mech as `0x${string}`,
+              serviceId,
+              mechFactory: mechInfo.mechFactory as `0x${string}`,
+              blockTimestamp,
+            },
+            update: {},
+          });
+          logger.info({ serviceId: serviceId.toString(), mech: mechInfo.mech }, "Populated mechServiceMapping from ServiceStaked");
+        } else {
+          logger.warn({ serviceId: serviceId.toString() }, "No CreateMech event found for staked service");
+        }
+      } catch (e: any) {
+        logger.warn({ serviceId: serviceId.toString(), err: e?.message }, "Failed to lookup mech for staked service");
+      }
 
       logger.info({
         serviceId: serviceId.toString(),
