@@ -50,23 +50,17 @@ user-invocable: true
 2. **Master EOA ETH balance** — needs ~0.01 ETH for on-chain transactions (create, activate, register, deploy, stake)
 
 ```bash
-# Use the preflight skill for a full check:
+# Quick fleet-wide balance check (no middleware daemon needed):
+tsx scripts/fleet-balances.ts
+
+# Or use the preflight skill for a full check:
 # /olas-service-preflight
 
-# Or check manually:
-# Master EOA address: .operate/wallets/ethereum.json → "address"
-# Master Safe address: .operate/wallets/ethereum.json → "safes.base"
-
-# Check OLAS on Master Safe
+# Or check manually with cast:
 cast call 0x54330d28ca3357F294334BDC454a032e7f353416 \
   "balanceOf(address)(uint256)" <MASTER_SAFE_ADDRESS> \
   --rpc-url "$RPC_URL" | cast from-wei
-
-# Check ETH on Master EOA (submits the txns)
 cast balance <MASTER_EOA_ADDRESS> --rpc-url "$RPC_URL" -e
-
-# Or use wallet:info if available
-yarn wallet:info
 ```
 
 **Budget check:** `available_olas / 10,000 = max_new_services`. Master EOA needs ≥0.01 ETH per service. If insufficient, fund before proceeding.
@@ -184,9 +178,18 @@ yarn rewards:summary
 
 Shows total accrued OLAS rewards, per-service breakdown, APY, and eviction risk.
 
+### Fleet Balance Overview
+```bash
+# ETH + OLAS balances for Master EOA, Master Safe, all Service Safes + Agent EOAs
+# Dynamically discovers addresses from .operate via ServiceConfigReader
+tsx scripts/fleet-balances.ts
+
+# Alerts on: low gas Safes (<0.002 ETH), stranded OLAS on Agent EOAs
+```
+
 ### Wallet Overview
 ```bash
-yarn wallet:info   # Master EOA + Safe addresses and balances
+yarn wallet:info   # Master EOA + Safe addresses and balances (requires middleware daemon)
 ```
 
 ### Healthcheck Endpoint
@@ -209,6 +212,7 @@ The `/health` endpoint (port 8080) includes fleet state when multi-service is en
 ## 5. Operational Checklist
 
 ### Daily Checks
+- [ ] `tsx scripts/fleet-balances.ts` — all Safes funded? No stranded OLAS?
 - [ ] `yarn service:status` — all services eligible?
 - [ ] Any eviction warnings? (inactivity count > 0)
 - [ ] Any low-gas alerts? (Safe ETH < 0.002)
@@ -299,6 +303,7 @@ yarn wallet:recover --to <address>
 | `yarn service:status` | `scripts/service/status.ts` | Dashboard + alerts (`--json` for machine output) |
 | `yarn service:fleet` | `scripts/service/status.ts --json` | JSON fleet overview alias |
 | `yarn rewards:summary` | `scripts/service/rewards.ts` | Rewards tracker |
+| `tsx scripts/fleet-balances.ts` | `scripts/fleet-balances.ts` | Fleet-wide ETH + OLAS balances |
 | `yarn wallet:info` | `scripts/wallet/info.ts` | Wallet addresses + balances |
 | `yarn wallet:backup` | `scripts/wallet/backup.ts` | Encrypted .operate backup |
 | `yarn wallet:recover` | `scripts/wallet/recover.ts` | Emergency fund recovery |

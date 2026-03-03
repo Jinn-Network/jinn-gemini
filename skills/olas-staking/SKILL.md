@@ -48,27 +48,40 @@ When a service is evicted (staking state = 2), it needs to be unstaked (reclaim 
 3. stake(serviceId)          — re-stake in the same or different contract
 ```
 
-### Script
+### Script (Recommended: dedicated restake script)
 
 ```bash
-# Same-contract restake (evicted -> restake in same contract)
+# Service 165 (Oak):
+source .env && OPERATE_PROFILE_DIR=olas-operate-middleware/.operate \
+  npx tsx scripts/restake-service.ts --service-id=165
+
+# Service 359 (Venture-Test) — DIFFERENT .operate profile (absolute path required):
+source .env && OPERATE_PROFILE_DIR=/Users/gcd/Repositories/main/jinn-node/.operate \
+  npx tsx scripts/restake-service.ts --service-id=359
+
+# Custom staking contract:
+source .env && OPERATE_PROFILE_DIR=olas-operate-middleware/.operate \
+  npx tsx scripts/restake-service.ts --service-id=165 --staking-contract=0x...
+```
+
+This script uses direct ethers.js (NOT Safe SDK) for all steps, avoiding the GS013 issue entirely. It checks staking state first and skips if already staked.
+
+### Alternative: migration script (NOT recommended for simple restake)
+
+```bash
+# The migration script uses Safe SDK which FAILS on approve+stake with GS013
 source .env && OPERATE_PROFILE_DIR=olas-operate-middleware/.operate \
   npx tsx scripts/migrate-staking-contract.ts \
   --service-id=165 --source=jinn --target=jinn
-
-# Service 359 uses a DIFFERENT .operate profile (absolute path required)
-source .env && OPERATE_PROFILE_DIR=/Users/gcd/Repositories/main/jinn-node/.operate \
-  npx tsx scripts/migrate-staking-contract.ts \
-  --service-id=359 --source=jinn --target=jinn
 ```
 
-### IMPORTANT: Use direct ethers.js for stake(), not Safe SDK
+### IMPORTANT: Safe SDK GS013 — use direct ethers.js for ALL staking ops
 
-The `@safe-global/protocol-kit` (Safe SDK) fails with **GS013 during gas estimation** for `stake()` even when the underlying call succeeds. The SDK's viem-based gas estimation triggers a revert during `estimateContractGas`, but the actual call works fine.
+The `@safe-global/protocol-kit` (Safe SDK) fails with **GS013 during gas estimation** for `approve()` AND `stake()`. The SDK's viem-based gas estimation triggers a revert during `estimateContractGas`, but the actual call works fine when sent with explicit gasLimit.
 
-**Workaround**: Use direct ethers.js `execTransaction` with explicit `gasLimit: 2_000_000` and manual signature construction (eth_sign format, v+4). This bypasses the SDK's gas estimation. See the `execSafeTx` helper in Section 5.
+**Workaround**: Use direct ethers.js `execTransaction` with explicit `gasLimit: 2_000_000` and manual signature construction (eth_sign format, v+4). This bypasses the SDK's gas estimation. The `restake-service.ts` script uses this approach. See also the `execSafeTx` helper in Section 5.
 
-The migration script (`scripts/migrate-staking-contract.ts`) uses Safe SDK and will likely fail on the `stake()` step. The unstake and approve steps work fine via Safe SDK. Use the direct ethers.js approach as a fallback for the stake step only.
+**March 2026 update**: The migration script's ethers.js fallback had a bug where it sent empty `data: ""` for the approve call (the calldata wasn't passed through). The dedicated `restake-service.ts` script fixes this.
 
 ### Post-Restake Checklist
 
@@ -291,6 +304,9 @@ All OLAS is returned when a service is terminated and unbonded.
 ### Script
 
 ```bash
+# Fleet-wide balance check (Master EOA/Safe + all service Safes/Agents)
+tsx scripts/fleet-balances.ts
+
 # Dry run — check balances and slot availability
 yarn service:add --count=7 --dry-run
 
