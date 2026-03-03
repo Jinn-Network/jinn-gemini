@@ -21,53 +21,6 @@ function extractToolName(tool: string | { name: string; required?: boolean }): s
   return tool && typeof tool === 'object' && 'name' in tool ? tool.name : null;
 }
 
-// Minimal local types to avoid implicit any in handler params and align with Ponder 0.7+ DB API
-type Repository = {
-  upsert: (args: { id: string; create?: Record<string, any>; update?: Record<string, any> }) => Promise<any>;
-  findUnique: (args: { id: string }) => Promise<any | null>;
-};
-
-interface PonderContextShape {
-  db?: {
-    insert: (table: any) => { values: (value: any | any[]) => Promise<any> };
-    update: (table: any, where: Record<string, any>) => { set: (value: Record<string, any>) => Promise<any> };
-    find: (table: any, where: Record<string, any>) => Promise<any | null>;
-  };
-}
-
-interface PonderEventShape {
-  args: Record<string, unknown>;
-  transaction: { hash: string };
-  block: { number: number | bigint | string; timestamp: number | bigint | string };
-}
-
-function createRepository(db: NonNullable<PonderContextShape["db"]>, table: any, tableName: string): Repository {
-  return {
-    async upsert({ id, create, update }: { id: string; create?: Record<string, any>; update?: Record<string, any> }) {
-      const existing = await db.find(table, { id });
-
-      if (existing) {
-        if (update && Object.keys(update).length > 0) {
-          await db.update(table, { id }).set(update);
-        }
-        return await db.find(table, { id });
-      }
-
-      if (!create) {
-        logger.error({ table: tableName, id }, "Attempted upsert without create payload for missing row");
-        return null;
-      }
-
-      await db.insert(table).values({ ...create, id });
-      return await db.find(table, { id });
-    },
-
-    async findUnique({ id }: { id: string }) {
-      return db.find(table, { id });
-    },
-  };
-}
-
 // Helpers for safe coercion from unknown shapes
 const toStringArray = (value: unknown): string[] => {
   return Array.isArray(value) ? value.map((x) => String(x)) : [];
@@ -95,6 +48,21 @@ const NODE_EMBEDDINGS_DB_URL =
   null;
 
 let vectorDbPool: Pool | null = null;
+
+// ============================================================================
+// IPFS metadata cache — Postgres-backed cache to avoid refetching on re-index
+// ============================================================================
+const IPFS_CACHE_DB_URL = process.env.IPFS_CACHE_DB_URL || process.env.PONDER_DATABASE_URL || null;
+let ipfsCachePool: Pool | null = null;
+let ipfsCacheReady = false;
+
+function getIpfsCachePool(): Pool | null {
+  if (!IPFS_CACHE_DB_URL) return null;
+  if (!ipfsCachePool) {
+    ipfsCachePool = new Pool({ connectionString: IPFS_CACHE_DB_URL });
+  }
+  return ipfsCachePool;
+}
 
 // ============================================================================
 // Jinn mech allowlist — resolved at startup from staking contract events
@@ -224,6 +192,65 @@ function getVectorDbPool(): Pool | null {
   }
   return vectorDbPool;
 }
+
+// ============================================================================
+// IPFS cache helpers
+// ============================================================================
+async function ensureIpfsCacheSchema(): Promise<void> {
+  const pool = getIpfsCachePool();
+  if (!pool) return;
+  try {
+    await pool.query(`
+      CREATE SCHEMA IF NOT EXISTS ipfs_cache;
+      CREATE TABLE IF NOT EXISTS ipfs_cache.metadata (
+        cache_key TEXT PRIMARY KEY,
+        content JSONB NOT NULL,
+        fetched_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    ipfsCacheReady = true;
+    logger.info('IPFS cache schema ready');
+  } catch (e: any) {
+    logger.debug({ error: e?.message }, 'Failed to initialize IPFS cache schema — caching disabled');
+  }
+}
+
+async function ipfsCacheGet(cacheKey: string): Promise<any | null> {
+  if (!ipfsCacheReady) return null;
+  const pool = getIpfsCachePool();
+  if (!pool) return null;
+  try {
+    const result = await pool.query('SELECT content FROM ipfs_cache.metadata WHERE cache_key = $1', [cacheKey]);
+    if (result.rows.length > 0) {
+      logger.debug({ cacheKey }, 'IPFS cache hit');
+      return result.rows[0].content;
+    }
+    return null;
+  } catch (e: any) {
+    logger.debug({ cacheKey, error: e?.message }, 'IPFS cache read error');
+    return null;
+  }
+}
+
+async function ipfsCacheSet(cacheKey: string, content: any): Promise<void> {
+  if (!ipfsCacheReady) return;
+  const pool = getIpfsCachePool();
+  if (!pool) return;
+  try {
+    await pool.query(
+      'INSERT INTO ipfs_cache.metadata (cache_key, content) VALUES ($1, $2) ON CONFLICT (cache_key) DO NOTHING',
+      [cacheKey, JSON.stringify(content)]
+    );
+    logger.debug({ cacheKey }, 'IPFS cache write');
+  } catch (e: any) {
+    logger.debug({ cacheKey, error: e?.message }, 'IPFS cache write error');
+  }
+}
+
+// Initialize IPFS cache schema eagerly (non-blocking)
+ensureIpfsCacheSchema().catch(e => {
+  logger.debug({ error: e?.message }, 'IPFS cache schema init failed');
+});
 
 function truncate(text: unknown, max = 800): string | null {
   if (text === undefined || text === null) return null;
@@ -469,7 +496,7 @@ function generateTemplateId(name: string): string {
  * Called when a new job definition is indexed.
  */
 async function deriveJobTemplate(
-  db: NonNullable<PonderContextShape["db"]>,
+  db: any,
   jobDef: {
     id: string;
     name?: string;
@@ -482,8 +509,6 @@ async function deriveJobTemplate(
     inputSchema?: Record<string, any>;
   }
 ): Promise<void> {
-  const templateRepo = createRepository(db, jobTemplate, "jobTemplate");
-
   // Compute blueprint hash for deduplication
   const blueprintHash = computeBlueprintHash(jobDef.blueprint);
   if (!blueprintHash) {
@@ -500,50 +525,40 @@ async function deriveJobTemplate(
   // Since we can't query by non-PK fields easily, we'll use a hash-based ID
   const templateId = `${baseTemplateId}-${blueprintHash.substring(4, 12)}`;
 
-  const existing = await templateRepo.findUnique({ id: templateId });
+  const existing = await db.find(jobTemplate, { id: templateId });
 
   if (existing) {
-    // Update existing template metrics
-    const newRunCount = (existing.runCount || 0) + 1;
-    // If inputSchema is null and a new one is provided, update it
+    // Update existing template metrics — use functional update for atomic increment
     const shouldUpdateInputSchema = !existing.inputSchema && jobDef.inputSchema;
-    await templateRepo.upsert({
-      id: templateId,
-      update: {
-        runCount: newRunCount,
-        lastUsedAt: jobDef.blockTimestamp,
-        ...(shouldUpdateInputSchema ? { inputSchema: jobDef.inputSchema } : {}),
-      },
-    });
-    logger.debug({ templateId, runCount: newRunCount, inputSchemaUpdated: shouldUpdateInputSchema }, "Updated existing job template metrics");
+    await db.update(jobTemplate, { id: templateId }).set((row: any) => ({
+      runCount: row.runCount + 1,
+      lastUsedAt: jobDef.blockTimestamp,
+      ...(shouldUpdateInputSchema ? { inputSchema: jobDef.inputSchema } : {}),
+    }));
+    logger.debug({ templateId, inputSchemaUpdated: !!shouldUpdateInputSchema }, "Updated existing job template metrics");
   } else {
     // Create new template
     const tags = extractTags(jobDef.name, jobDef.blueprint);
 
-    await templateRepo.upsert({
+    await db.insert(jobTemplate).values({
       id: templateId,
-      create: {
-        id: templateId,
-        name: templateName,
-        description: `Auto-derived from job: ${jobDef.name || 'Unnamed'}`,
-        tags,
-        enabledTools: jobDef.enabledTools || [],
-        blueprintHash,
-        blueprint: jobDef.blueprint,
-        inputSchema: jobDef.inputSchema || null,
-        outputSpec: jobDef.outputSpec || null,
-        priceWei: jobDef.priceWei ?? 0n,
-        priceUsd: jobDef.priceUsd || null,
-        canonicalJobDefinitionId: jobDef.id,
-        runCount: 1,
-        successCount: 0,
-        avgDurationSeconds: null,
-        avgCostWei: null,
-        createdAt: jobDef.blockTimestamp,
-        lastUsedAt: jobDef.blockTimestamp,
-        status: 'visible',
-      },
-    });
+      name: templateName,
+      description: `Auto-derived from job: ${jobDef.name || 'Unnamed'}`,
+      tags,
+      enabledTools: jobDef.enabledTools || [],
+      blueprintHash,
+      blueprint: jobDef.blueprint,
+      inputSchema: jobDef.inputSchema || null,
+      outputSpec: jobDef.outputSpec || null,
+      priceWei: jobDef.priceWei ?? 0n,
+      priceUsd: jobDef.priceUsd || null,
+      canonicalJobDefinitionId: jobDef.id,
+      runCount: 1,
+      successCount: 0,
+      createdAt: jobDef.blockTimestamp,
+      lastUsedAt: jobDef.blockTimestamp,
+      status: 'visible',
+    }).onConflictDoNothing();
     logger.info({ templateId, templateName, blueprintHash }, "Created new job template from job definition");
   }
 }
@@ -556,7 +571,7 @@ async function deriveJobTemplate(
  */
 async function findWorkstreamRoot(
   startRequestId: string,
-  requestRepo: Repository,
+  db: any,
 ): Promise<string> {
   let currentId = startRequestId;
   const visited = new Set<string>();
@@ -571,13 +586,13 @@ async function findWorkstreamRoot(
     visited.add(currentId);
 
     try {
-      const request = await requestRepo.findUnique({ id: currentId });
-      if (!request || !request.sourceRequestId) {
+      const req = await db.find(request, { id: currentId });
+      if (!req || !req.sourceRequestId) {
         // We've found the root (no parent) or the trail goes cold.
         return currentId;
       }
       // Move up the chain
-      currentId = request.sourceRequestId;
+      currentId = req.sourceRequestId;
     } catch (e) {
       // If we can't find the parent, treat current as root
       logger.warn({ requestId: currentId, error: serializeError(e) }, 'Failed to fetch parent request during workstream root search');
@@ -591,9 +606,9 @@ async function findWorkstreamRoot(
 
 ponder.on(
   "MechMarketplace:MarketplaceRequest",
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  async ({ event, context }: { event: any; context: any }) => {
     try {
-      const db = (context as any).db;
+      const db = context.db;
       if (!db) {
         logger.error("Ponder context.db is not available; cannot index MarketplaceRequest");
         return;
@@ -601,8 +616,8 @@ ponder.on(
 
       const mech: string = String(event.args.priorityMech).toLowerCase();
       const sender: string = String(event.args.requester).toLowerCase();
-      const requestIds: string[] = toStringArray((event.args as any).requestIds);
-      const requestDatas: string[] = toStringArray((event.args as any).requestDatas);
+      const requestIds: string[] = toStringArray(event.args.requestIds);
+      const requestDatas: string[] = toStringArray(event.args.requestDatas);
       const txHash: string = String(event.transaction.hash);
       const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
@@ -614,9 +629,7 @@ ponder.on(
         return;
       }
 
-      const repo: Repository = createRepository(db, request, "request");
-      const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
-      const messageRepo: Repository = createRepository(db, message, "message");
+      // Using native Ponder Store API — no Repository wrapper needed
 
       for (let i = 0; i < requestIds.length; i++) {
         const id = requestIds[i];
@@ -644,13 +657,23 @@ ponder.on(
         let selectedCandidate: CidCandidate | null = null;
         let lastIpfsError: any = null;
         try {
-          for (const candidate of cidCandidates) {
-            try {
-              content = await fetchRequestMetadata(candidate.cidBase32);
-              selectedCandidate = candidate;
-              break;
-            } catch (candidateError: any) {
-              lastIpfsError = candidateError;
+          // Check IPFS cache first
+          const cachedContent = await ipfsCacheGet(digestHex);
+          if (cachedContent) {
+            content = cachedContent;
+            selectedCandidate = cidCandidates[0] || null;
+          } else {
+            for (const candidate of cidCandidates) {
+              try {
+                content = await fetchRequestMetadata(candidate.cidBase32);
+                selectedCandidate = candidate;
+                break;
+              } catch (candidateError: any) {
+                lastIpfsError = candidateError;
+              }
+            }
+            if (content && selectedCandidate) {
+              await ipfsCacheSet(digestHex, content);
             }
           }
           if (!content || !selectedCandidate) {
@@ -719,22 +742,18 @@ ponder.on(
         logger.info({ requestId: id, networkId: networkId || 'undefined (legacy)', isKnownJinnMech }, "Request passed filter - creating DB record");
 
         try {
-          await repo.upsert({
+          // Pre-seed request row — don't overwrite if it already exists
+          await db.insert(request).values({
             id,
-            create: {
-              mech,
-              sender,
-              workstreamId: id, // Temporary: will be recomputed after metadata extraction if sourceRequestId exists
-              transactionHash: txHash,
-              blockNumber,
-              blockTimestamp,
-              ipfsHash,
-              delivered: false,
-            },
-            update: {
-              // Don't overwrite existing fields during initial insert
-            },
-          });
+            mech: mech as `0x${string}`,
+            sender: sender as `0x${string}`,
+            workstreamId: id, // Temporary: will be recomputed after metadata extraction if sourceRequestId exists
+            transactionHash: txHash,
+            blockNumber,
+            blockTimestamp,
+            ipfsHash,
+            delivered: false,
+          }).onConflictDoNothing();
           logger.info({ requestId: id }, "Initial request insert completed successfully");
         } catch (upsertError: any) {
           logger.error({ requestId: id, error: serializeError(upsertError) }, "Initial request insert failed");
@@ -808,38 +827,34 @@ ponder.on(
         // Upsert jobDefinition if present
         // NOTE: This happens BEFORE workstreamId is computed, so we can't include it here yet.
         // We'll need to update it after workstreamId is computed.
-        if (jobDefRepo && jobDefinitionId) {
+        if (jobDefinitionId) {
           // Prefer explicit lineage from payload if provided
           const parentJobDefinitionId: string | undefined = sourceJobDefinitionIdFromContent;
 
-          await jobDefRepo.upsert({
+          await db.insert(jobDefinition).values({
             id: jobDefinitionId,
-            create: {
-              id: jobDefinitionId,
-              name: jobName || 'Unnamed Job',
-              enabledTools,
-              blueprint,
-              dependencies,
-              ventureId,
-              templateId,
-              sourceJobDefinitionId: parentJobDefinitionId,
-              sourceRequestId: sourceRequestId,
-              codeMetadata,
-              createdAt: blockTimestamp,
-              lastInteraction: blockTimestamp,
-              lastStatus: 'PENDING',
-            },
-            update: {
-              name: jobName || 'Unnamed Job',
-              enabledTools,
-              blueprint,
-              codeMetadata: codeMetadata || undefined,
-              lastInteraction: blockTimestamp,
-              lastStatus: 'PENDING',
-              // Do NOT re-attribute lineage on updates; preserve original creator
-              // Do NOT update dependencies - immutable per job definition
-              // Do NOT update ventureId/templateId - preserve original association
-            },
+            name: jobName || 'Unnamed Job',
+            enabledTools,
+            blueprint,
+            dependencies,
+            ventureId,
+            templateId,
+            sourceJobDefinitionId: parentJobDefinitionId,
+            sourceRequestId: sourceRequestId,
+            codeMetadata,
+            createdAt: blockTimestamp,
+            lastInteraction: blockTimestamp,
+            lastStatus: 'PENDING',
+          }).onConflictDoUpdate({
+            name: jobName || 'Unnamed Job',
+            enabledTools,
+            blueprint,
+            codeMetadata: codeMetadata || undefined,
+            lastInteraction: blockTimestamp,
+            lastStatus: 'PENDING',
+            // Do NOT re-attribute lineage on updates; preserve original creator
+            // Do NOT update dependencies - immutable per job definition
+            // Do NOT update ventureId/templateId - preserve original association
           });
 
           // Derive job template from this job definition
@@ -895,7 +910,7 @@ ponder.on(
           logger.debug({ requestId: id, workstreamId }, 'Using explicit workstream ID from metadata');
         } else if (sourceRequestId) {
           // This is a child job, find its ultimate root
-          workstreamId = await findWorkstreamRoot(sourceRequestId, repo);
+          workstreamId = await findWorkstreamRoot(sourceRequestId, db);
         } else {
           // This is a root job, its workstream ID is its own ID
           workstreamId = id;
@@ -905,44 +920,21 @@ ponder.on(
         // The create path should never execute here since we pre-seeded above,
         // but include it as a safety fallback
         try {
+          // Update the pre-seeded request row with enriched metadata from IPFS
+          // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
           logger.info({ requestId: id, jobName, jobDefinitionId, workstreamId, ventureId, templateId }, "Updating request row with enriched metadata");
-          await repo.upsert({
-            id,
-            create: {
-              mech,
-              sender,
-              workstreamId,
-              ventureId,
-              templateId,
-              jobDefinitionId: jobDefinitionId,
-              sourceRequestId: sourceRequestId,
-              sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
-              requestData: dataHex || undefined,
-              ipfsHash,
-              transactionHash: txHash,
-              blockNumber,
-              blockTimestamp,
-              delivered: false,
-              jobName,
-              enabledTools,
-              additionalContext: contextToStore,
-              dependencies,
-            },
-            update: {
-              // Only update enriched fields; preserve pre-seeded base fields (mech, sender, block*, delivered)
-              workstreamId,
-              ventureId,
-              templateId,
-              jobDefinitionId: jobDefinitionId,
-              sourceRequestId: sourceRequestId,
-              sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
-              requestData: dataHex || undefined,
-              jobName,
-              enabledTools,
-              additionalContext: contextToStore,
-              dependencies,
-              // intentionally do not overwrite delivered, mech, sender, blockNumber, blockTimestamp, transactionHash here
-            },
+          await db.update(request, { id }).set({
+            workstreamId,
+            ventureId,
+            templateId,
+            jobDefinitionId: jobDefinitionId,
+            sourceRequestId: sourceRequestId,
+            sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
+            requestData: dataHex || undefined,
+            jobName,
+            enabledTools,
+            additionalContext: contextToStore,
+            dependencies,
           });
           logger.info({ requestId: id }, "Enriched update completed successfully");
         } catch (enrichError: any) {
@@ -950,32 +942,15 @@ ponder.on(
           throw enrichError;
         }
 
-        // Update jobDefinition with workstreamId now that it's computed
-        if (jobDefRepo && jobDefinitionId) {
+        // Backfill workstreamId on jobDefinition if it was just created (no-op if already set)
+        // Do NOT update workstreamId — a job definition can participate in multiple workstreams
+        // The workstreamId field only stores the first workstream the job was created in
+        if (jobDefinitionId) {
           try {
-            // Use upsert instead of update to ensure workstreamId is set even on create
-            await jobDefRepo.upsert({
-              id: jobDefinitionId,
-              create: {
-                // This should never execute since we created above, but include as fallback
-                id: jobDefinitionId,
-                name: jobName || 'Unnamed Job',
-                enabledTools,
-                blueprint,
-                workstreamId,
-                sourceJobDefinitionId: sourceJobDefinitionIdFromContent,
-                sourceRequestId: sourceRequestId,
-                codeMetadata,
-                createdAt: blockTimestamp,
-                lastInteraction: blockTimestamp,
-                lastStatus: 'PENDING',
-              },
-              update: {
-                // Do NOT update workstreamId - a job definition can participate in multiple workstreams
-                // The workstreamId field only stores the first workstream the job was created in
-                // To find all workstreams for a job, query requests by jobDefinitionId and get their unique workstreamIds
-              },
-            });
+            const existingJobDef = await db.find(jobDefinition, { id: jobDefinitionId });
+            if (existingJobDef && !existingJobDef.workstreamId) {
+              await db.update(jobDefinition, { id: jobDefinitionId }).set({ workstreamId });
+            }
             logger.debug({ jobDefinitionId, workstreamId }, "Job definition workstream ID preserved (not updated)");
           } catch (jobDefError: any) {
             logger.error({ jobDefinitionId, error: serializeError(jobDefError) }, "Failed to update job definition");
@@ -984,33 +959,29 @@ ponder.on(
         }
 
         // Index message if present
-        if (messageRepo && messageContent) {
+        if (messageContent) {
           const msgTo = typeof messageContent === 'object' && messageContent.to ? messageContent.to : jobDefinitionId;
           const msgFrom = typeof messageContent === 'object' && messageContent.from ? messageContent.from : sourceJobDefinitionIdFromContent;
           const msgText = typeof messageContent === 'string' ? messageContent : messageContent.content;
 
           if (msgText) {
-            await messageRepo.upsert({
+            await db.insert(message).values({
               id,
-              create: {
-                requestId: id,
-                sourceRequestId: sourceRequestId,
-                sourceJobDefinitionId: msgFrom,
-                to: msgTo,
-                content: msgText,
-                blockTimestamp,
-              },
-              update: {
-                content: msgText,
-                to: msgTo,
-                sourceJobDefinitionId: msgFrom,
-              },
+              requestId: id,
+              sourceRequestId: sourceRequestId,
+              sourceJobDefinitionId: msgFrom,
+              to: msgTo,
+              content: msgText,
+              blockTimestamp,
+            }).onConflictDoUpdate({
+              content: msgText,
+              to: msgTo,
+              sourceJobDefinitionId: msgFrom,
             });
           }
         }
 
         // Update workstream table
-        const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
 
         // Extract ventureId and templateId from content if available
         const contentVentureId = typeof content?.ventureId === 'string' ? content.ventureId
@@ -1020,42 +991,36 @@ ponder.on(
 
         // If this is a root request (sourceRequestId is null), create a workstream entry
         if (!sourceRequestId) {
-          await workstreamRepo.upsert({
+          await db.insert(workstream).values({
             id: workstreamId,
-            create: {
-              rootRequestId: id,
-              jobName,
-              mech,
-              sender,
-              blockTimestamp,
-              lastActivity: blockTimestamp,
-              childRequestCount: 0,
-              hasLauncherBriefing: false,
-              delivered: false,
-              ventureId: contentVentureId,
-              templateId: contentTemplateId,
-            },
-            update: {
-              lastActivity: blockTimestamp,
-              ...(jobName ? { jobName } : {}),
-              ...(contentVentureId ? { ventureId: contentVentureId } : {}),
-              ...(contentTemplateId ? { templateId: contentTemplateId } : {}),
-            },
+            rootRequestId: id,
+            jobName,
+            mech: mech as `0x${string}`,
+            sender: sender as `0x${string}`,
+            blockTimestamp,
+            lastActivity: blockTimestamp,
+            childRequestCount: 0,
+            hasLauncherBriefing: false,
+            delivered: false,
+            ventureId: contentVentureId,
+            templateId: contentTemplateId,
+          }).onConflictDoUpdate({
+            lastActivity: blockTimestamp,
+            ...(jobName ? { jobName } : {}),
+            ...(contentVentureId ? { ventureId: contentVentureId } : {}),
+            ...(contentTemplateId ? { templateId: contentTemplateId } : {}),
           });
           logger.debug({ workstreamId, requestId: id }, "Created/updated workstream entry for root request");
         } else {
           // This is a child request, increment the child count in the workstream
-          const workstreamRecord = await workstreamRepo.findUnique({ id: workstreamId });
+          // Use functional update for atomic increment
+          const workstreamRecord = await db.find(workstream, { id: workstreamId });
           if (workstreamRecord) {
-            const currentCount = typeof workstreamRecord.childRequestCount === 'number' ? workstreamRecord.childRequestCount : 0;
-            await workstreamRepo.upsert({
-              id: workstreamId,
-              update: {
-                childRequestCount: currentCount + 1,
-                lastActivity: blockTimestamp,
-              },
-            });
-            logger.debug({ workstreamId, requestId: id, newCount: currentCount + 1 }, "Incremented child request count for workstream");
+            await db.update(workstream, { id: workstreamId }).set((row: any) => ({
+              childRequestCount: row.childRequestCount + 1,
+              lastActivity: blockTimestamp,
+            }));
+            logger.debug({ workstreamId, requestId: id }, "Incremented child request count for workstream");
           }
         }
       }
@@ -1072,9 +1037,9 @@ ponder.on(
 // mechs created before factory start block, different Deliver event signatures, etc.)
 ponder.on(
   "MechMarketplace:MarketplaceDelivery",
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  async ({ event, context }: { event: any; context: any }) => {
     try {
-      const db = (context as any).db;
+      const db = context.db;
       if (!db) {
         logger.error("Ponder context.db is not available; cannot index MarketplaceDelivery");
         return;
@@ -1088,10 +1053,6 @@ ponder.on(
       const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
-      const requestRepo: Repository = createRepository(db, request, "request");
-      const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
-      const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
-
       let indexedCount = 0;
 
       for (let i = 0; i < requestIds.length; i++) {
@@ -1101,7 +1062,7 @@ ponder.on(
         // Check if this request exists and is a Jinn request
         let existingRequest: any = null;
         try {
-          existingRequest = await requestRepo.findUnique({ id: requestId });
+          existingRequest = await db.find(request, { id: requestId });
           if (!existingRequest) {
             logger.debug(
               { requestId, deliveryMech, txHash },
@@ -1116,70 +1077,58 @@ ponder.on(
 
         // Update delivery record with marketplace-level delivery mech
         // Include create payload for when OlasMech:Deliver hasn't fired yet
-        await deliveryRepo.upsert({
+        await db.insert(delivery).values({
           id: requestId,
-          create: {
-            requestId,
-            mech: existingRequest.mech || '0x0000000000000000000000000000000000000000',
-            mechServiceMultisig: '0x0000000000000000000000000000000000000000',
-            deliveryMech: deliveryMech,
-            deliveryRate: 0n,
-            transactionHash: txHash,
-            blockNumber,
-            blockTimestamp,
-          },
-          update: {
-            deliveryMech: deliveryMech,
-          },
+          requestId,
+          mech: existingRequest.mech || '0x0000000000000000000000000000000000000000' as `0x${string}`,
+          mechServiceMultisig: '0x0000000000000000000000000000000000000000' as `0x${string}`,
+          deliveryMech: deliveryMech as `0x${string}`,
+          deliveryRate: 0n,
+          transactionHash: txHash,
+          blockNumber,
+          blockTimestamp,
+        }).onConflictDoUpdate({
+          deliveryMech: deliveryMech as `0x${string}`,
         });
 
         // Update request: set delivered:true if the marketplace confirms delivery
-        await requestRepo.upsert({
-          id: requestId,
-          update: {
-            deliveryMech: deliveryMech,
-            ...(wasDelivered ? { delivered: true } : {}),
-          },
+        await db.update(request, { id: requestId }).set({
+          deliveryMech: deliveryMech as `0x${string}`,
+          ...(wasDelivered ? { delivered: true } : {}),
         });
 
         // If delivered and this is a root request, mark workstream as delivered
         if (wasDelivered && existingRequest.workstreamId && !existingRequest.sourceRequestId) {
-          await workstreamRepo.upsert({
+          await db.insert(workstream).values({
             id: existingRequest.workstreamId,
-            create: {
-              rootRequestId: requestId,
-              jobName: existingRequest.jobName || null,
-              mech: existingRequest.mech,
-              sender: existingRequest.sender,
-              blockTimestamp,
-              lastActivity: blockTimestamp,
-              childRequestCount: 0,
-              hasLauncherBriefing: false,
-              delivered: true,
-            },
-            update: {
-              delivered: true,
-              lastActivity: blockTimestamp,
-            },
+            rootRequestId: requestId,
+            jobName: existingRequest.jobName || null,
+            mech: existingRequest.mech,
+            sender: existingRequest.sender,
+            blockTimestamp,
+            lastActivity: blockTimestamp,
+            childRequestCount: 0,
+            hasLauncherBriefing: false,
+            delivered: true,
+          }).onConflictDoUpdate({
+            delivered: true,
+            lastActivity: blockTimestamp,
           });
           logger.debug({ workstreamId: existingRequest.workstreamId, requestId }, "Marked workstream as delivered via MarketplaceDelivery");
         } else if (wasDelivered && existingRequest.workstreamId) {
-          await workstreamRepo.upsert({
+          await db.insert(workstream).values({
             id: existingRequest.workstreamId,
-            create: {
-              rootRequestId: existingRequest.workstreamId,
-              jobName: existingRequest.jobName || null,
-              mech: existingRequest.mech,
-              sender: existingRequest.sender,
-              blockTimestamp,
-              lastActivity: blockTimestamp,
-              childRequestCount: 0,
-              hasLauncherBriefing: false,
-              delivered: false,
-            },
-            update: {
-              lastActivity: blockTimestamp,
-            },
+            rootRequestId: existingRequest.workstreamId,
+            jobName: existingRequest.jobName || null,
+            mech: existingRequest.mech,
+            sender: existingRequest.sender,
+            blockTimestamp,
+            lastActivity: blockTimestamp,
+            childRequestCount: 0,
+            hasLauncherBriefing: false,
+            delivered: false,
+          }).onConflictDoUpdate({
+            lastActivity: blockTimestamp,
           });
         }
 
@@ -1196,9 +1145,9 @@ ponder.on(
 // OlasMech:Deliver handler: mech-level delivery event with IPFS data
 ponder.on(
   "OlasMech:Deliver",
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  async ({ event, context }: { event: any; context: any }) => {
     try {
-      const db = (context as any).db;
+      const db = context.db;
       if (!db) {
         logger.error("Ponder context.db is not available; cannot index OlasMech Deliver");
         return;
@@ -1209,17 +1158,12 @@ ponder.on(
       const blockNumber: bigint = BigInt(toBigIntCoercible(event.block.number));
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
-      const deliveryRepo: Repository = createRepository(db, delivery, "delivery");
-      const requestRepo: Repository = createRepository(db, request, "request");
-      const artifactsRepo: Repository = createRepository(db, artifact, "artifact");
-      const jobDefRepo: Repository = createRepository(db, jobDefinition, "jobDefinition");
-
       // Check if request exists - it should have been pre-seeded by MarketplaceRequest handler.
       // If indexing from a later start block, we may see Deliver events for requests that were
       // created before our indexing window. Skip these gracefully.
       let existingRequest: any = null;
       try {
-        existingRequest = await requestRepo.findUnique({ id: requestId });
+        existingRequest = await db.find(request, { id: requestId });
         if (!existingRequest) {
           logger.warn(
             { requestId, txHash },
@@ -1235,139 +1179,104 @@ ponder.on(
       // Convert raw digest bytes to gateway-compatible CIDv1 (raw codec) hex multibase
       const ipfsHash = dataBytes ? `f01551220${String(dataBytes).replace(/^0x/, '')}` : undefined;
 
-      const baseDeliveryRecord = {
+      const mechAddr = String(event.args.mech || "0x0000000000000000000000000000000000000000").toLowerCase() as `0x${string}`;
+      const mechMultisig = String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000").toLowerCase() as `0x${string}`;
+
+      await db.insert(delivery).values({
+        id: requestId,
         requestId,
-        sourceRequestId: undefined,
-        sourceJobDefinitionId: undefined,
-        mech: String(event.args.mech || "0x0000000000000000000000000000000000000000").toLowerCase(),
-        mechServiceMultisig: String(event.args.mechServiceMultisig || "0x0000000000000000000000000000000000000000").toLowerCase(),
-        deliveryRate: BigInt(toBigIntCoercible((event.args as any).deliveryRate ?? 0)),
+        mech: mechAddr,
+        mechServiceMultisig: mechMultisig,
+        deliveryRate: BigInt(toBigIntCoercible(event.args.deliveryRate ?? 0)),
         ipfsHash,
         transactionHash: txHash,
         blockNumber,
         blockTimestamp,
-      } as const;
-
-      await deliveryRepo.upsert({
-        id: requestId,
-        create: baseDeliveryRecord,
-        update: baseDeliveryRecord,
+      }).onConflictDoUpdate({
+        mech: mechAddr,
+        mechServiceMultisig: mechMultisig,
+        deliveryRate: BigInt(toBigIntCoercible(event.args.deliveryRate ?? 0)),
+        ipfsHash,
+        transactionHash: txHash,
+        blockNumber,
+        blockTimestamp,
       });
 
-      // Update request with delivery info, preserving existing fields from pre-seeded row
-      // The create path should never execute since we verified existence above, but include
-      // existing fields as safety fallback
-      const updatedRequest = await requestRepo.upsert({
-        id: requestId,
-        create: {
-          // Include existing fields if available (safety fallback)
-          mech: existingRequest?.mech || String(event.args.mech || "0x0000000000000000000000000000000000000000").toLowerCase(),
-          sender: (existingRequest?.sender || "0x0000000000000000000000000000000000000000").toLowerCase(),
-          workstreamId: existingRequest?.workstreamId || requestId,
-          transactionHash: existingRequest?.transactionHash || txHash,
-          blockNumber: existingRequest?.blockNumber || blockNumber,
-          blockTimestamp: existingRequest?.blockTimestamp || blockTimestamp,
-          delivered: true,
-          deliveryIpfsHash: ipfsHash,
-        },
-        update: {
-          // Only update delivery-specific fields; preserve all other existing fields
-          delivered: true,
-          deliveryIpfsHash: ipfsHash,
-          // Do not overwrite mech, sender, transactionHash, blockNumber, blockTimestamp here
-          // as they come from MarketplaceRequest event
-        },
+      // Update request with delivery info — only delivery-specific fields
+      // Do not overwrite mech, sender, transactionHash, blockNumber, blockTimestamp
+      // as they come from MarketplaceRequest event
+      await db.update(request, { id: requestId }).set({
+        delivered: true,
+        deliveryIpfsHash: ipfsHash,
       });
 
       // If this is a root request (no sourceRequestId), mark the workstream as delivered
-      const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
-      const requestWorkstreamId = (updatedRequest as any)?.workstreamId || existingRequest?.workstreamId;
-      const requestSourceRequestId = (updatedRequest as any)?.sourceRequestId || existingRequest?.sourceRequestId;
+      const requestWorkstreamId = existingRequest?.workstreamId;
+      const requestSourceRequestId = existingRequest?.sourceRequestId;
 
       if (requestWorkstreamId && !requestSourceRequestId) {
         // This is a root request, mark workstream as delivered
-        await workstreamRepo.upsert({
+        await db.insert(workstream).values({
           id: requestWorkstreamId,
-          create: {
-            rootRequestId: requestId,
-            jobName: existingRequest.jobName || null,
-            mech: existingRequest.mech,
-            sender: existingRequest.sender,
-            blockTimestamp,
-            lastActivity: blockTimestamp,
-            childRequestCount: 0,
-            hasLauncherBriefing: false,
-            delivered: true,
-          },
-          update: {
-            delivered: true,
-            lastActivity: blockTimestamp,
-          },
+          rootRequestId: requestId,
+          jobName: existingRequest.jobName || null,
+          mech: existingRequest.mech,
+          sender: existingRequest.sender,
+          blockTimestamp,
+          lastActivity: blockTimestamp,
+          childRequestCount: 0,
+          hasLauncherBriefing: false,
+          delivered: true,
+        }).onConflictDoUpdate({
+          delivered: true,
+          lastActivity: blockTimestamp,
         });
         logger.debug({ workstreamId: requestWorkstreamId, requestId }, "Marked workstream as delivered");
       } else if (requestWorkstreamId) {
         // Child request delivered, update lastActivity
-        await workstreamRepo.upsert({
+        await db.insert(workstream).values({
           id: requestWorkstreamId,
-          create: {
-            rootRequestId: requestWorkstreamId,
-            jobName: existingRequest.jobName || null,
-            mech: existingRequest.mech,
-            sender: existingRequest.sender,
-            blockTimestamp,
-            lastActivity: blockTimestamp,
-            childRequestCount: 0,
-            hasLauncherBriefing: false,
-            delivered: false,
-          },
-          update: {
-            lastActivity: blockTimestamp,
-          },
+          rootRequestId: requestWorkstreamId,
+          jobName: existingRequest.jobName || null,
+          mech: existingRequest.mech,
+          sender: existingRequest.sender,
+          blockTimestamp,
+          lastActivity: blockTimestamp,
+          childRequestCount: 0,
+          hasLauncherBriefing: false,
+          delivered: false,
+        }).onConflictDoUpdate({
+          lastActivity: blockTimestamp,
         });
       }
 
       // Attempt to resolve artifacts from delivery JSON
       try {
         if (ipfsHash) {
-          // Prefer reconstructing directory CID (dag-pb) from digest and fetch the named file (requestId)
+          // Reconstruct directory CID (dag-pb) from digest and fetch the named file (requestId)
           // ipfsHash is 'f01551220' + 64-hex digest (raw codec). Extract digest and build CIDv1 dag-pb.
           const digestHex = String(ipfsHash).replace(/^f01551220/i, '');
-          let url = `${IPFS_GATEWAY_BASE}${ipfsHash}`; // fallback
-          try {
-            const digestBytes: number[] = [];
-            for (let i = 0; i < digestHex.length; i += 2) {
-              digestBytes.push(parseInt(digestHex.slice(i, i + 2), 16));
-            }
-            // Build CIDv1 bytes: [0x01] + [0x70] (dag-pb) + multihash: [0x12, 0x20] + digest
-            const cidBytes = [0x01, 0x70, 0x12, 0x20, ...digestBytes];
-            // Base32 encode (lowercase, no padding), prefix with 'b'
-            const base32Alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
-            let bitBuffer = 0;
-            let bitCount = 0;
-            let out = '';
-            for (const b of cidBytes) {
-              bitBuffer = (bitBuffer << 8) | (b & 0xff);
-              bitCount += 8;
-              while (bitCount >= 5) {
-                const idx = (bitBuffer >> (bitCount - 5)) & 0x1f;
-                bitCount -= 5;
-                out += base32Alphabet[idx];
+          const deliveryCacheKey = `delivery:${digestHex}:${requestId}`;
+          const cachedDelivery = await ipfsCacheGet(deliveryCacheKey);
+          let res: any = null;
+          if (cachedDelivery) {
+            res = { status: 200, data: cachedDelivery };
+          } else {
+            let url = `${IPFS_GATEWAY_BASE}${ipfsHash}`; // fallback
+            try {
+              const dagPbCid = buildCidFromDigest(digestHex, 'dag-pb');
+              url = `${IPFS_GATEWAY_BASE}${dagPbCid.cidBase32}/${requestId}`;
+            } catch { }
+            for (let attempt = 0; attempt < 2; attempt++) {
+              try {
+                res = await axios.get(url, { timeout: 2000 });
+                if (res && res.status === 200 && res.data) break;
+              } catch (e) {
+                if (attempt < 1) await new Promise(r => setTimeout(r, 500));
               }
             }
-            if (bitCount > 0) {
-              const idx = (bitBuffer << (5 - bitCount)) & 0x1f;
-              out += base32Alphabet[idx];
-            }
-            const dirCid = 'b' + out;
-            url = `${IPFS_GATEWAY_BASE}${dirCid}/${requestId}`;
-          } catch { }
-          let res: any = null;
-          for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-              res = await axios.get(url, { timeout: 2000 });
-              if (res && res.status === 200 && res.data) break;
-            } catch (e) {
-              if (attempt < 1) await new Promise(r => setTimeout(r, 500));
+            if (res && res.status === 200 && res.data) {
+              await ipfsCacheSet(deliveryCacheKey, typeof res.data === 'string' ? res.data : res.data);
             }
           }
           if (res && res.status === 200 && res.data) {
@@ -1398,13 +1307,10 @@ ponder.on(
             // Write lastStatus (and backfill jobName if missing) to workstream for root requests
             if (requestWorkstreamId && !requestSourceRequestId) {
               try {
-                await workstreamRepo.upsert({
-                  id: requestWorkstreamId,
-                  update: {
-                    lastStatus: deliveryStatus,
-                    ...(jobInstanceStatusUpdate ? { latestStatusUpdate: jobInstanceStatusUpdate } : {}),
-                    ...(jobName ? { jobName } : {}),
-                  },
+                await db.update(workstream, { id: requestWorkstreamId }).set({
+                  lastStatus: deliveryStatus,
+                  ...(jobInstanceStatusUpdate ? { latestStatusUpdate: jobInstanceStatusUpdate } : {}),
+                  ...(jobName ? { jobName } : {}),
                 });
                 logger.debug({ workstreamId: requestWorkstreamId, deliveryStatus, jobName }, "Updated workstream lastStatus");
               } catch (wsErr: any) {
@@ -1415,97 +1321,79 @@ ponder.on(
             // Backfill job definition on delivery if available
             // Note: deliveryJobDefinitionId from delivery JSON is the job that was executed (target job)
             if (deliveryJobDefinitionId) {
-              if (jobDefRepo) {
-                try {
-                  // Inherit workstreamId from the request (or default to requestId if root)
-                  const workstreamId = existingRequest?.workstreamId || requestId;
+              try {
+                // Inherit workstreamId from the request (or default to requestId if root)
+                const workstreamId = existingRequest?.workstreamId || requestId;
 
-                  // LIMITATION: lastStatus reflects the status of the most recent run only.
-                  // It does NOT account for undelivered children from previous runs.
-                  // Consumers should query child requests directly via sourceJobDefinitionId
-                  // to determine true job-level completion status across all runs.
-                  //
-                  // The worker's inferStatus() already does this correctly by querying live
-                  // children before each run, preventing premature COMPLETED transitions.
-                  // This field is a convenience snapshot only.
+                // LIMITATION: lastStatus reflects the status of the most recent run only.
+                // Consumers should query child requests directly via sourceJobDefinitionId
+                // to determine true job-level completion status across all runs.
 
-                  await jobDefRepo.upsert({
-                    id: deliveryJobDefinitionId,
-                    create: {
-                      id: deliveryJobDefinitionId,
-                      name: jobName || 'Unnamed Job',
-                      enabledTools,
-                      blueprint,
-                      workstreamId,
-                      sourceRequestId: requestId,
-                      createdAt: blockTimestamp,
-                      lastInteraction: blockTimestamp,
-                      lastStatus: deliveryStatus,
-                      latestStatusUpdate: jobInstanceStatusUpdate,
-                      // Only set latestStatusUpdateAt if we have a status update
-                      ...(jobInstanceStatusUpdate ? { latestStatusUpdateAt: blockTimestamp } : {}),
-                    },
-                    update: {
-                      name: jobName || 'Unnamed Job',
-                      enabledTools,
-                      blueprint,
-                      // Don't overwrite workstreamId on update
-                      sourceRequestId: requestId,
-                      lastInteraction: blockTimestamp,
-                      lastStatus: deliveryStatus,
-                      // Only update status fields if we have a new status update
-                      // This prevents overwriting a good status with null from a later run
-                      ...(jobInstanceStatusUpdate ? {
-                        latestStatusUpdate: jobInstanceStatusUpdate,
-                        latestStatusUpdateAt: blockTimestamp,
-                      } : {}),
-                    },
-                  });
-                } catch (jdErr: any) {
-                  logger.error({ jobDefinitionId: deliveryJobDefinitionId, error: serializeError(jdErr) }, "Failed to backfill job definition in Deliver handler");
-                }
+                await db.insert(jobDefinition).values({
+                  id: deliveryJobDefinitionId,
+                  name: jobName || 'Unnamed Job',
+                  enabledTools,
+                  blueprint,
+                  workstreamId,
+                  sourceRequestId: requestId,
+                  createdAt: blockTimestamp,
+                  lastInteraction: blockTimestamp,
+                  lastStatus: deliveryStatus,
+                  latestStatusUpdate: jobInstanceStatusUpdate,
+                  ...(jobInstanceStatusUpdate ? { latestStatusUpdateAt: blockTimestamp } : {}),
+                }).onConflictDoUpdate({
+                  name: jobName || 'Unnamed Job',
+                  enabledTools,
+                  blueprint,
+                  // Don't overwrite workstreamId on update
+                  sourceRequestId: requestId,
+                  lastInteraction: blockTimestamp,
+                  lastStatus: deliveryStatus,
+                  // Only update status fields if we have a new status update
+                  ...(jobInstanceStatusUpdate ? {
+                    latestStatusUpdate: jobInstanceStatusUpdate,
+                    latestStatusUpdateAt: blockTimestamp,
+                  } : {}),
+                });
+              } catch (jdErr: any) {
+                logger.error({ jobDefinitionId: deliveryJobDefinitionId, error: serializeError(jdErr) }, "Failed to backfill job definition in Deliver handler");
               }
               // Backfill jobDefinitionId (target job) on delivery and request, including status update
-              await deliveryRepo.upsert({
-                id: requestId,
-                update: {
-                  sourceJobDefinitionId: deliveryJobDefinitionId,
-                  sourceRequestId: requestId,
-                  jobInstanceStatusUpdate
-                }
+              await db.update(delivery, { id: requestId }).set({
+                sourceJobDefinitionId: deliveryJobDefinitionId,
+                sourceRequestId: requestId,
+                jobInstanceStatusUpdate
               });
-              await requestRepo.upsert({ id: requestId, update: { jobDefinitionId: deliveryJobDefinitionId, ...(jobName ? { jobName } : {}) } });
+              await db.update(request, { id: requestId }).set({
+                jobDefinitionId: deliveryJobDefinitionId,
+                ...(jobName ? { jobName } : {}),
+              });
             } else {
               // Fallback: if request has a jobDefinitionId already, propagate it to delivery as sourceJobDefinitionId
               try {
-                const req = await requestRepo.upsert({ id: requestId, update: {} });
-                const maybeReq = (req as any) || {};
-                if (maybeReq && typeof maybeReq.jobDefinitionId === 'string') {
-                  await deliveryRepo.upsert({
-                    id: requestId,
-                    update: {
-                      sourceJobDefinitionId: maybeReq.jobDefinitionId,
-                      sourceRequestId: requestId,
-                      jobInstanceStatusUpdate
-                    }
+                const req = await db.find(request, { id: requestId });
+                if (req && typeof req.jobDefinitionId === 'string') {
+                  await db.update(delivery, { id: requestId }).set({
+                    sourceJobDefinitionId: req.jobDefinitionId,
+                    sourceRequestId: requestId,
+                    jobInstanceStatusUpdate
                   });
                 }
               } catch { }
             }
 
-            if (Array.isArray(res.data.artifacts) && artifactsRepo) {
+            if (Array.isArray(res.data.artifacts)) {
               // Fetch the request to get its sourceRequestId and venture/workstream/template IDs for proper attribution
               let requestSourceRequestId: string | undefined = undefined;
               let requestVentureId: string | undefined = undefined;
               let requestWorkstreamId: string | undefined = undefined;
               let requestTemplateId: string | undefined = undefined;
               try {
-                const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
-                const maybeReq = (req as any) || {};
-                requestSourceRequestId = maybeReq && typeof maybeReq.sourceRequestId === 'string' ? maybeReq.sourceRequestId : undefined;
-                requestVentureId = maybeReq && typeof maybeReq.ventureId === 'string' ? maybeReq.ventureId : undefined;
-                requestWorkstreamId = maybeReq && typeof maybeReq.workstreamId === 'string' ? maybeReq.workstreamId : undefined;
-                requestTemplateId = maybeReq && typeof maybeReq.templateId === 'string' ? maybeReq.templateId : undefined;
+                const req = await db.find(request, { id: requestId });
+                requestSourceRequestId = req && typeof req.sourceRequestId === 'string' ? req.sourceRequestId : undefined;
+                requestVentureId = req && typeof req.ventureId === 'string' ? req.ventureId : undefined;
+                requestWorkstreamId = req && typeof req.workstreamId === 'string' ? req.workstreamId : undefined;
+                requestTemplateId = req && typeof req.templateId === 'string' ? req.templateId : undefined;
               } catch { }
 
               for (let idx = 0; idx < res.data.artifacts.length; idx++) {
@@ -1537,27 +1425,23 @@ ponder.on(
                   artifactPayload.sourceJobDefinitionId = deliveryJobDefinitionId;
                 } else {
                   try {
-                    const req = await requestRepo.upsert({ id: requestId, update: {} }); // no-op to read latest
-                    const maybeReq = (req as any) || {};
-                    if (maybeReq && typeof maybeReq.sourceJobDefinitionId === 'string') {
-                      artifactPayload.sourceJobDefinitionId = maybeReq.sourceJobDefinitionId;
+                    const req = await db.find(request, { id: requestId });
+                    if (req && typeof req.sourceJobDefinitionId === 'string') {
+                      artifactPayload.sourceJobDefinitionId = req.sourceJobDefinitionId;
                     }
                   } catch { }
                 }
-                await artifactsRepo.upsert({ id, create: artifactPayload, update: artifactPayload });
+                await db.insert(artifact).values({ id, ...artifactPayload })
+                  .onConflictDoUpdate(artifactPayload);
 
                 // If this is a launcher_briefing artifact, update the workstream
                 if (topic === 'launcher_briefing') {
-                  const workstreamRepo: Repository = createRepository(db, workstream, "workstream");
                   const workstreamId = artifactSourceRequestId; // The sourceRequestId is the root workstream ID
-                  const workstreamRecord = await workstreamRepo.findUnique({ id: workstreamId });
+                  const workstreamRecord = await db.find(workstream, { id: workstreamId });
                   if (workstreamRecord) {
-                    await workstreamRepo.upsert({
-                      id: workstreamId,
-                      update: {
-                        hasLauncherBriefing: true,
-                        lastActivity: blockTimestamp,
-                      },
+                    await db.update(workstream, { id: workstreamId }).set({
+                      hasLauncherBriefing: true,
+                      lastActivity: blockTimestamp,
                     });
                     logger.debug({ workstreamId, artifactId: id }, "Marked workstream as having launcher briefing");
                   }
@@ -1662,9 +1546,9 @@ ponder.on(
 // ============================================================================
 ponder.on(
   "MechMarketplace:CreateMech",
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  async ({ event, context }: { event: any; context: any }) => {
     try {
-      const db = (context as any).db;
+      const db = context.db;
       if (!db) {
         logger.error("Ponder context.db is not available; cannot index CreateMech");
         return;
@@ -1675,21 +1559,14 @@ ponder.on(
       const mechFactory: string = String(event.args.mechFactory).toLowerCase();
       const blockTimestamp: bigint = BigInt(toBigIntCoercible(event.block.timestamp));
 
-      const mechServiceMappingRepo: Repository = createRepository(db, mechServiceMapping, "mechServiceMapping");
-
-      await mechServiceMappingRepo.upsert({
+      // Don't update — first seen is authoritative
+      await db.insert(mechServiceMapping).values({
         id: mech,
-        create: {
-          id: mech,
-          mech: mech as `0x${string}`,
-          serviceId,
-          mechFactory: mechFactory as `0x${string}`,
-          blockTimestamp,
-        },
-        update: {
-          // Don't update - first seen is authoritative
-        },
-      });
+        mech: mech as `0x${string}`,
+        serviceId,
+        mechFactory: mechFactory as `0x${string}`,
+        blockTimestamp,
+      }).onConflictDoNothing();
 
       logger.info({ mech, serviceId: serviceId.toString(), mechFactory }, "Indexed CreateMech (service-to-mech mapping)");
     } catch (e: any) {
@@ -1705,9 +1582,9 @@ ponder.on(
 // Ponder 0.15.x event objects don't expose event.log.address — only
 // event.args, event.block, event.transaction — so we pass address explicitly.
 const createServiceStakedHandler = (contractAddress: string) =>
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  async ({ event, context }: { event: any; context: any }) => {
     try {
-      const db = (context as any).db;
+      const db = context.db;
       if (!db) {
         logger.error("Ponder context.db is not available; cannot index ServiceStaked");
         return;
@@ -1721,27 +1598,20 @@ const createServiceStakedHandler = (contractAddress: string) =>
 
       const id = `${serviceId.toString()}:${stakingContract}`;
 
-      const stakedServiceRepo: Repository = createRepository(db, stakedService, "stakedService");
-
-      await stakedServiceRepo.upsert({
+      await db.insert(stakedService).values({
         id,
-        create: {
-          id,
-          serviceId,
-          stakingContract: stakingContract as `0x${string}`,
-          owner: owner as `0x${string}`,
-          multisig: multisig as `0x${string}`,
-          stakedAt: blockTimestamp,
-          unstakedAt: undefined,
-          isStaked: true,
-        },
-        update: {
-          owner: owner as `0x${string}`,
-          multisig: multisig as `0x${string}`,
-          stakedAt: blockTimestamp,
-          unstakedAt: undefined,
-          isStaked: true,
-        },
+        serviceId,
+        stakingContract: stakingContract as `0x${string}`,
+        owner: owner as `0x${string}`,
+        multisig: multisig as `0x${string}`,
+        stakedAt: blockTimestamp,
+        isStaked: true,
+      }).onConflictDoUpdate({
+        owner: owner as `0x${string}`,
+        multisig: multisig as `0x${string}`,
+        stakedAt: blockTimestamp,
+        unstakedAt: null,
+        isStaked: true,
       });
 
       logger.info({
@@ -1761,9 +1631,9 @@ ponder.on("JinnStakingV2:ServiceStaked", createServiceStakedHandler('0x66A92CDa5
 // ServiceUnstaked handler: Track when services are unstaked from staking contracts
 // ============================================================================
 const createServiceUnstakedHandler = (contractAddress: string) =>
-  async ({ event, context }: { event: PonderEventShape; context: PonderContextShape }) => {
+  async ({ event, context }: { event: any; context: any }) => {
     try {
-      const db = (context as any).db;
+      const db = context.db;
       if (!db) {
         logger.error("Ponder context.db is not available; cannot index ServiceUnstaked");
         return;
@@ -1775,10 +1645,8 @@ const createServiceUnstakedHandler = (contractAddress: string) =>
 
       const id = `${serviceId.toString()}:${stakingContract}`;
 
-      const stakedServiceRepo: Repository = createRepository(db, stakedService, "stakedService");
-
       // Check if record exists before updating
-      const existing = await stakedServiceRepo.findUnique({ id });
+      const existing = await db.find(stakedService, { id });
       if (!existing) {
         logger.warn({
           serviceId: serviceId.toString(),
@@ -1787,12 +1655,9 @@ const createServiceUnstakedHandler = (contractAddress: string) =>
         return;
       }
 
-      await stakedServiceRepo.upsert({
-        id,
-        update: {
-          unstakedAt: blockTimestamp,
-          isStaked: false,
-        },
+      await db.update(stakedService, { id }).set({
+        unstakedAt: blockTimestamp,
+        isStaked: false,
       });
 
       logger.info({

@@ -1,6 +1,7 @@
 const DEFAULT_UPSTREAMS = [
-  'https://mainnet.base.org',
+  'https://base.gateway.tenderly.co/6g74EyOoSgvpbSiU9h4mzl',
   'https://lb.drpc.live/base/AqIPPjb6i02njkMtTVCNr_73pTBmFIsR8ZsZtuZZzRRv',
+  'https://mainnet.base.org',
 ];
 
 export interface ProxyConfig {
