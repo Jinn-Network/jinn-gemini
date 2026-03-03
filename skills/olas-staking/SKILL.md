@@ -31,8 +31,25 @@ Manage OLAS service staking on Base: restaking, migration, status checks, and wh
 |---------|-----------|-------------|-------------|-----------------|
 | 165 (Oak) | `0xB1517bB...02CC2` | `0x15aDF0E...4645` | `0xb8B7A897...D92` | `olas-operate-middleware/.operate/` |
 | 359 (Venture-Test) | `0x443ad86...ffE7` | `0xcea8407...E0e` | `0xD2C24F6...10B` | `/Users/gcd/Repositories/main/jinn-node/.operate/` |
+| 387 (Fleet) | `0xB1517bB...02CC2` | `0x15aDF0E...4645` | — | `olas-operate-middleware/.operate/` |
+| 388 (Fleet) | `0xB1517bB...02CC2` | `0x15aDF0E...4645` | — | `olas-operate-middleware/.operate/` |
+| 389 (Fleet) | `0xB1517bB...02CC2` | `0x15aDF0E...4645` | — | `olas-operate-middleware/.operate/` |
+| 390 (Fleet) | `0xB1517bB...02CC2` | `0x15aDF0E...4645` | — | `olas-operate-middleware/.operate/` |
 
 Venture Safe (AMP2): `0x900Db2954a6c14C011dBeBE474e3397e58AE5421`
+
+### Service Ownership Mapping (Jinn Staking Contract)
+
+| Safe | Services |
+|------|----------|
+| Oak Master Safe (`0x15aDF0eD...4645`) | 165, 387, 388, 389, 390 |
+| Venture-Test Safe (`0xcea8407...E0e`) | 359 |
+| Unknown (`0x953d212b...f0`) | 378, 379 |
+| Unknown (`0x58795797...87`) | 372 |
+| Unknown (`0xd810e967...98`) | 375 |
+| Unknown (`0x40abf47b...6f`) | 392 |
+
+**Jinn staking contract**: 10 max slots, 6 currently used (as of March 2026).
 
 ---
 
@@ -58,6 +75,10 @@ source .env && OPERATE_PROFILE_DIR=olas-operate-middleware/.operate \
 # Service 359 (Venture-Test) — DIFFERENT .operate profile (absolute path required):
 source .env && OPERATE_PROFILE_DIR=/Users/gcd/Repositories/main/jinn-node/.operate \
   npx tsx scripts/restake-service.ts --service-id=359
+
+# Batch restake multiple services (comma-separated):
+source .env && OPERATE_PROFILE_DIR=olas-operate-middleware/.operate \
+  npx tsx scripts/restake-service.ts --service-id=387,388,389,390
 
 # Custom staking contract:
 source .env && OPERATE_PROFILE_DIR=olas-operate-middleware/.operate \
@@ -87,7 +108,7 @@ The `@safe-global/protocol-kit` (Safe SDK) fails with **GS013 during gas estimat
 
 - [ ] Verify `getStakingState(serviceId)` returns 1 (Staked)
 - [ ] Verify service ID appears in `getServiceIds()`
-- [ ] Check activity checker whitelist (see Section 4)
+- [ ] **Whitelist mechs** — REQUIRED after restaking: `tsx scripts/activity-checker-whitelist.ts add --from-staking` (see Section 4)
 - [ ] Verify `maxDeliveryRate` is 99 on the mech (`yarn mech:check-rate`)
 
 ---
@@ -338,7 +359,8 @@ Each service goes through: create config → activate registration (5k OLAS) →
 
 | File | Purpose |
 |------|---------|
-| `scripts/migrate-staking-contract.ts` | Migration script (Safe SDK — see GS013 note) |
+| `scripts/restake-service.ts` | **Restake evicted service** (direct ethers.js, no Safe SDK) |
+| `scripts/migrate-staking-contract.ts` | Full migration between contracts (Safe SDK — see GS013 note) |
 | `scripts/activity-checker-whitelist.ts` | Whitelist management CLI |
 | `scripts/check-post-unstake.ts` | Diagnostic: check state after unstaking |
 | `scripts/mech/set-max-delivery-rate.ts` | Set mech maxDeliveryRate |
@@ -506,3 +528,20 @@ Gotchas encountered:
 - Tenderly RPC hung on TX send — switched to `base.publicnode.com` for both read and write
 
 Final: `getServiceIds()` includes 359, staking state = 1 (Staked)
+
+### Services 359, 387, 388, 389, 390: Batch restake after eviction (COMPLETE, March 2026)
+
+All 5 services were evicted from Jinn staking. Service 165 was still staked.
+
+1. Discovered `migrate-staking-contract.ts` ethers.js fallback had a bug: sent empty `data: ""` for approve (calldata not passed through)
+2. Created dedicated `scripts/restake-service.ts` with batch support (`--service-id=387,388,389,390`)
+3. Restaked 359 separately (different .operate profile / Safe)
+4. Restaked 387, 388, 389, 390 in batch via Oak's .operate profile
+5. Whitelisted all mechs via `scripts/activity-checker-whitelist.ts add --from-staking`
+
+Key learnings:
+- Safe SDK GS013 affects BOTH `approve()` and `stake()` (not just stake as previously thought)
+- Services 372, 375, 378, 379, 392 are evicted but owned by OTHER Safes — cannot restake them
+- Jinn staking contract: 10 max slots, 6 used after restake
+
+Final: `getServiceIds()` = [165, 359, 387, 388, 389, 390], all staking state = 1 (Staked)
