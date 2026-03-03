@@ -7,7 +7,7 @@ nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
 # Remove heavy workspace directories before install to skip frontend/packages/jinn-node deps.
 # RPC proxy only needs root node_modules (hono, tsx) — no workspace deps needed.
 # This cuts install from ~8min to ~1-2min by skipping Next.js, Storybook, jinn-node build, etc.
-cmds = ["rm -rf frontend packages jinn-node ponder adw-spec && yarn install --frozen-lockfile"]
+cmds = ["rm -rf frontend packages jinn-node ponder adw-spec && yarn install --frozen-lockfile --ignore-scripts"]
 
 [phases.build]
 # RPC proxy runs from source via tsx — no compilation needed.
