@@ -1,17 +1,18 @@
-const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://indexer.jinn.network/graphql'
+const PONDER_URL = process.env.PONDER_GRAPHQL_URL || 'https://adw-ponder-production.up.railway.app/graphql'
 
-export interface PonderArtifact {
+export interface ADWDocument {
   id: string
-  cid: string
-  contentCid: string | null
-  documentType: string | null
-  topic: string
-  type: string | null
-  tags: string[] | null
-  contentPreview: string | null
-  blockTimestamp: string
-  requestId: string
-  ventureId: string | null
+  creator: string
+  documentType: string
+  documentURI: string
+  contentHash: string
+  timestamp: string
+  blockNumber: string
+  transactionHash: string
+  feedbackCount: number
+  avgScore: number | null
+  validationRequestCount: number
+  validationResponseCount: number
 }
 
 interface PonderResponse<T> {
@@ -30,62 +31,38 @@ async function ponderQuery<T>(query: string, variables?: Record<string, unknown>
   return json.data
 }
 
-export async function getADWDocuments(limit = 50): Promise<PonderArtifact[]> {
-  const { artifacts } = await ponderQuery<{
-    artifacts: { items: PonderArtifact[] }
+const DOCUMENT_FIELDS = `
+  id creator documentType documentURI contentHash timestamp
+  blockNumber transactionHash feedbackCount avgScore
+  validationRequestCount validationResponseCount
+`
+
+export async function getADWDocuments(limit = 50): Promise<ADWDocument[]> {
+  const { documents } = await ponderQuery<{
+    documents: { items: ADWDocument[] }
   }>(`
     query ADWDocuments($limit: Int!) {
-      artifacts(
-        where: { documentType_not: null }
+      documents(
         limit: $limit
-        orderBy: "blockTimestamp"
+        orderBy: "timestamp"
         orderDirection: "desc"
       ) {
-        items {
-          id cid contentCid documentType topic type tags contentPreview
-          blockTimestamp requestId ventureId
-        }
+        items { ${DOCUMENT_FIELDS} }
       }
     }
   `, { limit })
-  return artifacts.items
+  return documents.items
 }
 
-export async function getADWDocumentByCid(cid: string): Promise<PonderArtifact | null> {
-  const { artifacts } = await ponderQuery<{
-    artifacts: { items: PonderArtifact[] }
+export async function getADWDocumentById(id: string): Promise<ADWDocument | null> {
+  const { document } = await ponderQuery<{
+    document: ADWDocument | null
   }>(`
-    query ADWDocumentByCid($cid: String!) {
-      artifacts(where: { cid: $cid }, limit: 1) {
-        items {
-          id cid contentCid documentType topic type tags contentPreview
-          blockTimestamp requestId ventureId
-        }
-      }
+    query ADWDocumentById($id: BigInt!) {
+      document(id: $id) { ${DOCUMENT_FIELDS} }
     }
-  `, { cid })
-  return artifacts.items[0] ?? null
-}
-
-export async function getADWDocumentsByType(documentType: string, limit = 50): Promise<PonderArtifact[]> {
-  const { artifacts } = await ponderQuery<{
-    artifacts: { items: PonderArtifact[] }
-  }>(`
-    query ADWDocumentsByType($documentType: String!, $limit: Int!) {
-      artifacts(
-        where: { documentType: $documentType }
-        limit: $limit
-        orderBy: "blockTimestamp"
-        orderDirection: "desc"
-      ) {
-        items {
-          id cid contentCid documentType topic type tags contentPreview
-          blockTimestamp requestId ventureId
-        }
-      }
-    }
-  `, { documentType, limit })
-  return artifacts.items
+  `, { id })
+  return document
 }
 
 export interface RegistrationFile {
@@ -107,9 +84,12 @@ export interface RegistrationFile {
 
 const IPFS_GATEWAY = 'https://gateway.autonolas.tech/ipfs/'
 
-export async function fetchRegistrationFile(cid: string): Promise<RegistrationFile | null> {
+export async function fetchRegistrationFile(documentURI: string): Promise<RegistrationFile | null> {
   try {
-    const res = await fetch(`${IPFS_GATEWAY}${cid}`, {
+    const url = documentURI.startsWith('ipfs://')
+      ? `${IPFS_GATEWAY}${documentURI.replace('ipfs://', '')}`
+      : documentURI
+    const res = await fetch(url, {
       next: { revalidate: 3600 },
       signal: AbortSignal.timeout(5000),
     })

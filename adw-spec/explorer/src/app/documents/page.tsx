@@ -8,9 +8,9 @@ import { formatDate } from '@/lib/utils'
 
 export const metadata = { title: 'Document Registry — ADW Explorer' }
 
-function truncate(s: string, n = 12) {
+function truncateAddress(s: string, n = 6) {
   if (s.length <= n * 2 + 3) return s
-  return `${s.slice(0, n)}…${s.slice(-6)}`
+  return `${s.slice(0, n + 2)}…${s.slice(-n)}`
 }
 
 export default async function DocumentsPage() {
@@ -40,53 +40,39 @@ export default async function DocumentsPage() {
         <div className="text-center py-16 text-muted-foreground">
           <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg font-medium">No ADW documents found yet</p>
-          <p className="text-sm mt-1">Documents will appear here as workers produce ADW-wrapped artifacts.</p>
+          <p className="text-sm mt-1">Documents will appear here as they are registered on-chain.</p>
         </div>
       ) : (
         <div className="grid gap-4">
           {documents.map((doc) => (
-            <Link key={doc.id} href={`/documents/${encodeURIComponent(doc.cid)}`}>
+            <Link key={doc.id} href={`/documents/${doc.id}`}>
               <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base">{doc.topic}</CardTitle>
+                    <CardTitle className="text-base font-mono">#{doc.id}</CardTitle>
                     <div className="flex gap-1 shrink-0">
-                      {doc.documentType && (
-                        <Badge variant="secondary" className="text-xs">
-                          {doc.documentType.replace('adw:', '')}
-                        </Badge>
-                      )}
-                      {doc.type && doc.type !== doc.documentType && (
-                        <Badge variant="outline" className="text-xs">
-                          {doc.type}
-                        </Badge>
-                      )}
+                      <Badge variant="secondary" className="text-xs">
+                        {doc.documentType.replace('adw:', '')}
+                      </Badge>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-1 text-sm text-muted-foreground">
-                  {doc.contentPreview && (
-                    <p className="line-clamp-2">{doc.contentPreview}</p>
-                  )}
+                  <p className="font-mono text-xs truncate">{doc.documentURI}</p>
                   <div className="flex items-center gap-3 text-xs">
-                    <span className="font-mono">{truncate(doc.cid, 10)}</span>
-                    {doc.contentCid && (
-                      <span title="Content CID">
-                        <span className="font-medium text-foreground">Content:</span>{' '}
-                        <span className="font-mono">{truncate(doc.contentCid, 8)}</span>
+                    <span>
+                      <span className="font-medium text-foreground">Creator:</span>{' '}
+                      <span className="font-mono">{truncateAddress(doc.creator)}</span>
+                    </span>
+                    <span>{formatDate(doc.timestamp)}</span>
+                    {doc.feedbackCount > 0 && (
+                      <span>
+                        <span className="font-medium text-foreground">Feedback:</span>{' '}
+                        {doc.feedbackCount}
+                        {doc.avgScore != null && ` (avg ${doc.avgScore.toFixed(1)})`}
                       </span>
                     )}
-                    <span>{formatDate(doc.blockTimestamp)}</span>
                   </div>
-                  {doc.tags && doc.tags.length > 0 && (
-                    <div className="flex gap-1 flex-wrap pt-1">
-                      {doc.tags.slice(0, 5).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-xs font-normal">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             </Link>

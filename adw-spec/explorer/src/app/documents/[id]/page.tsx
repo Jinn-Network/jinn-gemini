@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TrustBadge } from '@/components/adw/trust-badge'
-import { getADWDocumentByCid, fetchRegistrationFile } from '@/lib/adw/ponder'
+import { getADWDocumentById, fetchRegistrationFile } from '@/lib/adw/ponder'
 import { formatDate } from '@/lib/utils'
 
 export const metadata = { title: 'Document Detail — ADW Explorer' }
@@ -15,27 +15,18 @@ interface DocumentDetailPageProps {
   params: Promise<{ id: string }>
 }
 
-function truncate(s: string, n = 12) {
-  if (s.length <= n * 2 + 3) return s
-  return `${s.slice(0, n)}…${s.slice(-6)}`
-}
-
 const IPFS_GATEWAY = 'https://gateway.autonolas.tech/ipfs/'
 
 export default async function DocumentDetailPage({ params }: DocumentDetailPageProps) {
-  const { id: cid } = await params
-  const decodedCid = decodeURIComponent(cid)
+  const { id } = await params
 
-  const [artifact, registration] = await Promise.all([
-    getADWDocumentByCid(decodedCid),
-    fetchRegistrationFile(decodedCid),
-  ])
-
-  if (!artifact) {
+  const document = await getADWDocumentById(id)
+  if (!document) {
     notFound()
   }
 
-  // Determine trust level from the Registration File
+  const registration = await fetchRegistrationFile(document.documentURI)
+
   const trustLevel = registration?.trust?.creatorProof ? 1 : 0
 
   return (
@@ -48,7 +39,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
           </Link>
         </Button>
         <h1 className="text-2xl font-bold flex-1 min-w-0 truncate">
-          {registration?.name ?? artifact.topic}
+          {registration?.name ?? `Document #${document.id}`}
         </h1>
         <TrustBadge level={trustLevel} />
       </div>
@@ -60,7 +51,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
           <TabsTrigger value="raw">Raw Registration File</TabsTrigger>
         </TabsList>
 
-        {/* ── Overview ── */}
+        {/* Overview */}
         <TabsContent value="overview">
           <Card>
             <CardHeader>
@@ -68,63 +59,62 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid grid-cols-[140px,1fr] gap-y-2">
+                <span className="text-muted-foreground">Document ID</span>
+                <span className="font-mono">#{document.id}</span>
+
                 <span className="text-muted-foreground">Document Type</span>
                 <Badge variant="secondary" className="w-fit">
-                  {artifact.documentType ?? 'Unknown'}
+                  {document.documentType}
                 </Badge>
 
-                {artifact.type && (
-                  <>
-                    <span className="text-muted-foreground">Artifact Type</span>
-                    <Badge variant="outline" className="w-fit">{artifact.type}</Badge>
-                  </>
-                )}
-
-                <span className="text-muted-foreground">Registration CID</span>
+                <span className="text-muted-foreground">Document URI</span>
                 <a
-                  href={`${IPFS_GATEWAY}${artifact.cid}`}
+                  href={document.documentURI.startsWith('ipfs://') ? `${IPFS_GATEWAY}${document.documentURI.replace('ipfs://', '')}` : document.documentURI}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs text-blue-500 hover:underline flex items-center gap-1 break-all"
+                >
+                  {document.documentURI}
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+
+                <span className="text-muted-foreground">Content Hash</span>
+                <span className="font-mono text-xs break-all">{document.contentHash}</span>
+
+                <span className="text-muted-foreground">Creator</span>
+                <span className="font-mono text-xs">{document.creator}</span>
+
+                <span className="text-muted-foreground">Timestamp</span>
+                <span>{formatDate(document.timestamp)}</span>
+
+                <span className="text-muted-foreground">Block</span>
+                <span className="font-mono text-xs">{document.blockNumber}</span>
+
+                <span className="text-muted-foreground">Transaction</span>
+                <a
+                  href={`https://basescan.org/tx/${document.transactionHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-mono text-xs text-blue-500 hover:underline flex items-center gap-1"
                 >
-                  {truncate(artifact.cid, 14)}
-                  <ExternalLink className="h-3 w-3" />
+                  {document.transactionHash.slice(0, 14)}…{document.transactionHash.slice(-8)}
+                  <ExternalLink className="h-3 w-3 shrink-0" />
                 </a>
-
-                {artifact.contentCid && (
-                  <>
-                    <span className="text-muted-foreground">Content CID</span>
-                    <a
-                      href={`${IPFS_GATEWAY}${artifact.contentCid}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-mono text-xs text-blue-500 hover:underline flex items-center gap-1"
-                    >
-                      {truncate(artifact.contentCid, 14)}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </>
-                )}
-
-                {registration?.creator && (
-                  <>
-                    <span className="text-muted-foreground">Creator</span>
-                    <span className="font-mono text-xs">{registration.creator}</span>
-                  </>
-                )}
-
-                {registration?.created && (
-                  <>
-                    <span className="text-muted-foreground">Created</span>
-                    <span>{new Date(registration.created).toLocaleString()}</span>
-                  </>
-                )}
-
-                <span className="text-muted-foreground">Block Timestamp</span>
-                <span>{formatDate(artifact.blockTimestamp)}</span>
 
                 <span className="text-muted-foreground">Trust Level</span>
                 <TrustBadge level={trustLevel} />
+
+                <span className="text-muted-foreground">Feedback</span>
+                <span>
+                  {document.feedbackCount} response{document.feedbackCount !== 1 ? 's' : ''}
+                  {document.avgScore != null && ` — avg score ${document.avgScore.toFixed(1)}`}
+                </span>
+
+                <span className="text-muted-foreground">Validations</span>
+                <span>
+                  {document.validationRequestCount} request{document.validationRequestCount !== 1 ? 's' : ''},{' '}
+                  {document.validationResponseCount} response{document.validationResponseCount !== 1 ? 's' : ''}
+                </span>
               </div>
 
               {registration?.description && (
@@ -134,20 +124,11 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
                 </div>
               )}
 
-              {artifact.contentPreview && (
-                <div className="pt-2">
-                  <span className="text-muted-foreground text-xs">Content Preview</span>
-                  <p className="mt-1 text-xs bg-muted p-3 rounded-md whitespace-pre-wrap font-mono">
-                    {artifact.contentPreview}
-                  </p>
-                </div>
-              )}
-
-              {artifact.tags && artifact.tags.length > 0 && (
+              {registration?.tags && registration.tags.length > 0 && (
                 <div className="pt-2">
                   <span className="text-muted-foreground text-xs">Tags</span>
                   <div className="flex gap-1 flex-wrap mt-1">
-                    {artifact.tags.map((tag) => (
+                    {registration.tags.map((tag) => (
                       <Badge key={tag} variant="outline" className="text-xs font-normal">
                         {tag}
                       </Badge>
@@ -159,7 +140,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
           </Card>
         </TabsContent>
 
-        {/* ── Provenance ── */}
+        {/* Provenance */}
         <TabsContent value="provenance">
           <Card>
             <CardHeader>
@@ -191,7 +172,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
                       <div key={i} className="flex items-center gap-2 text-xs">
                         <Badge variant="outline" className="font-normal">{s.provider}</Badge>
                         <a
-                          href={s.uri.startsWith('ipfs://') ? `${s.gateway ?? IPFS_GATEWAY}${s.uri.replace('ipfs://', '')}` : s.uri}
+                          href={s.uri.startsWith('ipfs://') ? `${IPFS_GATEWAY}${s.uri.replace('ipfs://', '')}` : s.uri}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-500 hover:underline font-mono truncate flex items-center gap-1"
@@ -208,7 +189,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
           </Card>
         </TabsContent>
 
-        {/* ── Raw Registration File ── */}
+        {/* Raw Registration File */}
         <TabsContent value="raw">
           <Card>
             <CardHeader>
@@ -221,7 +202,7 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
                 </pre>
               ) : (
                 <p className="text-muted-foreground text-sm">
-                  Could not fetch Registration File from IPFS. The CID may not be available on the gateway yet.
+                  Could not fetch Registration File from IPFS. The document URI may not be available on the gateway yet.
                 </p>
               )}
             </CardContent>
