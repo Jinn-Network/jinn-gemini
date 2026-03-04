@@ -347,6 +347,9 @@ const STREAM_ALLOWED_VENTURE_OR_TEMPLATE_ID = '2942d6f6-2d03-4ae1-8189-5f78fd60c
 interface StreamFeedArtifact extends Artifact {
   ventureId?: string | null;
   workstreamId?: string | null;
+  documentType?: string | null;
+  contentCid?: string | null;
+  type?: string | null;
 }
 
 const STREAM_FEED_ARTIFACTS_QUERY = `
@@ -355,7 +358,7 @@ const STREAM_FEED_ARTIFACTS_QUERY = `
       limit: $limit
       orderBy: "blockTimestamp"
       orderDirection: "desc"
-      where: { ventureId_not: null }
+      where: { ventureId_not: null, type: "TEMPLATE_OUTPUT" }
     ) {
       items {
         id
@@ -366,9 +369,12 @@ const STREAM_FEED_ARTIFACTS_QUERY = `
         workstreamId
         name
         cid
+        contentCid
         topic
         contentPreview
         blockTimestamp
+        documentType
+        type
       }
     }
   }
@@ -383,11 +389,14 @@ const ARTIFACT_BY_CID_QUERY = `
         requestId
         sourceRequestId
         sourceJobDefinitionId
+        workstreamId
         name
         cid
+        contentCid
         topic
         contentPreview
         blockTimestamp
+        documentType
       }
     }
   }
@@ -445,19 +454,20 @@ export async function fetchStreamFeedAction(): Promise<StreamFeedItem[]> {
       console.error('[streams] Failed to load ventures; continuing without venture name mapping:', error);
     }
 
-    const artifacts = await fetchStreamFeedArtifacts(800);
+    const artifacts = await fetchStreamFeedArtifacts(200);
+
+    // Query already filters for type=TEMPLATE_OUTPUT and ventureId_not=null.
+    // Just apply the venture template filter.
+    const filtered = artifacts.filter((artifact) => {
+      if (!artifact.ventureId) return false;
+      if (artifact.ventureId === STREAM_ALLOWED_VENTURE_OR_TEMPLATE_ID) return true;
+
+      const venture = ventureById.get(artifact.ventureId);
+      return venture?.ventureTemplateId === STREAM_ALLOWED_VENTURE_OR_TEMPLATE_ID;
+    });
 
     const dedupedSorted = [...new Map(
-      artifacts
-        .filter((artifact) => !isOperationalTopic(artifact.topic))
-        .filter((artifact) => !isStructuredOutputArtifact(artifact))
-        .filter((artifact) => {
-          if (!artifact.ventureId) return false;
-          if (artifact.ventureId === STREAM_ALLOWED_VENTURE_OR_TEMPLATE_ID) return true;
-
-          const venture = ventureById.get(artifact.ventureId);
-          return venture?.ventureTemplateId === STREAM_ALLOWED_VENTURE_OR_TEMPLATE_ID;
-        })
+      filtered
         .map((artifact) => {
           const venture = artifact.ventureId ? ventureById.get(artifact.ventureId) : undefined;
           return [artifact.id, {
@@ -554,40 +564,73 @@ export async function fetchWorkstreamRootArtifactByCidAction(
   }
 }
 
-export async function fetchArtifactContentAction(
-  cid: string,
-): Promise<{ content: string; contentType: string } | null> {
+async function fetchIpfsText(cid: string): Promise<string | null> {
   const gateways = ['https://gateway.autonolas.tech/ipfs/', 'https://ipfs.io/ipfs/'];
-
   for (const gateway of gateways) {
     try {
-      const url = `${gateway}${cid}`;
-      const response = await fetch(url, {
+      const response = await fetch(`${gateway}${cid}`, {
         signal: AbortSignal.timeout(10000),
         cache: 'no-store',
       });
       if (!response.ok) continue;
-
-      const text = await response.text();
-      const contentType = response.headers.get('content-type') || 'text/plain';
-
-      // Extract .content field if it exists (standard artifact format)
-      try {
-        const parsed = JSON.parse(text);
-        const content = parsed.content || text;
-        return {
-          content: typeof content === 'string' ? content : JSON.stringify(content, null, 2),
-          contentType: 'application/json',
-        };
-      } catch {
-        return { content: text, contentType };
-      }
+      return await response.text();
     } catch {
       continue;
     }
   }
-
   return null;
+}
+
+function isADWRegistrationJson(parsed: Record<string, unknown>): boolean {
+  return (
+    typeof parsed.documentType === 'string' &&
+    (parsed.documentType as string).startsWith('adw:')
+  );
+}
+
+export async function fetchArtifactContentAction(
+  cid: string,
+): Promise<{ content: string; contentType: string } | null> {
+  const text = await fetchIpfsText(cid);
+  if (!text) return null;
+
+  try {
+    const parsed = JSON.parse(text);
+
+    // If this is an ADW registration wrapper, follow through to the actual content.
+    if (isADWRegistrationJson(parsed)) {
+      // Try storage URI first (e.g. ipfs://Qm...)
+      const storageUri = parsed.storage?.[0]?.uri as string | undefined;
+      const contentCid = storageUri?.startsWith('ipfs://')
+        ? storageUri.slice('ipfs://'.length)
+        : (parsed.contentHash as string | undefined);
+
+      if (contentCid) {
+        const innerText = await fetchIpfsText(contentCid);
+        if (innerText) {
+          try {
+            const innerParsed = JSON.parse(innerText);
+            const content = innerParsed.content || innerText;
+            return {
+              content: typeof content === 'string' ? content : JSON.stringify(content, null, 2),
+              contentType: 'application/json',
+            };
+          } catch {
+            return { content: innerText, contentType: 'text/plain' };
+          }
+        }
+      }
+    }
+
+    // Standard artifact format — extract .content field
+    const content = parsed.content || text;
+    return {
+      content: typeof content === 'string' ? content : JSON.stringify(content, null, 2),
+      contentType: 'application/json',
+    };
+  } catch {
+    return { content: text, contentType: 'text/plain' };
+  }
 }
 
 // KPI Management

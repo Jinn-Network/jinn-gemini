@@ -182,6 +182,11 @@ Blueprints define WHAT (outcomes), not HOW (process):
 
 **Forms:** boolean, threshold, range, directive, sequence, constraint
 
+**Local blueprints are source files only.** The live template lives in Supabase. After editing `blueprints/<slug>.json`, you MUST seed it:
+```bash
+yarn tsx scripts/templates/seed-from-blueprint.ts blueprints/<slug>.json --status published
+```
+
 Guide: [Writing Invariants](docs/guides/writing-invariants.md)
 
 ---

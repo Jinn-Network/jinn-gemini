@@ -107,6 +107,38 @@ check_prerequisites() {
 # 2. Worktree detection & environment setup
 # =============================================================================
 
+copy_env_files_for_dir() {
+    local rel_dir="$1"  # e.g. "." or "frontend/explorer"
+    local src_dir="$MAIN_REPO_ROOT/$rel_dir"
+    local dst_dir="./$rel_dir"
+    local label="$rel_dir"
+    [ "$rel_dir" = "." ] && label="root"
+
+    # Find all .env* files in the source directory (non-recursive, skip templates/examples)
+    local found=0
+    for src_file in "$src_dir"/.env*; do
+        [ -f "$src_file" ] || continue
+        local basename=$(basename "$src_file")
+
+        # Skip templates and examples — they're checked into git already
+        case "$basename" in
+            *.template|*.example) continue ;;
+        esac
+
+        local dst_file="$dst_dir/$basename"
+
+        if [ -f "$dst_file" ]; then
+            success "$label/$basename already exists"
+        else
+            mkdir -p "$dst_dir"
+            cp "$src_file" "$dst_file"
+            success "Copied $label/$basename"
+        fi
+        found=$((found + 1))
+    done
+
+}
+
 setup_environment_files() {
     step "Setting up environment files..."
 
@@ -119,29 +151,34 @@ setup_environment_files() {
         info "Already in main repository"
     fi
 
-    # Check if .env already exists
-    if [ -f .env ]; then
-        success ".env already exists"
-        if [ -f .env.test ]; then
-            success ".env.test already exists"
-        fi
-        return
-    fi
-
-    # Copy .env from main repo
-    if [ -f "$MAIN_REPO_ROOT/.env" ]; then
-        cp "$MAIN_REPO_ROOT/.env" .env
-        success "Copied .env from main repo"
-    else
+    # Copy root .env files (required)
+    if [ ! -f "$MAIN_REPO_ROOT/.env" ]; then
         error ".env file not found at $MAIN_REPO_ROOT/.env"
     fi
+    copy_env_files_for_dir "."
 
-    # Copy .env.test from main repo
-    if [ -f "$MAIN_REPO_ROOT/.env.test" ]; then
-        cp "$MAIN_REPO_ROOT/.env.test" .env.test
-        success "Copied .env.test from main repo"
-    else
-        warning ".env.test not found - worker may use production config"
+    # Copy .env files from subdirectories that may have their own configs
+    local env_dirs=(
+        "frontend/app"
+        "frontend/explorer"
+        "frontend/website"
+        "jinn-node"
+        "ponder"
+        "control-api"
+        "gemini-agent"
+    )
+
+    for dir in "${env_dirs[@]}"; do
+        if ls "$MAIN_REPO_ROOT/$dir"/.env* 1>/dev/null 2>&1; then
+            copy_env_files_for_dir "$dir"
+        fi
+    done
+
+    # jinn-node needs root .env vars (RPC_URL, CHAIN_ID, etc.) — copy root .env
+    # into jinn-node/ if it doesn't already have one
+    if [ ! -f "./jinn-node/.env" ]; then
+        cp "./.env" "./jinn-node/.env"
+        success "Copied root .env to jinn-node/.env"
     fi
 }
 

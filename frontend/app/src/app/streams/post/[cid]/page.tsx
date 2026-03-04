@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { MarkdownField } from '@/components/markdown-field';
 import {
@@ -65,6 +65,15 @@ export default async function StreamPostPage({
   const blockTimestamp = artifact?.blockTimestamp;
   const jobName = artifact?.jobName;
 
+  const explorerBase = process.env.NEXT_PUBLIC_EXPLORER_URL || 'https://explorer.jinn.network';
+  const workstreamId = (artifact as Record<string, unknown> | null)?.workstreamId as string | undefined;
+  const requestId = artifact?.requestId;
+  const explorerHref = workstreamId
+    ? `${explorerBase}/workstreams/${workstreamId}`
+    : requestId
+      ? `${explorerBase}/requests/${requestId}`
+      : null;
+
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-8">
       <Link
@@ -82,6 +91,17 @@ export default async function StreamPostPage({
           </Badge>
           {blockTimestamp && (
             <time>{formatDate(blockTimestamp)}</time>
+          )}
+          {explorerHref && (
+            <a
+              href={explorerHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto inline-flex items-center gap-1 text-muted-foreground/60 transition-colors hover:text-foreground"
+            >
+              View on Explorer
+              <ExternalLink className="h-3 w-3" />
+            </a>
           )}
         </div>
 
