@@ -51,24 +51,22 @@ RUN groupadd -r jinn && useradd -r -g jinn -m -d /home/jinn -s /bin/bash jinn
 WORKDIR /app
 
 # Copy production dependencies from builder
-COPY --from=builder /app/node_modules/ ./node_modules/
-COPY --from=builder /app/package.json ./
+COPY --chown=jinn:jinn --from=builder /app/node_modules/ ./node_modules/
+COPY --chown=jinn:jinn --from=builder /app/package.json ./
 
 # Copy built jinn-node (dist + package.json for exports map)
-COPY --from=builder /app/jinn-node/dist/ ./jinn-node/dist/
-COPY --from=builder /app/jinn-node/package.json ./jinn-node/
-COPY --from=builder /app/jinn-node/node_modules/ ./jinn-node/node_modules/
+COPY --chown=jinn:jinn --from=builder /app/jinn-node/dist/ ./jinn-node/dist/
+COPY --chown=jinn:jinn --from=builder /app/jinn-node/package.json ./jinn-node/
+COPY --chown=jinn:jinn --from=builder /app/jinn-node/node_modules/ ./jinn-node/node_modules/
 
 # Recreate symlink for package resolution
 RUN ln -sf /app/jinn-node /app/node_modules/jinn-node
 
 # Copy root tsconfig (control-api is included in root tsconfig)
-COPY tsconfig.json ./
+COPY --chown=jinn:jinn tsconfig.json ./
 
 # Copy service source
-COPY control-api/server.ts ./control-api/
-
-RUN chown -R jinn:jinn /app
+COPY --chown=jinn:jinn control-api/server.ts ./control-api/
 
 ENV NODE_ENV=production \
     NODE_OPTIONS="--disable-warning=DEP0040"

@@ -51,29 +51,27 @@ RUN groupadd -r jinn && useradd -r -g jinn -m -d /home/jinn -s /bin/bash jinn
 WORKDIR /app
 
 # Copy production dependencies from builder
-COPY --from=builder /app/node_modules/ ./node_modules/
-COPY --from=builder /app/package.json ./
+COPY --chown=jinn:jinn --from=builder /app/node_modules/ ./node_modules/
+COPY --chown=jinn:jinn --from=builder /app/package.json ./
 
 # Copy built jinn-node (dist + package.json for exports map)
-COPY --from=builder /app/jinn-node/dist/ ./jinn-node/dist/
-COPY --from=builder /app/jinn-node/package.json ./jinn-node/
-COPY --from=builder /app/jinn-node/node_modules/ ./jinn-node/node_modules/
+COPY --chown=jinn:jinn --from=builder /app/jinn-node/dist/ ./jinn-node/dist/
+COPY --chown=jinn:jinn --from=builder /app/jinn-node/package.json ./jinn-node/
+COPY --chown=jinn:jinn --from=builder /app/jinn-node/node_modules/ ./jinn-node/node_modules/
 
 # Recreate symlink for package resolution
 RUN ln -sf /app/jinn-node /app/node_modules/jinn-node
 
 # Copy service source
-COPY services/x402-gateway/index.ts services/x402-gateway/discovery.ts \
+COPY --chown=jinn:jinn services/x402-gateway/index.ts services/x402-gateway/discovery.ts \
      services/x402-gateway/output-spec.ts services/x402-gateway/pricing.ts \
      services/x402-gateway/tsconfig.json \
      ./services/x402-gateway/
-COPY services/x402-gateway/credentials/ ./services/x402-gateway/credentials/
-COPY services/x402-gateway/provisioning/ ./services/x402-gateway/provisioning/
+COPY --chown=jinn:jinn services/x402-gateway/credentials/ ./services/x402-gateway/credentials/
+COPY --chown=jinn:jinn services/x402-gateway/provisioning/ ./services/x402-gateway/provisioning/
 
-# Copy shared script dependency (imported by x402-gateway via relative path)
-COPY scripts/shared/template-substitution.ts ./scripts/shared/
-
-RUN chown -R jinn:jinn /app
+# Copy all shared scripts (imported by provisioning modules via relative path)
+COPY --chown=jinn:jinn scripts/shared/ ./scripts/shared/
 
 ENV NODE_ENV=production
 
