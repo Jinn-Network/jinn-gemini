@@ -359,12 +359,14 @@ const devTestingSchema = z.object({
   // Default: Falls back to 'single' if not set
   WORKER_MECH_FILTER_MODE: z.enum(['any', 'list', 'single', 'staking']).optional(),
 
-  // WORKER_STAKING_CONTRACT: Staking contract address for 'staking' filter mode
+  // WORKER_STAKING_CONTRACT: Staking contract address(es) for 'staking' filter mode
   // Only used when WORKER_MECH_FILTER_MODE='staking'
+  // Supports comma-separated values for multi-contract filtering
   // Known contracts:
-  //   - Jinn: 0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139 (5,000 OLAS min)
+  //   - Jinn v1: 0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139 (5,000 OLAS min)
+  //   - Jinn v2: 0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488 (5,000 OLAS min, stOLAS)
   //   - AgentsFun1: 0x2585e63df7BD9De8e058884D496658a030b5c6ce (50 OLAS min)
-  WORKER_STAKING_CONTRACT: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  WORKER_STAKING_CONTRACT: z.string().regex(/^0x[a-fA-F0-9]{40}(,0x[a-fA-F0-9]{40})*$/).optional(),
 
   // WORKER_STAKING_REFRESH_MS: Cache TTL for staking filter queries
   // Default: 300000 (5 minutes)
