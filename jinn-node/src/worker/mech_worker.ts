@@ -24,6 +24,7 @@ import { processOnce as processJobOnce } from './orchestration/jobRunner.js';
 import { marketplaceInteract } from '@jinn-network/mech-client-ts/dist/marketplace_interact.js';
 import { shouldStop } from './cycleControl.js';
 import { checkAndDispatchScheduledVentures } from './ventures/ventureWatcher.js';
+import { acquireSafeLock } from './safeTxMutex.js';
 import { waitForGeminiQuota } from './llm/geminiQuota.js';
 import {
   getOptionalWorkerJobDelayMs,
@@ -592,16 +593,22 @@ async function maybeCancelMissingDependency(params: {
       cancelled: true,
     };
 
-    const delivery = await (deliverViaSafe as any)({
-      chainConfig,
-      requestId: params.request.id,
-      resultContent,
-      targetMechAddress: mechAddress,
-      safeAddress,
-      privateKey,
-      rpcHttpUrl,
-      wait: true,
-    });
+    const releaseCancelLock = await acquireSafeLock(safeAddress);
+    let delivery;
+    try {
+      delivery = await (deliverViaSafe as any)({
+        chainConfig,
+        requestId: params.request.id,
+        resultContent,
+        targetMechAddress: mechAddress,
+        safeAddress,
+        privateKey,
+        rpcHttpUrl,
+        wait: true,
+      });
+    } finally {
+      releaseCancelLock();
+    }
 
     workerLogger.warn({
       requestId: params.request.id,
@@ -1733,6 +1740,7 @@ async function processOnce(): Promise<boolean> {
     const chainConfig = getMechChainConfig();
 
     if (mechAddress && safeAddress && privateKey) {
+      const releaseHbLock = await acquireSafeLock(safeAddress);
       try {
         await (deliverViaSafe as any)({
           chainConfig,
@@ -1747,6 +1755,8 @@ async function processOnce(): Promise<boolean> {
         workerLogger.info({ requestId: target.id }, 'Heartbeat delivered');
       } catch (deliveryErr: any) {
         workerLogger.warn({ requestId: target.id, error: deliveryErr.message }, 'Heartbeat delivery failed');
+      } finally {
+        releaseHbLock();
       }
     }
     executedJobsThisSession.set(target.id, Date.now());
