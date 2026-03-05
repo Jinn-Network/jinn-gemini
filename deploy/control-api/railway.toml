@@ -1,11 +1,9 @@
 [build]
-builder = "NIXPACKS"
-nixpacksConfigPath = "deploy/control-api/nixpacks.toml"
-watchPatterns = ["/control-api/**", "/config/**", "/logging/**", "/env/**", "/package.json", "/deploy/control-api/**", "/jinn-node/src/**", "/jinn-node/package.json"]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/control-api/Dockerfile"
+watchPatterns = ["/control-api/**", "/jinn-node/src/**", "/jinn-node/package.json", "/package.json", "/deploy/control-api/**"]
 
 [deploy]
-# Rebuild jinn-node at startup: nixpacks final COPY overwrites dist/ (gitignored)
-startCommand = "export NODE_OPTIONS='--disable-warning=DEP0040' && cd jinn-node && yarn build && cd .. && ln -sf /app/jinn-node /app/node_modules/jinn-node && npx tsx control-api/server.ts"
 healthcheckPath = "/health"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
