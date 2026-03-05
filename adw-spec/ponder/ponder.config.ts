@@ -14,9 +14,9 @@ const VALIDATION_REGISTRY = "0xC552bd9f22f8BB9CFa898A11f12B8D676D8155F6" as cons
 const START_BLOCK = Number(process.env.ADW_START_BLOCK || 42500000);
 
 function getRpcUrl(): string {
-  const proxyToken = process.env.RPC_PROXY_TOKEN;
-  if (proxyToken) return `https://rpc.jinn.network?token=${proxyToken}`;
-  return process.env.RPC_URL || "https://mainnet.base.org";
+  const token = process.env.RPC_PROXY_TOKEN;
+  if (!token) throw new Error("RPC_PROXY_TOKEN is required");
+  return `https://rpc.jinn.network?token=${token}`;
 }
 
 export default createConfig({

@@ -1,17 +1,29 @@
-import { ponder } from "ponder:registry";
+import { db } from "ponder:api";
+import schema from "ponder:schema";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { client, graphql } from "ponder";
+import { count } from "ponder";
 import { document, feedback, validationRequest } from "ponder:schema";
-import { desc, eq, count, sql } from "ponder";
 
-ponder.get("/.well-known/adw.json", async (c) => {
-  // Count documents by type
-  const typeCounts = await c.db
+const app = new Hono();
+
+app.use("/*", cors({
+  origin: "*",
+  allowMethods: ["GET", "POST", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Accept", "Cache-Control"],
+  credentials: true,
+}));
+
+app.get("/.well-known/adw.json", async (c) => {
+  const typeCounts = await db
     .select({ documentType: document.documentType, count: count() })
     .from(document)
     .groupBy(document.documentType);
 
   const totalDocuments = typeCounts.reduce((sum, row) => sum + Number(row.count), 0);
-  const totalFeedback = await c.db.select({ count: count() }).from(feedback);
-  const totalValidations = await c.db.select({ count: count() }).from(validationRequest);
+  const totalFeedback = await db.select({ count: count() }).from(feedback);
+  const totalValidations = await db.select({ count: count() }).from(validationRequest);
 
   return c.json({
     "@context": "https://adw.dev/v0.1",
@@ -47,8 +59,11 @@ ponder.get("/.well-known/adw.json", async (c) => {
   });
 });
 
-// Health check
-ponder.get("/health", async (c) => {
-  const result = await c.db.select({ count: count() }).from(document);
-  return c.json({ ok: true, documents: Number(result[0]?.count ?? 0) });
-});
+// SQL over HTTP for @ponder/client (SSE)
+app.use("/sql/*", client({ db, schema }));
+
+// GraphQL API
+app.use("/", graphql({ db, schema }));
+app.use("/graphql", graphql({ db, schema }));
+
+export default app;
