@@ -322,8 +322,9 @@ const dependencyRedispatchAttempts = new Map<string, number>();
 const dependencyCancelAttempts = new Map<string, number>();
 
 // Staking checkpoint: check every N cycles if epoch is overdue and call checkpoint()
-// At 30s base poll, 60 cycles = ~30 min. checkpoint() is a no-op if epoch hasn't ended.
-const WORKER_CHECKPOINT_CYCLES = parseInt(process.env.WORKER_CHECKPOINT_CYCLES || '60');
+// maybeCallCheckpoint() is a single cheap RPC read that short-circuits if not overdue,
+// so there's no benefit to gating it behind many cycles. Default to every cycle.
+const WORKER_CHECKPOINT_CYCLES = parseInt(process.env.WORKER_CHECKPOINT_CYCLES || '1');
 
 // Staking heartbeat: submit marketplace requests to meet liveness requirement.
 // At 30s base poll, 16 cycles = ~8 min. Submits 1 request per check if deficit exists.
