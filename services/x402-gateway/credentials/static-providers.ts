@@ -51,6 +51,10 @@ const STATIC_PROVIDERS: Record<string, StaticProviderConfig> = {
     envVars: ['RAILWAY_API_TOKEN'],
     expiresIn: 3600,
   },
+  moltbook: {
+    envVars: ['MOLTBOOK_API_KEY'],
+    expiresIn: 3600,
+  },
 };
 
 /**
