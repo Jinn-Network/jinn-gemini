@@ -1,4 +1,32 @@
-export const JINN_STAKING_CONTRACT = '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139' as const
+export interface StakingContractInfo {
+  address: `0x${string}`
+  label: string
+  shortKey: string
+}
+
+export const STAKING_CONTRACTS: StakingContractInfo[] = [
+  {
+    address: '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139',
+    label: 'V1',
+    shortKey: 'v1',
+  },
+  {
+    address: '0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488',
+    label: 'V2',
+    shortKey: 'v2',
+  },
+]
+
+export const STAKING_CONTRACT_BY_KEY = new Map(
+  STAKING_CONTRACTS.map(c => [c.shortKey, c])
+)
+export const STAKING_CONTRACT_BY_ADDRESS = new Map(
+  STAKING_CONTRACTS.map(c => [c.address.toLowerCase(), c])
+)
+export const ALL_STAKING_ADDRESSES = STAKING_CONTRACTS.map(c => c.address.toLowerCase())
+
+/** @deprecated Use STAKING_CONTRACTS instead */
+export const JINN_STAKING_CONTRACT = STAKING_CONTRACTS[0].address
 
 export const OLAS_STAKING_SUBGRAPH_URL = 'https://staking-base.subgraph.autonolas.tech'
 

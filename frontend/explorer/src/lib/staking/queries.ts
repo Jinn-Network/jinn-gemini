@@ -1,5 +1,4 @@
 import { request } from 'graphql-request'
-import { JINN_STAKING_CONTRACT } from './constants'
 
 const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL || 'https://indexer.jinn.network/graphql'
 
@@ -45,33 +44,40 @@ export interface StakingRequest {
   transactionHash: string
 }
 
-export async function getStakedServices(): Promise<StakedService[]> {
-  const query = `
-    query StakedServices($stakingContract: String!) {
-      stakedServices(
-        where: { stakingContract: $stakingContract }
-        orderBy: "stakedAt"
-        orderDirection: "desc"
-      ) {
-        items {
-          id
-          serviceId
-          stakingContract
-          owner
-          multisig
-          stakedAt
-          unstakedAt
-          isStaked
+export async function getStakedServices(contractAddresses?: string[]): Promise<StakedService[]> {
+  const hasFilter = contractAddresses && contractAddresses.length > 0
+
+  const query = hasFilter
+    ? `query StakedServices($contracts: [String!]!) {
+        stakedServices(
+          where: { stakingContract_in: $contracts }
+          orderBy: "stakedAt"
+          orderDirection: "desc"
+        ) {
+          items {
+            id serviceId stakingContract owner multisig stakedAt unstakedAt isStaked
+          }
         }
-      }
-    }
-  `
+      }`
+    : `query AllStakedServices {
+        stakedServices(
+          orderBy: "stakedAt"
+          orderDirection: "desc"
+        ) {
+          items {
+            id serviceId stakingContract owner multisig stakedAt unstakedAt isStaked
+          }
+        }
+      }`
 
   try {
+    const variables = hasFilter
+      ? { contracts: contractAddresses.map(a => a.toLowerCase()) }
+      : {}
     const response = await request<{ stakedServices: { items: StakedService[] } }>(
       SUBGRAPH_URL,
       query,
-      { stakingContract: JINN_STAKING_CONTRACT.toLowerCase() }
+      variables
     )
     // Sort: actively staked first, then evicted/unstaked
     return response.stakedServices.items.sort((a, b) => {
@@ -84,33 +90,31 @@ export async function getStakedServices(): Promise<StakedService[]> {
   }
 }
 
-export async function getStakedServiceByServiceId(serviceId: string): Promise<StakedService | null> {
+export async function getStakedServiceByServiceId(serviceId: string): Promise<StakedService[]> {
   const query = `
-    query StakedService($id: String!) {
-      stakedService(id: $id) {
-        id
-        serviceId
-        stakingContract
-        owner
-        multisig
-        stakedAt
-        unstakedAt
-        isStaked
+    query StakedServiceByServiceId($serviceId: BigInt!) {
+      stakedServices(
+        where: { serviceId: $serviceId }
+        orderBy: "stakedAt"
+        orderDirection: "desc"
+      ) {
+        items {
+          id serviceId stakingContract owner multisig stakedAt unstakedAt isStaked
+        }
       }
     }
   `
 
   try {
-    const id = `${serviceId}:${JINN_STAKING_CONTRACT.toLowerCase()}`
-    const response = await request<{ stakedService: StakedService | null }>(
+    const response = await request<{ stakedServices: { items: StakedService[] } }>(
       SUBGRAPH_URL,
       query,
-      { id }
+      { serviceId }
     )
-    return response.stakedService
+    return response.stakedServices.items
   } catch (error) {
     console.error('Error querying staked service:', error)
-    return null
+    return []
   }
 }
 

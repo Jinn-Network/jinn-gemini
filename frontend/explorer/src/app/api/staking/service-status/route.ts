@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { formatEther } from 'viem'
-import { JINN_STAKING_CONTRACT, stakingAbi } from '@/lib/staking/constants'
+import { type Address, formatEther } from 'viem'
+import { ALL_STAKING_ADDRESSES, stakingAbi } from '@/lib/staking/constants'
 import { getServiceFromSubgraph } from '@/lib/staking/subgraph'
 import { getRpcClient } from '@/lib/staking/rpc'
 
 export async function GET(request: NextRequest) {
   const serviceIdParam = request.nextUrl.searchParams.get('serviceId')
+  const stakingContract = request.nextUrl.searchParams.get('stakingContract')
 
   if (!serviceIdParam) {
     return NextResponse.json({ error: 'serviceId parameter required' }, { status: 400 })
   }
+  if (!stakingContract || !ALL_STAKING_ADDRESSES.includes(stakingContract.toLowerCase())) {
+    return NextResponse.json({ error: 'Valid stakingContract parameter required' }, { status: 400 })
+  }
+
+  const contractAddress = stakingContract as Address
 
   try {
     // Primary: subgraph for staking state and rewards
@@ -38,7 +44,7 @@ export async function GET(request: NextRequest) {
     try {
       const client = getRpcClient()
       const stakingState = await client.readContract({
-        address: JINN_STAKING_CONTRACT,
+        address: contractAddress,
         abi: stakingAbi,
         functionName: 'getStakingState',
         args: [BigInt(serviceIdParam)],
@@ -63,13 +69,13 @@ export async function GET(request: NextRequest) {
         const client = getRpcClient()
         const [serviceInfo, minDuration] = await Promise.all([
           client.readContract({
-            address: JINN_STAKING_CONTRACT,
+            address: contractAddress,
             abi: stakingAbi,
             functionName: 'getServiceInfo',
             args: [BigInt(serviceIdParam)],
           }) as Promise<{ tsStart: bigint }>,
           client.readContract({
-            address: JINN_STAKING_CONTRACT,
+            address: contractAddress,
             abi: stakingAbi,
             functionName: 'minStakingDuration',
           }) as Promise<bigint>,
@@ -89,13 +95,13 @@ export async function GET(request: NextRequest) {
         const client = getRpcClient()
         const [pending, available] = await Promise.all([
           client.readContract({
-            address: JINN_STAKING_CONTRACT,
+            address: contractAddress,
             abi: stakingAbi,
             functionName: 'calculateStakingReward',
             args: [BigInt(serviceIdParam)],
           }),
           client.readContract({
-            address: JINN_STAKING_CONTRACT,
+            address: contractAddress,
             abi: stakingAbi,
             functionName: 'availableRewards',
           }),

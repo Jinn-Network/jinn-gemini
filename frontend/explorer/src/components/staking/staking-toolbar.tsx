@@ -9,14 +9,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { STAKING_CONTRACTS } from '@/lib/staking/constants'
 
 interface StakingToolbarProps {
   viewMode: 'table' | 'cards'
   owners: { address: string; label: string }[]
   selectedOwner: string | null
+  selectedContract: string | null
 }
 
-export function StakingToolbar({ viewMode, owners, selectedOwner }: StakingToolbarProps) {
+export function StakingToolbar({ viewMode, owners, selectedOwner, selectedContract }: StakingToolbarProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -35,15 +37,43 @@ export function StakingToolbar({ viewMode, owners, selectedOwner }: StakingToolb
 
   return (
     <div className="flex items-center justify-between gap-4">
-      <Tabs
-        value={viewMode}
-        onValueChange={(v) => navigate({ view: v === 'table' ? null : v })}
-      >
-        <TabsList>
-          <TabsTrigger value="table">Table</TabsTrigger>
-          <TabsTrigger value="cards">Cards</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex items-center gap-3">
+        <Tabs
+          value={viewMode}
+          onValueChange={(v) => navigate({ view: v === 'table' ? null : v })}
+        >
+          <TabsList>
+            <TabsTrigger value="table">Table</TabsTrigger>
+            <TabsTrigger value="cards">Cards</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => navigate({ contract: null })}
+            className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+              !selectedContract
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+            }`}
+          >
+            All
+          </button>
+          {STAKING_CONTRACTS.map(c => (
+            <button
+              key={c.shortKey}
+              onClick={() => navigate({ contract: selectedContract === c.shortKey ? null : c.shortKey })}
+              className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                selectedContract === c.shortKey
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {owners.length > 1 && (
         <Select

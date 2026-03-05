@@ -21,6 +21,7 @@ interface ServiceStatus {
 
 interface ServiceStakingStatusProps {
   serviceId: string
+  stakingContract: string
   variant?: 'badge' | 'full'
 }
 
@@ -101,14 +102,15 @@ function StakingBadge({ status }: { status: ServiceStatus | null }) {
   )
 }
 
-export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceStakingStatusProps) {
+export function ServiceStakingStatus({ serviceId, stakingContract, variant = 'badge' }: ServiceStakingStatusProps) {
   const [status, setStatus] = useState<ServiceStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const hasLoadedOnce = useRef(false)
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`/api/staking/service-status?serviceId=${encodeURIComponent(serviceId)}`)
+      const params = new URLSearchParams({ serviceId, stakingContract })
+      const res = await fetch(`/api/staking/service-status?${params}`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
         throw new Error(body.error || `HTTP ${res.status}`)
@@ -120,7 +122,7 @@ export function ServiceStakingStatus({ serviceId, variant = 'badge' }: ServiceSt
     } catch (e) {
       if (!hasLoadedOnce.current) setError(e instanceof Error ? e.message : String(e))
     }
-  }, [serviceId])
+  }, [serviceId, stakingContract])
 
   useEffect(() => {
     fetchStatus()

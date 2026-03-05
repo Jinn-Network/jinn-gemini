@@ -1,35 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { type Address } from 'viem'
-import { JINN_STAKING_CONTRACT, stakingAbi, MECH_MARKETPLACE, marketplaceAbi, TARGET_REQUESTS_PER_EPOCH } from '@/lib/staking/constants'
+import { ALL_STAKING_ADDRESSES, stakingAbi, MECH_MARKETPLACE, marketplaceAbi, TARGET_REQUESTS_PER_EPOCH } from '@/lib/staking/constants'
 import { getLatestCheckpoint, getStakingContract } from '@/lib/staking/subgraph'
 import { getRpcClient } from '@/lib/staking/rpc'
 
-// Cache subgraph data for 5 minutes — it only changes when checkpoint() is called on-chain (~daily)
-let subgraphCache: { livenessPeriod: number; checkpointTimestamp: number; epochLength: number; fetchedAt: number } | null = null
+// Per-contract cache for subgraph data (5 minutes TTL — only changes when checkpoint() is called on-chain)
+interface EpochCacheEntry {
+  livenessPeriod: number
+  checkpointTimestamp: number
+  epochLength: number
+  fetchedAt: number
+}
+const subgraphCache = new Map<string, EpochCacheEntry>()
 const SUBGRAPH_CACHE_TTL_MS = 5 * 60_000
 
-async function getSubgraphEpochData() {
-  if (subgraphCache && Date.now() - subgraphCache.fetchedAt < SUBGRAPH_CACHE_TTL_MS) {
-    return subgraphCache
+async function getSubgraphEpochData(stakingContract: string) {
+  const key = stakingContract.toLowerCase()
+  const cached = subgraphCache.get(key)
+  if (cached && Date.now() - cached.fetchedAt < SUBGRAPH_CACHE_TTL_MS) {
+    return cached
   }
 
   const [contract, checkpoint] = await Promise.all([
-    getStakingContract(JINN_STAKING_CONTRACT),
-    getLatestCheckpoint(JINN_STAKING_CONTRACT),
+    getStakingContract(stakingContract),
+    getLatestCheckpoint(stakingContract),
   ])
 
   if (!contract || !checkpoint) {
-    throw new Error('Staking contract or checkpoint not found in subgraph')
+    throw new Error(`Staking contract or checkpoint not found in subgraph for ${stakingContract}`)
   }
 
-  subgraphCache = {
+  const entry: EpochCacheEntry = {
     livenessPeriod: Number(contract.livenessPeriod),
     checkpointTimestamp: Number(checkpoint.blockTimestamp),
     epochLength: Number(checkpoint.epochLength),
     fetchedAt: Date.now(),
   }
+  subgraphCache.set(key, entry)
 
-  return subgraphCache
+  return entry
 }
 
 async function rpcWithRetry<T>(fn: () => Promise<T>, retries = 1, delayMs = 2000): Promise<T> {
@@ -48,9 +57,16 @@ export async function GET(request: NextRequest) {
   try {
     const multisig = request.nextUrl.searchParams.get('multisig')
     const serviceId = request.nextUrl.searchParams.get('serviceId')
+    const stakingContract = request.nextUrl.searchParams.get('stakingContract')
+
+    if (!stakingContract || !ALL_STAKING_ADDRESSES.includes(stakingContract.toLowerCase())) {
+      return NextResponse.json({ error: 'Valid stakingContract parameter required' }, { status: 400 })
+    }
+
+    const contractAddress = stakingContract as Address
 
     // Primary: subgraph for epoch timing (static data, highly reliable)
-    const epoch = await getSubgraphEpochData()
+    const epoch = await getSubgraphEpochData(contractAddress)
     const nextCheckpoint = epoch.checkpointTimestamp + epoch.livenessPeriod
 
     // RPC: request count + inactivity (essential real-time data, with retry + graceful fallback)
@@ -75,7 +91,7 @@ export async function GET(request: NextRequest) {
           serviceId
             ? rpcWithRetry(() =>
                 client.readContract({
-                  address: JINN_STAKING_CONTRACT,
+                  address: contractAddress,
                   abi: stakingAbi,
                   functionName: 'getServiceInfo',
                   args: [BigInt(serviceId)],
@@ -84,7 +100,7 @@ export async function GET(request: NextRequest) {
             : Promise.resolve(null),
           rpcWithRetry(() =>
             client.readContract({
-              address: JINN_STAKING_CONTRACT,
+              address: contractAddress,
               abi: stakingAbi,
               functionName: 'maxNumInactivityPeriods',
             })

@@ -89,11 +89,14 @@ function OlasBalanceRow({ label, balance }: { label: string; balance: bigint | n
 
 export default async function ServiceDetailPage({ params }: PageProps) {
   const { serviceId } = await params
-  const service = await getStakedServiceByServiceId(serviceId)
+  const services = await getStakedServiceByServiceId(serviceId)
 
-  if (!service) {
+  if (services.length === 0) {
     notFound()
   }
+
+  // Prefer actively staked record; if none, use the most recent
+  const service = services.find(s => s.isStaked) ?? services[0]
 
   const [mechs, deliveries] = await Promise.all([
     getMechsForServiceIds([service.serviceId]),
@@ -132,7 +135,7 @@ export default async function ServiceDetailPage({ params }: PageProps) {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Service {serviceId}</CardTitle>
-                <ServiceStakingStatus serviceId={serviceId} variant="badge" />
+                <ServiceStakingStatus serviceId={serviceId} stakingContract={service.stakingContract} variant="badge" />
               </div>
             </CardHeader>
             <CardContent className="space-y-1 divide-y">
@@ -171,7 +174,7 @@ export default async function ServiceDetailPage({ params }: PageProps) {
               <CardTitle className="text-base">Staking Rewards</CardTitle>
             </CardHeader>
             <CardContent>
-              <ServiceStakingStatus serviceId={serviceId} variant="full" />
+              <ServiceStakingStatus serviceId={serviceId} stakingContract={service.stakingContract} variant="full" />
             </CardContent>
           </Card>
 
@@ -181,7 +184,7 @@ export default async function ServiceDetailPage({ params }: PageProps) {
               <CardTitle className="text-base">Epoch Progress</CardTitle>
             </CardHeader>
             <CardContent>
-              <EpochProgress multisig={service.multisig} serviceId={service.serviceId} />
+              <EpochProgress multisig={service.multisig} serviceId={service.serviceId} stakingContract={service.stakingContract} />
             </CardContent>
           </Card>
 

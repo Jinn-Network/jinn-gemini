@@ -41,14 +41,14 @@ export function StakedServiceCard({ service, lastDeliveryTimestamp, safeEthWei, 
               Service #{service.serviceId}
             </Link>
           </CardTitle>
-          <ServiceStakingStatus serviceId={service.serviceId} variant="badge" />
+          <ServiceStakingStatus serviceId={service.serviceId} stakingContract={service.stakingContract} variant="badge" />
         </div>
         <p className="text-sm text-muted-foreground font-mono">
           Owner: {truncateAddress(service.owner)}
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <EpochProgress multisig={service.multisig} serviceId={service.serviceId} />
+        <EpochProgress multisig={service.multisig} serviceId={service.serviceId} stakingContract={service.stakingContract} />
         <div className="rounded-md border bg-muted/20 px-3 py-2 space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Safe ETH</span>

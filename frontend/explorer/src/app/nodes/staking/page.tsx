@@ -23,7 +23,9 @@ import { StakingToolbar } from '@/components/staking/staking-toolbar'
 import { EpochProgressCompact } from '@/components/staking/epoch-progress-compact'
 import { getStakedServices, getRecentDeliveries, getMechsForServiceIds } from '@/lib/staking/queries'
 import {
-  JINN_STAKING_CONTRACT,
+  STAKING_CONTRACTS,
+  STAKING_CONTRACT_BY_KEY,
+  STAKING_CONTRACT_BY_ADDRESS,
   LIVENESS_PERIOD,
   stakingAbi,
 } from '@/lib/staking/constants'
@@ -41,13 +43,13 @@ import { EpochCountdown } from '@/components/staking/epoch-countdown'
 
 export const metadata: Metadata = {
   title: 'Staking Dashboard',
-  description: 'View staked services and epoch progress on the Jinn staking contract',
+  description: 'View staked services and epoch progress on Jinn staking contracts',
 }
 
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-  searchParams: Promise<{ view?: string; owner?: string }>
+  searchParams: Promise<{ view?: string; owner?: string; contract?: string }>
 }
 
 type ViewMode = 'table' | 'cards'
@@ -143,8 +145,24 @@ function EthBadge({ wei }: { wei: bigint | undefined | null }) {
   )
 }
 
-async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMode; ownerFilter: string | null }) {
-  const services = await getStakedServices()
+async function StakedServicesList({
+  viewMode,
+  ownerFilter,
+  contractFilter,
+}: {
+  viewMode: ViewMode
+  ownerFilter: string | null
+  contractFilter: string | null
+}) {
+  // Resolve contract filter to addresses
+  const contractAddresses = contractFilter
+    ? (() => {
+        const info = STAKING_CONTRACT_BY_KEY.get(contractFilter)
+        return info ? [info.address.toLowerCase()] : undefined
+      })()
+    : undefined
+
+  const services = await getStakedServices(contractAddresses)
 
   if (services.length === 0) {
     return (
@@ -154,23 +172,35 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
     )
   }
 
-  // Get on-chain truth: which services are actually staked right now
-  let activeServiceIds: Set<string> | null = null
+  // Determine which contracts are in the current view
+  const contractsInView = contractFilter
+    ? STAKING_CONTRACTS.filter(c => c.shortKey === contractFilter)
+    : STAKING_CONTRACTS
+
+  // Get on-chain truth: which services are actually staked right now (per contract)
+  let activeServiceIds: Map<string, Set<string>> | null = null
   try {
     const client = getRpcClient()
-    const ids = await client.readContract({
-      address: JINN_STAKING_CONTRACT,
-      abi: stakingAbi,
-      functionName: 'getServiceIds',
-    }) as bigint[]
-    activeServiceIds = new Set(ids.map(id => id.toString()))
+    const results = await Promise.all(
+      contractsInView.map(async c => {
+        const ids = await client.readContract({
+          address: c.address,
+          abi: stakingAbi,
+          functionName: 'getServiceIds',
+        }) as bigint[]
+        return { contract: c.address.toLowerCase(), ids: new Set(ids.map(id => id.toString())) }
+      })
+    )
+    activeServiceIds = new Map(results.map(r => [r.contract, r.ids]))
   } catch (err) {
     console.warn('[staking] Failed to fetch on-chain service IDs, falling back to Ponder isStaked:', err)
   }
 
   const enrichedServices = services.map(s => ({
     ...s,
-    isStaked: activeServiceIds ? activeServiceIds.has(s.serviceId) : s.isStaked,
+    isStaked: activeServiceIds
+      ? (activeServiceIds.get(s.stakingContract.toLowerCase())?.has(s.serviceId) ?? s.isStaked)
+      : s.isStaked,
   }))
 
   enrichedServices.sort((a, b) => {
@@ -209,9 +239,6 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
   const agentAddressList = agentAddresses.map((a) => a.agentAddress).filter((a): a is string => a != null)
   const agentBalances = await getAddressBalances(agentAddressList)
 
-  const stakedCount = enrichedServices.filter(s => s.isStaked).length
-  const evictedCount = enrichedServices.filter(s => !s.isStaked).length
-
   const deliveryPromises = filtered.map(async (service) => {
     const deliveries = await getRecentDeliveries(service.multisig, 1)
     return {
@@ -222,45 +249,78 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
   const deliveryResults = await Promise.all(deliveryPromises)
   const lastDeliveryMap = new Map(deliveryResults.map((d) => [d.serviceId, d.lastDeliveryTimestamp]))
 
-  // Compute epoch checkpoint timing
-  let epochInfo: { nextCheckpoint: number; livenessPeriod: number; epochNumber: number } | null = null
-  try {
-    const [contract, checkpoint] = await Promise.all([
-      getStakingContract(JINN_STAKING_CONTRACT),
-      getLatestCheckpoint(JINN_STAKING_CONTRACT),
-    ])
-    if (contract && checkpoint) {
-      const livenessPeriod = Number(contract.livenessPeriod)
-      const checkpointTs = Number(checkpoint.blockTimestamp)
-      epochInfo = {
-        nextCheckpoint: checkpointTs + livenessPeriod,
-        livenessPeriod,
-        epochNumber: Number(checkpoint.epochLength),
-      }
+  // Compute epoch checkpoint timing per contract
+  const epochInfos = (await Promise.all(
+    contractsInView.map(async c => {
+      try {
+        const [contract, checkpoint] = await Promise.all([
+          getStakingContract(c.address),
+          getLatestCheckpoint(c.address),
+        ])
+        if (contract && checkpoint) {
+          const livenessPeriod = Number(contract.livenessPeriod)
+          const checkpointTs = Number(checkpoint.blockTimestamp)
+          return {
+            contractLabel: c.label,
+            nextCheckpoint: checkpointTs + livenessPeriod,
+            livenessPeriod,
+            epochNumber: Number(checkpoint.epochLength),
+          }
+        }
+      } catch {}
+      return null
+    })
+  )).filter((e): e is NonNullable<typeof e> => e != null)
+
+  // Per-contract stats
+  const contractStats = contractsInView.map(c => {
+    const contractServices = enrichedServices.filter(
+      s => s.stakingContract.toLowerCase() === c.address.toLowerCase()
+    )
+    return {
+      ...c,
+      stakedCount: contractServices.filter(s => s.isStaked).length,
+      evictedCount: contractServices.filter(s => !s.isStaked).length,
     }
-  } catch {}
+  })
 
   return (
     <div className="space-y-4">
-      <StakingToolbar viewMode={viewMode} owners={owners} selectedOwner={ownerFilter} />
+      <StakingToolbar
+        viewMode={viewMode}
+        owners={owners}
+        selectedOwner={ownerFilter}
+        selectedContract={contractFilter}
+      />
 
-      {epochInfo && <EpochCountdown nextCheckpoint={epochInfo.nextCheckpoint} epochNumber={epochInfo.epochNumber} />}
+      {epochInfos.map(info => (
+        <EpochCountdown
+          key={info.contractLabel}
+          nextCheckpoint={info.nextCheckpoint}
+          epochNumber={info.epochNumber}
+          contractLabel={contractsInView.length > 1 ? info.contractLabel : undefined}
+        />
+      ))}
 
-      <div className="flex items-center gap-3">
-        <Badge variant="outline" className="font-mono">
-          <a
-            href={`https://basescan.org/address/${JINN_STAKING_CONTRACT}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-          >
-            {truncateAddress(JINN_STAKING_CONTRACT)}
-          </a>
-        </Badge>
-        <span className="text-sm text-muted-foreground">
-          {stakedCount} staked{evictedCount > 0 && `, ${evictedCount} evicted`}
-          {ownerFilter && ` (filtered)`}
-        </span>
+      <div className="flex items-center gap-3 flex-wrap">
+        {contractStats.map(c => (
+          <Badge key={c.shortKey} variant="outline" className="font-mono">
+            <a
+              href={`https://basescan.org/address/${c.address}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              {c.label}: {truncateAddress(c.address)}
+            </a>
+            <span className="ml-1.5 text-muted-foreground font-sans">
+              {c.stakedCount} staked{c.evictedCount > 0 ? `, ${c.evictedCount} evicted` : ''}
+            </span>
+          </Badge>
+        ))}
+        {ownerFilter && (
+          <span className="text-sm text-muted-foreground">(filtered by owner)</span>
+        )}
       </div>
 
       {viewMode === 'cards' ? (
@@ -275,6 +335,7 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
             <TableHeader>
               <TableRow>
                 <TableHead className="w-24">Service</TableHead>
+                <TableHead className="w-20">Contract</TableHead>
                 <TableHead className="w-28">Staking</TableHead>
                 <TableHead className="w-40">Eviction Risk</TableHead>
                 <TableHead>Epoch Requests</TableHead>
@@ -291,12 +352,16 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
                 const agentAddr = agentAddressMap.get(service.serviceId)
                 const agentBalance = agentAddr ? agentBalances.get(agentAddr.toLowerCase()) : undefined
                 const lastDeliveryTimestamp = lastDeliveryMap.get(service.serviceId) || null
+                const contractInfo = STAKING_CONTRACT_BY_ADDRESS.get(service.stakingContract.toLowerCase())
                 return (
                   <TableRow key={service.id}>
                     <TableCell className="font-mono">
                       <Link href={`/nodes/staking/${service.serviceId}`} className="text-primary hover:underline">
                         #{service.serviceId}
                       </Link>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {contractInfo?.label ?? truncateAddress(service.stakingContract)}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -312,7 +377,11 @@ async function StakedServicesList({ viewMode, ownerFilter }: { viewMode: ViewMod
                       <EvictionRiskBadge isStaked={service.isStaked} lastDeliveryTimestamp={lastDeliveryTimestamp} />
                     </TableCell>
                     <TableCell>
-                      <EpochProgressCompact multisig={service.multisig} serviceId={service.serviceId} />
+                      <EpochProgressCompact
+                        multisig={service.multisig}
+                        serviceId={service.serviceId}
+                        stakingContract={service.stakingContract}
+                      />
                     </TableCell>
                     <TableCell className="font-mono">
                       <a
@@ -401,6 +470,7 @@ export default async function StakingPage({ searchParams }: PageProps) {
   const params = await searchParams
   const viewMode: ViewMode = params.view === 'cards' ? 'cards' : 'table'
   const ownerFilter = params.owner ?? null
+  const contractFilter = params.contract ?? null
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -415,7 +485,11 @@ export default async function StakingPage({ searchParams }: PageProps) {
       <main className="flex-1 py-6">
         <div className="container mx-auto px-4 space-y-4">
           <Suspense fallback={<StakedServicesListSkeleton />}>
-            <StakedServicesList viewMode={viewMode} ownerFilter={ownerFilter} />
+            <StakedServicesList
+              viewMode={viewMode}
+              ownerFilter={ownerFilter}
+              contractFilter={contractFilter}
+            />
           </Suspense>
         </div>
       </main>

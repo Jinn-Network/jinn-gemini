@@ -15,16 +15,17 @@ interface EpochData {
 interface EpochProgressCompactProps {
   multisig: string
   serviceId?: string
+  stakingContract: string
 }
 
-export function EpochProgressCompact({ multisig, serviceId }: EpochProgressCompactProps) {
+export function EpochProgressCompact({ multisig, serviceId, stakingContract }: EpochProgressCompactProps) {
   const [data, setData] = useState<EpochData | null>(null)
   const [error, setError] = useState(false)
   const hasLoadedOnce = useRef(false)
 
   const fetchData = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ multisig })
+      const params = new URLSearchParams({ multisig, stakingContract })
       if (serviceId) params.set('serviceId', serviceId)
       const res = await fetch(`/api/staking/epoch?${params}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -40,7 +41,7 @@ export function EpochProgressCompact({ multisig, serviceId }: EpochProgressCompa
     } catch {
       if (!hasLoadedOnce.current) setError(true)
     }
-  }, [multisig, serviceId])
+  }, [multisig, serviceId, stakingContract])
 
   useEffect(() => {
     fetchData()

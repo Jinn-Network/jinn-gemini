@@ -17,6 +17,7 @@ interface EpochData {
 interface EpochProgressProps {
   multisig: string
   serviceId?: string
+  stakingContract: string
   lastDeliveryTimestamp?: string | null
 }
 
@@ -28,14 +29,14 @@ function formatTimeAgo(timestamp: string): string {
   return `${Math.floor(seconds / 86400)}d ago`
 }
 
-export function EpochProgress({ multisig, serviceId, lastDeliveryTimestamp }: EpochProgressProps) {
+export function EpochProgress({ multisig, serviceId, stakingContract, lastDeliveryTimestamp }: EpochProgressProps) {
   const [data, setData] = useState<EpochData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const hasLoadedOnce = useRef(false)
 
   const fetchData = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ multisig })
+      const params = new URLSearchParams({ multisig, stakingContract })
       if (serviceId) params.set('serviceId', serviceId)
       const res = await fetch(`/api/staking/epoch?${params}`)
       if (!res.ok) {
@@ -58,7 +59,7 @@ export function EpochProgress({ multisig, serviceId, lastDeliveryTimestamp }: Ep
       // Only show error if we never successfully loaded — otherwise keep stale data
       if (!hasLoadedOnce.current) setError(msg)
     }
-  }, [multisig, serviceId])
+  }, [multisig, serviceId, stakingContract])
 
   useEffect(() => {
     fetchData()
