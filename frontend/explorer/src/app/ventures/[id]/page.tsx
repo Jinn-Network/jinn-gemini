@@ -228,6 +228,7 @@ async function VentureScheduleView({ ventureId }: { ventureId: string }) {
       ventureId={ventureId}
       schedule={venture.dispatch_schedule}
       workstreams={workstreams}
+      ventureBlueprint={venture.blueprint}
     />
   );
 }

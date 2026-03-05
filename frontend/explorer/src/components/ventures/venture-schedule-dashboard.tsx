@@ -22,6 +22,8 @@ interface VentureScheduleDashboardProps {
   ventureId: string;
   schedule: ScheduleEntry[];
   workstreams: Workstream[];
+  /** Venture-level blueprint (overrides template blueprint in health tab) */
+  ventureBlueprint?: unknown;
 }
 
 /**
@@ -32,6 +34,7 @@ export function VentureScheduleDashboard({
   ventureId,
   schedule,
   workstreams,
+  ventureBlueprint,
 }: VentureScheduleDashboardProps) {
   return (
     <Tabs defaultValue="schedule" className="flex-1 flex flex-col min-h-0">
@@ -114,7 +117,7 @@ export function VentureScheduleDashboard({
             No workstreams yet
           </div>
         ) : (
-          <WorkstreamHealth workstreamId={workstreams[0].id} />
+          <WorkstreamHealth workstreamId={workstreams[0].id} ventureBlueprint={ventureBlueprint} />
         )}
       </TabsContent>
 

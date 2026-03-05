@@ -23,6 +23,8 @@ import {
 
 interface WorkstreamHealthProps {
   workstreamId: string
+  /** Override blueprint from venture (instead of resolving from template) */
+  ventureBlueprint?: unknown
 }
 
 interface StatusCount {
@@ -70,7 +72,7 @@ function HealthSummary({ counts }: { counts: StatusCount }) {
   )
 }
 
-export function WorkstreamHealth({ workstreamId }: WorkstreamHealthProps) {
+export function WorkstreamHealth({ workstreamId, ventureBlueprint }: WorkstreamHealthProps) {
   const [loading, setLoading] = useState(true)
   const [invariants, setInvariants] = useState<InvariantWithMeasurementDisplay[]>([])
   const [statusCounts, setStatusCounts] = useState<StatusCount>({ healthy: 0, warning: 0, critical: 0, unknown: 0 })
@@ -90,39 +92,42 @@ export function WorkstreamHealth({ workstreamId }: WorkstreamHealthProps) {
           return
         }
 
-        // Try to get blueprint from IPFS first (source of truth)
-        let blueprintJson: unknown = null
+        // Use venture blueprint if provided (venture-level invariants take priority)
+        let blueprintJson: unknown = ventureBlueprint ?? null
 
-        if (rootRequest.ipfsHash) {
-          try {
-            const ipfsResult = await fetchIpfsContent(rootRequest.ipfsHash)
-            if (ipfsResult) {
-              const parsed = JSON.parse(ipfsResult.content)
-              // Extract blueprint (new architecture) or try to parse as blueprint directly
-              const rawBlueprint = parsed.blueprint || parsed.prompt || ipfsResult.content
-              if (typeof rawBlueprint === 'string') {
-                try {
-                  blueprintJson = JSON.parse(rawBlueprint)
-                } catch {
-                  // Not JSON, might be raw text
-                }
-              } else {
-                blueprintJson = rawBlueprint
-              }
-            }
-          } catch (e) {
-            console.error('Failed to fetch/parse IPFS content:', e)
-          }
-        }
-
-        // Fallback to job definition blueprint
-        if (!blueprintJson && rootRequest.jobDefinitionId) {
-          const jobDef = await getJobDefinition(rootRequest.jobDefinitionId)
-          if (jobDef?.blueprint) {
+        if (!blueprintJson) {
+          // Try to get blueprint from IPFS first (source of truth)
+          if (rootRequest.ipfsHash) {
             try {
-              blueprintJson = JSON.parse(jobDef.blueprint)
-            } catch {
-              // Not JSON
+              const ipfsResult = await fetchIpfsContent(rootRequest.ipfsHash)
+              if (ipfsResult) {
+                const parsed = JSON.parse(ipfsResult.content)
+                // Extract blueprint (new architecture) or try to parse as blueprint directly
+                const rawBlueprint = parsed.blueprint || parsed.prompt || ipfsResult.content
+                if (typeof rawBlueprint === 'string') {
+                  try {
+                    blueprintJson = JSON.parse(rawBlueprint)
+                  } catch {
+                    // Not JSON, might be raw text
+                  }
+                } else {
+                  blueprintJson = rawBlueprint
+                }
+              }
+            } catch (e) {
+              console.error('Failed to fetch/parse IPFS content:', e)
+            }
+          }
+
+          // Fallback to job definition blueprint
+          if (!blueprintJson && rootRequest.jobDefinitionId) {
+            const jobDef = await getJobDefinition(rootRequest.jobDefinitionId)
+            if (jobDef?.blueprint) {
+              try {
+                blueprintJson = JSON.parse(jobDef.blueprint)
+              } catch {
+                // Not JSON
+              }
             }
           }
         }
