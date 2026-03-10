@@ -115,31 +115,62 @@ Agent calls dispatch_new_job (MCP tool)
   → dispatchToMarketplace() in dispatch-core.ts
     → proxyDispatch() to signing-proxy
       → signing-proxy.ts handleDispatch()
-        → getRequiredRpcUrl() ← always returns BASE_RPC_URL
+        → getRequiredRpcUrl() ← always returns RPC_URL (Base L2)
         → getMechChainConfig() ← always returns public chain config
         → dispatchViaSafe() ← posts to public marketplace
 ```
 
-Every `dispatch_new_job` from the agent goes through the signing proxy, which resolves the RPC URL from `BASE_RPC_URL` and posts to the public marketplace. Sub-jobs dispatched by an orchestrator agent hit the same path — they all land on the public chain.
+Every `dispatch_new_job` from the agent goes through the signing proxy, which resolves the RPC URL from `RPC_URL` and posts to the public marketplace. Sub-jobs dispatched by an orchestrator agent hit the same path — they all land on the public chain.
 
 **What needs to change:**
 
-1. **Signing proxy needs an execution context flag.** When a node is executing a template locally, the signing proxy (or a parallel local proxy) must route sub-job dispatches to the local EVM instead of the public chain. The simplest approach: the worker sets an env var like `JINN_EXECUTION_RPC_URL` that overrides `BASE_RPC_URL` for the agent subprocess. The signing proxy's `handleDispatch` already calls `getRequiredRpcUrl()` — that function just needs to prefer the local RPC when set.
+1. **RPC routing override.** `getRequiredRpcUrl()` in `config/index.ts` (line 608) checks `JINN_LOCAL_RPC_URL` first, falls back to `RPC_URL`. When set, all downstream code — signing proxy dispatch, delivery transactions, balance checks — routes to the local Anvil. A companion `getPublicRpcUrl()` always returns the production `RPC_URL` for final public delivery. Similarly, `getPonderGraphqlUrl()` (line 703) checks `JINN_LOCAL_PONDER_URL` first.
 
-2. **The worker needs a "local claim loop."** Today the worker polls Ponder (which indexes the public chain) for unclaimed jobs. For local execution, the worker needs a second poll loop watching a local Ponder instance that indexes the local EVM. Same code, different GraphQL endpoint.
+2. **Local claim loop.** The worker needs a second poll loop watching a local Ponder instance that indexes the local EVM. Same code, different GraphQL endpoint. Simplified: no staking/credential/heartbeat filters, short poll interval (1-2s), hard timeout.
 
-3. **Final delivery routing.** The orchestrator's own delivery (the final result) must go to the public chain, not the local EVM. This means the top-level job needs to know it's the "public" job. One approach: the worker wraps the local execution and handles the final delivery itself, rather than letting the agent deliver. The agent delivers locally; the worker takes that local delivery artifact and posts it publicly.
+3. **Final delivery routing.** The worker wraps the local execution: agent delivers locally → worker takes that artifact → posts to the public marketplace using `getPublicRpcUrl()`.
 
-4. **Contract deployment on local EVM.** The local Anvil instance needs the marketplace contracts deployed at startup. This is a one-time setup step per execution — deploy the same contracts to deterministic addresses on the local chain.
+4. **No contract deployment needed.** Anvil `--fork-url` copies all Base mainnet state — contracts are already deployed at canonical addresses. Same Safe, same MechMarketplace, same mech. No deploy scripts needed.
 
 **What genuinely doesn't change:**
 
 - The agent code and MCP tool implementations (they call the same proxy)
-- The marketplace contracts (same Solidity, different deployment target)
+- The marketplace contracts (same Solidity, forked state)
 - The Ponder schema and indexing logic (same code, different RPC)
 - The activity checker (still counts public deliveries only)
 - The incentive model (deliveries on public chain = proof of work)
 - The blueprint/template format and validation
+- Safe transaction management (same mutex, same nonce handling — forked chain preserves nonce)
+
+### Implementation Plan
+
+See [JINN-450](https://linear.app/jinn-lads/issue/JINN-450) for the full implementation plan. Summary:
+
+**Phase 1 — Local dev stack (JINN-451):** Script to start Anvil fork + local Ponder + point existing worker at them. No code changes. Validates the approach.
+
+**Phase 2 — RPC routing + lifecycle managers (JINN-450, PR 1):**
+- `JINN_LOCAL_RPC_URL` / `JINN_LOCAL_PONDER_URL` override in `config/index.ts`
+- `AnvilManager` — spawn Anvil fork, fund Safe, kill
+- `LocalPonderManager` — spawn Ponder against Anvil, wait for readiness, kill
+- `AGENT_ENV_ALLOWLIST` updated to pass local env vars to agent subprocess
+
+**Phase 3 — Orchestrator integration (JINN-450, PR 2):**
+- `LocalExecutionEnvironment` orchestrator — ties Anvil + Ponder + local claim loop together
+- Integration with `jobRunner.ts` — local execution branch for template jobs (opt-in via `localExecution: true` in template, or `JINN_LOCAL_EXECUTION=true` on worker)
+- Execution trace artifact uploaded to IPFS alongside final delivery
+- Structured execution log persisted to Supabase
+
+### Key Files
+
+| File | Role |
+|------|------|
+| `jinn-node/src/config/index.ts` | `getRequiredRpcUrl()` (line 608), `getPonderGraphqlUrl()` (line 703) |
+| `jinn-node/src/agent/signing-proxy.ts` | `handleDispatch()` line 152 — calls `getRequiredRpcUrl()` |
+| `jinn-node/src/agent/agent.ts` | `AGENT_ENV_ALLOWLIST` (line 28) — env vars passed to agent |
+| `jinn-node/src/worker/delivery/transaction.ts` | `deliverViaSafeTransaction()` — calls `getRequiredRpcUrl()` |
+| `jinn-node/src/worker/mech_worker.ts` | `fetchRecentRequests()` — calls `getPonderGraphqlUrl()` |
+| `jinn-node/src/worker/orchestration/jobRunner.ts` | `processOnce()` — integration point for local execution branch |
+| `ponder/ponder.config.ts` | `getRpcUrl()`, factory start block, test mode detection |
 
 ---
 
