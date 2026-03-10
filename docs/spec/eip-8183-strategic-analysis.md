@@ -1,6 +1,6 @@
 # EIP-8183 & Jinn: Strategic Analysis
 
-> How the Agentic Commerce Protocol reshapes Jinn's competitive landscape, and why the moat is the restoration engine — not the marketplace, not the evaluator, not the standard.
+> How the Agentic Commerce Protocol reshapes Jinn's competitive landscape, and why the moat is the distributed restoration knowledge network — not the marketplace, not the evaluator, not the standard.
 
 ---
 
@@ -319,16 +319,172 @@ OLAS funds the training. The invariant schema structures the jobs. The memory co
 
 ---
 
-## 11. Immediate Actions
+## 11. The Knowledge Network: Distributed Restoration Intelligence
+
+The restoration engine is not a central model. It's a distributed knowledge graph, replicated across nodes via private IPFS, structured as ERC-8004 documents.
+
+### How knowledge accumulates
+
+Every node in the Jinn network hosts a shard of the collective knowledge graph. Each restoration a node performs generates ERC-8004 documents — restoration patterns, calibrated assessments, domain-specific strategies. These documents propagate through private IPFS to other nodes based on relevance.
+
+```
+Network (private IPFS)
+┌─────────────────────────────────────────────────┐
+│  ERC-8004 docs: restoration patterns,           │
+│  calibrated assessments, domain strategies       │
+│  Replicated across nodes based on relevance      │
+└──────────┬──────────────────────┬───────────────┘
+           │                      │
+     Node A (portfolio focus)    Node B (content focus)
+     ├── Portfolio patterns      ├── Content patterns
+     ├── DeFi strategies         ├── SEO strategies
+     ├── Market context docs     ├── Audience analysis docs
+     └── Executes locally        └── Executes locally
+```
+
+Each node is both a consumer and producer of restoration knowledge. The more restorations it performs, the more knowledge it generates, the more it shares back to the network, the more it receives from others.
+
+### Solving the credentialed execution problem
+
+Some invariant restorations require access to the requester's private resources — portfolio keys, deployment wallets, account credentials. These secrets cannot leave the requester's machine.
+
+The knowledge network solves this cleanly. The requester runs their own Jinn node. That node has already accumulated relevant restoration knowledge from the network via private IPFS. At execution time, the agent reads local knowledge and uses local keys. No split execution. No real-time calls to a remote protocol. No strategy leaking at query time.
+
+```
+Requester's Node
+├── Private keys (local, never leave)
+├── Knowledge shard (accumulated from private IPFS, ERC-8004 docs)
+├── Agent reads local knowledge: "for RANGE(eth_allocation, 40%, 60%)
+│   in volatile markets, split rebalance over 3 tranches"
+├── Agent executes with local keys
+└── Posts delivery to public chain
+```
+
+For permissionless work (content, research, code), any node can execute. For credentialed work (portfolio rebalancing, deployment, account management), the requester's own node executes using accumulated network knowledge. In both cases, the restoration generates new ERC-8004 docs (stripped of secrets) that flow back to the network.
+
+### Two categories of work, one knowledge loop
+
+**Permissionless restoration:**
+```
+Client creates 8183 job → any Jinn node claims it
+  → node uses local knowledge shard to restore invariant
+  → evaluator verifies → payment releases
+  → node generates ERC-8004 doc → propagates through private IPFS
+```
+
+**Credentialed restoration:**
+```
+Requester runs own Jinn node (has accumulated knowledge from network)
+  → creates 8183 job (client = self, provider = self, evaluator = Jinn)
+  → agent restores invariant using local keys + local knowledge
+  → evaluator verifies → fee to Jinn
+  → node generates ERC-8004 doc (secrets stripped) → propagates through private IPFS
+```
+
+Both categories feed the same knowledge graph. The network gets smarter from credentialed work without ever seeing the credentials.
+
+### IP protection through velocity, not secrecy
+
+The restoration strategies aren't secret — they're distributed across the network as ERC-8004 documents. Any participating node can read the ones it has accumulated. The protection is in the **accumulation rate**:
+
+- **Volume**: Nodes that run more restorations generate more docs, which means they accumulate more knowledge from reciprocal sharing
+- **Freshness**: The network continuously produces new restoration patterns. A node that disconnects falls behind. The strategy that worked last month may not work this month.
+- **Relevance**: A node focused on portfolio management accumulates portfolio-relevant docs. It gets better at portfolio restoration specifically because the network feeds it relevant knowledge.
+- **Network effect**: The more nodes running restorations, the faster the knowledge graph grows, the better every node gets. A competing network with fewer nodes accumulates slower.
+- **Cold-start problem**: A competitor can't just train an agent on historical data. They'd need a network of nodes actively doing restorations, generating docs, sharing them, and feeding back. Jinn's OLAS-funded nodes are already running this flywheel.
+
+### OLAS as the knowledge production subsidy
+
+OLAS staking rewards don't just fund training for one central model. They fund knowledge production for a distributed graph:
+
+```
+OLAS rewards → fund restorations → generate ERC-8004 knowledge docs
+    → share via private IPFS → other nodes accumulate knowledge
+    → do better restorations → generate better docs
+    → cycle accelerates
+```
+
+Every OLAS-subsidised restoration is an investment in the network's collective intelligence.
+
+---
+
+## 12. How It All Fits Together
+
+```
+                    OLAS Staking
+                    (knowledge production subsidy)
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  Jinn Node Fleet    │
+              │  (restoration reps) │
+              └──────────┬──────────┘
+                         │
+            generates    │
+                         ▼
+              ┌─────────────────────┐
+              │  ERC-8004 Knowledge │
+              │  Documents          │
+              │  (patterns, strats, │
+              │   calibration data) │
+              └──────────┬──────────┘
+                         │
+            propagates   │
+            via private  │
+            IPFS         │
+                         ▼
+    ┌────────────────────────────────────────┐
+    │  Distributed Knowledge Graph           │
+    │  Each node holds a relevant shard      │
+    │  Continuously updated by all nodes     │
+    │                                        │
+    │  THE MOAT: network of nodes producing  │
+    │  and sharing restoration knowledge     │
+    │  faster than anyone can replicate      │
+    └────────────────────┬───────────────────┘
+                         │
+            powers       │
+                         ▼
+    ┌────────────────────────────────────────┐
+    │  Node-Local Restoration Engine         │
+    │  recognition → diagnosis → strategy   │
+    │  → execution → verification           │
+    │                                        │
+    │  Works for permissionless jobs (any    │
+    │  node) and credentialed jobs           │
+    │  (requester's own node + local keys)   │
+    └────────────────────┬───────────────────┘
+                         │
+            sells via    │
+                         ▼
+    ┌────────────────────────────────────────┐
+    │  EIP-8183 (Agentic Commerce)           │
+    │  client funds escrow                   │
+    │  description = invariant schema        │
+    │  Jinn node = provider                  │
+    │  evaluator = commodity invariant check  │
+    │  complete → payment to provider        │
+    └────────────────────────────────────────┘
+```
+
+OLAS funds knowledge production. Nodes generate ERC-8004 docs from every restoration. The docs propagate through private IPFS, building a distributed knowledge graph. Each node draws on this graph to restore invariants — whether permissionless or credentialed. EIP-8183 is the payment layer.
+
+**The moat is not the trained model. It's the network of nodes continuously producing and sharing restoration knowledge. The knowledge graph grows faster than any single entity can replicate, and every new node makes it grow faster still.**
+
+---
+
+## 13. Immediate Actions
 
 1. **Lock the invariant schema** — The four-type system is stable. Keep it as internal tooling. Don't publish it as a standard yet. Train on it.
 
-2. **Instrument restoration outcomes** — Every job should capture: invariant violated, strategy used, succeeded/failed, cycles to restore, cost. This is the training data.
+2. **Instrument restoration outcomes** — Every job should capture: invariant violated, strategy used, succeeded/failed, cycles to restore, cost. This is the training data that becomes ERC-8004 knowledge docs.
 
-3. **Diversify venture domains** — More domains = broader restoration capability. Use OLAS funding to run ventures across content, code, governance, market intel.
+3. **Diversify venture domains** — More domains = broader restoration knowledge in the graph. Use OLAS funding to run ventures across content, code, governance, market intel.
 
 4. **Build the claimed-vs-measured feedback loop** — Agent claims invariant satisfied → measurement job independently scores → delta = calibration signal. This is already partially in place with the measurement template.
 
-5. **Watch EIP-8183 progress** — Don't build on it yet. Let it mature. When it ships, Jinn should be the provider with the most restoration reps, ready to plug into any 8183 marketplace as the agent that actually delivers.
+5. **Design the knowledge doc format** — Define what an ERC-8004 restoration knowledge document contains: invariant type, domain, context, strategy, outcome, assessment calibration. This is what flows through private IPFS.
 
-6. **Keep OLAS staking as-is** — It's funding R&D. Don't disrupt it. When 8183 is ready, repoint the activity checker at 8183 completions. The transition is mechanical, not strategic.
+6. **Watch EIP-8183 progress** — Don't build on it yet. Let it mature. When it ships, Jinn nodes should have the richest knowledge graph in the ecosystem, ready to plug into any 8183 marketplace as the providers that actually deliver.
+
+7. **Keep OLAS staking as-is** — It's funding knowledge production. Don't disrupt it. When 8183 is ready, repoint the activity checker at 8183 completions. The transition is mechanical, not strategic.
