@@ -16,9 +16,11 @@ Manage OLAS service staking on Base: restaking, migration, status checks, and wh
 
 | Contract | Address |
 |----------|---------|
-| Jinn Staking | `0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139` |
+| Jinn Staking v1 | `0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139` |
+| Jinn Staking v2 | `0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488` |
 | AgentsFun1 | `0x2585e63df7BD9De8e058884D496658a030b5c6ce` |
-| Activity Checker | `0x1dF0be586a7273a24C7b991e37FE4C0b1C622A9B` |
+| Activity Checker (v1) | `0x1dF0be586a7273a24C7b991e37FE4C0b1C622A9B` |
+| Activity Checker (v2) | `0xe575393b921C98288a842217AFBeDBA8197496D5` |
 | ServiceRegistry | `0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE` |
 | ServiceRegistryTokenUtility | `0x34C895f302D0b5cf52ec0Edd3945321EB0f83dd5` |
 | ServiceManagerToken (CORRECT) | `0x1262136cac6a06A782DC94eb3a3dF0b4d09FF6A6` |
@@ -110,6 +112,23 @@ The `@safe-global/protocol-kit` (Safe SDK) fails with **GS013 during gas estimat
 - [ ] Verify service ID appears in `getServiceIds()`
 - [ ] **Whitelist mechs** — REQUIRED after restaking: `tsx scripts/activity-checker-whitelist.ts add --from-staking` (see Section 4)
 - [ ] Verify `maxDeliveryRate` is 99 on the mech (`yarn mech:check-rate`)
+
+### New Staking Contract Checklist
+
+When deploying a **new staking contract**, the following must also be updated:
+
+- [ ] `ponder/ponder.config.ts` → add address to `StakingContracts.address[]`
+- [ ] `ponder/src/index.ts` → add address to `JINN_STAKING_CONTRACTS[]`
+- [ ] `jinn-node/src/worker/filters/stakingFilter.ts` → update `DEFAULT_JINN_STAKING_CONTRACT`
+- [ ] `jinn-node/src/worker/staking/restake.ts` → update `DEFAULT_STAKING_CONTRACT`
+- [ ] `jinn-node/src/worker/SimplifiedServiceBootstrap.ts` → update fallback address
+- [ ] `jinn-node/src/setup/cli.ts` → update fallback addresses (2 locations)
+- [ ] `jinn-node/src/worker/config/ServiceConfig.ts` → update `DEFAULT_STAKING_PROGRAM_ID`
+- [ ] `frontend/explorer/src/lib/staking/constants.ts` → update `JINN_STAKING_CONTRACT`
+- [ ] This skill file → update Quick Reference table above
+- [ ] `skills/deploy-staking/SKILL.md` → update Step 5 config update list
+- [ ] `docs/reference/jinn-staking.md` → update deployed contracts
+- [ ] Redeploy Ponder indexer to pick up new contract events
 
 ---
 

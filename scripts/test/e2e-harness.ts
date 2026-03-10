@@ -10,7 +10,7 @@
  *   mine [n]            Mine n blocks (default 1)
  *   time-warp <seconds> Advance time + mine a block
  *   checkpoint          Call checkpoint() on staking contract (fund OLAS if needed)
- *   seed-activity       Set Safe nonce + marketplace request count for activity check
+ *   seed-activity       Set Safe nonce + marketplace delivery count for activity check
  *   seed-acl <dir>      Seed credential bridge ACL with all agent addresses from .operate/keys/
  *   preflight           Hard E2E gate (Node22+nvm, local stack, GitHub token, ACL, stale requests)
  *   cleanup             Delete all stale e2e-test-* VNets
@@ -26,6 +26,7 @@
  */
 
 import dotenv from 'dotenv';
+import { execSync } from 'child_process';
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import { createTenderlyClient, ethToWei } from '../lib/tenderly.js';
@@ -591,15 +592,39 @@ async function cmdSeedActivity(positional: string[], flags: Record<string, strin
   console.log(`\nSetting Safe nonce to ${value}...`);
   await rpcCall(rpcUrl, 'tenderly_setStorageAt', [multisig, safeSlot, valueHex]);
 
-  // 5. Set marketplace request count (mapping slot 9, keyed by multisig)
-  const mappingSlot = ethers.keccak256(
-    ethers.AbiCoder.defaultAbiCoder().encode(
-      ['address', 'uint256'],
-      [multisig, 9]
-    )
-  );
-  console.log(`Setting request count to ${value}...`);
-  await rpcCall(rpcUrl, 'tenderly_setStorageAt', [marketplaceAddr, mappingSlot, valueHex]);
+  // 5. Set marketplace delivery count — auto-discover storage slot
+  //    Activity checker reads mapDeliveryCounts(multisig), not mapRequestCounts.
+  //    Storage slot varies by contract version, so probe candidate slots.
+  const marketplace = new ethers.Contract(marketplaceAddr, [
+    'function mapDeliveryCounts(address) view returns (uint256)',
+  ], provider);
+
+  let deliverySlotFound = false;
+  for (const candidateSlot of [8, 9, 10, 11, 12, 13, 14, 15]) {
+    const slot = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ['address', 'uint256'],
+        [multisig, candidateSlot]
+      )
+    );
+    // Set probe value
+    await rpcCall(rpcUrl, 'tenderly_setStorageAt', [marketplaceAddr, slot, valueHex]);
+    // Check if mapDeliveryCounts reflects the change
+    const check = await marketplace.mapDeliveryCounts(multisig);
+    if (check === BigInt(value)) {
+      console.log(`Setting delivery count to ${value} (slot ${candidateSlot})...`);
+      deliverySlotFound = true;
+      break;
+    }
+    // Revert probe
+    await rpcCall(rpcUrl, 'tenderly_setStorageAt', [marketplaceAddr, slot, ethers.zeroPadValue('0x00', 32)]);
+  }
+
+  if (!deliverySlotFound) {
+    console.error('ERROR: Could not discover storage slot for mapDeliveryCounts');
+    console.error('  Tried slots 8-15. The MechMarketplace contract layout may have changed.');
+    process.exit(1);
+  }
 
   // 6. Verify
   const newNonces: bigint[] = await checker.getMultisigNonces(multisig);
@@ -664,6 +689,42 @@ async function cmdSeedAcl(positional: string[], flags: Record<string, string>) {
 
   await fs.writeFile(aclPath, JSON.stringify(acl, null, 2) + '\n');
 
+  // Seed Postgres ACL if database URL is available
+  const aclDbUrl = process.env.E2E_ACL_DATABASE_URL || process.env.ACL_DATABASE_URL;
+  if (aclDbUrl) {
+    const pg = await import('pg');
+    const pool = new pg.default.Pool({ connectionString: aclDbUrl, max: 2 });
+    try {
+      for (const addr of addresses) {
+        // Upsert operator with tier_override (not just trust_tier — calculateTrustTier reads tier_override)
+        await pool.query(`
+          INSERT INTO operators (address, trust_tier, tier_override, registered_at, updated_at)
+          VALUES ($1, 'trusted', 'trusted', NOW(), NOW())
+          ON CONFLICT (address) DO UPDATE SET
+            tier_override = 'trusted',
+            trust_tier = 'trusted',
+            updated_at = NOW()
+        `, [addr]);
+
+        for (const { name, connectionId } of providers) {
+          await pool.query(`
+            INSERT INTO credential_grants
+              (address, provider, nango_connection_id, price_per_access, active)
+            VALUES ($1, $2, $3, '0', true)
+            ON CONFLICT (address, provider) DO UPDATE SET
+              nango_connection_id = EXCLUDED.nango_connection_id,
+              active = true
+          `, [addr, name, connectionId]);
+        }
+      }
+      console.log(`  Postgres ACL seeded (${aclDbUrl.split('@')[1] || 'configured'})`);
+    } finally {
+      await pool.end();
+    }
+  } else {
+    console.log('  (No ACL_DATABASE_URL — Postgres seeding skipped)');
+  }
+
   console.log(`ACL seeded for ${addresses.length} agent(s):`);
   for (const addr of addresses) {
     console.log(`  ${addr}`);
@@ -714,7 +775,119 @@ export async function cmdCleanup(flags: Record<string, string>): Promise<void> {
     }
   }
 
-  // Clean .env.e2e last (since it contains CLONE_DIR we just used)
+  // ── Poetry virtualenvs ──
+  // Each E2E clone gets a temp path → unique Poetry virtualenv hash → ~2 GB.
+  // These accumulate across runs and are never cleaned. Only preserve the
+  // virtualenv for the host's jinn-node directory.
+  try {
+    const poetryVenvDir = `${process.env.HOME}/Library/Caches/pypoetry/virtualenvs`;
+    const entries = await fs.readdir(poetryVenvDir);
+    const staleVenvs = entries.filter(e => e.startsWith('jinn-node-python-deps-'));
+
+    // Determine which virtualenv hash belongs to the host jinn-node
+    // (poetry hashes the parent dir path — skip the one matching our monorepo)
+    let hostVenvPrefix: string | null = null;
+    try {
+      const jinnNodeDir = resolve(MONOREPO_ROOT, 'jinn-node');
+      const poetryEnvList = execSync(`poetry env list --full-path`, {
+        cwd: jinnNodeDir,
+        encoding: 'utf-8',
+        timeout: 10000,
+      }).trim();
+      // Output: /path/to/jinn-node-python-deps-HASH-py3.11 (Activated)
+      const match = poetryEnvList.match(/(jinn-node-python-deps-[^\s/]+)/);
+      if (match) hostVenvPrefix = match[1];
+    } catch {
+      // Poetry not available or no env — skip host detection
+    }
+
+    const toRemove = staleVenvs.filter(e => !hostVenvPrefix || e !== hostVenvPrefix);
+    if (toRemove.length > 0) {
+      console.log(`\nCleaning stale Poetry virtualenvs (${toRemove.length} found)...`);
+      for (const venv of toRemove) {
+        const venvPath = resolve(poetryVenvDir, venv);
+        if (dryRun) {
+          console.log(`  [DRY RUN] Would remove: ${venv}`);
+        } else {
+          await fs.rm(venvPath, { recursive: true, force: true });
+          console.log(`  Removed: ${venv}`);
+        }
+      }
+    }
+  } catch {
+    // Poetry cache dir doesn't exist or not on macOS
+  }
+
+  // ── Docker cleanup ──
+  // Stop and remove E2E Postgres container
+  try {
+    const containerName = 'e2e-postgres';
+    if (dryRun) {
+      console.log(`[DRY RUN] Would stop/remove Docker container: ${containerName}`);
+    } else {
+      console.log(`\nCleaning Docker resources...`);
+      try {
+        execSync(`docker rm -f ${containerName} 2>/dev/null`, { encoding: 'utf-8', timeout: 10000 });
+        console.log(`  Removed container: ${containerName}`);
+      } catch {
+        // Container doesn't exist
+      }
+    }
+    // Remove stale jinn-node:e2e image
+    if (dryRun) {
+      console.log(`[DRY RUN] Would remove Docker image: jinn-node:e2e`);
+    } else {
+      try {
+        execSync(`docker rmi jinn-node:e2e 2>/dev/null`, { encoding: 'utf-8', timeout: 30000 });
+        console.log(`  Removed image: jinn-node:e2e`);
+      } catch {
+        // Image doesn't exist
+      }
+    }
+  } catch {
+    // Docker not available
+  }
+
+  // ── Local stack PIDs ──
+  // Kill any lingering Ponder / Control API / Gateway processes from .env.e2e
+  for (const pidKey of ['E2E_PID_PONDER', 'E2E_PID_CONTROL_API', 'E2E_PID_GATEWAY']) {
+    const pid = process.env[pidKey];
+    if (pid) {
+      try {
+        process.kill(parseInt(pid, 10), 'SIGTERM');
+        if (!dryRun) console.log(`  Killed ${pidKey}: ${pid}`);
+      } catch {
+        // Process already dead
+      }
+    }
+  }
+
+  // ── ACL file ──
+  if (!dryRun) {
+    try {
+      await fs.access(E2E_ACL_FILE);
+      await fs.unlink(E2E_ACL_FILE);
+      console.log(`Removed ${E2E_ACL_FILE}`);
+    } catch {
+      // File doesn't exist
+    }
+  }
+
+  // ── E2E log directory ──
+  const logDir = process.env.E2E_LOG_DIR || '/tmp/jinn-e2e-logs';
+  try {
+    await fs.access(logDir);
+    if (dryRun) {
+      console.log(`[DRY RUN] Would remove log dir: ${logDir}`);
+    } else {
+      await fs.rm(logDir, { recursive: true, force: true });
+      console.log(`Removed log dir: ${logDir}`);
+    }
+  } catch {
+    // Directory doesn't exist
+  }
+
+  // Clean .env.e2e last (since it contains CLONE_DIR and PIDs we just used)
   if (!dryRun) {
     try {
       await fs.access(E2E_ENV_FILE);

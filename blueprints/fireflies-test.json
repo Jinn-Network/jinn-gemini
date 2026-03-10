@@ -23,7 +23,9 @@
                     "description": "Summary of themes and insights extracted from recent meetings"
                 }
             },
-            "required": ["meetingThemes"]
+            "required": [
+                "meetingThemes"
+            ]
         },
         "tools": [
             {

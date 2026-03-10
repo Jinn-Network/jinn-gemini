@@ -21,7 +21,9 @@
                 },
                 "sources": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "URLs to monitor — repos, communities, ecosystem sources"
                 },
                 "domain": {
@@ -45,7 +47,10 @@
                     "default": "main"
                 }
             },
-            "required": ["blogName", "mission"]
+            "required": [
+                "blogName",
+                "mission"
+            ]
         },
         "outputSpec": {
             "type": "object",
@@ -56,12 +61,16 @@
                 },
                 "postUrls": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "URLs of published posts"
                 },
                 "contentTypes": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "Types of content published (tutorial, update, analysis, etc.)"
                 },
                 "growthThesis": {
@@ -69,19 +78,51 @@
                     "description": "How this cycle's content advances the node operator funnel"
                 }
             },
-            "required": ["postsPublished"]
+            "required": [
+                "postsPublished"
+            ]
         },
         "tools": [
-            { "name": "blog_create_post", "required": true },
-            { "name": "blog_list_posts", "required": true },
-            { "name": "blog_get_post", "required": true },
-            { "name": "create_artifact", "required": true },
-            { "name": "process_branch", "required": true },
-            { "name": "write_file", "required": true },
-            { "name": "replace", "required": true },
-            { "name": "run_shell_command", "required": true },
-            { "name": "google_web_search", "required": true },
-            { "name": "web_fetch", "required": true }
+            {
+                "name": "blog_create_post",
+                "required": false
+            },
+            {
+                "name": "blog_list_posts",
+                "required": false
+            },
+            {
+                "name": "blog_get_post",
+                "required": false
+            },
+            {
+                "name": "create_artifact",
+                "required": true
+            },
+            {
+                "name": "process_branch",
+                "required": true
+            },
+            {
+                "name": "write_file",
+                "required": true
+            },
+            {
+                "name": "replace",
+                "required": true
+            },
+            {
+                "name": "run_shell_command",
+                "required": true
+            },
+            {
+                "name": "google_web_search",
+                "required": true
+            },
+            {
+                "name": "web_fetch",
+                "required": true
+            }
         ]
     },
     "invariants": [

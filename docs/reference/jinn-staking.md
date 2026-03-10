@@ -22,8 +22,10 @@ This document summarizes the Jinn staking contract deployment on Base and the ve
 
 | Contract | Address |
 |----------|---------|
-| Activity Checker | `0x1dF0be586a7273a24C7b991e37FE4C0b1C622A9B` |
-| Staking Contract | `0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139` |
+| Activity Checker (v1) | `0x1dF0be586a7273a24C7b991e37FE4C0b1C622A9B` |
+| Staking Contract v1 | `0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139` |
+| Activity Checker (v2) | `0xe575393b921C98288a842217AFBeDBA8197496D5` |
+| Staking Contract v2 | `0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488` |
 
 ### Nomination
 

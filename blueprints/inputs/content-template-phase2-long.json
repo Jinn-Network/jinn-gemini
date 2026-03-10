@@ -7,7 +7,7 @@
         "Notable open source project launches, major version releases, and community milestones"
     ],
     "lookbackPeriod": "30 days",
-    "outputTopic": "MONTHLY_OSS_REPORT",
+    "streamName": "monthly-oss-report",
     "contentBrief": "Comprehensive overview of the open source ecosystem over the past month. Cover new projects gaining traction, significant releases, and emerging trends in developer tooling.",
     "formatBrief": "Formal research report style. Executive summary up top, then 4-5 thematic sections with subheadings. Include a 'What to Watch' section at the end. Target 1200-1500 words.",
     "formatRules": {

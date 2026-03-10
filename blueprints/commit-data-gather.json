@@ -16,18 +16,35 @@
                     "description": "Time period for commits (e.g., '7 days', '1 week', '24 hours')"
                 }
             },
-            "required": ["repoUrl", "timePeriod"]
+            "required": [
+                "repoUrl",
+                "timePeriod"
+            ]
         },
         "outputSpec": {
             "version": "1.0",
             "fields": [
-                { "name": "report", "type": "string", "required": true, "description": "A readable markdown narrative report summarizing the main work done in the time period" }
+                {
+                    "name": "report",
+                    "type": "string",
+                    "required": true,
+                    "description": "A readable markdown narrative report summarizing the main work done in the time period"
+                }
             ]
         },
         "tools": [
-            { "name": "list_commits", "required": true },
-            { "name": "get_file_contents", "required": false },
-            { "name": "create_artifact", "required": true }
+            {
+                "name": "list_commits",
+                "required": true
+            },
+            {
+                "name": "get_file_contents",
+                "required": false
+            },
+            {
+                "name": "create_artifact",
+                "required": true
+            }
         ]
     },
     "invariants": [

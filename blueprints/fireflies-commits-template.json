@@ -21,23 +21,61 @@
                     "default": "main"
                 }
             },
-            "required": ["repoUrl", "timePeriod"]
+            "required": [
+                "repoUrl",
+                "timePeriod"
+            ]
         },
         "outputSpec": {
             "version": "1.0",
             "fields": [
-                { "name": "commitsCreated", "path": "$.result.commitsCreated", "type": "number", "required": true },
-                { "name": "commitShas", "path": "$.result.commitShas", "type": "array", "required": true },
-                { "name": "meetingsAnalyzed", "path": "$.result.meetingsAnalyzed", "type": "number", "required": true },
-                { "name": "insightsExtracted", "path": "$.result.insightsExtracted", "type": "array", "required": true }
+                {
+                    "name": "commitsCreated",
+                    "path": "$.result.commitsCreated",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "commitShas",
+                    "path": "$.result.commitShas",
+                    "type": "array",
+                    "required": true
+                },
+                {
+                    "name": "meetingsAnalyzed",
+                    "path": "$.result.meetingsAnalyzed",
+                    "type": "number",
+                    "required": true
+                },
+                {
+                    "name": "insightsExtracted",
+                    "path": "$.result.insightsExtracted",
+                    "type": "array",
+                    "required": true
+                }
             ]
         },
         "tools": [
-            { "name": "fireflies_meetings", "required": true },
-            { "name": "github_list_commits", "required": false },
-            { "name": "write_file", "required": true },
-            { "name": "run_shell_command", "required": true },
-            { "name": "create_artifact", "required": true }
+            {
+                "name": "fireflies_meetings",
+                "required": false
+            },
+            {
+                "name": "github_list_commits",
+                "required": false
+            },
+            {
+                "name": "write_file",
+                "required": true
+            },
+            {
+                "name": "run_shell_command",
+                "required": true
+            },
+            {
+                "name": "create_artifact",
+                "required": true
+            }
         ]
     },
     "invariants": [
@@ -153,8 +191,12 @@
             "condition": "All files MUST be created in docs/meeting-insights/. Create directory if needed.",
             "assessment": "Verify all write_file calls target 'docs/meeting-insights/' paths.",
             "examples": {
-                "do": ["write_file to 'docs/meeting-insights/2026-01-30-daily.md'"],
-                "dont": ["Write to root or other directories"]
+                "do": [
+                    "write_file to 'docs/meeting-insights/2026-01-30-daily.md'"
+                ],
+                "dont": [
+                    "Write to root or other directories"
+                ]
             }
         },
         {
@@ -163,8 +205,12 @@
             "condition": "Only analyze meetings from within {{timePeriod}} relative to {{currentTimestamp}}.",
             "assessment": "Calculate date bounds and pass to Fireflies API.",
             "examples": {
-                "do": ["Calculate: '7 days' → since 7 days ago"],
-                "dont": ["Include meetings outside time window"]
+                "do": [
+                    "Calculate: '7 days' → since 7 days ago"
+                ],
+                "dont": [
+                    "Include meetings outside time window"
+                ]
             }
         },
         {
@@ -173,8 +219,12 @@
             "condition": "Create actual git commits with 'git add' and 'git commit' via run_shell_command.",
             "assessment": "Verify git commands were executed, not just proposed.",
             "examples": {
-                "do": ["Run: git add && git commit -m 'docs: ...'"],
-                "dont": ["Only propose commits without executing"]
+                "do": [
+                    "Run: git add && git commit -m 'docs: ...'"
+                ],
+                "dont": [
+                    "Only propose commits without executing"
+                ]
             }
         },
         {
@@ -183,8 +233,12 @@
             "condition": "Never include speaker names or identifying information.",
             "assessment": "Scan for proper nouns, 'X said', identifying job titles.",
             "examples": {
-                "do": ["'The team discussed...'"],
-                "dont": ["'John said...', 'The CTO mentioned...'"]
+                "do": [
+                    "'The team discussed...'"
+                ],
+                "dont": [
+                    "'John said...', 'The CTO mentioned...'"
+                ]
             }
         },
         {
@@ -193,8 +247,12 @@
             "condition": "Never include: revenue, hiring, partnerships, investors, legal, HR, competitive strategy.",
             "assessment": "Scan for financial, hiring, legal, competitive content.",
             "examples": {
-                "do": ["Technical decisions only"],
-                "dont": ["Revenue targets, hiring plans, partnership details"]
+                "do": [
+                    "Technical decisions only"
+                ],
+                "dont": [
+                    "Revenue targets, hiring plans, partnership details"
+                ]
             }
         },
         {
@@ -203,8 +261,12 @@
             "condition": "Final output must include actual git commit SHAs.",
             "assessment": "Run 'git log' after committing to capture real SHAs.",
             "examples": {
-                "do": ["Return commitShas: ['a1b2c3d']"],
-                "dont": ["Return empty or placeholder SHAs"]
+                "do": [
+                    "Return commitShas: ['a1b2c3d']"
+                ],
+                "dont": [
+                    "Return empty or placeholder SHAs"
+                ]
             }
         }
     ]

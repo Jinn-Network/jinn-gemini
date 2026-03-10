@@ -73,6 +73,16 @@ yarn setup:service --chain=base
 
 **Contract:** `0x2585e63df7BD9De8e058884D496658a030b5c6ce`
 
+### Jinn Staking (v2)
+
+For Jinn operators, use the Jinn v2 staking contract:
+
+```bash
+yarn setup:service --chain=base --staking-contract=0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488
+```
+
+**Contract:** `0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488` (5,000 OLAS min, DeliveryActivityChecker)
+
 ### Custom Staking Contract
 
 ```bash

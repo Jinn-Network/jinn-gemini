@@ -54,13 +54,13 @@ function setupContracts(opts: {
   livenessPeriod?: number;
   livenessRatio?: bigint;
   tsCheckpoint?: number;
-  baselineRequestCount?: bigint;
-  currentRequestCount?: bigint;
+  baselineActivityCount?: bigint;
+  currentActivityCount?: bigint;
   rewardsPerSecond?: bigint;
 } = {}) {
   const tsCheckpoint = opts.tsCheckpoint ?? Math.floor(Date.now() / 1000) - 3600;
-  const baselineRequestCount = opts.baselineRequestCount ?? 0n;
-  const currentRequestCount = opts.currentRequestCount ?? 0n;
+  const baselineActivityCount = opts.baselineActivityCount ?? 0n;
+  const currentActivityCount = opts.currentActivityCount ?? 0n;
 
   // Staking contract
   setMockContract(STAKING_ADDR, {
@@ -69,14 +69,14 @@ function setupContracts(opts: {
     rewardsPerSecond: vi.fn().mockResolvedValue(opts.rewardsPerSecond ?? DEFAULT_REWARDS_PER_SECOND),
     tsCheckpoint: vi.fn().mockResolvedValue(BigInt(tsCheckpoint)),
     getServiceInfo: vi.fn().mockResolvedValue({
-      nonces: [0n, baselineRequestCount],
+      nonces: [0n, baselineActivityCount],
     }),
   });
 
   // Activity checker
   setMockContract(ACTIVITY_CHECKER_ADDR, {
     livenessRatio: vi.fn().mockResolvedValue(opts.livenessRatio ?? DEFAULT_LIVENESS_RATIO),
-    getMultisigNonces: vi.fn().mockResolvedValue([0n, currentRequestCount]),
+    getMultisigNonces: vi.fn().mockResolvedValue([0n, currentActivityCount]),
   });
 }
 
@@ -91,49 +91,49 @@ describe('ActivityMonitor', () => {
   describe('eligibility formula', () => {
     it('eligible when requests meet threshold', async () => {
       // With livenessPeriod=86400 and ratio=1e16:
-      // requiredRequests = ceil(86400 * 1e16 / 1e18) + 1 = ceil(864) + 1 = 865
+      // requiredActivities = ceil(86400 * 1e16 / 1e18) + 1 = ceil(864) + 1 = 865
       setupContracts({
-        baselineRequestCount: 0n,
-        currentRequestCount: 865n,
+        baselineActivityCount: 0n,
+        currentActivityCount: 865n,
       });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       const status = await monitor.checkService(input);
 
-      expect(status.requiredRequests).toBe(865);
-      expect(status.eligibleRequests).toBe(865);
+      expect(status.requiredActivities).toBe(865);
+      expect(status.eligibleActivities).toBe(865);
       expect(status.isEligibleForRewards).toBe(true);
-      expect(status.requestsNeeded).toBe(0);
+      expect(status.activitiesNeeded).toBe(0);
     });
 
     it('not eligible when one below threshold', async () => {
       setupContracts({
-        baselineRequestCount: 0n,
-        currentRequestCount: 864n,
+        baselineActivityCount: 0n,
+        currentActivityCount: 864n,
       });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       const status = await monitor.checkService(input);
 
-      expect(status.requiredRequests).toBe(865);
-      expect(status.eligibleRequests).toBe(864);
+      expect(status.requiredActivities).toBe(865);
+      expect(status.eligibleActivities).toBe(864);
       expect(status.isEligibleForRewards).toBe(false);
-      expect(status.requestsNeeded).toBe(1);
+      expect(status.activitiesNeeded).toBe(1);
     });
 
     it('includes SAFETY_MARGIN of 1', async () => {
       // Without safety margin: ceil(86400 * 1e16 / 1e18) = 864
       // With safety margin: 864 + 1 = 865
       setupContracts({
-        baselineRequestCount: 0n,
-        currentRequestCount: 864n,
+        baselineActivityCount: 0n,
+        currentActivityCount: 864n,
       });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       const status = await monitor.checkService(input);
 
       expect(status.isEligibleForRewards).toBe(false);
-      expect(status.requestsNeeded).toBe(1);
+      expect(status.activitiesNeeded).toBe(1);
     });
 
     it('effectivePeriod uses livenessPeriod when > elapsed time', async () => {
@@ -141,15 +141,15 @@ describe('ActivityMonitor', () => {
       setupContracts({
         livenessPeriod: 86400,
         tsCheckpoint: now - 100, // only 100s elapsed
-        baselineRequestCount: 0n,
-        currentRequestCount: 865n,
+        baselineActivityCount: 0n,
+        currentActivityCount: 865n,
       });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       const status = await monitor.checkService(input);
 
       // effectivePeriod = max(86400, ~100) = 86400, so required = 865
-      expect(status.requiredRequests).toBe(865);
+      expect(status.requiredActivities).toBe(865);
     });
 
     it('effectivePeriod uses elapsed time when > livenessPeriod', async () => {
@@ -157,30 +157,30 @@ describe('ActivityMonitor', () => {
       setupContracts({
         livenessPeriod: 86400,
         tsCheckpoint: now - 172800, // 2 days elapsed
-        baselineRequestCount: 0n,
-        currentRequestCount: 1729n,
+        baselineActivityCount: 0n,
+        currentActivityCount: 1729n,
       });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       const status = await monitor.checkService(input);
 
       // effectivePeriod = max(86400, ~172800) = 172800
-      // requiredRequests = ceil(172800 * 1e16 / 1e18) + 1 = ceil(1728) + 1 = 1729
-      expect(status.requiredRequests).toBe(1729);
+      // requiredActivities = ceil(172800 * 1e16 / 1e18) + 1 = ceil(1728) + 1 = 1729
+      expect(status.requiredActivities).toBe(1729);
       expect(status.isEligibleForRewards).toBe(true);
     });
 
     it('baseline offset is subtracted correctly', async () => {
       // baseline=50, current=915 → eligible = 915-50 = 865
       setupContracts({
-        baselineRequestCount: 50n,
-        currentRequestCount: 915n,
+        baselineActivityCount: 50n,
+        currentActivityCount: 915n,
       });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       const status = await monitor.checkService(input);
 
-      expect(status.eligibleRequests).toBe(865);
+      expect(status.eligibleActivities).toBe(865);
       expect(status.isEligibleForRewards).toBe(true);
     });
   });
@@ -197,14 +197,14 @@ describe('ActivityMonitor', () => {
       const status = await monitor.checkService(input);
 
       expect(status.error).toContain('RPC timeout');
-      expect(status.requestsNeeded).toBe(-1);
+      expect(status.activitiesNeeded).toBe(-1);
       expect(status.isEligibleForRewards).toBe(false);
     });
   });
 
   describe('caching', () => {
     it('caches contract-level data permanently', async () => {
-      setupContracts({ currentRequestCount: 865n });
+      setupContracts({ currentActivityCount: 865n });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       await monitor.checkService(input);
@@ -216,7 +216,7 @@ describe('ActivityMonitor', () => {
     });
 
     it('caches checkpoint within TTL', async () => {
-      setupContracts({ currentRequestCount: 865n });
+      setupContracts({ currentActivityCount: 865n });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       await monitor.checkService(input);
@@ -227,7 +227,7 @@ describe('ActivityMonitor', () => {
     });
 
     it('clearCache resets all caches', async () => {
-      setupContracts({ currentRequestCount: 865n });
+      setupContracts({ currentActivityCount: 865n });
 
       const input = makeCheckInput({ stakingContract: STAKING_ADDR });
       await monitor.checkService(input);
@@ -248,8 +248,8 @@ describe('ActivityMonitor', () => {
 
     it('checks multiple services sharing a staking contract', async () => {
       setupContracts({
-        baselineRequestCount: 0n,
-        currentRequestCount: 865n,
+        baselineActivityCount: 0n,
+        currentActivityCount: 865n,
       });
 
       const inputs = [

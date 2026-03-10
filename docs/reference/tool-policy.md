@@ -99,6 +99,7 @@ Some tools are "meta-tools" that expand to multiple individual tools at runtime:
 |-----------|------------|
 | `telegram_messaging` | `telegram_send_message`, `telegram_send_photo`, `telegram_send_document` |
 | `fireflies_meetings` | `fireflies_search`, `fireflies_get_transcripts`, `fireflies_get_summary` |
+| `content_streams` | `search_content_streams`, `read_content_stream` |
 | `browser_automation` | 26 Chrome DevTools tools |
 | `railway_deployment` | 24 Railway management tools |
 | ~~`nano_banana`~~ | Deprecated — silently ignored |

@@ -196,14 +196,8 @@ Icon?
 ponder/.ponder/
 
 service-backups/*
-# OLAS Middleware - Critical Data (keys, wallets, services)
-olas-operate-middleware/.operate/wallets/
-olas-operate-middleware/.operate/keys/
-olas-operate-middleware/.operate/services/
-olas-operate-middleware/.operate/*.json
-olas-operate-middleware/.operate/*.txt
-
-# Root .operate profile (service 359 keys, wallets)
+# OLAS operate profile (keys, wallets, services)
+# Located at jinn-node/.operate/ (matching standalone repo layout)
 .operate/
 
 # Test-generated operate data (ephemeral test artifacts)
@@ -231,8 +225,6 @@ scripts/get-credentials.sh
 env.tenderly
 **/env.tenderly
 
-# OLAS middleware submodule (tracked separately)
-olas-operate-middleware
 .cursor/screenshots/
 
 # mech-client-ts submodule (for local dev only, use npm package in production)
@@ -276,3 +268,6 @@ logs/security/
 .beads/last-touched
 .beads/*.startlock
 .beads/daemon.pid
+
+# Operator-specific config (copy from jinn.yaml.example)
+jinn.yaml

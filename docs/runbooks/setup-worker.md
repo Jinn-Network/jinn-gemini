@@ -2,17 +2,19 @@
 title: Mech Worker Setup
 purpose: runbook
 scope: [worker, deployment]
-last_verified: 2026-02-04
+last_verified: 2026-03-02
 related_code:
   - worker/mech_worker.ts
   - worker/config.ts
   - worker/orchestration/jobRunner.ts
   - worker/control_api_client.ts
-  - config/index.ts
+  - config/schema.ts
+  - config/loader.ts
+  - config/secrets.ts
   - env/operate-profile.ts
   - control-api/server.ts
   - package.json
-keywords: [worker setup, mech worker, installation, configuration, Railway, deployment]
+keywords: [worker setup, mech worker, installation, configuration, Railway, deployment, jinn.yaml]
 when_to_read: "Use when setting up a new worker, configuring environment variables, or troubleshooting worker startup"
 ---
 
@@ -60,23 +62,35 @@ yarn install
 yarn build
 ```
 
-## Step 2: Configure Environment Variables
+## Step 2: Configure Environment
 
-Copy the template and configure your environment:
+### Secrets (.env)
+
+Copy the template and set secrets:
 
 ```bash
 cp .env.template .env
 ```
 
-### Required Environment Variables
-
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `RPC_URL` | HTTP RPC endpoint for the target blockchain | `https://mainnet.base.org` |
-| `CHAIN_ID` | Network identifier (8453 = Base mainnet, 84532 = Base Sepolia) | `8453` |
+| `RPC_URL` | HTTP RPC endpoint for Base | `https://mainnet.base.org` |
+| `OPERATE_PASSWORD` | **Required** - Password to decrypt agent keystores | — |
 | `GEMINI_API_KEY` | Google Gemini API key for agent execution | `AIza...` |
-| `PONDER_GRAPHQL_URL` | Ponder GraphQL endpoint (defaults to Railway production) | `https://indexer.jinn.network/graphql` |
-| `CONTROL_API_URL` | Control API GraphQL endpoint | `http://localhost:4001/graphql` |
+
+### Configuration (jinn.yaml)
+
+`jinn.yaml` is auto-generated on first run with correct defaults. Common overrides:
+
+| YAML Path | Default | Env Override | Description |
+|-----------|---------|-------------|-------------|
+| `chain.chain_id` | `8453` | `CHAIN_ID` | Network ID |
+| `services.ponder_url` | Jinn production | `PONDER_GRAPHQL_URL` | Ponder GraphQL endpoint |
+| `services.control_api_url` | Jinn production | `CONTROL_API_URL` | Control API endpoint |
+| `worker.poll_base_ms` | `30000` | `WORKER_POLL_BASE_MS` | Base polling interval |
+| `worker.mech_filter_mode` | `single` | `WORKER_MECH_FILTER_MODE` | `any` \| `list` \| `single` \| `staking` |
+| `filtering.workstreams` | `[]` | `WORKSTREAM_FILTER` | Filter to workstream IDs |
+| `agent.sandbox` | `sandbox-exec` | `GEMINI_SANDBOX` | Sandbox mode |
 
 ### Service Credentials
 
@@ -84,17 +98,10 @@ Service credentials can come from two sources:
 
 **Option A: `.operate` Directory (Local Development)**
 
-The worker reads credentials from `olas-operate-middleware/.operate/`:
-
-- Mech address from `services/*/config.json` → `env_variables.MECH_TO_CONFIG`
-- Safe address from `services/*/config.json` → `chain_configs.<chain>.chain_data.multisig`
-- Private key from `keys/<agent_address>` (encrypted keystore format)
-
-> **Important**: Agent keys are encrypted with `OPERATE_PASSWORD`. The worker automatically decrypts them at startup using `env/operate-profile.ts`.
-
-| Variable | Description |
-|----------|-------------|
-| `OPERATE_PASSWORD` | **Required** - Password to decrypt agent keystores |
+The worker reads credentials from `.operate/`:
+- Mech address from `services/*/config.json`
+- Safe address from `services/*/config.json`
+- Private key from `keys/<agent_address>` (encrypted keystore)
 
 **Option B: Environment Variables (Railway/Production)**
 
@@ -103,20 +110,13 @@ The worker reads credentials from `olas-operate-middleware/.operate/`:
 | `JINN_SERVICE_MECH_ADDRESS` | Mech contract address (0x...) |
 | `JINN_SERVICE_SAFE_ADDRESS` | Gnosis Safe multisig address (0x...) |
 
-### Optional Configuration
+### Optional
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `WORKSTREAM_FILTER` | Filter to specific workstream(s). Supports single, comma-separated, or JSON array | None (all workstreams) |
-| `WORKER_STUCK_EXIT_CYCLES` | Exit after N consecutive stuck cycles (for auto-recovery) | None |
-| `WORKER_JOB_DELAY_MS` | Delay (ms) after each job before next poll | `0` |
-| `WORKER_POLL_BASE_MS` | Base polling interval | `30000` |
-| `WORKER_POLL_MAX_MS` | Maximum polling interval (adaptive backoff) | `300000` |
-| `JINN_WORKSPACE_DIR` | Directory for cloning venture repositories | `~/jinn-repos` |
 | `GITHUB_TOKEN` | GitHub PAT for repository operations | None |
 | `GIT_AUTHOR_NAME` | Git author name for agent commits | None |
 | `GIT_AUTHOR_EMAIL` | Git author email for agent commits | None |
-| `GEMINI_SANDBOX` | Sandbox mode: `sandbox-exec`, `docker`, `podman`, `false` | `sandbox-exec` |
 
 ## Step 3: Set Up Control API
 
@@ -242,6 +242,6 @@ Delivered via Safe
 |------|---------|
 | `worker/mech_worker.ts` | Main worker loop |
 | `worker/orchestration/jobRunner.ts` | Job execution |
-| `config/index.ts` | Configuration with Zod validation |
+| `config/index.ts` | Configuration singleton (backed by jinn.yaml + Zod) |
 
 See `docs/context/system-overview.md` for full architecture.

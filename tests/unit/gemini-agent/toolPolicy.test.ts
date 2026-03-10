@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeToolPolicy, UNIVERSAL_TOOLS, NATIVE_TOOLS, FIREFLIES_TOOLS, hasFirefliesMeetings, hasNanoBanana } from 'jinn-node/agent/toolPolicy.js';
+import { computeToolPolicy, UNIVERSAL_TOOLS, NATIVE_TOOLS, FIREFLIES_TOOLS, CONTENT_STREAM_TOOLS, hasFirefliesMeetings, hasNanoBanana } from 'jinn-node/agent/toolPolicy.js';
 import { REGISTERED_MCP_TOOLS } from 'jinn-node/agent/mcp/server.js';
 
 describe('computeToolPolicy', () => {
@@ -73,6 +73,32 @@ describe('hasFirefliesMeetings', () => {
   it('returns false when fireflies_meetings is not in the list', () => {
     expect(hasFirefliesMeetings([])).toBe(false);
     expect(hasFirefliesMeetings(['railway_deployment'])).toBe(false);
+  });
+});
+
+describe('content_streams meta-tool', () => {
+  it('expands content_streams to search and read tools', () => {
+    const policy = computeToolPolicy(['content_streams']);
+
+    expect(policy.mcpIncludeTools).toContain('search_content_streams');
+    expect(policy.mcpIncludeTools).toContain('read_content_stream');
+  });
+
+  it('removes the meta-tool name from the expanded list', () => {
+    const policy = computeToolPolicy(['content_streams']);
+
+    expect(policy.mcpIncludeTools).not.toContain('content_streams');
+  });
+
+  it('does not include content stream tools when meta-tool not enabled', () => {
+    const policy = computeToolPolicy([]);
+
+    expect(policy.mcpIncludeTools).not.toContain('search_content_streams');
+    expect(policy.mcpIncludeTools).not.toContain('read_content_stream');
+  });
+
+  it('CONTENT_STREAM_TOOLS constant has exactly 2 tools', () => {
+    expect(CONTENT_STREAM_TOOLS).toHaveLength(2);
   });
 });
 

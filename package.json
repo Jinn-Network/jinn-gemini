@@ -103,7 +103,7 @@
     "subtree:push": "bash scripts/subtree.sh push",
     "subtree:pull": "bash scripts/subtree.sh pull",
     "subtree:status": "bash scripts/subtree.sh status",
-    "restake:service": "cd olas-operate-middleware && poetry run python operate/quickstart/run_service.py",
+    "restake:service": "cd jinn-node && poetry run python -m operate.quickstart.run_service",
     "qa:jinn-179": "bash scripts/qa-jinn-179.sh",
     "inspect-job-run": "tsx scripts/inspect-job-run.ts",
     "mech:check-rate": "tsx scripts/mech/check-max-delivery-rate.ts",

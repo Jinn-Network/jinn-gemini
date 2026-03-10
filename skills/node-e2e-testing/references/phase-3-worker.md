@@ -24,11 +24,11 @@ yarn test:e2e:vnet preflight \
 
 ### 1. Dispatch job
 
-The input config (`configs/the-lamp.json`) provides venture-scoped fields like `umamiWebsiteId`. Blueprint validation at dispatch time will reject missing required fields — no separate pre-flight check is needed.
+The input config (`configs/test-real-run.json`) provides venture-scoped fields like `umamiWebsiteId`. Blueprint validation at dispatch time will reject missing required fields — no separate pre-flight check is needed.
 
 From the monorepo root:
 ```bash
-export INPUT_CONFIG=configs/the-lamp.json
+export INPUT_CONFIG=configs/test-real-run.json
 yarn test:e2e:dispatch \
   --workstream 0x9470f6f2bec6940c93fedebc0ea74bccaf270916f4693e96e8ccc586f26a89ac \
   --cwd "$CLONE_DIR" \
@@ -147,6 +147,7 @@ If you see `providers: []`, the probe failed — document and continue. Common c
 - **venture_query fails with bridge config error**: verify `X402_GATEWAY_URL` is passed to Docker and gateway has `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` configured.
 - **dispatch_new_job fails**: Capture error. Agent EOA may need more ETH for the child dispatch transaction.
 - **Delivery fails (non-quota)**: Capture error. Check agent private key format (encrypted vs hex). Check agent EOA has ETH.
+- **venture_query or blog_get_stats fails with "Bridge signer private key is not configured"**: The gateway process likely died and was restarted without `CREDENTIAL_BRIDGE_CONTROL_API_PRIVATE_KEY`. The docker-run pre-flight health check should catch a dead gateway. Restart the full stack: `yarn test:e2e:stack`.
 
 ## CHECKPOINT: Phase 3 — Worker Execution (Docker)
 

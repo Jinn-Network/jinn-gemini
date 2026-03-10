@@ -25,8 +25,8 @@ const suppressLogs = runtimeMode !== 'default';
 // Known deployment blocks for each contract (with small safety margin)
 const CONTRACT_DEPLOY_BLOCKS = {
   MechMarketplace: 26_600_000,    // ~mid-2024, marketplace contract
-  JinnStaking:     40_709_999,    // ~Jan 2026, 5000 OLAS min staking (v1)
-  JinnStakingV2:   42_550_000,    // ~Feb 2026, 5000 OLAS min staking (v2)
+  JinnStaking: 40_709_999,    // ~Jan 2026, 5000 OLAS min staking (v1)
+  JinnStakingV2: 42_550_000,    // ~Feb 2026, 5000 OLAS min staking (v2)
 } as const;
 
 // Factory start block: use env var override (for tests) or earliest contract deployment
@@ -216,13 +216,13 @@ export default createConfig({
       address: FACTORY_START_BLOCK === 0
         ? undefined // undefined = index from all addresses (test mode only!)
         : factory({
-            address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
-            event: MechMarketplaceAbi.find((item: any) => item.type === 'event' && item.name === 'CreateMech'),
-            parameter: "mech",
-            // Scan factory events from early deployment to discover all historical mechs
-            startBlock: FACTORY_START_BLOCK,
-            endBlock,
-          }),
+          address: "0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020",
+          event: MechMarketplaceAbi.find((item: any) => item.type === 'event' && item.name === 'CreateMech'),
+          parameter: "mech",
+          // Scan factory events from early deployment to discover all historical mechs
+          startBlock: FACTORY_START_BLOCK,
+          endBlock,
+        }),
       // Index Deliver events only from recent high-volume window (or env override)
       // CRITICAL: Call getChildStartBlock() here (not at module-load time) so test env vars are set first
       startBlock: getChildStartBlock(),
@@ -241,7 +241,7 @@ export default createConfig({
     JinnStakingV2: {
       chain: "base",
       abi: StakingTokenAbi,
-      address: '0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488', // Jinn Staking V2 (5,000 OLAS min)
+      address: '0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488', // Jinn Staking V2 (agent 103, DeliveryActivityChecker)
       startBlock: getStakingStartBlock('JinnStakingV2'),
       endBlock,
     },

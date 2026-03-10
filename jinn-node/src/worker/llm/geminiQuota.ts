@@ -1,11 +1,5 @@
 import { workerLogger } from '../../logging/index.js';
-import {
-  getOptionalGeminiApiKey,
-  getOptionalGeminiQuotaBackoffMs,
-  getOptionalGeminiQuotaCheckModel,
-  getOptionalGeminiQuotaCheckTimeoutMs,
-  getOptionalGeminiQuotaMaxBackoffMs,
-} from '../../config/index.js';
+import { config, secrets } from '../../config/index.js';
 import { serializeError } from '../logging/errors.js';
 import { DEFAULT_WORKER_MODEL, normalizeGeminiModel } from '../../shared/gemini-models.js';
 import { OAuth2Client } from 'google-auth-library';
@@ -104,7 +98,7 @@ function normalizeModel(model: string): string {
 }
 
 function resolveModel(preferred?: string): string {
-  const configuredModel = getOptionalGeminiQuotaCheckModel();
+  const configuredModel = config.llm.quotaCheckModel;
   if (configuredModel && configuredModel.trim().length > 0) {
     return normalizeModel(configuredModel);
   }
@@ -215,7 +209,7 @@ const OAUTH_CLIENT_SECRET = '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';
 
 // Parse multi-credential array from env var
 function parseCredentialsArray(): OAuthCredentialSet[] | null {
-  const credsJson = process.env.GEMINI_OAUTH_CREDENTIALS;
+  const credsJson = secrets.geminiOauthCredentials;
   if (!credsJson) {
     return null;
   }
@@ -458,7 +452,7 @@ export async function checkGeminiQuotaAvailability(
     };
   }
 
-  const apiKey = getOptionalGeminiApiKey() || process.env.GEMINI_API_KEY;
+  const apiKey = secrets.geminiApiKey || process.env.GEMINI_API_KEY;
   if (apiKey) {
     const apiKeyResult = await checkGeminiQuota({ model });
     if (apiKeyResult.ok || !apiKeyResult.checked) {
@@ -496,7 +490,7 @@ export async function checkGeminiQuota(
   options: QuotaCheckOptions = {}
 ): Promise<QuotaCheckResult> {
   // Existing API key quota check
-  const apiKey = getOptionalGeminiApiKey() || process.env.GEMINI_API_KEY;
+  const apiKey = secrets.geminiApiKey;
   if (!apiKey) {
     return {
       ok: true,
@@ -507,7 +501,7 @@ export async function checkGeminiQuota(
   }
 
   const model = normalizeGeminiModel(resolveModel(options.model), DEFAULT_WORKER_MODEL).normalized;
-  const timeoutMs = options.timeoutMs ?? getOptionalGeminiQuotaCheckTimeoutMs() ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs ?? config.llm.quotaCheckTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -564,8 +558,8 @@ export async function checkGeminiQuota(
 }
 
 export async function waitForGeminiQuota(options: QuotaWaitOptions = {}): Promise<CredentialSelectionResult> {
-  const baseBackoffMs = getOptionalGeminiQuotaBackoffMs() ?? DEFAULT_BACKOFF_MS;
-  const maxBackoffMs = getOptionalGeminiQuotaMaxBackoffMs() ?? DEFAULT_MAX_BACKOFF_MS;
+  const baseBackoffMs = config.llm.quotaBackoffMs ?? DEFAULT_BACKOFF_MS;
+  const maxBackoffMs = config.llm.quotaMaxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
   const model = resolveModel(options.model);
 
   for (let attempt = 0; ; attempt += 1) {

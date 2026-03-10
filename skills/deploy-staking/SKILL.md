@@ -113,8 +113,10 @@ After deployment, update these files with real addresses:
 | `jinn-node/src/worker/config/ServiceConfig.ts` | `DEFAULT_STAKING_PROGRAM_ID`, `DEFAULT_AGENT_ID`, `DEFAULT_SERVICE_HASH` |
 | `jinn-node/.env.example` | `STAKING_CONTRACT`, `WORKER_STAKING_CONTRACT` |
 | `jinn-node/scripts/staking/migrate-staking-contract.ts` | Add new entry to `STAKING_CONTRACTS` map |
+| `ponder/ponder.config.ts` | Add new address to `StakingContracts.address[]` |
+| `ponder/src/index.ts` | Add new address to `JINN_STAKING_CONTRACTS[]` |
 | `skills/olas-registry/SKILL.md` | Add agent entry to "Current Registry Entries" |
-| `skills/olas-staking/SKILL.md` | Update contract addresses in Quick Reference |
+| `skills/olas-staking/SKILL.md` | Update contract addresses + see "New Staking Contract Checklist" |
 
 ### Step 6: Fund + Vote
 

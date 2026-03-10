@@ -17,6 +17,10 @@ const sharedResolve = {
     // Deduplicate ethers so vi.mock('ethers') works for jinn-node modules
     // (jinn-node has its own node_modules/ethers@6.16.0; root has 6.15.0)
     'ethers': path.resolve(__dirname, './node_modules/ethers'),
+    // Deduplicate cross-fetch so vi.mock('cross-fetch') works for jinn-node modules
+    'cross-fetch': path.resolve(__dirname, './node_modules/cross-fetch'),
+    // yaml lives in jinn-node/node_modules (not root); alias for tests-next config tests
+    'yaml': path.resolve(__dirname, './jinn-node/node_modules/yaml/dist/index.js'),
   },
 }
 

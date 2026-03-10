@@ -9,12 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import fetch from 'cross-fetch';
 import dotenv from 'dotenv';
 import { logger, serializeError } from 'jinn-node/logging';
-import {
-  getRequiredSupabaseUrl,
-  getRequiredSupabaseServiceRoleKey,
-  getPonderGraphqlUrl,
-  getOptionalControlApiPort
-} from 'jinn-node/config';
+import { config, secrets } from 'jinn-node/config';
 import { getMasterSafe, getServiceSafeAddress } from 'jinn-node/env/operate-profile';
 import { InMemoryNonceStore, verifyControlApiRequest } from 'jinn-node/http/erc8128';
 
@@ -1461,11 +1456,11 @@ const resolvers = {
 
 const schema = createSchema({ typeDefs, resolvers });
 
-const SUPABASE_URL = getRequiredSupabaseUrl();
-const SUPABASE_SERVICE_ROLE_KEY = getRequiredSupabaseServiceRoleKey();
-const PONDER_GRAPHQL_URL = getPonderGraphqlUrl();
+const SUPABASE_URL = secrets.supabaseUrl;
+const SUPABASE_SERVICE_ROLE_KEY = secrets.supabaseServiceRoleKey;
+const PONDER_GRAPHQL_URL = config.services.ponderUrl;
 // Railway sets PORT env var, fallback to CONTROL_API_PORT or 4001
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (getOptionalControlApiPort() || 4001);
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (parseInt(process.env.CONTROL_API_PORT || '', 10) || 4001);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   logger.fatal('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');

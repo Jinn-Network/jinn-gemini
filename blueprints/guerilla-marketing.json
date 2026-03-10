@@ -34,7 +34,12 @@
                     "default": ""
                 }
             },
-            "required": ["projectName", "valueProp", "docsUrl", "identity"]
+            "required": [
+                "projectName",
+                "valueProp",
+                "docsUrl",
+                "identity"
+            ]
         },
         "outputSpec": {
             "type": "object",
@@ -49,7 +54,9 @@
                 },
                 "platformsActive": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "Platforms and surfaces where the agent engaged this cycle"
                 },
                 "topTactic": {
@@ -58,19 +65,43 @@
                 },
                 "discoveries": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "New opportunities or surfaces discovered for future cycles"
                 }
             },
-            "required": ["tacticsAttempted", "engagementGenerated", "topTactic"]
+            "required": [
+                "tacticsAttempted",
+                "engagementGenerated",
+                "topTactic"
+            ]
         },
         "tools": [
-            { "name": "moltbook", "required": false },
-            { "name": "browser_automation", "required": true },
-            { "name": "google_web_search", "required": true },
-            { "name": "web_fetch", "required": true },
-            { "name": "create_artifact", "required": true },
-            { "name": "search_similar_situations", "required": true }
+            {
+                "name": "moltbook",
+                "required": false
+            },
+            {
+                "name": "browser_automation",
+                "required": false
+            },
+            {
+                "name": "google_web_search",
+                "required": true
+            },
+            {
+                "name": "web_fetch",
+                "required": true
+            },
+            {
+                "name": "create_artifact",
+                "required": true
+            },
+            {
+                "name": "search_similar_situations",
+                "required": true
+            }
         ]
     },
     "invariants": [

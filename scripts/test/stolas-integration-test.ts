@@ -31,23 +31,22 @@ dotenv.config({ path: resolve(ROOT, '.env.test'), override: true, quiet: true } 
 // ─── Addresses ─────────────────────────────────────────────────────────────────
 // Source: olas-lst/scripts/deployment/globals_base_mainnet.json (stake_external branch)
 
-const DISTRIBUTOR_PROXY     = '0x40abf47B926181148000DbCC7c8DE76A3a61a66f';
-const DISTRIBUTOR_IMPL      = '0x4A26F79b9dd73a48d57ce4DF70295A875afa006c';
-const L2_STAKING_PROCESSOR  = '0xCAF018A23a104095180e298856AC1a415f9831E8';
-const DISTRIBUTOR_OWNER     = '0x40c0392c23fAfa216C69Bc291AFcb1b3F4abd49b';
-const GUARD_PROXY           = '0x4D3911420a8E4E7dB8c979f4915dA8983C5e3ba2';
-const JINN_STAKING          = '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139';
-const OLAS_TOKEN            = '0x54330d28ca3357F294334BDC454a032e7f353416';
-const SERVICE_REGISTRY      = '0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE';
+const DISTRIBUTOR_PROXY = '0x40abf47B926181148000DbCC7c8DE76A3a61a66f';
+const DISTRIBUTOR_IMPL = '0x4A26F79b9dd73a48d57ce4DF70295A875afa006c';
+const L2_STAKING_PROCESSOR = '0xCAF018A23a104095180e298856AC1a415f9831E8';
+const DISTRIBUTOR_OWNER = '0x40c0392c23fAfa216C69Bc291AFcb1b3F4abd49b';
+const GUARD_PROXY = '0x4D3911420a8E4E7dB8c979f4915dA8983C5e3ba2';
+const JINN_STAKING = '0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488';
+const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
+const SERVICE_REGISTRY = '0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE';
 
-// Mech marketplace — tracks request counts for activity checking
-const MECH_MARKETPLACE     = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
-// WhitelistedRequesterActivityChecker reads mapRequestCounts(multisig) at slot 9
-// (NOT mapDeliveryCounts at slot 10 — that's a different mapping)
-const MECH_MARKETPLACE_REQUEST_COUNT_SLOT = 9;
+// Mech marketplace — tracks delivery counts for activity checking
+const MECH_MARKETPLACE = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
+// DeliveryActivityChecker reads mapDeliveryCounts(multisig) at EVM storage slot 10
+const MECH_MARKETPLACE_DELIVERY_COUNT_SLOT = 10;
 
 // Jinn-specific constants
-const JINN_AGENT_ID = 43;
+const JINN_AGENT_ID = 103;
 // configHash must be non-zero (ZeroValue() revert). Use a simple non-zero hash.
 // In production, this should match the service's actual config hash.
 const CONFIG_HASH = ethers.id('jinn-stolas-test');
@@ -302,14 +301,14 @@ async function main() {
     // stake(stakingProxy, serviceId=0 for new, agentId, configHash, agentInstance)
     // serviceId=0 means create a new service
     // configHash MUST be non-zero (ZeroValue() revert otherwise)
-    // agentId=0 means auto-detect from staking proxy (or pass 43 explicitly)
+    // agentId=0 means auto-detect from staking proxy (or pass 103 explicitly)
     info(`Calling stake(${JINN_STAKING}, 0, ${JINN_AGENT_ID}, ${CONFIG_HASH.slice(0, 18)}..., ${operatorEOA.address})`);
 
     await sendTx(adminRpc, curatingAgent.address, DISTRIBUTOR_PROXY,
       iface.encodeFunctionData('stake', [
         JINN_STAKING,           // stakingProxy
         0,                       // serviceId (0 = create new)
-        JINN_AGENT_ID,          // agentId (43)
+        JINN_AGENT_ID,          // agentId (103)
         CONFIG_HASH,            // configHash (must be non-zero!)
         operatorEOA.address,    // agentInstance (operator EOA)
       ]),
@@ -367,18 +366,18 @@ async function main() {
       const nonceBefore = await safe.nonce();
       info(`Safe nonce before: ${nonceBefore}`);
 
-      // The activity checker (WhitelistedRequesterActivityChecker) tracks TWO nonces:
+      // The activity checker (DeliveryActivityChecker) tracks TWO nonces:
       //   [0] Safe nonce (from multisig.nonce())
-      //   [1] Request count (from MechMarketplace.mapRequestCounts(multisig))
+      //   [1] Delivery count (from MechMarketplace.mapDeliveryCounts(multisig))
       //
       // isRatioPass() requires ALL of:
       //   1. curNonces[0] > lastNonces[0]  (Safe nonce increased)
-      //   2. curNonces[1] > lastNonces[1]  (request count increased)
-      //   3. diffRequestsCounts <= diffNonces  (each request needs ≥1 Safe tx)
-      //   4. (diffRequestsCounts * 1e18) / ts >= livenessRatio
+      //   2. curNonces[1] > lastNonces[1]  (delivery count increased)
+      //   3. diffDeliveryCounts <= diffNonces  (each delivery needs ≥1 Safe tx)
+      //   4. (diffDeliveryCounts * 1e18) / ts >= livenessRatio
       //
-      // livenessRatio = 694444444444444 → over 14 days need ~840 request increments
-      // AND the Safe nonce delta must be >= request count delta.
+      // livenessRatio = 694444444444444 → over 14 days need ~840 delivery increments
+      // AND the Safe nonce delta must be >= delivery count delta.
 
       const SIMULATED_ACTIVITY = 1000; // requests to simulate
 
@@ -392,16 +391,16 @@ async function main() {
       ]);
       ok(`Set Safe nonce to ${targetNonce} (delta = ${targetNonce - Number(nonceBefore)})`);
 
-      // 2) Set mapRequestCounts[multisig] in MechMarketplace
-      //    mapRequestCounts is at slot 9 in MechMarketplace
+      // 2) Set mapDeliveryCounts[multisig] in MechMarketplace
+      //    mapDeliveryCounts is at EVM storage slot 10 in MechMarketplace
       const requestCountSlot = ethers.solidityPackedKeccak256(
         ['bytes32', 'bytes32'],
-        [ethers.zeroPadValue(serviceMultisig, 32), ethers.zeroPadValue(ethers.toBeHex(MECH_MARKETPLACE_REQUEST_COUNT_SLOT), 32)]
+        [ethers.zeroPadValue(serviceMultisig, 32), ethers.zeroPadValue(ethers.toBeHex(MECH_MARKETPLACE_DELIVERY_COUNT_SLOT), 32)]
       );
       await rpcCall(adminRpc, 'tenderly_setStorageAt', [
         MECH_MARKETPLACE, requestCountSlot, ethers.zeroPadValue(ethers.toBeHex(SIMULATED_ACTIVITY), 32),
       ]);
-      ok(`Set mapRequestCounts[multisig] to ${SIMULATED_ACTIVITY}`);
+      ok(`Set mapDeliveryCounts[multisig] to ${SIMULATED_ACTIVITY}`);
 
       // 3) Warp 14 days (past minStakingDuration of 3 days + multiple liveness periods)
       await rpcCall(adminRpc, 'evm_increaseTime', ['0x' + (14 * 86400).toString(16)]);

@@ -57,7 +57,10 @@
                     "envVar": "UMAMI_PASSWORD"
                 }
             },
-            "required": ["blogName", "mission"]
+            "required": [
+                "blogName",
+                "mission"
+            ]
         },
         "outputSpec": {
             "type": "object",
@@ -84,30 +87,85 @@
                 },
                 "contentGaps": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "Topics or formats the blog is missing"
                 }
             },
-            "required": ["editorialReport"]
+            "required": [
+                "editorialReport"
+            ]
         },
         "tools": [
-            { "name": "blog_get_stats", "required": true },
-            { "name": "blog_get_top_pages", "required": true },
-            { "name": "blog_get_referrers", "required": true },
-            { "name": "blog_get_metrics", "required": true },
-            { "name": "blog_get_pageviews", "required": true },
-            { "name": "blog_get_performance_summary", "required": true },
-            { "name": "blog_list_posts", "required": true },
-            { "name": "blog_get_post", "required": true },
-            { "name": "blog_delete_post", "required": true },
-            { "name": "create_artifact", "required": true },
-            { "name": "search_similar_situations", "required": true },
-            { "name": "process_branch", "required": true },
-            { "name": "write_file", "required": true },
-            { "name": "replace", "required": true },
-            { "name": "run_shell_command", "required": true },
-            { "name": "google_web_search", "required": true },
-            { "name": "web_fetch", "required": true }
+            {
+                "name": "blog_get_stats",
+                "required": false
+            },
+            {
+                "name": "blog_get_top_pages",
+                "required": false
+            },
+            {
+                "name": "blog_get_referrers",
+                "required": false
+            },
+            {
+                "name": "blog_get_metrics",
+                "required": false
+            },
+            {
+                "name": "blog_get_pageviews",
+                "required": false
+            },
+            {
+                "name": "blog_get_performance_summary",
+                "required": false
+            },
+            {
+                "name": "blog_list_posts",
+                "required": false
+            },
+            {
+                "name": "blog_get_post",
+                "required": false
+            },
+            {
+                "name": "blog_delete_post",
+                "required": false
+            },
+            {
+                "name": "create_artifact",
+                "required": true
+            },
+            {
+                "name": "search_similar_situations",
+                "required": true
+            },
+            {
+                "name": "process_branch",
+                "required": true
+            },
+            {
+                "name": "write_file",
+                "required": true
+            },
+            {
+                "name": "replace",
+                "required": true
+            },
+            {
+                "name": "run_shell_command",
+                "required": true
+            },
+            {
+                "name": "google_web_search",
+                "required": true
+            },
+            {
+                "name": "web_fetch",
+                "required": true
+            }
         ]
     },
     "invariants": [

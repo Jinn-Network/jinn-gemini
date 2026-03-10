@@ -13,31 +13,64 @@
                 },
                 "websiteIds": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "List of Umami website IDs to analyze"
                 },
                 "websiteLabels": {
                     "type": "object",
-                    "additionalProperties": { "type": "string" },
+                    "additionalProperties": {
+                        "type": "string"
+                    },
                     "description": "Optional map of websiteId to friendly display name (e.g., { \"abc-123\": \"Main Blog\" })"
                 }
             },
-            "required": ["timePeriod", "websiteIds"]
+            "required": [
+                "timePeriod",
+                "websiteIds"
+            ]
         },
         "outputSpec": {
             "version": "1.0",
             "fields": [
-                { "name": "report", "type": "string", "required": true, "description": "A comprehensive markdown analytics report covering all queried websites with executive summary, per-site deep dives, cross-site comparison, and recommendations" }
+                {
+                    "name": "report",
+                    "type": "string",
+                    "required": true,
+                    "description": "A comprehensive markdown analytics report covering all queried websites with executive summary, per-site deep dives, cross-site comparison, and recommendations"
+                }
             ]
         },
         "tools": [
-            { "name": "blog_get_stats", "required": true },
-            { "name": "blog_get_top_pages", "required": true },
-            { "name": "blog_get_referrers", "required": true },
-            { "name": "blog_get_metrics", "required": true },
-            { "name": "blog_get_pageviews", "required": true },
-            { "name": "blog_get_performance_summary", "required": true },
-            { "name": "create_artifact", "required": true }
+            {
+                "name": "blog_get_stats",
+                "required": false
+            },
+            {
+                "name": "blog_get_top_pages",
+                "required": false
+            },
+            {
+                "name": "blog_get_referrers",
+                "required": false
+            },
+            {
+                "name": "blog_get_metrics",
+                "required": false
+            },
+            {
+                "name": "blog_get_pageviews",
+                "required": false
+            },
+            {
+                "name": "blog_get_performance_summary",
+                "required": false
+            },
+            {
+                "name": "create_artifact",
+                "required": true
+            }
         ]
     },
     "invariants": [

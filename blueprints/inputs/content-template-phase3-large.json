@@ -9,7 +9,7 @@
         "Open source AI model releases and benchmarks"
     ],
     "lookbackPeriod": "14 days",
-    "outputTopic": "BROAD_TECH_SCAN",
+    "streamName": "broad-tech-scan",
     "contentBrief": "What are the 3 biggest technology stories of the past two weeks?",
     "formatBrief": "Conversational tone. Three sections, one per story. Include why each matters. Keep it under 1000 words.",
     "formatRules": {

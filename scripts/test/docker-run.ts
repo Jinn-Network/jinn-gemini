@@ -59,8 +59,44 @@ if (!existsSync(envFile)) {
   process.exit(1);
 }
 
-const home = homedir();
+// Detect macOS early — needed for pre-flight URL resolution
 const isMac = process.platform === 'darwin';
+
+// Pre-flight: verify local stack is alive before starting Docker container
+// Always check localhost — pre-flight runs on the host, not inside Docker.
+const localPonderUrl = 'http://localhost:42069/graphql';
+const localControlUrl = 'http://localhost:4001/graphql';
+
+const stackChecks: Array<{ name: string; url: string; method: string; body?: string }> = [
+  { name: 'Ponder', url: localPonderUrl, method: 'POST', body: '{"query":"{ _meta { status } }"}' },
+  { name: 'Control API', url: localControlUrl, method: 'POST', body: '{"query":"{ __typename }"}' },
+];
+
+// Gateway check — derive localhost URL from the env or default
+const gwEnvPair = envPairs.find(p => p.startsWith('X402_GATEWAY_URL='));
+const gwUrl = gwEnvPair
+  ? gwEnvPair.split('=').slice(1).join('=').replace('host.docker.internal', 'localhost')
+  : 'http://localhost:3001';
+stackChecks.push({ name: 'Gateway', url: gwUrl.replace(/\/$/, '') + '/health', method: 'GET' });
+
+for (const check of stackChecks) {
+  try {
+    const res = await fetch(check.url, {
+      method: check.method,
+      headers: check.body ? { 'Content-Type': 'application/json' } : {},
+      body: check.body,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (err: any) {
+    console.error(`Pre-flight FAIL: ${check.name} at ${check.url} — ${err.message}`);
+    console.error('  Start the local stack first: yarn test:e2e:stack');
+    process.exit(1);
+  }
+}
+console.log('Pre-flight: local stack healthy');
+
+const home = homedir();
 const single = flags['single'] === 'true';
 const healthcheck = flags['healthcheck'] === 'true';
 const image = flags['image'] || 'jinn-node:e2e';
@@ -71,7 +107,7 @@ const explicitEnvKeys = new Set(
     .filter(Boolean),
 );
 
-// Detect macOS — use host.docker.internal instead of localhost
+// Docker URLs — use host.docker.internal on macOS so container can reach host services
 const ponderUrl = isMac
   ? 'http://host.docker.internal:42069/graphql'
   : 'http://localhost:42069/graphql';
@@ -161,7 +197,10 @@ if (existsSync(settingsJson)) {
 // (Gemini CLI extensions, symlinks) which break cp -r on the host.
 try {
   execSync('rm -f /tmp/jinn-telemetry/telemetry-*.json', { stdio: 'pipe' });
-} catch { /* directory may not exist yet */ }
+  execSync('rm -f /tmp/jinn-telemetry-worker/telemetry-*.json', { stdio: 'pipe' });
+  execSync('rm -f /tmp/jinn-telemetry-rotation/telemetry-*.json', { stdio: 'pipe' });
+  execSync('rm -f /tmp/jinn-telemetry-rotation-cred/telemetry-*.json', { stdio: 'pipe' });
+} catch { /* directories may not exist yet */ }
 execSync('mkdir -p /tmp/jinn-telemetry');
 dockerArgs.push('-v', '/tmp/jinn-telemetry:/tmp/jinn-telemetry');
 dockerArgs.push('-e', 'JINN_TELEMETRY_DIR=/tmp/jinn-telemetry');

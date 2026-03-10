@@ -19,7 +19,21 @@
  * - MECH_ADDRESS: Target mech address
  */
 
-import 'dotenv/config';
+// Crash protection — log before dying so we can diagnose silent deaths.
+// Must be registered before any imports that create async resources (Postgres pools, Redis, etc.).
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception — gateway will exit:', err.stack || err.message || err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection — gateway will exit:', reason instanceof Error ? (reason.stack || reason.message) : reason);
+  process.exit(1);
+});
+
+// NOTE: dotenv/config intentionally NOT imported here.
+// Env vars are inherited from the parent process (ProcessManager on E2E, Railway on prod).
+// Double-loading .env can override injected vars and cause subtle misconfigurations.
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { paymentMiddleware, type Network } from "x402-hono";

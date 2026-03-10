@@ -70,8 +70,8 @@ describe('ServiceRotator', () => {
       });
       mockListServiceConfigs.mockResolvedValue([serviceA, incomplete, serviceB]);
       mockCheckAllServices.mockResolvedValue([
-        makeActivityStatus({ serviceConfigId: 'sc-001', requestsNeeded: 5, isEligibleForRewards: false }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', requestsNeeded: 3, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', activitiesNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', activitiesNeeded: 3, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();
@@ -79,7 +79,7 @@ describe('ServiceRotator', () => {
 
       // Should pick from valid services only (sc-001 and sc-002)
       expect(rotator.getState().totalServices).toBe(2);
-      expect(decision.service.serviceConfigId).toBe('sc-001'); // most requestsNeeded
+      expect(decision.service.serviceConfigId).toBe('sc-001'); // most activitiesNeeded
     });
 
     it('throws when no services found', async () => {
@@ -108,8 +108,8 @@ describe('ServiceRotator', () => {
   describe('reevaluate', () => {
     it('picks service needing the most work', async () => {
       mockCheckAllServices.mockResolvedValue([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 3, isEligibleForRewards: false }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 10, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 3, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 10, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();
@@ -123,8 +123,8 @@ describe('ServiceRotator', () => {
     it('stays on current when all services are eligible', async () => {
       // First call: sc-002 needs work → switch to it
       mockCheckAllServices.mockResolvedValueOnce([
-        makeActivityStatus({ serviceConfigId: 'sc-001', requestsNeeded: 0, isEligibleForRewards: true }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', activitiesNeeded: 0, isEligibleForRewards: true }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 5, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();
@@ -132,8 +132,8 @@ describe('ServiceRotator', () => {
 
       // Now all eligible → should stay on sc-002
       mockCheckAllServices.mockResolvedValueOnce([
-        makeActivityStatus({ serviceConfigId: 'sc-001', requestsNeeded: 0, isEligibleForRewards: true }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', requestsNeeded: 0, isEligibleForRewards: true }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', activitiesNeeded: 0, isEligibleForRewards: true }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', activitiesNeeded: 0, isEligibleForRewards: true }),
       ]);
 
       const decision = await rotator.reevaluate();
@@ -145,8 +145,8 @@ describe('ServiceRotator', () => {
 
     it('filters out errored services', async () => {
       mockCheckAllServices.mockResolvedValue([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 10, isEligibleForRewards: false, error: 'RPC timeout' }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 10, isEligibleForRewards: false, error: 'RPC timeout' }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 5, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();
@@ -159,8 +159,8 @@ describe('ServiceRotator', () => {
     it('stays on current when only errors and eligible remain', async () => {
       // First call: sc-002 needs work
       mockCheckAllServices.mockResolvedValueOnce([
-        makeActivityStatus({ serviceConfigId: 'sc-001', requestsNeeded: 0, isEligibleForRewards: true }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', activitiesNeeded: 0, isEligibleForRewards: true }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 5, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();
@@ -168,8 +168,8 @@ describe('ServiceRotator', () => {
 
       // Now: sc-001 has error, sc-002 is eligible → needsWork is empty → stay on current
       mockCheckAllServices.mockResolvedValueOnce([
-        makeActivityStatus({ serviceConfigId: 'sc-001', requestsNeeded: 0, isEligibleForRewards: false, error: 'timeout' }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', requestsNeeded: 0, isEligibleForRewards: true }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', activitiesNeeded: 0, isEligibleForRewards: false, error: 'timeout' }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', activitiesNeeded: 0, isEligibleForRewards: true }),
       ]);
 
       const decision = await rotator.reevaluate();
@@ -179,7 +179,7 @@ describe('ServiceRotator', () => {
 
     it('initial selection counts as switched', async () => {
       mockCheckAllServices.mockResolvedValue([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 5, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();
@@ -191,8 +191,8 @@ describe('ServiceRotator', () => {
 
     it('increments rotation counter only on switch', async () => {
       mockCheckAllServices.mockResolvedValueOnce([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 5, isEligibleForRewards: false }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 3, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 3, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();
@@ -201,16 +201,16 @@ describe('ServiceRotator', () => {
 
       // Stay on same → no increment
       mockCheckAllServices.mockResolvedValueOnce([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 5, isEligibleForRewards: false }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 3, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 3, isEligibleForRewards: false }),
       ]);
       await rotator.reevaluate();
       expect(rotator.getState().rotationCount).toBe(1);
 
       // Switch to sc-002 → increment
       mockCheckAllServices.mockResolvedValueOnce([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 0, isEligibleForRewards: true }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 0, isEligibleForRewards: true }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 5, isEligibleForRewards: false }),
       ]);
       await rotator.reevaluate();
       expect(rotator.getState().rotationCount).toBe(2);
@@ -221,7 +221,7 @@ describe('ServiceRotator', () => {
   describe('rate limiting', () => {
     it('skips activity check within poll interval', async () => {
       mockCheckAllServices.mockResolvedValue([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 5, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator(60_000); // 60s interval
@@ -277,7 +277,7 @@ describe('ServiceRotator', () => {
       // svcUpper has no staking but does have a mech address.
       // serviceB has staking.
       mockCheckAllServices.mockResolvedValue([
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 5, isEligibleForRewards: false }),
       ]);
       await rotator.initialize();
 
@@ -293,7 +293,7 @@ describe('ServiceRotator', () => {
       });
       mockListServiceConfigs.mockResolvedValue([serviceA, noMech]);
       mockCheckAllServices.mockResolvedValue([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 5, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();
@@ -310,8 +310,8 @@ describe('ServiceRotator', () => {
   describe('getState', () => {
     it('returns observability state', async () => {
       mockCheckAllServices.mockResolvedValue([
-        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, requestsNeeded: 5, isEligibleForRewards: false }),
-        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, requestsNeeded: 3, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-001', serviceId: 100, activitiesNeeded: 5, isEligibleForRewards: false }),
+        makeActivityStatus({ serviceConfigId: 'sc-002', serviceId: 200, activitiesNeeded: 3, isEligibleForRewards: false }),
       ]);
 
       const rotator = makeRotator();

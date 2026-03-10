@@ -289,6 +289,7 @@ Processing request
 | `ventureFilter: "none"` in logs | `VENTURE_FILTER` not set | Worker will claim ALL ventures — set filter to scope work |
 | `No unclaimed on-chain requests found` (persistent) | Wrong venture ID or no pending jobs | Verify `VENTURE_FILTER` matches the venture's UUID; check Ponder for open requests |
 | Safe delivery fails | Safe has no ETH | Fund the Safe address with ~0.02 ETH for gas |
+| Gemini CLI asks for OAuth after container restart | Docker container runs as `root` but `.gemini` is mounted at `/home/jinn/.gemini`, so `~/.gemini` resolves to `/root/.gemini` and the worker copies no auth into `GEMINI_CLI_HOME` | In `docker-compose.yml`, set `HOME=/home/jinn` and mount `${HOME}/.gemini:/home/jinn/.gemini` writable so Gemini credentials are read from and refreshed back to the mounted directory |
 
 ---
 

@@ -99,22 +99,22 @@ describe.skipIf(!BASE_RPC_URL)('ActivityMonitor ABI against Base mainnet (read-o
     const SAFETY_MARGIN = 1;
 
     const effectivePeriod = Math.max(data.livenessPeriod, now - data.tsCheckpoint);
-    const requiredRequests = Math.ceil(
+    const requiredActivities = Math.ceil(
       effectivePeriod * Number(data.livenessRatio) / 1e18
     ) + SAFETY_MARGIN;
-    const baselineRequestCount = data.baselineNonces[1] ?? 0n;
-    const currentRequestCount = data.currentNonces[1] ?? 0n;
-    const eligibleRequests = Number(currentRequestCount - baselineRequestCount);
-    const requestsNeeded = Math.max(0, requiredRequests - eligibleRequests);
-    const isEligible = eligibleRequests >= requiredRequests;
+    const baselineActivityCount = data.baselineNonces[1] ?? 0n;
+    const currentActivityCount = data.currentNonces[1] ?? 0n;
+    const eligibleActivities = Number(currentActivityCount - baselineActivityCount);
+    const activitiesNeeded = Math.max(0, requiredActivities - eligibleActivities);
+    const isEligible = eligibleActivities >= requiredActivities;
 
-    expect(requiredRequests).toBeGreaterThan(0);
-    expect(eligibleRequests).toBeGreaterThanOrEqual(0);
-    expect(requestsNeeded).toBeGreaterThanOrEqual(0);
+    expect(requiredActivities).toBeGreaterThan(0);
+    expect(eligibleActivities).toBeGreaterThanOrEqual(0);
+    expect(activitiesNeeded).toBeGreaterThanOrEqual(0);
     expect(typeof isEligible).toBe('boolean');
 
     // Log for visibility when debugging
     console.log(`Service #${data.serviceId}: eligible=${isEligible}, ` +
-      `requests=${eligibleRequests}/${requiredRequests}, needed=${requestsNeeded}`);
+      `requests=${eligibleActivities}/${requiredActivities}, needed=${activitiesNeeded}`);
   });
 });

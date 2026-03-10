@@ -52,7 +52,8 @@ Details: [System Overview](docs/context/system-overview.md)
 
 ```bash
 yarn install
-cp .env.template .env  # Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+cp .env.template .env  # Set secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# jinn-node config is in jinn.yaml (auto-generated on first run)
 yarn dev:stack         # Ponder + Control API + Worker
 ```
 
@@ -78,44 +79,39 @@ codespec/             # Code quality enforcement
 
 ---
 
-## jinn-node Subtree Sync
+## jinn-node Standalone Sync
 
-`jinn-node/` is synced to the standalone repo (`https://github.com/Jinn-Network/jinn-node.git`) via git subtree.
+`jinn-node/` is synced to the standalone repo (`https://github.com/Jinn-Network/jinn-node.git`) **automatically via CI**.
 
-**First time setup (required once per clone):**
+**How it works:**
+1. You commit changes touching `jinn-node/` in the monorepo and push to GitHub
+2. The `jinn-node-sync.yml` workflow fires automatically
+3. It rsyncs `jinn-node/` to the matching branch in the standalone repo via a dedicated deploy key
+4. The standalone repo is updated with the exact contents of `jinn-node/` from that monorepo commit
+
+**Direct pushes to the standalone repo are blocked.** A GitHub ruleset ("Monorepo Sync Only") enforces that only the deploy key can push. This prevents history divergence and lost code.
+
+**Check sync status (read-only):**
 ```bash
-yarn subtree:setup
+yarn subtree:setup   # Add the standalone remote (required once per clone)
+yarn subtree:status  # Compare monorepo vs standalone
 ```
 
-**Check sync status:**
-```bash
-yarn subtree:status
-```
+> **⚠️ Do NOT use `yarn subtree:push` or `git subtree push`.**
+> These will be rejected by the branch ruleset. All pushes must go through CI.
+> The old `yarn subtree:pull` is also unnecessary — the monorepo is the source of truth.
 
-**Push monorepo changes to standalone:**
-```bash
-yarn subtree:push
-```
+> [!NOTE]
+> **History:** The standalone repo previously accepted direct pushes, which caused lost code and funds (keystore safety fixes destroyed by a force-reset on 2026-03-03). The deploy-key gate was added on 2026-03-05 to prevent this.
 
-**Pull standalone changes into monorepo:**
-```bash
-yarn subtree:pull
-```
-
-**Rules:**
-- Run from the branch containing your changes
-- Working tree must be clean (commit or stash first)
-- Setup is idempotent — safe to run multiple times
-- Do NOT use `--squash` (the subtree was added without it; mixing causes errors)
-
-Details: [docs/runbooks/subtree-workflow.md](docs/runbooks/subtree-workflow.md)
-
-**E2E testing workflow:** To test jinn-node changes end-to-end, push them to the standalone repo first, then run the E2E skill against that branch:
+**E2E testing workflow:** To test jinn-node changes on a standalone clone:
 ```bash
 # 1. Commit changes in the monorepo
-# 2. Push to a feature branch on the standalone repo
-git subtree push --prefix=jinn-node jinn-node feature/my-changes
-# 3. Run E2E skill — it will ask which branch to clone
+# 2. Push the branch to GitHub — CI syncs to standalone automatically
+git push origin feat/my-branch
+# 3. Wait ~60s for CI, then clone from standalone
+git clone -b feat/my-branch https://github.com/Jinn-Network/jinn-node.git /tmp/jinn-node-test
+# 4. Run E2E skill
 /node-e2e-testing
 ```
 

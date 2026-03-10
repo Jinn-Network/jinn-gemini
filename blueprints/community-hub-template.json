@@ -94,43 +94,43 @@
         "tools": [
             {
                 "name": "blog_create_post",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_list_posts",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_get_post",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_delete_post",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_get_stats",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_get_top_pages",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_get_referrers",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_get_metrics",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_get_pageviews",
-                "required": true
+                "required": false
             },
             {
                 "name": "blog_get_performance_summary",
-                "required": true
+                "required": false
             },
             {
                 "name": "process_branch",
@@ -150,7 +150,7 @@
             },
             {
                 "name": "telegram_messaging",
-                "required": true
+                "required": false
             },
             {
                 "name": "fireflies_meetings",

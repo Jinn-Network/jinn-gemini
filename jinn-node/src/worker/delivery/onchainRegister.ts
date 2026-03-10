@@ -10,7 +10,7 @@
 
 import { ethers } from 'ethers';
 import { workerLogger } from '../../logging/index.js';
-import { getRequiredRpcUrl, createRpcProvider } from '../../config/index.js';
+import { secrets, createRpcProvider } from '../../config/index.js';
 import { getServicePrivateKey } from '../../env/operate-profile.js';
 
 const log = workerLogger.child({ component: 'ONCHAIN_REGISTER' });
@@ -43,10 +43,8 @@ export async function registerArtifactsOnChain(
     return;
   }
 
-  let rpcUrl: string;
-  try {
-    rpcUrl = getRequiredRpcUrl();
-  } catch {
+  const rpcUrl = secrets.rpcUrl;
+  if (!rpcUrl) {
     log.debug('No RPC URL available — skipping on-chain registration');
     return;
   }

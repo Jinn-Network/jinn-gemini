@@ -141,11 +141,11 @@ Or via CLI:
 railway link
 ```
 
-## Step 4: Configure Environment Variables
+## Step 4: Configure Secrets and Config
 
 Set these in Railway Dashboard (Settings → Variables) or via CLI:
 
-### Required Variables
+### Required Secrets (Railway Variables)
 
 ```bash
 # Service credentials
@@ -153,62 +153,48 @@ railway variables set OPERATE_PASSWORD="your_keystore_password"
 railway variables set JINN_SERVICE_SAFE_ADDRESS="0x..."
 railway variables set JINN_SERVICE_MECH_ADDRESS="0x..."
 
-# RPC (use a reliable provider - Alchemy, Infura, or public)
+# RPC
 railway variables set RPC_URL="https://base-mainnet.g.alchemy.com/v2/YOUR_KEY"
-# Or public endpoint (less reliable):
-# railway variables set RPC_URL="https://mainnet.base.org"
 
-# Ponder GraphQL - from jinn-shared project
-# Go to Railway → jinn-shared project → ponder service → Settings → Networking → Public Domain
-railway variables set PONDER_GRAPHQL_URL="https://ponder-production-XXXX.up.railway.app/graphql"
-
-# Control API - from jinn-shared project
-# Go to Railway → jinn-shared project → control-api service → Settings → Networking → Public Domain
-railway variables set CONTROL_API_URL="https://control-api-production-XXXX.up.railway.app/graphql"
-
-# GitHub (for repo cloning and pushing)
+# GitHub
 railway variables set GITHUB_TOKEN="ghp_..."
-
-# Git identity (used by init.sh for commits)
 railway variables set GIT_AUTHOR_NAME="Jinn Worker"
 railway variables set GIT_AUTHOR_EMAIL="worker@jinn.network"
 
 # Gemini (choose one auth method)
-# Option A: API Key
 railway variables set GEMINI_API_KEY="..."
-# Option B: OAuth credentials (supports multi-credential rotation)
-railway variables set GEMINI_OAUTH_CREDENTIALS='[{"oauth_creds":{...},"google_accounts":{...}}]'
+# Or: railway variables set GEMINI_OAUTH_CREDENTIALS='[{...}]'
 ```
 
-### Optional Variables
+### Configuration (jinn.yaml on volume)
+
+Service URLs, chain ID, polling intervals, blueprint features, etc. are configured in `jinn.yaml` on the persistent volume. It's auto-generated on first run with correct defaults.
+
+To customize on Railway:
+```bash
+railway shell
+nano /home/jinn/jinn.yaml  # or vi
+```
+
+Legacy env var overrides also work (e.g., `CHAIN_ID`, `PONDER_GRAPHQL_URL`).
+
+### Optional Secrets (Railway Variables)
 
 ```bash
-# Worker identification
 railway variables set WORKER_ID="worker-community-1"
-
-# Delay between jobs (ms, default: 0)
-railway variables set WORKER_JOB_DELAY_MS="120000"
-
-# Workspace directory for git clones
 railway variables set JINN_WORKSPACE_DIR="/app/workspace"
+```
 
-# Workstream filter - multiple formats supported:
-railway variables set WORKSTREAM_FILTER="0x7b2e..."  # Single
-railway variables set WORKSTREAM_FILTER="0x7b2e...,0x87e5..."  # Comma-separated
-railway variables set WORKSTREAM_FILTER='["0x7b2e...","0x87e5..."]'  # JSON array
+### Configuration Overrides (prefer jinn.yaml)
 
-# Worker stuck-cycle watchdog (recommended: 5)
+These can be set as Railway variables but **prefer editing jinn.yaml** on the volume:
+
+```bash
+# These override jinn.yaml values:
+railway variables set WORKSTREAM_FILTER="0x7b2e..."
 railway variables set WORKER_STUCK_EXIT_CYCLES="5"
-
-# Chain ID (default: 8453 for Base mainnet)
 railway variables set CHAIN_ID="8453"
-
-# Disable Gemini sandbox (Railway uses container isolation)
 railway variables set GEMINI_SANDBOX="false"
-
-# Blueprint features
-railway variables set BLUEPRINT_ENABLE_BEADS="false"
-railway variables set BLUEPRINT_ENABLE_CONTEXT_PHASES="false"
 ```
 
 ## Step 5: Add Persistent Volumes

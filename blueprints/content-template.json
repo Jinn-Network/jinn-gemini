@@ -13,7 +13,9 @@
                 },
                 "sources": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "Things to check for content — URLs, text, references. The agent decides how to use each."
                 },
                 "lookbackPeriod": {
@@ -48,11 +50,17 @@
                         },
                         "primaryStructure": {
                             "type": "string",
-                            "enum": ["prose", "bullets", "mixed"]
+                            "enum": [
+                                "prose",
+                                "bullets",
+                                "mixed"
+                            ]
                         },
                         "requiredSections": {
                             "type": "array",
-                            "items": { "type": "string" }
+                            "items": {
+                                "type": "string"
+                            }
                         },
                         "executiveSummarySentences": {
                             "type": "number",
@@ -67,12 +75,20 @@
                 },
                 "outputFormat": {
                     "type": "string",
-                    "enum": ["markdown", "structured-json"],
+                    "enum": [
+                        "markdown",
+                        "structured-json"
+                    ],
                     "description": "Output format for the artifact",
                     "default": "markdown"
                 }
             },
-            "required": ["name", "sources", "lookbackPeriod", "outputTopic"]
+            "required": [
+                "name",
+                "sources",
+                "lookbackPeriod",
+                "outputTopic"
+            ]
         },
         "outputSpec": {
             "version": "1.0",
@@ -115,10 +131,22 @@
             ]
         },
         "tools": [
-            { "name": "web_fetch", "required": true },
-            { "name": "google_web_search", "required": true },
-            { "name": "create_artifact", "required": true },
-            { "name": "dispatch_new_job", "required": false }
+            {
+                "name": "web_fetch",
+                "required": true
+            },
+            {
+                "name": "google_web_search",
+                "required": true
+            },
+            {
+                "name": "create_artifact",
+                "required": true
+            },
+            {
+                "name": "dispatch_new_job",
+                "required": false
+            }
         ]
     },
     "invariants": [

@@ -13,12 +13,16 @@
                 },
                 "topicPillars": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "Topic categories to rotate through across cycles"
                 },
                 "sources": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                        "type": "string"
+                    },
                     "description": "URLs to use as starting points for research (repos, podcasts, news sites, communities)"
                 },
                 "blogName": {
@@ -46,7 +50,10 @@
                     "default": "main"
                 }
             },
-            "required": ["mission", "topicPillars"]
+            "required": [
+                "mission",
+                "topicPillars"
+            ]
         },
         "outputSpec": {
             "type": "object",
@@ -76,22 +83,65 @@
                     "description": "How this research connects to jinn-node adoption"
                 }
             },
-            "required": ["postUrl", "topic", "pillar"]
+            "required": [
+                "postUrl",
+                "topic",
+                "pillar"
+            ]
         },
         "tools": [
-            { "name": "dispatch_new_job", "required": true },
-            { "name": "get_details", "required": true },
-            { "name": "create_artifact", "required": true },
-            { "name": "search_similar_situations", "required": true },
-            { "name": "blog_create_post", "required": true },
-            { "name": "blog_list_posts", "required": true },
-            { "name": "blog_get_post", "required": true },
-            { "name": "process_branch", "required": true },
-            { "name": "write_file", "required": true },
-            { "name": "replace", "required": true },
-            { "name": "run_shell_command", "required": true },
-            { "name": "google_web_search", "required": true },
-            { "name": "web_fetch", "required": true }
+            {
+                "name": "dispatch_new_job",
+                "required": true
+            },
+            {
+                "name": "get_details",
+                "required": true
+            },
+            {
+                "name": "create_artifact",
+                "required": true
+            },
+            {
+                "name": "search_similar_situations",
+                "required": true
+            },
+            {
+                "name": "blog_create_post",
+                "required": false
+            },
+            {
+                "name": "blog_list_posts",
+                "required": false
+            },
+            {
+                "name": "blog_get_post",
+                "required": false
+            },
+            {
+                "name": "process_branch",
+                "required": true
+            },
+            {
+                "name": "write_file",
+                "required": true
+            },
+            {
+                "name": "replace",
+                "required": true
+            },
+            {
+                "name": "run_shell_command",
+                "required": true
+            },
+            {
+                "name": "google_web_search",
+                "required": true
+            },
+            {
+                "name": "web_fetch",
+                "required": true
+            }
         ]
     },
     "invariants": [

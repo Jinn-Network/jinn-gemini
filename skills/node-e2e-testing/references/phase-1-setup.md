@@ -19,9 +19,12 @@ cd "$CLONE_DIR" && yarn setup
 
 After setup, record addresses from the output. Save to `.env.e2e`:
 ```bash
+echo "OPERATE_PASSWORD=e2e-test-password-2024" >> .env.e2e
 echo "AGENT_EOA_1=<agent-eoa-address>" >> .env.e2e
 echo "SERVICE_A_SAFE=<service-safe-address>" >> .env.e2e
 ```
+
+**CRITICAL**: `OPERATE_PASSWORD` must be in `.env.e2e` because the stolas setup encrypts agent keystores. The dispatch script loads `.env.e2e` last with `override: true`, so this takes precedence over any stale value in `.env` or `.env.test`.
 
 ### 2. Build Docker image
 

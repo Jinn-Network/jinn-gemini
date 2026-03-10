@@ -6,7 +6,11 @@
     "priceUsd": "$0.05",
     "priceWei": "50000000000000000",
     "models": {
-        "allowed": ["gemini-3-flash", "gemini-3-pro-preview", "gemini-2.5-pro"],
+        "allowed": [
+            "gemini-3-flash",
+            "gemini-3-pro-preview",
+            "gemini-2.5-pro"
+        ],
         "default": "gemini-3-flash"
     },
     "tags": [

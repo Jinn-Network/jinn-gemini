@@ -20,6 +20,7 @@ export default defineConfig({
       '@jinn-network/mech-client-ts': path.resolve(__dirname, './node_modules/@jinn-network/mech-client-ts'),
       'cross-fetch': path.resolve(__dirname, './node_modules/cross-fetch'),
       'pg': path.resolve(__dirname, './node_modules/pg'),
+      'yaml': path.resolve(__dirname, './jinn-node/node_modules/yaml/dist/index.js'),
     },
   },
   test: {

@@ -70,8 +70,8 @@ function getIpfsCachePool(): Pool | null {
 // Non-Jinn mechs are skipped entirely (0ms instead of 6s+ IPFS timeout).
 // ============================================================================
 const JINN_STAKING_CONTRACTS = [
-  '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking V1
-  '0x66a92cda5b319dcccac6c1cecbb690ca3fb59488', // Jinn Staking V2
+  '0x0dfaFbf570e9E813507aAE18aA08dFbA0aBc5139', // Jinn Staking v1
+  '0x66A92CDa5B319DCCcAC6c1cECbb690CA3Fb59488', // Jinn Staking v2
 ];
 const MARKETPLACE_ADDRESS = '0xf24eE42edA0fc9b33B7D41B06Ee8ccD2Ef7C5020';
 const BASE_RPC_URL = process.env.PONDER_RPC_URL || process.env.BASE_RPC_URL || process.env.RPC_URL || 'https://mainnet.base.org';
@@ -82,8 +82,15 @@ const HARDCODED_JINN_MECHS = [
   '0x8c083dfe9bee719a05ba3c75a9b16be4ba52c299', // Service 165 — main Jinn mech
 ];
 
-// Set of known Jinn mech addresses (lowercase). Populated at startup.
+// Set of known Jinn mech addresses (lowercase). Populated at startup, then kept
+// current by the CreateMech and ServiceStaked handlers as new events arrive.
 let jinnMechAddresses: Set<string> | null = null;
+
+// Auxiliary indexes so handlers can cross-reference and update the allowlist.
+// jinnStakedServiceIds: service IDs staked in any Jinn staking contract (from ServiceStaked events)
+// serviceIdToMech: serviceId → mech address (from CreateMech events)
+const jinnStakedServiceIds = new Set<string>();
+const serviceIdToMech = new Map<string, string>();
 
 async function ethCall(to: string, data: string): Promise<string> {
   const res = await fetch(BASE_RPC_URL, {
@@ -147,6 +154,8 @@ async function buildJinnMechAllowlist(): Promise<Set<string>> {
           // topics[1] = serviceId (indexed)
           const serviceId = BigInt(log.topics[1] as string).toString();
           serviceIds.add(serviceId);
+          // Seed the module-level index so event handlers can cross-reference
+          jinnStakedServiceIds.add(serviceId);
         }
         logger.info({ stakingAddr: stakingAddr.slice(0, 10), eventCount: logs.length, ids: [...serviceIds] }, 'ServiceStaked events result');
       } catch (e: any) {
@@ -155,15 +164,25 @@ async function buildJinnMechAllowlist(): Promise<Set<string>> {
     }
     logger.info({ serviceIdCount: serviceIds.size, serviceIds: [...serviceIds] }, 'Fetched historically staked service IDs');
 
-    // Step 2: For each staked service, look up its mech via CreateMech events
-    for (const sid of serviceIds) {
-      try {
-        const mechInfo = await lookupMechForService(BigInt(sid));
-        if (mechInfo) {
-          mechs.add(mechInfo.mech);
-        }
-      } catch (e: any) {
-        logger.warn({ serviceId: sid, error: e?.message }, 'Failed to lookup mech for service');
+    // Step 2: Get all CreateMech events from marketplace to map serviceId → mech
+    // keccak256("CreateMech(address,uint256,address)") — all 3 params are indexed (in topics)
+    const CREATE_MECH_TOPIC = '0x46e1ca45c09520471c43e2e88eca33bb51803011cfd456933629dcc645ecacd6';
+    const logs = await ethGetLogs(
+      MARKETPLACE_ADDRESS,
+      [CREATE_MECH_TOPIC],
+      '0x' + (25_000_000).toString(16),
+      'latest'
+    );
+    logger.info({ createMechCount: logs.length }, 'Fetched CreateMech events');
+
+    for (const log of logs) {
+      // topics[1] = mech (indexed), topics[2] = serviceId (indexed), topics[3] = mechFactory (indexed)
+      const mechAddr = '0x' + (log.topics[1] as string).slice(26).toLowerCase();
+      const serviceId = BigInt(log.topics[2] as string).toString();
+      // Seed the module-level index so event handlers can cross-reference
+      serviceIdToMech.set(serviceId, mechAddr);
+      if (serviceIds.has(serviceId)) {
+        mechs.add(mechAddr);
       }
     }
 
@@ -181,6 +200,7 @@ async function buildJinnMechAllowlist(): Promise<Set<string>> {
 }
 
 // Initialize at module load time (top-level await is supported in Ponder's ESM context)
+// The allowlist is kept current by CreateMech and ServiceStaked handlers below.
 buildJinnMechAllowlist().then(set => {
   jinnMechAddresses = set;
 }).catch(e => {
@@ -1617,6 +1637,16 @@ ponder.on(
         blockTimestamp,
       }).onConflictDoNothing();
 
+      // Keep the in-memory allowlist current: if this service is staked in a
+      // Jinn staking contract, add its mech to the allowlist immediately.
+      serviceIdToMech.set(serviceId.toString(), mech);
+      if (jinnStakedServiceIds.has(serviceId.toString())) {
+        if (jinnMechAddresses) {
+          jinnMechAddresses.add(mech);
+          logger.info({ mech, serviceId: serviceId.toString() }, 'Added new mech to Jinn allowlist via CreateMech');
+        }
+      }
+
       logger.info({ mech, serviceId: serviceId.toString(), mechFactory }, "Indexed CreateMech (service-to-mech mapping)");
     } catch (e: any) {
       logger.error({ err: e?.message || String(e), stack: e?.stack }, "Failed to index CreateMech");
@@ -1663,30 +1693,13 @@ const createServiceStakedHandler = (contractAddress: string) =>
         isStaked: true,
       });
 
-      // Populate mechServiceMappings eagerly from CreateMech log lookup
-      // so the worker's staking filter can resolve serviceId → mech immediately,
-      // without waiting for the full factory backfill from block 26.6M.
-      try {
-        const mechInfo = await lookupMechForService(serviceId);
-        if (mechInfo) {
-          const mechServiceMappingRepo = createRepository(db, mechServiceMapping, "mechServiceMapping");
-          await mechServiceMappingRepo.upsert({
-            id: mechInfo.mech,
-            create: {
-              id: mechInfo.mech,
-              mech: mechInfo.mech as `0x${string}`,
-              serviceId,
-              mechFactory: mechInfo.mechFactory as `0x${string}`,
-              blockTimestamp,
-            },
-            update: {},
-          });
-          logger.info({ serviceId: serviceId.toString(), mech: mechInfo.mech }, "Populated mechServiceMapping from ServiceStaked");
-        } else {
-          logger.warn({ serviceId: serviceId.toString() }, "No CreateMech event found for staked service");
-        }
-      } catch (e: any) {
-        logger.warn({ serviceId: serviceId.toString(), err: e?.message }, "Failed to lookup mech for staked service");
+      // Keep the in-memory allowlist current: if this service already has a
+      // known mech (from CreateMech), add it to the allowlist immediately.
+      jinnStakedServiceIds.add(serviceId.toString());
+      const knownMech = serviceIdToMech.get(serviceId.toString());
+      if (knownMech && jinnMechAddresses) {
+        jinnMechAddresses.add(knownMech);
+        logger.info({ mech: knownMech, serviceId: serviceId.toString() }, 'Added new mech to Jinn allowlist via ServiceStaked');
       }
 
       logger.info({
