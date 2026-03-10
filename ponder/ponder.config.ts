@@ -50,6 +50,10 @@ function getChildStartBlock(): number {
 
 // Get per-contract start block, respecting test mode (FACTORY_START_BLOCK=0)
 function getStakingStartBlock(contract: keyof typeof CONTRACT_DEPLOY_BLOCKS): number {
+  // Allow explicit override (useful for local Anvil forks to skip full history scan)
+  if (process.env.PONDER_STAKING_START_BLOCK) {
+    return Number(process.env.PONDER_STAKING_START_BLOCK);
+  }
   if (FACTORY_START_BLOCK === 0) return 0; // test mode: scan everything
   return CONTRACT_DEPLOY_BLOCKS[contract];
 }
@@ -83,6 +87,10 @@ function getRpcUrl(): string {
 
 // Determine finality block count based on RPC URL
 function getFinalityBlockCount(): number {
+  // Allow explicit override for any environment (useful for local Anvil forks)
+  if (process.env.PONDER_FINALITY_BLOCK_COUNT) {
+    return Number(process.env.PONDER_FINALITY_BLOCK_COUNT);
+  }
   const rpcUrl = getRpcUrl();
   // Tenderly virtual networks don't mine new blocks automatically, so finality checks fail
   // when Ponder tries to look ahead. Set finalityBlockCount to 0 for virtual networks.

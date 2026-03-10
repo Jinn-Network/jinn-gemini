@@ -21,6 +21,7 @@
     "ponder:start": "cd ponder && ponder start",
     "ponder": "yarn ponder:dev",
     "dev:stack": "concurrently \"yarn ponder:dev\" \"yarn control:dev\" \"yarn frontend:dev\" --names \"ponder,control,frontend\" --prefix-colors \"cyan,magenta,green\"",
+    "dev:local-stack": "sh -c 'tsx scripts/local-dev-stack.ts \"$@\"' --",
     "dev:stack:direct": "concurrently \"cd ponder && yarn dev\" \"yarn control:dev\" \"yarn frontend:dev\" --names \"ponder,control,frontend\" --prefix-colors \"cyan,magenta,green\"",
     "control-api": "tsx control-api/server.ts",
     "frontend-explorer": "cd frontend/explorer && yarn dev",

@@ -9,6 +9,7 @@
 .env.*.local
 .env.e2e
 .env.e2e.acl.json
+.env.local-stack
 
 # Node dependencies
 node_modules/
