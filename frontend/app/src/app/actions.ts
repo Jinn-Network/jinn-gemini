@@ -581,7 +581,7 @@ async function fetchIpfsText(cid: string): Promise<string | null> {
   return null;
 }
 
-function isADWRegistrationJson(parsed: Record<string, unknown>): boolean {
+function isRegistrationJson(parsed: Record<string, unknown>): boolean {
   return (
     typeof parsed.documentType === 'string' &&
     (parsed.documentType as string).startsWith('adw:')
@@ -597,8 +597,8 @@ export async function fetchArtifactContentAction(
   try {
     const parsed = JSON.parse(text);
 
-    // If this is an ADW registration wrapper, follow through to the actual content.
-    if (isADWRegistrationJson(parsed)) {
+    // If this is a registration wrapper, follow through to the actual content.
+    if (isRegistrationJson(parsed)) {
       // Try storage URI first (e.g. ipfs://Qm...)
       const storageUri = parsed.storage?.[0]?.uri as string | undefined;
       const contentCid = storageUri?.startsWith('ipfs://')

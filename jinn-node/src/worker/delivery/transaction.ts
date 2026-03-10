@@ -12,7 +12,7 @@ import { acquireSafeLock } from '../safeTxMutex.js';
 import type { UnclaimedRequest, AgentExecutionResult, FinalStatus, IpfsMetadata, RecognitionPhaseResult, ReflectionResult } from '../types.js';
 import { buildDeliveryPayload } from './payload.js';
 import { checkDeliveryStatusViaPonder } from './ponderVerification.js';
-import { registerArtifactsOnChain } from './adwRegister.js';
+import { registerArtifactsOnChain } from './onchainRegister.js';
 
 /**
  * Known Safe error codes for decoding revert reasons

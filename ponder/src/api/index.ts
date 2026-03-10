@@ -14,14 +14,16 @@ app.use("/*", cors({
   credentials: true,
 }));
 
-// ADW discovery endpoint
-app.get("/.well-known/adw.json", (c) => {
+// ERC-8004 Identity Registry discovery endpoint
+app.get("/.well-known/registry.json", (c) => {
   return c.json({
-    "@context": "https://adw.dev/v0.1",
-    "type": "https://adw.dev/v0.1#discovery",
+    "type": "https://eips.ethereum.org/EIPS/eip-8004#discovery",
     "publisher": {
       "name": "Jinn Network",
       "url": "https://jinn.network",
+    },
+    "identityRegistry": {
+      "base:8453": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
     },
     "documentTypes": [
       "adw:Artifact",
@@ -32,17 +34,6 @@ app.get("/.well-known/adw.json", (c) => {
       "adw:Knowledge",
       "adw:AgentCard",
     ],
-    "registries": {
-      "base:8453": {
-        "documentRegistry": "0x40Eac2B201D12b13b442c330eED0A2aB04b06DeE",
-        "reputationRegistry": "0x6dF7f8d643DD140fCE38C5bf346A11DA4a4B0330",
-        "validationRegistry": "0xC552bd9f22f8BB9CFa898A11f12B8D676D8155F6",
-      },
-    },
-    "api": {
-      "graphql": "https://indexer.jinn.network/graphql",
-      "explorer": "https://adw-explorer.jinn.network",
-    },
     "storage": {
       "primary": "ipfs",
       "gateway": "https://gateway.autonolas.tech/ipfs/",
