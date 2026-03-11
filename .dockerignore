@@ -37,9 +37,6 @@ poetry.lock
 __pycache__/
 olas-operate-middleware/
 
-# Ponder (separate service)
-ponder/
-
 # IDE and OS
 .vscode/
 .idea/
