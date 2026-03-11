@@ -5,7 +5,7 @@
 # Heavy/unused directories
 frontend/
 code-resources/
-contracts/
+/contracts/
 packages/
 olas-operate-middleware/
 gemini-agent/
