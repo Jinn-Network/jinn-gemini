@@ -4,6 +4,7 @@
  * Using Gnosis Safe execTransaction
  */
 
+import { requiredPrivateKey } from '../lib/required-private-key.js';
 import { ethers } from 'ethers';
 
 // Configuration
@@ -12,7 +13,7 @@ const MASTER_SAFE = '0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645';
 
 // Service #150 configuration
 const SERVICE_SAFE = '0xbcE25403FE17Cc0C41F334A07ca26cd8890090d9';
-const AGENT_KEY_PRIVATE_KEY = '0x<REDACTED_PRIVATE_KEY_2>';
+const AGENT_KEY_PRIVATE_KEY = requiredPrivateKey('SERVICE_150_PRIVATE_KEY');
 const AGENT_KEY_ADDRESS = '0x676FB16B08f59B7570163194CD80E07Ca7fa2621';
 
 // Minimal Gnosis Safe ABI
@@ -108,7 +109,7 @@ async function main() {
     console.error(`\n❌ Recovery failed: ${err.message}`);
     
     console.log(`\n💡 If the Safe transaction format is incorrect, use Safe UI instead:`);
-    console.log(`   1. Import agent key: ${AGENT_KEY_PRIVATE_KEY}`);
+    console.log('   Use your secure wallet to sign; never print or share its private key.');
     console.log(`   2. Go to: https://app.safe.global/home?safe=base:${SERVICE_SAFE}`);
     console.log(`   3. Send ${ethers.formatEther(safeEthBalance)} ETH to ${MASTER_SAFE}`);
   }

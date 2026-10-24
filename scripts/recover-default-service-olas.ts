@@ -5,6 +5,7 @@
  * Using direct agent key signing (not Safe execTransaction which has signature issues)
  */
 
+import { requiredPrivateKey } from './lib/required-private-key.js';
 import { ethers } from 'ethers';
 
 const RPC_URL = process.env.RPC_URL || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
@@ -13,7 +14,7 @@ const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
 
 // default-service configuration
 const SERVICE_SAFE = '0xa70Ea55b009fB50AFae9136049bB1EB52880691e';
-const AGENT_KEY_PRIVATE_KEY = '0x<REDACTED_PRIVATE_KEY_1>';
+const AGENT_KEY_PRIVATE_KEY = requiredPrivateKey('RECOVERY_AGENT_PRIVATE_KEY');
 const AGENT_KEY_ADDRESS = '0x879f73A2F355BD1d1bB299D21d9B621Ce6C4c285';
 
 const ERC20_ABI = [
@@ -71,7 +72,7 @@ async function main() {
     console.log(`⚠️  ${safeFormatted} ${symbol} is locked in the Safe.`);
     console.log(`   The Safe requires proper EIP-712 signature format.`);
     console.log(`\n   Use Safe UI to recover:`);
-    console.log(`   1. Import key: ${AGENT_KEY_PRIVATE_KEY}`);
+    console.log('   Use your secure wallet to sign; never print or share its private key.');
     console.log(`   2. Go to: https://app.safe.global/home?safe=base:${SERVICE_SAFE}`);
     console.log(`   3. Send ${safeFormatted} ${symbol} to ${MASTER_SAFE}`);
   }

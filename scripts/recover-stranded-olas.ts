@@ -6,6 +6,7 @@
  * never completed deployment due to middleware failures.
  */
 
+import { requiredPrivateKey } from './lib/required-private-key.js';
 import { ethers } from 'ethers';
 
 // Configuration
@@ -17,7 +18,7 @@ const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
 const AGENTS = [
   {
     address: '0x879f73A2F355BD1d1bB299D21d9B621Ce6C4c285',
-    privateKey: '0x<REDACTED_PRIVATE_KEY_1>',
+    privateKey: requiredPrivateKey('RECOVERY_AGENT_PRIVATE_KEY'),
     // default-service agent: 50.0 OLAS, 0.0005 ETH
   },
 ];

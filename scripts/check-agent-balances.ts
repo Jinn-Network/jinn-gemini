@@ -1,7 +1,6 @@
 #!/usr/bin/env tsx
 import { ethers } from 'ethers';
-import { readFileSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { readdirSync } from 'fs';
 
 const RPC_URL = process.env.BASE_RPC_URL || process.env.RPC_URL || 'https://mainnet.base.org';
 const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
@@ -69,17 +68,11 @@ async function main() {
         const olasFormatted = ethers.formatUnits(balance, decimals);
         const ethFormatted = ethers.formatEther(ethBalance);
         
-        // Read private key
-        const keyPath = join(KEYS_DIR, address);
-        const keyData = JSON.parse(readFileSync(keyPath, 'utf-8'));
-        const privateKey = keyData.private_key || keyData.privateKey;
-        
         console.log(`✅ ${address}`);
         console.log(`   OLAS: ${olasFormatted}, ETH: ${ethFormatted}`);
         
         agentsWithOLAS.push({
           address,
-          privateKey,
           olasBalance: olasFormatted,
           olasBalanceWei: balance,
           ethBalance: ethFormatted,
@@ -103,12 +96,12 @@ async function main() {
   
   if (agentsWithOLAS.length > 0) {
     console.log(`\n${'═'.repeat(80)}`);
-    console.log('\n📝 Add these to scripts/recover-stranded-olas.ts:\n');
+    console.log('\n📝 Recovery candidates (supply keys separately via a secret store):\n');
     console.log('const AGENTS = [');
     agentsWithOLAS.forEach(agent => {
       console.log(`  {`);
       console.log(`    address: '${agent.address}',`);
-      console.log(`    privateKey: '${agent.privateKey}',`);
+      console.log(`    // Supply the key from your secret store; never paste it into source.`);
       console.log(`    // ${agent.olasBalance} OLAS, ${agent.ethBalance} ETH`);
       console.log(`  },`);
     });

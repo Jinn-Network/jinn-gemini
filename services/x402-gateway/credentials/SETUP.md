@@ -67,6 +67,11 @@ tsx test-e2e.ts
 
 ## 5. Manual Testing (ERC-8128 Signed Request)
 
+Set `REDIS_URL` to a reachable Redis instance before starting the gateway, including
+for local testing. Missing or unavailable Redis rejects signed credential requests.
+The sample signer below is a publicly known development key; never fund it or grant
+it production permissions.
+
 ```bash
 cd jinn-node
 tsx -e "

@@ -6,6 +6,7 @@
  * Unlike agent EOAs, we need to use Safe's execTransaction method.
  */
 
+import { requiredPrivateKey } from './lib/required-private-key.js';
 import { ethers } from 'ethers';
 
 // Configuration
@@ -15,7 +16,7 @@ const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
 
 // Service Safe to recover from (default-service)
 const SERVICE_SAFE = '0xa70Ea55b009fB50AFae9136049bB1EB52880691e';
-const AGENT_KEY_PRIVATE_KEY = '0x<REDACTED_PRIVATE_KEY_1>';
+const AGENT_KEY_PRIVATE_KEY = requiredPrivateKey('RECOVERY_AGENT_PRIVATE_KEY');
 const AGENT_KEY_ADDRESS = '0x879f73A2F355BD1d1bB299D21d9B621Ce6C4c285';
 
 // ABIs

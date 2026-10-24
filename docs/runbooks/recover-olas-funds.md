@@ -102,7 +102,7 @@ This checks:
    const AGENTS = [
      {
        address: '0xAGENT_ADDRESS',
-       privateKey: '0xPRIVATE_KEY',
+       privateKey: process.env.RECOVERY_AGENT_PRIVATE_KEY, // supply securely at runtime
      },
    ];
    ```
@@ -166,7 +166,8 @@ This checks:
    const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
 
    const SERVICE_SAFE = '0xSERVICE_SAFE_ADDRESS';
-   const AGENT_KEY_PRIVATE_KEY = '0xAGENT_PRIVATE_KEY';
+   const AGENT_KEY_PRIVATE_KEY = process.env.RECOVERY_AGENT_PRIVATE_KEY;
+   if (!AGENT_KEY_PRIVATE_KEY) throw new Error('RECOVERY_AGENT_PRIVATE_KEY is required');
 
    const ERC20_ABI = [
      'function balanceOf(address owner) view returns (uint256)',
@@ -244,7 +245,7 @@ This checks:
 
 1. **Import agent key to MetaMask:**
    - MetaMask → Import Account
-   - Paste private key: `0xAGENT_PRIVATE_KEY`
+   - Use a secure wallet connection to sign; never paste private keys into source or logs
 
 2. **Access Safe UI:**
    ```

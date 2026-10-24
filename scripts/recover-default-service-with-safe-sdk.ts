@@ -4,6 +4,7 @@
  * Recovery Script: Transfer OLAS from default-service Safe using Safe SDK
  */
 
+import { requiredPrivateKey } from './lib/required-private-key.js';
 import { ethers } from 'ethers';
 import Safe from '@safe-global/protocol-kit';
 
@@ -13,7 +14,7 @@ const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
 
 // default-service configuration
 const SERVICE_SAFE = '0xa70Ea55b009fB50AFae9136049bB1EB52880691e';
-const AGENT_KEY_PRIVATE_KEY = '0x<REDACTED_PRIVATE_KEY_1>';
+const AGENT_KEY_PRIVATE_KEY = requiredPrivateKey('RECOVERY_AGENT_PRIVATE_KEY');
 
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
