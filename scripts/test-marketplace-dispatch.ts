@@ -27,7 +27,6 @@ async function testMarketplaceDispatch() {
   console.log('Configuration:');
   console.log('  Mech:', mechAddress);
   console.log('  Chain:', chainConfig);
-  console.log('  Private key:', privateKey.substring(0, 10) + '...');
   console.log('');
 
   // Create a simple test job

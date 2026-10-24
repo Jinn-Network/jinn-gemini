@@ -4,19 +4,22 @@
  * Uses the VNet and address from the previous funding attempt
  */
 
+import { requiredPrivateKey } from './lib/required-private-key.js';
+import { computeAddress } from 'ethers';
 import { execa } from 'execa';
 import { promises as fs } from 'fs';
 import path from 'path';
 
 const VNET_ID = '72faaa5c-83f4-4761-86fb-91b30c00d4a4';
-const ADMIN_RPC = 'https://virtual.base.eu.rpc.tenderly.co/d645bc78-0fd2-4d11-9ebd-9946a5df9c7f';
-const TEST_PRIVATE_KEY = '0xa76e1a89cf97bb6c3f81e7c70b3c2e5b6a8c7f8b2a5c8e9f1a7b6c8d9e0f1a2b'; // Replace with actual key if you have it
-const TEST_ADDRESS = '0x35112e83a5a4fA93bdFDdb16364d2eb69DAec075';
+const ADMIN_RPC = process.env.TENDERLY_ADMIN_RPC;
+if (!ADMIN_RPC) throw new Error('TENDERLY_ADMIN_RPC is required');
+const TEST_PRIVATE_KEY = requiredPrivateKey('VNET_TEST_PRIVATE_KEY');
+const TEST_ADDRESS = computeAddress(TEST_PRIVATE_KEY);
 
 async function main() {
   console.log('🚀 Running worker on funded Tenderly VNet\n');
   console.log(`VNet ID: ${VNET_ID}`);
-  console.log(`Admin RPC: ${ADMIN_RPC}`);
+  console.log('Admin RPC configured via environment');
   console.log(`Test Address: ${TEST_ADDRESS}`);
   console.log(`Dashboard: https://dashboard.tenderly.co/tannedoaksprout/project/vnets/${VNET_ID}\n`);
 

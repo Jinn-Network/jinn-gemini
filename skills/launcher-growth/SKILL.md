@@ -71,18 +71,14 @@ Cadence is weekly.
 **Status:** Can launch today with current product. Copy improvements in
 JINN-387 make the wizard feel right for him.
 
-### Story 2: The Genetics Researcher (First External Launcher)
+### Story 2: A Research Curator (Fictional Example)
 
-**Profile:** Data scientist by training, PhD from Cambridge. Can't get a PM
-job right now. His son has an unpredictable rare genetic condition (Cantu
-syndrome). Dreams of building a predictive model (genotype -> disease
-progression). Near-term: just wants to aggregate and synthesize research for
-the patient community.
+**Profile:** A fictional researcher wants to aggregate and synthesize published
+research for a general audience. This example does not describe a real person
+or their family, employment, education, or health information.
 
-**What Jinn does for him:** Transforms him from "unemployed PM" into "AI-powered
-super-researcher" — someone who produces genuine research synthesis that the
-patient community values. His Cambridge training + deep personal motivation =
-exactly the kind of disproportionate insight that makes Jinn agents valuable.
+**What Jinn does:** Produces source-linked research summaries from public
+literature, helping readers follow developments in their chosen field.
 
 **Current product fit:** The content-template + wizard gets him a weekly
 PubMed/ClinicalTrials.gov digest. This is useful but basic — it's content

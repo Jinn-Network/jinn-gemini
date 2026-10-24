@@ -10,6 +10,7 @@
  * Total Recovery: 100 OLAS
  */
 
+import { requiredPrivateKey } from '../lib/required-private-key.js';
 import { ethers } from 'ethers';
 import Safe from '@safe-global/protocol-kit';
 
@@ -18,7 +19,7 @@ const MASTER_SAFE = '0x15aDF0eD29b6D76DB365670DfEeD8F9C5dAD4645';
 const OLAS_TOKEN = '0x54330d28ca3357F294334BDC454a032e7f353416';
 
 const SERVICE_150_SAFE = '0xbcE25403FE17Cc0C41F334A07ca26cd8890090d9';
-const SERVICE_150_AGENT_KEY = '0x<REDACTED_PRIVATE_KEY_2>';
+const SERVICE_150_AGENT_KEY = requiredPrivateKey('SERVICE_150_PRIVATE_KEY');
 const SERVICE_150_AGENT_ADDRESS = '0x676FB16B08f59B7570163194CD80E07Ca7fa2621';
 
 const ERC20_ABI = [

@@ -128,7 +128,9 @@ If you need to pick a new schema version (code changed, or want to keep old data
 # Query the Railway Postgres for existing jinn_shared_v* schemas
 node -e "
 const { Client } = require('pg');
-const c = new Client('postgresql://postgres:REDACTED_DB_PASSWORD@shortline.proxy.rlwy.net:27666/railway');
+const connectionString = process.env.DATABASE_PUBLIC_URL;
+if (!connectionString) throw new Error('DATABASE_PUBLIC_URL must be supplied securely');
+const c = new Client({ connectionString });
 c.connect()
   .then(() => c.query(\"SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'jinn_shared_v%' AND schema_name NOT LIKE '%public%' ORDER BY schema_name\"))
   .then(r => {
@@ -141,7 +143,7 @@ c.connect()
 "
 ```
 
-If the DB public URL has changed, get it from `railway variables -s ponder-db --kv | grep DATABASE_PUBLIC_URL`.
+Supply `DATABASE_PUBLIC_URL` from your secret manager in the environment before running this command. Never paste connection strings into source, terminal commands, logs, or chat. Removing a committed password does not revoke it: rotate the database role password and update all dependent secrets before resuming services.
 
 ---
 
